@@ -21,6 +21,9 @@ restricting time connection establishment.
 ### Changed
 - `network::protocol::codec::IProtoType` uses C language representation
 - `cbus::sync::std::ThreadWaker` now uses internal thread FIFO queue when blocking threads on send.
+- `#[tarantool::proc]` attribute doesn't add procs to a global array unless
+  `stored_procs_slice` feature is enabled.
+- `proc::all_procs` will now panic if `stored_procs_slice` feature is disabled.
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.

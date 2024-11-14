@@ -101,6 +101,8 @@ mod stored_procs_slice {
     // Linkme distributed_slice exports a symbol with the given name, so we must
     // make sure the name is unique, so as not to conflict with distributed slices
     // from other crates or any other global symbols.
+    /// *INTERNAL API* It is only marked `pub` because it needs to be accessed
+    /// from procedural macros.
     #[doc(hidden)]
     #[::linkme::distributed_slice]
     pub static TARANTOOL_MODULE_STORED_PROCS: [Proc] = [..];
@@ -111,9 +113,15 @@ mod stored_procs_slice {
     /// The order of procs in the slice is undefined.
     ///
     /// [`tarantool::proc`]: macro@crate::proc
+    #[inline(always)]
     pub fn all_procs() -> &'static [Proc] {
         &TARANTOOL_MODULE_STORED_PROCS
     }
+}
+
+#[cfg(not(feature = "stored_procs_slice"))]
+pub fn all_procs() -> &'static [Proc] {
+    panic!("`stored_procs_slice` feature is disabled, calling this function doesn't make sense");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
