@@ -18,7 +18,6 @@ edit_uri: -/blob/main/docs/
 not_in_nav: |
   index.md
   reference/api.md
-  reference/metrics.md
   architecture/clusterwide_schema.md
   plugins/argus.md
   plugins/svarog.md
@@ -117,6 +116,7 @@ nav:
     - reference/config.md
     - reference/audit_events.md
     - reference/db_config.md
+    - reference/metrics.md
   - Архитектура:
     - architecture/distributed_sql.md
     - architecture/discovery.md

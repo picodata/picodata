@@ -233,6 +233,10 @@ picodata run --http-listen '127.0.0.1:8081'
 curl --location 'http://127.0.0.1:8081/metrics'
 ```
 
+См. также:
+
+- [Справочник метрик](../reference/metrics.md)
+
 ### Настройка Prometheus {: #prometheus }
 
 Для интеграции Picodata с системой мониторинга событий и оповещений
