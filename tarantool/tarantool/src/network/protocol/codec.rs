@@ -87,6 +87,24 @@ crate::define_enum_with_introspection! {
     }
 }
 
+/// Encode an IPROTO request header.
+#[inline(always)]
+pub fn encode_header(
+    stream: &mut impl Write,
+    sync: SyncIndex,
+    request_type: IProtoType,
+) -> Result<(), Error> {
+    let helper = Header {
+        sync,
+        iproto_type: request_type as _,
+        // Not used when encoding a request
+        error_code: 0,
+        // Not used when encoding a request
+        schema_version: 0,
+    };
+    helper.encode(stream)
+}
+
 pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
@@ -380,6 +398,10 @@ pub struct Header {
 }
 
 impl Header {
+    /// Encode an IPROTO request header.
+    ///
+    // FIXME: bad name, this encodes a request header, hence error_code & schema_version are ignored.
+    // This code will not work if we want to implement the server side of the protocol.
     pub fn encode(&self, stream: &mut impl Write) -> Result<(), Error> {
         rmp::encode::write_map_len(stream, 2)?;
         rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
@@ -389,19 +411,20 @@ impl Header {
         Ok(())
     }
 
+    /// This function doesn't need to exist
+    #[inline(always)]
     pub fn encode_from_parts(
         stream: &mut impl Write,
         sync: SyncIndex,
         request_type: IProtoType,
     ) -> Result<(), Error> {
-        rmp::encode::write_map_len(stream, 2)?;
-        rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
-        rmp::encode::write_pfix(stream, request_type as u8)?;
-        rmp::encode::write_pfix(stream, SYNC)?;
-        rmp::encode::write_uint(stream, sync.0)?;
-        Ok(())
+        encode_header(stream, sync, request_type)
     }
 
+    /// Decode an IPROTO response header.
+    ///
+    // FIXME: bad name, this decodes only response headers.
+    // This code will not work if we want to implement the server side of the protocol.
     pub fn decode(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
         let mut sync: Option<u64> = None;
         let mut iproto_type: Option<u32> = None;
@@ -445,6 +468,12 @@ impl Header {
 pub struct Response<T> {
     pub header: Header,
     pub payload: T,
+}
+
+/// Decode an IPROTO response header.
+#[inline(always)]
+pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
+    Header::decode(stream)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

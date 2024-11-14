@@ -11,6 +11,7 @@
 - `network::protocol::SyncIndex::get` method
 - `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants
 - `network::protocol::codec::Header::encode_from_parts` function
+- `network::protocol::codec::Header::{encode, decode}` functions
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
 - Added optional field `connect_timeout` to `network::protocol::Config`.
 Used in `network::client::Client::connect_with_config` for
@@ -37,8 +38,6 @@ restricting time connection establishment.
 - tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.
 
 ### Breaking changes
-- Replace `network::protocol::codec::{encode_header, decode_header}` functions
-  with `network::protocol::codec::Header::{encode, decode}` methods.
 - Use `extern "C-unwind"` instead of `extern "C"` for all trampolines which take `*mut ffi::lua_State`
   (checked with `rg 'extern "C".*lua_State'`). `tlua::error!` throws an exception to unwind the stack,
   hence we need to use a proper ABI to fix UB in picodata.
