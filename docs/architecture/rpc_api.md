@@ -147,8 +147,11 @@ fn proc_apply_schema_change(term, applied, timeout) -> Result
 
 Возвращаемое значение:
 
-- (MP_STR `Ok`)
-- (MP_MAP, `{ "Abort": { "reason": MP_STR } }`) в случае ошибки
+- *Ok*: отсутствует
+- *Abort*: `cause` (MP_MAP `ErrorInfo`):
+    - `error_code`: (MP_INT)
+    - `message`: (MP_STR)
+    - `instance_name`: (MP_STR)
 
 ### .proc_cas {: #proc_cas }
 
@@ -601,14 +604,15 @@ fn proc_runtime_info() -> RuntimeInfo
 
 - (MP_MAP `RuntimeInfo`):
     - `raft`: (MP_MAP [`RaftInfo`](#proc_raft_info))
-    - `version_info`: (MP_MAP [`VersionInfo`](#proc_version_info))
     - `internal`: (MP_MAP `InternalInfo`)
       <br>формат: `MP_MAP { main_loop_status = MP_STR,
-      governor_loop_status = MP_STR }`
+      governor_loop_status = MP_STR, governor_step_counter = MP_INT }`
     - `http`: (optional MP_MAP `HttpServerInfo`)
       <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT }`
       <br>поле отсутствует в ответе, если инстанс запущен без параметра
       [picodata run --http-listen](../reference/cli.md#run_http_listen)
+    - `version_info`: (MP_MAP [`VersionInfo`](#proc_version_info))
+    - `slab_info`: (MP_MAP `SlabInfo`)
 
 ### .proc_sharding {: #proc_sharding }
 
@@ -644,7 +648,7 @@ fn proc_sharding(term, applied, timeout)
 ### .proc_sharding_bootstrap {: #proc_sharding_bootstrap }
 
 ```rust
-fn proc_sharding_bootstrap(term, applied, timeout)
+fn proc_sharding_bootstrap(term, applied, timeout, tier)
 ```
 
 Дожидается применения raft-записи с заданным индексом и термом перед тем как
@@ -670,6 +674,7 @@ fn proc_sharding_bootstrap(term, applied, timeout)
 - `term`: (MP_INT `RaftTerm`)
 - `applied`: (MP_INT `RaftIndex`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
+- `tier`: (MP_STR)
 
 ### .proc_sql_execute {: #proc_sql_execute }
 
