@@ -433,6 +433,7 @@ impl RaftSpaceAccess {
     /// In debug mode panics if invoked outside of a transaction.
     ///
     pub fn handle_snapshot_metadata(&self, meta: &raft::SnapshotMetadata) -> tarantool::Result<()> {
+        let meta_index = meta.index;
         // We don't want to have a hole in the log, so we clear everything
         // before applying the snapshot
         self.compact_log(meta.index + 1)?;
