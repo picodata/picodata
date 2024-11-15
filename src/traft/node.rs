@@ -2386,7 +2386,7 @@ impl NodeImpl {
         let current_size = self.raft_storage.raft_log_bsize()?;
         if current_size > max_size {
             #[rustfmt::skip]
-            tlog!(Info, "raft log size exceeds threshold ({current_size} > {max_size})");
+            tlog!(Debug, "raft log size exceeds threshold ({current_size} > {max_size})");
             compaction_needed = true;
         }
 
@@ -2397,7 +2397,7 @@ impl NodeImpl {
         let current_count = self.raft_storage.raft_log_count()?;
         if current_count > max_count {
             #[rustfmt::skip]
-            tlog!(Info, "raft log entry count exceeds threshold ({current_count} > {max_count})");
+            tlog!(Debug, "raft log entry count exceeds threshold ({current_count} > {max_count})");
             compaction_needed = true;
         }
 
