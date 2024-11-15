@@ -222,6 +222,8 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
     let mut console = Console::new()?;
 
+    console.fixed_console_language = true;
+
     console.greet(&format!(
         "Connected to interactive console by address \"{}:{}\" under \"{}\" user",
         args.address.host, args.address.port, user
