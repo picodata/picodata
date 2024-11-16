@@ -1,23 +1,24 @@
-use crate::cli::args;
-use crate::cli::tarantool::main_cb_no_exit;
-use crate::config::PicodataConfig;
-#[cfg(feature = "error_injection")]
-use crate::error_injection;
-use crate::ipc;
-use crate::ipc::check_return_code;
-use crate::start;
-use crate::tlog;
-use crate::traft::Result;
-use crate::Entrypoint;
-use std::ffi::CString;
-use std::io::Read;
-use std::io::Write;
-use tarantool::c_str;
+use crate::{
+    cli::{args, tarantool::main_cb_no_exit},
+    config::PicodataConfig,
+    ipc::{self, check_return_code},
+    start, tlog,
+    traft::Result,
+    Entrypoint,
+};
+use std::{
+    ffi::OsString,
+    io::{Read, Write},
+    os::unix::process::CommandExt,
+};
 use tarantool::error::Error as TntError;
 
+#[cfg(feature = "error_injection")]
+use crate::error_injection;
+
 pub fn main(mut args: args::Run) -> ! {
-    // Save the argv before enterring tarantool, because tarantool will fuss about with them
-    let copied_argv = crate::cli::args::copy_argv();
+    // Save the argv before entering tarantool, because tarantool will fuss about with them
+    let copied_argv: Vec<OsString> = std::env::args_os().skip(1).collect();
 
     let tt_args = args.tt_args().unwrap();
 
@@ -48,12 +49,11 @@ pub fn main(mut args: args::Run) -> ! {
         // (This wouldn't be a problem if we just skipped the deinitialization for the main cord, because we don't actually need it
         // as the OS will cleanup all the resources anyway, but this is a different story altogether)
         let config = PicodataConfig::init(args)?;
+        config.log_config_params();
 
         if let Some(filename) = &config.instance.service_password_file {
             crate::pico_service::read_pico_service_password_from_file(filename)?;
         }
-
-        config.log_config_params();
 
         let entrypoint = maybe_read_entrypoint_from_pipe(input_entrypoint_pipe)?;
 
@@ -84,20 +84,12 @@ pub fn main(mut args: args::Run) -> ! {
         };
 
         // Return `Ok` from the callback to proceed to the tarantool event loop.
-        return Ok(());
+        Ok(())
     });
 
     if let Some(fd) = output_entrypoint_pipe {
-        // If logger is configured to stderr, tarantool closes the stderr fd
-        // when destroying the logger, so we must reattach it back...
-        reattach_stderr();
-
-        // Disable the alarm, because otherwise the process terminates on the
-        // SIGALRM signal when calling execvp bellow.
-        // SAFETY: always safe
-        unsafe {
-            libc::alarm(0);
-        }
+        // SIGALRM may interrupt the restart via execvp, so we disable it.
+        disable_clock_signal();
 
         // Tarantool locks the WAL directory to prevent multiple processes
         // running in the same directory. But linux will not release the
@@ -110,9 +102,7 @@ pub fn main(mut args: args::Run) -> ! {
         }
 
         let mut argv = copied_argv;
-        argv.push(c_str!("--entrypoint-fd").into());
-        let cstr = CString::new(fd.to_string()).expect("no nuls");
-        argv.push(cstr);
+        argv.push(format!("--entrypoint-fd={}", *fd).into());
 
         // Disable the destructor, so that the read half of the pipe is not closed yet
         std::mem::forget(fd);
@@ -162,49 +152,44 @@ fn write_entrypoint_to_pipe(entrypoint: &Entrypoint) -> Result<ipc::Fd, TntError
 }
 
 /// Calls execvp with the current process' argc & argv.
-fn restart_current_process(args: &[CString]) -> ! {
-    let mut argv = vec![];
-    for arg in args {
-        argv.push(arg.as_ptr());
-    }
-    argv.push(std::ptr::null());
-
-    // SAFETY: safe because pointers are valid
-    let rc = unsafe { libc::execvp(argv[0], argv.as_ptr()) };
-
-    // In case of success the execution diverges
-    assert_eq!(rc, -1);
-    let e = std::io::Error::last_os_error();
+fn restart_current_process(args: &[OsString]) -> ! {
+    let exe = std::env::current_exe().expect("must have current_exe");
+    let e = std::process::Command::new(exe).args(args).exec();
     eprintln!("execvp failed: {e}");
     std::process::abort();
 }
 
-fn unlock_wal_directory() -> std::io::Result<()> {
+/// Disable tarantool's low resolution clock timer signal.
+fn disable_clock_signal() {
+    // Defined in tarantool (use ctags or grep).
     extern "C" {
-        static mut wal_dir_lock: i32;
+        fn clock_lowres_signal_reset();
     }
 
-    if unsafe { wal_dir_lock == -1 } {
+    // SAFETY: always safe
+    unsafe { clock_lowres_signal_reset() };
+}
+
+fn unlock_wal_directory() -> std::io::Result<()> {
+    // Defined in tarantool (use ctags or grep).
+    extern "C" {
+        // Undoes the effects of path_lock().
+        // See box_cfg_xc() in tarantool for more information.
+        fn path_unlock(fd: core::ffi::c_int) -> core::ffi::c_int;
+
+        // A file descriptor for locking the wal dir.
+        static wal_dir_lock: i32;
+    }
+
+    // SAFETY: wal_dir_lock is set once from the main thread.
+    if unsafe { wal_dir_lock } == -1 {
         // Not locked
         return Ok(());
     }
 
     // SAFETY: always safe
-    let rc = unsafe { libc::flock(wal_dir_lock, libc::LOCK_UN) };
-
+    let rc = unsafe { path_unlock(wal_dir_lock) };
     check_return_code(rc)?;
 
     Ok(())
-}
-
-fn reattach_stderr() {
-    // SAFETY: always safe
-    let rc = unsafe { libc::fcntl(libc::STDERR_FILENO, libc::F_GETFD) };
-    if rc != -1 {
-        // stderr is still attached
-        return;
-    }
-
-    // SAFETY: always safe
-    unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
 }

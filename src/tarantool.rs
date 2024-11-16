@@ -69,6 +69,8 @@ mod ffi {
     extern "C" {
         pub fn tarantool_version() -> *const c_char;
         pub fn tarantool_package() -> *const c_char;
+
+        pub fn tarantool_exit(code: c_int);
         pub fn tarantool_main(
             argc: i32,
             argv: *mut *mut c_char,
@@ -432,14 +434,9 @@ where
 ///
 /// [`on_shutdown`]: ::tarantool::trigger::on_shutdown
 pub fn exit(code: i32) -> ! {
-    unsafe { tarantool_exit(code) }
-
+    unsafe { ffi::tarantool_exit(code) }
     loop {
         fiber::fiber_yield()
-    }
-
-    extern "C" {
-        fn tarantool_exit(code: i32);
     }
 }
 

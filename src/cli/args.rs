@@ -440,24 +440,6 @@ fn current_exe() -> Result<CString, String> {
     .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
 }
 
-pub fn copy_argv() -> Vec<CString> {
-    let mut res = vec![];
-    res.push(current_exe().expect("shouldn't fail"));
-
-    let mut iter = std::env::args_os();
-
-    // Ignore the first one, use `current_exe` instead
-    iter.next();
-
-    for arg in iter {
-        let bytes = arg.as_encoded_bytes();
-        let cstr = CString::new(bytes).expect("OSString doesn't contain nul bytes");
-        res.push(cstr);
-    }
-
-    res
-}
-
 /// Parses a '=' sepparated string of key and value and converts both to
 /// uppercase.
 fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
