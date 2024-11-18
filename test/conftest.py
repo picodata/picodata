@@ -2314,6 +2314,25 @@ class log_crawler:
 
         Retriable(timeout=timeout, rps=4).call(func=must_match)
 
+def server(queue: Queue, host: str, port: int) -> None:
+    class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+        QUEUE = queue
+
+        def do_POST(self):
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+
+            data = json.loads(post_data.decode("utf-8"))
+            message = {"message": "Log received successfully", "log": data}
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            response = bytes(json.dumps(message), "utf-8")
+            self.wfile.write(response)
+            self.QUEUE.put(data)
+
+    httpd = HTTPServer((host, port), SimpleHTTPRequestHandler)
+    httpd.serve_forever()
 
 class AuditServer:
     def __init__(self, port: int) -> None:
@@ -2324,26 +2343,6 @@ class AuditServer:
     def start(self) -> None:
         if self.process is not None:
             return None
-
-        def server(queue: Queue, host: str, port: int) -> None:
-            class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-                QUEUE = queue
-
-                def do_POST(self):
-                    content_length = int(self.headers["Content-Length"])
-                    post_data = self.rfile.read(content_length)
-
-                    data = json.loads(post_data.decode("utf-8"))
-                    message = {"message": "Log received successfully", "log": data}
-                    self.send_response(200)
-                    self.send_header("Content-type", "application/json")
-                    self.end_headers()
-                    response = bytes(json.dumps(message), "utf-8")
-                    self.wfile.write(response)
-                    self.QUEUE.put(data)
-
-            httpd = HTTPServer((host, port), SimpleHTTPRequestHandler)
-            httpd.serve_forever()
 
         self.process = Process(target=server, args=(self.queue, BASE_HOST, self.port))
         self.process.start()
