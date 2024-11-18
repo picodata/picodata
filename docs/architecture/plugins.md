@@ -19,11 +19,8 @@
 - плагины расширяют функциональность именно СУБД, но никак не связаны
   друг с другом.
 
-Для разработки плагинов предусмотрен [Picodata SDK], предоставляющий
-компонент `picoplugin` — модульную библиотеку на языке Rust.
-
-[Picodata SDK]:
-    https://git.picodata.io/picodata/picodata/picodata/-/tree/master/sdk/picodata-sdk
+Для разработки плагинов предусмотрена библиотека
+[`picodata-plugin`](https://git.picodata.io/core/picodata/-/tree/master/picodata-plugin).
 
 ## Структура плагина {: #structure }
 
