@@ -3,7 +3,7 @@
 	url = ../tarantool-module.git
 [submodule "tarantool-sys"]
 	path = tarantool-sys
-	url = ../../tarantool.git
+	url = ../tarantool.git
 	ignore = dirty
 [submodule "vshard"]
 	path = vshard
