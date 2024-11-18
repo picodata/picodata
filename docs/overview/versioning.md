@@ -24,7 +24,7 @@ YY.MINOR.PATCH[-N-gHASH]
 - `HASH` — хеш коммита (для отладочных версий)
 
 Разработка новых функций и исправлений ведется в ветке `master` нашего
-[Git-репозитория](https://git.picodata.io/picodata/picodata/picodata/-/tree/master).
+[Git-репозитория](https://git.picodata.io/core/picodata/-/tree/master).
 
 Мы придерживаемся следующего распорядка при разработке:
 
@@ -39,5 +39,5 @@ YY.MINOR.PATCH[-N-gHASH]
 
 Cм. также:
 
-- [Gitlab — Changelog](https://git.picodata.io/picodata/picodata/picodata/-/blob/master/CHANGELOG.md)
-- [Gitlab — Tags](https://git.picodata.io/picodata/picodata/picodata/-/tags)
+- [Gitlab — Changelog](https://git.picodata.io/core/picodata/-/blob/master/CHANGELOG.md)
+- [Gitlab — Tags](https://git.picodata.io/core/picodata/-/tags)

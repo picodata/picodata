@@ -22,7 +22,7 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 <!--
 IMPORTANT
 Указанная здесь версия rust должна быть согласована с Cargo.toml, см:
-https://git.picodata.io/picodata/picodata/picodata/-/blob/master/Cargo.toml#L6
+https://git.picodata.io/core/picodata/-/blob/master/Cargo.toml#L6
 -->
 
 - [Rust и Cargo](http://www.rustup.rs) 1.76 или новее
@@ -141,7 +141,7 @@ brew install node yarn
 ### Получение исходного кода {: #getting_sources }
 
 ```bash
-git clone https://git.picodata.io/picodata/picodata/picodata.git
+git clone https://git.picodata.io/core/picodata.git
 cd picodata
 git submodule update --init --recursive
 ```
@@ -282,7 +282,7 @@ picodata run
 
 Запустить остальные инстансы аналогичным образом, передавая каждому инстансу уникальные идентификаторы (`instance-id`). У несколько инстансов на одном хосте должны быть уникальные параметры `data-dir` и `listen`.
 После запуска Picodata поднимет и настроит инстанс кластера, создаст на каждом инстансе глобальную Lua-таблицу `myapp`. В ней будут функции, которые можно вызывать по протоколу Tarantool, например, через `net.box call('myapp.hello_world’, {42})`.
-Клиенты могут подключаться к любому инстансу и вызывать методы приложения через вызов CALL по протоколу Tarantool. Подробнее об интеграции клиентских приложений с Tarantool см. в описании [Tarantool Rust SDK](https://git.picodata.io/picodata/picodata/tarantool-module).
+Клиенты могут подключаться к любому инстансу и вызывать методы приложения через вызов CALL по протоколу Tarantool. Подробнее об интеграции клиентских приложений с Tarantool см. в описании [Tarantool Rust SDK](https://git.picodata.io/core/tarantool-module).
 
 ## Минимальный вариант кластера
 

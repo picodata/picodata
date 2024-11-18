@@ -35,7 +35,7 @@ pip install pipenv
 Откройте терминал, последовательно введите команды:
 
 ``` shell
-git clone https://git.picodata.io/picodata/picodata/docs.git
+git clone https://git.picodata.io/core/docs.git
 cd docs
 ```
 

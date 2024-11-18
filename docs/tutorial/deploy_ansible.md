@@ -121,7 +121,7 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 Более подробно о доступных переменных в инвентарном файле можно узнать в
 [git-репозитории
-роли](https://git.picodata.io/picodata/picodata/picodata-ansible/-/blob/main/docs/variables.md?ref_type=heads).
+роли](https://git.picodata.io/picodata/picodata/picodata-ansible/-/blob/main/docs/variables.md).
 
 См. также:
 
@@ -184,4 +184,3 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml -t plugins
     С помощью роли Ansible можно только добавлять
     плагины в кластер. Удаление производится
     [вручную](plugins.md#drop_plugin).
-

@@ -6,7 +6,7 @@
 
 <!--
 Релевантный код Picodata:
-- https://git.picodata.io/picodata/picodata/picodata/-/blob/master/test/int/test_audit.py
+- https://git.picodata.io/core/picodata/-/blob/master/test/int/test_audit.py
 - https://git.picodata.io/search?project_id=58&search=audit%21%28
 - или в репозитории picodata: `grep -a7 -R 'audit!(' src/`
 -->
