@@ -18,8 +18,10 @@ h3_pages = [
 def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Files):
     if page.file.src_uri == "reference/cli.md":
         return reference_cli(markdown, page)
+    elif page.file.src_uri == "reference/db_config.md":
+        return check_header_sorting(markdown, page, 2)
     elif page.file.src_uri in h3_pages:
-        return check_h3_sorting(markdown, page)
+        return check_header_sorting(markdown, page, 3)
     elif page.file.src_uri == "architecture/rpc_api.md":
         return architecture_rpc_api(markdown, page)
 
@@ -47,14 +49,14 @@ def reference_cli(markdown: str, page: Page):
             log.info("\n" + "\n".join(diff))
 
 
-def check_h3_sorting(markdown: str, page: Page):
+def check_header_sorting(markdown: str, page: Page, level: int):
     lines: list[str] = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL).split("\n")
-    h3: list[str] = list(filter(lambda line: line.startswith("### "), lines))
+    h: list[str] = list(filter(lambda line: line.startswith(f"{"#" * level} "), lines))
 
-    h3_sorted = sorted(h3)
-    if h3 != h3_sorted:
+    h_sorted = sorted(h)
+    if h != h_sorted:
         log.warning(f"INCORRECT SORTING @ {page.file.src_uri}")
-        diff = difflib.unified_diff(h3, h3_sorted)
+        diff = difflib.unified_diff(h, h_sorted)
         log.info("\n" + "\n".join(diff))
 
 
