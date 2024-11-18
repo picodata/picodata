@@ -94,5 +94,14 @@ macro_rules! error_injection {
 
             return result;
         }
+    }};
+    ($error:expr => $block:block) => {{
+        let error = $error;
+        if $crate::error_injection::is_enabled(error) {
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR INJECTION '{error}': EXECUTING");
+            $crate::tlog!(Info, "################################################################");
+            $block;
+        }
     }}
 }

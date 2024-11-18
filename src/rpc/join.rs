@@ -49,6 +49,7 @@ crate::define_rpc_request! {
         pub advertise_address: String,
         pub failure_domain: FailureDomain,
         pub tier: String,
+        pub picodata_version: String,
     }
 
     pub struct Response {
@@ -61,6 +62,30 @@ crate::define_rpc_request! {
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         pub box_replication: Vec<Address>,
     }
+}
+
+// compare versions of instances before join
+fn compare_picodata_versions(leader_version: &str, req_version: &str) -> Result<(), Error> {
+    let parse_version = |version: &str| -> (u32, u32) {
+        let parts: Vec<&str> = version.split('.').collect();
+        let major = parts[0].parse::<u32>().unwrap();
+        let minor = parts[1].parse::<u32>().unwrap();
+        (major, minor)
+    };
+
+    let v1 = parse_version(leader_version);
+    let v2 = parse_version(req_version);
+
+    if v1.0 == v2.0 && v1.1.abs_diff(v2.1) <= 1 {
+        tlog!(Info, "Join instance with sufficient version")
+    } else {
+        return Err(Error::PicodataVersionMismatch {
+            leader_version: leader_version.to_string(),
+            instance_version: req_version.to_string(),
+        });
+    }
+
+    Ok(())
 }
 
 /// Processes the [`crate::rpc::join::Request`] and appends necessary
@@ -81,6 +106,8 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             cluster_name,
         });
     }
+
+    compare_picodata_versions(crate::info::PICODATA_VERSION, req.picodata_version.as_ref())?;
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {

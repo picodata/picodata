@@ -826,6 +826,11 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
     tlog!(Info, "joining cluster, peer address: {instance_address}");
 
+    let mut version = info::PICODATA_VERSION.to_string();
+    crate::error_injection!("INCOMPATIBLE_PICODATA_VERSION" => {
+        version = "24.5.0-82-g79a5b6f0".to_string();
+    });
+
     let req = rpc::join::Request {
         cluster_name: config.cluster_name().into(),
         instance_name: config.instance.name().map(From::from),
@@ -833,6 +838,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         advertise_address: config.instance.advertise_address().to_host_port(),
         failure_domain: config.instance.failure_domain(),
         tier: config.instance.tier().into(),
+        picodata_version: version,
     };
 
     // Arch memo.
