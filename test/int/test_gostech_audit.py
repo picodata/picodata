@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 from typing import Generator, Tuple
 
@@ -258,7 +259,8 @@ def test_gostech_join_expel_instance(
     i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.binary_path))
     counter = i1.governor_step_counter()
     cluster.expel(i2)
-    i1.wait_governor_status("idle", old_step_counter=counter, timeout=30)
+    timeout = 60 if sys.platform == "darwin" else 30
+    i1.wait_governor_status("idle", old_step_counter=counter, timeout=timeout)
     cluster.terminate()
     audit_server.stop()
 
