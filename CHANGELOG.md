@@ -20,6 +20,10 @@ with the `YY.MINOR.MICRO` scheme.
 of `_pico_instance_raft_id` and `_pico_instance_replicaset_name` now equals
 to 2 and 3.
 
+### RPC API
+
+- `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration
