@@ -24,6 +24,7 @@ SUBCOMMANDS:
     connect    Connect to the Distributed SQL console
     expel      Expel node from cluster
     help       Print this message or the help of the given subcommand(s)
+    plugin     Subcommand related to plugin management
     run        Run the picodata instance
     test       Run picodata integration tests
 ```
@@ -627,3 +628,56 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
     исключение инстанса `i3`. Когда процесс `picodata` на i3 завершится
     — сервер можно выключать.
 -->
+
+<!-- ********************************************************************** -->
+## picodata plugin configure {: #plugin_configure }
+<!-- ********************************************************************** -->
+
+Обновляет конфигурацию [сервиса][s] указанного [плагина][p] на всех
+инстансах кластера.
+
+Вызывается один раз на любом инстансе.
+
+```
+picodata plugin configure <ADDRESS> <PLUGIN_NAME> <PLUGIN_VERSION> <PLUGIN_CONFIG>
+```
+
+- `ADDRESS`: Адрес инстанса в формате `[host][:port]` для подключения
+  системного пользователя `pico_service`
+- `PLUGIN_NAME`: Имя плагина, содержащего обновляемый сервис
+- `PLUGIN_VERSION`: Версия плагина, содержащего обновляемый сервис
+- `PLUGIN_CONFIG`: Путь к файлу с новой конфигурацией обновляемого сервиса
+  в формате YAML. Конфигурация соответствует [манифесту][m] плагина, за
+  исключением полей `name` и `description`. В файле конфигурации достаточно
+  указать лишь изменяемые параметры
+
+[s]: ../overview/glossary.md#service
+[p]: ../overview/glossary.md#plugin
+[m]: ../architecture/plugins.md#manifest
+
+### --service-names {: #plugin_configure_service_names }
+
+`--service-names <SERVICE_NAMES>`
+
+Список имен сервисов, разделенных запятыми, конфигурацию которых нужно
+обновить. Если в новой конфигурации отсутствует хотя бы одно имя из данного
+списка, будет выведена ошибка.
+
+**Пример**
+
+```
+picodata plugin configure --service-names service_1,service_2
+```
+
+### --service-password-file {: #plugin_configure_service_password_file }
+
+`--service-password-file <SERVICE_PASSWORD_FILE>`
+
+Путь к файлу с паролем для системного пользователя `pico_service`. Этот
+пароль используется для взаимодействия с другими инстансами кластера и
+является одинаковым для всех инстансов. При несовпадении пароля будет
+выведена ошибка. При отсутствии параметра пароль будет запрошен в
+интерактивном режиме, см. [Безопасный запуск](../tutorial/run.md#secure_run).
+
+Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
+Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
