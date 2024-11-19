@@ -14,6 +14,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `picodata expel` takes instance uuid instead of instance name.
 
+### Compatibility
+
+- Added unique index on column `uuid` for `_pico_instance` table. IDs
+of `_pico_instance_raft_id` and `_pico_instance_replicaset_name` now equals
+to 2 and 3.
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration

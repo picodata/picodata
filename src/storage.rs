@@ -353,6 +353,7 @@ define_clusterwide_tables! {
                 space: Space,
                 #[primary]
                 index_instance_name:   Index => "_pico_instance_name",
+                index_instance_uuid:   Index => "_pico_instance_uuid",
                 index_raft_id:       Index => "_pico_instance_raft_id",
                 index_replicaset_name: Index => "_pico_instance_replicaset_name",
             }
@@ -1731,6 +1732,13 @@ impl Instances {
             .if_not_exists(true)
             .create()?;
 
+        let index_instance_uuid = space_instances
+            .index_builder("_pico_instance_uuid")
+            .unique(true)
+            .part("uuid")
+            .if_not_exists(true)
+            .create()?;
+
         let index_raft_id = space_instances
             .index_builder("_pico_instance_raft_id")
             .unique(true)
@@ -1748,6 +1756,7 @@ impl Instances {
         Ok(Self {
             space: space_instances,
             index_instance_name,
+            index_instance_uuid,
             index_raft_id,
             index_replicaset_name,
         })
@@ -1776,6 +1785,17 @@ impl Instances {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
+                name: "_pico_instance_uuid".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("uuid", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
                 name: "_pico_instance_raft_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
@@ -1786,7 +1806,7 @@ impl Instances {
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
-                id: 2,
+                id: 3,
                 name: "_pico_instance_replicaset_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
@@ -1845,13 +1865,9 @@ impl Instances {
     }
 
     #[inline(always)]
-    pub fn by_uuid(&self, uuid: &str) -> Result<Option<Instance>> {
-        // FIXME: temporary, should be replace by get by uuid (uuid should become primary key)
-        let result = self
-            .all_instances()?
-            .into_iter()
-            .find(|instance| instance.uuid == uuid);
-        Ok(result)
+    pub fn by_uuid(&self, uuid: &str) -> tarantool::Result<Option<Instance>> {
+        let tuple = self.index_instance_uuid.get(&[uuid])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     /// Checks if an instance with `name` (see trait [`InstanceName`]) is present.
