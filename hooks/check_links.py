@@ -20,9 +20,9 @@ LINKS_REFERENCE_RE = r"(?m)^\[(.+?)\]:(?: *\n? *)(\S+?)$"
 #
 # [label]
 # [text][label]
-LINKS_LABEL_RE = r"(?s)(?:\[(?! )(.+?)(?<! )\])+"
+LINKS_LABEL_RE = r"(?s)(?:\[(.+?)\])+"
 
-# See also
+# See also:
 #
 # Python re — Regular expression operations
 # https://docs.python.org/3/library/re.html
@@ -101,7 +101,7 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     for match in re.finditer(LINKS_REFERENCE_RE, markdown):
         link = match[0].replace("\n", " ")
         label, href = match.groups()
-        assert "\n" not in label  # because it doesn't match the pattern
+        assert "\n" not in label  # Because it doesn't match the pattern
 
         if label not in reference_links:
             reference_links[label] = link
@@ -118,6 +118,8 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     for match in re.finditer(LINKS_LABEL_RE, markdown):
         link = match[0].replace("\n", " ")
         label = match[1].replace("\n", " ")
+        if label != label.strip():
+            continue
 
         used_labels.add(label)
         if label not in reference_links:
