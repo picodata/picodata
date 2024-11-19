@@ -100,7 +100,7 @@ variables:
     - .venv
   key:
     files:
-      - Pipfile.lock
+      - poetry.lock
     prefix: "py_cache_"
 
 build-base-image:
@@ -349,7 +349,7 @@ test-patch-tarantool:
   artifacts:
     when: always
     paths:
-      - tarantool-sys/test/${VARDIR}/artifacts/log/*.log
+      - tarantool-sys/test/${VARDIR}/artifacts/
 
 test-mac-m1:
   extends: .test
