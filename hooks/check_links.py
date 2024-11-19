@@ -31,7 +31,18 @@ LINKS_LABEL_RE = r"(?s)(?:\[(.+?)\])+"
 # https://www.markdownguide.org/basic-syntax/#reference-style-links
 
 CODE_BLOCK_RE = r"(?ms)^(?: *)```.+?```$"
-CODE_INLINE_RE = r"(?s)`.+?`"
+CODE_INLINE_RE = r"(?s)(?:\[?)(`.+?`)(?:\]?)"
+"""
+Matches inline codes optionally enclosed in square brackets.
+```
+# The entire match is [`picodata`]
+m[0] == [`picodata`]
+m[1] == `picodata`
+
+# The entire match is `picodata`
+m[0] == m[1] == `picodata`
+```
+"""
 COMMENT_RE = r"(?s)<!--.*?-->"
 
 
@@ -73,9 +84,13 @@ def check_href(href: str, src_uri: str, config: MkDocsConfig):
 
 # https://www.mkdocs.org/dev-guide/plugins/#events
 def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Files):
+    content = markdown
+
     markdown = re.sub(COMMENT_RE, "", markdown)
     markdown = re.sub(CODE_BLOCK_RE, "<code block stripped>", markdown)
-    markdown = re.sub(CODE_INLINE_RE, "<inline code stripped>", markdown)
+    markdown = re.sub(
+        CODE_INLINE_RE, lambda m: "<inline code stripped>" if m[0] == m[1] else m[0], markdown
+    )
     src_uri = page.file.src_uri
 
     # Check inline-style links
@@ -128,3 +143,15 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     for label, link in reference_links.items():
         if label not in used_labels:
             log.warning(f"UNUSED REFERENCE LINK @ {src_uri}: {link}")
+
+    code_blocks = (m for m in re.findall(CODE_BLOCK_RE, content))
+
+    content = re.sub(CODE_BLOCK_RE, "<code block stripped>", content)
+    content = re.sub(
+        CODE_INLINE_RE,
+        lambda m: m[0] if m[0] == m[1] else f"[<code>{m[1].strip("`")}</code>]",
+        content,
+    )
+    content = re.sub("<code block stripped>", lambda x: next(code_blocks), content)
+
+    return content
