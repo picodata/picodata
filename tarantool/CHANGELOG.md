@@ -1,7 +1,7 @@
 # Change Log
 
 
-# [5.1.0] Nov 14 2024
+# [6.0.0] Nov 20 2024
 
 ### Added
 - `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
