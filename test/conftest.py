@@ -2314,6 +2314,7 @@ class log_crawler:
 
         Retriable(timeout=timeout, rps=4).call(func=must_match)
 
+
 def server(queue: Queue, host: str, port: int) -> None:
     class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         QUEUE = queue
@@ -2333,6 +2334,7 @@ def server(queue: Queue, host: str, port: int) -> None:
 
     httpd = HTTPServer((host, port), SimpleHTTPRequestHandler)
     httpd.serve_forever()
+
 
 class AuditServer:
     def __init__(self, port: int) -> None:
