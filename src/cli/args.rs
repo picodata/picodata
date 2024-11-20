@@ -58,7 +58,7 @@ pub struct Run {
         value_name = "PARAMETER=VALUE",
         use_value_delimiter = false
     )]
-    /// A list of key-value pairs specifying configuration parameters.
+    /// A comma-separated list of key-value pairs specifying configuration parameters.
     ///
     /// These will override both parameters provided in the config.yaml file,
     /// the command-line parameters and the environment variables.
