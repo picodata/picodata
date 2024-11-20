@@ -139,6 +139,14 @@ to 2 and 3.
 - EXPLAIN estimates query buckets
 - SQL supports `COALESCE` function
 
+### Pgproro
+- "vdbe_max_steps" and "vtable_max_rows" options are supported in connection
+  string. These options allow to override the defalt values of the
+  corresponding execution options used in sql (VDBE_MAX_STEPS and VTABLE_MAX_ROWS).
+
+  For example, the following connection string sets both options to 42:
+  postgres://postgres:Passw0rd@localhost:5432?options=vtable_max_rows%3D42,vdbe_max_steps%3D42
+
 ### Fixes
 
 - Fixed bucket rebalancing for sharded tables

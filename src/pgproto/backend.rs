@@ -1,10 +1,10 @@
 use self::{
-    describe::{PortalDescribe, StatementDescribe},
+    describe::{PortalDescribe, QueryType, StatementDescribe},
     result::ExecuteResult,
     storage::{with_portals_mut, Portal, Statement, PG_PORTALS, PG_STATEMENTS},
 };
 use super::{
-    client::ClientId,
+    client::{ClientId, ClientParams},
     error::{PgError, PgResult},
     value::PgValue,
 };
@@ -16,8 +16,8 @@ use crate::{
 use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
-use sbroad::errors::SbroadError;
-use sbroad::ir::value::Value as SbroadValue;
+use sbroad::ir::{value::Value as SbroadValue, OptionKind};
+use sbroad::{errors::SbroadError, ir::OptionSpec};
 use sbroad::{
     executor::{
         engine::{QueryCache, Router, TableVersionMap},
@@ -86,12 +86,43 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
     }
 }
 
+/// Set values from default_options for unspecified options in query_options.
+fn apply_default_options(
+    query_options: &[OptionSpec],
+    default_options: &[OptionSpec],
+) -> Vec<OptionSpec> {
+    // First, set query options, as they have higher priority.
+    let (mut max_steps, mut max_rows) = (None, None);
+    for opt in query_options {
+        match opt.kind {
+            OptionKind::VdbeMaxSteps => max_steps = Some(opt),
+            OptionKind::VTableMaxRows => max_rows = Some(opt),
+        }
+    }
+
+    // Then, apply defaults for unspecified options.
+    for opt in default_options {
+        match opt.kind {
+            OptionKind::VdbeMaxSteps if max_steps.is_none() => max_steps = Some(opt),
+            OptionKind::VTableMaxRows if max_rows.is_none() => max_rows = Some(opt),
+            _ => {}
+        }
+    }
+
+    // Keep only Some variants.
+    [max_steps, max_rows]
+        .into_iter()
+        .filter_map(|x| x.cloned())
+        .collect()
+}
+
 pub fn bind(
     client_id: ClientId,
     stmt_name: String,
     portal_name: String,
     params: Vec<Value>,
     result_format: Vec<FieldFormat>,
+    default_options: Vec<OptionSpec>,
 ) -> PgResult<()> {
     let key = (client_id, stmt_name.into());
     let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
@@ -99,7 +130,13 @@ pub fn bind(
             format!("Couldn't find statement \'{}\'.", key.1).into(),
         ));
     };
+
     let mut plan = statement.plan().clone();
+    let is_dql = matches!(statement.describe().query_type(), QueryType::Dql);
+    if is_dql && !default_options.is_empty() {
+        plan.raw_options = apply_default_options(&plan.raw_options, &default_options);
+    }
+
     if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
         plan.bind_params(params)?;
         plan.apply_options()?;
@@ -193,10 +230,12 @@ pub struct Backend {
     /// A unique identificator of a postgres client. It is used as a part of a key in the portal
     /// storage, allowing to store in a single storage portals from many clients.
     client_id: ClientId,
+
+    params: ClientParams,
 }
 
 impl Backend {
-    pub fn new() -> Self {
+    pub fn new(params: ClientParams) -> Self {
         /// Generate a unique client id.
         fn unique_id() -> ClientId {
             static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -205,6 +244,7 @@ impl Backend {
 
         Self {
             client_id: unique_id(),
+            params,
         }
     }
 
@@ -273,6 +313,7 @@ impl Backend {
                 "".into(),
                 params,
                 vec![FieldFormat::Text; ncolumns],
+                vec![],
             )?;
             self.execute(None, -1)
         };
@@ -326,8 +367,16 @@ impl Backend {
         let params_format = prepare_encoding_format(params_format, params.len())?;
         let result_format = prepare_encoding_format(result_format, describe.ncolumns())?;
         let params = decode_parameter_values(params, &describe.param_oids, &params_format)?;
+        let default_options = self.params.execution_options();
 
-        bind(self.client_id, statement, portal, params, result_format)
+        bind(
+            self.client_id,
+            statement,
+            portal,
+            params,
+            result_format,
+            default_options,
+        )
     }
 
     /// Handler for an Execute message.

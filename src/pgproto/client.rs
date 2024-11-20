@@ -15,6 +15,8 @@ mod extended_query;
 mod simple_query;
 mod startup;
 
+pub use startup::ClientParams;
+
 pub type ClientId = u32;
 
 /// Postgres client representation.
@@ -42,7 +44,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         tlog!(Info, "client authenticated");
 
         Ok(PgClient {
-            backend: Backend::new(),
+            backend: Backend::new(params),
             loop_state: MessageLoopState::ReadyForQuery,
             stream,
         })

@@ -27,7 +27,7 @@ use tarantool::{
     tuple::FunctionCtx,
 };
 
-#[derive(Debug, Clone, Default, Deserialize_repr, Serialize_repr)]
+#[derive(Debug, Clone, Copy, Default, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
 pub enum QueryType {
     Acl = 0,
@@ -394,8 +394,8 @@ impl Describe {
 }
 
 impl Describe {
-    pub fn query_type(&self) -> &QueryType {
-        &self.query_type
+    pub fn query_type(&self) -> QueryType {
+        self.query_type
     }
 
     pub fn command_tag(&self) -> CommandTag {
@@ -438,6 +438,10 @@ impl StatementDescribe {
             describe,
             param_oids,
         }
+    }
+
+    pub fn query_type(&self) -> QueryType {
+        self.describe.query_type()
     }
 }
 
@@ -507,7 +511,7 @@ impl PortalDescribe {
             .collect()
     }
 
-    pub fn query_type(&self) -> &QueryType {
+    pub fn query_type(&self) -> QueryType {
         self.describe.query_type()
     }
 

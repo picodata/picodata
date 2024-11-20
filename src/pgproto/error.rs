@@ -106,6 +106,12 @@ pub enum PgError {
     Other(Box<dyn std::error::Error>),
 }
 
+impl PgError {
+    pub fn other<E: Into<Box<dyn std::error::Error>>>(e: E) -> Self {
+        Self::Other(e.into())
+    }
+}
+
 impl From<sbroad::errors::SbroadError> for PgError {
     #[inline(always)]
     fn from(e: sbroad::errors::SbroadError) -> Self {
