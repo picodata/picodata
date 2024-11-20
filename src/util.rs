@@ -1,16 +1,14 @@
-use crate::config::SbroadType;
-use crate::traft::error::Error;
+use crate::{config::SbroadType, traft::error::Error};
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
-use std::any::{Any, TypeId};
-use std::cell::Cell;
-use std::io::BufRead as _;
-use std::io::BufReader;
-use std::io::Write as _;
-use std::mem::replace;
-use std::os::fd::AsRawFd;
-use std::panic::Location;
-use std::path::Path;
-use std::time::Duration;
+use std::{
+    any::{Any, TypeId},
+    cell::Cell,
+    io::{BufRead as _, BufReader, Write as _},
+    mem::replace,
+    panic::Location,
+    path::Path,
+    time::Duration,
+};
 use tarantool::session::{self, UserId};
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
@@ -360,39 +358,44 @@ where
 ///
 /// This function bypasses stdin redirection (like `cat script.lua |
 /// picodata connect`) and always prompts a password from a TTY.
-pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
+pub fn prompt_password(prompt: &str) -> std::io::Result<String> {
     // See also: https://man7.org/linux/man-pages/man3/termios.3.html
     let mut tty = std::fs::File::options()
         .read(true)
         .write(true)
         .open("/dev/tty")?;
-    let tty_fd = tty.as_raw_fd();
-    let tcattr_old = tcgetattr(tty_fd)?;
 
-    // Restore old terminal settings when `_guard` is dropped
-    let _guard = on_scope_exit(|| tcsetattr(tty_fd, TCSADRAIN, &tcattr_old).unwrap_or(()));
+    let tcattr_old = tcgetattr(&tty)?;
 
     // Disable echo while prompting a password
     let mut tcattr_new = tcattr_old.clone();
     tcattr_new.local_flags.set(LocalFlags::ECHO, false);
     tcattr_new.local_flags.set(LocalFlags::ECHONL, true);
-    tcsetattr(tty_fd, TCSADRAIN, &tcattr_new)?;
+    tcsetattr(&tty, TCSADRAIN, &tcattr_new)?;
 
-    // Print the prompt
-    tty.write_all(prompt.as_bytes())?;
-    tty.flush()?;
+    let do_prompt_password = |tty: &mut std::fs::File| {
+        // Print the prompt
+        tty.write_all(prompt.as_bytes())?;
+        tty.flush()?;
 
-    // Read the password
-    let mut password = String::new();
-    BufReader::new(&tty).read_line(&mut password)?;
+        // Read the password
+        let mut password = String::new();
+        BufReader::new(tty).read_line(&mut password)?;
 
-    if !password.ends_with('\n') {
-        // Preliminary EOF, a user didn't hit enter
-        return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
-    }
+        if !password.ends_with('\n') {
+            // Preliminary EOF, a user didn't hit enter
+            return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+        }
 
-    let crlf = |c| matches!(c, '\r' | '\n');
-    Ok(password.trim_end_matches(crlf).to_owned())
+        let crlf = |c| matches!(c, '\r' | '\n');
+        Ok(password.trim_end_matches(crlf).to_owned())
+    };
+
+    // Try reading the password, then restore old terminal settings.
+    let result = do_prompt_password(&mut tty);
+    let _ = tcsetattr(&tty, TCSADRAIN, &tcattr_old);
+
+    result
 }
 
 ////////////////////////////////////////////////////////////////////////////////
