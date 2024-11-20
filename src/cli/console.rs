@@ -280,8 +280,8 @@ impl<T: Helper> Console<T> {
                 };
             } else {
                 base_prompt = match self.current_language {
-                    ConsoleLanguage::Lua => format!("{}", Self::LUA_PROMPT),
-                    ConsoleLanguage::Sql => format!("{}", Self::SQL_PROMPT),
+                    ConsoleLanguage::Lua => Self::LUA_PROMPT.to_string(),
+                    ConsoleLanguage::Sql => Self::SQL_PROMPT.to_string(),
                 };
             }
 
