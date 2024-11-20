@@ -114,7 +114,7 @@ pub struct Run {
         use_value_delimiter = true,
         env = "PICODATA_PEER"
     )]
-    /// A list of network addresses of other instances.
+    /// A comma-separated list of network addresses of other instances.
     /// Used during cluster initialization
     /// and joining an instance to an existing cluster.
     ///
