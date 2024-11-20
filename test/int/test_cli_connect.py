@@ -29,7 +29,7 @@ def test_connect_testuser(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -53,7 +53,7 @@ def test_connect_user_host_port(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -69,7 +69,7 @@ def test_connect_guest(i1: Instance):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -93,7 +93,7 @@ def test_connect_user_with_role(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -170,7 +170,7 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -429,7 +429,7 @@ def test_admin_with_password(cluster: Cluster):
     password = os.getenv("PICODATA_ADMIN_PASSWORD")
     cli.sendline(password)
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -457,7 +457,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # Change language to SQL works
     cli.sendline("\\sql")
@@ -541,7 +541,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -564,7 +564,7 @@ def test_connect_connection_info_and_help(i1: Instance):
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -597,7 +597,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
 
     cli.expect_exact(f'Connected to admin console by socket path "{socket_path}"')
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("(admin) sql> ")
 
     eprint("^D")
     cli.sendcontrol("d")

@@ -31,14 +31,14 @@ def test_connect_ux(cluster: Cluster):
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # sql console doesn't know about language switching
     cli.sendline("\\lua;")
-    cli.expect_exact("Unknown special sequence")
+    cli.expect_exact("Language cannot be changed in this console")
 
     cli.sendline("\\sql")
-    cli.expect_exact("Unknown special sequence")
+    cli.expect_exact("Language cannot be changed in this console")
 
     # for not registried command nothing can happen
     cli.sendline("\\lya;")
@@ -46,28 +46,28 @@ def test_connect_ux(cluster: Cluster):
     cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
     cli.sendline("\\set language lua")
-    cli.expect_exact("Unknown special sequence")
+    cli.expect_exact("Language cannot be changed in this console")
 
     # nothing happens for completion
     cli.sendline("\t\t")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # ensure that server responds on correct query
     cli.sendline(
         "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
     )
     cli.expect_exact("1")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # ensure that server responds on invalid query
     cli.sendline("invalid query;")
     cli.expect_exact("rule parsing error")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # ensure that server responds after processing invalid query
     cli.sendline("INSERT INTO ids VALUES(1);")
     cli.expect_exact("1")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     cli.sendline("SELECT * FROM ids;")
     cli.expect_exact("+----+")
@@ -76,7 +76,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("| 1  |")
     cli.expect_exact("+----+")
     cli.expect_exact("(1 rows)")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     cli.sendline("EXPLAIN SELECT * FROM ids;")
     cli.expect_exact('projection ("ids"."id"::integer -> "id")')
@@ -108,14 +108,15 @@ def test_admin_ux(cluster: Cluster):
 
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
 
     # in admin console language switching is availiable
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
+    cli.expect_exact("lua> ")
 
     cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
+    cli.expect_exact("sql> ")
 
     # for not registried command nothing happend
     cli.sendline("\\lya")
@@ -124,29 +125,28 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("Unknown special sequence")
 
     # variations of `\s l sql/lua` is registred, but not in help
-    cli.expect_exact("picodata> ")
     cli.sendline("\\set language lua")
     cli.expect_exact("Language switched to Lua")
+    cli.expect_exact("lua> ")
 
-    cli.expect_exact("picodata> ")
     cli.sendline("\\s lang sql")
     cli.expect_exact("Language switched to SQL")
+    cli.expect_exact("sql> ")
 
     # nothing happens on completion in SQL mode
     cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
     cli.sendline("\t\t")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     cli.sendline("box.c\t\t;")
     cli.expect_exact("rule parsing error:")
-    cli.expect_exact("picodata> ")
 
     # something happens on completion in Lua mode
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
     cli.sendline("hel\t")
-    cli.expect_exact("picodata> help")
+    cli.expect_exact("lua> help")
 
 
 def test_lua_completion(cluster: Cluster):
@@ -163,8 +163,8 @@ def test_lua_completion(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picodata> ")
     cli.sendline("\\lua")
+    cli.expect_exact("lua> ")
 
     # With several possible variants they are shown as list
     cli.send("to")
@@ -213,7 +213,7 @@ def test_sql_explain_ok(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     i1.sql(
         """
@@ -336,7 +336,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     i1.terminate()
     cli.sendline("ping;")
@@ -352,7 +352,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     i2.terminate()
     cli.sendline("ping;")
@@ -381,7 +381,7 @@ def test_input_with_delimiter(cluster: Cluster):
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # several commands in one line
     cli.sendline(
@@ -408,7 +408,7 @@ def test_input_with_delimiter(cluster: Cluster):
 
     # client doesn't send query until delimiter
     cli.sendline("invalid query")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
     cli.sendline("waiting until delimiter")
     cli.expect_exact("        > ")
     cli.sendline(";")
@@ -420,7 +420,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("0")
     cli.expect_exact("0")
 
-    cli.expect_exact("picodata>")
+    cli.expect_exact("sql>")
 
     # test enter delimiter
     cli.sendline("\\set delimiter enter")
@@ -503,7 +503,7 @@ Bye
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     cli.sendline(
         "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
@@ -622,6 +622,7 @@ def test_picodata_tarantool(cluster: Cluster):
         result = f.read()
 
     assert result == "it worked!"
+    cli.expect_exact("(admin) sql> ")
 
 
 def test_command_history_with_delimiter(cluster: Cluster):
