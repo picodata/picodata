@@ -62,6 +62,7 @@ enum ConsoleCommand {
     Invalid,
 }
 
+#[derive(PartialEq)]
 pub enum Mode {
     Admin,
     Connection,
@@ -87,8 +88,7 @@ impl<T: Helper> Console<T> {
     const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
     const LUA_PROMPT: &'static str = "lua> ";
     const SQL_PROMPT: &'static str = "sql> ";
-    const ADMIN_MODE: &'static str = "admin";
-    const CONNECTION_MODE: &'static str = "connection";
+    const ADMIN_MODE: &'static str = "(admin)";
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
         match command {
@@ -271,15 +271,19 @@ impl<T: Helper> Console<T> {
                 }
             }
 
-            let prefix = match self.mode {
-                Mode::Admin => Self::ADMIN_MODE,
-                Mode::Connection => Self::CONNECTION_MODE,
-            };
+            let base_prompt;
 
-            let base_prompt = match self.current_language {
-                ConsoleLanguage::Lua => format!("({}) {}", prefix, Self::LUA_PROMPT),
-                ConsoleLanguage::Sql => format!("({}) {}", prefix, Self::SQL_PROMPT),
-            };
+            if self.mode == Mode::Admin {
+                base_prompt = match self.current_language {
+                    ConsoleLanguage::Lua => format!("{} {}", Self::ADMIN_MODE, Self::LUA_PROMPT),
+                    ConsoleLanguage::Sql => format!("{} {}", Self::ADMIN_MODE, Self::SQL_PROMPT),
+                };
+            } else {
+                base_prompt = match self.current_language {
+                    ConsoleLanguage::Lua => format!("{}", Self::LUA_PROMPT),
+                    ConsoleLanguage::Sql => format!("{}", Self::SQL_PROMPT),
+                };
+            }
 
             let prompt = if self.uncompleted_statement.is_empty() {
                 base_prompt
