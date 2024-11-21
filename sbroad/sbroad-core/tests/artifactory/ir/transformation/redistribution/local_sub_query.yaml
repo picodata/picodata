@@ -1,0 +1,210 @@
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 3
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Row:
+          list:
+            - 1
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 2
+          relation: t1
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 7
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 4
+    - Expression:
+        Row:
+          list:
+            - 5
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 6
+          relation: t2
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 11
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 8
+    - Expression:
+        Row:
+          list:
+            - 9
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Projection:
+          children:
+            - 7
+          output: 10
+          is_distinct: false
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 15
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 12
+    - Expression:
+        Row:
+          list:
+            - 13
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanSubQuery:
+          alias: ~
+          children:
+            - 11
+          output: 14
+    - Expression:
+        Reference:
+          targets:
+            - 1
+          position: 0
+          parent: 24
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 16
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 24
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 18
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Bool:
+          left: 19
+          op: eq
+          right: 17
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 24
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 21
+    - Expression:
+        Row:
+          list:
+            - 22
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Selection:
+          children:
+            - 3
+            - 15
+          filter: 20
+          output: 23
+relations:
+  tables:
+    t1:
+      columns:
+        - name: a
+          type: integer
+      primary_key:
+        positions:
+          - 0
+      name: t1
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+    t2:
+      columns:
+        - name: a
+          type: integer
+      primary_key:
+        positions:
+          - 0
+      name: t2
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices: []
+top: 24
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

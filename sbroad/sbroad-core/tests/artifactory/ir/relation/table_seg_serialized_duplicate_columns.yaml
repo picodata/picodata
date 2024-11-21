@@ -1,0 +1,17 @@
+columns:
+  - name: a
+    type: Boolean
+  - name: b
+    type: String
+  - name: a
+    type: String
+name: t
+primary_key:
+  positions:
+    - 0
+kind:
+  ShardedSpace:
+    sharding_key:
+      positions:
+        - 0
+    engine: Memtx

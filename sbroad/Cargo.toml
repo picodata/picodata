@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+   "sbroad-benches",
+   "sbroad-cartridge",
+   "sbroad-core",
+]

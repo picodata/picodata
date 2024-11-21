@@ -1,0 +1,99 @@
+#
+# t (a bool, b int) distributed by (b)
+# select b from t;
+#
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          targets: ~
+          parent: 9
+          position: 0
+          col_type: Number
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Reference:
+          targets: ~
+          parent: 9
+          position: 1
+          col_type: Number
+    - Expression:
+        Alias:
+          name: b
+          child: 2
+    - Expression:
+        Row:
+          list:
+            - 1
+            - 3
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                  - 1
+    - Relational:
+        ScanRelation:
+          output: 4
+          relation: t
+    - Expression:
+        Reference:
+          targets: ~
+          parent: 9
+          position: 1
+          col_type: Number
+    - Expression:
+        Alias:
+          name: b
+          child: 6
+    - Expression:
+        Row:
+          list:
+            - 7
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                  - 0
+    - Relational:
+        Projection:
+          children:
+            - 5
+          output: 8
+          is_distinct: false
+relations:
+  tables:
+    t:
+      columns:
+        - name: a
+          type: Boolean
+        - name: b
+          type: Number
+      primary_key:
+        positions:
+          - 1
+      name: t
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices: []
+top: 9
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

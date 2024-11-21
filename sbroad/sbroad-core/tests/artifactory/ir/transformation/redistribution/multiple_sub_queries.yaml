@@ -1,0 +1,397 @@
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 3
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Row:
+          list:
+            - 1
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 2
+          relation: t1
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 9
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 4
+    - Expression:
+        Reference:
+          targets: ~
+          position: 1
+          parent: 9
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 6
+    - Expression:
+        Row:
+          list:
+            - 5
+            - 7
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 8
+          relation: t2
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 13
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 10
+    - Expression:
+        Row:
+          list:
+            - 11
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Projection:
+          children:
+            - 9
+          output: 12
+          is_distinct: false
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 17
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 14
+    - Expression:
+        Row:
+          list:
+            - 15
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanSubQuery:
+          alias: ~
+          children:
+            - 13
+          output: 16
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 23
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 18
+    - Expression:
+        Reference:
+          targets: ~
+          position: 1
+          parent: 23
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 20
+    - Expression:
+        Row:
+          list:
+            - 19
+            - 21
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 22
+          relation: t2
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 1
+          parent: 27
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 24
+    - Expression:
+        Row:
+          list:
+            - 25
+          distribution: Any
+    - Relational:
+        Projection:
+          children:
+            - 23
+          output: 26
+          is_distinct: false
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 31
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 28
+    - Expression:
+        Row:
+          list:
+            - 29
+          distribution: Any
+    - Relational:
+        ScanSubQuery:
+          alias: ~
+          children:
+            - 27
+          output: 30
+    - Expression:
+        Reference:
+          targets:
+            - 1
+          position: 0
+          parent: 46
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 32
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 46
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 34
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Bool:
+          left: 35
+          op: lt
+          right: 33
+    - Expression:
+        Reference:
+          targets:
+            - 2
+          position: 0
+          parent: 46
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 37
+          distribution: Any
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 46
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 39
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Bool:
+          left: 40
+          op: eq
+          right: 38
+    - Expression:
+        Bool:
+          left: 36
+          op: or
+          right: 41
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 46
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 43
+    - Expression:
+        Row:
+          list:
+            - 44
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Selection:
+          children:
+            - 3
+            - 50
+            - 54
+          filter: 42
+          output: 45
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 50
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 47
+    - Expression:
+        Row:
+          list:
+            - 48
+          distribution: Global
+    - Relational:
+        Motion:
+          children:
+            - 17
+          policy: Full
+          program: [ReshardIfNeeded]
+          output: 49
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 54
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 51
+    - Expression:
+        Row:
+          list:
+            - 52
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Motion:
+          children:
+            - 31
+          policy:
+            Segment:
+              targets:
+                - Reference:
+                    0
+          program: [ReshardIfNeeded]
+          output: 53
+relations:
+  tables:
+    t1:
+      columns:
+        - name: a
+          type: integer
+      primary_key:
+        positions:
+          - 0
+      name: t1
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+    t2:
+      columns:
+        - name: a
+          type: integer
+        - name: b
+          type: integer
+      primary_key:
+        positions:
+          - 0
+      name: t2
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices:
+    - slice:
+      - 50
+      - 54
+top: 46
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

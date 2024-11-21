@@ -1,0 +1,442 @@
+Command = _{ SOI ~ (Query | ExplainQuery | Block | DDL | ACL | Plugin | EmptyQuery) ~ EOF }
+
+// Helper rule to denote we have to update plan relations from metadata
+// (with Table which name corresponds to current node).
+// Note that atomic specifier helps to make inner Identifier rule silent
+Table     = @{ Identifier }
+// Helper rule to denote we have to create relational scan node.
+ScanTable = { Table }
+ScanCteOrTable = @{ Table }
+
+IfExists = @{ ^"if" ~ W ~ ^"exists" }
+IfNotExists = @{ ^"if" ~ W ~ ^"not" ~ W ~ ^"exists" }
+
+Plugin = _{ CreatePlugin | DropPlugin | AlterPlugin }
+    CreatePlugin = ${ ^"create" ~ W ~ ^"plugin" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ TimeoutOption)? }
+        PluginVersion = @{ Unsigned ~ "." ~ Unsigned ~ "." ~ Unsigned }
+    DropPlugin = ${ ^"drop" ~ W ~ ^"plugin" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ WithData)? ~ (W ~ TimeoutOption)? }
+        WithData = @{ ^"with" ~ W ~ ^"data" }
+    AlterPlugin = ${ ^"alter" ~ W ~ ^"plugin" ~ W ~ Identifier ~ W ~ AlterVariant }
+        AlterVariant = _{ EnablePlugin | DisablePlugin | MigrateTo | AddServiceToTier | RemoveServiceFromTier | ChangeConfig }
+        EnablePlugin = ${ PluginVersion ~ W ~ ^"enable" ~ (W ~ TimeoutOption)? }
+        DisablePlugin = ${ PluginVersion ~ W ~ ^"disable" ~ (W ~ TimeoutOption)? }
+        MigrateTo = ${ ^"migrate" ~ W ~ ^"to" ~ W ~ PluginVersion ~ (W ~ MigrateUpOption)? }
+            RollbackTimeout = !{ ^"rollback_timeout" ~ "=" ~ Duration }
+            MigrateUpOptionParam = _{ Timeout | RollbackTimeout }
+            MigrateUpOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ MigrateUpOptionParams ~ WO ~ ")" }
+                MigrateUpOptionParams = _{ MigrateUpOptionParam ~ (WO ~ "," ~ WO ~ MigrateUpOptionParam)* }
+        AddServiceToTier = ${ PluginVersion ~ W ~ ^"add" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"to" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
+        RemoveServiceFromTier = ${ PluginVersion ~ W ~ ^"remove" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"from" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
+        ChangeConfig = ${ PluginVersion ~ W ~ ^"set" ~ W ~ ConfigKVs ~ (W ~ TimeoutOption)? }
+            ConfigKVs = _{ ConfigKV ~ (WO ~ "," ~ WO ~ ConfigKV)* }
+            ConfigKV = { Identifier ~ ^"." ~ Identifier ~ WO ~ "=" ~ WO ~ SingleQuotedString }
+
+ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivilege | RevokePrivilege }
+    CreateUser = ${
+        ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ (^"with" ~ W)? ~ ^"password" ~ W
+        ~ SingleQuotedString ~ (W ~ AuthMethod)? ~ (W ~ TimeoutOption)?
+    }
+    AlterUser = ${
+        ^"alter" ~ W ~ ^"user" ~ W ~ Identifier ~ W ~ (^"with" ~ W)? ~ AlterOption ~ (W ~ TimeoutOption)?
+    }
+        AlterOption = _{ AlterLogin | AlterNoLogin | AlterPassword | AlterRename }
+            AlterLogin = { ^"login" }
+            AlterNoLogin = { ^"nologin" }
+            AlterPassword = ${ ^"password" ~ W ~ SingleQuotedString ~ (W ~ AuthMethod)? }
+            AlterRename = ${ ^"rename" ~ W ~ ^"to" ~ W ~ Identifier }
+	AuthMethod = ${ ^"using" ~ W ~ (ChapSha1 | Md5 | Ldap) }
+            ChapSha1 = { ^"chap-sha1" }
+            Md5 = { ^"md5" }
+            Ldap = { ^"ldap" }
+    DropUser = ${ ^"drop" ~ W ~ ^"user" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
+    CreateRole = ${ ^"create" ~ W ~ ^"role" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
+    DropRole = ${ ^"drop" ~ W ~ ^"role" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ TimeoutOption)? }
+    GrantPrivilege = ${ ^"grant" ~ W ~ PrivBlock ~ W ~ ^"to" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
+    RevokePrivilege = ${ ^"revoke" ~ W ~ PrivBlock ~ W ~ ^"from" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
+        PrivBlock = _{ PrivBlockPrivilege | PrivBlockRolePass }
+            PrivBlockPrivilege = ${Privilege ~ W ~ (PrivBlockUser | PrivBlockSpecificUser | PrivBlockRole
+                                                | PrivBlockSpecificRole | PrivBlockTable | PrivBlockSpecificTable
+                                                | PrivBlockProcedure | PrivBlockSpecificProcedure)}
+            PrivBlockUser = { ^"user" }
+            PrivBlockSpecificUser = ${ ^"on" ~ W ~ ^"user" ~ W ~ Identifier }
+            PrivBlockRole = { ^"role" }
+            PrivBlockSpecificRole = ${ ^"on" ~ W ~ ^"role" ~ W ~ Identifier }
+            PrivBlockTable = { ^"table" }
+            PrivBlockSpecificTable = ${ ^"on" ~ W ~ ^"table" ~ W ~ Table }
+            PrivBlockRolePass = { Identifier }
+            PrivBlockProcedure = { ^"procedure" }
+            PrivBlockSpecificProcedure = ${ ^"on" ~ W ~ ^"procedure" ~ W ~ ProcWithOptionalParams }
+        Privilege = _{ PrivilegeRead | PrivilegeWrite | PrivilegeExecute |
+                      PrivilegeCreate | PrivilegeAlter | PrivilegeDrop |
+                      PrivilegeSession | PrivilegeUsage }
+            PrivilegeAlter = { ^"alter" }
+            PrivilegeCreate = { ^"create" }
+            PrivilegeDrop = { ^"drop" }
+            PrivilegeExecute = { ^"execute" }
+            PrivilegeRead = { ^"read" }
+            PrivilegeSession = { ^"session" }
+            PrivilegeUsage = { ^"usage" }
+            PrivilegeWrite = { ^"write" }
+
+DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex
+         | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
+         | CreatePartition }
+    CreatePartition = ${
+        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ ^"partition" ~ W ~ ^"of" ~ W ~
+        Identifier ~ W ~ PartitionOfSpec ~ (W ~ Partition)?
+    }
+        PartitionOfSpec = ${ (^"for" ~ W ~ ^"values" ~ W ~ ForValuesSpec) | ^"default" }
+            ForValuesSpec = _{ ForValuesSpecIn | ForValuesSpecFromTo | ForValuesSpecWith }
+                ForValuesSpecIn = { ^"in" ~ W ~ Row }
+                ForValuesSpecFromTo = ${ ^"from" ~ W ~ ForValuesSpecFromToRow ~ W ~ ^"to" ~ W ~ ForValuesSpecFromToRow }
+                    ForValuesSpecFromToRow = !{ "(" ~ ExprOrMinMax ~ ("," ~ ExprOrMinMax)* ~ ")" }
+                        ExprOrMinMax = { MinValue | MaxValue | Expr }
+                            MinValue = { ^"minvalue" }
+                            MaxValue = { ^"maxvalue" }
+                ForValuesSpecWith = ${ ^"with" ~ WO ~ "(" ~ ^"modulus" ~ W ~ Literal ~ WO ~ "," ~ WO ~ ^"remainder" ~ W ~  Literal ~ WO ~ ")" }
+    CreateTable = ${
+        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ NewTable ~ WO ~
+        "(" ~ WO ~ Columns ~ WO ~ ("," ~ WO ~ PrimaryKey)? ~ WO ~ ")" ~
+        (W ~ Engine)? ~ (W ~ Distribution)? ~ (W ~ WaitApplied)? ~ (W ~ Partition)? ~ (W ~ TimeoutOption)?
+    }
+        NewTable = @{Table}
+        Columns = !{ ColumnDef ~ ("," ~ ColumnDef)* }
+            ColumnDef = ${ Identifier ~ W ~ ColumnDefType ~ (W ~ ColumnDefIsNull)? ~ (W ~ PrimaryKeyMark)? }
+            ColumnDefIsNull = { (NotFlag ~ W)? ~ ^"null" }
+            PrimaryKeyMark = { ^"primary" ~ W ~ ^"key" }
+            PrimaryKey = ${ PrimaryKeyMark ~ WO ~ "(" ~ WO ~ PrimaryKeyIdentifiers ~ WO ~ ")" }
+                PrimaryKeyIdentifiers = _{ Identifier ~ (WO ~ "," ~ WO ~ Identifier)* }
+        Engine = ${ ^"using" ~ W ~ (Memtx | Vinyl) }
+            Memtx = { ^"memtx" }
+            Vinyl = { ^"vinyl" }
+        Distribution = ${ ^"distributed" ~ W ~ (Global | Sharding) }
+            Global = { ^"globally" }
+            Sharding = ${ ^"by" ~ WO ~ "(" ~ WO ~ ShardingIdentifiers ~ WO ~ ")" ~ (W ~ Tier)? }
+                ShardingIdentifiers = _{ Identifier ~ (WO ~ "," ~ WO ~ Identifier)* }
+                Tier = ${ ^"in" ~ W ~ ^"tier" ~ W ~ Identifier }
+        WaitApplied = _{ WaitAppliedGlobally | WaitAppliedLocally }
+            WaitAppliedGlobally = @{ ^"wait" ~ W ~ ^"applied" ~ W ~ ^"globally" }
+            WaitAppliedLocally = @{ ^"wait" ~ W ~ ^"applied" ~ W ~ ^"locally" }
+        Partition = ${ ^"partition" ~ W ~ ^"by" ~ W ~ PartitionType ~ WO ~ PartitionBySpec }
+            PartitionType = { PartitionRange | PartitionList | PartitionHash }
+                PartitionRange = { ^"range" }
+                PartitionList = { ^"list" }
+                PartitionHash = { ^"hash" }
+            PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
+    DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    CreateProc = ${
+        ^"create" ~ W ~ ^"procedure" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ WO
+        ~ ProcParams ~ W ~ (^"language" ~ W ~ ProcLanguage ~ W)?
+        ~ ((^"as" ~ W ~ "$$" ~ WO ~ ProcBody ~ WO ~ "$$") | (^"begin" ~ W ~ "atomic" ~ W ~ ProcBody ~ W ~ "end"))
+        ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
+    }
+        ProcParams = !{ "(" ~ ProcParamsColumnDefTypes? ~ ")" }
+            ProcParamsColumnDefTypes = _{ ColumnDefType ~ (WO ~ "," ~ WO ~ ColumnDefType)* }
+        ProcLanguage = { SQL }
+            SQL = { ^"sql" }
+        ProcBody = { (Insert | Update | Delete) }
+
+    DropProc = ${ ^"drop" ~ W ~ ^"procedure" ~ W ~ (IfExists ~ W)? ~ ProcWithOptionalParams ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        ProcWithOptionalParams = ${ Identifier ~ ProcParams? }
+
+    RenameProc = ${ ^"alter" ~ W ~ ^"procedure" ~ W ~ OldProc ~ (ProcParams)? ~ W ~ ^"rename" ~ W ~ ^"to"
+                    ~ W ~ NewProc ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        OldProc = @{ Identifier }
+        NewProc = @{ Identifier }
+
+    CreateIndex = ${
+        ^"create" ~ W ~ (Unique ~ W)? ~ ^"index" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
+        ^"on" ~ W ~ Table ~ W ~ (IndexType ~ W)? ~ "(" ~ WO ~ Parts ~ WO ~ ")" ~
+        (W ~ IndexOptions)? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
+    }
+    Unique = { ^"unique" }
+    IndexType = { ^"using" ~ W ~ (Tree | Hash | RTree | BitSet) }
+        Tree = { ^"tree" }
+        Hash = { ^"hash" }
+        RTree = { ^"rtree" }
+        BitSet = { ^"bitset" }
+    Parts = !{ Identifier ~ ("," ~ Identifier)* }
+    IndexOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ IndexOptionsParams ~ WO ~ ")" }
+        IndexOptionsParams = _{ IndexOptionParam ~ (WO ~ "," ~ WO ~ IndexOptionParam)* }
+    IndexOptionParam = { BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio
+                         | Dimension | Distance | Hint }
+        BloomFpr = !{ ^"bloom_fpr" ~ "=" ~ Decimal }
+        PageSize = !{ ^"page_size" ~ "=" ~ Unsigned }
+        RangeSize = !{ ^"range_size" ~ "=" ~ Unsigned }
+        RunCountPerLevel = !{ ^"run_count_per_level" ~ "=" ~Unsigned }
+        RunSizeRatio = !{ ^"run_size_ratio" ~ "=" ~ Decimal }
+        Dimension = !{ ^"dimension" ~ "=" ~ Unsigned }
+        Distance = !{ ^"distance" ~ "=" ~ (Euclid | Manhattan) }
+            Euclid = { ^"euclid" }
+            Manhattan = { ^"manhattan" }
+        Hint = !{ ^"hint" ~ "=" ~ (True | False) }
+    DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+
+    SetParam = ${ ^"set" ~ W ~ (SetScope ~ W)? ~ ConfParam  }
+        SetScope = { ScopeSession | ScopeLocal }
+            ScopeSession  = { ^"session" }
+            ScopeLocal    = { ^"local" }
+        ConfParam = { NamedParam | TimeZoneParam }
+            NamedParam    = ${ Identifier ~ ((W ~ ^"to" ~ W) | (WO ~ "=" ~ WO)) ~ NamedParamValues }
+                NamedParamValues = _{ NamedParamValue ~ (WO ~ "," ~ WO ~ NamedParamValue)* }
+                NamedParamValue = { ParamValueDefault | SingleQuotedString | Identifier | Double | Decimal | Integer }
+            TimeZoneParam = ${ ^"time" ~ W ~ ^"zone" ~ W ~ TimeZoneParamValue }
+                TimeZoneParamValue = { NamedParamValue | ParamValueLocal }
+        ParamValueLocal = { ^"local" }
+        ParamValueDefault = { ^"default" }
+
+    SetTransaction = ${ ^"set" ~ W ~ (SetTransactionSubRule | SetSessionCharacteristics) }
+        SetTransactionSubRule = ${ ^"transaction" ~ W ~ (TransactionMode | TransactionSnapshot) }
+        SetSessionCharacteristics = ${ ^"session" ~ W ~ ^"characteristics" ~ W ~ ^"as" ~ W ~ ^"transaction" ~ W ~ TransactionMode }
+            TransactionMode = { IsolationLevel | ReadWrite | ReadOnly | Deferrable }
+                IsolationLevel = ${ ^"isolation" ~ W ~ ^"level" ~ W ~ ConcreteIsolationLevel }
+                    ConcreteIsolationLevel = _{ Serializable | RepeatableRead | ReadCommited | ReadUncommited }
+                        Serializable = { ^"serializable" }
+                        RepeatableRead = ${ ^"repeatable" ~ W ~ ^"read" }
+                        ReadCommited = ${ ^"read" ~ W ~ ^"commited" }
+                        ReadUncommited = ${ ^"read" ~ W ~ ^"uncommited" }
+                ReadWrite  = ${ ^"read" ~ W ~ ^"write" }
+                ReadOnly   = ${ ^"read" ~ W ~ ^"only" }
+                Deferrable = ${ (NotFlag ~ W)? ~ ^"deferrable" }
+            TransactionSnapshot = ${ ^"snapshot" ~ W ~ SingleQuotedString }
+
+    AlterSystem = ${ ^"alter" ~ W ~ ^"system" ~ W ~ (AlterSystemSet | AlterSystemReset) ~ (W ~ AlterSystemTier)? }
+        		AlterSystemReset = ${^"reset" ~ W ~ (^"all" | Identifier) }
+        		AlterSystemSet = ${^"set" ~ W ~ Identifier ~ ((WO ~ "=" ~ WO) | (W ~ ^"to" ~ W)) ~ (^"default" | Expr) }
+        		AlterSystemTier = ${ ^"for" ~ W ~ (AlterSystemTiersAll | AlterSystemTierSingle) }
+        		    AlterSystemTiersAll = ${ ^"all" ~ W ~ ^"tiers" }
+        		    AlterSystemTierSingle = ${ ^"tier" ~ W ~ Identifier }
+
+Block = ${ CallProc ~ (W ~ DqlOption)? }
+    CallProc = ${ ^"call"~ W ~ Identifier ~ WO ~ "(" ~ WO ~ ProcValues ~ WO ~ ")" }
+        ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
+            ProcValue = _{ Literal | Parameter }
+
+ExplainQuery = _{ Explain }
+    Explain = ${ ^"explain" ~ W ~ Query }
+
+Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
+    SelectFull = ${ (^"with" ~ W ~ Ctes ~ W)? ~ SelectStatement }
+        Ctes = _{ Cte ~ (WO ~ "," ~ WO ~ Cte)* }
+    SelectStatement = ${ SelectWithOptionalContinuation ~ (W ~ Limit)? }
+    Limit = ${ ^"limit" ~ W ~ (Unsigned | LimitAll) }
+      LimitAll = { ^"all" | Null }
+    SelectWithOptionalContinuation = ${ Select ~ (W ~ SelectOp ~ W ~ Select)* }
+        SelectOp = _{ UnionAllOp | ExceptOp | UnionOp }
+                UnionOp = { ^"union" }
+                ExceptOp = @{ (^"except" ~ W ~ ^"distinct") | ^"except" }
+                UnionAllOp = @{ ^"union" ~ W ~ ^"all" }
+    Cte = ${ Identifier ~ (WO ~ CteColumns)? ~ W ~ ^"as" ~ WO ~ "(" ~ WO ~ (SelectStatement | Values) ~ WO ~ ")" }
+        CteColumns = _{ "(" ~ CteColumn ~ (WO ~ "," ~ WO ~ CteColumn)* ~ ")" }
+        CteColumn = @{ Identifier }
+    Select = ${ ^"select" ~ W ~ Projection ~ (W ~ SelectMainBody)? }
+        SelectMainBody = _{ ^"from" ~ W ~ Scan ~ (W ~ Join)* ~
+                            (W ~ WhereClause)? ~
+                            (W ~ ^"group" ~ W ~ ^"by" ~ W ~ GroupBy)? ~
+                            (W ~ ^"having" ~ W ~ Having)? ~
+                            (W ~ ^"order" ~ W ~ ^"by" ~ W ~ OrderBy)?
+                           }
+    Projection = ${ (Distinct ~ W)? ~ ProjectionElements }
+        ProjectionElements = _{ ProjectionElement ~ (WO ~ "," ~ WO ~ ProjectionElement)* }
+        ProjectionElement = _{ Asterisk | Column }
+        Column = ${ Expr ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
+        Asterisk = ${ (Identifier ~ ".")? ~ "*" }
+    WhereClause = _{ ^"where" ~ W ~ Selection }
+    Selection = { Expr }
+    Scan = ${ (ScanCteOrTable| SubQuery) ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
+    Join = { (JoinKind ~ W)? ~ ^"join" ~ W ~ Scan ~ W ~ ^"on" ~ W ~ Expr }
+        JoinKind = _{ ( InnerJoinKind | LeftJoinKind ) }
+            InnerJoinKind = { ^"inner" }
+            LeftJoinKind = { ^"left" ~ (W ~ ^"outer")? }
+    GroupBy = { Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+    Having = { Expr }
+    OrderBy = { OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
+        OrderByElement = ${ Expr ~ (W ~ OrderFlag)? }
+        OrderFlag = _{ Asc | Desc }
+            Asc = { ^"asc" }
+            Desc = { ^"desc" }
+    SubQuery = !{ "(" ~ (SelectFull | Values) ~ ")" }
+    Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | Values) ~ (W ~ OnConflict)? }
+        TargetColumns = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
+        OnConflict = _{ ^"on" ~ W ~ ^"conflict" ~ W ~ ^"do" ~ W ~ (DoNothing | DoReplace | DoFail) }
+        DoReplace = { ^"replace" }
+        DoNothing = { ^"nothing" }
+        DoFail = { ^"fail" }
+    Update = ${ ^"update" ~ W ~ ScanTable ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
+        UpdateList = { UpdateItem ~ (WO ~ "," ~ WO ~ UpdateItem)* }
+        UpdateItem = !{ Identifier ~ "=" ~ Expr }
+        UpdateFrom = _{ ^"from" ~ W ~ Scan ~ (W ~ ^"where" ~ W ~ Expr)? }
+    Values = { ^"values" ~ WO ~ ValuesRows }
+        ValuesRows = _{ Row ~ (WO ~ "," ~ WO ~ Row)* }
+
+    DqlOption = !{ ^"option" ~ "(" ~ OprionParams ~ ")" }
+        OprionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
+    OptionParam = _{ VdbeMaxSteps | VTableMaxRows }
+    Timeout = !{ ^"timeout" ~ "=" ~ Duration }
+       Duration = @{ Unsigned ~ ("." ~ Unsigned)? }
+    TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
+    VdbeMaxSteps = { ^"vdbe_max_steps" ~ "=" ~ (Unsigned | Parameter) }
+    VTableMaxRows = { ^"vtable_max_rows" ~ "=" ~ (Unsigned | Parameter) }
+    Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
+    	DeleteFilter = { Expr }
+
+Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
+    DelimitedIdentifier = @{ ("\"" ~ ((!("\"") ~ ANY) | "\"\"")* ~ "\"") }
+    RegularIdentifier = @{ !KeywordCoverage ~
+                            RegularIdentifierFirstApplicableSymbol ~
+                            RegularIdentifierApplicableSymbol* ~
+                            &IdentifierInapplicableSymbol }
+        RegularIdentifierFirstApplicableSymbol = { !(IdentifierInapplicableSymbol | ASCII_DIGIT) ~ ANY }
+        RegularIdentifierApplicableSymbol = { !IdentifierInapplicableSymbol ~ ANY }
+        IdentifierInapplicableSymbol = { WHITESPACE | "." | "," | "(" | EOF | ")" | "\"" | ":"
+                                       | "'" | ArithInfixOp | ConcatInfixOp | NotEq | GtEq
+                                       | Gt | LtEq | Lt | Eq }
+        KeywordCoverage = { Keyword ~ IdentifierInapplicableSymbol }
+            // Note: In case two keywords with the same prefix are met, shorter ones must go after longest.
+            //       E.g. ^"in" must go after ^"insert" because keywords traversal stops on the first match.
+            //       Please, try to keep the list in alphabetical order.
+            Keyword = {  ^"all" | ^"and" | ^"any" | ^"array" | ^"asc" | ^"as"
+                        | ^"begin" | ^"between" | ^"boolean" | ^"bool"| ^"by"
+                        | ^"case" | ^"cast" | ^"char"
+                        | ^"decimal" | ^"desc" | ^"distinct" | ^"double"
+                        | ^"else" | ^"end" | ^"except" | ^"exists"
+                        | ^"false" | ^"from" | ^"group"
+                        | ^"having" | ^"inner" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
+                        | ^"join" | ^"left" | ^"limit" | ^"not" | ^"null" | ^"number"
+                        | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
+                        | ^"scalar" | ^"select" | ^"set" | ^"string"
+                        | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
+                        | ^"union" | ^"unsigned" | ^"using" | ^"uuid"
+                        | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with"
+                        }
+
+EmptyQuery = { WHITESPACE* }
+
+//  `select (true)between(false)and(true)` query is valid!!! :(
+Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
+    // TODO: Should add smth like &(")" ~ WO next to W
+    //       to support queries like `select (true)and(false)`
+    ExprInfixOpo = _{ (W ~ ExprInfixOpSep ~ W) | (WO ~ ExprInfixOpNoSep ~ WO) }
+    ExprInfixOpSep = _{ Like | Escape | Between | And | Or | In }
+        In    = { (NotFlag ~ W)? ~ ^"in" }
+        Like = { ^"like" | ^"ilike" }
+        Escape = { ^"escape" }
+        Between       = ${ (NotFlag ~ W)? ~ ^"between" }
+        And           = { ^"and" }
+        Or            = { ^"or" }
+    ExprInfixOpNoSep = _{ ArithInfixOp | CmpInfixOp | ConcatInfixOp }
+        ConcatInfixOp = { "||" }
+        ArithInfixOp  = _{ Add | Subtract | Multiply | Divide }
+            Add      = { "+" }
+            Subtract = { "-" }
+            Multiply = { "*" }
+            Divide   = { "/" }
+        CmpInfixOp    = _{ NotEq | GtEq | Gt | LtEq | Lt | Eq }
+            Eq    = { "=" }
+            Gt    = { ">" }
+            GtEq  = { ">=" }
+            Lt    = { "<" }
+            LtEq  = { "<=" }
+            NotEq = { "<>" | "!=" }
+    ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ CastPostfix* ~ (W ~ IsPostfix)* }
+        UnaryNot   = { NotFlag }
+        CastPostfix = { "::" ~ ColumnDefType }
+        IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
+            Unknown = { ^"unknown" }
+        AtomicExpr = _{ Literal | Parameter | CastOp | Trim | CurrentDate | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
+            Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
+                True     = { ^"true" }
+                False    = { ^"false" }
+                Null     = { ^"null" }
+                Decimal = @{ Integer ~ ("." ~ ASCII_DIGIT*) }
+                Double = @{ Integer ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ Integer) }
+                Integer = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
+                Unsigned = @{ ASCII_DIGIT+ }
+                SingleQuotedString = @{ "'" ~ ((!("'") ~ ANY) | "''")* ~ "'" }
+                UnquotedString = @{ ((!("'") ~ ANY) | "''")* }
+            Parameter = { PgParameter | TntParameter }
+                TntParameter = @{ "?" }
+                PgParameter = ${ "$" ~ Unsigned }
+            IdentifierWithOptionalContinuation = ${ Identifier ~ (ReferenceContinuation | (WO ~ FunctionInvocationContinuation))? }
+                ReferenceContinuation          = ${ "." ~ Identifier }
+                FunctionInvocationContinuation = !{ "(" ~ (CountAsterisk | FunctionArgs)? ~ ")" }
+                    FunctionArgs = ${ (Distinct ~ W)? ~ FunctionArgsExprs? }
+                        FunctionArgsExprs = _{ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+                    CountAsterisk = { "*" }
+            ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
+            CurrentDate = { ^"current_date" }
+            Trim = ${
+                ^"trim" ~ WO ~ "(" ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ ")"
+            }
+                TrimOption = _{ ((TrimKind ~ W)? ~ TrimPattern) | TrimKind }
+                TrimKind = { (TrimKindLeading | TrimKindTrailing | TrimKindBoth) }
+                    TrimKindLeading = { ^"leading" }
+                    TrimKindTrailing = { ^"trailing" }
+                    TrimKindBoth = { ^"both" }
+                TrimPattern = { Expr }
+                TrimTarget = { Expr }
+            Case = ${
+                ^"case" ~ W ~
+                (Expr ~ W)? ~
+                (CaseWhenBlock ~ W)+ ~
+                (CaseElseBlock ~ W)? ~
+                ^"end"
+            }
+                CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
+                CaseElseBlock = ${ ^"else" ~ W ~ Expr }
+            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ TypeCast ~ WO ~ ")" }
+                TypeCast = _{ TypeAny | ColumnDefType }
+                ColumnDefType = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeNumber
+                                   | TypeScalar | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
+                    TypeAny = { ^"any" }
+                    TypeBool = { (^"boolean" | ^"bool") }
+                    TypeDatetime = { ^"datetime" }
+                    TypeDecimal = { ^"decimal" }
+                    TypeDouble = { ^"double" }
+                    TypeInt = { (^"integer" | ^"int") }
+                    TypeNumber = { ^"number" }
+                    TypeScalar = { ^"scalar" }
+                    TypeString = { ^"string" }
+                    TypeText = { ^"text" }
+                    TypeUuid = { ^"uuid" }
+                    TypeUnsigned = { ^"unsigned" }
+                    TypeVarchar = !{ ^"varchar" ~ "(" ~ Unsigned ~ ")" }
+            UnaryOperator = _{ Exists }
+                Exists = ${ (NotFlag ~ W)? ~ ^"exists" ~ W ~ SubQuery }
+            Row = !{ "(" ~ Expr ~ ("," ~ Expr)* ~ ")" }
+
+Distinct = { ^"distinct" }
+NotFlag = { ^"not" }
+
+// Rules of whitespaces application:
+// * WHITESPACE builtin rule is used for implicit whitespace application. Whenever you use non-atomic rule
+//   any "~" sign means that next token may be read without spaces between.
+//   It's used for parsing expressions (because it's hard to apply whitespaces by hand for them) and
+//   cases when we don't require whitespaces between tokens.
+// * W  -- read at least one whitespace under atomic rule (W is a shorthand of "WHITESPACE").
+// * WO -- read possible whitespaces. Used for cases when space may be ommited, e.g. when
+//         we deal with expressions separated by commas (WO is a shorthand of "WHITESPACE OPTIONAL").
+// * Hack: If only a part of rule should be atomic you may move to a separate rule and mark it atomic.
+// * Reminder: All rules under atomic rules also considered to be atomic :(
+//             But we may put explamation mark (`!`) before rule to make it non-atomic
+//             (note that we can't mark rule non-atomic and silent at the same time).
+// * When we face with rule sequences like
+//   { RULE ~ OPTIONAL_RULE? ~ NON_OPTIONAL_RULE }
+//   or
+//   { RULE ~ OPTIONAL_RULE_1? ~ OPTIONAL_RULE_2? }  <-- if non of the optional rule met, we don't require whitspace after RULE.
+//   we have to be careful about where to require whitespaces.
+//   Solutions for this two cases:
+//   { Rule ~ W ~ (OPTIONAL_RULE ~ W)? ~ NON_OPTIONAL_RULE }
+//   and
+//   { RULE ~ (W ~ OPTIONAL_RULE_1)? ~ (W ~ OPTIONAL_RULE_2)? }
+// * If we are dealing with repetition like
+//   { REPEATING_RULE ~ ("," ~ REPEATING_RULE)* ~ OTHER_RULE }
+//   solution looks like
+//   { REPEATING_RULES ~ W ~ OTHER_RULE }
+//      REPEATING_RULES = _{ REPEATING_RULE ~ (WO ~ "," ~ WO ~ REPEATING_RULE)* }
+// * Note: Keep in mind that rule like `!{ RULE_1 ~ ("," ~ RULE_2)* }` will consume possible
+//         whitespaces that follow the `RULE_1` rule.
+WHITESPACE = _{ " " | "\t" | "\n" | "\r\n" }
+W  = _{ WHITESPACE+ }
+WO = _{ WHITESPACE* }
+EOF = { EOI | ";" }

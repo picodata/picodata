@@ -1,0 +1,147 @@
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 5
+          col_type: String
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Reference:
+          targets: ~
+          position: 1
+          parent: 5
+          col_type: String
+    - Expression:
+        Alias:
+          name: b
+          child: 2
+    - Expression:
+        Row:
+          list:
+            - 1
+            - 3
+          distribution: ~
+    - Relational:
+        ScanRelation:
+          output: 4
+          relation: t1
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 11
+          col_type: String
+    - Expression:
+        Alias:
+          name: a
+          child: 6
+    - Expression:
+        Reference:
+          targets: ~
+          position: 1
+          parent: 11
+          col_type: String
+    - Expression:
+        Alias:
+          name: b
+          child: 8
+    - Expression:
+        Row:
+          list:
+            - 7
+            - 9
+          distribution: ~
+    - Relational:
+        ScanRelation:
+          output: 10
+          relation: t2
+    - Expression:
+        Reference:
+          targets:
+            - 0
+            - 1
+          position: 0
+          parent: 17
+          col_type: String
+    - Expression:
+        Alias:
+          name: a
+          child: 12
+    - Expression:
+        Reference:
+          targets:
+            - 0
+            - 1
+          position: 1
+          parent: 17
+          col_type: String
+    - Expression:
+        Alias:
+          name: b
+          child: 14
+    - Expression:
+        Row:
+          list:
+            - 13
+            - 15
+          distribution: ~
+    - Relational:
+        UnionAll:
+          left: 5
+          right: 11
+          output: 16
+relations:
+  tables:
+    t1:
+      columns:
+        - name: a
+          type: Boolean
+        - name: b
+          type: Number
+      primary_key:
+        positions:
+          - 0
+      name: t1
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+    t2:
+      columns:
+        - name: a
+          type: Boolean
+        - name: b
+          type: Number
+      primary_key:
+        positions:
+          - 0
+      name: t2
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices: []
+top: 17
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

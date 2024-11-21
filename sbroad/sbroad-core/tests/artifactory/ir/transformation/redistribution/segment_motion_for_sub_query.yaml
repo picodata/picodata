@@ -1,0 +1,247 @@
+# t1(a int) key [a]
+# t2(a int, b int) key [a]
+# select * from t1 where a = (select b from t2)
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 3
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Row:
+          list:
+            - 1
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 2
+          relation: t1
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 9
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 4
+    - Expression:
+        Reference:
+          targets: ~
+          position: 1
+          parent: 9
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 6
+    - Expression:
+        Row:
+          list:
+            - 5
+            - 7
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        ScanRelation:
+          output: 8
+          relation: t2
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 1
+          parent: 13
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 10
+    - Expression:
+        Row:
+          list:
+            - 11
+          distribution: Any
+    - Relational:
+        Projection:
+          children:
+            - 9
+          output: 12
+          is_distinct: false
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 17
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 14
+    - Expression:
+        Row:
+          list:
+            - 15
+          distribution: Any
+    - Relational:
+        ScanSubQuery:
+          alias: ~
+          children:
+            - 13
+          output: 16
+    - Expression:
+        Reference:
+          targets:
+            - 1
+          position: 0
+          parent: 26
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 18
+          distribution: Any
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 26
+          col_type: Integer
+    - Expression:
+        Row:
+          list:
+            - 20
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Expression:
+        Bool:
+          left: 21
+          op: eq
+          right: 19
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 26
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: a
+          child: 23
+    - Expression:
+        Row:
+          list:
+            - 24
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Selection:
+          children:
+            - 3
+            - 30
+          filter: 22
+          output: 25
+    - Expression:
+        Reference:
+          targets:
+            - 0
+          position: 0
+          parent: 30
+          col_type: Integer
+    - Expression:
+        Alias:
+          name: b
+          child: 27
+    - Expression:
+        Row:
+          list:
+            - 28
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                    - 0
+    - Relational:
+        Motion:
+          children:
+            - 17
+          policy:
+            Segment:
+              targets:
+                - Reference:
+                    0
+          program: [ReshardIfNeeded]
+          output: 29
+relations:
+  tables:
+    t1:
+      columns:
+        - name: a
+          type: Integer
+      primary_key:
+        positions:
+          - 0
+      name: t1
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+    t2:
+      columns:
+        - name: a
+          type: Integer
+        - name: b
+          type: Integer
+      primary_key:
+        positions:
+          - 0
+      name: t2
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices:
+    - slice:
+        - 30
+top: 26
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

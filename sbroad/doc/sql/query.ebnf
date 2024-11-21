@@ -1,0 +1,230 @@
+statement   ::= explain | ddl | dml | dql | acl | call
+explain     ::= 'EXPLAIN' (dml | dql)
+dql         ::= (with? select | values)
+                ('OPTION' '('
+                    (('VTABLE_MAX_ROWS' | 'vdbe_max_steps') '=' unsigned)
+                    (',' (('VTABLE_MAX_ROWS' | 'vdbe_max_steps') '=' unsigned))*
+                ')')?
+with        ::= 'WITH'
+                cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')'
+                (',' cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')')*
+                select
+select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* ('FROM' scan
+                (( 'INNER' | 'LEFT' 'OUTER'? )? 'JOIN' scan 'ON' expression)*
+                ('WHERE' expression)?
+                ('GROUP' 'BY' expression (',' expression)*)?
+                ('HAVING' expression)?
+                ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
+                (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?)?
+                ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
+projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate
+scan        ::= (table | '(' dql ')') ('AS'? name)?
+expression  ::= ('NOT'* (
+                    (table '.')? column
+                    | literal
+                    | case
+                    | cast
+                    | current_date
+                    | like
+                    | ilike
+                    | substr
+                    | to_char
+                    | to_date
+                    | trim
+                    | substr
+                    | lower
+                    | upper
+                    | '(' expression ')'
+                    | 'NOT'? 'EXISTS' '(' dql ')'
+                    | '(' dql ')'
+                    | '(' expression (',' expression)* ')'
+                ) ('IS' 'NOT'? ('NULL' | 'TRUE' | 'FALSE' | 'UNKNOWN'))*)
+                | expression
+                (
+                    'NOT'? 'BETWEEN' expression 'AND'
+                    | ('+' | '-' | '*' | '/')
+                    | ('<>' | '!=' | '>=' | '>' | '<=' | '<' | '=' | 'NOT'? 'IN')
+                    | '||'
+                    | 'AND'
+                    | 'OR'
+                )
+                expression
+aggregate   ::= ('AVG' | 'COUNT' | 'MAX' | 'MIN' | 'SUM' | 'TOTAL') '(' ('DISTINCT'? expression) ')'
+               | 'GROUP_CONCAT' '(' expression ',' "'" string "'" ')'
+case        ::= 'CASE' expression?
+                ('WHEN' expression 'THEN' expression)+
+                ('ELSE' expression)? 'END'
+cast        ::= 'CAST' '(' expression 'AS' type ')' | expression '::' type
+like        ::= (expression 'LIKE' expression ('ESCAPE' expression)?)
+ilike        ::= (expression 'ILIKE' expression ('ESCAPE' expression)?)
+to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
+to_date     ::= 'TO_DATE' '(' expression ',' format ')'
+trim        ::= 'TRIM' '('
+                ((('LEADING' | 'TRAILING' | 'BOTH')? removal_chars
+                | ('LEADING' | 'TRAILING' | 'BOTH')) 'FROM')? string ')'
+substr      ::= 'SUBSTR' '(' string ',' from (',' count)? ')'
+lower       ::= 'LOWER' '(' string ')'
+upper       ::= 'UPPER' '(' string ')'
+values      ::= 'VALUES'
+                ('(' (expression(',' expression)*) ')')
+                (',' ('(' (expression(',' expression)*) ')'))*
+literal     ::= 'TRUE'
+                | 'FALSE'
+                | 'NULL'
+                | decimal
+                | double
+                | integer
+                | string
+                | unsigned
+                | ('$' unsigned)
+                | '?'
+dml         ::= (call | delete | insert | update)
+                ('OPTION' '('
+                    (('VTABLE_MAX_ROWS' | 'vdbe_max_steps') '=' unsigned)
+                    (',' (('VTABLE_MAX_ROWS' | 'vdbe_max_steps') '=' unsigned))*
+                ')')?
+call        ::= 'CALL' procedure '(' (literal (',' literal)*)? ')'
+delete      ::= 'DELETE' 'FROM' table ('WHERE' expression)?
+insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
+                ('ON' 'CONFLICT' 'DO' ('NOTHING' | 'REPLACE' | 'FAIL'))?
+update      ::= 'UPDATE' table 'SET'
+                column '=' expression (',' column '=' expression)*
+                ('FROM' scan)? ('WHERE' expression)?
+acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke)
+                ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+revoke      ::= 'REVOKE' (
+                    (('CREATE' | 'ALTER' | 'DROP') 'USER')
+                    | (('ALTER' | 'DROP') 'ON' 'USER' user)
+                    | (('CREATE' | 'DROP') 'ROLE')
+                    | ('DROP' 'ON' 'ROLE' role)
+                    | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
+                    | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
+                    | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
+                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' type (',' type)* ')')?)
+                    | role
+                )
+                'FROM' (role | user)
+grant       ::= 'GRANT' (
+                    (('CREATE' | 'ALTER' | 'DROP') 'USER')
+                    | (('ALTER' | 'DROP') 'ON' 'USER' user)
+                    | (('CREATE' | 'DROP') 'ROLE')
+                    | ('DROP' 'ON' 'ROLE' role)
+                    | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
+                    | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
+                    | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
+                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' type (',' type)* ')')?)
+                    | role
+                )
+                'TO' (role | user)
+ddl         ::= (alter_plugin | alter_procedure | alter_system
+                | create_index | create_plugin | create_procedure | create_table
+                | drop_index | drop_plugin | drop_procedure | drop_table)
+alter_system ::= 'ALTER' 'SYSTEM'
+                    (
+                        'RESET' ('ALL' | param_name)
+                        | 'SET' param_name ('=' | 'TO') ('DEFAULT' | param_value)
+                    )
+                    ('FOR' ('ALL' 'TIERS' | 'TIER' tier))?
+                  ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+alter_procedure ::= 'ALTER' 'PROCEDURE' procedure ('(' type (',' type)* ')')?
+                     'RENAME' 'TO' procedure
+                     ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' table
+                 ('USING' ('TREE' | 'HASH' | 'RTREE' | 'BITSET'))?
+                 '(' column (',' column)* ')' ('WITH' '('
+                     (
+                         ('BLOOM_FPR' '=' decimal)
+                         | ('PAGE_SIZE' '=' unsigned)
+                         | ('RANGE_SIZE' '=' unsigned)
+                         | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
+                         | ('RUN_SIZE_RATIO' '=' decimal)
+                         | ('DIMENSION' '=' unsigned)
+                         | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
+                         | ('HINT' '=' ('TRUE' | 'FALSE'))
+                     )
+                     (
+                        ','
+                         (
+                             ('BLOOM_FPR' '=' decimal)
+                             | ('PAGE_SIZE' '=' unsigned)
+                             | ('RANGE_SIZE' '=' unsigned)
+                             | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
+                             | ('RUN_SIZE_RATIO' '=' decimal)
+                             | ('DIMENSION' '=' unsigned)
+                             | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
+                             | ('HINT' '=' ('TRUE' | 'FALSE'))
+                         )
+                     )*
+                 ')')? 
+                 ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                 ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' type (',' type)* ')'
+                     ('LANGUAGE' 'SQL')? (
+                         ('AS' '$$' (insert | update | delete) '$$')
+                         | ('BEGIN' 'ATOMIC' (insert | update | delete) 'END')
+                     )
+                     ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role
+create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
+                   '('
+                       column type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
+                       (',' 'PRIMARY' 'KEY' '(' column (',' column)* ')')?
+                   ')'
+                   ('USING' ('MEMTX' | 'VINYL'))?
+                   (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
+                   ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                   ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user 'WITH'? 'PASSWORD' "'" password "'"
+                   ('USING' ('CHAP-SHA1' | 'LDAP' | 'MD5'))?
+alter_user     ::= 'ALTER' 'USER' user
+                   'WITH'? (
+                       'LOGIN'
+                       | 'NOLOGIN'
+                       | 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'LDAP' | 'MD5'))?
+                       | 'RENAME' 'TO' user
+                   )
+drop_index     ::= 'DROP' 'INDEX' ('IF' 'EXISTS')? index
+                   ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                   ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+drop_procedure ::= 'DROP' 'PROCEDURE' ('IF' 'EXISTS')? procedure ('(' type (',' type)* ')')?
+                   ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                   ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+drop_table     ::= 'DROP' 'TABLE' ('IF' 'EXISTS')? table
+                   ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                   ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role
+drop_user      ::= 'DROP' 'USER' ('IF' 'EXISTS')? user
+create_plugin  ::= 'CREATE' 'PLUGIN' ('IF' 'NOT' 'EXISTS')? plugin version
+                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+drop_plugin    ::= 'DROP' 'PLUGIN' ('IF' 'EXISTS')? plugin version ('WITH' 'DATA')?
+                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
+                        (version (
+                            'ENABLE' | 'DISABLE'
+                            | ('ADD' 'SERVICE' service 'TO' 'TIER' tier)
+                            | ('REMOVE' 'SERVICE' service 'FROM' 'TIER' tier)
+                            | ('SET' ((service'.'key '=' text) (',' service'.'key '=' text)*))
+                        ))
+                        ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+                        | ('MIGRATE' 'TO' version)
+                          ( 'OPTION' '('
+                            (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double)
+                            (',' (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double))*')'
+                          )?
+                   )
+type        ::= 'BOOL'
+                | 'BOOLEAN'
+                | 'DATETIME'
+                | 'DECIMAL'
+                | 'DOUBLE'
+                | 'INT'
+                | 'INTEGER'
+                | 'NUMBER'
+                | 'SCALAR'
+                | 'STRING'
+                | 'TEXT'
+                | 'UNSIGNED'
+                | 'UUID'
+                | 'VARCHAR' '(' length ')'

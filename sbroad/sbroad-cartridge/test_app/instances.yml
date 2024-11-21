@@ -1,0 +1,44 @@
+---
+test_app.router-1:
+  advertise_uri: localhost:3301
+  http_port: 8081
+  readahead: 16711680
+
+test_app.router-2:
+  advertise_uri: localhost:3306
+  http_port: 8086
+  readahead: 16711680
+
+test_app.router-3:
+  advertise_uri: localhost:3307
+  http_port: 8087
+  readahead: 16711680
+
+test_app.router-4:
+  advertise_uri: localhost:3308
+  http_port: 8088
+  readahead: 16711680
+
+test_app.s1-master:
+  advertise_uri: localhost:3302
+  http_port: 8082
+  readahead: 16711680
+
+test_app.s1-replica:
+  advertise_uri: localhost:3303
+  http_port: 8083
+  readahead: 16711680
+
+test_app.s2-master:
+  advertise_uri: localhost:3304
+  http_port: 8084
+  readahead: 16711680
+
+test_app.s2-replica:
+  advertise_uri: localhost:3305
+  http_port: 8085
+  readahead: 16711680
+
+test_app-stateboard:
+  listen: localhost:4401
+  password: passwd

@@ -1,0 +1,53 @@
+---
+nodes:
+  arena:
+    - Expression:
+        Reference:
+          branch: Left
+          position: 0
+          col_type: Number
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    - Expression:
+        Reference:
+          branch: Left
+          position: 1
+          col_type: Number
+    - Expression:
+        Alias:
+          name: b
+          child: 2
+    - Expression:
+        Row:
+          list:
+            - 1
+            - 3
+          distribution:
+            Segment:
+              keys:
+                - positions:
+                  - 0
+    - Relational:
+        ScanRelation:
+          output: 4
+          relation: t
+relations:
+  t:
+    columns:
+      - name: a
+        type: Number
+      - name: b
+        type: Number
+    sharding_key:
+      positions:
+        - 0
+    primary_key:
+      positions:
+        - 0
+    name: t
+    engine: Memtx
+slices: ~
+top: 5
+undo: {}

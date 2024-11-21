@@ -1,0 +1,38 @@
+[package]
+name = "sbroad-benches"
+version = "0.1.0"
+rust-version = "1.76.0"
+authors = [
+    "Picodata"
+]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sbroad-core = { path = "../sbroad-core", version = "0.1", features = ["mock"] }
+pest = "2.0"
+pest_derive = "2.0"
+bincode = "1.3"
+
+[dependencies.tarantool]
+git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"
+version = ">=4.0"
+features = ["picodata"]
+
+[dev-dependencies]
+criterion = "0.3"
+rand = "0.8"
+
+[dev-dependencies.tarantool]
+git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"
+version = ">=4.0"
+features = ["picodata", "standalone_decimal"]
+
+[[bench]]
+name = "parse"
+harness = false
+
+[[bench]]
+name = "cbo"
+harness = false

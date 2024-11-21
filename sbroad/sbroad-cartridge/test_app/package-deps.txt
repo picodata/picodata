@@ -1,0 +1,6 @@
+// Empty package dependencies file.
+// Used by "pack" command when format is DEB or RPM option is specified.
+
+// You can specify here dependencies of your package.
+// See format of this file in doc:
+// https://github.com/tarantool/cartridge-cli#packing-an-application

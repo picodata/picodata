@@ -1,0 +1,9 @@
+columns: ~
+name: t
+sharding_key:
+  positions:
+    - 0
+primary_key:
+  positions:
+    - 0
+engine: Memtx

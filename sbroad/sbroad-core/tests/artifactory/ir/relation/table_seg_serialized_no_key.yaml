@@ -1,0 +1,11 @@
+columns:
+  - name: a
+    type: Boolean
+name: t
+primary_key:
+  positions:
+    - 0
+kind:
+  ShardedSpace:
+    sharding_key: ~
+    engine: Memtx

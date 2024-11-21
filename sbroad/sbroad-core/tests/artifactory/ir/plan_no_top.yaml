@@ -1,0 +1,57 @@
+---
+nodes:
+  arena:
+#0
+    - Expression:
+        Reference:
+          targets: ~
+          position: 0
+          parent: 3
+          col_type: Boolean
+#1
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+#2
+    - Expression:
+        Row:
+          list:
+            - 1
+          distribution: ~
+#3
+    - Relational:
+        ScanRelation:
+          output: 2
+          relation: t
+relations:
+  tables:
+    t:
+      columns:
+        - name: a
+          type: Boolean
+      primary_key:
+        positions:
+          - 0
+      name: t
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices: []
+top: ~
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

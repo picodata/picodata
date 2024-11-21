@@ -1,0 +1,225 @@
+nodes:
+  arena:
+    # 0
+    - Expression:
+        Reference:
+          parent: 11
+          targets: ~
+          position: 0
+          col_type: Integer
+    # 1
+    - Expression:
+        Alias:
+          name: a
+          child: 0
+    # 2
+    - Expression:
+        Reference:
+          parent: 11
+          targets: ~
+          position: 1
+          col_type: Integer
+    # 3
+    - Expression:
+        Alias:
+          name: b
+          child: 2
+    # 4
+    - Expression:
+        Reference:
+          parent: 11
+          targets: ~
+          position: 2
+          col_type: Integer
+    # 5
+    - Expression:
+        Alias:
+          name: c
+          child: 4
+    # 6
+    - Expression:
+        Reference:
+          parent: 11
+          targets: ~
+          position: 3
+          col_type: Integer
+    # 7
+    - Expression:
+        Alias:
+          name: d
+          child: 6
+    # 8
+    - Expression:
+        Reference:
+          parent: 11
+          targets: ~
+          position: 4
+          col_type: Unsigned
+    # 9
+    - Expression:
+        Alias:
+          name: bucket_id
+          child: 8
+    # 10
+    - Expression:
+        Row:
+          list:
+          - 1
+          - 3
+          - 5
+          - 7
+          - 9
+          distribution: ~
+    # 11
+    - Relational:
+        ScanRelation:
+          output: 10
+          relation: t
+    # 12
+    - Expression:
+        Reference:
+          parent: 27
+          targets: [0]
+          position: 0
+          col_type: Integer
+    # 13
+    - Expression:
+        Row:
+          list:
+            - 12
+          distribution: ~
+    # 14
+    - Expression:
+        Reference:
+          parent: 27
+          targets: [0]
+          position: 1
+          col_type: Integer
+    # 15
+    - Expression:
+        Row:
+          list:
+            - 14
+          distribution: ~
+    # 16
+    - Expression:
+        Reference:
+          parent: 27
+          targets: [0]
+          position: 2
+          col_type: Integer
+    # 17
+    - Expression:
+        Row:
+          list:
+            - 16
+          distribution: ~
+    # 18
+    - Expression:
+        Reference:
+          parent: 27
+          targets: [0]
+          position: 3
+          col_type: Integer
+    # 19
+    - Expression:
+        Row:
+          list:
+            - 18
+          distribution: ~
+    # 20
+    - Expression:
+        Arithmetic:
+          left: 13
+          op: add
+          right: 15
+          with_parentheses: false
+    # 21
+    - Expression:
+        Bool:
+          left: 20
+          op: gt
+          right: 17
+    # 22
+    - Expression:
+        Unary:
+          op: isnull
+          child: 19
+    # 23
+    - Expression:
+        Unary:
+          op: not
+          child: 22
+    # 24
+    - Expression:
+        Bool:
+          left: 21
+          op: and
+          right: 23
+    # 25
+    - Expression:
+        Alias:
+          name: col_1
+          child: 24
+    # 26
+    - Expression:
+        Row:
+          list:
+            - 25
+          distribution: ~
+    # 27
+    - Relational:
+        Projection:
+          children:
+            - 11
+          output: 26
+          is_distinct: false
+relations:
+  tables:
+    t:
+      columns:
+        - name: a
+          type: Integer
+          role: User
+          is_nullable: false
+        - name: b
+          type: Integer
+          role: User
+          is_nullable: false
+        - name: c
+          type: Integer
+          role: User
+          is_nullable: false
+        - name: d
+          type: Integer
+          role: User
+          is_nullable: false
+        - name: bucket_id
+          type: Unsigned
+          role: Sharding
+          is_nullable: true
+      primary_key:
+        positions:
+          - 0
+      name: t
+      kind:
+        ShardedSpace:
+          sharding_key:
+            positions:
+              - 0
+          engine: Memtx
+slices:
+  slices: []
+top: 27
+is_explain: false
+undo:
+  log: {}
+constants: {}
+raw_options: []
+pg_params_map: {}
+options:
+  vtable_max_rows: 5000
+  execute_options:
+    VdbeMaxSteps:
+      Unsigned: 45000
+version_map: {}

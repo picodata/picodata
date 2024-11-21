@@ -1,0 +1,1434 @@
+storage_cache_capacity: 20000
+executor_sharding_column: "bucket_id"
+router_cache_capacity: 50
+executor_waiting_timeout: 200
+storage_cache_size_bytes: 20480000
+schema:
+  spaces:
+    arithmetic_space:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: a
+        is_nullable: false
+      - type: integer
+        name: b
+        is_nullable: false
+      - type: integer
+        name: c
+        is_nullable: false
+      - type: integer
+        name: d
+        is_nullable: false
+      - type: integer
+        name: e
+        is_nullable: false
+      - type: integer
+        name: f
+        is_nullable: false
+      - type: boolean
+        name: boolean_col
+        is_nullable: false
+      - type: string
+        name: string_col
+        is_nullable: false
+      - type: number
+        name: number_col
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    arithmetic_space2:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: a
+        is_nullable: false
+      - type: integer
+        name: b
+        is_nullable: false
+      - type: integer
+        name: c
+        is_nullable: false
+      - type: integer
+        name: d
+        is_nullable: false
+      - type: integer
+        name: e
+        is_nullable: false
+      - type: integer
+        name: f
+        is_nullable: false
+      - type: boolean
+        name: boolean_col
+        is_nullable: false
+      - type: string
+        name: string_col
+        is_nullable: false
+      - type: number
+        name: number_col
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    broken_hot:
+      format:
+      - is_nullable: false
+        name: id
+        type: number
+      - is_nullable: false
+        name: reqId
+        type: number
+      - is_nullable: false
+        name: name
+        type: string
+      - is_nullable: false
+        name: department
+        type: string
+      - is_nullable: false
+        name: manager
+        type: string
+      - is_nullable: false
+        name: salary
+        type: number
+      - is_nullable: false
+        name: sysOp
+        type: number
+      - is_nullable: false
+        name: bucket_id
+        type: unsigned
+      temporary: false
+      engine: memtx
+      is_local: false
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: number
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: false
+          type: unsigned
+        name: bucket_id
+        type: TREE
+      sharding_key:
+      - id
+    cola_accounts_history:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: cola
+        is_nullable: false
+      - type: integer
+        name: colb
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: integer
+        name: sys_to
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - cola
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: cola
+          type: integer
+          is_nullable: false
+        name: cola
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_col2_transactions_num_actual:
+      format:
+      - type: number
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: col2
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      - col2
+      indexes:
+      - unique: true
+        parts:
+        - path: col1
+          type: number
+          is_nullable: false
+        - path: col2
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_transactions_actual:
+      format:
+      - type: integer
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      indexes:
+      - unique: true
+        parts:
+        - path: col1
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    space_simple_shard_key:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: name
+        is_nullable: true
+      - type: integer
+        name: sysOp
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    cola_colb_accounts_actual:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: cola
+        is_nullable: false
+      - type: integer
+        name: colb
+        is_nullable: false
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - cola
+      - colb
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: cola
+          type: integer
+          is_nullable: false
+        - path: colb
+          type: integer
+          is_nullable: false
+        name: cola
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_col2_transactions_actual:
+      format:
+      - type: integer
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: col2
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      - col2
+      indexes:
+      - unique: true
+        parts:
+        - path: col1
+          type: integer
+          is_nullable: false
+        - path: col2
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    t:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: number
+        name: a
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: integer
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: true
+          type: unsigned
+        name: bucket_id
+        type: TREE
+      is_local: false
+      sharding_key:
+      - id
+      engine: memtx
+    testing_space:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: name
+        is_nullable: false
+      - type: integer
+        name: product_units
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      - name
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_col2_transactions_history:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: col2
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: integer
+        name: sys_to
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      - col2
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: col1
+          type: integer
+          is_nullable: false
+        - path: col2
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_col2_transactions_num_history:
+      format:
+      - type: number
+        name: id
+        is_nullable: false
+      - type: number
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: col2
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: integer
+        name: sys_to
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      - col2
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: number
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: col1
+          type: number
+          is_nullable: false
+        - path: col2
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    testing_space_bucket_in_the_middle:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      - type: string
+        name: name
+        is_nullable: false
+      - type: integer
+        name: product_units
+        is_nullable: false
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      - name
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    BROKEN:
+      format:
+      - is_nullable: false
+        name: id
+        type: number
+      - is_nullable: false
+        name: reqId
+        type: number
+      - is_nullable: false
+        name: name
+        type: string
+      - is_nullable: false
+        name: department
+        type: string
+      - is_nullable: false
+        name: manager
+        type: string
+      - is_nullable: false
+        name: salary
+        type: number
+      - is_nullable: false
+        name: sysOp
+        type: number
+      - is_nullable: false
+        name: bucket_id
+        type: unsigned
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: number
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: false
+          type: unsigned
+        name: bucket_id
+        type: TREE
+    space_t1:
+      format:
+      - type: integer
+        name: a
+        is_nullable: false
+      - type: integer
+        name: b
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - a
+      indexes:
+      - unique: true
+        parts:
+        - path: a
+          type: integer
+          is_nullable: false
+        name: a
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    space_simple_shard_key_hist:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: name
+        is_nullable: true
+      - type: integer
+        name: sysOp
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    col1_transactions_history:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        unique: false
+        name: col1
+        is_nullable: false
+      - type: integer
+        name: amount
+        is_nullable: true
+      - type: integer
+        name: account_id
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: integer
+        name: sys_to
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - col1
+      indexes:
+      - type: TREE
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        unique: true
+      - unique: false
+        parts:
+        - path: col1
+          type: integer
+          is_nullable: false
+        name: col1
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    cola_colb_accounts_history:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: cola
+        is_nullable: false
+      - type: integer
+        name: colb
+        is_nullable: false
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: integer
+        name: sys_to
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - cola
+      - colb
+      indexes:
+      - unique: true
+        parts:
+        - path: cola
+          type: integer
+          is_nullable: false
+        - path: colb
+          type: integer
+          is_nullable: false
+        name: cola
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    testing_space_hist:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: name
+        is_nullable: false
+      - type: integer
+        name: product_units
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - id
+      - name
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          type: integer
+          is_nullable: false
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    space_for_breake_cache:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: number
+        name: field1
+        is_nullable: false
+      - type: number
+        name: field2
+        is_nullable: false
+      - type: string
+        name: field3
+        is_nullable: false
+      - type: boolean
+        name: field4
+        is_nullable: false
+      - type: integer
+        name: field5
+        is_nullable: false
+      - type: integer
+        name: field6
+        is_nullable: false
+      - type: integer
+        name: field7
+        is_nullable: false
+      - type: integer
+        name: field8
+        is_nullable: false
+      - type: integer
+        name: field9
+        is_nullable: false
+      - type: string
+        name: field10
+        is_nullable: false
+      - type: string
+        name: field11
+        is_nullable: false
+      - type: integer
+        name: field12
+        is_nullable: false
+      - type: number
+        name: field13
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: integer
+        name: id
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: true
+          type: unsigned
+        name: bucket_id
+        type: TREE
+      is_local: false
+      sharding_key:
+      - id
+      engine: vinyl
+    cola_accounts_actual:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: integer
+        name: cola
+        is_nullable: false
+      - type: integer
+        name: colb
+        is_nullable: true
+      - type: integer
+        name: sys_from
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: true
+      temporary: false
+      engine: memtx
+      is_local: false
+      sharding_key:
+      - cola
+      indexes:
+      - unique: true
+        parts:
+        - path: cola
+          type: integer
+          is_nullable: false
+        name: cola
+        type: TREE
+      - unique: false
+        parts:
+        - path: bucket_id
+          type: unsigned
+          is_nullable: true
+        name: bucket_id
+        type: TREE
+    dtm__marketing__sales_and_stores_history:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: region
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: false
+      - type: number
+        name: sys_from
+        is_nullable: false
+      - type: number
+        name: sys_to
+        is_nullable: true
+      - type: number
+        name: sys_op
+        is_nullable: false
+      temporary: false
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: integer
+        - path: region
+          is_nullable: false
+          type: string
+        - path: sys_from
+          is_nullable: false
+          type: number
+        type: TREE
+        name: id
+      - unique: false
+        parts:
+        - path: sys_from
+          is_nullable: false
+          type: number
+        type: TREE
+        name: x_sys_from
+      - unique: false
+        parts:
+        - path: sys_to
+          is_nullable: true
+          type: number
+        - path: sys_op
+          is_nullable: false
+          type: number
+        type: TREE
+        name: x_sys_to
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: false
+          type: unsigned
+        type: TREE
+        name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+      - id
+    dtm__marketing__sales_and_stores_actual:
+      format:
+      - type: integer
+        name: id
+        is_nullable: false
+      - type: string
+        name: region
+        is_nullable: false
+      - type: unsigned
+        name: bucket_id
+        is_nullable: false
+      - type: number
+        name: sys_from
+        is_nullable: false
+      - type: number
+        name: sys_to
+        is_nullable: true
+      - type: number
+        name: sys_op
+        is_nullable: false
+      temporary: false
+      indexes:
+      - unique: true
+        parts:
+        - path: id
+          is_nullable: false
+          type: integer
+        - path: region
+          is_nullable: false
+          type: string
+        - path: sys_from
+          is_nullable: false
+          type: number
+        type: TREE
+        name: id
+      - unique: false
+        parts:
+        - path: sys_from
+          is_nullable: false
+          type: number
+        type: TREE
+        name: x_sys_from
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: false
+          type: unsigned
+        type: TREE
+        name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+      - id
+    SPACE1:
+      is_local: false
+      temporary: false
+      engine: vinyl
+      format:
+        - name: bucket_id
+          type: unsigned
+          is_nullable: true
+        - name: yearquarter
+          type: integer
+          is_nullable: false
+        - name: a_to
+          type: string
+          is_nullable: false
+        - name: b_to
+          type: string
+          is_nullable: false
+        - name: a_from
+          type: string
+          is_nullable: false
+        - name: b_from
+          type: string
+          is_nullable: false
+        - name: c_by_ab
+          type: decimal
+          is_nullable: true
+        - name: d_by_ab
+          type: decimal
+          is_nullable: true
+        - name: d_c_diff
+          type: decimal
+          is_nullable: true
+        - name: field1
+          type: string
+          is_nullable: true
+        - name: field2
+          type: string
+          is_nullable: true
+      indexes:
+        - unique: true
+          name: primary
+          parts:
+            - path: yearquarter
+              is_nullable: false
+              type: integer
+            - path: a_to
+              is_nullable: false
+              type: string
+            - path: b_to
+              is_nullable: false
+              type: string
+            - path: a_from
+              is_nullable: false
+              type: string
+            - path: b_from
+              is_nullable: false
+              type: string
+          type: TREE
+        - unique: false
+          name: ab_from
+          parts:
+            - path: yearquarter
+              is_nullable: false
+              type: integer
+            - path: a_from
+              is_nullable: false
+              type: string
+            - path: b_from
+              is_nullable: false
+              type: string
+          type: TREE
+        - unique: false
+          name: bucket_id
+          parts:
+            - path: bucket_id
+              type: unsigned
+              is_nullable: true
+          type: TREE
+      sharding_key:
+        - a_to
+        - a_from
+    SPACE2:
+      engine: vinyl
+      is_local: false
+      temporary: false
+      format:
+        - name: bucket_id
+          type: unsigned
+          is_nullable: true
+        - name: id
+          type: integer
+          is_nullable: false
+        - name: yearquarter
+          type: integer
+          is_nullable: false
+        - name: a
+          type: string
+          is_nullable: false
+        - name: b
+          type: string
+          is_nullable: false
+        - name: name
+          type: string
+          is_nullable: true
+        - name: field1
+          type: integer
+          is_nullable: true
+        - name: field2
+          type: decimal
+          is_nullable: true
+        - name: field3
+          type: string
+          is_nullable: true
+        - name: field4
+          type: integer
+          is_nullable: true
+        - name: field5
+          type: string
+          is_nullable: true
+        - name: field6
+          type: decimal
+          is_nullable: true
+        - name: field7
+          type: decimal
+          is_nullable: true
+        - name: field8
+          type: decimal
+          is_nullable: true
+        - name: field9
+          type: integer
+          is_nullable: true
+        - name: count_from
+          type: integer
+          is_nullable: true
+        - name: count_to
+          type: integer
+          is_nullable: true
+      indexes:
+        - unique: true
+          parts:
+            - path: id
+              is_nullable: false
+              type: integer
+            - path: yearquarter
+              is_nullable: false
+              type: integer
+          type: TREE
+          name: primary
+        - unique: true
+          parts:
+            - path: a
+              is_nullable: false
+              type: string
+            - path: b
+              is_nullable: false
+              type: string
+            - path: yearquarter
+              is_nullable: false
+              type: integer
+          type: TREE
+          name: ab
+        - unique: false
+          parts:
+            - path: bucket_id
+              is_nullable: true
+              type: unsigned
+          type: TREE
+          name: bucket_id
+      sharding_key:
+        - id
+    null_t:
+      format:
+      - type: integer
+        name: na
+        is_nullable: false
+      - type: integer
+        name: nb
+        is_nullable: true
+      - type: integer
+        name: nc
+        is_nullable: true
+      - type: unsigned
+        name: bucket_id
+        is_nullable: false
+      temporary: false
+      indexes:
+      - unique: true
+        parts:
+        - path: na
+          is_nullable: false
+          type: integer
+        type: TREE
+        name: id
+      - unique: false
+        parts:
+        - path: bucket_id
+          is_nullable: false
+          type: unsigned
+        type: TREE
+        name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+      - na
+    unique_secondary_index:
+      format:
+        - type: integer
+          name: ua
+          is_nullable: false
+        - type: integer
+          name: ub
+          is_nullable: false
+        - type: integer
+          name: uc
+          is_nullable: false
+        - type: unsigned
+          name: bucket_id
+          is_nullable: false
+      temporary: false
+      indexes:
+        - unique: true
+          parts:
+            - path: ua
+              is_nullable: false
+              type: integer
+          type: TREE
+          name: primary
+        - unique: true
+          parts:
+            - path: uc
+              is_nullable: false
+              type: integer
+          type: TREE
+          name: secondary
+        - unique: false
+          parts:
+            - path: bucket_id
+              is_nullable: false
+              type: unsigned
+          type: TREE
+          name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+        - ub
+    double_t:
+      format:
+        - type: integer
+          name: id
+          is_nullable: false
+        - type: double
+          name: r
+          is_nullable: false
+        - type: decimal
+          name: dec
+          is_nullable: false
+        - type: unsigned
+          name: bucket_id
+          is_nullable: false
+      temporary: false
+      indexes:
+        - unique: true
+          parts:
+            - path: id
+              is_nullable: false
+              type: integer
+          type: TREE
+          name: primary
+        - unique: false
+          parts:
+            - path: bucket_id
+              is_nullable: false
+              type: unsigned
+          type: TREE
+          name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+        - id
+    uuid_t:
+      format:
+        - type: uuid
+          name: id
+          is_nullable: false
+        - type: string
+          name: name
+          is_nullable: false
+        - type: unsigned
+          name: bucket_id
+          is_nullable: false
+      temporary: false
+      indexes:
+        - unique: true
+          parts:
+            - path: id
+              is_nullable: false
+              type: uuid
+          type: TREE
+          name: primary
+        - unique: false
+          parts:
+            - path: bucket_id
+              is_nullable: false
+              type: unsigned
+          type: TREE
+          name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+        - id
+    datetime_t:
+      format:
+        - type: datetime
+          name: dt
+          is_nullable: false
+        - type: integer
+          name: a
+          is_nullable: false
+        - type: unsigned
+          name: bucket_id
+          is_nullable: false
+      temporary: false
+      indexes:
+        - unique: true
+          parts:
+            - path: dt
+              is_nullable: false
+              type: datetime
+          type: TREE
+          name: primary
+        - unique: false
+          parts:
+            - path: bucket_id
+              is_nullable: false
+              type: unsigned
+          type: TREE
+          name: bucket_id
+      is_local: false
+      engine: memtx
+      sharding_key:
+        - dt
