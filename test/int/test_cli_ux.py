@@ -574,3 +574,30 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
+
+
+def test_picodata_tarantool(cluster: Cluster):
+    test_lua = os.path.join(cluster.data_dir, "test.lua")
+    with open(test_lua, "w") as f:
+        print(
+            """
+            print('stdout check')
+            file, err = io.open('output.txt', 'w')
+            assert(err == nil)
+            assert(file:write('it worked!'))
+            assert(file:close())
+        """,
+            file=f,
+        )
+
+    stdout = subprocess.check_output(
+        [cluster.binary_path, "tarantool", "--", test_lua],
+        cwd=cluster.data_dir,
+    )
+    assert stdout == b"stdout check\n"
+
+    output_txt = os.path.join(cluster.data_dir, "output.txt")
+    with open(output_txt, "r") as f:
+        result = f.read()
+
+    assert result == "it worked!"

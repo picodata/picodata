@@ -41,8 +41,8 @@ where
     let trampoline = trampoline::<E, F>;
     let trampoline_arg = Box::<F>::into_raw(Box::new(f)).cast();
 
-    // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
-    // make sure `tt_args` outlives `argv`, because the compiler is not
+    // XXX: `argv` is a vec of pointers to data owned by `args`, so
+    // make sure `args` outlives `argv`, because the compiler is not
     // gonna do that for you
     let argv: Vec<_> = args.iter().map(|a| a.as_ref().as_ptr()).collect();
 
@@ -59,7 +59,23 @@ where
 /// Run tarantool's main entry point with cmdline args.
 /// See `tarantool_main` and [`crate::tarantool::main`].
 pub fn main(args: args::Tarantool) -> ! {
-    main_cb(&args.tt_args().unwrap(), || {
-        Ok::<_, std::convert::Infallible>(())
-    })
+    let tt_args = args.tt_args().unwrap();
+
+    // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
+    // make sure `tt_args` outlives `argv`, because the compiler is not
+    // gonna do that for you
+    let argv: Vec<_> = tt_args.iter().map(|a| a.as_ref().as_ptr()).collect();
+
+    let rc = unsafe {
+        crate::tarantool::main(
+            argv.len() as _,
+            argv.as_ptr() as _,
+            // This is needed because of a special hack in our tarantool fork.
+            // Without it executing a lua file would not work.
+            None,
+            std::ptr::null_mut(),
+        )
+    };
+
+    std::process::exit(rc);
 }
