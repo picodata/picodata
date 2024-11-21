@@ -11,6 +11,3 @@
 [submodule "http"]
 	path = http
 	url = ../http.git
-[submodule "sbroad"]
-	path = sbroad
-	url = ../sbroad.git
