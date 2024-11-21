@@ -273,7 +273,6 @@ lint:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
-  needs: [build-base-image]
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
