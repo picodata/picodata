@@ -145,7 +145,6 @@ build-base-image:
     RUST_BACKTRACE: full
     KUBERNETES_CPU_REQUEST: 6
     KUBERNETES_MEMORY_REQUEST: "6Gi"
-  needs: [build-base-image]
   before_script:
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
     # but it doesn't imply fetching tags. We clone them manually with the
