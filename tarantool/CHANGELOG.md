@@ -13,6 +13,8 @@
 
 ### Fixed
 - `network::client::tcp::TcpStream` does not close underlying fd anymore. Now fd will be closed only when the last copy of tcp stream is dropped.
+- `network::protocol::codec::Header::encode` will not truncate to `u8` an
+  `network::protocol::codec::IProtoType` integer from an outside stream at decoding.
 
 ### Deprecated
 - `network::client::tcp::UnsafeSendSyncTcpStream` is now deprected. `network::client::tcp::TcpStream` should be used instead.

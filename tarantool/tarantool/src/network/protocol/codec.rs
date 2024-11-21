@@ -405,7 +405,7 @@ impl Header {
     pub fn encode(&self, stream: &mut impl Write) -> Result<(), Error> {
         rmp::encode::write_map_len(stream, 2)?;
         rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
-        rmp::encode::write_pfix(stream, self.iproto_type as u8)?;
+        rmp::encode::write_uint(stream, self.iproto_type as _)?;
         rmp::encode::write_pfix(stream, SYNC)?;
         rmp::encode::write_uint(stream, self.sync.0)?;
         Ok(())
