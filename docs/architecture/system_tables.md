@@ -4,7 +4,7 @@
 Picodata, используемые для служебных нужд. Перечисленные системные
 таблицы являются глобальными.
 
-Описание соответствует версии Picodata `24.7.0-21-g7918791e`.
+Описание соответствует версии Picodata `24.7.0-96-g0a5bc5c3`.
 
 ## Описание схемы данных {: #schema }
 
@@ -188,6 +188,7 @@ SYSTEM].
 Индексы:
 
 * `_pico_instance_name` (unique), parts: `[name]`
+* `_pico_instance_uuid` (unique), parts: `[uuid]`
 * `_pico_instance_raft_id` (unique), parts: `[raft_id]`
 * `_pico_instance_replicaset_name` (non-unique), parts: `[replicaset_name]`
 
