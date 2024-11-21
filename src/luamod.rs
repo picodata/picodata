@@ -755,6 +755,7 @@ pub(crate) fn setup() {
     struct RaftLogOpts {
         justify_contents: Option<Justify>,
         max_width: Option<usize>,
+        remote: Option<String>,
     }
     luamod_set(
         &l,
@@ -778,6 +779,8 @@ pub(crate) fn setup() {
             1. opts (table)
                 - justify_contents (string), one of 'center' | 'left' | 'right', default: 'center'
                 - max_width (number), default for remote context: 80
+                - remote (string), address of a remote picodata instance from
+                  which the _raft_log space contents will be fetched.
 
         Returns:
 
@@ -791,9 +794,11 @@ pub(crate) fn setup() {
             |opts: Option<RaftLogOpts>| -> traft::Result<Option<Vec<String>>> {
                 let mut justify_contents = Default::default();
                 let mut opts_max_width = None;
+                let mut address = None;
                 if let Some(opts) = opts {
                     justify_contents = opts.justify_contents.unwrap_or_default();
                     opts_max_width = opts.max_width;
+                    address = opts.remote;
                 }
 
                 let remote_ctx: bool =
@@ -812,10 +817,22 @@ pub(crate) fn setup() {
                 let [index, term, contents] = header;
                 let mut rows = vec![];
                 let mut col_widths = header.map(|h| h.len());
-                let node = traft::node::global()?;
-                let entries = node
-                    .all_traft_entries()
-                    .map_err(|e| traft::error::Error::Other(Box::new(e)))?;
+
+                let entries;
+                if let Some(address) = &address {
+                    let f = crate::rpc::network_call_raw(
+                        address,
+                        "LUA",
+                        &["return box.space._raft_log:select()"],
+                    );
+                    entries = fiber::block_on(f)?;
+                } else {
+                    let node = traft::node::global()?;
+                    entries = node
+                        .all_traft_entries()
+                        .map_err(|e| traft::error::Error::Other(Box::new(e)))?;
+                }
+
                 for entry in entries {
                     let row = [
                         entry.index.to_string(),
