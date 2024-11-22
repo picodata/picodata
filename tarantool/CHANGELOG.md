@@ -1,5 +1,11 @@
 # Change Log
 
+# [?.?.?] Unreleased
+
+### Added
+- `network::client::tcp::TcpStream` not supports async connection, provided with `connect_async` and `connect_timeout_async` methods
+
+
 
 # [6.0.0] Nov 20 2024
 

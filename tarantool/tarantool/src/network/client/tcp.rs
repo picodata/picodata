@@ -16,15 +16,17 @@
 //! # };
 //! ```
 
-use std::cell::Cell;
+use std::cell::{self, Cell};
 use std::ffi::{CString, NulError};
-use std::io;
+use std::future::{self};
 use std::mem::{self, MaybeUninit};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::rc::{self, Rc};
 use std::task::{Context, Poll};
 use std::time::Duration;
+use std::{io, marker, vec};
 
 #[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
@@ -34,6 +36,7 @@ use futures::{AsyncRead, AsyncWrite};
 use crate::ffi::tarantool as ffi;
 use crate::fiber;
 use crate::fiber::r#async::context::ContextExt;
+use crate::fiber::r#async::timeout::{self, IntoTimeout};
 use crate::time::Instant;
 
 #[derive(thiserror::Error, Debug)]
@@ -51,6 +54,54 @@ pub enum Error {
     WriteClosed,
     #[error("connect timeout")]
     Timeout,
+}
+
+fn cvt(t: libc::c_int) -> io::Result<libc::c_int> {
+    if t == -1 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(t)
+    }
+}
+
+/// A wrapper around a raw file descriptor, which automatically closes the
+/// descriptor if dropped.
+struct AutoCloseFd(RawFd);
+
+impl AsRawFd for AutoCloseFd {
+    #[inline(always)]
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
+impl FromRawFd for AutoCloseFd {
+    #[inline(always)]
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self(fd)
+    }
+}
+
+impl IntoRawFd for AutoCloseFd {
+    #[inline(always)]
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.0;
+        std::mem::forget(self);
+        fd
+    }
+}
+
+impl Drop for AutoCloseFd {
+    fn drop(&mut self) {
+        // SAFETY: Safe as long as we only store open file descriptors
+        let rc = unsafe { ffi::coio_close(self.0) };
+        if rc != 0 {
+            crate::say_error!(
+                "failed closing socket descriptor: {}",
+                io::Error::last_os_error()
+            );
+        }
+    }
 }
 
 /// Async TcpStream based on fibers and coio.
@@ -98,84 +149,101 @@ impl TcpStream {
     /// This functions makes the fiber **yield**.
     pub fn connect_timeout(url: &str, port: u16, timeout: Duration) -> Result<Self, Error> {
         let deadline = fiber::clock().saturating_add(timeout);
-
-        // SAFETY: it is just simple sys call
-        let (v4_addrs, v6_addrs) = unsafe { resolve_addr(url, port, timeout.as_secs_f64())? };
-
         let mut last_error = None;
 
-        for v4_addr in v4_addrs {
-            match Self::connect_single(LibcSocketAddr::V4(v4_addr), deadline) {
+        for addr in resolve_addr(url, port, timeout.as_secs_f64())? {
+            match Self::connect_single((&addr).into(), deadline) {
                 Ok(stream) => {
                     return Ok(stream);
                 }
                 Err(e) => last_error = Some(e),
             }
         }
-
-        for v6_addr in v6_addrs {
-            match Self::connect_single(LibcSocketAddr::V6(v6_addr), deadline) {
-                Ok(stream) => {
-                    return Ok(stream);
-                }
-                Err(e) => last_error = Some(e),
-            }
+        let Some(error) = last_error else {
+            return Err(Error::ResolveAddress(url.into()));
+        };
+        if io::ErrorKind::TimedOut == error.kind() {
+            return Err(Error::Timeout);
         }
-
-        if let Some(error) = last_error {
-            if let io::ErrorKind::TimedOut = error.kind() {
-                Err(Error::Timeout)
-            } else {
-                Err(Error::Connect {
-                    error,
-                    address: format!("{url}:{port}"),
-                })
-            }
-        } else {
-            Err(Error::ResolveAddress(url.into()))
-        }
+        Err(Error::Connect {
+            error,
+            address: format!("{url}:{port}"),
+        })
     }
 
-    fn connect_single(socket_addr: LibcSocketAddr, deadline: Instant) -> io::Result<Self> {
-        let (kind, addr, addr_len);
-        match &socket_addr {
-            LibcSocketAddr::V4(v4) => {
-                kind = libc::AF_INET;
-                addr = v4 as *const libc::sockaddr_in as *const libc::sockaddr;
-                addr_len = mem::size_of::<libc::sockaddr_in>();
-            }
-            LibcSocketAddr::V6(v6) => {
-                kind = libc::AF_INET6;
-                addr = v6 as *const libc::sockaddr_in6 as *const libc::sockaddr;
-                addr_len = mem::size_of::<libc::sockaddr_in6>();
+    fn connect_single(addr_info: AddrInfo<'_>, deadline: Instant) -> io::Result<Self> {
+        // SAFETY: safe cause addr_info which is passed bound with it's SockAddr lifetime
+        let fd = unsafe { connect_socket(&addr_info)? };
+        let timeout = deadline.duration_since(fiber::clock());
+        crate::coio::coio_wait(fd.as_raw_fd(), ffi::CoIOFlags::WRITE, timeout.as_secs_f64())?;
+        check_socket_error(&fd)?;
+        Ok(Self::from(fd))
+    }
+
+    pub async fn connect_async(url: &str, port: u16) -> Result<Self, Error> {
+        Self::connect_timeout_async(url, port, Duration::MAX).await
+    }
+
+    pub async fn connect_timeout_async(
+        url: &str,
+        port: u16,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
+        let deadline = fiber::clock().saturating_add(timeout);
+        let mut last_error = None;
+        for addr in resolve_addr(url, port, timeout.as_secs_f64())? {
+            match Self::connect_single_async((&addr).into())
+                .deadline(deadline)
+                .await
+            {
+                Ok(stream) => {
+                    return Ok(stream);
+                }
+                Err(e) => last_error = Some(e),
             }
         }
-        let fd = nonblocking_socket(kind)?;
+        let Some(error) = last_error else {
+            return Err(Error::ResolveAddress(url.into()));
+        };
+        Err(match error {
+            timeout::Error::Expired => Error::Timeout,
+            timeout::Error::Failed(err) => Error::Connect {
+                error: err,
+                address: format!("{url}:{port}"),
+            },
+        })
+    }
 
-        let res = cvt(unsafe { libc::connect(fd.0, addr, addr_len as _) });
-        if let Err(io_error) = res {
-            if io_error.raw_os_error() != Some(libc::EINPROGRESS) {
-                return Err(io_error);
-            } else {
-                // Need to block the fiber until the connection result is known
+    async fn connect_single_async(addr_info: AddrInfo<'_>) -> io::Result<Self> {
+        // SAFETY: safe cause addr_info which is passed bound with it's SockAddr lifetime
+        let fd = unsafe { connect_socket(&addr_info)? };
+        // Cause we're inside FnMut we can't use AutoCloseFd
+        let raw_fd = fd.into_raw_fd();
+        let f = future::poll_fn(|cx| {
+            if let Err(e) = check_socket_error(&raw_fd) {
+                // SAFETY: this fd is still valid and was not closed.
+                unsafe { AutoCloseFd::from_raw_fd(raw_fd) };
+                return Poll::Ready(Err(e));
             }
+            // We use getpeername to check the connection state.
+            // If the call is successful (rc = 0) then the connection is established.
+            // We don't care about the actual peer name.
+            // SAFERY: this value is not used further.
+            let mut dummy = std::mem::MaybeUninit::<libc::sockaddr>::uninit();
+            let mut dummy_size = std::mem::size_of_val(&dummy) as _;
+            // SAFERY: pointers and valid within thi ffi call so it's safe.
+            let rc = unsafe { libc::getpeername(raw_fd, dummy.as_mut_ptr(), &mut dummy_size) };
+            if rc == 0 {
+                return Poll::Ready(Ok(Self::from(raw_fd)));
+            }
+            // SAFETY: safe as long as this future is executed by `fiber::block_on` async executor.
+            unsafe {
+                ContextExt::set_coio_wait(cx, raw_fd, ffi::CoIOFlags::WRITE);
+            }
+            Poll::Pending
+        });
 
-            let timeout = deadline.duration_since(fiber::clock());
-            crate::coio::coio_wait(fd.0, ffi::CoIOFlags::WRITE, timeout.as_secs_f64())?;
-
-            // This is safe, because fd is still open.
-            unsafe { check_socket_error(fd.0)? };
-
-            // If no error, then connection is established
-        };
-
-        // If this allocation panics the fd will still be closed
-        let result = Self {
-            fd: Rc::new(Cell::new(None)),
-        };
-        // Now TcpStream owns the fd and takes responsibility of closing it.
-        result.fd.set(Some(fd.into_inner()));
-        return Ok(result);
+        f.await
     }
 
     #[inline(always)]
@@ -202,173 +270,18 @@ impl TcpStream {
     }
 }
 
-fn cvt(t: libc::c_int) -> io::Result<libc::c_int> {
-    if t == -1 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(t)
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[inline(always)]
-fn nonblocking_socket(kind: libc::c_int) -> io::Result<AutoCloseFd> {
-    let fd = unsafe {
-        cvt(libc::socket(
-            kind,
-            libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
-            0,
-        ))?
-    };
-
-    let fd = AutoCloseFd(fd);
-
-    Ok(fd)
-}
-
-#[cfg(target_os = "macos")]
-fn nonblocking_socket(kind: libc::c_int) -> io::Result<AutoCloseFd> {
-    // This is safe because `libc::socket` doesn't do undefined behavior
-    let fd = unsafe { cvt(libc::socket(kind, libc::SOCK_STREAM, 0))? };
-    let fd = AutoCloseFd(fd);
-
-    // This is safe because fd is open.
-    unsafe {
-        cvt(libc::ioctl(fd.0, libc::FIOCLEX))?;
-    }
-
-    // This is safe because fd is open and the opt_value buffer specification is valid.
-    unsafe {
-        let opt_value: libc::c_int = 1;
-        cvt(libc::setsockopt(
-            fd.0,
-            libc::SOL_SOCKET,
-            libc::SO_NOSIGPIPE,
-            &opt_value as *const _ as *const libc::c_void,
-            mem::size_of_val(&opt_value) as _,
-        ))?;
-    }
-
-    // This is safe because fd is open.
-    unsafe {
-        cvt(libc::ioctl(fd.0, libc::FIONBIO, &mut 1))?;
-    }
-
-    Ok(fd)
-}
-
-/// A wrapper around a raw file descriptor, which automatically closes the
-/// descriptor if dropped.
-/// Use [`Self::into_inner`] to disable the automatic close on drop.
-///
-/// TODO: consider using [`std::os::fd::OwnedFd`] instead
-struct AutoCloseFd(RawFd);
-
-impl AutoCloseFd {
-    #[inline(always)]
-    fn into_inner(self) -> RawFd {
-        let fd = self.0;
-        std::mem::forget(self);
-        fd
-    }
-}
-
-impl Drop for AutoCloseFd {
-    fn drop(&mut self) {
-        // Safe as long as we only store open file descriptors
-        let rc = unsafe { libc::close(self.0) };
-        if rc != 0 {
-            crate::say_error!(
-                "failed closing socket descriptor: {}",
-                io::Error::last_os_error()
-            );
+impl From<RawFd> for TcpStream {
+    fn from(value: RawFd) -> Self {
+        Self {
+            fd: rc::Rc::new(cell::Cell::new(Some(value))),
         }
     }
 }
 
-unsafe fn check_socket_error(fd: RawFd) -> io::Result<()> {
-    let mut val: libc::c_int = mem::zeroed();
-    let mut val_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
-    cvt(libc::getsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_ERROR,
-        &mut val as *mut libc::c_int as *mut _,
-        &mut val_len,
-    ))?;
-    match val {
-        0 => Ok(()),
-        v => Err(io::Error::from_raw_os_error(v as i32)),
+impl From<AutoCloseFd> for TcpStream {
+    fn from(value: AutoCloseFd) -> Self {
+        Self::from(value.into_raw_fd())
     }
-}
-
-unsafe fn resolve_addr(
-    url: &str,
-    port: u16,
-    timeout: f64,
-) -> Result<(Vec<libc::sockaddr_in>, Vec<libc::sockaddr_in6>), Error> {
-    let mut hints = MaybeUninit::<libc::addrinfo>::zeroed().assume_init();
-    hints.ai_family = libc::AF_UNSPEC;
-    hints.ai_socktype = libc::SOCK_STREAM;
-
-    let host = CString::new(url).map_err(Error::ConstructCString)?;
-    let addrinfo = match crate::coio::getaddrinfo(&host, None, &hints, timeout) {
-        Ok(v) => v,
-        Err(e) => {
-            match e {
-                crate::error::Error::IO(ref ee) => {
-                    if let io::ErrorKind::TimedOut = ee.kind() {
-                        return Err(Error::Timeout);
-                    }
-                }
-                crate::error::Error::Tarantool(ref ee) => {
-                    if let Some(ref kind) = ee.error_type {
-                        let kind: &str = kind;
-                        if kind == "TimedOut" {
-                            return Err(Error::Timeout);
-                        }
-                    }
-                }
-                _ => (),
-            }
-            crate::say_error!("coio_getaddrinfo failed: {e}");
-            return Err(Error::ResolveAddress(url.into()));
-        }
-    };
-
-    let mut ipv4_addresses = Vec::with_capacity(2);
-    let mut ipv6_addresses = Vec::with_capacity(2);
-    let mut current = addrinfo;
-
-    while !current.is_null() {
-        let ai = *current;
-        match ai.ai_family {
-            libc::AF_INET => {
-                let mut sockaddr = *(ai.ai_addr as *mut libc::sockaddr_in);
-                sockaddr.sin_port = port.to_be();
-                ipv4_addresses.push(sockaddr);
-            }
-            libc::AF_INET6 => {
-                let mut sockaddr = *(ai.ai_addr as *mut libc::sockaddr_in6);
-                sockaddr.sin6_port = port.to_be();
-                ipv6_addresses.push(sockaddr);
-            }
-            af => {
-                libc::freeaddrinfo(addrinfo);
-                return Err(Error::UnknownAddressFamily(af as u16));
-            }
-        }
-        current = ai.ai_next;
-    }
-
-    libc::freeaddrinfo(addrinfo);
-
-    Ok((ipv4_addresses, ipv6_addresses))
-}
-
-enum LibcSocketAddr {
-    V4(libc::sockaddr_in),
-    V6(libc::sockaddr_in6),
 }
 
 impl AsyncWrite for TcpStream {
@@ -484,6 +397,224 @@ impl Drop for TcpStream {
     }
 }
 
+/// Resolves provided url and port to a sequence of sock addrs.
+///
+/// # Returns
+///
+/// A vector of resolved addrs where v4 go first.
+fn resolve_addr(url: &str, port: u16, timeout: f64) -> Result<Vec<SockAddr>, Error> {
+    // SAFETY: value is not used inled hints are set
+    let mut hints = unsafe { MaybeUninit::<libc::addrinfo>::zeroed().assume_init() };
+
+    hints.ai_family = libc::AF_UNSPEC;
+    hints.ai_socktype = libc::SOCK_STREAM;
+
+    let host = CString::new(url).map_err(Error::ConstructCString)?;
+
+    // SAFETY: safe as long as we are in tarantool runtime
+    let addrinfo = match unsafe { crate::coio::getaddrinfo(&host, None, &hints, timeout) } {
+        Ok(v) => v,
+        Err(e) => {
+            match e {
+                crate::error::Error::IO(ref ee) => {
+                    if let io::ErrorKind::TimedOut = ee.kind() {
+                        return Err(Error::Timeout);
+                    }
+                }
+                crate::error::Error::Tarantool(ref ee) => {
+                    if let Some(ref kind) = ee.error_type {
+                        let kind: &str = kind;
+                        if kind == "TimedOut" {
+                            return Err(Error::Timeout);
+                        }
+                    }
+                }
+                _ => (),
+            }
+            crate::say_error!("coio_getaddrinfo failed: {e}");
+            return Err(Error::ResolveAddress(url.into()));
+        }
+    };
+
+    let mut result = Vec::with_capacity(4);
+    let mut current = addrinfo;
+
+    while !current.is_null() {
+        // SAFETY: we are dereferencing pointers which were allocated by libc so it's fine
+        let ai = unsafe { *current };
+        match ai.ai_family {
+            libc::AF_INET => {
+                // SAFETY: we are dereferencing pointers which were allocated by libc so it's fine
+                let mut sockaddr = unsafe { *(ai.ai_addr as *mut libc::sockaddr_in) };
+                sockaddr.sin_port = port.to_be();
+                result.push(SockAddr::V4(sockaddr));
+            }
+            libc::AF_INET6 => {
+                // SAFETY: we are dereferencing pointers which were allocated by libc so it's fine
+                let mut sockaddr = unsafe { *(ai.ai_addr as *mut libc::sockaddr_in6) };
+                sockaddr.sin6_port = port.to_be();
+                result.push(SockAddr::V6(sockaddr));
+            }
+            af => {
+                // SAFETY: value was allocated by libc so it's fine
+                unsafe { libc::freeaddrinfo(addrinfo) };
+                return Err(Error::UnknownAddressFamily(af as u16));
+            }
+        }
+        current = ai.ai_next;
+    }
+
+    // SAFETY: value was allocated by libc so it's fine
+    unsafe { libc::freeaddrinfo(addrinfo) };
+
+    // Sort resolved addrs to prefer v4
+    result.sort();
+
+    Ok(result)
+}
+
+/// # Safety
+/// addr_info.add should be a valid
+unsafe fn connect_socket(addr_info: &AddrInfo<'_>) -> io::Result<AutoCloseFd> {
+    let fd = nonblocking_socket(addr_info.kind)?;
+    let Err(e) = cvt(libc::connect(
+        fd.as_raw_fd(),
+        addr_info.addr,
+        addr_info.addr_len,
+    )) else {
+        return Ok(fd);
+    };
+    if e.raw_os_error() != Some(libc::EINPROGRESS) {
+        return Err(e);
+    }
+    Ok(fd)
+}
+
+#[cfg(target_os = "linux")]
+#[inline(always)]
+fn nonblocking_socket(kind: libc::c_int) -> io::Result<AutoCloseFd> {
+    // SAFETY: This is safe because `libc::socket` doesn't do undefined behavior
+    unsafe {
+        let raw_fd = cvt(libc::socket(
+            kind,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+            0,
+        ))?;
+        let fd = AutoCloseFd::from_raw_fd(raw_fd);
+
+        Ok(fd)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn nonblocking_socket(kind: libc::c_int) -> io::Result<AutoCloseFd> {
+    // SAFETY: This is safe because `libc::socket` doesn't do undefined behavior
+    let fd = unsafe { AutoCloseFd::from_raw_fd(cvt(libc::socket(kind, libc::SOCK_STREAM, 0))?) };
+    // SAFETY: This is safe because fd is open
+    unsafe { cvt(libc::ioctl(fd.as_raw_fd(), libc::FIOCLEX))? };
+    let opt_value = 1;
+    // SAFETY: This is safe because fd is open and the opt_value buffer specification is valid.
+    unsafe {
+        cvt(libc::setsockopt(
+            fd.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_NOSIGPIPE,
+            &opt_value as *const _ as *const libc::c_void,
+            mem::size_of_val(&opt_value) as _,
+        ))?;
+    };
+    // SAFETY: This is safe because fd is open
+    unsafe {
+        cvt(libc::ioctl(fd.as_raw_fd(), libc::FIONBIO, &mut 1))?;
+    };
+    Ok(fd)
+}
+
+fn check_socket_error(fd: &impl AsRawFd) -> io::Result<()> {
+    // SAFETY: passed only to ffi call so it's fine
+    let mut val: libc::c_int = 0;
+    let mut val_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
+    // SAFETY: fd is not closed since it is inside OwnedFd
+    cvt(unsafe {
+        libc::getsockopt(
+            fd.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_ERROR,
+            &mut val as *mut libc::c_int as *mut _,
+            &mut val_len,
+        )
+    })?;
+    match val {
+        0 => Ok(()),
+        v => Err(io::Error::from_raw_os_error(v as i32)),
+    }
+}
+
+#[derive(Debug)]
+enum SockAddr {
+    V4(libc::sockaddr_in),
+    V6(libc::sockaddr_in6),
+}
+
+impl Ord for SockAddr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (SockAddr::V4(_), SockAddr::V6(_)) => std::cmp::Ordering::Less,
+            (SockAddr::V6(_), SockAddr::V4(_)) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+impl PartialOrd for SockAddr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for SockAddr {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (SockAddr::V4(_), SockAddr::V4(_)) | (SockAddr::V6(_), SockAddr::V6(_))
+        )
+    }
+}
+
+impl Eq for SockAddr {}
+
+struct AddrInfo<'a> {
+    kind: libc::c_int,
+    addr: *const libc::sockaddr,
+    addr_len: libc::socklen_t,
+    marker: marker::PhantomData<&'a ()>,
+}
+
+impl<'a> From<&'a SockAddr> for AddrInfo<'a> {
+    fn from(value: &'a SockAddr) -> Self {
+        let (kind, addr, addr_len) = match value {
+            SockAddr::V4(v4) => {
+                let kind = libc::AF_INET;
+                let addr = v4 as *const libc::sockaddr_in as *const libc::sockaddr;
+                let addr_len = mem::size_of::<libc::sockaddr_in>();
+                (kind, addr, addr_len)
+            }
+            SockAddr::V6(v6) => {
+                let kind = libc::AF_INET6;
+                let addr = v6 as *const libc::sockaddr_in6 as *const libc::sockaddr;
+                let addr_len = mem::size_of::<libc::sockaddr_in6>();
+                (kind, addr, addr_len)
+            }
+        };
+        Self {
+            kind,
+            addr,
+            addr_len: addr_len as _,
+            marker: marker::PhantomData::<&'a ()>,
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // UnsafeSendSyncTcpStream
 ////////////////////////////////////////////////////////////////////////////////
@@ -544,7 +675,6 @@ mod tests {
 
     use crate::fiber;
     use crate::fiber::r#async::timeout;
-    use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
@@ -582,15 +712,14 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn get_libc_addrs() {
-        let (addrs_v4, addrs_v6) =
-            unsafe { resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap() };
+        let addrs = resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap();
 
         let mut our_addrs = HashSet::<net::SocketAddr>::new();
-        for v4 in addrs_v4 {
-            our_addrs.insert(to_socket_addr_v4(v4).into());
-        }
-        for v6 in addrs_v6 {
-            our_addrs.insert(to_socket_addr_v6(v6).into());
+        for addr in addrs {
+            match addr {
+                SockAddr::V4(v4) => our_addrs.insert(to_socket_addr_v4(v4).into()),
+                SockAddr::V6(v6) => our_addrs.insert(to_socket_addr_v6(v6).into()),
+            };
         }
 
         let addrs_from_std: HashSet<_> = net::ToSocketAddrs::to_socket_addrs(&("example.org", 80))
@@ -602,15 +731,14 @@ mod tests {
         //
         // check what happens with "localhost"
         //
-        let (addrs_v4, addrs_v6) =
-            unsafe { resolve_addr("localhost", 1337, _10_SEC.as_secs_f64()).unwrap() };
+        let addrs = resolve_addr("localhost", 1337, _10_SEC.as_secs_f64()).unwrap();
 
         let mut our_addrs = HashSet::<net::SocketAddr>::new();
-        for v4 in addrs_v4 {
-            our_addrs.insert(to_socket_addr_v4(v4).into());
-        }
-        for v6 in addrs_v6 {
-            our_addrs.insert(to_socket_addr_v6(v6).into());
+        for addr in addrs {
+            match addr {
+                SockAddr::V4(v4) => our_addrs.insert(to_socket_addr_v4(v4).into()),
+                SockAddr::V6(v6) => our_addrs.insert(to_socket_addr_v6(v6).into()),
+            };
         }
 
         let addrs_from_std: HashSet<_> = net::ToSocketAddrs::to_socket_addrs(&("localhost", 1337))
@@ -622,11 +750,9 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn get_libc_addrs_error() {
-        let err = unsafe {
-            resolve_addr("invalid domain name", 80, _10_SEC.as_secs_f64())
-                .unwrap_err()
-                .to_string()
-        };
+        let err = resolve_addr("invalid domain name", 80, _10_SEC.as_secs_f64())
+            .unwrap_err()
+            .to_string();
 
         assert_eq!(err, "failed to resolve domain name 'invalid domain name'");
     }
@@ -637,14 +763,39 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    fn connect_async() {
+        let _ = fiber::block_on(TcpStream::connect_async("localhost", listen_port())).unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
     fn connect_timeout() {
         let _ = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn connect_timeout_async() {
+        let _ = fiber::block_on(TcpStream::connect_timeout_async(
+            "localhost",
+            listen_port(),
+            _10_SEC,
+        ))
+        .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout() {
         assert!(matches!(
             TcpStream::connect_timeout("example.com", 80, _0_SEC)
+                .err()
+                .unwrap(),
+            Error::Timeout
+        ));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn connect_zero_timeout_async() {
+        assert!(matches!(
+            fiber::block_on(TcpStream::connect_timeout_async("example.com", 80, _0_SEC))
                 .err()
                 .unwrap(),
             Error::Timeout
@@ -806,6 +957,39 @@ mod tests {
                 let mut buf = vec![0; 128];
                 let f1 = timeout::timeout(Duration::from_secs(15), always_pending()).fuse();
                 let f2 = timeout::timeout(_10_SEC, stream.read_exact(&mut buf)).fuse();
+                futures::pin_mut!(f1);
+                futures::pin_mut!(f2);
+                let is_ok = futures::select!(
+                    res = f1 => res.is_ok(),
+                    res = f2 => res.is_ok()
+                );
+                assert!(is_ok);
+            });
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn select_correct_connect_timeout() {
+        {
+            fiber::block_on(async {
+                let f1 = timeout::timeout(_0_SEC, always_pending()).fuse();
+                let f2 =
+                    TcpStream::connect_timeout_async("localhost", listen_port(), _10_SEC).fuse();
+                futures::pin_mut!(f1);
+                futures::pin_mut!(f2);
+                let is_err = futures::select!(
+                    res = f1 => res.is_err(),
+                    res = f2 => res.is_err()
+                );
+                assert!(is_err);
+            });
+        }
+        // Testing with different future timeouting first
+        {
+            fiber::block_on(async {
+                let f1 = timeout::timeout(Duration::from_secs(15), always_pending()).fuse();
+                let f2 =
+                    TcpStream::connect_timeout_async("localhost", listen_port(), _10_SEC).fuse();
                 futures::pin_mut!(f1);
                 futures::pin_mut!(f2);
                 let is_ok = futures::select!(
