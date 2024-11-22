@@ -760,6 +760,7 @@ store-stress-results-for-main:
   rules:
     - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
   stage: stress-test
+  image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG  
   script:
     - |
       tar -czvf sbroad-main-test-results.tgz -C sbroad/sbroad-cartridge/stress-test/ .
