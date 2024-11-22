@@ -625,9 +625,6 @@ fn init_common(
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
 
-    #[cfg(feature = "error_injection")]
-    error_injection::set_from_env();
-
     if let Err(e) = tarantool::set_cfg(cfg) {
         // Tarantool error is taken separately as in `set_cfg`
         // the needed tarantool error turns into lua error.
@@ -826,7 +823,9 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
     tlog!(Info, "joining cluster, peer address: {instance_address}");
 
+    #[allow(unused_mut)]
     let mut version = info::PICODATA_VERSION.to_string();
+    #[cfg(feature = "error_injection")]
     crate::error_injection!("INCOMPATIBLE_PICODATA_VERSION" => {
         version = "24.5.0-82-g79a5b6f0".to_string();
     });

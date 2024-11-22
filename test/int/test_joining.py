@@ -36,6 +36,7 @@ def raft_join(
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
     address = f"nowhere/{instance_name}"
+    picodata_version = instance.call(".proc_version_info")["picodata_version"]
     return instance.call(
         ".proc_raft_join",
         cluster_name,
@@ -44,6 +45,7 @@ def raft_join(
         address,
         failure_domain,
         instance.tier if instance.tier is not None else "default",
+        picodata_version,
         timeout=timeout_seconds,
     )
 

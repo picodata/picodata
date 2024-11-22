@@ -66,26 +66,28 @@ crate::define_rpc_request! {
 
 // compare versions of instances before join
 fn compare_picodata_versions(leader_version: &str, req_version: &str) -> Result<(), Error> {
-    let parse_version = |version: &str| -> (u32, u32) {
+    let parse_version = |version: &str| -> (u8, u8) {
         let parts: Vec<&str> = version.split('.').collect();
-        let major = parts[0].parse::<u32>().unwrap();
-        let minor = parts[1].parse::<u32>().unwrap();
+        let major: u8 = parts[0].parse::<u8>().unwrap();
+        let minor: u8 = parts[1].parse::<u8>().unwrap();
         (major, minor)
     };
 
     let v1 = parse_version(leader_version);
     let v2 = parse_version(req_version);
 
-    if v1.0 == v2.0 && v1.1.abs_diff(v2.1) <= 1 {
-        tlog!(Info, "Join instance with sufficient version")
-    } else {
-        return Err(Error::PicodataVersionMismatch {
-            leader_version: leader_version.to_string(),
-            instance_version: req_version.to_string(),
-        });
+    let majors_are_equal = v1.0 == v2.0;
+    let minor_is_curr_or_next = v1.1.abs_diff(v2.1) <= 1;
+
+    if majors_are_equal && minor_is_curr_or_next {
+        tlog!(Info, "join instance with sufficient version");
+        return Ok(());
     }
 
-    Ok(())
+    return Err(Error::PicodataVersionMismatch {
+        leader_version: leader_version.to_string(),
+        instance_version: req_version.to_string(),
+    });
 }
 
 /// Processes the [`crate::rpc::join::Request`] and appends necessary

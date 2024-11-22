@@ -1,6 +1,8 @@
 use crate::cli::args;
 use crate::cli::tarantool::main_cb_no_exit;
 use crate::config::PicodataConfig;
+#[cfg(feature = "error_injection")]
+use crate::error_injection;
 use crate::ipc;
 use crate::ipc::check_return_code;
 use crate::start;
@@ -34,6 +36,9 @@ pub fn main(mut args: args::Run) -> ! {
     let mut output_entrypoint_pipe = None;
 
     let rc = main_cb_no_exit(&tt_args, || -> Result<()> {
+        #[cfg(feature = "error_injection")]
+        error_injection::set_from_env();
+
         // Note: this function may log something into the tarantool's logger, which means it must be done within
         // the `tarantool::main_cb` otherwise everything will break. The thing is, tarantool's logger needs to know things
         // about the current thread and the way it does that is by accessing the `cord_ptr` global variable. For the main
