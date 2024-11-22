@@ -135,7 +135,14 @@ def test_expel_timeout(cluster: Cluster):
     cli.expect_exact("Enter password for admin:")
     cli.sendline("wrong_password")
 
-    cli.expect_exact("CRITICAL: connect timeout")
+    if sys.platform == "darwin":
+        cli.expect_exact(
+            "CRITICAL: failed to connect to address '10001:3301': "
+            "No route to host (os error 65)"
+        )
+    else:
+        cli.expect_exact("CRITICAL: connect timeout")
+
     cli.expect_exact(pexpect.EOF)
 
 

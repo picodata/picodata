@@ -1,10 +1,10 @@
 import pexpect  # type: ignore
 import pytest
-import sys
 import subprocess
 import hashlib
 import socket
 import time
+import sys
 from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
 from dataclasses import dataclass
 
@@ -147,7 +147,14 @@ def test_connection_refused(binary_path_fixt: str):
     cli.sendline("")
 
     cli.expect_exact("failed to connect to address '127.0.0.1:0'")
-    cli.expect_exact("Connection refused (os error 111)")
+
+    cli.expect_exact(
+        [
+            "Connection refused (os error 111)",
+            "Can't assign requested address (os error 49)",
+        ]
+    )
+
     cli.expect_exact(pexpect.EOF)
 
 
@@ -355,7 +362,12 @@ def test_admin_econnrefused(binary_path_fixt: str):
     cli.expect_exact(
         "Connection via unix socket by path '/dev/null' is not established"
     )
-    cli.expect_exact("Connection refused (os error 111)")
+
+    if sys.platform == "darwin":
+        cli.expect_exact("Socket operation on non-socket (os error 38)")
+    else:
+        cli.expect_exact("Connection refused (os error 111)")
+
     cli.expect_exact(pexpect.EOF)
 
 
@@ -652,11 +664,27 @@ def test_connect_timeout(cluster: Cluster):
         return cli
 
     cli = connect_to("100")
-    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+
+    if sys.platform == "darwin":
+        cli.expect_exact(
+            "Connection Error. Try to reconnect: failed to connect to address '100:3301': "
+            "No route to host (os error 65)"
+        )
+    else:
+        cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1")
-    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+
+    if sys.platform == "darwin":
+        cli.expect_exact(
+            "Connection Error. Try to reconnect: failed to connect to address '192.168.0.1:3301': "
+            "Connection refused (os error 61)"
+        )
+    else:
+        cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002")
