@@ -145,8 +145,8 @@ impl<T: Helper> Console<T> {
                 self.delimiter = Some(custom);
             }
             None => {
-                self.write("Delimiter changed to default");
-                self.delimiter = Some(DELIMITER.to_string());
+                self.write("Delimiter changed to 'enter'");
+                self.delimiter = None;
             }
         }
     }
@@ -164,16 +164,12 @@ impl<T: Helper> Console<T> {
                 Some(&"sql") => ConsoleCommand::SetLanguage(ConsoleLanguage::Sql),
                 _ => ConsoleCommand::Invalid,
             },
-            "delimiter" | "d" | "delim" => {
-                let delimiter = parts.get(2).map(|&d| {
-                    if d == "default" {
-                        DELIMITER.to_string()
-                    } else {
-                        d.to_string()
-                    }
-                });
-                ConsoleCommand::SetDelimiter(delimiter)
-            }
+            "delimiter" | "d" | "delim" => match parts.get(2).copied() {
+                Some("default") => ConsoleCommand::SetDelimiter(Some(DELIMITER.to_string())),
+                Some("enter") => ConsoleCommand::SetDelimiter(None),
+                Some(custom) => ConsoleCommand::SetDelimiter(Some(custom.to_string())),
+                None => ConsoleCommand::Invalid,
+            },
             _ => ConsoleCommand::Invalid,
         }
     }
@@ -201,8 +197,11 @@ impl<T: Helper> Console<T> {
                 self.uncompleted_statement = tail.into();
             }
         } else {
-            self.separated_statements
-                .push_back(std::mem::take(&mut self.uncompleted_statement));
+            // if delimiter is None (enter), treat statement as single command
+            if !self.uncompleted_statement.trim().is_empty() {
+                self.separated_statements
+                    .push_back(std::mem::take(&mut self.uncompleted_statement));
+            }
         }
     }
 

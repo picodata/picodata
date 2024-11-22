@@ -422,6 +422,16 @@ def test_input_with_delimiter(cluster: Cluster):
 
     cli.expect_exact("picodata>")
 
+    # test enter delimiter
+    cli.sendline("\\set delimiter enter")
+    cli.expect_exact("Delimiter changed to 'enter'")
+
+    cli.sendline("CREATE TABLE warehouse (id INTEGER PRIMARY KEY, item TEXT NOT NULL")
+    cli.expect_exact("1")
+
+    cli.sendline("\\set delimiter default")
+    cli.expect_exact("Delimiter changed to ';'")
+
 
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     instance = cluster.add_instance()

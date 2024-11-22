@@ -20,6 +20,8 @@ with the `YY.MINOR.MICRO` scheme.
 of `_pico_instance_raft_id` and `_pico_instance_replicaset_name` now equals
 to 2 and 3.
 
+- New special command `\set delimiter enter` to change the default delimiter to EOL (End Of Line). Introduced a new inner prompt prefix to indicate when input is waiting for a delimiter. EOF is now treated as a delimiter when reading files.
+
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.

@@ -260,6 +260,7 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
         \\lua                            Switch console language to Lua (deprecated)
         \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
         \\set delimiter default          Reset console delimiter to default (;)
+        \\set delimiter enter            Reset console delimiter to enter
 
     Available hotkeys:
         Enter                           Submit the request

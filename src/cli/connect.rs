@@ -221,6 +221,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         \\help                           Show this screen
         \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
         \\set delimiter default          Reset console delimiter to default (;)
+        \\set delimiter enter            Reset console delimiter to enter
 
     Available hotkeys:
         Enter                           Submit the request
