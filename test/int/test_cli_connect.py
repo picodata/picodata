@@ -457,7 +457,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # Change language to SQL works
     cli.sendline("\\sql")

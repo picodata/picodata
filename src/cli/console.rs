@@ -74,7 +74,6 @@ pub struct Console<H: Helper> {
     history_file_path: PathBuf,
     delimiter: Option<String>,
     current_language: ConsoleLanguage,
-    pub fixed_console_language: bool,
     pub mode: Mode,
     // Queue of separated by delimiter statements
     separated_statements: VecDeque<String>,
@@ -88,7 +87,7 @@ impl<T: Helper> Console<T> {
     const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
     const LUA_PROMPT: &'static str = "lua> ";
     const SQL_PROMPT: &'static str = "sql> ";
-    const ADMIN_MODE: &'static str = "(admin)";
+    const ADMIN_MODE: &'static str = "(admin) ";
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
         match command {
@@ -97,7 +96,7 @@ impl<T: Helper> Console<T> {
                 SpecialCommand::PrintHelp,
             ))),
             "\\lua" | "\\lua;" => {
-                if self.fixed_console_language {
+                if self.mode != Mode::Admin {
                     self.write("Language cannot be changed in this console");
                     return Ok(ControlFlow::Continue(()));
                 }
@@ -107,7 +106,7 @@ impl<T: Helper> Console<T> {
                 )));
             },
             "\\sql" | "\\sql;" => {
-                if self.fixed_console_language {
+                if self.mode != Mode::Admin {
                     self.write("Language cannot be changed in this console");
                     return Ok(ControlFlow::Continue(()));
                 }
@@ -146,26 +145,25 @@ impl<T: Helper> Console<T> {
 
     fn handle_parsed_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
         match self.parse_special_command(command) {
-            ConsoleCommand::SetLanguage(language) => match language {
-                ConsoleLanguage::Lua => {
-                    if self.fixed_console_language {
-                        self.write("Language cannot be changed in this console");
-                        return Ok(ControlFlow::Continue(()));
-                    }
-                    self.current_language = ConsoleLanguage::Lua;
-                    return Ok(ControlFlow::Break(Command::Control(
-                        SpecialCommand::SwitchLanguageToLua,
-                    )));
+            ConsoleCommand::SetLanguage(language) => {
+                if self.mode != Mode::Admin {
+                    self.write("Language cannot be changed in this console");
+                    return Ok(ControlFlow::Continue(()));
                 }
-                ConsoleLanguage::Sql => {
-                    if self.fixed_console_language {
-                        self.write("Language cannot be changed in this console");
-                        return Ok(ControlFlow::Continue(()));
+
+                match language {
+                    ConsoleLanguage::Lua => {
+                        self.current_language = ConsoleLanguage::Lua;
+                        return Ok(ControlFlow::Break(Command::Control(
+                            SpecialCommand::SwitchLanguageToLua,
+                        )));
                     }
-                    self.current_language = ConsoleLanguage::Sql;
-                    return Ok(ControlFlow::Break(Command::Control(
-                        SpecialCommand::SwitchLanguageToSql,
-                    )));
+                    ConsoleLanguage::Sql => {
+                        self.current_language = ConsoleLanguage::Sql;
+                        return Ok(ControlFlow::Break(Command::Control(
+                            SpecialCommand::SwitchLanguageToSql,
+                        )));
+                    }
                 }
             },
             ConsoleCommand::SetDelimiter(delimiter) => {
@@ -271,26 +269,24 @@ impl<T: Helper> Console<T> {
                 }
             }
 
-            let base_prompt;
+            let admin = match self.mode {
+                Mode::Admin => Self::ADMIN_MODE,
+                Mode::Connection => "",
+            };
 
-            if self.mode == Mode::Admin {
-                base_prompt = match self.current_language {
-                    ConsoleLanguage::Lua => format!("{} {}", Self::ADMIN_MODE, Self::LUA_PROMPT),
-                    ConsoleLanguage::Sql => format!("{} {}", Self::ADMIN_MODE, Self::SQL_PROMPT),
-                };
-            } else {
-                base_prompt = match self.current_language {
-                    ConsoleLanguage::Lua => Self::LUA_PROMPT.to_string(),
-                    ConsoleLanguage::Sql => Self::SQL_PROMPT.to_string(),
-                };
-            }
+            let language = match self.current_language {
+                ConsoleLanguage::Lua => Self::LUA_PROMPT,
+                ConsoleLanguage::Sql => Self::SQL_PROMPT,
+            };
 
-            let prompt = if self.uncompleted_statement.is_empty() {
-                base_prompt
+            let inner = if self.uncompleted_statement.is_empty() {
+                ""
             } else {
                 self.uncompleted_statement.push(' ');
-                format!("{} {}", base_prompt, Self::INNER_PROMPT)
+                Self::INNER_PROMPT
             };
+
+            let prompt = format!("{admin}{language}{inner}");
 
             let readline = self.editor.readline(&prompt);
 
@@ -380,7 +376,6 @@ impl Console<LuaHelper> {
             uncompleted_statement: String::new(),
             eof_received: false,
             current_language: ConsoleLanguage::Sql,
-            fixed_console_language: false,
             mode: Mode::Admin,
         })
     }
@@ -398,7 +393,6 @@ impl Console<()> {
             uncompleted_statement: String::new(),
             eof_received: false,
             current_language: ConsoleLanguage::Sql,
-            fixed_console_language: false,
             mode: Mode::Connection,
         })
     }

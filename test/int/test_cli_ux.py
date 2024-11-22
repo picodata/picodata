@@ -112,11 +112,11 @@ def test_admin_ux(cluster: Cluster):
     # in admin console language switching is availiable
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
-    cli.expect_exact("lua> ")
+    cli.expect_exact("(admin) lua> ")
 
     cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # for not registried command nothing happend
     cli.sendline("\\lya")
@@ -127,17 +127,17 @@ def test_admin_ux(cluster: Cluster):
     # variations of `\s l sql/lua` is registred, but not in help
     cli.sendline("\\set language lua")
     cli.expect_exact("Language switched to Lua")
-    cli.expect_exact("lua> ")
+    cli.expect_exact("(admin) lua> ")
 
     cli.sendline("\\s lang sql")
     cli.expect_exact("Language switched to SQL")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     # nothing happens on completion in SQL mode
     cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
     cli.sendline("\t\t")
-    cli.expect_exact("sql> ")
+    cli.expect_exact("(admin) sql> ")
 
     cli.sendline("box.c\t\t;")
     cli.expect_exact("rule parsing error:")
@@ -146,7 +146,7 @@ def test_admin_ux(cluster: Cluster):
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
     cli.sendline("hel\t")
-    cli.expect_exact("lua> help")
+    cli.expect_exact("(admin) lua> help")
 
 
 def test_lua_completion(cluster: Cluster):
@@ -164,7 +164,7 @@ def test_lua_completion(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.sendline("\\lua")
-    cli.expect_exact("lua> ")
+    cli.expect_exact("(admin) lua> ")
 
     # With several possible variants they are shown as list
     cli.send("to")
@@ -410,7 +410,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.sendline("invalid query")
     cli.expect_exact("sql> ")
     cli.sendline("waiting until delimiter")
-    cli.expect_exact("        > ")
+    cli.expect_exact("   > ")
     cli.sendline(";")
     cli.expect_exact("rule parsing error:  --> 1:1")
 
@@ -534,16 +534,16 @@ Bye
     cli.expect_exact("(0 rows)")
 
     cli.sendline("DROP")
-    cli.expect_exact("        > ")
+    cli.expect_exact("   > ")
 
     cli.sendline("TABLE")
-    cli.expect_exact("        > ")
+    cli.expect_exact("   > ")
 
     cli.sendline("ids")
-    cli.expect_exact("        > ")
+    cli.expect_exact("   > ")
 
     cli.sendline("OPTION (TIMEOUT = 3.0)")
-    cli.expect_exact("        > ")
+    cli.expect_exact("   > ")
     cli.sendline(";")
     cli.expect_exact("1")
 
@@ -594,7 +594,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     cli.logfile = sys.stdout
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("(admin) sql> ")
 
 
 def test_picodata_tarantool(cluster: Cluster):
