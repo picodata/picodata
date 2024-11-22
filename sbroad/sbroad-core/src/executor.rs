@@ -38,7 +38,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
-use crate::ir::{Plan, Slices};
+use crate::ir::{Options, Plan, Slices};
 use crate::utils::MutexLike;
 use smol_str::SmolStr;
 
@@ -110,7 +110,12 @@ where
     /// - Failed to build AST.
     /// - Failed to build IR plan.
     /// - Failed to apply optimizing transformations to IR plan.
-    pub fn new(coordinator: &'a C, sql: &str, params: Vec<Value>) -> Result<Self, SbroadError>
+    pub fn with_options(
+        coordinator: &'a C,
+        sql: &str,
+        params: Vec<Value>,
+        options: Option<Options>,
+    ) -> Result<Self, SbroadError>
     where
         C::Cache: Cache<SmolStr, Plan>,
         C::ParseTree: Ast,
@@ -147,6 +152,11 @@ where
                 cache.put(key, plan.clone())?;
             }
         }
+
+        if let Some(options) = options {
+            plan.options = options;
+        }
+
         if plan.is_block()? {
             plan.bind_params(params)?;
         } else if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
@@ -161,6 +171,21 @@ where
             bucket_map: HashMap::new(),
         };
         Ok(query)
+    }
+
+    /// Create a new query.
+    ///
+    /// # Errors
+    /// - Failed to parse SQL.
+    /// - Failed to build AST.
+    /// - Failed to build IR plan.
+    /// - Failed to apply optimizing transformations to IR plan.
+    pub fn new(coordinator: &'a C, sql: &str, params: Vec<Value>) -> Result<Self, SbroadError>
+    where
+        C::Cache: Cache<SmolStr, Plan>,
+        C::ParseTree: Ast,
+    {
+        Self::with_options(coordinator, sql, params, None)
     }
 
     fn empty(coordinator: &'a C) -> Self {

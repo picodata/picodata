@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [24.7.0] - Unreleased
 
+### Configuration
+
+- New alter system parameters - `vdbe_max_steps` and `vtable_max_rows`.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

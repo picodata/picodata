@@ -3211,6 +3211,20 @@ impl DbConfig {
         let res: f64 = self.get_or_default(system_parameter_name!(max_heartbeat_period))?;
         Ok(Duration::from_secs_f64(res))
     }
+
+    #[inline]
+    pub fn vtable_max_rows(&self) -> tarantool::Result<u64> {
+        #[rustfmt::skip]
+        let res: u64 = self.get_or_default(system_parameter_name!(vtable_max_rows))?;
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn vdbe_max_steps(&self) -> tarantool::Result<u64> {
+        #[rustfmt::skip]
+        let res: u64 = self.get_or_default(system_parameter_name!(vdbe_max_steps))?;
+        Ok(res)
+    }
 }
 
 /// Ignore specific tarantool error.

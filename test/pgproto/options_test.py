@@ -6,10 +6,12 @@ from conftest import Postgres
 def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
     user = "postgres"
     password = "Passw0rd"
+    admin_password = "T0psecret"
     host = postgres.host
     port = postgres.port
 
     postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f"ALTER USER \"admin\" WITH PASSWORD '{admin_password}'")
 
     # Note that "vtable_max_rows%3D1" is an escaped version of "vtable_max_rows=1".
 
@@ -73,6 +75,21 @@ def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
         "options=vtable_max_rows%3D1,vdbe_max_steps%3D1000",
         autocommit=True,
     )
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
+    ):
+        conn.execute("SELECT * FROM (VALUES (1), (2))")
+
+    # Session values has higher priority than `ALTER SYSTEM`
+    conn = psycopg.connect(
+        f"postgres://admin:{admin_password}@{host}:{port}?"
+        "options=vtable_max_rows%3D1",
+        autocommit=True,
+    )
+
+    conn.execute("ALTER SYSTEM SET VTABLE_MAX_ROWS = 10;")
+
     with pytest.raises(
         psycopg.InternalError,
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",

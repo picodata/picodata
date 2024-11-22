@@ -363,7 +363,9 @@ Insert(_pico_db_config, ["snapshot_chunk_max_size",16777216]),
 Insert(_pico_db_config, ["snapshot_read_view_close_timeout",86400]),
 Insert(_pico_db_config, ["governor_raft_op_timeout",3.0]),
 Insert(_pico_db_config, ["governor_common_rpc_timeout",3.0]),
-Insert(_pico_db_config, ["governor_plugin_rpc_timeout",10.0]))|
+Insert(_pico_db_config, ["governor_plugin_rpc_timeout",10.0]),
+Insert(_pico_db_config, ["vdbe_max_steps",45000]),
+Insert(_pico_db_config, ["vtable_max_rows",5000]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_user, [0,"guest",0,["md5","md5084e0343a0486ff05530df6c705c8bb4"],1,"user"]),
 Insert(_pico_privilege, [1,0,"login","universe",0,0]),

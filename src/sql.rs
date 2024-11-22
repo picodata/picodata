@@ -55,7 +55,7 @@ use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
-use sbroad::ir::Plan as IrPlan;
+use sbroad::ir::{Options, Plan as IrPlan};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -523,12 +523,17 @@ pub fn proc_sql_dispatch(pattern: String, params: Vec<LuaValue>) -> traft::Resul
 
 pub fn sql_dispatch(pattern: &str, params: Vec<LuaValue>) -> traft::Result<Tuple> {
     let runtime = RouterRuntime::new()?;
+    let node = node::global()?;
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
-        Query::new(
+        let vdbe_max_steps = node.storage.db_config.vdbe_max_steps()?;
+        let vtable_max_rows = node.storage.db_config.vtable_max_rows()?;
+        let default_options = Some(Options::new(vtable_max_rows, vdbe_max_steps));
+        Query::with_options(
             &runtime,
             pattern,
             params.into_iter().map(Into::into).collect(),
+            default_options,
         )
     })??;
     dispatch(query)

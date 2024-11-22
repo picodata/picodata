@@ -280,6 +280,8 @@ def test_read_from_system_tables(cluster: Cluster):
         "password_min_length",
         "snapshot_chunk_max_size",
         "snapshot_read_view_close_timeout",
+        "vdbe_max_steps",
+        "vtable_max_rows",
     ]
 
     data = i1.sql(
@@ -5862,3 +5864,71 @@ def test_extreme_integer_values(cluster: Cluster):
 
     with pytest.raises(TarantoolError, match="integer is overflowed"):
         data = i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {U64_MAX} LIMIT 1")
+
+
+def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    ddl = i1.sql("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
+    assert ddl["row_count"] == 1
+
+    # Default values
+    lines = i1.sql("EXPLAIN SELECT a FROM t")
+    expected_explain = """projection ("t"."a"::integer -> "a")
+    scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    new_vdbe_max_steps = 50000
+    ddl = i1.sql(f"ALTER SYSTEM SET vdbe_max_steps = {new_vdbe_max_steps}")
+    assert ddl["row_count"] == 1
+
+    # Default value for vdbe_max_steps changed
+    lines = i1.sql("EXPLAIN SELECT a FROM t")
+    expected_explain = f"""projection ("t"."a"::integer -> "a")
+    scan "t"
+execution options:
+    vdbe_max_steps = {new_vdbe_max_steps}
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    new_vtable_max_rows = 6000
+    ddl = i1.sql(f"ALTER SYSTEM SET vtable_max_rows = {new_vtable_max_rows}")
+    assert ddl["row_count"] == 1
+
+    # Default value for new_vtable_max_rows changed and
+    # value for new_vdbe_max_steps hasn't changed
+    lines = i1.sql("EXPLAIN SELECT a FROM t")
+    expected_explain = f"""projection ("t"."a"::integer -> "a")
+    scan "t"
+execution options:
+    vdbe_max_steps = {new_vdbe_max_steps}
+    vtable_max_rows = {new_vtable_max_rows}
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # `option` clause has highest priority
+    # also old value set with `ALTER SYSTEM`
+    # still used
+    # TODO: rewrite with explain like above
+    new_vtable_max_rows = 1
+    error_message = """sbroad: unexpected number of values: \
+Exceeded maximum number of rows (1) in virtual table: 2"""
+
+    error_message = re.escape(error_message)
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql(
+            f"SELECT * FROM (VALUES (1), (2)) OPTION (VTABLE_MAX_ROWS = {new_vtable_max_rows})"
+        )

@@ -1534,6 +1534,14 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = 10.0)]
     pub governor_plugin_rpc_timeout: f64,
+
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 45000)]
+    pub vdbe_max_steps: u64,
+
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 5000)]
+    pub vtable_max_rows: u64,
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout
