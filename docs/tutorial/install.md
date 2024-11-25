@@ -140,8 +140,18 @@ brew install node yarn
 
 ### Получение исходного кода {: #getting_sources }
 
+Загрузка с Gitlab:
+
 ```bash
 git clone https://git.picodata.io/core/picodata.git
+cd picodata
+git submodule update --init --recursive
+```
+
+Загрузка с зеркала Github:
+
+```bash
+git clone https://github.com/picodata/picodata.git
 cd picodata
 git submodule update --init --recursive
 ```
