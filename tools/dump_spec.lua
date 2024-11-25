@@ -28,10 +28,6 @@
 
 local fiber = require('fiber')
 
-local function smt_seq(t)
-    return setmetatable(t, {__serialize = 'seq'})
-end
-
 local tables = {
     '_pico_table',
     '_pico_index',
@@ -89,9 +85,6 @@ local function main()
                 table.concat(parts, ", ")
             )
         end
-
-        local format = setmetatable(tbl.format, nil)
-        local index = {}
     end
 end
 
