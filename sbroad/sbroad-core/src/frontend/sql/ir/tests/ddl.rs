@@ -116,3 +116,49 @@ fn infer_sk_from_pk() {
         &vec!["a".to_smolstr(), "b".to_smolstr()]
     );
 }
+
+#[test]
+fn infer_alias_int2_int4_int8_bigint_smallint() {
+    let input =
+        r#"create table t ("a" int2 primary key, "b" int4, "c" int8, "d" bigint, "e" smallint)"#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+        panic!("expected create table")
+    };
+
+    let def_a = ColumnDef {
+        name: "a".into(),
+        data_type: Type::Integer,
+        is_nullable: false,
+    };
+
+    let def_b = ColumnDef {
+        name: "b".into(),
+        data_type: Type::Integer,
+        is_nullable: true,
+    };
+
+    let def_c = ColumnDef {
+        name: "c".into(),
+        data_type: Type::Integer,
+        is_nullable: true,
+    };
+
+    let def_d = ColumnDef {
+        name: "d".into(),
+        data_type: Type::Integer,
+        is_nullable: true,
+    };
+
+    let def_e = ColumnDef {
+        name: "e".into(),
+        data_type: Type::Integer,
+        is_nullable: true,
+    };
+
+    assert_eq!(format, &vec![def_a, def_b, def_c, def_d, def_e]);
+}

@@ -296,15 +296,15 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
             //       E.g. ^"in" must go after ^"insert" because keywords traversal stops on the first match.
             //       Please, try to keep the list in alphabetical order.
             Keyword = {  ^"all" | ^"and" | ^"any" | ^"array" | ^"asc" | ^"as"
-                        | ^"begin" | ^"between" | ^"boolean" | ^"bool"| ^"by"
+                        | ^"begin" | ^"between" | ^"bigint" | ^"boolean" | ^"bool"| ^"by"
                         | ^"case" | ^"cast" | ^"char"
                         | ^"decimal" | ^"desc" | ^"distinct" | ^"double"
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"from" | ^"group"
-                        | ^"having" | ^"inner" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
+                        | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
                         | ^"join" | ^"left" | ^"limit" | ^"not" | ^"null" | ^"number"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
-                        | ^"scalar" | ^"select" | ^"set" | ^"string"
+                        | ^"scalar" | ^"select" | ^"set" | ^"smallint" |^"string"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
                         | ^"union" | ^"unsigned" | ^"using" | ^"uuid"
                         | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with"
@@ -393,7 +393,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                     TypeDatetime = { ^"datetime" }
                     TypeDecimal = { ^"decimal" }
                     TypeDouble = { ^"double" }
-                    TypeInt = { (^"integer" | ^"int") }
+                    TypeInt = { (^"integer" | ^"bigint" | ^"smallint" | ^"int" ~ ("2" | "4" | "8")?) }
                     TypeNumber = { ^"number" }
                     TypeScalar = { ^"scalar" }
                     TypeString = { ^"string" }
