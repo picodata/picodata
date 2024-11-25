@@ -4,7 +4,7 @@ use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::{node, Result};
+use crate::traft::{node, RaftIndex, RaftTerm, Result};
 use std::time::Duration;
 use tarantool::tlua;
 use tarantool::vclock::Vclock;
@@ -18,6 +18,9 @@ crate::define_rpc_request! {
     /// 1. Lua error during call to `box.cfg`
     /// 2. Storage failure
     fn proc_replication(req: ConfigureReplicationRequest) -> Result<Response> {
+        let node = node::global()?;
+        node.status().check_term(req.term)?;
+
         // TODO: check this configuration is newer then the one currently
         // applied. For this we'll probably need to store the governor's applied
         // index at the moment of request generation in box.space._schema on the
@@ -46,6 +49,7 @@ crate::define_rpc_request! {
 
     /// Request to configure tarantool replication.
     pub struct ConfigureReplicationRequest {
+        pub term: RaftTerm,
         /// If this is `true` the target replica will become the new `master`.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
         /// for more.
@@ -63,7 +67,9 @@ crate::define_rpc_request! {
 crate::define_rpc_request! {
     /// Waits until instance synchronizes tarantool replication.
     fn proc_replication_sync(req: ReplicationSyncRequest) -> Result<ReplicationSyncResponse> {
-        // TODO: find a way to guard against stale governor requests.
+        let node = node::global()?;
+        node.wait_index(req.applied, req.timeout)?;
+        node.status().check_term(req.term)?;
 
         debug_assert!(is_read_only()?);
 
@@ -77,6 +83,12 @@ crate::define_rpc_request! {
 
     /// Request to wait until instance synchronizes tarantool replication.
     pub struct ReplicationSyncRequest {
+        /// Current term of the sender.
+        pub term: RaftTerm,
+
+        /// Current applied index of the sender.
+        pub applied: RaftIndex,
+
         /// Wait until instance progresses replication past this vclock value.
         pub vclock: Vclock,
 
@@ -134,7 +146,10 @@ crate::define_rpc_request! {
     /// 1. Lua error during call to `box.cfg`
     fn proc_replication_demote(req: DemoteRequest) -> Result<DemoteResponse> {
         let _ = req;
-        // TODO: find a way to guard against stale governor requests.
+
+        let node = node::global()?;
+        node.status().check_term(req.term)?;
+
         let was_read_only = is_read_only()?;
 
         crate::tarantool::exec("box.cfg { read_only = true }")?;
@@ -150,7 +165,9 @@ crate::define_rpc_request! {
     }
 
     /// Request to promote instance to tarantool replication leader.
-    pub struct DemoteRequest {}
+    pub struct DemoteRequest {
+        pub term: RaftTerm,
+    }
 
     /// Response to [`DemoteRequest`].
     pub struct DemoteResponse {

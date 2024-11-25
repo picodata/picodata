@@ -255,8 +255,10 @@ pub(super) fn action_plan<'i>(
             .find(|i| i.name == old_master_name)
             .map(|i| i.may_respond());
         if let Some(true) = old_master_may_respond {
-            let demote_rpc = rpc::replication::DemoteRequest {};
+            let demote_rpc = rpc::replication::DemoteRequest { term };
             let sync_rpc = rpc::replication::ReplicationSyncRequest {
+                term,
+                applied,
                 vclock: promotion_vclock.clone(),
                 timeout: sync_timeout,
             };

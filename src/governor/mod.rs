@@ -430,6 +430,7 @@ impl Loop {
                     async {
                         let mut fs = vec![];
                         let mut rpc = rpc::replication::ConfigureReplicationRequest {
+                            term,
                             // Is only specified for the master replica
                             is_master: false,
                             replicaset_peers,
