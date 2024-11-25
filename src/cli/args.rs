@@ -58,7 +58,7 @@ pub struct Run {
         value_name = "PARAMETER=VALUE",
         use_value_delimiter = false
     )]
-    /// A comma-separated list of key-value pairs specifying configuration parameters.
+    /// A list of key-value pairs specifying configuration parameters.
     ///
     /// These will override both parameters provided in the config.yaml file,
     /// the command-line parameters and the environment variables.
@@ -66,7 +66,7 @@ pub struct Run {
     /// Key is a `.` separated path to a configuration parameter.
     /// The data in the `VALUE` is interpreted as YAML.
     ///
-    /// For example: `-c instance.log.level=verbose`
+    /// For example: `-c instance.log.level=debug -c instance.data_dir=/path/to/dir`
     ///
     /// Can also be provided via PICODATA_CONFIG_PARAMETERS environment variable.
     pub config_parameter: Vec<String>,
