@@ -17,16 +17,16 @@
 - [имени][instance_name] — удобочитаемому параметру, который задается
   администраторов при запуске инстанса и в дальнейшем может быть изменен
   (например, при перезапуске инстанса)
-- [идентификатору][_pico_instance] — уникальному ключу в формате [UUID], который
+- [идентификатору][`_pico_instance`] — уникальному ключу в формате [UUID], который
   автоматически присваивается инстансу в момент присоединения к кластеру
   и в дальнейшем не может быть изменен
 
 Имена и идентификаторы инстансов кластера содержатся в системной таблице
-[_pico_instance].
+[`_pico_instance`].
 
 [инстансом]: ../overview/glossary.md#instance
 [UUID]: https://en.wikipedia.org/wiki/Universally_unique_identifier
-[_pico_instance]: ../architecture/system_tables.md#_pico_instance
+[`_pico_instance`]: ../architecture/system_tables.md#_pico_instance
 
 ## Обязательные параметры {: #essentials }
 
@@ -142,7 +142,7 @@ run](../reference/cli.md#run).
 ## Проверка присоединения {: #check }
 
 После успешного присоединения к кластеру новый инстанс появится в
-таблице [_pico_instance] в состоянии `Online`:
+таблице [`_pico_instance`] в состоянии `Online`:
 
 ```sql
 picodata> SELECT "name","current_state" FROM _pico_instance;

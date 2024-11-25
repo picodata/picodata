@@ -130,7 +130,7 @@ fn proc_apply_schema_change(term, applied, timeout) -> Result
 <!-- ./clusterwide_schema.md#two_phase_algorithm -->
 
 Текущие изменения схемы инстанс читает из системной таблицы
-[_pico_property](./system_tables.md#_pico_property). В ней по ключам
+[`_pico_property`](./system_tables.md#_pico_property). В ней по ключам
  `pending_schema_change` и `pending_schema_version` соответственно
 находятся описание текущей
 [DDL](https://ru.wikipedia.org/wiki/Data_Definition_Language)-операции и
@@ -417,7 +417,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 Возвращаемое значение:
 
 - (MP_MAP `Response`):
-    - `instance`: (MP_MAP): кортеж из системной таблицы [_pico_instance](./system_tables.md#_pico_instance),
+    - `instance`: (MP_MAP): кортеж из системной таблицы [`_pico_instance`](./system_tables.md#_pico_instance),
                             соответствующий присоединяющемуся инстансу
     - `peer_addresses`: (MP_ARRAY): набор адресов некоторых инстансов кластера
         - (MP_MAP `PeerAddress`):
@@ -529,7 +529,7 @@ fn proc_replication(is_master, replicaset_peers)
 в рамках алгоритма автоматической смены топологии кластера.
 
 Первоисточником принадлежности инстанса к тому или иному репликасету является
-информация в системной таблице [_pico_instance](./system_tables.md#_pico_instance),
+информация в системной таблице [`_pico_instance`](./system_tables.md#_pico_instance),
 однако при вызове этой хранимой процедуры список адресов инстансов указывается
 явно из-за ограничений на репликацию системных таблиц: так как данные системных
 таблиц распространяются через механизм репликации, его нужно настроить перед
@@ -634,7 +634,7 @@ fn proc_sharding(term, applied, timeout)
 
  - [Governor — централизованное управление кластером](./topology_management.md#governor)
 
-В системной таблице [_pico_tier](system_tables.md#_pico_tier) хранятся две версии конфигурации
+В системной таблице [`_pico_tier`](system_tables.md#_pico_tier) хранятся две версии конфигурации
 распределения [бакетов](../overview/glossary.md#bucket): текущая и
 целевая (target). Этим версиям соответствуют колонки
 `current_vshard_config_version` и `target_vshard_config_version`.
@@ -720,7 +720,7 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 Лидер, получив такой запрос, проверяет консистентность параметров (например, что
 новый домен отказа не противоречит конфигурации репликасета), и выполняет
 [CaS](../overview/glossary.md#cas)-операцию по применению изменений к глобальной
-системной таблице [_pico_instance](./system_tables.md#_pico_instance).
+системной таблице [`_pico_instance`](./system_tables.md#_pico_instance).
 
 По умолчанию, если в [raft-журнал](../overview/glossary.md#raft) попала
 конфликтующая CaS-операция, запрос повторяется.

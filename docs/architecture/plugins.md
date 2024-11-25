@@ -127,7 +127,7 @@ DROP TABLE authors;
 
 <!-- такого поля в системной таблице пока нет
 При установке плагина для каждого файла из секции UP выполняются все
-SQL-команды и в системной таблице [_pico_plugin] увеличивается поле
+SQL-команды и в системной таблице [`_pico_plugin`] увеличивается поле
 `migration_progress`.
  -->
 
@@ -256,7 +256,7 @@ fn my_registrar(registry: &mut ServiceRegistry) {
 запустить сервис только на конкретном репликасете или узле из тира).
 
 Топология сервисов хранится в глобальной системной таблице
-[_pico_service].
+[`_pico_service`].
 
 Настроить сервис можно двумя способами:
 
@@ -324,24 +324,24 @@ proc_service_configure(
 
 - валидация манифеста на узле, с которого происходит установка
 - загрузка сериализованной информации из манифеста в системную таблицу
-  [_pico_property] на время установки плагина
+  [`_pico_property`] на время установки плагина
 - централизованная проверка наличия `.so`-файлов на всех живых узлах
   [губернатором](../overview/glossary.md#governor) в виде вызова
   `load_plugin_dry_run`
 - при отсутствии ошибок губернатор заполняет системные таблицы
-  [_pico_plugin] и [_pico_service] данными из манифеста с помощью
+  [`_pico_plugin`] и [`_pico_service`] данными из манифеста с помощью
   [CaS]-операции
 - губернатор удаляет ранее загруженные данные из таблицы
-  [_pico_property]
-- узлы кластера ожидают очистки таблицы [_pico_property] и затем
-  проверяют таблицу [_pico_plugin] на наличие плагина
+  [`_pico_property`]
+- узлы кластера ожидают очистки таблицы [`_pico_property`] и затем
+  проверяют таблицу [`_pico_plugin`] на наличие плагина
 - когда установка плагина подтверждена всеми узлами, выполняются
   [миграции](#migrations)
 
-[_pico_property]: system_tables.md#_pico_property
-[_pico_plugin]: system_tables.md#_pico_plugin
-[_pico_service]: system_tables.md#_pico_service
-[_pico_service_route]: system_tables.md#_pico_service_route
+[`_pico_property`]: system_tables.md#_pico_property
+[`_pico_plugin`]: system_tables.md#_pico_plugin
+[`_pico_service`]: system_tables.md#_pico_service
+[`_pico_service_route`]: system_tables.md#_pico_service_route
 [CaS]: ../overview/glossary.md#cas
 [migration]: ../overview/glossary.md#migration
 [ansible]: ../tutorial/deploy_ansible.md
@@ -354,12 +354,12 @@ proc_service_configure(
 false`. Включение проходит следующим образом:
 
 - губернатор проверяет, что значение `pending_plugin_enable` в системной
-  таблице [_pico_property] свободно.
+  таблице [`_pico_property`] свободно.
 - Raft-лидер инициирует операцию `OpPluginEnable{ plugin_name,
   on_start_timeout }` на каждом узле кластера.
 - на каждом узле в рамках операции OpPluginEnable происходит выборка
-  сервисов из таблицы [_pico_service] и локально создается запись в
-  таблице [_pico_property] с ключом `pending_plugin_enable` и значением
+  сервисов из таблицы [`_pico_service`] и локально создается запись в
+  таблице [`_pico_property`] с ключом `pending_plugin_enable` и значением
   `{ plugin_name, service_list, on_start_timeout }`.
 - губернатор реагирует на появление ключа `pending_plugin_enable` и
   отправляет всем живым узлам кластера RPC-запрос `enable_plugin`
@@ -369,9 +369,9 @@ false`. Включение проходит следующим образом:
   [тиру][tier]), на отдельных узлах валидируются и включаются сервисы
   плагина. Для каждого сервиса запускаются `on_start callbacks`,
   результат возвращается губернатору
-- в случае успеха губернатор обновляет системную таблицу [_pico_plugin]
+- в случае успеха губернатор обновляет системную таблицу [`_pico_plugin`]
   и устанавливает для плагина свойство `enable = true`, а также
-  заполняет таблицу [_pico_service_route] (маршрутизация для RPC)
+  заполняет таблицу [`_pico_service_route`] (маршрутизация для RPC)
 - губернатор очищает значение ключа `pending_plugin_enable`
 - узлы кластера ожидают очистки `pending_plugin_enable` и после этого
   проверяют в таблице `_pico_plugin` свойство `enable`
@@ -400,12 +400,12 @@ false`. Включение проходит следующим образом:
 
 Удаление плагина может быть инициировано на любом узле кластера. Каждый
 отдельный узел должен сначала убедиться в том, что плагин отключен (в
-таблице [_pico_plugin] для плагина установлено значение `enable =
+таблице [`_pico_plugin`] для плагина установлено значение `enable =
 false`)
 
 Далее Raft инициирует операцию `PluginRemove { plugin_name }`. По
-получению этой операции каждый узел очищает таблицы [_pico_plugin] и
-[_pico_service].
+получению этой операции каждый узел очищает таблицы [`_pico_plugin`] и
+[`_pico_service`].
 
 <!--
 ### Смена конфигурации {: #plugin_reconfigure }

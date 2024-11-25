@@ -342,7 +342,7 @@ ALTER USER <user name> WITH PASSWORD '<password>'
 
 <!--
 Требования к паролю хранятся в системной таблице
-[_pico_property](../architecture/system_tables.md#_pico_property).
+[`_pico_property`](../architecture/system_tables.md#_pico_property).
 
 PasswordEnforceUppercase (default value: true)
 PasswordEnforceLowercase (default value: true)

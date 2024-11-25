@@ -476,7 +476,7 @@ picodata>
 
 Число допустимых неудачных попыток входа определяется параметром
 `max_login_attempts`, который хранится в системной таблице
-[_pico_property](../architecture/system_tables.md#_pico_property). По
+[`_pico_property`](../architecture/system_tables.md#_pico_property). По
 умолчанию, значение равно `5`, но его можно изменить через запрос
 [pico.cas()](api.md#pico.cas), например, так:
 

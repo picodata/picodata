@@ -49,7 +49,7 @@ expel`, выполнение которой требует ввода парол
 picodata expel <INSTANCE_UUID>
 ```
 
-Узнать идентификатор можно из системной таблицы [_pico_instance]:
+Узнать идентификатор можно из системной таблицы [`_pico_instance`]:
 
 ```sql
 picodata> SELECT "name","uuid" FROM _pico_instance;
@@ -103,7 +103,7 @@ picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<[HOST][:POR
 числе и единственный.
 
 [picodata expel]: ../reference/cli.md#expel
-[_pico_instance]: ../architecture/system_tables.md#_pico_instance
+[`_pico_instance`]: ../architecture/system_tables.md#_pico_instance
 [консоль администратора]: connecting.md#admin_console
 [peer]: ../reference/cli.md#run_peer
 [listen]: ../reference/cli.md#run_listen

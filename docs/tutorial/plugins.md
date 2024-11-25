@@ -127,7 +127,7 @@ CREATE PLUGIN weather_cache 0.1.0;
 
 После успешного добавления в системных таблицах появятся записи о новом плагине.
 
-В таблице [_pico_plugin] со списком добавленных плагинов:
+В таблице [`_pico_plugin`] со списком добавленных плагинов:
 
 ```sql
 picodata> SELECT * FROM _pico_plugin;
@@ -145,7 +145,7 @@ picodata> SELECT * FROM _pico_plugin;
 (1 rows)
 ```
 
-В таблице [_pico_plugin_config] с конфигурацией сервисов плагина:
+В таблице [`_pico_plugin_config`] с конфигурацией сервисов плагина:
 
 ```sql
 picodata> SELECT * FROM _pico_plugin_config;
@@ -158,7 +158,7 @@ picodata> SELECT * FROM _pico_plugin_config;
 (1 rows)
 ```
 
-В таблице [_pico_service] со списком сервисов плагина (но пока без
+В таблице [`_pico_service`] со списком сервисов плагина (но пока без
 привязки к [тиру][tiers]):
 
 ```sql
@@ -214,7 +214,7 @@ picodata> SELECT * FROM weather;
 ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 ```
 
-После успешного включения плагина в системной таблице [_pico_service]
+После успешного включения плагина в системной таблице [`_pico_service`]
 появится привязка сервиса к указанному тиру:
 
 ```sql
@@ -231,9 +231,9 @@ picodata> SELECT * FROM _pico_service;
 (1 rows)
 ```
 
-[_pico_plugin]: ../architecture/system_tables.md#_pico_plugin
-[_pico_plugin_config]: ../architecture/system_tables.md#_pico_plugin_config
-[_pico_service]: ../architecture/system_tables.md#_pico_service
+[`_pico_plugin`]: ../architecture/system_tables.md#_pico_plugin
+[`_pico_plugin_config`]: ../architecture/system_tables.md#_pico_plugin_config
+[`_pico_service`]: ../architecture/system_tables.md#_pico_service
 [tiers]: ../overview/glossary.md#tier
 
 ## Включение и отключение плагина {: #enable_or_disable_plugin}
@@ -245,7 +245,7 @@ ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 ```
 
 После успешного включения в колонке `enabled` в системной таблице
-[_pico_plugin] установится значение `true`:
+[`_pico_plugin`] установится значение `true`:
 
 ```sql
 picodata> SELECT * FROM _pico_plugin;
