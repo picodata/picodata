@@ -2,9 +2,9 @@
 --
 -- Usage:
 --
---   rm -rf /tmp/picospec; picodata run --data-dir /tmp/picospec --script tools/dump_spec.lua | tee system_tables.spec
+--   rm -rf /tmp/picospec; picodata run --data-dir /tmp/picospec --script tools/dump_spec.lua
 --
--- Dump system tables schema to the stdout. The output format self-defined by the script.
+-- Dump system tables schema to the "system_tables.spec" file. The output format self-defined by the script.
 --
 -- Example output:
 --
@@ -47,45 +47,48 @@ local tables = {
     '_pico_plugin_config',
 }
 
-local function printf(fmt, ...)
-    print(string.format(fmt, ...))
+local function append(res, fmt, ...)
+    return res .. string.format(fmt, ...)
 end
 
 local function main()
-    local res = {}
+    local res = ""
 
-    printf(
-        "Описание соответствует версии Picodata `%s`.",
+    res = append(res,
+        "Описание соответствует версии Picodata `%s`.\n",
         pico.PICODATA_VERSION
     )
 
     for i, t in ipairs(tables) do
         local tbl = box.space['_pico_table'].index[1]:get(t)
-        printf("\n### %s\n", tbl.name)
+        res = append(res, "\n### %s\n\n", tbl.name)
 
-        printf("Поля:\n")
+        res = append(res, "Поля:\n\n")
         for _, field in ipairs(tbl.format) do
             local name = field.name
             local type = field.field_type
             local nullable = field.is_nullable
-            printf("* `%s`: (_%s_)", name, type)
+            res = append(res, "* `%s`: (_%s_)\n", name, type)
         end
-        printf("")
 
-        printf("Индексы:\n")
+        res = append(res, "\nИндексы:\n\n")
         for _, idx in pairs(box.space['_pico_index']:select({tbl.id})) do
             local parts = {}
             for _, v in ipairs(idx.parts) do
                 table.insert(parts, v[1])
             end
-            printf(
-                "* `%s` (%s), parts: `[%s]`",
+            res = append(res,
+                "* `%s` (%s), parts: `[%s]`\n",
                 idx.name,
                 idx.opts[1]['unique'] and "unique" or "non-unique",
                 table.concat(parts, ", ")
             )
         end
     end
+
+    file = io.open("system_tables.spec", "w")
+    file:write(res)
+    file:close()
 end
 
 fiber.new(function()
