@@ -124,3 +124,6 @@ inherits = "release"
 debug = "line-tables-only"
 lto = "off"
 codegen-units = 64
+
+[profile.asan-dev]
+inherits = "dev"

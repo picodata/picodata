@@ -56,6 +56,16 @@ fn export_public_symbols() {
         build_rs_helpers::exports::read_file(f, &mut symbols).unwrap();
     }
 
+    // Add extra symbols for ASan (tarantool/src/lua/utils.lua).
+    let profile = cargo::get_build_profile();
+    if profile.starts_with("asan") {
+        symbols.extend([
+            "__asan_unpoison_memory_region".into(),
+            "__asan_poison_memory_region".into(),
+            "__asan_address_is_poisoned".into(),
+        ]);
+    }
+
     // Sorted symbols file is much easier to navigate.
     let mut symbols: Vec<_> = symbols.into_iter().collect();
     symbols.sort();

@@ -57,6 +57,17 @@ build-release: build
 build-release-pkg: override CARGO_FLAGS += --profile=release
 build-release-pkg: build
 
+# We have to specify target to disable ASan for proc macros, build.rs, etc.
+# See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
+DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
+
+# TODO: drop nightly features once sanitizers are stable.
+.PHONY: build-asan-dev
+build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1 RUSTFLAGS=-Zsanitizer=address
+build-asan-dev: override CARGO_FLAGS += --profile=asan-dev --target=$(DEFAULT_TARGET)
+build-asan-dev: build
+
+
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary is reused
 # can be reused for python tests without recompilation
 # Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata

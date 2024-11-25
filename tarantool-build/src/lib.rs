@@ -116,11 +116,19 @@ impl TarantoolBuildRoot {
             let mut configure_cmd = Command::new("cmake");
             configure_cmd.arg("-B").arg(tarantool_root);
 
-            let common_args = vec![
+            let mut common_args = vec![
                 "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                 "-DBUILD_TESTING=FALSE",
                 "-DBUILD_DOC=FALSE",
             ];
+
+            // Tarantool won't let us use gcc for an asan build.
+            let profile = cargo::get_build_profile();
+            if profile.starts_with("asan") {
+                println!("cargo:warning=ASan has been enabled, this may affect the performance");
+                configure_cmd.envs([("CC", "clang"), ("CXX", "clang++")]);
+                common_args.push("-DENABLE_ASAN=ON");
+            }
 
             if use_static_build {
                 // In pgproto, we use openssl crate that links to openssl from the system, so we want
