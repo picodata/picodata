@@ -1,7 +1,7 @@
 use build_rs_helpers::{cargo, rustc};
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
 };
 use tarantool_build::TarantoolBuildRoot;
 
@@ -44,48 +44,38 @@ fn generate_git_version() {
 }
 
 fn export_public_symbols() {
-    if !cfg!(target_os = "macos") {
-        // not supported on macos
-        // We use -rdynamic instead of -export-dynamic
-        // because on fedora this likely triggers this bug
-        // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47390
-        rustc::link_arg("-rdynamic");
+    let exports = [
+        "exports_picodata",
+        "tarantool-sys/extra/exports",
+        "tarantool-sys/extra/exports_libcurl",
+    ];
+
+    let mut symbols = HashSet::<String>::new();
+    for f in exports {
+        cargo::rerun_if_changed(f);
+        build_rs_helpers::exports::read_file(f, &mut symbols).unwrap();
     }
 
-    let tarantool_src = PathBuf::from("tarantool-sys");
-    let mut symbols = HashSet::with_capacity(1024);
+    // Sorted symbols file is much easier to navigate.
+    let mut symbols: Vec<_> = symbols.into_iter().collect();
+    symbols.sort();
 
-    let exports = std::fs::read_to_string(tarantool_src.join("extra/exports")).unwrap();
-    read_symbols_into(&exports, &mut symbols);
+    let exports_file = cargo::get_out_dir().join("combined-exports");
+    build_rs_helpers::exports::write_file(&exports_file, symbols).unwrap();
 
-    let exports = std::fs::read_to_string(tarantool_src.join("extra/exports_libcurl")).unwrap();
-    read_symbols_into(&exports, &mut symbols);
-
-    // Tell a linker to create an undefined symbol for each entry.
-    // This will instruct the linker to keep a module containing the symbol.
-    // Refer to `man ld` to learn more on this topic.
-    for symbol in &symbols {
-        if cfg!(target_os = "macos") {
-            // Mach-O symbols start with the underscore.
-            // Historical note: https://news.ycombinator.com/item?id=20143732.
-            // Furthermore, macos uses `-u` & `--undefined error` (the default) for `--require-defined`.
-            rustc::link_arg_bin("picodata", format!("-u_{symbol}"));
-        } else {
-            rustc::link_arg_bin("picodata", format!("-Wl,--require-defined={symbol}"));
-        }
-    }
-
-    fn read_symbols_into<'a>(file_contents: &'a str, symbols: &mut HashSet<&'a str>) {
-        for line in file_contents.lines() {
-            let line = line.trim();
-            if line.starts_with('#') || line.is_empty() {
-                continue;
-            }
-            if line.is_empty() {
-                continue;
-            }
-            symbols.insert(line);
-        }
+    // Export symbols only from the main binary (i.e. not tests etc).
+    let exports_file = exports_file.display();
+    if cfg!(target_os = "macos") {
+        rustc::link_arg_bin(
+            "picodata",
+            format!("-Wl,-exported_symbols_list,{exports_file}"),
+        );
+    } else {
+        #[rustfmt::skip]
+        rustc::link_arg_bin(
+            "picodata",
+            format!("-Wl,--dynamic-list,{exports_file}"),
+        );
     }
 }
 

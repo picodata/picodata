@@ -5,6 +5,7 @@
 //! * <https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts>
 
 pub mod cargo;
+pub mod exports;
 pub mod rustc;
 
 use std::{ffi::OsStr, panic::Location, path::PathBuf, process::Command};
