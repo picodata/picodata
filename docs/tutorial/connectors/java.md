@@ -5,12 +5,9 @@
 
 ## Общие сведения {: #intro }
 
-Драйвер предоставляет [Java API][java_api] для работы с низкоуровневым Picodata API
-и служит коннектором к СУБД Picodata из Java-приложений. Драйвер
-совместим с кластерами Picodata, использующими библиотеку
-шардирования [vshard].
+Драйвер предоставляет [Java API][java_api] для работы с низкоуровневым
+Picodata API и служит коннектором к СУБД Picodata из Java-приложений.
 
-[vshard]: ../../overview/glossary.md#vshard
 [picodata-java]: https://git.picodata.io/picodata/picodata/picodata-java
 [java_api]: https://docs.picodata.io/apidocs/java-api/latest/
 
