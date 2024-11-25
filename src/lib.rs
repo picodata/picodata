@@ -173,7 +173,6 @@ fn init_sbroad() {
     .unwrap();
 }
 
-#[link(name = "httpd")]
 extern "C-unwind" {
     fn luaopen_http_lib(lua_state: tlua::LuaState) -> libc::c_int;
 }

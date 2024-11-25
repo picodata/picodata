@@ -1,0 +1,395 @@
+use build_rs_helpers::{cargo, rustc, CommandExt};
+use std::{path::PathBuf, process::Command};
+
+/// This struct represents Tarantool's build directory.
+/// NOTE: please **do not** add irrelevant fields here.
+pub struct TarantoolBuildRoot {
+    /// Path to Tarantool's topmost build directory.
+    root: PathBuf,
+    /// In static build mode we build not only Tarantool, but also many
+    /// of its dependencies, e.g. readline, curl, unwind, etc.
+    use_static_build: bool,
+}
+
+impl TarantoolBuildRoot {
+    pub fn new(build_root: impl Into<PathBuf>, use_static_build: bool) -> Self {
+        // The distinction between static & dynamic build paths
+        // lets us keep both builds intact when we toggle
+        // the "use_static_build" option.
+        let root = build_root
+            .into()
+            .join("tarantool-sys")
+            .join(match use_static_build {
+                false => "dynamic",
+                true => "static",
+            });
+
+        Self {
+            root,
+            use_static_build,
+        }
+    }
+
+    /// A prefix for Tarantool's http server.
+    pub fn http_prefix_dir(&self) -> PathBuf {
+        self.root.join("tarantool-http")
+    }
+
+    /// In static build mode, root contains multiple prefixes
+    /// for the projects we're going to build:
+    ///
+    /// - **tarantool-prefix**
+    /// - readline-prefix
+    /// - zlib-prefix
+    /// - ...
+    pub fn tarantool_prefix_dir(&self) -> PathBuf {
+        if self.use_static_build {
+            self.root.join("tarantool-prefix")
+        } else {
+            self.root.clone()
+        }
+    }
+
+    /// It static build mode, tarantool-prefix in turn
+    /// contains the **actual** tarantool build directory.
+    pub fn tarantool_build_dir(&self) -> PathBuf {
+        let prefix = self.tarantool_prefix_dir();
+        if self.use_static_build {
+            prefix.join("src/tarantool-build")
+        } else {
+            prefix
+        }
+    }
+}
+
+/// Build steps.
+impl TarantoolBuildRoot {
+    /// Build Tarantool and other libraries we're going to use.
+    pub fn build_libraries(&self, jsc: Option<&cargo::MakeJobserverClient>) -> &Self {
+        self.build_tarantool(jsc).build_http(jsc)
+    }
+
+    /// Build Tarantool's http server.
+    /// NOTE: this **does not** affect picodata's link flags.
+    /// Refer to [`Self::link_libraries`] for more information.
+    fn build_http(&self, jsc: Option<&cargo::MakeJobserverClient>) -> &Self {
+        cargo::rerun_if_changed("http/http");
+
+        let tarantool_prefix = self.tarantool_prefix_dir();
+        let http_prefix = self.http_prefix_dir();
+
+        Command::new("cmake")
+            .arg("-S")
+            .arg("http")
+            .arg("-B")
+            .arg(&http_prefix)
+            .arg(format!("-DTARANTOOL_DIR={}", tarantool_prefix.display()))
+            .run();
+
+        Command::new("cmake")
+            .set_make_jobserver(jsc)
+            .arg("--build")
+            .arg(&http_prefix)
+            .run();
+
+        Command::new("ar")
+            .arg("-rcs")
+            .arg(http_prefix.join("libhttpd.a"))
+            .arg(http_prefix.join("http/CMakeFiles/httpd.dir/lib.c.o"))
+            .run();
+
+        self
+    }
+
+    /// Build Tarantool itself.
+    /// NOTE: this **does not** affect picodata's link flags.
+    /// Refer to [`Self::link_libraries`] for more information.
+    fn build_tarantool(&self, jsc: Option<&cargo::MakeJobserverClient>) -> &Self {
+        cargo::rerun_if_changed("tarantool-sys");
+
+        let use_static_build = self.use_static_build;
+        let tarantool_build = self.tarantool_build_dir();
+        let tarantool_root = &self.root;
+
+        if !tarantool_build.exists() {
+            // Build from scratch
+            let mut configure_cmd = Command::new("cmake");
+            configure_cmd.arg("-B").arg(tarantool_root);
+
+            let common_args = vec![
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                "-DBUILD_TESTING=FALSE",
+                "-DBUILD_DOC=FALSE",
+            ];
+
+            if use_static_build {
+                // In pgproto, we use openssl crate that links to openssl from the system, so we want
+                // tarantool to link to the same library. Otherwise there will be conflicts between
+                // different library versions.
+                //
+                // In theory, the crate can use openssl from tarantool. There is a variable
+                // OPENSSL_DIR that points to the directory with the library. But to use it we need
+                // to build the crate after tarantool, while the order is not determined.
+                // Thus, in practice, openssl crate builds before tarantool and throws an error that it
+                // can't find the library because it wasn't built yet.
+                let args = [&common_args[..], &["-DOPENSSL_USE_STATIC_LIBS=FALSE"]].concat();
+
+                // static build is a separate project that uses CMAKE_TARANTOOL_ARGS
+                // to forward parameters to tarantool cmake project
+                configure_cmd
+                    .args(["-S", "tarantool-sys/static-build"])
+                    .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", args.join(";")))
+            } else {
+                // for dynamic build we do not use most of the bundled dependencies
+                configure_cmd
+                    .args(["-S", "tarantool-sys"])
+                    .args(common_args)
+                    .args([
+                        "-DENABLE_BUNDLED_LDAP=OFF",
+                        "-DENABLE_BUNDLED_LIBCURL=OFF",
+                        "-DENABLE_BUNDLED_LIBUNWIND=OFF",
+                        "-DENABLE_BUNDLED_LIBYAML=OFF",
+                        "-DENABLE_BUNDLED_OPENSSL=OFF",
+                        "-DENABLE_BUNDLED_ZSTD=OFF",
+                    ])
+                    // for dynamic build we'll also need to install the project, so configure the prefix
+                    .arg(format!(
+                        "-DCMAKE_INSTALL_PREFIX={}",
+                        tarantool_root.display(),
+                    ))
+            }
+            .run();
+        }
+
+        Command::new("cmake")
+            .set_make_jobserver(jsc)
+            .arg("--build")
+            .arg(tarantool_root)
+            .args(match use_static_build {
+                false => vec!["--", "install"],
+                true => vec![],
+            })
+            .run();
+
+        self
+    }
+}
+
+/// Link steps.
+impl TarantoolBuildRoot {
+    /// Emit magic prints to link all libraries.
+    pub fn link_libraries(&self) {
+        self.link_tarantool();
+        self.link_http();
+    }
+
+    /// Refer to `build.rs` for httpd's build steps.
+    fn link_http(&self) {
+        let http_prefix = self.http_prefix_dir();
+
+        rustc::link_search(http_prefix);
+        rustc::link_lib_static_whole_archive("httpd");
+    }
+
+    /// Refer to `build.rs` for tarantool's build steps.
+    fn link_tarantool(&self) {
+        let use_static_build = self.use_static_build;
+        let tarantool_build = self.tarantool_build_dir();
+        let tarantool_root = &self.root;
+
+        let tarantool_libs = [
+            "core",
+            "small",
+            "msgpuck",
+            "vclock",
+            "bit",
+            "swim",
+            "uri",
+            "json",
+            "http_parser",
+            "mpstream",
+            "raft",
+            "csv",
+            "bitset",
+            "coll",
+            "fakesys",
+            "salad",
+            "tzcode",
+        ];
+        for l in tarantool_libs {
+            rustc::link_search(tarantool_build.join("src/lib").join(l));
+            rustc::link_lib_static_whole_archive(l);
+        }
+
+        // {tarantool_build}
+        rustc::link_search(&tarantool_build);
+        rustc::link_lib_static_whole_archive("coro");
+        rustc::link_lib_static_whole_archive("decNumber");
+        rustc::link_lib_static_whole_archive("eio");
+        rustc::link_lib_static_whole_archive("misc");
+        rustc::link_lib_static_whole_archive("swim_ev");
+        rustc::link_lib_static_whole_archive("swim_udp");
+        rustc::link_lib_static_whole_archive("xxhash");
+
+        // {tarantool_build}/src
+        rustc::link_search(tarantool_build.join("src"));
+        rustc::link_lib_static_whole_archive("cpu_feature");
+        rustc::link_lib_static_whole_archive("crc32");
+        rustc::link_lib_static_whole_archive("server");
+        rustc::link_lib_static_whole_archive("shutdown");
+        rustc::link_lib_static_whole_archive("stat");
+        rustc::link_lib_static_whole_archive("symbols");
+        rustc::link_lib_static_whole_archive("tarantool");
+
+        // {tarantool_build}/src/box
+        rustc::link_search(tarantool_build.join("src/box"));
+        rustc::link_lib_static_whole_archive("box");
+        rustc::link_lib_static_whole_archive("box_error");
+        rustc::link_lib_static_whole_archive("tuple");
+        rustc::link_lib_static_whole_archive("xlog");
+        rustc::link_lib_static_whole_archive("xrow");
+
+        rustc::link_search(tarantool_build.join("src/lib/crypto"));
+        rustc::link_lib_static_whole_archive("tcrypto");
+
+        rustc::link_search(tarantool_build.join("third_party/c-dt/build"));
+        rustc::link_lib_static_whole_archive("cdt");
+
+        rustc::link_search(tarantool_build.join("third_party/luajit/src"));
+        rustc::link_lib_static_whole_archive("luajit");
+
+        // libev
+        if use_static_build {
+            rustc::link_lib_static_whole_archive("ev");
+        } else {
+            rustc::link_lib_dynamic("ev");
+        }
+
+        // libzstd
+        if use_static_build {
+            rustc::link_lib_static_whole_archive("zstd");
+        } else {
+            rustc::link_lib_dynamic("zstd");
+        }
+
+        // libz
+        if use_static_build {
+            rustc::link_search(tarantool_root.join("zlib-prefix/lib"));
+            rustc::link_lib_static_whole_archive("z");
+        } else {
+            rustc::link_lib_dynamic("z");
+        }
+
+        // libyaml
+        if use_static_build {
+            rustc::link_search(tarantool_build.join("build/libyaml/lib"));
+            rustc::link_lib_static_whole_archive("yaml_static");
+        } else {
+            rustc::link_lib_dynamic("yaml");
+        }
+
+        // libreadline
+        if use_static_build {
+            rustc::link_search(tarantool_root.join("readline-prefix/lib"));
+            rustc::link_lib_static_whole_archive("readline");
+
+            // Static readline depends on tinfo.
+            rustc::link_search(tarantool_root.join("ncurses-prefix/lib"));
+            rustc::link_lib_static_whole_archive("tinfo");
+        } else {
+            // On macos readline is keg-only, so we should add it to search path.
+            if cfg!(target_os = "macos") {
+                rustc::link_search("/usr/local/opt/readline/lib");
+            }
+            rustc::link_lib_dynamic("readline");
+        }
+
+        // libiconv (macos adds -liconv automatically; not needed on linux)
+        rustc::link_search(tarantool_root.join("iconv-prefix/lib"));
+
+        // libicu
+        if use_static_build {
+            rustc::link_search(tarantool_root.join("icu-prefix/lib"));
+            rustc::link_lib_static_whole_archive("icudata");
+            rustc::link_lib_static_whole_archive("icui18n");
+            rustc::link_lib_static_whole_archive("icuio");
+            rustc::link_lib_static_whole_archive("icutu");
+            rustc::link_lib_static_whole_archive("icuuc");
+        } else {
+            // On macos icu4c is keg-only, so we should add it to search path.
+            if cfg!(target_os = "macos") {
+                rustc::link_search("/usr/local/opt/icu4c/lib");
+            }
+            rustc::link_lib_dynamic("icudata");
+            rustc::link_lib_dynamic("icui18n");
+            rustc::link_lib_dynamic("icuio");
+            rustc::link_lib_dynamic("icutu");
+            rustc::link_lib_dynamic("icuuc");
+        }
+
+        // libcurl
+        if use_static_build {
+            rustc::link_search(tarantool_build.join("build/curl/dest/lib"));
+            rustc::link_lib_static_whole_archive("curl");
+
+            // Static curl depends on nghttp2 & cares.
+            rustc::link_search(tarantool_build.join("build/nghttp2/dest/lib"));
+            rustc::link_lib_static_whole_archive("nghttp2");
+            rustc::link_search(tarantool_build.join("build/ares/dest/lib"));
+            rustc::link_lib_dynamic("cares");
+        } else {
+            rustc::link_lib_dynamic("curl");
+        }
+
+        // Add LDAP authentication support libraries.
+        if use_static_build {
+            rustc::link_search(tarantool_build.join("bundled-ldap-prefix/lib"));
+            rustc::link_lib_static("ldap");
+            rustc::link_lib_static("lber");
+            rustc::link_search(tarantool_build.join("bundled-sasl-prefix/lib"));
+            rustc::link_lib_static("sasl2");
+        } else {
+            rustc::link_lib_dynamic("sasl2");
+            rustc::link_lib_dynamic("ldap");
+        }
+
+        // Previously in static build mode we used to link both libssl
+        // and libcrypto statically. However with the addition of libssl
+        // support to pgproto we needed to use Rust ssl bindings which
+        // need to link with libssl too. To unify tarantool and rust side
+        // of things we decided to always link libssl dynamically. When
+        // libssl is linked dynamically there is no need to link libcrypto
+        // because it is a dependency of libssl and is already present in
+        // libssl.so:
+        // > ldd /usr/lib64/libssl.so
+        //     libcrypto.so.3 => /lib64/libcrypto.so.3
+        //     ...
+        //
+        // If needed this is the way to link libssl statically:
+        // rustc::link_lib_static("ssl");
+        // rustc::link_lib_static("crypto");
+        rustc::link_lib_dynamic("ssl");
+
+        // macos links libunwind automatically.
+        if !cfg!(target_os = "macos") {
+            let arch = cargo::get_target_arch();
+            if use_static_build {
+                rustc::link_search(tarantool_build.join("third_party/libunwind/src/.libs"));
+                rustc::link_lib_static(format!("unwind-{arch}"));
+                rustc::link_lib_static("unwind");
+            } else {
+                rustc::link_lib_dynamic(format!("unwind-{arch}"));
+                rustc::link_lib_dynamic("unwind");
+            }
+        }
+
+        if cfg!(target_os = "macos") {
+            rustc::link_lib_dynamic("resolv");
+            rustc::link_lib_dynamic("c++");
+        } else {
+            rustc::link_lib_dynamic("stdc++");
+        }
+
+        rustc::link_arg("-lc");
+    }
+}

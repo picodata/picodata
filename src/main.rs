@@ -1,12 +1,7 @@
 use clap::Parser;
 use picodata::cli::{self, args::Picodata};
-use std::env;
-
-include!(concat!(env!("OUT_DIR"), "/export_symbols.rs"));
 
 fn main() -> ! {
-    export_symbols();
-
     // Initialize the panic hook asap.
     // Even if `say` isn't properly initialized yet, we
     // still should be able to print a simplified line to stderr.

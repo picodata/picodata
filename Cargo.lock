@@ -671,6 +671,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "build-rs-helpers"
+version = "0.1.0"
+dependencies = [
+ "jobserver",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2655,6 +2662,7 @@ version = "24.7.0"
 dependencies = [
  "abi_stable",
  "ahash 0.8.11",
+ "build-rs-helpers",
  "bytes",
  "chrono",
  "clap 3.2.25",
@@ -2664,7 +2672,6 @@ dependencies = [
  "futures",
  "git-version",
  "indoc",
- "jobserver",
  "libc",
  "libloading 0.8.5",
  "md5",
@@ -2699,6 +2706,7 @@ dependencies = [
  "sqlparser",
  "syn 1.0.109",
  "tarantool 6.0.0",
+ "tarantool-build",
  "tempfile",
  "thiserror",
  "time",
@@ -4100,6 +4108,13 @@ dependencies = [
  "tokio",
  "uuid 0.8.2",
  "va_list",
+]
+
+[[package]]
+name = "tarantool-build"
+version = "0.1.0"
+dependencies = [
+ "build-rs-helpers",
 ]
 
 [[package]]

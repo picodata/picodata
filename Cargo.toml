@@ -62,10 +62,11 @@ pretty_assertions = "1.4"
 
 [build-dependencies]
 git-version = "0.3"
-jobserver = "0.1"
-nix = { version = "0.29", features = ["fs"] }
 quote = "1.0"
 syn = { version = "1.0", features = ["full", "extra-traits", "printing"] }
+
+build-rs-helpers = { path = "build-rs-helpers" }
+tarantool-build = { path = "tarantool-build" }
 
 # an attempt to minimize the number of lines in Cargo.lock
 [patch.crates-io]
@@ -99,10 +100,12 @@ harness = false
 resolver = "2"
 members = [
     ".",
-    "pico_proc_macro",
+    "build-rs-helpers",
     "gostech/gostech-audit-log",
-    "test/testplug",
+    "pico_proc_macro",
+    "tarantool-build",
     "test/plug_wrong_version",
+    "test/testplug",
 ]
 
 # For releases, we prioritize performance over compilation time.
