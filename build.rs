@@ -1,7 +1,9 @@
-use build_rs_helpers::{cargo, rustc};
+use build_rs_helpers::{cargo, rustc, CommandExt};
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::Command,
 };
 use tarantool_build::TarantoolBuildRoot;
 
@@ -28,7 +30,7 @@ fn main() {
     check_plugins_ffi();
 
     if cfg!(feature = "webui") {
-        webui::build(&build_root, Path::new("webui"));
+        build_webui(&build_root);
     }
 }
 
@@ -181,58 +183,44 @@ fn check_plugins_ffi() {
     }
 }
 
-mod webui {
-    use super::*;
-    use build_rs_helpers::CommandExt;
-    use std::{ffi::OsString, process::Command};
+pub fn build_webui(build_root: &Path) {
+    let src_dir = PathBuf::from("webui");
+    let out_dir = build_root.join("webui");
 
-    fn rerun_if_changed(webui_dir: &Path) {
-        let source_dir = std::env::current_dir().unwrap().join(webui_dir);
-        std::fs::read_dir(source_dir)
-            .expect("failed to scan webui dir")
-            .flatten()
-            .for_each(|entry| {
-                // Do not rerun for generated files changes
-                let file_name = entry.file_name();
-                let ignored_files = ["node_modules", ".husky"].map(OsString::from);
-                if !ignored_files.contains(&file_name) {
-                    cargo::rerun_if_changed(webui_dir.join(file_name));
-                }
-            });
-    }
-
-    pub fn build(build_root: &Path, webui_dir: &Path) {
-        cargo::rerun_if_env_changed("WEBUI_BUNDLE");
-        self::rerun_if_changed(webui_dir);
-
-        if std::env::var("WEBUI_BUNDLE").is_ok() {
-            println!("building webui_bundle skipped");
-            return;
+    cargo::rerun_if_env_changed("WEBUI_BUNDLE");
+    for entry in std::fs::read_dir(&src_dir).unwrap() {
+        // Do not rerun for generated files changes
+        let entry = entry.unwrap();
+        let ignored_files = ["node_modules", ".husky"].map(OsString::from);
+        if !ignored_files.contains(&entry.file_name()) {
+            cargo::rerun_if_changed(entry.path());
         }
-
-        println!("building webui_bundle ...");
-        let src_dir = std::env::current_dir().unwrap().join(webui_dir);
-        let out_dir = build_root.join(webui_dir);
-
-        let webui_bundle = out_dir.join("bundle.json");
-        rustc::env("WEBUI_BUNDLE", webui_bundle);
-
-        Command::new("yarn")
-            .arg("install")
-            .arg("--prefer-offline")
-            .arg("--frozen-lockfile")
-            .arg("--no-progress")
-            .arg("--non-interactive")
-            .current_dir(&src_dir)
-            .run();
-
-        Command::new("yarn")
-            .arg("vite")
-            .arg("build")
-            .arg("--outDir")
-            .arg(&out_dir)
-            .arg("--emptyOutDir")
-            .current_dir(&src_dir)
-            .run();
     }
+
+    if std::env::var_os("WEBUI_BUNDLE").is_some() {
+        println!("building webui_bundle skipped");
+        return;
+    }
+
+    println!("building webui_bundle ...");
+    let webui_bundle = out_dir.join("bundle.json");
+    rustc::env("WEBUI_BUNDLE", webui_bundle);
+
+    Command::new("yarn")
+        .arg("install")
+        .arg("--prefer-offline")
+        .arg("--frozen-lockfile")
+        .arg("--no-progress")
+        .arg("--non-interactive")
+        .current_dir(&src_dir)
+        .run();
+
+    Command::new("yarn")
+        .arg("vite")
+        .arg("build")
+        .arg("--outDir")
+        .arg(&out_dir)
+        .arg("--emptyOutDir")
+        .current_dir(&src_dir)
+        .run();
 }

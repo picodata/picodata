@@ -5,8 +5,11 @@ pub use jobserver::Client as MakeJobserverClient;
 use super::*;
 
 /// Cause `build.rs` to run again if an environment variable changes.
-pub fn rerun_if_env_changed(path: impl AsRef<OsStr>) {
-    println!("cargo:rerun-if-changed={}", path.as_ref().to_str().unwrap())
+pub fn rerun_if_env_changed(name: impl AsRef<OsStr>) {
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        name.as_ref().to_str().unwrap()
+    )
 }
 
 /// Cause `build.rs` to run again if a file (or a directory) changes.
