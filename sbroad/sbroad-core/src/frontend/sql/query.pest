@@ -302,7 +302,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"from" | ^"group"
                         | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
-                        | ^"join" | ^"left" | ^"limit" | ^"not" | ^"null" | ^"number"
+                        | ^"join" | ^"left" | ^"limit" | ^"not" | ^"null" | ^"number" | ^"numeric"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
                         | ^"scalar" | ^"select" | ^"set" | ^"smallint" |^"string"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
@@ -391,7 +391,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                     TypeAny = { ^"any" }
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
-                    TypeDecimal = { ^"decimal" }
+                    TypeDecimal = { (^"decimal" | ^"numeric" ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }
                     TypeDouble = { ^"double" }
                     TypeInt = { (^"integer" | ^"bigint" | ^"smallint" | ^"int" ~ ("2" | "4" | "8")?) }
                     TypeNumber = { ^"number" }

@@ -162,3 +162,66 @@ fn infer_alias_int2_int4_int8_bigint_smallint() {
 
     assert_eq!(format, &vec![def_a, def_b, def_c, def_d, def_e]);
 }
+
+#[test]
+fn infer_alias_numeric_two_parameters() {
+    let input = r#"create table t ("a" numeric(5, 2) primary key)"#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+        panic!("expected create table")
+    };
+
+    let def_a = ColumnDef {
+        name: "a".into(),
+        data_type: Type::Decimal,
+        is_nullable: false,
+    };
+
+    assert_eq!(format, &vec![def_a]);
+}
+
+#[test]
+fn infer_alias_numeric_one_parameter() {
+    let input = r#"create table t ("a" numeric(5) primary key)"#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+        panic!("expected create table")
+    };
+
+    let def_a = ColumnDef {
+        name: "a".into(),
+        data_type: Type::Decimal,
+        is_nullable: false,
+    };
+
+    assert_eq!(format, &vec![def_a]);
+}
+
+#[test]
+fn infer_alias_numeric_no_parameters() {
+    let input = r#"create table t ("a" numeric primary key)"#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+        panic!("expected create table")
+    };
+
+    let def_a = ColumnDef {
+        name: "a".into(),
+        data_type: Type::Decimal,
+        is_nullable: false,
+    };
+
+    assert_eq!(format, &vec![def_a]);
+}
