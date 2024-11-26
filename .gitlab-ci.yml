@@ -72,7 +72,6 @@ variables:
   - &if-build-base-changes-on-master-branch
     if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     changes:
-      # implies compare_to HEAD~1
       paths: &build-base-changes-paths
         - docker-build-base/**
         - .gitlab-ci.yml
@@ -80,8 +79,9 @@ variables:
   - &if-build-base-changes-on-dev-branch
     if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
     changes:
+      paths:
+        - docker-build-base/**
       compare_to: *main-branch
-      paths: *build-base-changes-paths
 
   - &else {}
 
@@ -309,7 +309,9 @@ lint:
     # in case certification_patches has changed
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
-        - certification_patches/**/*
+        paths:
+          - certification_patches/**/*
+        compare_to: *main-branch
       allow_failure: true
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
