@@ -60,7 +60,19 @@ impl Display for RowSet {
         table.set_header(self.metadata.iter());
 
         for row in &self.rows {
-            table.add_row(row);
+            let formatted_row: Vec<String> = row
+                .iter()
+                .map(|v| {
+                    // if cell is Utf8String, then we format it as plain string with no quotes
+                    if let rmpv::Value::String(s) = v {
+                        s.as_str().unwrap().to_string()
+                    } else {
+                        v.to_string()
+                    }
+                })
+                .collect();
+
+            table.add_row(formatted_row);
         }
 
         f.write_fmt(format_args!("{table}\n"))?;

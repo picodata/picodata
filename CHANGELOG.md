@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `picodata expel` takes instance uuid instead of instance name.
 
+- String cells are now output without double quotes during SELECT.
+
 ### Compatibility
 
 - Added unique index on column `uuid` for `_pico_instance` table. IDs
@@ -151,7 +153,7 @@ to 2 and 3.
 - EXPLAIN estimates query buckets
 - SQL supports `COALESCE` function
 
-### Pgproro
+### Pgproto
 - "vdbe_max_steps" and "vtable_max_rows" options are supported in connection
   string. These options allow to override the defalt values of the
   corresponding execution options used in sql (VDBE_MAX_STEPS and VTABLE_MAX_ROWS).
