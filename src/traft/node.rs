@@ -769,7 +769,10 @@ impl NodeImpl {
         }
     }
 
-    fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) {
+    /// Actions needed when applying a DML entry.
+    ///
+    /// Returns `true` if entry was applied successfully.
+    fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) -> bool {
         let space = op.space().try_into();
 
         // In order to implement the audit log events, we have to compare
@@ -818,6 +821,7 @@ impl NodeImpl {
         match &res {
             Err(e) => {
                 tlog!(Error, "clusterwide dml failed: {e}");
+                return false;
             }
             // Handle insert, replace, update in _pico_instance
             Ok((old, Some(new))) if space == Ok(ClusterwideTable::Instance) => {
@@ -914,6 +918,8 @@ impl NodeImpl {
             }
             Ok(_) => {}
         }
+
+        true
     }
 
     /// Is called during a transaction
@@ -936,11 +942,17 @@ impl NodeImpl {
             Op::Nop => {}
             Op::BatchDml { ref ops } => {
                 for op in ops {
-                    self.handle_dml_entry(op, expelled);
+                    let ok = self.handle_dml_entry(op, expelled);
+                    if !ok {
+                        return SleepAndRetry;
+                    }
                 }
             }
             Op::Dml(op) => {
-                self.handle_dml_entry(&op, expelled);
+                let ok = self.handle_dml_entry(&op, expelled);
+                if !ok {
+                    return SleepAndRetry;
+                }
             }
             Op::DdlPrepare {
                 ddl,
