@@ -706,19 +706,19 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{access_check_acl, access_check_ddl, user_by_id};
+    use crate::storage::schema::acl::global_create_role;
+    use crate::storage::schema::acl::global_grant_privilege;
+    use crate::storage::schema::acl::on_master_create_role;
+    use crate::storage::schema::acl::on_master_create_user;
+    use crate::storage::schema::acl::on_master_grant_privilege;
+    use crate::storage::schema::acl::on_master_revoke_privilege;
     use crate::{
         access_control::{access_check_op, UserMetadataKind},
         schema::{
             Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType, UserDef, ADMIN_ID,
             UNIVERSE_ID,
         },
-        storage::{
-            acl::{
-                global_create_role, global_grant_privilege, on_master_create_role,
-                on_master_create_user, on_master_grant_privilege, on_master_revoke_privilege,
-            },
-            Clusterwide,
-        },
+        storage::Clusterwide,
         traft::op::{Acl, Ddl, Dml, Op},
     };
     use tarantool::{

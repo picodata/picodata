@@ -1434,7 +1434,7 @@ pub fn init_user_pico_service() {
         panic!("Couldn't find definition for '{PICO_SERVICE_USER_NAME}' system user");
     };
 
-    let res = storage::acl::on_master_create_user(user_def, false);
+    let res = storage::schema::acl::on_master_create_user(user_def, false);
     if let Err(e) = res {
         panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
     }

@@ -1,9 +1,12 @@
 use crate::op::Ddl;
-use crate::storage::{
-    ddl_create_function_on_master, ddl_create_index_on_master, ddl_create_space_on_master,
-    ddl_drop_function_on_master, ddl_drop_index_on_master, ddl_drop_space_on_master,
-};
-use crate::storage::{ddl_rename_function_on_master, Clusterwide};
+use crate::storage::schema::ddl_create_function_on_master;
+use crate::storage::schema::ddl_create_index_on_master;
+use crate::storage::schema::ddl_create_space_on_master;
+use crate::storage::schema::ddl_drop_function_on_master;
+use crate::storage::schema::ddl_drop_index_on_master;
+use crate::storage::schema::ddl_drop_space_on_master;
+use crate::storage::schema::ddl_rename_function_on_master;
+use crate::storage::Clusterwide;
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;

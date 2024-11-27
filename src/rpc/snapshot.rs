@@ -1,6 +1,6 @@
+use crate::storage::snapshot::SnapshotData;
+use crate::storage::snapshot::SnapshotPosition;
 use crate::storage::Clusterwide;
-use crate::storage::SnapshotData;
-use crate::storage::SnapshotPosition;
 use crate::traft::RaftEntryId;
 use crate::traft::Result;
 
