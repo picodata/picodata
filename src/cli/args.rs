@@ -118,6 +118,8 @@ pub struct Run {
     /// Used during cluster initialization
     /// and joining an instance to an existing cluster.
     ///
+    /// For example: `--peer server-1.picodata.int:13301,server-2.picodata.int:13301`
+    ///
     /// Defaults to `--advertise` value which results in creating a new
     /// cluster
     pub peers: Vec<IprotoAddress>,
