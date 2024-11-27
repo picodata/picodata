@@ -37,9 +37,23 @@ pub enum ReplError {
 pub type Result<T> = std::result::Result<T, ReplError>;
 const DELIMITER: &str = ";";
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum ConsoleLanguage {
+    Lua,
+    Sql,
+}
+
+impl std::fmt::Display for ConsoleLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsoleLanguage::Lua => write!(f, "lua"),
+            ConsoleLanguage::Sql => write!(f, "sql"),
+        }
+    }
+}
+
 pub enum SpecialCommand {
-    SwitchLanguageToLua,
-    SwitchLanguageToSql,
+    SwitchLanguage(ConsoleLanguage),
     PrintHelp,
 }
 
@@ -48,11 +62,6 @@ pub enum Command {
     Control(SpecialCommand),
     // Either lua or sql expression
     Expression(String),
-}
-
-enum ConsoleLanguage {
-    Lua,
-    Sql,
 }
 
 enum ConsoleCommand {
@@ -83,39 +92,49 @@ pub struct Console<H: Helper> {
 
 impl<T: Helper> Console<T> {
     const HISTORY_FILE_NAME: &'static str = ".picodata_history";
-    const INNER_PROMPT: &'static str = "        > ";
+    const INNER_PROMPT_FOR_CONNECT: &'static str = "   > ";
+    const INNER_PROMPT_FOR_ADMIN: &'static str = "           > ";
     const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
     const LUA_PROMPT: &'static str = "lua> ";
     const SQL_PROMPT: &'static str = "sql> ";
     const ADMIN_MODE: &'static str = "(admin) ";
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
-        match command {
-            "\\e" | "\\e;" => self.open_external_editor(),
-            "\\help" | "\\h" | "\\help;" | "\\h;" => Ok(ControlFlow::Break(Command::Control(
-                SpecialCommand::PrintHelp,
-            ))),
-            "\\lua" | "\\lua;" => {
-                if self.mode != Mode::Admin {
-                    self.write("Language cannot be changed in this console");
-                    return Ok(ControlFlow::Continue(()));
+        use ConsoleLanguage::*;
+        use SpecialCommand::*;
+
+        let parsed_command = match command {
+            "\\lua" | "\\lua;" => Some(SwitchLanguage(Lua)),
+            "\\sql" | "\\sql;" => Some(SwitchLanguage(Sql)),
+            "\\help" | "\\h" | "\\help;" | "\\h;" => Some(PrintHelp),
+            "\\e" | "\\e;" => return self.open_external_editor(),
+            _ => match self.parse_special_command(command) {
+                ConsoleCommand::SetLanguage(language) => Some(SwitchLanguage(language)),
+                ConsoleCommand::SetDelimiter(delimiter) => {
+                    self.update_delimiter(delimiter);
+                    None
                 }
-                self.current_language = ConsoleLanguage::Lua;
-                return Ok(ControlFlow::Break(Command::Control(
-                    SpecialCommand::SwitchLanguageToLua,
-                )));
-            },
-            "\\sql" | "\\sql;" => {
-                if self.mode != Mode::Admin {
-                    self.write("Language cannot be changed in this console");
-                    return Ok(ControlFlow::Continue(()));
+                ConsoleCommand::Invalid => {
+                    self.write("Unknown special sequence");
+                    None
                 }
-                self.current_language = ConsoleLanguage::Sql;
-                return Ok(ControlFlow::Break(Command::Control(
-                    SpecialCommand::SwitchLanguageToSql,
-                )));
             },
-            _ => self.handle_parsed_command(command),
+        };
+
+        match parsed_command {
+            Some(command) => match command {
+                SwitchLanguage(console_language) => {
+                    if self.mode != Mode::Admin {
+                        self.write("Language cannot be changed in this console");
+                        Ok(ControlFlow::Continue(()))
+                    } else {
+                        self.current_language = console_language;
+                        Ok(ControlFlow::Break(Command::Control(command)))
+                    }
+                }
+                PrintHelp => Ok(ControlFlow::Break(Command::Control(command))),
+            },
+            None => Ok(ControlFlow::Continue(())),
         }
     }
 
@@ -141,40 +160,6 @@ impl<T: Helper> Console<T> {
 
         let line = read_to_string(temp.path()).map_err(ReplError::Io)?;
         Ok(ControlFlow::Break(Command::Expression(line)))
-    }
-
-    fn handle_parsed_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
-        match self.parse_special_command(command) {
-            ConsoleCommand::SetLanguage(language) => {
-                if self.mode != Mode::Admin {
-                    self.write("Language cannot be changed in this console");
-                    return Ok(ControlFlow::Continue(()));
-                }
-
-                match language {
-                    ConsoleLanguage::Lua => {
-                        self.current_language = ConsoleLanguage::Lua;
-                        return Ok(ControlFlow::Break(Command::Control(
-                            SpecialCommand::SwitchLanguageToLua,
-                        )));
-                    }
-                    ConsoleLanguage::Sql => {
-                        self.current_language = ConsoleLanguage::Sql;
-                        return Ok(ControlFlow::Break(Command::Control(
-                            SpecialCommand::SwitchLanguageToSql,
-                        )));
-                    }
-                }
-            },
-            ConsoleCommand::SetDelimiter(delimiter) => {
-                self.update_delimiter(delimiter);
-                Ok(ControlFlow::Continue(()))
-            }
-            ConsoleCommand::Invalid => {
-                self.write("Unknown special sequence");
-                Ok(ControlFlow::Continue(()))
-            }
-        }
     }
 
     fn update_delimiter(&mut self, delimiter: Option<String>) {
@@ -213,7 +198,7 @@ impl<T: Helper> Console<T> {
         }
     }
 
-    fn update_history(&mut self, command: Command) -> Result<Option<Command>> {
+    fn update_history(&mut self, command: Command) -> Command {
         // do not save special commands
         if let Command::Expression(expression) = &command {
             if let Err(e) = self
@@ -227,7 +212,7 @@ impl<T: Helper> Console<T> {
             }
         }
 
-        Ok(Some(command))
+        command
     }
 
     fn process_command(&mut self) {
@@ -265,28 +250,28 @@ impl<T: Helper> Console<T> {
 
                 match processed {
                     ControlFlow::Continue(_) => continue,
-                    ControlFlow::Break(command) => return self.update_history(command),
+                    ControlFlow::Break(command) => return Ok(Some(self.update_history(command))),
                 }
             }
 
-            let admin = match self.mode {
-                Mode::Admin => Self::ADMIN_MODE,
-                Mode::Connection => "",
-            };
-
-            let language = match self.current_language {
-                ConsoleLanguage::Lua => Self::LUA_PROMPT,
-                ConsoleLanguage::Sql => Self::SQL_PROMPT,
-            };
-
-            let inner = if self.uncompleted_statement.is_empty() {
-                ""
-            } else {
+            let prompt = if !self.uncompleted_statement.is_empty() {
                 self.uncompleted_statement.push(' ');
-                Self::INNER_PROMPT
+                match self.mode {
+                    Mode::Admin => Self::INNER_PROMPT_FOR_ADMIN,
+                    Mode::Connection => Self::INNER_PROMPT_FOR_CONNECT,
+                }
+                .to_string()
+            } else {
+                let admin = match self.mode {
+                    Mode::Admin => Self::ADMIN_MODE,
+                    Mode::Connection => "",
+                };
+                let language = match self.current_language {
+                    ConsoleLanguage::Lua => Self::LUA_PROMPT,
+                    ConsoleLanguage::Sql => Self::SQL_PROMPT,
+                };
+                format!("{admin}{language}")
             };
-
-            let prompt = format!("{admin}{language}{inner}");
 
             let readline = self.editor.readline(&prompt);
 
@@ -298,7 +283,9 @@ impl<T: Helper> Console<T> {
 
                         match processed {
                             ControlFlow::Continue(_) => continue,
-                            ControlFlow::Break(command) => return self.update_history(command),
+                            ControlFlow::Break(command) => {
+                                return Ok(Some(self.update_history(command)))
+                            }
                         }
                     } else {
                         self.uncompleted_statement += &line;

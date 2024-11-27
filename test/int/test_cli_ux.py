@@ -111,11 +111,11 @@ def test_admin_ux(cluster: Cluster):
 
     # in admin console language switching is availiable
     cli.sendline("\\lua")
-    cli.expect_exact("Language switched to Lua")
+    cli.expect_exact("Language switched to lua")
     cli.expect_exact("(admin) lua> ")
 
     cli.sendline("\\sql;")
-    cli.expect_exact("Language switched to SQL")
+    cli.expect_exact("Language switched to sql")
     cli.expect_exact("(admin) sql> ")
 
     # for not registried command nothing happend
@@ -126,16 +126,16 @@ def test_admin_ux(cluster: Cluster):
 
     # variations of `\s l sql/lua` is registred, but not in help
     cli.sendline("\\set language lua")
-    cli.expect_exact("Language switched to Lua")
+    cli.expect_exact("Language switched to lua")
     cli.expect_exact("(admin) lua> ")
 
     cli.sendline("\\s lang sql")
-    cli.expect_exact("Language switched to SQL")
+    cli.expect_exact("Language switched to sql")
     cli.expect_exact("(admin) sql> ")
 
     # nothing happens on completion in SQL mode
     cli.sendline("\\sql;")
-    cli.expect_exact("Language switched to SQL")
+    cli.expect_exact("Language switched to sql")
     cli.sendline("\t\t")
     cli.expect_exact("(admin) sql> ")
 
@@ -144,7 +144,7 @@ def test_admin_ux(cluster: Cluster):
 
     # something happens on completion in Lua mode
     cli.sendline("\\lua")
-    cli.expect_exact("Language switched to Lua")
+    cli.expect_exact("Language switched to lua")
     cli.sendline("hel\t")
     cli.expect_exact("(admin) lua> help")
 
@@ -622,7 +622,6 @@ def test_picodata_tarantool(cluster: Cluster):
         result = f.read()
 
     assert result == "it worked!"
-    cli.expect_exact("(admin) sql> ")
 
 
 def test_command_history_with_delimiter(cluster: Cluster):
@@ -647,7 +646,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # Set custom delimiter
     cli.sendline("\\set delimiter ?123")
@@ -663,7 +662,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
     # Press the down arrow key to clean the input
     cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")
 
     # Set delimiter back to ;
     cli.sendline("\\set delimiter ;")
@@ -683,4 +682,4 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
     # Press the down arrow key to clean the input
     cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("sql> ")

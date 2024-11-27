@@ -253,7 +253,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
             Command::Control(command) => {
                 match command {
                     SpecialCommand::PrintHelp => console.write(HELP_MESSAGE),
-                    SpecialCommand::SwitchLanguageToLua | SpecialCommand::SwitchLanguageToSql => {
+                    SpecialCommand::SwitchLanguage(_) => {
                         // picodata connect doesn't know about language switching
                         console.write("Unknown special sequence")
                     }

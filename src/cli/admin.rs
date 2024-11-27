@@ -12,7 +12,7 @@ use rustyline_derive::{Completer, Helper, Highlighter, Hinter, Validator};
 
 use super::args;
 use super::connect::ResultSet;
-use super::console::{Command, Console, ReplError, SpecialCommand};
+use super::console::{Command, Console, ConsoleLanguage, ReplError, SpecialCommand};
 
 pub struct LuaCompleter {
     client: Rc<RefCell<UnixClient>>,
@@ -51,12 +51,6 @@ impl Completer for LuaCompleter {
 pub struct LuaHelper {
     #[rustyline(Completer)]
     completer: LuaCompleter,
-}
-
-#[derive(PartialEq)]
-enum ConsoleLanguage {
-    Lua,
-    Sql,
 }
 
 /// Wrapper around unix socket with console-like interface
@@ -272,18 +266,11 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
         let mut temp_client = client.borrow_mut();
         match command {
             Command::Control(command) => match command {
-                SpecialCommand::SwitchLanguageToLua => {
-                    temp_client.write("\\set language lua")?;
+                SpecialCommand::SwitchLanguage(language) => {
+                    temp_client.write(&format!("\\set language {language}"))?;
                     temp_client.read()?;
-                    temp_client.current_language = ConsoleLanguage::Lua;
-                    console.write("Language switched to Lua");
-                }
-
-                SpecialCommand::SwitchLanguageToSql => {
-                    temp_client.write("\\set language sql")?;
-                    temp_client.read()?;
-                    temp_client.current_language = ConsoleLanguage::Sql;
-                    console.write("Language switched to SQL");
+                    temp_client.current_language = language;
+                    console.write(&format!("Language switched to {language}"));
                 }
 
                 SpecialCommand::PrintHelp => {
