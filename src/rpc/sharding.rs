@@ -1,5 +1,7 @@
 use crate::governor::plan::get_first_ready_replicaset_in_tier;
+use crate::storage::space_by_name;
 use crate::storage::ToEntryIter;
+use crate::storage::TABLE_ID_BUCKET;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::Result;
@@ -76,6 +78,12 @@ crate::define_rpc_request! {
                     &config,
                 )
                 .map_err(tlua::LuaError::from)?;
+
+                // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
+                // in the `config` above, but just to make it explicit here we
+                // add an assert.
+                let space = space_by_name("_bucket")?;
+                assert_eq!(space.id(), TABLE_ID_BUCKET);
             }
 
             lua.exec_with(

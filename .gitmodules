@@ -7,7 +7,7 @@
 	ignore = dirty
 [submodule "vshard"]
 	path = vshard
-	url = https://github.com/tarantool/vshard
+	url = ../vshard.git
 [submodule "http"]
 	path = http
 	url = ../http.git

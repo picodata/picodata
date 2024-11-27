@@ -36,6 +36,11 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i3.next_schema_version() == 2
     assert i4.next_schema_version() == 2
 
+    bucket_id = i1.eval("return box.space._bucket.id")
+    assert bucket_id == i2.eval("return box.space._bucket.id")
+    assert bucket_id == i3.eval("return box.space._bucket.id")
+    assert bucket_id == i4.eval("return box.space._bucket.id")
+
     ############################################################################
     # Propose a space creation which will fail
 
@@ -189,6 +194,9 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i6.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i6.call("box.space._space:get", space_id) == tt_space_def
     assert i6.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+
+    assert bucket_id == i5.eval("return box.space._bucket.id")
+    assert bucket_id == i6.eval("return box.space._bucket.id")
 
     # TODO: test replica becoming master in the process of catching up
 
@@ -1537,3 +1545,77 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
         + f"table {table_name} cannot be modified now as DDL operation is in progress",
     )
     lc.wait_matched()
+
+
+def test_add_replicaset_after_ddl(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            replication_factor: 1
+            can_vote: true
+        storage:
+            replication_factor: 2
+            can_vote: false
+"""
+    )
+
+    leader = cluster.add_instance(tier="voter", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+
+    cluster.wait_online()
+    assert storage_1_1.replicaset_name == storage_1_2.replicaset_name
+
+    # Create table while there's just one replicaset
+    leader.sql(
+        """
+        CREATE TABLE test (id INT PRIMARY KEY, value TEXT)
+        DISTRIBUTED BY (id) IN TIER storage
+        WAIT APPLIED GLOBALLY
+        """
+    )
+
+    # Add a new replicaset, which catches up by raft log
+    storage_2_1 = cluster.add_instance(tier="storage", wait_online=True)
+    storage_2_2 = cluster.add_instance(tier="storage", wait_online=True)
+    assert storage_2_1.replicaset_name != storage_1_1.replicaset_name
+    assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
+
+    # Create another table, everything's ok
+    leader.sql(
+        """
+        CREATE TABLE test2 (id INT PRIMARY KEY, value TEXT)
+        DISTRIBUTED BY (id) IN TIER storage
+        WAIT APPLIED GLOBALLY
+        """
+    )
+
+    # Trigger log compaction
+    leader.sql("ALTER SYSTEM SET cluster_wal_max_count TO 1")
+
+    # Add a new replicaset, which catches up by raft snapshot
+    storage_3_1 = cluster.add_instance(tier="storage", wait_online=True)
+    storage_3_2 = cluster.add_instance(tier="storage", wait_online=True)
+    assert storage_3_1.replicaset_name != storage_1_1.replicaset_name
+    assert storage_3_1.replicaset_name == storage_3_2.replicaset_name
+
+    # Create yet another table, everything's ok
+    leader.sql(
+        """
+        CREATE TABLE test3 (id INT PRIMARY KEY, value TEXT)
+        DISTRIBUTED BY (id) IN TIER storage
+        WAIT APPLIED GLOBALLY
+        """
+    )
+
+    # All 3 tables exist on all instances
+    table_ids = {}
+    for i in cluster.instances:
+        for table_name in ["test", "test2", "test3"]:
+            table_id = i.eval(f"return box.space.{table_name}.id")
+            if table_name not in table_ids:
+                table_ids[table_name] = table_id
+            assert table_ids[table_name] == table_id

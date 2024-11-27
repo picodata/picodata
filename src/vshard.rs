@@ -7,9 +7,11 @@ use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
+use crate::storage::TABLE_ID_BUCKET;
 use crate::traft::error::Error;
 use crate::traft::RaftId;
 use std::collections::HashMap;
+use tarantool::space::SpaceId;
 use tarantool::tlua;
 
 pub fn get_replicaset_priority_list(
@@ -45,6 +47,9 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
 pub struct VshardConfig {
     sharding: HashMap<String, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
+
+    /// Id of system table `_bucket`.
+    space_bucket_id: SpaceId,
 
     /// This field is not stored in the global storage, instead
     /// it is set right before the config is passed into vshard.*.cfg,
@@ -147,6 +152,7 @@ impl VshardConfig {
             listen: None,
             sharding,
             discovery_mode: DiscoveryMode::On,
+            space_bucket_id: TABLE_ID_BUCKET,
         }
     }
 

@@ -623,12 +623,15 @@ cluster:
         }
     }
 
+    space_bucket_id = storage_instance.eval("return box.space._bucket.id")
+
     storage_vshard_config_explicit = storage_instance.call(
         ".proc_get_vshard_config", "storage"
     )
     assert storage_vshard_config_explicit == dict(
         discovery_mode="on",
         sharding=storage_sharding,
+        space_bucket_id=space_bucket_id,
     )
 
     storage_vshard_config_implicit = storage_instance.call(
@@ -642,6 +645,7 @@ cluster:
     assert router_vshard_config_explicit == dict(
         discovery_mode="on",
         sharding=router_sharding,
+        space_bucket_id=space_bucket_id,
     )
 
     router_vshard_config_implicit = router_instance_1.call(

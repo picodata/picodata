@@ -482,6 +482,13 @@ define_clusterwide_tables! {
     }
 }
 
+/// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
+/// because we don't control how it's created. Instead we use vshard to create
+/// it.
+///
+/// The id is reserved because it must be the same on all instances.
+pub const TABLE_ID_BUCKET: SpaceId = 532;
+
 impl Clusterwide {
     /// Get a reference to a global instance of clusterwide storage.
     /// If `init` is true, will do the initialization which may involve creation
