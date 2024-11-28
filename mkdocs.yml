@@ -60,7 +60,7 @@ nav:
         - tutorial/connectors/jdbc.md
   - Справочные материалы:
     - Язык SQL:
-      - Оглавление: sql_index.md
+      - Команды и термины SQL: sql_index.md
       - reference/sql/dcl.md
       - reference/sql/ddl.md
       - reference/sql/dml.md
