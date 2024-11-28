@@ -254,6 +254,8 @@ test-linux:
     paths:
       - junit_pytest.xml
       - ./target/cargo-timings/cargo-timing.html
+      - core*
+      - target/$TARGET/picodata
     reports:
       junit: junit_pytest.xml
 
