@@ -532,7 +532,7 @@ fn up_single_file(
         tlog!(Debug, "applying `UP` migration query {filename} #{i}/{} `{}`", queries.up.len(), DisplayTruncated(sql));
         if let Err(e) = applier.apply(sql, Some(deadline)) {
             #[rustfmt::skip]
-            tlog!(Error, "failed applying `UP` migration query (file: {filename}) `{}`", DisplayTruncated(sql));
+            tlog!(Error, "failed applying `UP` migration query (file: {filename}) `{}`: {e}", DisplayTruncated(sql));
             return Err(Error::Up {
                 filename: filename.into(),
                 command: sql.clone(),
