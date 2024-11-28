@@ -292,6 +292,10 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance, tier_name: str):
     )
 
 
+def select_first_column(table):
+    return list(map(lambda x: x[0], table))
+
+
 def test_vshard_configuration_on_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
@@ -308,10 +312,13 @@ cluster:
     )
 
     router_instance = cluster.add_instance(tier="router")
-    storage_instance_1 = cluster.add_instance(tier="storage")
+    # there is no master of tier, but storage consists of
+    # one replicaset, so for simplicity let's call that instance
+    # like `master of tier`
+    first_master_of_storage = cluster.add_instance(tier="storage")
 
     # create table sharded in `uninitialized` tier is ok
-    ddl = storage_instance_1.sql(
+    ddl = first_master_of_storage.sql(
         """
         CREATE TABLE "table_in_storage" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
         DISTRIBUTED BY ("id")
@@ -337,43 +344,53 @@ cluster:
     # insert and select from table sharded in `uninitialized` tier is failed
     # because it uses vshard
     with pytest.raises(TarantoolError, match=index_nullable_router_error):
-        storage_instance_1.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
+        first_master_of_storage.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
 
     with pytest.raises(TarantoolError, match=index_nullable_router_error):
         router_instance.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
 
     # since now `storage` tier contains full replicaset, so it's tables are operable
-    storage_instance_2 = cluster.add_instance(tier="storage")
+    storage_follower = cluster.add_instance(tier="storage")
 
     # ensure that table created
-    assert table_size(storage_instance_2, "table_in_storage") == 0
+    assert table_size(storage_follower, "table_in_storage") == 0
 
-    data = storage_instance_1.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
+    data = first_master_of_storage.sql("""INSERT INTO "table_in_storage" VALUES(1) """)
     assert data["row_count"] == 1
 
-    data = storage_instance_2.sql("""INSERT INTO "table_in_storage" VALUES(2) """)
+    data = storage_follower.sql("""INSERT INTO "table_in_storage" VALUES(2) """)
     assert data["row_count"] == 1
 
     data = router_instance.sql("""INSERT INTO "table_in_storage" VALUES(3) """)
     assert data["row_count"] == 1
 
-    # ensure that `table_in_storage` filled up on right instances
-    assert table_size(storage_instance_1, "table_in_storage") == 3
-    assert table_size(storage_instance_2, "table_in_storage") == 3
+    # ensure that `table_in_storage` filled up on right instances:
+    # - master of tier storage (tier consists of 1 replicaset) contains all values
+    # - replica after synchronizing also contains all values
+    # - master of tier router is empty
+    content = first_master_of_storage.eval("return box.space.table_in_storage:select()")
+    assert sorted(select_first_column(content)) == [1, 2, 3]
     assert table_size(router_instance, "table_in_storage") == 0
+
+    # before checking content of replica, synchronize it with master
+    storage_follower.wait_vclock(first_master_of_storage.get_vclock())
+
+    content = storage_follower.eval("return box.space.table_in_storage:select()")
+    assert sorted(select_first_column(content)) == [1, 2, 3]
 
     r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('r2').uuid")
 
     # if we kill master of replicaset data will be unavailiable temporarily, until
-    # governor make it right: master switchower + deliver changed vshard configuration to routers
-    storage_instance_1.terminate()
+    # governor make it right: consistent master switchower + deliver changed vshard
+    # configuration to routers
+    first_master_of_storage.terminate()
 
     def wait_until_governor_deliver_vshard_configuration():
 
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(
             router_instance, "storage"
         )
-        assert replicaset_masters[r2_uuid] == storage_instance_2.name
+        assert replicaset_masters[r2_uuid] == storage_follower.name
 
     Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration)
 
