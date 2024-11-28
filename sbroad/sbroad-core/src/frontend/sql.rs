@@ -3554,8 +3554,10 @@ impl AbstractSyntaxTree {
         let projection_ast_id = node.children.first().expect("OrderBy has no children.");
         let projection_plan_id = map.get(*projection_ast_id)?;
 
-        let proj_output_id = plan.get_relational_output(projection_plan_id)?;
-        let proj_output_len = plan.get_row_list(proj_output_id)?.len();
+        let sq_plan_id = plan.add_sub_query(projection_plan_id, None)?;
+
+        let sq_output_id = plan.get_relational_output(sq_plan_id)?;
+        let sq_output_len = plan.get_row_list(sq_output_id)?.len();
 
         let mut order_by_elements: Vec<OrderByElement> = Vec::with_capacity(node.children.len());
         for node_child_index in node.children.iter().skip(1) {
@@ -3588,10 +3590,10 @@ impl AbstractSyntaxTree {
                         )),
                             )
                         })?;
-                        if index_usize > proj_output_len {
+                        if index_usize > sq_output_len {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
-                                Some(format_smolstr!("Ordering index ({index}) is bigger than child projection output length ({proj_output_len})."))
+                                Some(format_smolstr!("Ordering index ({index}) is bigger than child projection output length ({sq_output_len})."))
                             ));
                         }
                         OrderByEntity::Index { value: index_usize }
@@ -3648,8 +3650,7 @@ impl AbstractSyntaxTree {
 
             order_by_elements.push(OrderByElement { entity, order_type });
         }
-        let (order_by_id, plan_node_id) =
-            plan.add_order_by(projection_plan_id, order_by_elements)?;
+        let (order_by_id, plan_node_id) = plan.add_order_by(sq_plan_id, order_by_elements)?;
         plan.fix_subquery_rows(worker, order_by_id)?;
         map.add(node_id, plan_node_id);
         Ok(())

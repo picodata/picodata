@@ -793,8 +793,9 @@ fn front_order_by_with_simple_select() {
         r#"projection ("id"::unsigned -> "id", "sysFrom"::unsigned -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", "sys_op"::unsigned -> "sys_op")
     order by ("id"::unsigned)
         motion [policy: full]
-            projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
-                scan "test_space"
+            scan
+                projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
+                    scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000
@@ -845,8 +846,9 @@ fn front_order_by_with_order_type_specification() {
         r#"projection ("id"::unsigned -> "id", "sysFrom"::unsigned -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", "sys_op"::unsigned -> "sys_op")
     order by ("id"::unsigned desc, "sysFrom"::unsigned asc)
         motion [policy: full]
-            projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
-                scan "test_space"
+            scan
+                projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
+                    scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000
@@ -866,8 +868,9 @@ fn front_order_by_with_indices() {
         r#"projection ("id"::unsigned -> "id", "sysFrom"::unsigned -> "sysFrom", "FIRST_NAME"::string -> "FIRST_NAME", "sys_op"::unsigned -> "sys_op")
     order by (2, 1 desc)
         motion [policy: full]
-            projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
-                scan "test_space"
+            scan
+                projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
+                    scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000
@@ -888,8 +891,9 @@ fn front_order_by_ordering_by_expressions_from_projection() {
         r#"projection ("my_col"::unsigned -> "my_col", "id"::unsigned -> "id")
     order by ("my_col"::unsigned, "id"::unsigned, 1 desc, 2 asc)
         motion [policy: full]
-            projection ("test_space"."id"::unsigned -> "my_col", "test_space"."id"::unsigned -> "id")
-                scan "test_space"
+            scan
+                projection ("test_space"."id"::unsigned -> "my_col", "test_space"."id"::unsigned -> "id")
+                    scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000
@@ -925,12 +929,13 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
     let expected_explain = String::from(
         r#"projection ("id_count"::integer -> "id_count")
     order by ("id_count"::integer)
-        projection ("id_count"::integer -> "id_count")
-            scan
-                projection (sum(("count_696"::integer))::decimal -> "id_count")
-                    motion [policy: full]
-                        projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
-                            scan "test_space"
+        scan
+            projection ("id_count"::integer -> "id_count")
+                scan
+                    projection (sum(("count_696"::integer))::decimal -> "id_count")
+                        motion [policy: full]
+                            projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
+                                scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000

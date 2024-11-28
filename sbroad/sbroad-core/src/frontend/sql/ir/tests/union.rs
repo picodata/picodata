@@ -97,14 +97,16 @@ fn front_select_chaining_3() {
         projection ("product_code"::string -> "product_code")
             order by ("product_code"::string)
                 motion [policy: full]
-                    projection ("hash_testing"."product_code"::string -> "product_code")
-                        scan "hash_testing"
+                    scan
+                        projection ("hash_testing"."product_code"::string -> "product_code")
+                            scan "hash_testing"
     motion [policy: segment([ref("e")])]
         projection ("e"::unsigned -> "e")
             order by ("e"::unsigned)
                 motion [policy: full]
-                    projection ("t2"."e"::unsigned -> "e")
-                        scan "t2"
+                    scan
+                        projection ("t2"."e"::unsigned -> "e")
+                            scan "t2"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000

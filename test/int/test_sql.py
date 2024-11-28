@@ -4239,6 +4239,59 @@ def test_order_by(cluster: Cluster):
         [4, 3, 1],
     ]
 
+    data = i1.sql(""" select name as relname from _pico_instance order by relname """)
+    assert data == [
+        ["i1"],
+    ]
+
+    data = i1.sql(""" select name as relname from _pico_instance order by 1 """)
+    assert data == [
+        ["i1"],
+    ]
+
+    data = i1.sql(""" select nb as new_nb from null_t order by new_nb """)
+    assert data == [
+        [None],
+        [None],
+        [-1],
+        [1],
+        [1],
+        [2],
+        [2],
+        [3],
+    ]
+
+    data = i1.sql(""" select nb as new_nb from null_t order by 1 """)
+    assert data == [
+        [None],
+        [None],
+        [-1],
+        [1],
+        [1],
+        [2],
+        [2],
+        [3],
+    ]
+
+    data = i1.sql(
+        """ SELECT PI.name instance_name,
+                            PI.current_state,
+                            PI.target_state,
+                            PI.tier
+                        FROM _pico_peer_address PA
+                        JOIN _pico_instance PI ON PA.raft_id = PI.raft_id
+                        ORDER BY instance_name
+ """
+    )
+    assert data == [
+        [
+            "i1",
+            ["Online", 1],
+            ["Online", 1],
+            "default",
+        ],
+    ]
+
     with pytest.raises(
         TarantoolError,
         match="Ordering index \\(4\\) is bigger than child projection output length \\(3\\)",

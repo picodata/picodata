@@ -958,10 +958,11 @@ fn front_order_by_from_global_node_must_not_add_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     let expected_explain = String::from(
-        r#"projection ("global_t"."b"::integer -> "b", "global_t"."my_col"::integer -> "my_col")
-    order by ("global_t"."my_col"::integer)
-        projection ("global_t"."b"::integer -> "b", "global_t"."a"::integer -> "my_col")
-            scan "global_t"
+        r#"projection ("b"::integer -> "b", "my_col"::integer -> "my_col")
+    order by ("my_col"::integer)
+        scan
+            projection ("global_t"."b"::integer -> "b", "global_t"."a"::integer -> "my_col")
+                scan "global_t"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000

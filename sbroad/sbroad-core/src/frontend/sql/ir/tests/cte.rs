@@ -358,8 +358,9 @@ subquery $0:
 projection ("FIRST_NAME"::string -> "FIRST_NAME")
             order by (1)
                 motion [policy: full]
-                    projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        scan "test_space"
+                    scan
+                        projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                            scan "test_space"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000
