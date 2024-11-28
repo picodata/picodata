@@ -5,6 +5,7 @@
 //! * <https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts>
 
 pub mod cargo;
+pub mod cmake;
 pub mod exports;
 pub mod rustc;
 

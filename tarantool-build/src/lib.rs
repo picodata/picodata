@@ -1,5 +1,5 @@
-use build_rs_helpers::{cargo, rustc, CommandExt};
-use std::{path::PathBuf, process::Command};
+use build_rs_helpers::{cargo, cmake, rustc, CommandExt};
+use std::{collections::HashMap, path::PathBuf, process::Command};
 
 /// This struct represents Tarantool's build directory.
 /// NOTE: please **do not** add irrelevant fields here.
@@ -79,8 +79,7 @@ impl TarantoolBuildRoot {
         let http_prefix = self.http_prefix_dir();
 
         Command::new("cmake")
-            .arg("-S")
-            .arg("http")
+            .args(["-S", "http"])
             .arg("-B")
             .arg(&http_prefix)
             .arg(format!("-DTARANTOOL_DIR={}", tarantool_prefix.display()))
@@ -183,6 +182,49 @@ impl TarantoolBuildRoot {
     }
 }
 
+impl TarantoolBuildRoot {
+    fn tarantool_cmake_variables(&self) -> HashMap<String, String> {
+        let tarantool_build = self.tarantool_build_dir();
+
+        let output = Command::new("cmake")
+            .args(["-S", "tarantool-sys"])
+            .arg("-B")
+            .arg(&tarantool_build)
+            .arg("-L")
+            .output()
+            .expect("failed to get cmake variables");
+
+        let stdout = String::from_utf8(output.stdout).expect("invalid utf-8");
+        let stderr = String::from_utf8(output.stderr).expect("invalid utf-8");
+
+        if !output.status.success() {
+            panic!("failed to get cmake variables: {stderr}");
+        }
+
+        let mut result = HashMap::new();
+        for line in stdout.lines() {
+            // Skip comments, e.g. `-- Generating done (0.3s)`.
+            if line.starts_with("--") {
+                continue;
+            }
+
+            // E.g. `ENABLE_BACKTRACE:BOOL=ON`.
+            let Some((name_type, value)) = line.split_once('=') else {
+                continue;
+            };
+
+            // E.g. `BASH:FILEPATH`.
+            let Some((name, _)) = name_type.split_once(':') else {
+                continue;
+            };
+
+            result.insert(name.to_owned(), value.to_owned());
+        }
+
+        result
+    }
+}
+
 /// Link steps.
 impl TarantoolBuildRoot {
     /// Emit magic prints to link all libraries.
@@ -204,6 +246,12 @@ impl TarantoolBuildRoot {
         let use_static_build = self.use_static_build;
         let tarantool_build = self.tarantool_build_dir();
         let tarantool_root = &self.root;
+
+        let cmake_variables = self.tarantool_cmake_variables();
+        let enable_backtrace = cmake_variables
+            .get("ENABLE_BACKTRACE")
+            .map(|s| cmake::try_parse_bool(s).expect("ENABLE_BACKTRACE is not a bool"))
+            .expect("ENABLE_BACKTRACE is not found in cmake build");
 
         let tarantool_libs = [
             "core",
@@ -379,7 +427,7 @@ impl TarantoolBuildRoot {
         rustc::link_lib_dynamic("ssl");
 
         // macos links libunwind automatically.
-        if !cfg!(target_os = "macos") {
+        if enable_backtrace && !cfg!(target_os = "macos") {
             let arch = cargo::get_target_arch();
             if use_static_build {
                 rustc::link_search(tarantool_build.join("third_party/libunwind/src/.libs"));
