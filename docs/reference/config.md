@@ -7,7 +7,7 @@
 
 Использование файла конфигурации является дополнительным способом
 задания параметров кластера и инстанса при запуске Picodata, помимо
-опций команды [picodata run](cli.md#run) и переменных окружения.
+опций команды [`picodata run`](cli.md#run) и переменных окружения.
 
 Команда для запуска инстанса Picodata, если файл конфигурации назван
 `config.yaml` и расположен в директории вызова команды:
@@ -26,7 +26,7 @@ picodata run --config <PATH>
 
 См. также:
 
-* [picodata run --config](cli.md#run_config)
+* [`picodata run --config`](cli.md#run_config)
 
 
 ## Описание файла конфигурации {: #config_file_description }
@@ -111,7 +111,7 @@ instance:
 
 См. также:
 
-* [picodata config default](cli.md#config_default)
+* [`picodata config default`](cli.md#config_default)
 
 ## Параметры файла конфигурации {: #config_file_parameters }
 
@@ -126,8 +126,9 @@ instance:
 * Значение по умолчанию: `1`
 
 Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
-Аналогичная команда:
-[picodata run --init-replication-factor](cli.md#run_init_replication_factor)
+Аналогичная команда: [`picodata run --init-replication-factor`]
+
+[`picodata run --init-replication-factor`]: cli.md#run_init_replication_factor
 
 ### cluster.name {: #cluster_name }
 
@@ -139,8 +140,9 @@ instance:
 * Значение по умолчанию: `demo`
 
 Аналогичная переменная окружения: `PICODATA_CLUSTER_NAME`<br>
-Аналогичная команда:
-[picodata run --cluster-name](cli.md#run_cluster_name)
+Аналогичная команда: [`picodata run --cluster-name`]
+
+[`picodata run --cluster-name`]: cli.md#run_cluster_name
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
@@ -152,8 +154,9 @@ instance:
 * Тип: *bool*
 * Значение по умолчанию: `true`
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+[`picodata run --config-parameter`]: cli.md#run_config_parameter
 
 ```bash
 picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": false}}'
@@ -172,8 +175,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 * Тип: *int*
 * Значение по умолчанию: `1`
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
@@ -192,8 +194,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `./admin.sock`
 
 Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
-Аналогичная команда:
-[picodata run --admin-sock](cli.md#run_admin_sock)
+Аналогичная команда: [`picodata run --admin-sock`]
+
+[`picodata run --admin-sock`]: cli.md#run_admin_sock
 
 ### instance.advertise_address {: #instance_advertise_address }
 
@@ -206,8 +209,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
-Аналогичная команда:
-[picodata run --advertise](cli.md#run_advertise)
+Аналогичная команда: [`picodata run --advertise`]
+
+[`picodata run --advertise`]: cli.md#run_advertise
 
 ### instance.audit {: #instance_audit }
 
@@ -223,8 +227,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
-Аналогичная команда:
-[picodata run --audit](cli.md#run_audit)
+Аналогичная команда: [`picodata run --audit`]
+
+[`picodata run --audit`]: cli.md#run_audit
 
 ### instance.data_dir {: #instance_data_dir }
 
@@ -236,8 +241,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `.`
 
 Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
-Аналогичная команда:
-[picodata run --data-dir](cli.md#run_data_dir)
+Аналогичная команда: [`picodata run --data-dir`]
+
+[`picodata run --data-dir`]: cli.md#run_data_dir
 
 ### instance.failure_domain {: #instance_failure_domain }
 
@@ -258,8 +264,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `{}`
 
 Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
-Аналогичная команда:
-[picodata run --failure-domain](cli.md#run_failure_domain)
+Аналогичная команда: [`picodata run --failure-domain`]
+
+[`picodata run --failure-domain`]: cli.md#run_failure_domain
 
 ### instance.http_listen {: #instance_http_listen }
 
@@ -271,8 +278,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
-Аналогичная команда:
-[picodata run --http-listen](cli.md#run_http_listen)
+Аналогичная команда: [`picodata run --http-listen`]
+
+[`picodata run --http-listen`]: cli.md#run_http_listen
 
 ### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
@@ -309,8 +317,7 @@ not be processed until some time after delivery. -->
 * Тип: *int*
 * Значение по умолчанию: `768`
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.iproto.max_concurrent_messages=1536
@@ -326,8 +333,9 @@ picodata run -c instance.iproto.max_concurrent_messages=1536
 * Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
-Аналогичная команда:
-[picodata run --listen](cli.md#run_listen)
+Аналогичная команда: [`picodata run --listen`]
+
+[`picodata run --listen`]: cli.md#run_listen
 
 ### instance.log.destination {: #instance_log_destination }
 
@@ -345,8 +353,9 @@ picodata run -c instance.iproto.max_concurrent_messages=1536
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_LOG`<br>
-Аналогичная команда:
-[picodata run --log](cli.md#run_log)
+Аналогичная команда: [`picodata run --log`]
+
+[`picodata run --log`]: cli.md#run_log
 
 ### instance.log.format {: #instance_log_format }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-logging-log-format -->
@@ -361,8 +370,7 @@ picodata run -c instance.iproto.max_concurrent_messages=1536
 * Значение по умолчанию: `plain`
 
 Аналогичная переменная окружения: `PICODATA_LOG`<br>
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.log.format=json
@@ -381,8 +389,9 @@ picodata run -c instance.log.format=json
 * Значение по умолчанию: `info`
 
 Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
-Аналогичная команда:
-[picodata run --log-level](cli.md#run_log_level)
+Аналогичная команда: [`picodata run --log-level`]
+
+[`picodata run --log-level`]: cli.md#run_log_level
 
 ### instance.memtx.checkpoint_count {: #instance_memtx_checkpoint_count }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->
@@ -397,8 +406,7 @@ picodata run -c instance.log.format=json
 * Тип: *int*
 * Значение по умолчанию: `2`
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.memtx.checkpoint_count=5
@@ -418,8 +426,7 @@ picodata run -c instance.memtx.checkpoint_count=5
 * Тип: *float*
 * Значение по умолчанию: `3600.0` (1 час)
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.memtx.checkpoint_interval=7200.0
@@ -451,8 +458,9 @@ picodata run -c instance.memtx.memory=128M
 ```
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
-Аналогичная команда:
-[picodata run --memtx-memory](cli.md#run_memtx_memory).
+Аналогичная команда: [`picodata run --memtx-memory`]
+
+[`picodata run --memtx-memory`]: cli.md#run_memtx_memory
 
 ### instance.name {: #instance_name }
 
@@ -465,8 +473,9 @@ picodata run -c instance.memtx.memory=128M
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
-Аналогичная команда:
-[picodata run --instance-name](cli.md#run_instance_name)
+Аналогичная команда: [`picodata run --instance-name`]
+
+[`picodata run --instance-name`]: cli.md#run_instance_name
 
 ### instance.peer {: #instance_peer }
 
@@ -487,8 +496,9 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 ```
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
-Аналогичная команда:
-[picodata run --peer](cli.md#run_peer)
+Аналогичная команда: [`picodata run --peer`]
+
+[`picodata run --peer`]: cli.md#run_peer
 
 ### instance.pg.listen {: #instance_pg_listen }
 
@@ -501,8 +511,9 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
-Аналогичная команда:
-[picodata run --pg-listen](cli.md#run_pg_listen)
+Аналогичная команда: [`picodata run --pg-listen`]
+
+[`picodata run --pg-listen`]: cli.md#run_pg_listen
 
 ### instance.pg.ssl {: #instance_pg_ssl }
 
@@ -520,8 +531,7 @@ SSL-сертификаты:
 * Тип: *bool*
 * Значение по умолчанию: `false`
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.pg.ssl=true
@@ -537,8 +547,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
-Аналогичная команда:
-[picodata run --plugin-dir](cli.md#run_plugin_dir)
+Аналогичная команда: [`picodata run --plugin-dir`]
+
+[`picodata run --plugin-dir`]: cli.md#run_plugin_dir
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 
@@ -552,8 +563,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_REPLICASET_NAME`<br>
-Аналогичная команда:
-[picodata run --replicaset-name](cli.md#run_replicaset_name)
+Аналогичная команда: [`picodata run --replicaset-name`]
+
+[`picodata run --replicaset-name`]: cli.md#run_replicaset_name
 
 ### instance.service_password_file {: #instance_service_password_file }
 
@@ -565,8 +577,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичная команда:
-[picodata run --service-password-file](cli.md#run_service_password_file)
+Аналогичная команда: [`picodata run --service-password-file`]
+
+[`picodata run --service-password-file`]: cli.md#run_service_password_file
 
 ### instance.shredding {: #instance_shredding }
 
@@ -582,8 +595,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `false`
 
 Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
-Аналогичная команда:
-[picodata run --shredding](cli.md#run_shredding)
+Аналогичная команда: [`picodata run --shredding`]
+
+[`picodata run --shredding`]: cli.md#run_shredding
 
 ### instance.tier {: #instance_tier }
 
@@ -597,8 +611,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `default`
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`<br>
-Аналогичная команда:
-[picodata run --tier](cli.md#run_tier)
+Аналогичная команда: [`picodata run --tier`]
+
+[`picodata run --tier`]: cli.md#run_tier
 
 ### instance.vinyl.cache {: #instance_vinyl_cache }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
@@ -613,14 +628,11 @@ picodata run -c instance.pg.ssl=true
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
-Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.vinyl.cache=256M
 ```
-
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter).
 
 ### instance.vinyl.memory {: #instance_vinyl_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
@@ -636,12 +648,8 @@ picodata run -c instance.vinyl.cache=256M
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
-Пример:
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
 ```bash
 picodata run -c instance.vinyl.memory=256M
 ```
-
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter).
-
