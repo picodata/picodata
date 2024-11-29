@@ -588,6 +588,8 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
+    initial_term = i3.raft_term()
+
     # This is a replica which will be catching up
     i3.terminate()
     # Replicaset master cannot wakeup after a ddl, because all masters must be
@@ -611,6 +613,9 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     # Wake up the catching-up instance.
     i3.start()
     i3.wait_online()
+
+    # There were no attempts to block operations by waiting for the raft index
+    assert i3.raft_term() == initial_term
 
     # It caught up!
     assert i3.call("box.space._space:get", space_id) is not None
