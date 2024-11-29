@@ -333,6 +333,7 @@ impl Loop {
                     ]
                     async {
                         tlog!(Info, "calling proc_replication_demote on current master: {old_master_name}");
+                        crate::error_injection!(block "BLOCK_REPLICATION_DEMOTE");
                         let f_demote = pool.call(old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)?;
 
                         tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");

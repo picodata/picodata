@@ -833,6 +833,60 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     i3_replication_configured.wait_matched(timeout=2)
 
 
+def test_replication_demote_protection_from_old_governor(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+
+    assert not i1.eval("return box.info.ro"), "i1 should be master initially"
+    assert i2.eval("return box.info.ro"), "i2 should be read-only initially"
+
+    # enable an error to block the demotion of the master instance
+    i1.call("pico._inject_error", "BLOCK_REPLICATION_DEMOTE", True)
+
+    injection_hit = log_crawler(
+        i1, "ERROR INJECTION 'BLOCK_REPLICATION_DEMOTE': BLOCKING"
+    )
+
+    term_error = log_crawler(
+        i1,
+        "failed demoting old master and synchronizing new master: server responded with error: "
+        "box error #10003: operation request from different term",
+    )
+
+    old_step_counter = i1.governor_step_counter()
+
+    # update the replicaset configuration to set i2 as the new target master
+    i1.sql(
+        "UPDATE _pico_replicaset SET target_master_name = ? WHERE name = 'r1'", i2.name
+    )
+
+    # wait for the error injection to block the demotion process
+    injection_hit.wait_matched()
+
+    # promote i2 to master. term is increased, new governor becomes active.
+    # starting from this point the cluster should not accept actions from old governors
+    i2.promote_or_fail()
+
+    # remove the injected error that blocks the demotion
+    i1.call("pico._inject_error", "BLOCK_REPLICATION_DEMOTE", False)
+
+    term_error.wait_matched(timeout=2)
+
+    # wait until governor performs all the necessary actions
+    i2.wait_governor_status("idle", old_step_counter=old_step_counter)
+
+    def check_replication():
+        # check raft statuses
+        i1.assert_raft_status("Follower")
+        i2.assert_raft_status("Leader")
+
+        # check that demote indeed changed the master in replicaset
+        assert i1.eval("return box.info.ro"), "i1 should become read-only"
+        assert not i2.eval("return box.info.ro"), "i2 should become master"
+
+    Retriable(timeout=2).call(check_replication)
+
+
 def test_stale_governor_replication_requests(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i2 = cluster.add_instance(wait_online=False)
