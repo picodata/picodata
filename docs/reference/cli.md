@@ -57,7 +57,9 @@ picodata run [OPTIONS]
 По умолчанию используется `admin.sock` в рабочей директории инстанса.
 
 Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
-Аналогичный параметр файла конфигурации: `instance.admin_socket`
+Аналогичный параметр файла конфигурации: [`instance.admin_socket`]
+
+[`instance.admin_socket`]: config.md#instance_admin_socket
 
 ### --advertise {: #run_advertise }
 
@@ -75,7 +77,9 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 ```
 
 Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
-Аналогичный параметр файла конфигурации: `instance.advertise_address`
+Аналогичный параметр файла конфигурации: [`instance.advertise_address`]
+
+[`instance.advertise_address`]: config.md#instance_advertise_address
 
 ### --audit {: #run_audit }
 
@@ -100,7 +104,9 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
     ```
 
 Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
-Аналогичный параметр файла конфигурации: `instance.audit`
+Аналогичный параметр файла конфигурации: [`instance.audit`]
+
+[`instance.audit`]: config.md#instance_audit
 
 ### --cluster-name {: #run_cluster_name }
 
@@ -111,7 +117,9 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 По умолчанию используется имя `demo`.
 
 Аналогичная переменная окружения: `PICODATA_CLUSTER_NAME`<br>
-Аналогичный параметр файла конфигурации: `cluster.name`
+Аналогичный параметр файла конфигурации: [`cluster.name`]
+
+[`cluster.name`]: config.md#cluster_name
 
 ### --config {: #run_config }
 
@@ -153,7 +161,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 По умолчанию используется текущая директория `./`.
 
 Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
-Аналогичный параметр файла конфигурации: `instance.data_dir`
+Аналогичный параметр файла конфигурации: [`instance.data_dir`]
+
+[`instance.data_dir`]: config.md#instance_data_dir
 
 ### --failure-domain {: #run_failure_domain }
 
@@ -168,10 +178,11 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 репликации].
 
 Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
-Аналогичный параметр файла конфигурации: `instance.failure_domain`
+Аналогичный параметр файла конфигурации: [`instance.failure_domain`]
 
 [зоны доступности]: ../tutorial/deploy.md#failure_domains
 [фактор репликации]: ../overview/glossary.md#replication_factor
+[`instance.failure_domain`]: config.md#instance_failure_domain
 
 ### --http-listen {: #run_http_listen }
 
@@ -180,7 +191,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 Адрес HTTP-сервера.
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
-Аналогичный параметр файла конфигурации: `instance.http_listen`
+Аналогичный параметр файла конфигурации: [`instance.http_listen`]
+
+[`instance.http_listen`]: config.md#instance_http_listen
 
 ### --init-replication-factor {: #run_init_replication_factor }
 
@@ -192,7 +205,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 По умолчанию используется значение `1`.
 
 Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
-Аналогичный параметр файла конфигурации: `cluster.default_replication_factor`
+Аналогичный параметр файла конфигурации: [`cluster.default_replication_factor`]
+
+[`cluster.default_replication_factor`]: config.md#cluster_default_replication_factor
 
 ### --instance-name {: #run_instance_name }
 
@@ -202,7 +217,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
-Аналогичный параметр файла конфигурации: `instance.name`
+Аналогичный параметр файла конфигурации: [`instance.name`]
+
+[`instance.name`]: config.md#instance_name
 
 ### --listen {: #run_listen }
 
@@ -213,7 +230,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 По умолчанию используется значение `127.0.0.1:3301`.
 
 Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
-Аналогичный параметр файла конфигурации: `instance.listen`
+Аналогичный параметр файла конфигурации: [`instance.listen`]
+
+[`instance.listen`]: config.md#instance_listen
 
 ### --log {: #run_log }
 
@@ -239,7 +258,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 По умолчанию отладочный журнал выводится в stderr.
 
 Аналогичная переменная окружения: `PICODATA_LOG`<br>
-Аналогичный параметр файла конфигурации: `instance.log.destination`
+Аналогичный параметр файла конфигурации: [`instance.log.destination`]
+
+[`instance.log.destination`]: config.md#instance_log_destination
 
 ### --log-level {: #run_log_level }
 
@@ -251,7 +272,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 `verbose`, `debug`<br>
 Значение по умолчанию: `info`<br>
 Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
-Аналогичный параметр файла конфигурации: `instance.log.level`
+Аналогичный параметр файла конфигурации: [`instance.log.level`]
+
+[`instance.log.level`]: config.md#instance_log_level
 
 ### --memtx-memory {: #run_memtx_memory }
 
@@ -266,7 +289,9 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
-Аналогичный параметр файла конфигурации: `instance.memtx.memory`
+Аналогичный параметр файла конфигурации: [`instance.memtx.memory`]
+
+[`instance.memtx.memory`]: config.md#instance_memtx_memory
 
 ### --peer {: #run_peer }
 
@@ -286,7 +311,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 таким образом по умолчанию создается новый кластер.
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
-Аналогичный параметр файла конфигурации: `instance.peer`
+Аналогичный параметр файла конфигурации: [`instance.peer`]
+
+[`instance.peer`]: config.md#instance_peer
 
 ### --pg-listen {: #run_pg_listen }
 
@@ -294,7 +321,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 [PostgreSQL](../tutorial/connecting.md#pgproto).
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
-Аналогичный параметр файла конфигурации: `instance.pg.listen`
+Аналогичный параметр файла конфигурации: [`instance.pg.listen`]
+
+[`instance.pg.listen`]: config.md#instance_pg_listen
 
 ### --plugin-dir {: #run_plugin_dir }
 
@@ -312,7 +341,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 ```
 
 Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
-Аналогичный параметр файла конфигурации: `instance.plugin_dir`
+Аналогичный параметр файла конфигурации: [`instance.plugin_dir`]
+
+[`instance.plugin_dir`]: config.md#instance_plugin_dir
 
 ### --replicaset-name {: #run_replicaset_name }
 
@@ -323,7 +354,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 репликасет будет выбран автоматически на основе зон доступности.
 
 Аналогичная переменная окружения: `PICODATA_REPLICASET_NAME`<br>
-Аналогичный параметр файла конфигурации: `instance.replicaset_name`
+Аналогичный параметр файла конфигурации: [`instance.replicaset_name`]
+
+[`instance.replicaset_name`]: config.md#instance_replicaset_name
 
 ### --script {: #run_script }
 
@@ -347,7 +380,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 пустая строка, см. [Безопасный запуск](../tutorial/run.md#secure_run).
 
 Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичный параметр файла конфигурации: `instance.service_password_file`
+Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
+
+[`instance.service_password_file`]: config.md#instance_service_password_file
 
 ### --shredding {: #run_shredding }
 
@@ -358,9 +393,10 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 [Безопасный запуск](../tutorial/run.md#secure_run).
 
 Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
-Аналогичный параметр файла конфигурации: `instance.shredding`
+Аналогичный параметр файла конфигурации: [`instance.shredding`]
 
 [runfiles]: ../architecture/instance_runtime_files.md
+[`instance.shredding`]: config.md#instance_shredding
 
 ### --tier {: #run_tier }
 
@@ -373,7 +409,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 По умолчанию используется имя `default`.
 
 Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`<br>
-Аналогичный параметр файла конфигурации: `instance.tier`
+Аналогичный параметр файла конфигурации: [`instance.tier`]
+
+[`instance.tier`]: config.md#instance_tier
 
 <!-- ********************************************************************** -->
 ## picodata admin {: #admin }
