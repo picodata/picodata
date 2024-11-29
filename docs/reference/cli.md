@@ -286,7 +286,7 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 таким образом по умолчанию создается новый кластер.
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
-Аналогичный параметр файла конфигурации: `instance.peers`
+Аналогичный параметр файла конфигурации: `instance.peer`
 
 ### --pg-listen {: #run_pg_listen }
 
