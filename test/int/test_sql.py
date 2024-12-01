@@ -5776,3 +5776,79 @@ execution options:
     vtable_max_rows = 5000
 buckets = any"""
     assert "\n".join(lines) == expected_explain
+
+
+def test_extreme_integer_values(cluster: Cluster):
+    [i1, i2, i3] = cluster.deploy(instance_count=3)
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
+    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
+
+    U64_MIN = 0
+    U64_MAX = 18446744073709551615
+    I64_MIN = -9223372036854775808
+    I64_MAX = 9223372036854775807
+
+    data = i1.sql(
+        f"SELECT * FROM (VALUES ({I64_MAX}, {U64_MAX}), ({U64_MAX}, {I64_MAX}))"
+    )
+    assert sorted(data) == [[I64_MAX, U64_MAX], [U64_MAX, I64_MAX]]
+
+    data = i1.sql(f"SELECT {I64_MAX}, {U64_MAX} UNION SELECT {U64_MAX}, {I64_MAX}")
+    assert sorted(data) == [[I64_MAX, U64_MAX], [U64_MAX, I64_MAX]]
+
+    data = i1.sql(f"SELECT {U64_MAX} UNION ALL SELECT {U64_MAX}")
+    assert sorted(data) == [[U64_MAX], [U64_MAX]]
+
+    data = i1.sql(f"SELECT {U64_MAX} UNION SELECT {U64_MAX}")
+    assert sorted(data) == [[U64_MAX]]
+
+    data = i1.sql(f"SELECT {U64_MAX} UNION ALL SELECT {U64_MAX} LIMIT 1")
+    assert sorted(data) == [[U64_MAX]]
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE T (uid UNSIGNED PRIMARY KEY, iid INTEGER)
+        OPTION (TIMEOUT = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(f"INSERT INTO T VALUES ({U64_MIN}, {I64_MIN}), ({U64_MAX}, {I64_MAX})")
+    assert dml["row_count"] == 2
+
+    data = i1.sql("SELECT * FROM T")
+    assert sorted(data) == [[U64_MIN, I64_MIN], [U64_MAX, I64_MAX]]
+
+    data = i1.sql(f"SELECT uid FROM T WHERE uid = {U64_MIN}")
+    assert data == [[U64_MIN]]
+
+    data = i1.sql(f"SELECT uid FROM T WHERE uid = {U64_MAX}")
+    assert data == [[U64_MAX]]
+
+    data = i1.sql(f"SELECT iid FROM T WHERE iid = {I64_MIN}")
+    assert data == [[I64_MIN]]
+
+    data = i1.sql(f"SELECT iid FROM T WHERE iid = {I64_MAX}")
+    assert data == [[I64_MAX]]
+
+    data = i1.sql(f"SELECT * FROM T WHERE uid = {U64_MIN} LIMIT 1")
+    assert sorted(data) == [[U64_MIN, I64_MIN]]
+
+    data = i1.sql(f"SELECT * FROM T WHERE iid = {I64_MIN} LIMIT 1")
+    assert sorted(data) == [[U64_MIN, I64_MIN]]
+
+    data = i1.sql(f"SELECT * FROM T WHERE uid = {U64_MAX} LIMIT 1")
+    assert sorted(data) == [[U64_MAX, I64_MAX]]
+
+    data = i1.sql(f"SELECT * FROM T WHERE iid = {I64_MAX} LIMIT 1")
+    assert sorted(data) == [[U64_MAX, I64_MAX]]
+
+    with pytest.raises(
+        TarantoolError, match="Failed to cast 9223372036854775808 to integer"
+    ):
+        data = i1.sql(f"SELECT iid + 1 FROM T WHERE iid = {I64_MAX} LIMIT 1")
+
+    with pytest.raises(TarantoolError, match="integer is overflowed"):
+        data = i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {U64_MAX} LIMIT 1")

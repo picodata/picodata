@@ -234,6 +234,12 @@ impl From<Double> for Value {
     }
 }
 
+impl From<Datetime> for Value {
+    fn from(v: Datetime) -> Self {
+        Value::Datetime(v)
+    }
+}
+
 impl From<Decimal> for Value {
     fn from(v: Decimal) -> Self {
         Value::Decimal(v)
@@ -1014,7 +1020,7 @@ impl<'v> From<EncodedValue<'v>> for Value {
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, LuaRead, PartialEq, Debug, Deserialize, Serialize)]
-#[serde(untagged)]
+#[serde(try_from = "RmpvValue", untagged)]
 pub enum LuaValue {
     Boolean(bool),
     Datetime(Datetime),
@@ -1146,6 +1152,78 @@ where
             Value::Uuid(v) => v.push_into_lua(lua),
             Value::Null => tlua::Null.push_into_lua(lua),
         }
+    }
+}
+
+/// Wrapper over rmpv::Value for deserialization of msgpack encoded values into LuaValue.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+struct RmpvValue(pub rmpv::Value);
+
+fn value_try_from_rmpv(value: rmpv::Value) -> Result<Value, SbroadError> {
+    match value {
+        rmpv::Value::Nil => Ok(Value::Null),
+        rmpv::Value::Boolean(inner) => Ok(Value::from(inner)),
+        rmpv::Value::Integer(inner) => {
+            if let Some(value) = inner.as_i64() {
+                Ok(Value::from(value))
+            } else if let Some(value) = inner.as_u64() {
+                Ok(Value::from(value))
+            } else {
+                Err(SbroadError::Other(format_smolstr!(
+                    "expected integer value of type i64 or u64, got: {value:?}"
+                )))
+            }
+        }
+        rmpv::Value::F32(inner) => Ok(Value::from(inner as f64)),
+        rmpv::Value::F64(inner) => Ok(Value::from(inner)),
+        rmpv::Value::String(inner) => {
+            // First, check if it's a valid UTF-8 string, to avoid consuming it by into_str,
+            // so we can report this string in the error message.
+            if inner.as_str().is_none() {
+                return Err(SbroadError::Other(format_smolstr!(
+                    "invalid UTF-8 string: {inner:?}"
+                )));
+            }
+            Ok(Value::from(inner.into_str().unwrap()))
+        }
+        rmpv::Value::Array(array) => {
+            let converted: Vec<Value> = array
+                .into_iter()
+                .map(value_try_from_rmpv)
+                .collect::<Result<_, _>>()?;
+            Ok(Value::from(converted))
+        }
+        rmpv::Value::Ext(tag, _) => {
+            fn ext_from_value<T>(value: rmpv::Value) -> Result<T, SbroadError>
+            where
+                T: for<'de> Deserialize<'de>,
+            {
+                rmpv::ext::from_value(value).map_err(|e| {
+                    SbroadError::Other(format_smolstr!("failed to deserialize: {e:?}"))
+                })
+            }
+
+            match tag {
+                1 => Ok(Value::from(ext_from_value::<Decimal>(value)?)),
+                2 => Ok(Value::from(ext_from_value::<Uuid>(value)?)),
+                4 => Ok(Value::from(ext_from_value::<Datetime>(value)?)),
+                tag => Err(SbroadError::Other(format_smolstr!(
+                    "value with an unknown tag {tag}: {value:?}"
+                ))),
+            }
+        }
+        rmpv::Value::Map(_) | rmpv::Value::Binary(_) => Err(SbroadError::Other(format_smolstr!(
+            "unexpected value: {value:?}"
+        ))),
+    }
+}
+
+impl TryFrom<RmpvValue> for LuaValue {
+    type Error = SbroadError;
+
+    fn try_from(value: RmpvValue) -> Result<Self, Self::Error> {
+        value_try_from_rmpv(value.0).map(Into::into)
     }
 }
 
