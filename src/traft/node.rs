@@ -1140,6 +1140,7 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
             Op::DdlAbort { .. } => {
+                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
                 let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending: u64 = storage_properties
                     .pending_schema_version()

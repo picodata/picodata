@@ -2,7 +2,6 @@ import pytest
 from conftest import (
     PICO_SERVICE_ID,
     Cluster,
-    ReturnError,
     Retriable,
     Instance,
     TarantoolError,
@@ -12,12 +11,86 @@ from conftest import (
 
 
 def test_ddl_abort(cluster: Cluster):
-    cluster.deploy(instance_count=2)
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
 
-    with pytest.raises(ReturnError, match="there is no pending ddl operation"):
-        cluster.abort_ddl()
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_ABORT"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    lc = log_crawler(i3, injection_log)
 
-    # TODO: test manual abort when we have long-running ddls
+    # Enable error injection
+    i3.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    i3.wait_online()
+
+    # Create a conflict to force ddl abort.
+    space_name = "space_name_conflict"
+    i3.eval("box.schema.space.create(...)", space_name)
+
+    # Terminate i3 so that other instances actually partially apply the ddl.
+    i3.terminate()
+
+    # Initiate ddl create space.
+    space_id = 887
+    index_abort = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name=space_name,
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(
+                kind="sharded_implicitly",
+                sharding_key=["id"],
+                sharding_fn="murmur3",
+                tier="default",
+            ),
+            engine="memtx",
+            owner=0,
+        ),
+        wait_index=False,
+    )
+
+    index_prepare = index_abort - 1
+    i1.raft_wait_index(index_prepare)
+    i2.raft_wait_index(index_prepare)
+
+    def get_index_names(i, space_id):
+        return i.eval(
+            """
+            local space_id = ...
+            local res = box.space._pico_index:select({space_id})
+            for i, t in ipairs(res) do
+                res[i] = t.name
+            end
+            return res
+        """,
+            space_id,
+        )
+
+    assert i1.call("box.space._space:get", space_id) is not None
+    assert get_index_names(i1, space_id) == [f"{space_name}_pkey"]
+    assert i2.call("box.space._space:get", space_id) is not None
+    assert get_index_names(i2, space_id) == [f"{space_name}_pkey"]
+
+    # Wake the instance so that governor finds out there's a conflict
+    # and aborts the ddl op.
+    i3.start()
+    i3.wait_online()
+    lc.wait_matched()
+
+    i3.call("pico._inject_error", error_injection, False)
+
+    i1.raft_wait_index(index_abort, timeout=10)
+    i2.raft_wait_index(index_abort, timeout=10)
+    i3.raft_wait_index(index_abort, timeout=10)
+
+    def check_space_removed(instance):
+        assert instance.call("box.space._space:get", space_id) is None
+        assert get_index_names(instance, space_id) == []
+
+    Retriable(timeout=10).call(check_space_removed, i1)
+    Retriable(timeout=10).call(check_space_removed, i2)
+    Retriable(timeout=10).call(check_space_removed, i3)
 
 
 ################################################################################

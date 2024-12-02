@@ -607,9 +607,11 @@ impl Loop {
                                 }
                             });
                         }
+
                         let res = try_join_all(fs).await;
                         if let Err(OnError::Abort(cause)) = res {
                             next_op = Op::DdlAbort { cause };
+                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
                             return Ok(());
                         }
 
