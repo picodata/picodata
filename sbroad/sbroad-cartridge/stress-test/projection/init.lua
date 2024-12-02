@@ -44,7 +44,7 @@ local config = {
                 },
                 {
                     name = "sys_op",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -66,7 +66,7 @@ local config = {
                         },
                         {
                             path = "sys_op",
-                            type = "number",
+                            type = "integer",
                             is_nullable = false,
                         }
                     },
@@ -103,7 +103,7 @@ local config = {
                 },
                 {
                     name = "sys_op",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -125,7 +125,7 @@ local config = {
                         },
                         {
                             path = "sys_op",
-                            type = "number",
+                            type = "integer",
                             is_nullable = false,
                         }
                     },

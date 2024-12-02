@@ -30,7 +30,7 @@ g.test_limit = function()
         SELECT "a" FROM "t" LIMIT 2
     ]], })
     t.assert_equals(err, nil)
-    t.assert_items_equals(r["metadata"], { {name = "a", type = "number"} })
+    t.assert_items_equals(r["metadata"], { {name = "a", type = "decimal"} })
     t.assert_equals(#r["rows"], 2)
 
     -- order by with limit
@@ -46,7 +46,7 @@ g.test_limit = function()
         SELECT count(*) FROM "t" GROUP BY "id" LIMIT 3
     ]], })
     t.assert_equals(err, nil)
-    t.assert_items_equals(r["metadata"], { {name = "col_1", type = "integer"} })
+    t.assert_items_equals(r["metadata"], { {name = "col_1", type = "unsigned"} })
     t.assert_equals(#r["rows"], 3)
 
     -- cte with limit
@@ -57,7 +57,7 @@ g.test_limit = function()
         SELECT b FROM cte
     ]], })
     t.assert_equals(err, nil)
-    t.assert_items_equals(r["metadata"], { {name = "b", type = "number"} })
+    t.assert_items_equals(r["metadata"], { {name = "b", type = "decimal"} })
     t.assert_items_equals(r["rows"], { {1}, {2}, {1}, {2} })
 
     -- cte with limit
@@ -69,7 +69,7 @@ g.test_limit = function()
         LIMIT 1
     ]], })
     t.assert_equals(err, nil)
-    t.assert_items_equals(r["metadata"], { {name = "b", type = "number"} })
+    t.assert_items_equals(r["metadata"], { {name = "b", type = "decimal"} })
     t.assert_equals(#r["rows"], 1)
 
     -- limit in a subquery
@@ -77,6 +77,6 @@ g.test_limit = function()
         SELECT "a" FROM (SELECT "a" FROM "t" LIMIT 1)
     ]], })
     t.assert_equals(err, nil)
-    t.assert_items_equals(r["metadata"], { {name = "a", type = "number"} })
+    t.assert_items_equals(r["metadata"], { {name = "a", type = "decimal"} })
     t.assert_equals(#r["rows"], 1)
 end

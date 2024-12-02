@@ -55,9 +55,9 @@ fn aggregate() {
 
     let expected_explain = String::from(
         r#"limit 1
-    projection (min(("min_696"::unsigned))::scalar -> "col_1", min(distinct ("column_796"::unsigned))::scalar -> "col_2")
+    projection (min(("min_696"::unsigned))::unsigned -> "col_1", min(distinct ("column_796"::unsigned))::unsigned -> "col_2")
         motion [policy: full]
-            projection ("t"."b"::unsigned -> "column_796", min(("t"."b"::unsigned))::scalar -> "min_696")
+            projection ("t"."b"::unsigned -> "column_796", min(("t"."b"::unsigned))::unsigned -> "min_696")
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
@@ -79,10 +79,10 @@ fn group_by() {
         r#"limit 555
     motion [policy: full]
         limit 555
-            projection (sum(("count_1196"::integer))::decimal -> "col_1", "column_596"::unsigned -> "b")
-                group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "count_1196"::integer -> "count_1196")
+            projection (sum(("count_1196"::unsigned))::unsigned -> "col_1", "column_596"::unsigned -> "b")
+                group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "count_1196"::unsigned -> "count_1196")
                     motion [policy: segment([ref("column_596")])]
-                        projection ("t"."b"::unsigned -> "column_596", count((*::integer))::integer -> "count_1196")
+                        projection ("t"."b"::unsigned -> "column_596", count((*::integer))::unsigned -> "count_1196")
                             group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                                 scan "t"
 execution options:

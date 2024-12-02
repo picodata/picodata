@@ -204,15 +204,6 @@ g.test_arithmetic_invalid = function()
         tostring(err),
         "Type mismatch: can not convert string('123') to integer, decimal, double, datetime or interval"
     )
-
-    -- arithemic operation on number col
-    local _, err = api:call("sbroad.execute",
-    { [[select "id" from "arithmetic_space" where "number_col" + "number_col" > 0]], {} }
-)
-    t.assert_str_contains(
-        tostring(err),
-        "Type mismatch: can not convert number(4.6) to integer, decimal, double, datetime or interval"
-    )
 end
 
 g2.test_arithmetic_invalid = function()
@@ -268,15 +259,6 @@ g2.test_arithmetic_invalid = function()
     t.assert_str_contains(
         tostring(err),
         "invalid expression: types string and string are not supported for arithmetic expression"
-    )
-
-    -- arithemic operation on number col
-    local _, err = api:call("sbroad.execute",
-        { [[select "number_col" + "number_col" from "arithmetic_space"]], {} }
-    )
-    t.assert_str_contains(
-        tostring(err),
-        "invalid expression: types number and number are not supported for arithmetic expression"
     )
 end
 

@@ -60,9 +60,9 @@ fn test_query_explain_4() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
-    let expected = r#"projection (sum(("count_596"::integer))::decimal -> "col_1")
+    let expected = r#"projection (sum(("count_596"::unsigned))::unsigned -> "col_1")
     motion [policy: full]
-        projection (count((*::integer))::integer -> "count_596")
+        projection (count((*::integer))::unsigned -> "count_596")
             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -202,10 +202,10 @@ fn test_query_explain_11() {
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
-    let expected = r#"projection ("column_3496"::string -> "a", sum(("count_4196"::integer))::decimal -> "col_1")
-    group by ("column_3496"::string) output: ("column_3496"::string -> "column_3496", "count_4196"::integer -> "count_4196")
+    let expected = r#"projection ("column_3496"::string -> "a", sum(("count_4196"::unsigned))::unsigned -> "col_1")
+    group by ("column_3496"::string) output: ("column_3496"::string -> "column_3496", "count_4196"::unsigned -> "count_4196")
         motion [policy: segment([ref("column_3496")])]
-            projection ("a"::string -> "column_3496", count(("b"::integer))::integer -> "count_4196")
+            projection ("a"::string -> "column_3496", count(("b"::integer))::unsigned -> "count_4196")
                 group by ("a"::string) output: ("e"::unsigned -> "e", "f"::unsigned -> "f", "a"::string -> "a", "b"::integer -> "b")
                     join on ROW("e"::unsigned) = ROW("a"::string)
                         scan

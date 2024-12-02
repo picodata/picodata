@@ -252,9 +252,9 @@ fn test_slices_2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let expected_explain = String::from(
-        r#"projection (sum(("count_5596"::integer))::decimal -> "col_1")
+        r#"projection (sum(("count_5596"::unsigned))::unsigned -> "col_1")
     motion [policy: full]
-        projection (count(("t2"."e"::unsigned))::integer -> "count_5596")
+        projection (count(("t2"."e"::unsigned))::unsigned -> "count_5596")
             join on true::boolean
                 scan
                     projection ("t2"."f"::unsigned -> "f")

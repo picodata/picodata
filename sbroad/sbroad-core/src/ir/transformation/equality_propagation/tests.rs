@@ -113,8 +113,8 @@ fn equality_propagation5() {
             r#"SELECT "t"."a" FROM "t""#,
             r#"WHERE ("t"."d") = (?) and ("t"."c") = (?)"#,
             r#"and ("t"."a") = (?) and ("t"."b") = (?)"#,
-            r#"and ("t"."a") = ("t"."d") and ("t"."d") = ("t"."c")"#,
-            r#"and ("t"."c") = ("t"."b")"#,
+            r#"and ("t"."d") = ("t"."b") and ("t"."b") = ("t"."c")"#,
+            r#"and ("t"."c") = ("t"."a")"#,
         ),
         vec![
             Value::from(1_u64),

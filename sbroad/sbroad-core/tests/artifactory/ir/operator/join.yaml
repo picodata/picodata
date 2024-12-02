@@ -6,7 +6,7 @@ nodes:
           targets: ~
           position: 0
           parent: 5
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: a
@@ -16,7 +16,7 @@ nodes:
           targets: ~
           position: 1
           parent: 5
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: b
@@ -36,7 +36,7 @@ nodes:
           targets: ~
           position: 0
           parent: 11
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: c
@@ -46,7 +46,7 @@ nodes:
           targets: ~
           position: 1
           parent: 11
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: d
@@ -67,7 +67,7 @@ nodes:
             - 0
           position: 0
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: a
@@ -83,7 +83,7 @@ nodes:
             - 1
           position: 1
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: d
@@ -104,7 +104,7 @@ nodes:
             - 0
           position: 0
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: a
@@ -115,7 +115,7 @@ nodes:
             - 0
           position: 1
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: b
@@ -126,7 +126,7 @@ nodes:
             - 1
           position: 0
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: c
@@ -137,7 +137,7 @@ nodes:
             - 1
           position: 1
           parent: 28
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: d

@@ -154,6 +154,7 @@ update_queries.test_basic = function()
     })
 end
 
+
 update_queries.test_invalid = function()
     local api = cluster:server("api-1").net_box
 

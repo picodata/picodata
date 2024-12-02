@@ -237,9 +237,9 @@ fn exec_plan_subtree_aggregates() {
             f_sql(
                 r#"SELECT "T1"."sys_op" as "column_596",
 ("T1"."id") * ("T1"."sys_op") as "column_1632", "T1"."id" as "column_2096",
-count ("T1"."id") as "count_2696", sum ("T1"."id") as "sum_1796",
-count ("T1"."sysFrom") as "count_1596", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496",
-total ("T1"."id") as "total_2896", min ("T1"."id") as "min_3096", max ("T1"."id") as "max_3296"
+count ("T1"."id") as "count_2696", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496",
+total ("T1"."id") as "total_2896", min ("T1"."id") as "min_3096", max ("T1"."id") as "max_3296",
+count ("T1"."sysFrom") as "count_1596", sum ("T1"."id") as "sum_1796"
 FROM "test_space" as "T1"
 GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#
             ),
@@ -255,11 +255,11 @@ GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#
             format!(
                 "{} {} {} {} {} {} {} {}",
                 r#"SELECT ("COL_1") || ("COL_1") as "col_1","#,
-                r#"("COL_1") * (?) + (sum ("COL_6")) as "col_2", sum ("COL_5") as "col_3","#,
+                r#"("COL_1") * (?) + (sum ("COL_9")) as "col_2", sum ("COL_10") as "col_3","#,
                 r#"(sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4","#,
-                r#"group_concat ("COL_7", ?) as "col_5","#,
-                r#"sum (CAST ("COL_5" as double)) / sum (CAST ("COL_4" as double)) as "col_6","#,
-                r#"total ("COL_8") as "col_7", min ("COL_9") as "col_8", max ("COL_10") as "col_9""#,
+                r#"group_concat ("COL_5", ?) as "col_5","#,
+                r#"sum (CAST ("COL_10" as double)) / sum (CAST ("COL_4" as double)) as "col_6","#,
+                r#"total ("COL_6") as "col_7", min ("COL_7") as "col_8", max ("COL_8") as "col_9""#,
                 r#"FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136")"#,
                 r#"GROUP BY "COL_1""#
             ),

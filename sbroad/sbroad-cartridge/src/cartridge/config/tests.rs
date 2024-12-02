@@ -11,16 +11,16 @@ fn test_yaml_schema_parser() {
     format:
       - name: ID
         is_nullable: false
-        type: number
+        type: integer
       - name: sysFrom
         is_nullable: false
-        type: number
+        type: integer
       - name: FIRST_NAME
         is_nullable: false
         type: string
       - name: sysOp
         is_nullable: false
-        type: number
+        type: integer
       - name: bucket_id
         is_nullable: true
         type: unsigned
@@ -30,10 +30,10 @@ fn test_yaml_schema_parser() {
         unique: true
         parts:
           - path: ID
-            type: number
+            type: integer
             is_nullable: false
           - path: sysFrom
-            type: number
+            type: integer
             is_nullable: false
       - type: TREE
         name: bucket_id
@@ -59,7 +59,7 @@ fn test_yaml_schema_parser() {
         type: integer
         is_nullable: false
       - name: sys_op
-        type: number
+        type: integer
         is_nullable: false
       - name: bucket_id
         type: unsigned
@@ -109,7 +109,7 @@ fn test_getting_table_segment() {
         type: boolean
         is_nullable: false
       - name: sys_op
-        type: number
+        type: integer
         is_nullable: false
       - name: detail
         type: array
@@ -151,7 +151,7 @@ fn test_getting_table_segment() {
             ),
             Column::new("product_code", Type::String, ColumnRole::User, false),
             Column::new("product_units", Type::Boolean, ColumnRole::User, false),
-            Column::new("sys_op", Type::Number, ColumnRole::User, false),
+            Column::new("sys_op", Type::Integer, ColumnRole::User, false),
             Column::new("detail", Type::Array, ColumnRole::User, false),
             Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
         ],

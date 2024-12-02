@@ -258,7 +258,7 @@ g.test_compare = function()
     t.assert_equals(r, {
         metadata = {
             {name = "id", type = "integer"},
-            {name = "a", type = "number"},
+            {name = "a", type = "decimal"},
         },
         rows = {},
     })
@@ -289,7 +289,7 @@ g.test_except = function()
 
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        {name = "a", type = "number"},
+        {name = "a", type = "decimal"},
     })
     t.assert_items_equals(r.rows, {
         {4.2},
@@ -529,7 +529,7 @@ g.test_exists_partitioned_in_selection_condition = function()
     t.assert_equals(err_all, nil)
     t.assert_equals(r_all.metadata, {
         {name = "id", type = "integer"},
-        {name = "a", type = "number"},
+        {name = "a", type = "decimal"},
     })
     t.assert_items_equals(r_all.rows, {
         {1, 4.2}, {2, 6.66}
@@ -745,7 +745,7 @@ g.test_not_in_condition = function()
         metadata = {
             {name = "tid", type = "integer"},
             {name = "id", type = "integer"},
-            {name = "a", type = "number"},
+            {name = "a", type = "decimal"},
         },
         rows = {{1, 1, 4.2}},
     })

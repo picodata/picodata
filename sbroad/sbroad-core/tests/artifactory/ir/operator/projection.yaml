@@ -10,7 +10,7 @@ nodes:
           targets: ~
           parent: 9
           position: 0
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: a
@@ -20,7 +20,7 @@ nodes:
           targets: ~
           parent: 9
           position: 1
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: b
@@ -44,7 +44,7 @@ nodes:
           targets: ~
           parent: 9
           position: 1
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: b
@@ -71,7 +71,7 @@ relations:
         - name: a
           type: Boolean
         - name: b
-          type: Number
+          type: Integer
       primary_key:
         positions:
           - 1

@@ -94,7 +94,7 @@ relations:
         - name: a
           type: Boolean
         - name: b
-          type: Number
+          type: Integer
         - name: c
           type: String
         - name: d

@@ -39,7 +39,7 @@ local config = {
                 },
                 {
                     name = "a",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -88,7 +88,7 @@ local config = {
                 },
                 {
                     name = "a",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -642,17 +642,17 @@ local config = {
                 },
                 {
                     name = "sys_op",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
                     name = "sys_to",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
                     name = "sys_from",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -674,7 +674,7 @@ local config = {
                         },
                         {
                             path = "sys_op",
-                            type = "number",
+                            type = "integer",
                             is_nullable = false,
                         }
                     },
@@ -1223,17 +1223,17 @@ local config = {
                 },
                 {
                     name = "sys_op",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
                     name = "sys_to",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
                     name = "sys_from",
-                    type = "number",
+                    type = "integer",
                     is_nullable = false,
                 },
                 {
@@ -1255,7 +1255,7 @@ local config = {
                         },
                         {
                             path = "sys_op",
-                            type = "number",
+                            type = "integer",
                             is_nullable = false,
                         }
                     },

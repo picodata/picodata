@@ -67,24 +67,6 @@ fn cast7_test() {
 #[test]
 fn cast8_test() {
     broadcast_check(
-        r#"SELECT CAST('1' as number) FROM "t1""#,
-        r#"SELECT CAST (? as number) as "col_1" FROM "t1""#,
-        vec![Value::from("1")],
-    );
-}
-
-#[test]
-fn cast9_test() {
-    broadcast_check(
-        r#"SELECT CAST('1' as scalar) FROM "t1""#,
-        r#"SELECT CAST (? as scalar) as "col_1" FROM "t1""#,
-        vec![Value::from("1")],
-    );
-}
-
-#[test]
-fn cast10_test() {
-    broadcast_check(
         r#"SELECT CAST(1 as string) FROM "t1""#,
         r#"SELECT CAST (? as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
@@ -92,7 +74,7 @@ fn cast10_test() {
 }
 
 #[test]
-fn cast11_test() {
+fn cast9_test() {
     broadcast_check(
         r#"SELECT CAST(1 as text) FROM "t1""#,
         r#"SELECT CAST (? as text) as "col_1" FROM "t1""#,
@@ -101,7 +83,7 @@ fn cast11_test() {
 }
 
 #[test]
-fn cast12_test() {
+fn cast10_test() {
     broadcast_check(
         r#"SELECT CAST('1' as unsigned) FROM "t1""#,
         r#"SELECT CAST (? as unsigned) as "col_1" FROM "t1""#,
@@ -110,7 +92,7 @@ fn cast12_test() {
 }
 
 #[test]
-fn cast13_test() {
+fn cast11_test() {
     broadcast_check(
         r#"SELECT CAST(1 as varchar(10)) FROM "t1""#,
         r#"SELECT CAST (? as varchar(10)) as "col_1" FROM "t1""#,
@@ -119,7 +101,7 @@ fn cast13_test() {
 }
 
 #[test]
-fn cast14_test() {
+fn cast12_test() {
     broadcast_check(
         r#"SELECT CAST(func("a") as varchar(100)) FROM "t1""#,
         r#"SELECT CAST ("func" ("t1"."a") as varchar(100)) as "col_1" FROM "t1""#,

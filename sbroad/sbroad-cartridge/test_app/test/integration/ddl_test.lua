@@ -45,13 +45,13 @@ g.test_insert_after_index = function()
     t.assert_equals(err, nil)
     t.assert_equals(r, {
         metadata = {
-          { name = "id", type = "number" },
-          { name = "reqId", type = "number" },
+          { name = "id", type = "integer" },
+          { name = "reqId", type = "integer" },
           { name = "name", type = "string"  },
           { name = "department", type = "string" },
           { name = "manager", type = "string" },
-          { name = "salary", type = "number" },
-          { name = "sysOp", type = "number" }
+          { name = "salary", type = "integer" },
+          { name = "sysOp", type = "integer" }
         },
         rows = { },
     })
@@ -63,7 +63,7 @@ g.test_insert_after_index = function()
         {
             {
                 name = "id",
-                parts = {{is_nullable = false, path = "id", type = "number"}},
+                parts = {{is_nullable = false, path = "id", type = "integer"}},
                 type = "TREE",
                 unique = true,
             },
@@ -94,7 +94,7 @@ g.test_insert_after_index = function()
             {
                 name = "id",
                 parts = {
-                    {is_nullable = false, path = "id", type = "number"}
+                    {is_nullable = false, path = "id", type = "integer"}
                 },
                 type = "TREE",
                 unique = true,
@@ -134,7 +134,7 @@ g.test_insert_after_index = function()
             {
                 name = "id",
                 parts = {
-                    {is_nullable = false, path = "id", type = "number"}
+                    {is_nullable = false, path = "id", type = "integer"}
                 },
                 type = "TREE",
                 unique = true,
@@ -166,13 +166,13 @@ g.test_insert_after_index = function()
     t.assert_equals(err, nil)
     t.assert_equals(r, {
         metadata = {
-          { name = "id", type = "number" },
-          { name = "reqId", type = "number" },
+          { name = "id", type = "integer" },
+          { name = "reqId", type = "integer" },
           { name = "name", type = "string"  },
           { name = "department", type = "string" },
           { name = "manager", type = "string" },
-          { name = "salary", type = "number" },
-          { name = "sysOp", type = "number" }
+          { name = "salary", type = "integer" },
+          { name = "sysOp", type = "integer" }
         },
         rows = { },
     })
@@ -194,13 +194,13 @@ g.test_insert_after_index = function()
     )
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-      { name = "id", type = "number" },
-      { name = "reqId", type = "number" },
+      { name = "id", type = "integer" },
+      { name = "reqId", type = "integer" },
       { name = "name", type = "string"  },
       { name = "department", type = "string" },
       { name = "manager", type = "string" },
-      { name = "salary", type = "number" },
-      { name = "sysOp", type = "number" }
+      { name = "salary", type = "integer" },
+      { name = "sysOp", type = "integer" }
     })
     t.assert_items_equals(r.rows, {
         { 1, 1, "123", "123", "123", 100, 0 },

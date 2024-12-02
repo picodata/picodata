@@ -847,6 +847,7 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
             }
             FieldType::Array => field.is_array(),
             FieldType::Map => field.is_map(),
+            FieldType::Number | FieldType::Scalar => unreachable!(),
         };
         if !ok {
             panic!("expected field '{field_name}' to be {field_type:?}, but got {field:?}");

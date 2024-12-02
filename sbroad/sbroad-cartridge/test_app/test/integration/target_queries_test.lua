@@ -740,7 +740,7 @@ WHERE "t3"."col1" = ? AND "t3"."col2" = 2 AND ("t8"."cola" = 1 AND "t8"."colb" =
 
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col1", type = "number" },
+        { name = "col1", type = "integer" },
         { name = "col2", type = "integer" },
         { name = "account_id", type = "integer" },
         { name = "amount", type = "integer" },

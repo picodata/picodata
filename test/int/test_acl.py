@@ -121,7 +121,7 @@ def test_acl_basic(cluster: Cluster):
             name="money",
             format=[
                 dict(name="owner", type="string", is_nullable=False),
-                dict(name="amount", type="number", is_nullable=False),
+                dict(name="amount", type="integer", is_nullable=False),
             ],
             primary_key=["owner"],
             distribution="sharded",

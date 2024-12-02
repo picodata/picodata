@@ -202,7 +202,7 @@ arbitrary_projection.test_arbitrary_valid = function()
     ]], {} })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        {name = "case_result", type = "scalar"},
+        {name = "case_result", type = "integer"},
     })
     t.assert_items_equals(r.rows, {
         {'first'}, {42}, {42}, {42}, {42}, {'second'}, {42}, {42}, {42}, {42}
@@ -296,7 +296,7 @@ arbitrary_projection.test_arbitrary_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         {name = "id", type = "integer"},
-        {name = "col_1", type = "scalar"},
+        {name = "col_1", type = "double"},
     })
     t.assert_items_equals(r.rows, {
         {1, 1},

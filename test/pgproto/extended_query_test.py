@@ -234,7 +234,7 @@ def test_params_specified_via_cast(postgres: Postgres):
     with pytest.raises(DatabaseError, match=r"parameter \$1 is ambiguous"):
         conn.run(
             """ SELECT "id" FROM "tall" \
-                WHERE "id" = :p1::integer + :p1::unsigned + :p1::number; """,
+                WHERE "id" = :p1::integer + :p1::unsigned + :p1::decimal; """,
             p1=-1,
         )
 

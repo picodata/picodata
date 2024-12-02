@@ -86,7 +86,7 @@ def test_decimal(postgres: Postgres):
     ]
 
 
-def test_number(postgres: Postgres):
+def test_double(postgres: Postgres):
     user = "postgres"
     password = "Passw0rd"
     host = postgres.host
@@ -107,7 +107,7 @@ def test_number(postgres: Postgres):
     conn.execute(
         """
         CREATE TABLE T (
-            N NUMBER NOT NULL,
+            N DOUBLE NOT NULL,
             PRIMARY KEY (N)
         )
         USING MEMTX DISTRIBUTED BY (N);

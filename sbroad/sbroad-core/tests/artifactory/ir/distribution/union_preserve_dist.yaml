@@ -103,7 +103,7 @@ relations:
         - name: a
           type: Boolean
         - name: b
-          type: Number
+          type: Integer
       primary_key:
         positions:
           - 0
@@ -119,7 +119,7 @@ relations:
         - name: a
           type: Boolean
         - name: b
-          type: Number
+          type: Integer
       primary_key:
         positions:
           - 0

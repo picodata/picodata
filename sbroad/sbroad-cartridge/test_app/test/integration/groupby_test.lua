@@ -841,7 +841,7 @@ groupby_queries.test_count_works = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1" , type = "decimal" }
+        { name = "col_1" , type = "unsigned" }
     })
 
     t.assert_items_equals(r.rows, {
@@ -865,8 +865,8 @@ groupby_queries.test_count = function()
 
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "cs", type = "integer" },
-        { name = "col_1" , type = "decimal" }
+        { name = "cs", type = "unsigned" },
+        { name = "col_1" , type = "unsigned" }
     })
 
     t.assert_items_equals(r.rows, {
@@ -893,7 +893,7 @@ groupby_queries.test_groupby_arith_expression = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "u", type = "decimal" },
+        { name = "u", type = "integer" },
     })
     t.assert_items_equals(r.rows, {
         {1}, {1}, {1},
@@ -980,7 +980,7 @@ groupby_queries.test_aggr_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1", type = "decimal" }
+        { name = "col_1", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 2},
@@ -992,7 +992,7 @@ groupby_queries.test_aggr_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1", type = "decimal" }
+        { name = "col_1", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 2},
@@ -1005,7 +1005,7 @@ groupby_queries.test_aggr_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1", type = "decimal" }
+        { name = "col_1", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 3},
@@ -1047,7 +1047,7 @@ groupby_queries.test_aggr_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1", type = "decimal" }
+        { name = "col_1", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 2},
@@ -1059,7 +1059,7 @@ groupby_queries.test_aggr_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "c", type = "integer" },
-        { name = "ss", type = "decimal" }
+        { name = "ss", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 4},
@@ -1081,7 +1081,7 @@ groupby_queries.test_union_single = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "decimal" }
+        { name = "col_1", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         { 3 },
@@ -1275,7 +1275,7 @@ groupby_queries.test_join_single6 = function()
 
     local expected_metadata = {
         { name = "a", type = "decimal" },
-        { name = "b", type = "integer" },
+        { name = "b", type = "unsigned" },
         { name = "c", type = "integer" },
         { name = "d", type = "integer" },
     }
@@ -1312,7 +1312,7 @@ groupby_queries.test_join_single7 = function()
     local r, err = api:call("sbroad.execute", {
         [[  select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
-            on i.a = cast(o.d as number)
+            on i.a = cast(o.d as integer)
         ]], {}
     })
     t.assert_equals(err, nil)
@@ -1397,8 +1397,8 @@ groupby_queries.test_aggr_distinct = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "d", type = "integer" },
-        { name = "col_1", type = "integer" },
-        { name = "col_2", type = "integer" },
+        { name = "col_1", type = "unsigned" },
+        { name = "col_2", type = "unsigned" },
         { name = "col_3", type = "decimal" },
         { name = "col_4", type = "decimal" },
     })
@@ -1421,8 +1421,8 @@ groupby_queries.test_aggr_distinct_without_groupby = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "col_1", type = "decimal" },
-        { name = "col_2", type = "decimal" },
-        { name = "col_3", type = "integer" },
+        { name = "col_2", type = "unsigned" },
+        { name = "col_3", type = "unsigned" },
         { name = "col_4", type = "decimal" },
         { name = "col_5", type = "decimal" },
     })
@@ -1523,7 +1523,7 @@ groupby_queries.test_count_asterisk = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "decimal" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         {4}
@@ -1538,7 +1538,7 @@ groupby_queries.test_count_asterisk = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "decimal" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         {5}
@@ -1555,7 +1555,7 @@ groupby_queries.test_count_asterisk_with_groupby = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "decimal" },
+        { name = "col_1", type = "unsigned" },
         { name = "nb", type = "integer" },
     })
     t.assert_items_equals(r.rows, {
@@ -1902,7 +1902,7 @@ groupby_queries.test_having_with_sq = function()
     t.assert_equals(r.metadata, {
         { name = "a", type = "integer" },
         { name = "sum", type = "decimal" },
-        { name = "count", type = "integer" }
+        { name = "count", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 3, 2},
@@ -1918,7 +1918,7 @@ groupby_queries.test_having_with_sq = function()
     t.assert_equals(r.metadata, {
         { name = "a", type = "integer" },
         { name = "sum", type = "decimal" },
-        { name = "count", type = "integer" }
+        { name = "count", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         {1, 3, 2},
@@ -2017,8 +2017,8 @@ groupby_queries.test_having_no_groupby = function()
     t.assert_equals(r.metadata, {
         { name = "col_1", type = "decimal" },
         { name = "col_2", type = "decimal" },
-        { name = "col_3", type = "decimal" },
-        { name = "col_4", type = "integer" },
+        { name = "col_3", type = "unsigned" },
+        { name = "col_4", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         {6, 3, 4, 2}
@@ -2034,8 +2034,8 @@ groupby_queries.test_having_no_groupby = function()
     t.assert_equals(r.metadata, {
         { name = "col_1", type = "decimal" },
         { name = "col_2", type = "decimal" },
-        { name = "col_3", type = "decimal" },
-        { name = "col_4", type = "integer" },
+        { name = "col_3", type = "unsigned" },
+        { name = "col_4", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {})
 end
@@ -2056,8 +2056,8 @@ groupby_queries.test_having_selection = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "string_col", type = "string" },
-        { name = "col_1", type = "integer" },
-        { name = "col_2", type = "decimal" }
+        { name = "col_1", type = "unsigned" },
+        { name = "col_2", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         { 'c', 1, 2 }
@@ -2074,8 +2074,8 @@ groupby_queries.test_having_selection = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "string_col", type = "string" },
-        { name = "col_1", type = "integer" },
-        { name = "col_2", type = "decimal" }
+        { name = "col_1", type = "unsigned" },
+        { name = "col_2", type = "unsigned" }
     })
     t.assert_items_equals(r.rows, {
         { 'a', 1, 2 },
@@ -2152,7 +2152,7 @@ groupby_queries.test_having_full_query = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "a", type = "integer" },
-        { name = "col_1", type = "integer" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         { 1, 2 }
@@ -2222,7 +2222,7 @@ groupby_queries.test_having_inside_except = function()
     })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "integer" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {})
 end
@@ -2246,29 +2246,4 @@ groupby_queries.test_having_inside_except1 = function()
     t.assert_items_equals(r.rows, {
         {2},
     })
-end
-
-groupby_queries.test_sum_on_decimal_col = function()
-    local api = cluster:server("api-1").net_box
-
-    local _, err = api:call("sbroad.execute", {
-        [[
-            select sum("number_col") as s from "arithmetic_space"
-        ]], {}
-    })
-    t.assert_str_contains(tostring(err), "can't compute sum on argument with type number")
-
-    _, err = api:call("sbroad.execute", {
-        [[
-            select total("number_col") as s from "arithmetic_space"
-        ]], {}
-    })
-    t.assert_str_contains(tostring(err), "can't compute total on argument with type number")
-
-    _, err = api:call("sbroad.execute", {
-        [[
-            select avg("number_col") as s from "arithmetic_space"
-        ]], {}
-    })
-    t.assert_str_contains(tostring(err), "can't compute avg on argument with type number")
 end

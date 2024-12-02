@@ -358,7 +358,7 @@ g.test_decimal_double = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         {name = "id", type = "integer"},
-        {name = "a", type = "number"},
+        {name = "a", type = "decimal"},
         {name = "bucket_id", type = "unsigned"},
     })
     t.assert_items_equals(r.rows, {
@@ -382,7 +382,7 @@ g.test_bucket_id_in_join = function()
             {name = "id", type = "integer"},
             {name = "name", type = "string"},
             {name = "sysOp", type = "integer"},
-            {name = "a", type = "number"},
+            {name = "a", type = "decimal"},
         },
         rows = {},
     })
@@ -398,7 +398,7 @@ g.test_lowercase1 = function()
     t.assert_equals(err, nil)
     t.assert_equals(r, {
         metadata = {
-            {name = "id", type = "number"},
+            {name = "id", type = "integer"},
         },
         rows = {},
     })
@@ -414,7 +414,7 @@ g.test_lowercase2 = function()
     t.assert_equals(err, nil)
     t.assert_equals(r, {
         metadata = {
-            {name = "id", type = "number"},
+            {name = "id", type = "integer"},
         },
         rows = {},
     })
@@ -867,7 +867,7 @@ g.test_select_without_scan = function ()
     t.assert_equals(r, {
         metadata = {
             {name = "col_1", type = "integer"},
-            {name = "bar", type = "integer"},
+            {name = "bar", type = "unsigned"},
             {name = "col_2", type = "unsigned"},
         },
         rows = { {1, 2, 30} },

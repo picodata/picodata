@@ -152,7 +152,7 @@ fn front_sql_join_single_both_4() {
 fn front_sql_join_single_both_5() {
     let input = r#"SELECT * from (select sum("a") as a, sum("b") as b from "t") as o 
         inner join (select cast(count("b") as decimal) as c, count("d") as d from "t") as i
-        on cast(o.a as number) = i.c
+        on cast(o.a as integer) = i.c
     "#;
 
     check_join_motions(input, Policy::None, Policy::None, None);
@@ -252,7 +252,7 @@ fn front_sql_join_single_left_2() {
 fn front_sql_join_single_left_3() {
     let input = r#"SELECT * from (select sum("a") as a, sum("b") as b from "t") as o 
         inner join (select "a" as c, cast("b" as decimal) as d from "t") as i
-        on (o.a, o.b) = (cast(i.c as number), i.d)
+        on (o.a, o.b) = (cast(i.c as integer), i.d)
     "#;
 
     check_join_motions(input, Policy::Full, Policy::None, None);
@@ -279,7 +279,7 @@ fn front_sql_join_single_left_4() {
 fn front_sql_join_single_left_5() {
     let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, sum("b") as b from "t") as o 
         inner join "test_space" as i
-        on o.a = i."id" and (i."sysFrom" = i."sys_op" and o.a = cast(o.a as number) + 1)
+        on o.a = i."id" and (i."sysFrom" = i."sys_op" and o.a = cast(o.a as integer) + 1)
     "#;
 
     check_join_motions(input, Policy::new_seg(&["a"]), Policy::None, None);

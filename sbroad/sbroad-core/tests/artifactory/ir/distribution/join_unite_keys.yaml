@@ -165,7 +165,7 @@ relations:
         - name: c
           type: Boolean
         - name: d
-          type: Number
+          type: Integer
       primary_key:
         positions:
           - 1
@@ -181,7 +181,7 @@ relations:
         - name: a
           type: Boolean
         - name: b
-          type: Number
+          type: Integer
       primary_key:
         positions:
           - 0

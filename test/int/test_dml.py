@@ -20,7 +20,7 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
             format=[
                 dict(name="id", type="unsigned", is_nullable=False),
                 dict(name="kind", type="string", is_nullable=False),
-                dict(name="kilos", type="number", is_nullable=False),
+                dict(name="kilos", type="double", is_nullable=False),
             ],
             primary_key=["id"],
             distribution="global",
@@ -109,7 +109,7 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
             format=[
                 dict(name="id", type="unsigned", is_nullable=False),
                 dict(name="kind", type="string", is_nullable=False),
-                dict(name="kilos", type="number", is_nullable=False),
+                dict(name="kilos", type="double", is_nullable=False),
             ],
             primary_key=["id"],
             distribution="global",

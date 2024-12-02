@@ -147,10 +147,10 @@ fn reuse_cte_values() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     let expected_explain = String::from(
-        r#"projection ("t"."c"::integer -> "c")
+        r#"projection ("t"."c"::unsigned -> "c")
     join on true::boolean
         scan "t"
-            projection (count((*::integer))::integer -> "c")
+            projection (count((*::integer))::unsigned -> "c")
                 join on true::boolean
                     scan cte c1($0)
                     scan cte c2($0)
@@ -206,7 +206,7 @@ fn agg_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     let expected_explain = String::from(
-        r#"projection (count(("cte"."a"::string))::integer -> "col_1")
+        r#"projection (count(("cte"."a"::string))::unsigned -> "col_1")
     scan cte cte($0)
 subquery $0:
 motion [policy: full]

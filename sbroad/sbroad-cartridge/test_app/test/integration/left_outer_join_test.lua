@@ -621,7 +621,7 @@ left_join.test_groupby_after_join = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "a", type = "integer" },
-        { name = "col_1", type = "decimal" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         {nil, 0},

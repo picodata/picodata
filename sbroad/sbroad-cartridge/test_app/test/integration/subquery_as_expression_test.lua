@@ -162,7 +162,7 @@ g.test_under_group_by = function()
     ]], {} })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        { name = "col_1", type = "decimal" },
+        { name = "col_1", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         { 1 },
@@ -180,7 +180,7 @@ g.test_under_group_by = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "col_1", type = "decimal" },
-        { name = "col_2", type = "decimal" },
+        { name = "col_2", type = "unsigned" },
     })
     t.assert_items_equals(r.rows, {
         { 10, 2 },

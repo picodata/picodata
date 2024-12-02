@@ -34,7 +34,7 @@ schema:
       - type: string
         name: string_col
         is_nullable: false
-      - type: number
+      - type: decimal
         name: number_col
         is_nullable: false
       - type: unsigned
@@ -89,7 +89,7 @@ schema:
       - type: string
         name: string_col
         is_nullable: false
-      - type: number
+      - type: decimal
         name: number_col
         is_nullable: false
       - type: unsigned
@@ -119,10 +119,10 @@ schema:
       format:
       - is_nullable: false
         name: id
-        type: number
+        type: integer
       - is_nullable: false
         name: reqId
-        type: number
+        type: integer
       - is_nullable: false
         name: name
         type: string
@@ -134,10 +134,10 @@ schema:
         type: string
       - is_nullable: false
         name: salary
-        type: number
+        type: integer
       - is_nullable: false
         name: sysOp
-        type: number
+        type: integer
       - is_nullable: false
         name: bucket_id
         type: unsigned
@@ -149,7 +149,7 @@ schema:
         parts:
         - path: id
           is_nullable: false
-          type: number
+          type: integer
         name: id
         type: TREE
       - unique: false
@@ -210,7 +210,7 @@ schema:
         type: TREE
     col1_col2_transactions_num_actual:
       format:
-      - type: number
+      - type: integer
         name: col1
         is_nullable: false
       - type: integer
@@ -238,7 +238,7 @@ schema:
       - unique: true
         parts:
         - path: col1
-          type: number
+          type: integer
           is_nullable: false
         - path: col2
           type: integer
@@ -420,7 +420,7 @@ schema:
       - type: integer
         name: id
         is_nullable: false
-      - type: number
+      - type: decimal
         name: a
         is_nullable: false
       - type: unsigned
@@ -540,10 +540,10 @@ schema:
         type: TREE
     col1_col2_transactions_num_history:
       format:
-      - type: number
+      - type: integer
         name: id
         is_nullable: false
-      - type: number
+      - type: integer
         name: col1
         is_nullable: false
       - type: integer
@@ -574,14 +574,14 @@ schema:
       - unique: true
         parts:
         - path: id
-          type: number
+          type: integer
           is_nullable: false
         name: id
         type: TREE
       - unique: false
         parts:
         - path: col1
-          type: number
+          type: integer
           is_nullable: false
         - path: col2
           type: integer
@@ -634,10 +634,10 @@ schema:
       format:
       - is_nullable: false
         name: id
-        type: number
+        type: integer
       - is_nullable: false
         name: reqId
-        type: number
+        type: integer
       - is_nullable: false
         name: name
         type: string
@@ -649,10 +649,10 @@ schema:
         type: string
       - is_nullable: false
         name: salary
-        type: number
+        type: integer
       - is_nullable: false
         name: sysOp
-        type: number
+        type: integer
       - is_nullable: false
         name: bucket_id
         type: unsigned
@@ -666,7 +666,7 @@ schema:
         parts:
         - path: id
           is_nullable: false
-          type: number
+          type: integer
         name: id
         type: TREE
       - unique: false
@@ -876,10 +876,10 @@ schema:
       - type: integer
         name: id
         is_nullable: false
-      - type: number
+      - type: integer
         name: field1
         is_nullable: false
-      - type: number
+      - type: integer
         name: field2
         is_nullable: false
       - type: string
@@ -912,7 +912,7 @@ schema:
       - type: integer
         name: field12
         is_nullable: false
-      - type: number
+      - type: integer
         name: field13
         is_nullable: false
       - type: unsigned
@@ -986,13 +986,13 @@ schema:
       - type: unsigned
         name: bucket_id
         is_nullable: false
-      - type: number
+      - type: integer
         name: sys_from
         is_nullable: false
-      - type: number
+      - type: integer
         name: sys_to
         is_nullable: true
-      - type: number
+      - type: integer
         name: sys_op
         is_nullable: false
       temporary: false
@@ -1007,24 +1007,24 @@ schema:
           type: string
         - path: sys_from
           is_nullable: false
-          type: number
+          type: integer
         type: TREE
         name: id
       - unique: false
         parts:
         - path: sys_from
           is_nullable: false
-          type: number
+          type: integer
         type: TREE
         name: x_sys_from
       - unique: false
         parts:
         - path: sys_to
           is_nullable: true
-          type: number
+          type: integer
         - path: sys_op
           is_nullable: false
-          type: number
+          type: integer
         type: TREE
         name: x_sys_to
       - unique: false
@@ -1049,13 +1049,13 @@ schema:
       - type: unsigned
         name: bucket_id
         is_nullable: false
-      - type: number
+      - type: integer
         name: sys_from
         is_nullable: false
-      - type: number
+      - type: integer
         name: sys_to
         is_nullable: true
-      - type: number
+      - type: integer
         name: sys_op
         is_nullable: false
       temporary: false
@@ -1070,14 +1070,14 @@ schema:
           type: string
         - path: sys_from
           is_nullable: false
-          type: number
+          type: integer
         type: TREE
         name: id
       - unique: false
         parts:
         - path: sys_from
           is_nullable: false
-          type: number
+          type: integer
         type: TREE
         name: x_sys_from
       - unique: false

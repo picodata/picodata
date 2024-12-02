@@ -58,7 +58,7 @@ g.test_delete_1 = function()
     t.assert_equals(r, {
         metadata = {
             {name = "id", type = "integer"},
-            {name = "a", type = "number"},
+            {name = "a", type = "decimal"},
             {name = "bucket_id", type = "unsigned"},
         },
         rows = {
@@ -85,7 +85,7 @@ g.test_delete_2 = function()
     t.assert_equals(r, {
         metadata = {
             {name = "id", type = "integer"},
-            {name = "a", type = "number"},
+            {name = "a", type = "decimal"},
             {name = "bucket_id", type = "unsigned"},
         },
         rows = {},

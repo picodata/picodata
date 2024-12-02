@@ -5,7 +5,7 @@ nodes:
         Reference:
           branch: Left
           position: 0
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: a
@@ -14,7 +14,7 @@ nodes:
         Reference:
           branch: Left
           position: 1
-          col_type: Number
+          col_type: Integer
     - Expression:
         Alias:
           name: b
