@@ -1426,6 +1426,8 @@ def test_long_term_transaction_causing_rpc_timeouts(cluster: Cluster):
     ddl = i1.sql("CREATE TABLE t (id INT PRIMARY KEY, data INT, data2 INT)")
     assert ddl["row_count"] == 1
 
+    current_term = i1.raft_term()
+
     # Simulate a long-term transaction by blocking the next schema change for 1.5 seconds.
     # The RPC timeout is set to 1 second, so this block will trigger an RPC timeout.
     # After the timeout occurs, another RPC will be re-sent and blocked by the schema change lock.
@@ -1446,6 +1448,7 @@ def test_long_term_transaction_causing_rpc_timeouts(cluster: Cluster):
 
     ddl = i1.sql("CREATE INDEX tdata ON t (data) OPTION (TIMEOUT = 3)")
     assert ddl["row_count"] == 1
+    assert i1.raft_term() == current_term
 
 
 def test_wait_applied_options(cluster: Cluster):
