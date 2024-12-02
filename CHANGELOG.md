@@ -16,6 +16,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - String cells are now output without double quotes during SELECT.
 
+- `picodata --version` now provides verbose output, including the build type (static or dynamic) and the build configuration (release or debug)
+
 ### Compatibility
 
 - Added unique index on column `uuid` for `_pico_instance` table. IDs

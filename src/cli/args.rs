@@ -1,6 +1,6 @@
 use crate::address::{HttpAddress, IprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
-use crate::info::PICODATA_VERSION;
+use crate::info::FULL_PICODATA_VERSION;
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
@@ -11,7 +11,7 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 
 #[derive(Debug, Parser)]
-#[clap(name = "picodata", version = PICODATA_VERSION)]
+#[clap(name = "picodata", version = FULL_PICODATA_VERSION)]
 pub enum Picodata {
     Run(Box<Run>),
     #[clap(hide = true)]

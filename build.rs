@@ -19,6 +19,8 @@ fn main() {
     let build_root = cargo::get_build_root();
     let use_static_build = !cargo::get_feature("dynamic_build");
 
+    insert_build_metadata(use_static_build);
+
     // Build and link all the relevant tarantool libraries.
     // For more info, read the comments in tarantool-build.
     TarantoolBuildRoot::new(&build_root, use_static_build)
@@ -32,6 +34,34 @@ fn main() {
     if cfg!(feature = "webui") {
         build_webui(&build_root);
     }
+}
+
+fn insert_build_metadata(use_static_build: bool) {
+    rustc::env(
+        "BUILD_TYPE",
+        if use_static_build {
+            "static"
+        } else {
+            "dynamic"
+        },
+    );
+
+    rustc::env(
+        "BUILD_MODE",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+    );
+
+    let os_version = std::process::Command::new("uname")
+        .args(["-srmo"])
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    rustc::env("OS_VERSION", os_version);
 }
 
 fn generate_git_version() {

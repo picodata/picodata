@@ -13,6 +13,16 @@ use std::borrow::Cow;
 use tarantool::proc;
 use tarantool::tuple::RawByteBuf;
 
+pub const FULL_PICODATA_VERSION: &'static str = concat!(
+    env!("GIT_DESCRIBE"),
+    ", ",
+    env!("BUILD_TYPE"),
+    ", ",
+    env!("BUILD_MODE"),
+    "\n",
+    env!("OS_VERSION")
+);
+
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
 pub const RPC_API_VERSION: &'static str = "1.0.0";
 
