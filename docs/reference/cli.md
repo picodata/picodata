@@ -50,7 +50,7 @@ picodata run [OPTIONS]
 `--admin-sock <PATH>`
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
-команды [picodata admin](#admin). В отличие от `picodata connect`,
+команды [`picodata admin`](#admin). В отличие от `picodata connect`,
 коммуникация осуществляется в виде обычного текста и всегда происходит
 под учетной записью администратора.
 
@@ -68,7 +68,7 @@ picodata run [OPTIONS]
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
 
-По умолчанию используется значение параметра [--listen](#run_listen), и
+По умолчанию используется значение параметра [`--listen`](#run_listen), и
 в большинстве случаев его не требуется менять. Но, например, в случае
 `--listen 0.0.0.0` его придется указать явно:
 
@@ -307,7 +307,7 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 ```
 
-По умолчанию используется значение параметра [--advertise](#run_advertise),
+По умолчанию используется значение параметра [`--advertise`](#run_advertise),
 таким образом по умолчанию создается новый кластер.
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
@@ -424,8 +424,8 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 picodata admin <PATH>
 ```
 
-- `PATH`: Путь к unix-сокету, соответствующий опции [picodata run
-  --admin-sock](#run_admin_sock)
+- `PATH`: Путь к unix-сокету, соответствующий опции [`picodata run
+  --admin-sock`](#run_admin_sock)
 
 **Пример**
 
@@ -466,7 +466,7 @@ picodata config default [OPTIONS]
 picodata config default -o config.yaml
 ```
 
-Подробнее об имени `config.yaml` — в описании команды [picodata run](#run).
+Подробнее об имени `config.yaml` — в описании команды [`picodata run`](#run).
 
 <!-- ********************************************************************** -->
 ## picodata connect {: #connect }
@@ -480,7 +480,7 @@ picodata connect [OPTIONS] <ADDRESS>
 ```
 
 - `ADDRESS`: Адрес инстанса Picodata в формате `[user@][host][:port]`,
-  соответствующий опции [picodata run --advertise](#run_advertise)
+  соответствующий опции [`picodata run --advertise`](#run_advertise)
 
 **Пример**
 
