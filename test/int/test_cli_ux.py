@@ -622,3 +622,64 @@ def test_picodata_tarantool(cluster: Cluster):
         result = f.read()
 
     assert result == "it worked!"
+
+
+def test_command_history_with_delimiter(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+    i1.create_user(with_name="andy", with_password="Testpa55")
+    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for andy: ")
+    cli.sendline("Testpa55")
+
+    cli.expect_exact(
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
+    )
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
+
+    # Set custom delimiter
+    cli.sendline("\\set delimiter ?123")
+    cli.expect_exact("Delimiter changed to '?123'")
+
+    # Enter a command with the custom delimiter
+    cli.sendline("CREATE TABLE test_table (id INTEGER PRIMARY KEY)?123")
+    cli.expect_exact("1")
+
+    # Press the up arrow key to access the command history
+    cli.sendline("\033[A")  # \033[A is the escape sequence for the up arrow key
+    cli.expect_exact("CREATE TABLE test_table (id INTEGER PRIMARY KEY)?123")
+
+    # Press the down arrow key to clean the input
+    cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
+    cli.expect_exact("picodata> ")
+
+    # Set delimiter back to ;
+    cli.sendline("\\set delimiter ;")
+    cli.expect_exact("Delimiter changed to ';'")
+
+    # Set delimiter back to default
+    cli.sendline("\\set delimiter default")
+    cli.expect_exact("Delimiter changed to ';'")
+
+    # Enter a command with the default delimiter
+    cli.sendline("DROP TABLE test_table;")
+    cli.expect_exact("1")
+
+    # Press the up arrow key to access the command history
+    cli.sendline("\033[A")  # \033[A is the escape sequence for the up arrow key
+    cli.expect_exact("DROP TABLE test_table;")
+
+    # Press the down arrow key to clean the input
+    cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
+    cli.expect_exact("picodata> ")

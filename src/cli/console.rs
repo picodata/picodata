@@ -177,7 +177,10 @@ impl<T: Helper> Console<T> {
     fn update_history(&mut self, command: Command) -> Result<Option<Command>> {
         // do not save special commands
         if let Command::Expression(expression) = &command {
-            if let Err(e) = self.editor.add_history_entry(expression) {
+            if let Err(e) = self
+                .editor
+                .add_history_entry(expression.clone() + &self.delimiter.clone().unwrap_or_default())
+            {
                 println!("error while updating history: {e}");
             }
             if let Err(e) = self.editor.save_history(&self.history_file_path) {
