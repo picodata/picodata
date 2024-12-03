@@ -211,7 +211,7 @@ picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 
 ```sql
 $ picodata admin i1/admin.sock
 Connected to admin console by socket path "i1/admin.sock"
-type '\help;' for interactive help
+type '\help' for interactive help
 picodata> CREATE PLUGIN weather_cache 0.1.0;
 1
 picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
@@ -304,7 +304,7 @@ cp 0001_weather.sql build/weather_cache/0.1.0
 ```shell
 $ picodata admin i1/admin.sock
 Connected to admin console by socket path "i1/admin.sock"
-type '\help;' for interactive help
+type '\help' for interactive help
 picodata> CREATE PLUGIN weather_cache 0.1.0;
 1
 picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;

@@ -394,7 +394,7 @@ picodata admin <PATH>
 ```console
 $ picodata admin ./admin.sock
 Connected to admin console by socket path "admin.sock"
-type '\help;' for interactive help
+type '\help' for interactive help
 picodata>
 ```
 
@@ -450,7 +450,7 @@ picodata connect [OPTIONS] <ADDRESS>
 $ picodata connect alice@127.0.0.1:3301;
 Enter password for alice:
 Connected to interactive console by address "127.0.0.1:3301" under "alice" user
-type '\help;' for interactive help
+type '\help' for interactive help
 picodata>
 ```
 
