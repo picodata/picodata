@@ -22,9 +22,10 @@ RUN set -e; \
         ncurses-dev \
         pkg-config
 
+ARG RUST_VERSION
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile default --default-toolchain 1.76.0
+    sh -s -- -y --profile default --default-toolchain ${RUST_VERSION}
 ENV PATH=/root/.cargo/bin:${PATH}
 
 RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \

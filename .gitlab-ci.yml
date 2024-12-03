@@ -1,6 +1,10 @@
 default:
   tags:
     - docker-picodata
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: always
+  interruptible: true 
   retry:
     max: 1
     when:
@@ -31,22 +35,23 @@ workflow:
 
 variables:
   REGISTRY: docker-public.binary.picodata.io
-  BASE_IMAGE: ${REGISTRY}/picodata-build-base
+  BASE_IMAGE: ${CI_REGISTRY_IMAGE}/picodata-build-base
   BASE_IMAGE_LATEST: latest
+  BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   MAIN_BRANCH: &main-branch master
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
   CACHE_COMPRESSION_LEVEL: "fastest"
+  CACHE_POLICY: pull-push
   GIT_DEPTH: 1
   GET_SOURCES_ATTEMPTS: 3
   PICODATA_DESCRIBE: "24.7.0"
   PARENT_BRANCH: $CI_COMMIT_REF_NAME
   PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
   PARENT_PROJECT_PATH: ${CI_PROJECT_PATH}.git
-  BASE_IMAGE_NAME: docker-public.binary.picodata.io/sbroad-builder
-  BASE_IMAGE_TAG: 0.12.0
   TARANTOOL_VERSION: 2.11.2.159
+  RUST_VERSION: 1.76.0
   FF_NETWORK_PER_BUILD: 1
   RAW_REGISTRY: $RAW_PRIVATE_REGISTRY
   CI_DEBUG_SERVICES: "true"
@@ -90,11 +95,11 @@ variables:
 .base_cache: &base_cache
   paths:
     - .cargo/
-    - target/$TARGET/
+    - target/${TARGET}/
   key:
     files:
       - Cargo.lock
-    prefix: "base_cache_$TARGET"
+    prefix: "base_cache${TARGET}"
 
 .base_node: &base_node
   paths:
@@ -102,7 +107,7 @@ variables:
   key:
     files:
       - webui/yarn.lock
-    prefix: "base_node_"
+    prefix: "base_node"
 
 .py_cache: &py_cache
   paths:
@@ -110,34 +115,50 @@ variables:
   key:
     files:
       - poetry.lock
-    prefix: "py_cache_"
+    prefix: "py_cache"
+
+.kaniko_image: &kaniko_image
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
+    entrypoint: ['']
+    pull_policy: [if-not-present]
+  tags:
+    - docker-k8s
+  variables:
+    GIT_USERNAME: $CI_REGISTRY_USER
+    GIT_PASSWORD: $CI_REGISTRY_PASSWORD    
+  script:
+    - >
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
+      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION} --build-arg RUST_VERSION=${RUST_VERSION} --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ${PUSH_DOCKER}
+      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
+      --destination ${DESTINATION}
 
 build-base-image:
-  interruptible: true
   stage: build-base-image
+  <<: *kaniko_image
   rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
-    - if: $CI_COMMIT_TAG
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *else
       when: never
   variables:
     DOCKERFILE: docker-build-base/Dockerfile
     DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    PUSH_DOCKER: ""
-  trigger:
-    project: picodata/devops/picodata-in-docker
-    branch: main
-    strategy: depend
+
+build-stress-image:
+  stage: build-stress-image
+  <<: *kaniko_image
+  needs: []
+  variables:
+    DOCKERFILE: docker-build-base/stress.Dockerfile
+    DESTINATION: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  before_script:
+    - BASE_IMAGE_TAG=$(cd sbroad && git describe --tags --abbrev=0 2>/dev/null || echo "latest")
+
 
 .test:
-  interruptible: true
   stage: test
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
@@ -192,25 +213,13 @@ test-linux:
     - .test
     - .parallel
   rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-        CACHE_POLICY: pull-push
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-        CACHE_POLICY: pull-push
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
         CACHE_POLICY: pull
     - <<: *else
       variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
         CACHE_POLICY: pull
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
   cache:
     - <<: *py_cache
       policy: $CACHE_POLICY
@@ -219,30 +228,12 @@ test-linux:
     - <<: *base_node
       policy: $CACHE_POLICY
   script:
-    - |
-      # Check rust version consistency
-      ci-log-section start "rust-version" Checking rust version consistency ...
-      exec 3>&1 # duplicate stdout fd
-      grep_rust_version() { echo "$1: $(sed -nr "s/.*rust-version = \"(\S+)\".*/\1/p" $1)"; }
-      grep_toolchain() { echo "$1: $(sed -nr "s/.*--default-toolchain (\S+).*/\1/p" $1)"; }
-      UNIQUE_VERSIONS=$(
-        {
-          grep_rust_version Cargo.toml;
-          grep_toolchain Makefile;
-          grep_toolchain docker-build-base/Dockerfile;
-        } \
-        | tee /dev/fd/3 \
-        | cut -d: -f2- | sort | uniq | wc -l
-      );
-      ci-log-section end "rust-version"
-      if [ "$UNIQUE_VERSIONS" != "1" ]; then
-        echo "Error: checking rust version consistency failed"
-        exit 1
-      fi
-
+    - tools/check_rust.sh
     - cargo -V
 
     - *poetry-install
+    - pushd sbroad && make test
+    - make bench_check; popd
 
     - make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
     - |
@@ -262,20 +253,10 @@ test-linux:
 
 lint:
   stage: test
-  interruptible: true
   rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
@@ -292,15 +273,14 @@ lint:
     - *fetch-tags
     - *poetry-install
     - make lint
-    - cd webui && yarn lint
+    - pushd webui && yarn lint; popd
+    - pushd sbroad && make lint
 
 .test-patch-rules: &test-patch-rules
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
     - when: manual
       allow_failure: true
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
 
 test-patch-picodata:
   extends: .test
@@ -310,9 +290,6 @@ test-patch-picodata:
     BUILD_PROFILE: release
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_REQUEST: "8Gi"
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
-    pull_policy: always
   cache:
     - <<: *py_cache
       policy: pull
@@ -335,9 +312,6 @@ test-patch-tarantool:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     VARDIR: tmp/t
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
-    pull_policy: always
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - pushd tarantool-sys/ && make -f .test.mk VARDIR=${VARDIR} test-release;
@@ -369,7 +343,6 @@ test-mac-m1:
     # - |
 
 .helm:
-  interruptible: true
   stage: test
   needs: []
   rules:
@@ -410,18 +383,9 @@ gamayun-prepare:
   extends: .test
   when: manual
   rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
   script:
     - export CARGO_HOME=$HOME/.cargo
     - cargo -V
@@ -467,7 +431,6 @@ gamayun-run:
         docker.binary.picodata.io/gamayun
 
 build-vm-image:
-  interruptible: true
   stage: test
   when: manual
   inherit:
@@ -516,8 +479,6 @@ deploy-docker:
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
       - DOCKERFILE: helm/picodata-distroless.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}-distroless
-      - DOCKERFILE: docker-build-base/sbroad.Dockerfile
-        DESTINATION: ${BASE_IMAGE_NAME}:${CI_COMMIT_TAG}
 
   trigger:
     project: picodata/devops/picodata-in-docker
@@ -551,8 +512,6 @@ docker-compose:
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 .upload-picodata-to-binary:
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
   variables:
     VER: $CI_COMMIT_SHORT_SHA
     GIT_SUBMODULE_STRATEGY: recursive
@@ -579,7 +538,6 @@ upload-picodata-to-binary-stress-test:
       allow_failure: true
 
 downstream-stress-test:
-  interruptible: true
   # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
   stage: stress-test
   rules:
@@ -604,7 +562,6 @@ upload-picodata-to-binary-front-deploy:
   when: manual
 
 downstream-front-deploy:
-  interruptible: true
   # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
   stage: deploy
   allow_failure: true
@@ -621,56 +578,12 @@ publish-picodata-plugin:
   stage: pack
   when: manual
   rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
   script:
     - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
     - make publish-picodata-plugin
-
-
-.kaniko_image: &kaniko_image
-  image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
-    entrypoint: ['']
-    pull_policy: [if-not-present]
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-    - when: manual
-      allow_failure: true
-  tags:
-    - docker-k8s
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "$DOCKER_AUTH_CONFIG" > /kaniko/.docker/config.json
-
-build-stress-image:
-  stage: build-stress-image
-  <<: *kaniko_image
-  needs: []
-  variables:
-    GIT_USERNAME: $CI_REGISTRY_USER
-    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
-    DOCKERFILE: docker-build-base/docker.stress
-  script:
-    - BASE_IMAGE_TAG=$(cd sbroad && git describe --tags --abbrev=0 2>/dev/null || echo "latest")
-    - >
-      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg COMMIT_HASH=${CI_COMMIT_SHA} --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ${PUSH_DOCKER}
-      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
-      --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 
 .test-sbroad:
   stage: test
@@ -678,39 +591,26 @@ build-stress-image:
     - docker-k8s
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
-  image:
-    name: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
-    pull_policy: [always]
-  needs: []
   before_script:
     - pushd sbroad
 
-lint-sbroad:
-  extends: [.test-sbroad]
-  script:
-    - make lint
-
-unit-sbroad:
-  extends: [.test-sbroad]
-  script:
-    - make test
-
 integration-sbroad:
-  extends: [.test-sbroad]
+  extends: .test-sbroad
   variables:
     KUBERNETES_CPU_REQUEST: 6
     KUBERNETES_MEMORY_REQUEST: "6Gi"
+  rules:
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}    
+  tags:
+    - docker-k8s
   script:
     - make test_integration
   artifacts:
     paths:
       - sbroad-cartridge/test_app/tmp/tarantool.log
     expire_in: 1 week
-
-bench-sbroad:
-  extends: [.test-sbroad]
-  script:
-    - make bench_check
 
 stress_tests:
   parallel:
@@ -765,7 +665,6 @@ store-stress-results-for-main:
     - "stress_tests: [insert]"
 
 diff_stress-results:
-  image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
   stage: stress-test
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
