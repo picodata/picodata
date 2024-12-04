@@ -77,20 +77,20 @@ impl Service for WeatherService {
     fn on_config_change(
         &mut self,
         _ctx: &PicoContext,
-        _new_cfg: Self::Config,
+        new_cfg: Self::Config,
         _old_cfg: Self::Config,
     ) -> CallbackResult<()> {
-        println!("I got a new config: {_new_cfg:?}");
+        println!("I got a new config: {new_cfg:?}");
         Ok(())
     }
 
-    fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
-        println!("I started with config: {_cfg:?}");
+    fn on_start(&mut self, _ctx: &PicoContext, cfg: Self::Config) -> CallbackResult<()> {
+        println!("I started with config: {cfg:?}");
         Ok(())
     }
 
     fn on_stop(&mut self, _ctx: &PicoContext) -> CallbackResult<()> {
-        println!("I stopped with config");
+        println!("I stopped!");
         Ok(())
     }
 
