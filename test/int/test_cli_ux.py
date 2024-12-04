@@ -3,7 +3,12 @@ import os
 import pytest
 import sys
 import subprocess
-from conftest import CLI_TIMEOUT, Cluster, log_crawler
+from conftest import (
+    CLI_TIMEOUT,
+    Cluster,
+    log_crawler,
+    assert_starts_with,
+)
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
@@ -683,3 +688,11 @@ def test_command_history_with_delimiter(cluster: Cluster):
     # Press the down arrow key to clean the input
     cli.sendline("\033[B")  # \033[B is the escape sequence for the down arrow key
     cli.expect_exact("sql> ")
+
+
+def test_picodata_version(cluster: Cluster):
+    stdout = subprocess.check_output([cluster.binary_path, "--version"])
+    lines = iter(stdout.splitlines())
+    assert_starts_with(next(lines), b"picodata ")
+    assert_starts_with(next(lines), b"tarantool (fork) version")
+    assert_starts_with(next(lines), b"target: Linux")

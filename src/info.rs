@@ -20,27 +20,21 @@ pub const RPC_API_VERSION: &'static str = "1.0.0";
 pub fn version_for_help() -> &'static str {
     static VERSION_OUTPUT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-    const BUILD_TYPE: &str = {
-        #[cfg(feature = "dynamic_build")]
-        {
-            "dynamic"
-        }
-        #[cfg(not(feature = "dynamic_build"))]
-        {
-            "static"
-        }
-    };
-
     VERSION_OUTPUT.get_or_init(|| {
         let mut result = PICODATA_VERSION.to_string();
         result.push_str(", ");
 
-        result.push_str(BUILD_TYPE);
+        result.push_str(env!("BUILD_TYPE"));
         result.push_str(", ");
 
-        result.push_str(env!("BUILD_MODE"));
+        result.push_str(env!("BUILD_PROFILE"));
         result.push('\n');
 
+        result.push_str("tarantool (fork) version: ");
+        result.push_str(crate::tarantool::version());
+        result.push('\n');
+
+        result.push_str("target: ");
         result.push_str(env!("OS_VERSION"));
         result
     })
@@ -54,6 +48,9 @@ pub fn version_for_help() -> &'static str {
 pub struct VersionInfo<'a> {
     pub picodata_version: Cow<'a, str>,
     pub rpc_api_version: Cow<'a, str>,
+    pub build_type: Cow<'a, str>,
+    pub build_profile: Cow<'a, str>,
+    pub tarantool_version: Cow<'a, str>,
 }
 
 impl tarantool::tuple::Encode for VersionInfo<'_> {}
@@ -71,6 +68,9 @@ impl VersionInfo<'static> {
         Self {
             picodata_version: PICODATA_VERSION.into(),
             rpc_api_version: RPC_API_VERSION.into(),
+            build_type: env!("BUILD_TYPE").into(),
+            build_profile: env!("BUILD_PROFILE").into(),
+            tarantool_version: crate::tarantool::version().into(),
         }
     }
 }

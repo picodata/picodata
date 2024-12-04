@@ -37,8 +37,15 @@ fn main() {
 }
 
 fn insert_build_metadata() {
-    let build_mode = std::env::var("PROFILE").expect("always set");
-    rustc::env("BUILD_MODE", build_mode);
+    let build_type: &str = if cfg!(feature = "dynamic_build") {
+        "dynamic"
+    } else {
+        "static"
+    };
+    rustc::env("BUILD_TYPE", build_type);
+
+    let build_profile = std::env::var("PROFILE").expect("always set");
+    rustc::env("BUILD_PROFILE", build_profile);
 
     let os_version = std::process::Command::new("uname")
         .args(["-srmo"])

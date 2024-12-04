@@ -508,7 +508,15 @@ def test_governor_notices_restarts(instance: Instance):
 
 def test_proc_version_info(instance: Instance):
     info = instance.call(".proc_version_info")
-    assert info.keys() == set(["picodata_version", "rpc_api_version"])  # type: ignore
+    assert info.keys() == set(
+        [
+            "picodata_version",
+            "rpc_api_version",
+            "build_type",
+            "build_profile",
+            "tarantool_version",
+        ]
+    )
 
 
 def test_proc_instance_info(cluster: Cluster):

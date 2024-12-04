@@ -104,7 +104,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def assert_starts_with(actual_string: str, expected_prefix: str):
+def assert_starts_with(actual_string: str | bytes, expected_prefix: str | bytes):
     """Using this function results in a better pytest output in case of assertion failure."""
     assert actual_string[: len(expected_prefix)] == expected_prefix
 
@@ -2084,7 +2084,15 @@ class PgClient:
 
 
 def build_profile() -> str:
-    return os.environ.get("BUILD_PROFILE", "dev")
+    from_env = os.environ.get("BUILD_PROFILE")
+
+    if "CI" in os.environ:
+        # When running in CI BUILD_PROFILE must always be specified, we rely
+        # this in a couple of tests
+        assert from_env is not None, "BUILD_PROFILE must always be set in CI"
+
+    # When running on a developers machine, priorities the usability
+    return from_env or "dev"
 
 
 def get_test_dir():
