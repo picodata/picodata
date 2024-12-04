@@ -1645,7 +1645,7 @@ class Cluster:
         assert config or yaml
         assert self.config_path is None
 
-        self.config_path = self.data_dir + "/config.yaml"
+        self.config_path = self.data_dir + "/picodata.yaml"
 
         if config:
             yaml = yaml_lib.dump(config, default_flow_style=False)

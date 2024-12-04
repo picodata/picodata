@@ -14,6 +14,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - New alter system parameters - `vdbe_max_steps` and `vtable_max_rows`.
 
+- Default config name is `picodata.yaml`.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

@@ -49,7 +49,7 @@ pub struct Run {
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.
     ///
-    /// By default "./config.yaml" is used if it exists.
+    /// By default "./picodata.yaml" is used if it exists.
     pub config: Option<PathBuf>,
 
     #[clap(
@@ -60,7 +60,7 @@ pub struct Run {
     )]
     /// A list of key-value pairs specifying configuration parameters.
     ///
-    /// These will override both parameters provided in the config.yaml file,
+    /// These will override both parameters provided in the picodata.yaml file,
     /// the command-line parameters and the environment variables.
     ///
     /// Key is a `.` separated path to a configuration parameter.

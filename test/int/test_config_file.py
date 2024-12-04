@@ -135,10 +135,10 @@ instance:
 def test_default_path_to_config_file(cluster: Cluster):
     instance = cluster.add_instance(name=False, wait_online=False)
 
-    # By default ./config.yaml will be used in the instance's current working directory
+    # By default ./picodata.yaml will be used in the instance's current working directory
     work_dir = cluster.data_dir + "/work-dir"
     os.mkdir(work_dir)
-    with open(work_dir + "/config.yaml", "w") as f:
+    with open(work_dir + "/picodata.yaml", "w") as f:
         f.write(
             """
 cluster:
@@ -157,7 +157,7 @@ instance:
     instance.terminate()
 
     # But if a config is specified explicitly, it will be used instead
-    config_path = cluster.data_dir + "/explicit-config.yaml"
+    config_path = cluster.data_dir + "/explicit-picodata.yaml"
     with open(config_path, "w") as f:
         f.write(
             """
@@ -174,7 +174,7 @@ instance:
 
     msg = f"""\
 A path to configuration file '{config_path}' was provided explicitly,
-but a 'config.yaml' file in the current working directory '{work_dir}' also exists.
+but a 'picodata.yaml' file in the current working directory '{work_dir}' also exists.
 Using configuration file '{config_path}'.
 """  # noqa E501
     crawler = log_crawler(instance, msg)

@@ -36,7 +36,7 @@ use tarantool::tuple::Tuple;
 pub use sbroad::ir::relation::Type as SbroadType;
 
 pub use crate::address::{DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_USERNAME};
-pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
+pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
@@ -432,7 +432,7 @@ Using configuration file '{args_path}'.");
         // TODO: for future compatibility this is a very bad approach. Image if
         // you will this scenario, picodata 69.3 has added a new parameter
         // "maximum_security" and now we want to add it to the config file.
-        // But we have a config.yaml file for picodata 42.8 which is already deployed,
+        // But we have a picodata.yaml file for picodata 42.8 which is already deployed,
         // we add the new parameter to that config and then we try to start the
         // old picodata with the new config, and what we get? Error. Now you
         // have to go and copy-paste all of your config files and have at least
