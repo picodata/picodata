@@ -13,18 +13,38 @@ use std::borrow::Cow;
 use tarantool::proc;
 use tarantool::tuple::RawByteBuf;
 
-pub const FULL_PICODATA_VERSION: &'static str = concat!(
-    env!("GIT_DESCRIBE"),
-    ", ",
-    env!("BUILD_TYPE"),
-    ", ",
-    env!("BUILD_MODE"),
-    "\n",
-    env!("OS_VERSION")
-);
-
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
 pub const RPC_API_VERSION: &'static str = "1.0.0";
+
+/// Note: this returns a `&'static str` because of clap's requirements.
+pub fn version_for_help() -> &'static str {
+    static VERSION_OUTPUT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+    const BUILD_TYPE: &str = {
+        #[cfg(feature = "dynamic_build")]
+        {
+            "dynamic"
+        }
+        #[cfg(not(feature = "dynamic_build"))]
+        {
+            "static"
+        }
+    };
+
+    VERSION_OUTPUT.get_or_init(|| {
+        let mut result = PICODATA_VERSION.to_string();
+        result.push_str(", ");
+
+        result.push_str(BUILD_TYPE);
+        result.push_str(", ");
+
+        result.push_str(env!("BUILD_MODE"));
+        result.push('\n');
+
+        result.push_str(env!("OS_VERSION"));
+        result
+    })
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // VersionInfo

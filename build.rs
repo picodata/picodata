@@ -19,7 +19,7 @@ fn main() {
     let build_root = cargo::get_build_root();
     let use_static_build = !cargo::get_feature("dynamic_build");
 
-    insert_build_metadata(use_static_build);
+    insert_build_metadata();
 
     // Build and link all the relevant tarantool libraries.
     // For more info, read the comments in tarantool-build.
@@ -36,24 +36,9 @@ fn main() {
     }
 }
 
-fn insert_build_metadata(use_static_build: bool) {
-    rustc::env(
-        "BUILD_TYPE",
-        if use_static_build {
-            "static"
-        } else {
-            "dynamic"
-        },
-    );
-
-    rustc::env(
-        "BUILD_MODE",
-        if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        },
-    );
+fn insert_build_metadata() {
+    let build_mode = std::env::var("PROFILE").expect("always set");
+    rustc::env("BUILD_MODE", build_mode);
 
     let os_version = std::process::Command::new("uname")
         .args(["-srmo"])
