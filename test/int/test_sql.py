@@ -2019,34 +2019,44 @@ def test_sql_acl_password_length(cluster: Cluster):
     i1, i2 = cluster.instances
 
     username = "USER"
-    password_short = "pwd"
+    password_empty = ""
     password_long = "Passw0rd"
 
     acl = i1.sql(
         f"""
-    create user {username} with password '{password_long}'
-    using md5 option (timeout = 3)
-"""
+        create user {username} with password '{password_long}'
+        using md5 option (timeout = 3)
+        """
     )
     assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
-    with pytest.raises(TarantoolError, match="password is too short"):
-        i1.sql(
-            """
-            create user {username} with password '{password}'
-            using md5 option (timeout = 3)
-        """.format(
-                username=username, password=password_short
-            )
-        )
+    acl = i1.sql(
+        f"""
+        create user {username}
+        using ldap option (timeout = 3)
+    """
+    )
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
 
     acl = i1.sql(
         f"""
-    create user {username} with password '{password_short}'
-    using ldap option (timeout = 3)
-"""
+        create user {username} with password '{password_empty}'
+        using ldap option (timeout = 3)
+    """
+    )
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        f"""
+        create user {username} with password '{password_long}'
+        using ldap option (timeout = 3)
+    """
     )
     assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")

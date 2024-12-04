@@ -4492,7 +4492,7 @@ impl AbstractSyntaxTree {
                     }
 
                     let name = name.expect("username expected as a child");
-                    let password = password.expect("password expected as a child");
+                    let password = password.unwrap_or_default();
                     let create_user = CreateUser {
                         name,
                         password,

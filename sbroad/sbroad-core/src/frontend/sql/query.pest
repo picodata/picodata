@@ -33,8 +33,8 @@ Plugin = _{ CreatePlugin | DropPlugin | AlterPlugin }
 
 ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivilege | RevokePrivilege }
     CreateUser = ${
-        ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ (^"with" ~ W)? ~ ^"password" ~ W
-        ~ SingleQuotedString ~ (W ~ AuthMethod)? ~ (W ~ TimeoutOption)?
+        ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ (W ~ (^"with" ~ W)? ~ ^"password" ~ W
+        ~ SingleQuotedString)? ~ (W ~ AuthMethod)? ~ (W ~ TimeoutOption)?
     }
     AlterUser = ${
         ^"alter" ~ W ~ ^"user" ~ W ~ Identifier ~ W ~ (^"with" ~ W)? ~ AlterOption ~ (W ~ TimeoutOption)?
