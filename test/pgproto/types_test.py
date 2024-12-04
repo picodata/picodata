@@ -482,3 +482,26 @@ def test_select_from_system_tables(postgres: Postgres):
         sql = f""" SELECT * from "{table}" """
         cur = conn.execute(bytes(sql, "utf-8"))
         cur.fetchall()
+
+
+def test_gl_1125_f64_cannot_be_represented_as_int8(postgres: Postgres):
+    """https://git.picodata.io/core/picodata/-/issues/1125"""
+    user = "admin"
+    password = "Passw0rd"
+
+    postgres.instance.sql(f"ALTER USER {user} WITH PASSWORD '{password}'", sudo=True)
+
+    conn = pg8000.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
+
+    conn.run(
+        "create table clients (id integer not null, name string not null, primary key (id));"
+    )
+
+    nrows = 100
+    for i in range(nrows):
+        conn.run(f"insert into clients values ({i}, 'Character#{i}');")
+
+    rows = conn.run("select id from clients;")
+    assert sorted(rows) == [[x] for x in range(nrows)]
