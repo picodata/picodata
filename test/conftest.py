@@ -584,6 +584,9 @@ class Instance:
     host: str | None = None
     port: int | None = None
 
+    pg_host: str | None = None
+    pg_port: int | None = None
+    pg_ssl: bool | None = None
     audit: str | bool = True
     tier: str | None = None
     init_replication_factor: int | None = None
@@ -607,6 +610,12 @@ class Instance:
         if self.host is None or self.port is None:
             return None
         return f"{self.host}:{self.port}"
+
+    @property
+    def pg_listen(self):
+        if self.pg_host is None or self.pg_port is None:
+            return None
+        return f"{self.pg_host}:{self.pg_port}"
 
     def current_state(self, instance_name=None):
         if instance_name is None:
@@ -650,6 +659,8 @@ class Instance:
             *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
             *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
             *([f"--listen={self.listen}"] if self.listen else []),
+            *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
+            *([f"-c instance.pg.ssl={self.pg_ssl}"] if self.pg_ssl else []),
             *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
             *(["--init-replication-factor", f"{self.init_replication_factor}"]
@@ -2424,18 +2435,14 @@ class Postgres:
     ssl_verify: bool = False
 
     def install(self):
-        self.cluster.set_config_file(
-            yaml=f"""
-cluster:
-    name: test
-    tier:
-        default:
-instance:
-    pg:
-        listen: "{self.host}:{self.port}"
-        ssl: {self.ssl}
-"""
-        )
+        # deploy 3 instances and configure pgproto on the first one
+        i1 = self.cluster.add_instance(wait_online=False)
+        self.cluster.add_instance(wait_online=False)
+        self.cluster.add_instance(wait_online=False)
+        i1.pg_host = self.host
+        i1.pg_port = self.port
+        i1.pg_ssl = self.ssl
+
         ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
         instance_dir = Path(self.cluster.data_dir) / "i1"
         instance_dir.mkdir()
@@ -2445,7 +2452,7 @@ instance:
         if self.ssl_verify:
             shutil.copyfile(ssl_dir / "root.crt", instance_dir / "ca.crt")
 
-        self.cluster.deploy(instance_count=1)
+        self.cluster.wait_online()
         return self
 
     @property

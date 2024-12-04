@@ -209,7 +209,7 @@ def test_text_and_varchar(postgres: Postgres):
 
     # verify that the values were insert
     rows = conn.run("SELECT * FROM T;")
-    assert rows == [["value1"], ["value2"]]
+    assert sorted(rows) == [["value1"], ["value2"]]
 
 
 def test_unsigned(postgres: Postgres):
