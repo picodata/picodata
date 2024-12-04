@@ -390,7 +390,7 @@ test-mac-m1:
     # - make lint
     # - |
 
-.test-helm:
+.helm:
   interruptible: true
   stage: test
   rules:
@@ -410,8 +410,12 @@ test-mac-m1:
     - when: manual
       allow_failure: true
 
-test-helm-image:
-  extends: .test-helm
+helm-image:
+  extends: .helm
+  variables:
+    KUBERNETES_CPU_REQUEST: 8
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    MULTIARCH: "true"  
   parallel:
     matrix:
       - DOCKERFILE: helm/picodata.Dockerfile
@@ -519,6 +523,7 @@ pack-on-tag:
   stage: docker
   variables:
     PUSH_DOCKER: ""
+    MULTIARCH: "true"
   rules:
     - if: $CI_COMMIT_TAG
       variables:
@@ -542,7 +547,7 @@ deploy-docker:
 
 docker-compose:
   stage: docker
-  needs: [test-helm-image]
+  needs: ["helm-image: [helm/picodata.Dockerfile, ${REGISTRY}/picodata:master]"]
   tags:
     - picodata-shell
   rules:
@@ -558,10 +563,7 @@ docker-compose:
   script:
     - mkdir --mode=777 pico/
     - docker-compose -f helm/docker-compose.yml up -d --wait
-    - echo "ALTER USER \"admin\" WITH PASSWORD 'T0psecret' using md5" > alter_pass.sql
-    - docker cp alter_pass.sql picodata-1-1:/pico/
     - sleep 30 # the cluster does not manage to assemble quickly enough
-    - docker exec -t picodata-1-1 sh -c "cat /pico/alter_pass.sql |picodata admin /pico/data/picodata-1-1/admin.sock"
     - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
   after_script:
     - docker-compose -f helm/docker-compose.yml rm -fsv
