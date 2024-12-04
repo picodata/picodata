@@ -1572,6 +1572,94 @@ class Instance:
                 password = password[:-1]
         return password
 
+    def latest_snapshot(self, into: Path):
+        def modification_time(f):
+            return os.path.getmtime(os.path.join(self.data_dir, f))
+
+        all_snapshots = list()
+        for filename in os.listdir(self.data_dir):
+            full_path = os.path.join(self.data_dir, filename)
+            if os.path.isfile(full_path) and filename.endswith(".snap"):
+                all_snapshots.append(filename)
+        if not all_snapshots:
+            return None
+
+        latest_snapshot = max(all_snapshots, key=modification_time)
+        return Path(f"{self.data_dir}/{latest_snapshot}")
+
+    def fill_with_data(self):
+        ddl = self.sql(
+            """
+            CREATE TABLE deliveries (
+                nmbr INTEGER NOT NULL,
+                product TEXT NOT NULL,
+                quantity INTEGER,
+                PRIMARY KEY (nmbr))
+            USING vinyl DISTRIBUTED BY (product)
+            IN TIER "default"
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        dml = self.sql(
+            """
+            INSERT INTO deliveries VALUES
+                (1, 'metalware', 2000),
+                (2, 'adhesives', 300),
+                (3, 'moldings', 100),
+                (4, 'bars', 5),
+                (5, 'blocks', 15000);
+        """
+        )
+        assert dml["row_count"] == 5
+
+        dcl = self.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0);")
+        assert dcl["row_count"] == 1
+
+        dcl = self.sql("GRANT ALTER ON TABLE deliveries TO toy;")
+        assert dcl["row_count"] == 1
+
+        dcl = self.sql(
+            """
+            CREATE USER "andy"
+            WITH PASSWORD 'P@ssw0rd'
+            USING chap-sha1
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert dcl["row_count"] == 1
+
+        ddl = self.sql(
+            """
+            CREATE INDEX product_quantity
+            ON deliveries
+            USING TREE (product, quantity)
+            WITH (
+                HINT = true,
+                BLOOM_FPR = 0.05,
+                RUN_SIZE_RATIO = 3.5,
+                PAGE_SIZE = 8192,
+                RANGE_SIZE = 1073741824,
+                RUN_COUNT_PER_LEVEL = 2
+            )
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        ddl = self.sql(
+            """
+            CREATE PROCEDURE proc (int, text, int)
+            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$
+            OPTION (TIMEOUT = 5.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        lua = self.eval("return box.snapshot()")
+        assert lua == "ok"
+
 
 CLUSTER_COLORS = (
     color.cyan,
@@ -2525,161 +2613,68 @@ def postgres_with_mtls(cluster: Cluster, pg_port: int):
     return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
 
 
+def is_semver_version(version: str) -> bool:
+    # see https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string  # noqa: E501
+    pattern = r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"  # noqa: E501
+    return bool(re.fullmatch(pattern, version))
+
+
+def get_tt_snapshot_by_path(path: Path) -> Optional[str]:
+    """
+    Checks presence of a ".snap" filne in a provided path.
+    Returns `None` if no snapshot was found, otherwise a
+    full path to a snapshot as a `str`.
+    """
+    for file in os.listdir(path):
+        if file.endswith(".snap"):
+            return os.path.join(path, file)
+    return None
+
+
 class Compatibility:
-    _tag: str
-    _path: Path
+    # SemVers only, last version in a list is a current tag
+    tags: list[tuple[Version, Path]]
 
-    @property
-    def tag(self):
-        return self._tag
+    def __init__(self, root_path: Optional[Path] = None):
+        if root_path is None:
+            root_path = Path(os.getcwd())
+        git_repo = git.Repo(root_path)
 
-    @property
-    def path(self):
-        return self._path
+        all_tags = list(map(str, git_repo.tags))
+        tags_versions = [tag.split("-")[0] for tag in all_tags]
+        semver_versions = filter(is_semver_version, tags_versions)
+        processed_versions = [Version(version) for version in semver_versions]
 
-    @staticmethod
-    def _is_semver(tag: str):
-        # see https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string  # noqa: E501
-        pattern = r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"  # noqa: E501
+        if processed_versions or len(processed_versions) < 2:
+            self.tags = [
+                (version, Path(f"{root_path}/test/compat/{str(version)}"))
+                for version in processed_versions
+            ]
+        else:
+            print("too few tags retrieved from git were correct SemVers")
+            sys.exit(-1)
 
-        return bool(re.fullmatch(pattern, tag))
+    def current_tag(self) -> tuple[Version, Path]:
+        version, path = self.tags[-1]
+        return (version, path)
 
-    @staticmethod
-    def _filter_correct_tags(repo: git.Repo):
-        tags = [tag.split("-")[0] for tag in map(str, repo.tags)]
-        return list(filter(Compatibility._is_semver, tags))
+    def previous_tag(self) -> tuple[Version, Path]:
+        version, path = self.tags[-2]
+        return (version, path)
 
-    @staticmethod
-    def _filter_latest_minors(tags):
-        temp = dict()
-        for version in tags:
-            version = Version(version)
-            key, value = (version.major, version.minor), version.micro
-            if key not in temp or temp[key] < value:
-                temp[key] = value
+    def previous_minor_tag(self) -> Optional[tuple[Version, Path]]:
+        curr_tag, curr_path = self.current_tag()
+        prev_tag, prev_path = self.previous_tag()
 
-        result = list()
-        for k, v in temp.items():
-            result.append(f"{k[0]}.{k[1]}.{v}")
-        return result
+        first_after_major_bump = curr_tag.micro == 0
+        if first_after_major_bump:
+            return None
 
-    def fetch_current_tag(self):
-        path = Path(os.getcwd())
-        try:
-            repo = git.Repo(path)
-        except git.InvalidGitRepositoryError as e:
+        minor_versions_diff = curr_tag.micro - prev_tag.micro
+        if minor_versions_diff > 1:
             print(
-                f"{e} is not a git directory. Generate snapshot using `make generate`."
-            )
-        tags = self._filter_correct_tags(repo)
-        self._tag = tags[-1].strip().split("-")[0]
-
-        self._path = f"{path}/test/compat/{self._tag}"
-        os.makedirs(self.path, exist_ok=True)
-
-    def fetch_previous_tag(self):
-        path = Path(os.getcwd())
-        try:
-            repo = git.Repo(path)
-        except git.InvalidGitRepositoryError as e:
-            print(
-                f"{e} is not a git directory. Generate snapshot using `make generate`."
-            )
-        tags = self._filter_correct_tags(repo)
-        tags = self._filter_latest_minors(tags)
-        self._tag = tags[-1]
-
-        self._path = f"{path}/test/compat/{self._tag}"
-        os.makedirs(self.path, exist_ok=True)
-
-    def get_snapshot_path(self):
-        for file in os.listdir(self.path):
-            if file.endswith(".snap"):
-                return os.path.join(self.path, file)
-        return None
-
-    def fill_snapshot_with_data(self, inst: Instance):
-        ddl = inst.sql(
-            """
-            CREATE TABLE deliveries (
-                nmbr INTEGER NOT NULL,
-                product TEXT NOT NULL,
-                quantity INTEGER,
-                PRIMARY KEY (nmbr))
-            USING vinyl DISTRIBUTED BY (product)
-            IN TIER "default"
-            OPTION (TIMEOUT = 3.0);
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        dml = inst.sql(
-            """
-            INSERT INTO deliveries VALUES
-                (1, 'metalware', 2000),
-                (2, 'adhesives', 300),
-                (3, 'moldings', 100),
-                (4, 'bars', 5),
-                (5, 'blocks', 15000);
-        """
-        )
-        assert dml["row_count"] == 5
-
-        dcl = inst.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0);")
-        assert dcl["row_count"] == 1
-
-        dcl = inst.sql("GRANT ALTER ON TABLE deliveries TO toy;")
-        assert dcl["row_count"] == 1
-
-        dcl = inst.sql(
-            """
-            CREATE USER "andy"
-            WITH PASSWORD 'P@ssw0rd'
-            USING chap-sha1
-            OPTION (TIMEOUT = 3.0);
-        """
-        )
-        assert dcl["row_count"] == 1
-
-        ddl = inst.sql(
-            """
-            CREATE INDEX product_quantity
-            ON deliveries
-            USING TREE (product, quantity)
-            WITH (
-                HINT = true,
-                BLOOM_FPR = 0.05,
-                RUN_SIZE_RATIO = 3.5,
-                PAGE_SIZE = 8192,
-                RANGE_SIZE = 1073741824,
-                RUN_COUNT_PER_LEVEL = 2
-            )
-            OPTION (TIMEOUT = 3.0);
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        ddl = inst.sql(
-            """
-            CREATE PROCEDURE proc (int, text, int)
-            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$
-            OPTION (TIMEOUT = 5.0);
-        """
-        )
-        assert ddl["row_count"] == 1
-
-        lua = inst.eval("return box.snapshot()")
-        assert lua == "ok"
-
-    def copy_latest_snapshot(self, inst: Instance):
-        def modification_time(f):
-            return os.path.getmtime(os.path.join(inst.data_dir, f))
-
-        all_snapshots = list()
-        for filename in os.listdir(inst.data_dir):
-            full_path = os.path.join(inst.data_dir, filename)
-            if os.path.isfile(full_path) and filename.endswith(".snap"):
-                all_snapshots.append(filename)
-
-        latest_snapshot = max(all_snapshots, key=modification_time)
-        shutil.copy2(f"{inst.data_dir}/{latest_snapshot}", self.path)
+                "diffs of the two latest tags are more than one minor and are not bumped majors"
+            )  # noqa: E501
+            sys.exit(-1)
+        else:
+            return (prev_tag, prev_path)

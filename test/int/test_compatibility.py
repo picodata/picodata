@@ -3,23 +3,48 @@ import os
 import shutil
 
 
-from conftest import Cluster, Compatibility, log_crawler, ProcessDead
+from conftest import (
+    Cluster,
+    Compatibility,
+    ProcessDead,
+    get_tt_snapshot_by_path,
+    log_crawler,
+)
 
 
 @pytest.mark.xfail
-def test_upgrade(cluster: Cluster):
+def test_upgrade_major(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
-    compat = Compatibility()
-
     os.makedirs(inst.data_dir, exist_ok=True)
-    compat.fetch_previous_tag()
 
-    print(f"snapshot tag: {compat._tag}")
-    snap = compat.get_snapshot_path()
-    err = "Snapshot of the previous MAJOR version was not found. Generate one using `make generate`."  # noqa: E501
-    assert snap, err
-    shutil.copy(snap, f"{inst.data_dir}/")
+    version, path = Compatibility().previous_tag()
+    snapshot = get_tt_snapshot_by_path(path)
+    assert (
+        snapshot
+    ), f"Snapshot of the previous MAJOR version was not found. Generate one using `make generate` on a previous MAJOR version. {version} is current version."  # noqa: E501
 
+    shutil.copy(snapshot, f"{inst.data_dir}/")
+    inst.start()
+    inst.wait_online()
+
+
+@pytest.mark.xfail
+def test_upgrade_minor(cluster: Cluster):
+    inst = cluster.add_instance(wait_online=False)
+    os.makedirs(inst.data_dir, exist_ok=True)
+
+    tag = Compatibility().previous_minor_tag()
+    assert (
+        tag
+    ), "Current MINOR version is after MAJOR bump, so snapshot check with previous MINOR is not possible."  # noqa: E501
+    version, path = tag
+
+    snapshot = get_tt_snapshot_by_path(path)
+    assert (
+        snapshot
+    ), f"Snapshot of the previous MINOR version was not found. Generate one using `make generate` on a previous MINOR version. {version} is current version."  # noqa: E501
+
+    shutil.copy(snapshot, f"{inst.data_dir}/")
     inst.start()
     inst.wait_online()
 
