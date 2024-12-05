@@ -36,6 +36,7 @@ use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
 use crate::system_parameter_name;
 use crate::tlog;
+use crate::topology_cache::TopologyCache;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
@@ -56,7 +57,6 @@ use ::raft::prelude as raft;
 use ::raft::storage::Storage as _;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
-use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::error::BoxError;
 use ::tarantool::error::TarantoolErrorCode;
@@ -153,6 +153,7 @@ pub struct Node {
 
     node_impl: Rc<Mutex<NodeImpl>>,
     pub(crate) storage: Clusterwide,
+    pub(crate) topology_cache: Rc<TopologyCache>,
     pub(crate) raft_storage: RaftSpaceAccess,
     pub(crate) main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
@@ -211,6 +212,7 @@ impl Node {
             raft_storage.clone(),
             plugin_manager.clone(),
         )?;
+        let topology_cache = node_impl.topology_cache.clone();
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -240,6 +242,7 @@ impl Node {
             ),
             pool,
             node_impl,
+            topology_cache,
             storage,
             raft_storage,
             status,
@@ -447,6 +450,7 @@ pub(crate) struct NodeImpl {
     pub read_state_wakers: HashMap<LogicalClock, oneshot::Sender<RaftIndex>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
+    topology_cache: Rc<TopologyCache>,
     raft_storage: RaftSpaceAccess,
     pool: Rc<ConnectionPool>,
     lc: LogicalClock,
@@ -462,15 +466,12 @@ impl NodeImpl {
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
         plugin_manager: Rc<PluginManager>,
-    ) -> Result<Self, RaftError> {
-        let box_err = |e| StorageError::Other(Box::new(e));
-
+    ) -> traft::Result<Self> {
         let raft_id: RaftId = raft_storage
-            .raft_id()
-            .map_err(box_err)?
+            .raft_id()?
             .expect("raft_id should be set by the time the node is being initialized");
-        let applied: RaftIndex = raft_storage.applied().map_err(box_err)?;
-        let term: RaftTerm = raft_storage.term().map_err(box_err)?;
+        let applied: RaftIndex = raft_storage.applied()?;
+        let term: RaftTerm = raft_storage.term()?;
         let lc = {
             let gen = raft_storage.gen().unwrap() + 1;
             raft_storage.persist_gen(gen).unwrap();
@@ -498,11 +499,14 @@ impl NodeImpl {
         });
         let (applied, _) = watch::channel(applied);
 
+        let topology_cache = Rc::new(TopologyCache::load(&storage, raft_id)?);
+
         Ok(Self {
             raw_node,
             read_state_wakers: Default::default(),
             joint_state_latch: KVCell::new(),
             storage,
+            topology_cache,
             raft_storage,
             instance_reachability: pool.instance_reachability.clone(),
             pool,
@@ -789,7 +793,13 @@ impl NodeImpl {
         //
         // TODO: merge this into `do_dml` once `box_tuple_extract_key` is fixed.
         let old = match space {
-            Ok(s @ (ClusterwideTable::Property | ClusterwideTable::Instance)) => {
+            Ok(
+                s @ (ClusterwideTable::Property
+                | ClusterwideTable::Instance
+                | ClusterwideTable::Replicaset
+                | ClusterwideTable::Tier
+                | ClusterwideTable::ServiceRouteTable),
+            ) => {
                 let s = space_by_id(s.id()).expect("system space must exist");
                 match &op {
                     // There may be no previous version for inserts.
@@ -828,31 +838,68 @@ impl NodeImpl {
             return true;
         };
 
-        let initiator = op.initiator();
-        let initiator_def = user_by_id(initiator).expect("user must exist");
-
         // FIXME: all of this should be done only after the transaction is committed
         // See <https://git.picodata.io/core/picodata/-/issues/1149>
-        if let Some(new) = &new {
-            // Dml::Delete mandates that new tuple is None.
-            assert!(!matches!(op, Dml::Delete { .. }));
+        match space {
+            ClusterwideTable::Instance => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
 
-            // Handle insert, replace, update in _pico_instance
-            if space == ClusterwideTable::Instance {
-                let old: Option<Instance> =
-                    old.as_ref().map(|x| x.decode().expect("must be Instance"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
 
-                let new: Instance = new
-                    .decode()
-                    .expect("tuple already passed format verification");
+                // Handle insert, replace, update in _pico_instance
+                if let Some(new) = &new {
+                    // Dml::Delete mandates that new tuple is None.
+                    assert!(!matches!(op, Dml::Delete { .. }));
 
-                do_audit_logging_for_instance_update(old.as_ref(), &new, &initiator_def);
+                    let initiator = op.initiator();
+                    let initiator_def = user_by_id(initiator).expect("user must exist");
 
-                if has_states!(new, Expelled -> *) && new.raft_id == self.raft_id() {
-                    // cannot exit during a transaction
-                    *expelled = true;
+                    do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
+
+                    if has_states!(new, Expelled -> *) && new.raft_id == self.raft_id() {
+                        // cannot exit during a transaction
+                        *expelled = true;
+                    }
                 }
+
+                self.topology_cache.update_instance(old, new);
             }
+
+            ClusterwideTable::Replicaset => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
+                self.topology_cache.update_replicaset(old, new);
+            }
+
+            ClusterwideTable::Tier => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
+                self.topology_cache.update_tier(old, new);
+            }
+
+            ClusterwideTable::ServiceRouteTable => {
+                let old = old
+                    .as_ref()
+                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+                let new = new
+                    .as_ref()
+                    .map(|x| x.decode().expect("format was already verified"));
+                self.topology_cache.update_service_route(old, new);
+            }
+
+            _ => {}
         }
 
         true
@@ -2129,6 +2176,7 @@ impl NodeImpl {
         if hard_state.is_some() || !entries_to_persist.is_empty() || snapshot_data.is_some() {
             let mut new_term = None;
             let mut new_applied = None;
+            let mut received_snapshot = false;
 
             if let Err(e) = transaction(|| -> Result<(), Error> {
                 self.main_loop_status("persisting hard state, entries and/or snapshot");
@@ -2170,6 +2218,7 @@ impl NodeImpl {
                         self.storage
                             .apply_snapshot_data(&snapshot_data, is_master)?;
                         new_applied = Some(meta.index);
+                        received_snapshot = true;
                     }
 
                     // TODO: As long as the snapshot was sent to us in response to
@@ -2199,6 +2248,19 @@ impl NodeImpl {
                 self.applied
                     .send(new_applied)
                     .expect("applied shouldn't ever be borrowed across yields");
+            }
+
+            if received_snapshot {
+                // Need to reload the whole topology cache. We could be more
+                // clever about it and only update the records which changed,
+                // but at the moment this would require doing a full scan and
+                // comparing each record, which is no better than full reload.
+                // A better solution would be to store a raft index in each
+                // tuple of each global table, then we would only need to check
+                // if the index changed, but we don't have that..
+                self.topology_cache
+                    .full_reload(&self.storage)
+                    .expect("schema upgrade not supported yet");
             }
 
             if hard_state.is_some() {

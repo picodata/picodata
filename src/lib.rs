@@ -77,6 +77,7 @@ pub mod tarantool;
 pub mod tier;
 pub mod tlog;
 pub mod to_rmpv_named;
+pub mod topology_cache;
 pub mod traft;
 pub mod util;
 pub mod vshard;

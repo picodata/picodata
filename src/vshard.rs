@@ -17,10 +17,14 @@ use std::collections::HashMap;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
 
+/// This function **never yields**
 pub fn get_replicaset_priority_list(
     tier: &str,
     replicaset_uuid: &str,
 ) -> Result<Vec<InstanceName>, Error> {
+    #[cfg(debug_assertions)]
+    let _guard = tarantool::fiber::safety::NoYieldsGuard::new();
+
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
         .get("pico")
@@ -29,13 +33,20 @@ pub fn get_replicaset_priority_list(
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
     let res = func.call_with_args((tier, replicaset_uuid));
     if res.is_err() {
-        check_tier_exists(tier)?;
+        // Check if tier exists, return corresponding error in that case
+        node::global()
+            .expect("initilized by this point")
+            .topology_cache
+            .get()
+            .tier_by_name(tier)?;
     }
     res.map_err(|e| tlua::LuaError::from(e).into())
 }
 
 /// Returns the replicaset uuid and an array of replicas in descending priority
 /// order.
+///
+/// This function **may yield** if vshard needs to update it's bucket mapping.
 pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<String, Error> {
     let max_bucket_id = PicodataConfig::total_bucket_count();
     if bucket_id < 1 || bucket_id > max_bucket_id {
@@ -51,25 +62,14 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
     let res = func.call_with_args((tier, bucket_id));
     if res.is_err() {
-        check_tier_exists(tier)?;
+        // Check if tier exists, return corresponding error in that case
+        node::global()
+            .expect("initilized by this point")
+            .topology_cache
+            .get()
+            .tier_by_name(tier)?;
     }
     res.map_err(|e| tlua::LuaError::from(e).into())
-}
-
-#[inline(always)]
-fn check_tier_exists(tier: &str) -> Result<()> {
-    // Check if tier exists, return corresponding error in that case
-    if node::global()
-        .expect("initilized by this point")
-        .storage
-        .tiers
-        .by_name(tier)?
-        .is_none()
-    {
-        return Err(Error::NoSuchTier(tier.into()));
-    }
-
-    Ok(())
 }
 
 #[rustfmt::skip]

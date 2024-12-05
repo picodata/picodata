@@ -665,8 +665,11 @@ pub struct ServiceRouteKey<'a> {
     /// Instance name.
     pub instance_name: &'a InstanceName,
 }
-
 impl<'a> Encode for ServiceRouteKey<'a> {}
+
+////////////////////////////////////////////////////////////////////////////////
+// PluginMigrationRecord
+////////////////////////////////////////////////////////////////////////////////
 
 /// Single record in _pico_plugin_migration system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -707,6 +710,10 @@ impl PluginMigrationRecord {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// PluginConfigRecord
+////////////////////////////////////////////////////////////////////////////////
 
 /// Single record in _pico_plugin_config system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -2768,6 +2768,15 @@ impl ServiceRouteTable {
     }
 }
 
+impl ToEntryIter<MP_SERDE> for ServiceRouteTable {
+    type Entry = ServiceRouteItem;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PluginMigration
 ////////////////////////////////////////////////////////////////////////////////

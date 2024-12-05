@@ -2,11 +2,11 @@ use crate::error_code::ErrorCode;
 use crate::has_states;
 use crate::instance::InstanceName;
 use crate::plugin::{rpc, PluginIdentifier};
-use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetState;
-use crate::schema::ServiceRouteItem;
-use crate::schema::ServiceRouteKey;
 use crate::tlog;
+use crate::topology_cache::ServiceRouteCheck;
+use crate::topology_cache::TopologyCache;
+use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::Node;
@@ -17,10 +17,8 @@ use picodata_plugin::util::copy_to_region;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
-use tarantool::error::IntoBoxError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
-use tarantool::tuple::Tuple;
 use tarantool::tuple::TupleBuffer;
 use tarantool::tuple::{RawByteBuf, RawBytes};
 use tarantool::uuid::Uuid;
@@ -56,16 +54,13 @@ pub(crate) fn send_rpc_request(
 ) -> Result<&'static [u8], Error> {
     let node = crate::traft::node::global()?;
     let pool = &node.plugin_manager.pool;
+    let topology = &node.topology_cache;
 
     let timeout = Duration::from_secs_f64(timeout);
 
-    let instance_name = resolve_rpc_target(plugin_identity, service, target, node)?;
+    let instance_name = resolve_rpc_target(plugin_identity, service, target, node, topology)?;
 
-    let my_instance_name = node
-        .raft_storage
-        .instance_name()?
-        .expect("should be persisted at this point");
-
+    let my_instance_name = topology.my_instance_name();
     if path.starts_with('.') {
         return call_builtin_stored_proc(pool, path, input, &instance_name, timeout);
     }
@@ -194,24 +189,24 @@ fn resolve_rpc_target(
     service: &str,
     target: &FfiSafeRpcTargetSpecifier,
     node: &Node,
+    topology: &TopologyCache,
 ) -> Result<InstanceName, Error> {
     use FfiSafeRpcTargetSpecifier as Target;
 
     let mut to_master_chosen = false;
     let mut tier_and_bucket_id = None;
     let mut by_replicaset_name = None;
-    let mut tier_name_owned;
     match target {
         Target::InstanceName(name) => {
             //
             // Request to a specific instance, single candidate
             //
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
-            let instance_name = InstanceName::from(unsafe { name.as_str() });
+            let instance_name = unsafe { name.as_str() };
 
             // A single instance was chosen
-            check_route_to_instance(node, plugin, service, &instance_name)?;
-            return Ok(instance_name);
+            check_route_to_instance(topology, plugin, service, instance_name)?;
+            return Ok(instance_name.into());
         }
 
         &Target::Replicaset {
@@ -227,11 +222,7 @@ fn resolve_rpc_target(
             bucket_id,
             to_master,
         } => {
-            tier_name_owned = node
-                .raft_storage
-                .tier()?
-                .expect("storage for instance should exists");
-            let tier = &*tier_name_owned;
+            let tier = topology.my_tier_name();
             to_master_chosen = to_master;
             tier_and_bucket_id = Some((tier, bucket_id));
         }
@@ -250,89 +241,65 @@ fn resolve_rpc_target(
 
     let mut by_bucket_id = None;
     let mut tier_and_replicaset_uuid = None;
-    let mut replicaset_tuple = None;
-    let mut replicaset_uuid_owned;
+    let replicaset_uuid_owned;
     if let Some((tier, bucket_id)) = tier_and_bucket_id {
+        // This call must be done here, because this function may yield
+        // but later we take a volatile reference to TopologyCache which can't be held across yields
         replicaset_uuid_owned = vshard::get_replicaset_uuid_by_bucket_id(tier, bucket_id)?;
         let uuid = &*replicaset_uuid_owned;
         by_bucket_id = Some((tier, bucket_id, uuid));
         tier_and_replicaset_uuid = Some((tier, uuid));
     }
 
+    let topology_ref = topology.get();
+
     //
     // Request to replicaset master, single candidate
     //
     if to_master_chosen {
+        let mut target_master_name = None;
+
         if let Some(replicaset_name) = by_replicaset_name {
-            let tuple = node.storage.replicasets.get_raw(replicaset_name)?;
-            replicaset_tuple = Some(tuple);
+            let replicaset = topology_ref.replicaset_by_name(replicaset_name)?;
+            target_master_name = Some(&replicaset.target_master_name);
         }
 
         if let Some((_, _, replicaset_uuid)) = by_bucket_id {
-            let tuple = node.storage.replicasets.by_uuid_raw(replicaset_uuid)?;
-            replicaset_tuple = Some(tuple);
+            let replicaset = topology_ref.replicaset_by_uuid(replicaset_uuid)?;
+            target_master_name = Some(&replicaset.target_master_name);
         }
 
-        let tuple = replicaset_tuple.expect("set in one of ifs above");
-        let Some(master_name) = tuple
-            .field(Replicaset::FIELD_TARGET_MASTER_NAME)
-            .map_err(IntoBoxError::into_box_error)?
-        else {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_name' field in _pico_replicaset tuple").into());
-        };
+        let instance_name = target_master_name.expect("set in one of ifs above");
 
         // A single instance was chosen
-        check_route_to_instance(node, plugin, service, &master_name)?;
-        return Ok(master_name);
+        check_route_to_instance(topology, plugin, service, instance_name)?;
+        return Ok(instance_name.clone());
     }
 
     if let Some(replicaset_name) = by_replicaset_name {
-        let tuple = node.storage.replicasets.get_raw(replicaset_name)?;
-        let Some(found_replicaset_uuid) = tuple
-            .field(Replicaset::FIELD_REPLICASET_UUID)
-            .map_err(IntoBoxError::into_box_error)?
-        else {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'replicaset_uuid' field in _pico_replicaset tuple").into());
-        };
-        replicaset_uuid_owned = found_replicaset_uuid;
-
-        let Some(found_tier) = tuple
-            .field::<'_, String>(Replicaset::FIELD_TIER)
-            .map_err(IntoBoxError::into_box_error)?
-        else {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'tier' field in _pico_replicaset tuple").into());
-        };
-        tier_name_owned = found_tier;
-
-        replicaset_tuple = Some(tuple);
-        tier_and_replicaset_uuid = Some((&tier_name_owned, &replicaset_uuid_owned));
+        let replicaset = topology_ref.replicaset_by_name(replicaset_name)?;
+        tier_and_replicaset_uuid = Some((&replicaset.tier, &replicaset.uuid));
     }
 
-    let my_instance_name = node
-        .raft_storage
-        .instance_name()?
-        .expect("should be persisted at this point");
-
     // Get list of all possible targets
-    let mut all_instances_with_service = node
-        .storage
-        .service_route_table
-        .get_available_instances(plugin, service)?;
+    let mut all_instances_with_service: Vec<_> = topology_ref
+        .instances_running_service(&plugin.name, &plugin.version, service)
+        .collect();
 
-    // Get list of all possible targets
-    filter_instances_by_state(node, &mut all_instances_with_service)?;
+    // Remove non-online instances
+    filter_instances_by_state(&topology_ref, &mut all_instances_with_service)?;
 
     #[rustfmt::skip]
     if all_instances_with_service.is_empty() {
+        // TODO: put service definitions into TopologyCache as well
         if node.storage.services.get(plugin, service)?.is_none() {
             return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
         } else {
             return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
         }
     };
+
+    let my_instance_name = topology.my_instance_name();
 
     //
     // Request to any replica in replicaset, multiple candidates
@@ -347,22 +314,26 @@ fn resolve_rpc_target(
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates
         for instance_name in replicas {
-            if my_instance_name == instance_name {
+            if my_instance_name == &*instance_name {
                 // Prefer someone else instead of self
                 skipped_self = true;
                 continue;
             }
-            if all_instances_with_service.contains(&instance_name) {
+            if all_instances_with_service.contains(&&*instance_name) {
                 return Ok(instance_name);
             }
         }
 
         // In case there's no other suitable candidates, fallback to calling self
         if skipped_self && all_instances_with_service.contains(&my_instance_name) {
-            return Ok(my_instance_name);
+            return Ok(my_instance_name.into());
         }
 
-        check_replicaset_is_not_expelled(node, replicaset_uuid, replicaset_tuple)?;
+        let replicaset = topology_ref.replicaset_by_uuid(replicaset_uuid)?;
+        if replicaset.state == ReplicasetState::Expelled {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::ReplicasetExpelled, format!("replicaset with id {replicaset_uuid} was expelled")).into());
+        }
 
         #[rustfmt::skip]
         return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {plugin}.{service}")).into());
@@ -381,17 +352,17 @@ fn resolve_rpc_target(
         let index = (random_index + 1) % candidates.len();
         instance_name = std::mem::take(&mut candidates[index]);
     }
-    return Ok(instance_name);
+    return Ok(instance_name.into());
 }
 
 fn filter_instances_by_state(
-    node: &Node,
-    instance_names: &mut Vec<InstanceName>,
+    topology_ref: &TopologyCacheRef,
+    instance_names: &mut Vec<&str>,
 ) -> Result<(), Error> {
     let mut index = 0;
     while index < instance_names.len() {
         let name = &instance_names[index];
-        let instance = node.storage.instances.get(name)?;
+        let instance = topology_ref.instance_by_name(name)?;
         if has_states!(instance, Expelled -> *) || !instance.may_respond() {
             instance_names.swap_remove(index);
         } else {
@@ -403,63 +374,35 @@ fn filter_instances_by_state(
 }
 
 fn check_route_to_instance(
-    node: &Node,
+    topology: &TopologyCache,
     plugin: &PluginIdentifier,
     service: &str,
-    instance_name: &InstanceName,
+    instance_name: &str,
 ) -> Result<(), Error> {
-    let instance = node.storage.instances.get(instance_name)?;
+    let topology_ref = topology.get();
+    let instance = topology_ref.instance_by_name(instance_name)?;
     if has_states!(instance, Expelled -> *) {
         #[rustfmt::skip]
         return Err(BoxError::new(ErrorCode::InstanceExpelled, format!("instance named '{instance_name}' was expelled")).into());
     }
-
     if !instance.may_respond() {
         #[rustfmt::skip]
         return Err(BoxError::new(ErrorCode::InstanceUnavaliable, format!("instance with instance_name \"{instance_name}\" can't respond due it's state"),).into());
     }
-    let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
-        instance_name,
-        plugin_name: &plugin.name,
-        plugin_version: &plugin.version,
-        service_name: service,
-    })?;
-    #[rustfmt::skip]
-    let Some(tuple) = res else {
-        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not running on {instance_name}")).into());
-    };
-    let res = tuple
-        .field(ServiceRouteItem::FIELD_POISON)
-        .map_err(IntoBoxError::into_box_error)?;
-    let Some(is_poisoned) = res else {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::StorageCorrupted, "invalid contents has _pico_service_route").into());
-    };
-    if is_poisoned {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{plugin}.{service}' is poisoned on {instance_name}")).into());
-    }
-    Ok(())
-}
 
-fn check_replicaset_is_not_expelled(
-    node: &Node,
-    uuid: &str,
-    maybe_tuple: Option<Tuple>,
-) -> Result<(), Error> {
-    let tuple;
-    if let Some(t) = maybe_tuple {
-        tuple = t;
-    } else {
-        tuple = node.storage.replicasets.by_uuid_raw(uuid)?;
-    }
+    let check =
+        topology_ref.check_service_route(&plugin.name, &plugin.version, service, instance_name);
 
-    let state = tuple.field(Replicaset::FIELD_STATE)?;
-    let state: ReplicasetState = state.expect("replicaset should always have a state column");
-
-    if state == ReplicasetState::Expelled {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ReplicasetExpelled, format!("replicaset with id {uuid} was expelled")).into());
+    match check {
+        ServiceRouteCheck::Ok => {}
+        ServiceRouteCheck::RoutePoisoned => {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{plugin}.{service}' is poisoned on {instance_name}")).into());
+        }
+        ServiceRouteCheck::ServiceNotEnabled => {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not running on {instance_name}")).into());
+        }
     }
 
     Ok(())
