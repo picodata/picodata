@@ -134,17 +134,15 @@ psql postgres://admin@127.0.0.1:55432?sslmode=disable
 
 ## Безопасный запуск {: #secure_run }
 
-<!-- WARNING: "‑" below are non-breaking hyphen &#8209; -->
-
 Для обеспечения мер безопасности рекомендуется организовать хранение
 пароля для внутреннего системного пользователя `pico_service` в
 отдельном файле. При запуске инстанса путь к этому файлу передайте в
-параметре [`‑‑service‑password‑file`].
+параметре [`--service-password-file`].
 
-Дополнительно, в опции [`‑‑audit`] явно укажите указать способ вывода
+Дополнительно, в опции [`--audit`] явно укажите указать способ вывода
 [журнала аудита](../tutorial/audit_log.md).
 
-Также рекомендуется использовать опцию [`‑‑shredding`], которая
+Также рекомендуется использовать опцию [`--shredding`], которая
 обеспечивает безопасное удаление рабочих файлов.
 
 Пример команд, реализующих безопасный запуск:
@@ -155,9 +153,9 @@ chmod 600 secret.txt
 picodata run --service-password-file secret.txt --audit audit.log --shredding
 ```
 
-[`‑‑service‑password‑file`]: ../reference/cli.md#run_service_password_file
-[`‑‑audit`]: ../reference/cli.md#run_audit
-[`‑‑shredding`]: ../reference/cli.md#run_shredding
+[`--service-password-file`]: ../reference/cli.md#run_service_password_file
+[`--audit`]: ../reference/cli.md#run_audit
+[`--shredding`]: ../reference/cli.md#run_shredding
 
 ## Безопасное завершение работы {: #secure_stop }
 

@@ -1,8 +1,6 @@
 # Рабочие файлы инстанса {: #instance_runtime_files }
 
-<!-- WARNING: "‑" below are non-breaking hyphen &#8209; -->
-
-Picodata хранит в рабочей директории инстанса [`‑‑data‑dir`] следующие
+Picodata хранит в рабочей директории инстанса [`--data-dir`] следующие
 файлы:
 
 - `*.snap` — снапшоты локальной БД на движке memtx
@@ -15,7 +13,7 @@ Picodata хранит в рабочей директории инстанса [`
 локальной БД. Сохранность этих файлов является залогом персистентного
 хранения данных.
 
-[`‑‑data‑dir`]: ../reference/cli.md#run_data_dir
+[`--data-dir`]: ../reference/cli.md#run_data_dir
 
 См. также:
 
