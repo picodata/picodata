@@ -1196,8 +1196,9 @@ pub mod stage {
         }
 
         pub struct ApplySchemaChange<'i> {
-            /// These are masters of all the replicasets in the cluster.
-            pub targets: Vec<&'i InstanceName>,
+            /// These are masters of all the replicasets in the cluster
+            /// (their instance names with corresponding tier names).
+            pub targets: Vec<(&'i InstanceName, &'i String)>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: rpc::ddl_apply::Request,
         }

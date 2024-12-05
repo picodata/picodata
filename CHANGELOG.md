@@ -142,6 +142,9 @@ to 2 and 3.
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.
 
+### SQL
+- SQL supports `TRUNCATE` operation.
+
 ### Fixes
 
 - It's no longer possible to execute DML queries for tables that are not operable

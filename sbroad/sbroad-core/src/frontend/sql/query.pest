@@ -78,7 +78,7 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             PrivilegeUsage = { ^"usage" }
             PrivilegeWrite = { ^"write" }
 
-DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex | CreateSchema | DropSchema
+DDL = _{ CreateTable | DropTable | TruncateTable | CreateIndex | DropIndex | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
          | CreatePartition }
     CreatePartition = ${
@@ -124,6 +124,7 @@ DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex | CreateSchema | Drop
                 PartitionHash = { ^"hash" }
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     CreateProc = ${
         ^"create" ~ W ~ ^"procedure" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ WO
         ~ ProcParams ~ W ~ (^"language" ~ W ~ ProcLanguage ~ W)?

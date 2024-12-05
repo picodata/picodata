@@ -280,6 +280,19 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
                 as_user,
             )
         }
+        op::Ddl::TruncateTable { id, .. } => {
+            let space = space_by_id(*id)?;
+            let meta = space.meta()?;
+
+            box_access_check_ddl_as_user(
+                &space.meta()?.name,
+                *id,
+                meta.user_id,
+                TntSchemaObjectType::Space,
+                PrivType::Write,
+                as_user,
+            )
+        }
         op::Ddl::CreateIndex { space_id, .. } => {
             let space = space_by_id(*space_id)?;
             let meta = space.meta()?;
@@ -923,6 +936,49 @@ mod tests {
 
             access_check_ddl(&storage, &space_to_be_created, user_id).unwrap();
         }
+
+        // truncate can be executed only with WRITE privilege
+        {
+            let e = access_check_ddl(
+                &Ddl::TruncateTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                e.to_string(),
+                format!("box error: AccessDenied: Write access to space '{space_name}' is denied for user '{user_name}'"),
+            );
+
+            grant(
+                &storage,
+                PrivilegeType::Write,
+                SchemaObjectType::Table,
+                space.id() as i64,
+                user_id,
+                None,
+            );
+
+            access_check_ddl(
+                &Ddl::TruncateTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap();
+        }
+
+        revoke(
+            &storage,
+            user_id,
+            PrivilegeType::Write,
+            SchemaObjectType::Table,
+            space.id() as i64,
+        );
 
         // drop can be granted with wildcard, check on particular entity works
         {

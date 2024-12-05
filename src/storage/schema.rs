@@ -2,9 +2,9 @@ use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
-use crate::storage::set_local_schema_version;
 use crate::storage::Catalog;
 use crate::storage::RoutineId;
+use crate::storage::{set_local_schema_version, space_by_id_unchecked};
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
@@ -94,6 +94,9 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
 
         Ddl::DropTable { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+        }
+        Ddl::TruncateTable { .. } => {
+            unreachable!("TRUNCATE execution should not reach `ddl_abort_on_master` call")
         }
 
         Ddl::CreateProcedure { id, .. } => {
@@ -438,6 +441,31 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
         sys_index.delete(&(space_id, 0))?;
         sys_truncate.delete(&[space_id])?;
         sys_space.delete(&[space_id])?;
+
+        Ok(())
+    })();
+    Ok(res.err())
+}
+
+/// Truncate tarantool space.
+///
+/// Return values:
+/// * `Ok(None)` in case of success.
+/// * `Ok(Some(abort_reason))` in case of error which should result in a ddl abort.
+/// * `Err(e)` in case of retryable errors.
+///
+// FIXME: this function returns 2 kinds of errors: retryable and non-retryable.
+// Currently this is impelemnted by returning one kind of errors as Err(e) and
+// the other as Ok(Some(e)). This was the simplest solution at the time this
+// function was implemented, as it requires the least amount of boilerplate and
+// error forwarding code. But this signature is not intuitive, so maybe there's
+// room for improvement.
+pub fn ddl_truncate_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntError>> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let space = space_by_id_unchecked(space_id);
+
+    let res = (|| -> tarantool::Result<()> {
+        space.truncate()?;
 
         Ok(())
     })();

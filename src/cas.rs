@@ -1112,6 +1112,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
     let ddl_modifies = |ddl: &Ddl| match ddl {
         Ddl::CreateTable { id, .. } => *id == space,
         Ddl::DropTable { id, .. } => *id == space,
+        Ddl::TruncateTable { id, .. } => *id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
         Ddl::CreateProcedure { .. } => false,

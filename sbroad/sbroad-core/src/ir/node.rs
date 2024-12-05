@@ -887,6 +887,19 @@ impl From<DropTable> for NodeAligned {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct TruncateTable {
+    pub name: SmolStr,
+    pub wait_applied_globally: bool,
+    pub timeout: Decimal,
+}
+
+impl From<TruncateTable> for NodeAligned {
+    fn from(value: TruncateTable) -> Self {
+        Self::Node64(Node64::TruncateTable(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct CreateProc {
     pub name: SmolStr,
     pub params: Vec<ParamDef>,
@@ -1251,6 +1264,7 @@ pub enum Node64 {
     LocalTimestamp(LocalTimestamp),
     Over(Over),
     NamedWindows(NamedWindows),
+    TruncateTable(TruncateTable),
 }
 
 impl Node64 {
@@ -1266,6 +1280,9 @@ impl Node64 {
             Node64::DropIndex(drop_index) => NodeOwned::Ddl(DdlOwned::DropIndex(drop_index)),
             Node64::DropRole(drop_role) => NodeOwned::Acl(AclOwned::DropRole(drop_role)),
             Node64::DropTable(drop_table) => NodeOwned::Ddl(DdlOwned::DropTable(drop_table)),
+            Node64::TruncateTable(truncate_table) => {
+                NodeOwned::Ddl(DdlOwned::TruncateTable(truncate_table))
+            }
             Node64::DropUser(drop_user) => NodeOwned::Acl(AclOwned::DropUser(drop_user)),
             Node64::GroupBy(group_by) => NodeOwned::Relational(RelOwned::GroupBy(group_by)),
             Node64::Having(having) => NodeOwned::Relational(RelOwned::Having(having)),

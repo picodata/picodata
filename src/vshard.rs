@@ -4,6 +4,7 @@ use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
+use crate::rpc::ddl_apply::{Request, Response};
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
 use crate::storage::Catalog;
@@ -13,11 +14,46 @@ use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::ConnectionType;
 use crate::traft::RaftId;
+use ::tarantool::msgpack::ViaMsgpack;
+use serde::{Deserialize, Serialize};
 use crate::traft::Result;
 use sbroad::executor::engine::Vshard;
 use std::collections::HashMap;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
+
+use tarantool::tlua::LuaRead;
+use tarantool::tuple::Tuple;
+
+#[derive(Debug, Clone, Serialize, Deserialize, LuaRead)]
+pub struct DdlMapCallRwRes {
+    pub uuid: String,
+    pub response: ViaMsgpack<Response>,
+}
+
+pub fn ddl_map_callrw(
+    tier: &str,
+    function_name: &str,
+    req: Request,
+) -> Result<Vec<DdlMapCallRwRes>, Error> {
+    let lua = tarantool::lua_state();
+    let pico: tlua::LuaTable<_> = lua
+        .get("pico")
+        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
+
+    let func: tlua::LuaFunction<_> = pico.try_get("ddl_map_callrw")?;
+    let args = Tuple::new(&req).expect("Request to Tuple conversion failed");
+
+    func.call_with_args::<Vec<DdlMapCallRwRes>, _>((
+        String::from(tier),
+        String::from(function_name),
+        args,
+    ))
+    .map_err(|e| match e {
+        tlua::CallError::LuaError(lua_error) => Error::from(lua_error),
+        tlua::CallError::PushError(_) => panic!("Push error not ready yet"),
+    })
+}
 
 /// This function **never yields**
 pub fn get_replicaset_priority_list(

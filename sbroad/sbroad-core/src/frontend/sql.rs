@@ -8,8 +8,7 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows, Over, Reference,
-    ReferenceAsteriskSource, Window,
-};
+    ReferenceAsteriskSource, Window, TruncateTable};
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
 use core::panic;
@@ -982,6 +981,40 @@ fn parse_drop_table(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropTa
     Ok(DropTable {
         name: table_name,
         if_exists,
+        wait_applied_globally,
+        timeout,
+    })
+}
+
+fn parse_truncate_table(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+) -> Result<TruncateTable, SbroadError> {
+    let mut name = SmolStr::default();
+    let mut timeout = get_default_timeout();
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    for child_id in &node.children {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::Table => {
+                name = parse_identifier(ast, *child_id)?;
+            }
+            Rule::Timeout => {
+                timeout = get_timeout(ast, *child_id)?;
+            }
+            Rule::WaitAppliedGlobally => {
+                wait_applied_globally = true;
+            }
+            Rule::WaitAppliedLocally => {
+                wait_applied_globally = false;
+            }
+            _ => {
+                panic!("TRUNCATE node contains unexpected child: {child_node:?}")
+            }
+        }
+    }
+    Ok(TruncateTable {
+        name,
         wait_applied_globally,
         timeout,
     })
@@ -5121,6 +5154,11 @@ impl AbstractSyntaxTree {
                 Rule::DropTable => {
                     let drop_table = parse_drop_table(self, node)?;
                     let plan_id = plan.nodes.push(drop_table.into());
+                    map.add(id, plan_id);
+                }
+                Rule::TruncateTable => {
+                    let truncate_table = parse_truncate_table(self, node)?;
+                    let plan_id = plan.nodes.push(truncate_table.into());
                     map.add(id, plan_id);
                 }
                 Rule::DropProc => {

@@ -122,6 +122,9 @@ impl Nodes {
                 Node64::DropIndex(drop_index) => Node::Ddl(Ddl::DropIndex(drop_index)),
                 Node64::DropRole(drop_role) => Node::Acl(Acl::DropRole(drop_role)),
                 Node64::DropTable(drop_table) => Node::Ddl(Ddl::DropTable(drop_table)),
+                Node64::TruncateTable(truncate_table) => {
+                    Node::Ddl(Ddl::TruncateTable(truncate_table))
+                }
                 Node64::Row(row) => Node::Expression(Expression::Row(row)),
                 Node64::DropUser(drop_user) => Node::Acl(Acl::DropUser(drop_user)),
                 Node64::GroupBy(group_by) => Node::Relational(Relational::GroupBy(group_by)),
@@ -267,6 +270,9 @@ impl Nodes {
                     Node64::Row(row) => MutNode::Expression(MutExpression::Row(row)),
                     Node64::DropRole(drop_role) => MutNode::Acl(MutAcl::DropRole(drop_role)),
                     Node64::DropTable(drop_table) => MutNode::Ddl(MutDdl::DropTable(drop_table)),
+                    Node64::TruncateTable(truncate_table) => {
+                        MutNode::Ddl(MutDdl::TruncateTable(truncate_table))
+                    }
                     Node64::DropUser(drop_user) => MutNode::Acl(MutAcl::DropUser(drop_user)),
                     Node64::GroupBy(group_by) => {
                         MutNode::Relational(MutRelational::GroupBy(group_by))

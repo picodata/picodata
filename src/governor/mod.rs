@@ -36,13 +36,16 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
+use crate::traft::node;
 use crate::traft::node::global;
 use crate::traft::node::Status;
+use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::{ConnectionType, Result};
 use crate::unwrap_ok_or;
+use crate::vshard;
 use futures::future::try_join;
 use futures::future::try_join_all;
 use plan::action_plan;
@@ -605,42 +608,101 @@ impl Loop {
                 governor_step! {
                     "applying pending schema change"
                     async {
-                        let mut fs = vec![];
-                        for instance_name in targets {
-                            tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                            let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(rpc::ddl_apply::Response::Ok) => {
-                                        tlog!(Info, "applied schema change on instance";
-                                            "instance_name" => %instance_name,
-                                        );
-                                        Ok(())
-                                    }
-                                    Ok(rpc::ddl_apply::Response::Abort { cause }) => {
-                                        tlog!(Error, "failed to apply schema change on instance: {cause}";
-                                            "instance_name" => %instance_name,
-                                        );
-                                        Err(OnError::Abort(cause))
-                                    }
-                                    Err(e) => {
-                                        tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
-                                            "instance_name" => %instance_name
-                                        );
-                                        Err(OnError::Retry(e))
-                                    }
+                        let node = node::global()
+                            .expect("shouldn't be called before node is initialized");
+                        let storage = &node.storage;
+                        let ddl = storage.properties
+                            .pending_schema_change()
+                            .expect("conversion should not fail")
+                            .expect("pending schema change should exist");
+
+                        let tier = if let Ddl::TruncateTable { id, .. } = ddl {
+                            let space_raw = storage.tables.get(id);
+                            let space = space_raw.ok().flatten().expect("failed to get space");
+                            match space.distribution {
+                                crate::schema::Distribution::Global => None,
+                                crate::schema::Distribution::ShardedImplicitly { tier, .. }
+                                | crate::schema::Distribution::ShardedByField { tier, .. } => Some(tier),
+                            }
+                        } else {
+                            None
+                        };
+
+                        if tier.is_some() {
+                            // Case of TRUNCATE on sharded tables.
+                            let tier = tier.unwrap();
+                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc);
+
+                            let proc_rpc_res_vec = match map_callrw_res {
+                                Ok(proc_rpc_res_vec) => proc_rpc_res_vec,
+                                Err(e) => {
+                                    // E.g. we faced with timeout.
+                                    tlog!(Error, "failed to execute map_callrw for TRUNCATE: {e}";);
+                                    return Err(e)
                                 }
-                            });
-                        }
+                            };
 
+                            let expected_tier_masters_len = targets.iter().filter(|(_, tier_name)| tier_name == &&tier).count();
+                            if proc_rpc_res_vec.len() < expected_tier_masters_len {
+                                // Some of the replicasets' masters went down so we've executed our
+                                // `proc_apply_schema_change` only on some of them. Have to retry the query.
+                                //
+                                // It's okay if some masters were added during TRUNCATE execution.
+                                tlog!(
+                                    Error,
+                                    "failed to execute map_callrw for TRUNCATE: some masters are down";
+                                    "expected" => %expected_tier_masters_len,
+                                    "actual" => %(proc_rpc_res_vec.len())
+                                );
+                                // TODO: Should change error?
+                                return Err(Error::Timeout)
+                            }
+                            for res in proc_rpc_res_vec {
+                                match res.response.0 {
+                                    rpc::ddl_apply::Response::Ok => {},
+                                    rpc::ddl_apply::Response::Abort { .. } => {
+                                        panic!("TRUNCATE can't cause Abort on `proc_apply_schema_change` call")
+                                    },
+                                }
+                            }
+                        } else {
+                            let mut fs = vec![];
+                            for (instance_name, _) in targets {
+                                tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
+                                let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                                fs.push(async move {
+                                    match resp.await {
+                                        Ok(rpc::ddl_apply::Response::Ok) => {
+                                            tlog!(Info, "applied schema change on instance";
+                                                "instance_name" => %instance_name,
+                                            );
+                                            Ok(())
+                                        }
+                                        Ok(rpc::ddl_apply::Response::Abort { cause }) => {
+                                            tlog!(Error, "failed to apply schema change on instance: {cause}";
+                                                "instance_name" => %instance_name,
+                                            );
+                                            Err(OnError::Abort(cause))
+                                        }
+                                        Err(e) => {
+                                            tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
+                                                "instance_name" => %instance_name
+                                            );
+                                            Err(OnError::Retry(e))
+                                        }
+                                    }
+                                });
+                            }
+    
                         let res = try_join_all(fs).await;
-                        if let Err(OnError::Abort(cause)) = res {
-                            next_op = Op::DdlAbort { cause };
-                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                            return Ok(());
-                        }
+                            if let Err(OnError::Abort(cause)) = res {
+                                next_op = Op::DdlAbort { cause };
+                                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                                return Ok(());
+                            }
 
-                        res?;
+                            res?;
+                        }
 
                         next_op = Op::DdlCommit;
 

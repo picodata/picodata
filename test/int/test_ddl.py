@@ -403,7 +403,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     )
 
     # Schema change is blocked.
-    with pytest.raises(TarantoolError, match="timeout"):
+    with pytest.raises(TimeoutError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
     # Space is created but is not operable.
@@ -846,6 +846,13 @@ def test_ddl_drop_table_normal(cluster: Cluster):
 
 
 ################################################################################
+def check_no_pending_schema_change(i: Instance):
+    rows = i.sql(
+        """select count(*) from "_pico_property" where "key" = 'pending_schema_change'"""
+    )
+    assert rows == [[0]]
+
+
 def test_ddl_drop_table_partial_failure(cluster: Cluster):
     # First 3 are fore quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
@@ -911,10 +918,6 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     # Wakeup the sleeping master.
     i4.start()
     i4.wait_online()
-
-    def check_no_pending_schema_change(i: Instance):
-        rows = i.sql("""select count(*) from "_pico_property" where "key" = 'pending_schema_change'""")
-        assert rows == [[0]]
 
     # Wait until the schema change is finalized
     Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
@@ -1686,3 +1689,193 @@ cluster:
             if table_name not in table_ids:
                 table_ids[table_name] = table_id
             assert table_ids[table_name] == table_id
+
+
+def test_truncate_stops_rebalancing(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            replication_factor: 1
+            can_vote: true
+        storage:
+            replication_factor: 2
+            can_vote: false
+"""
+    )
+
+    leader = cluster.add_instance(tier="voter", wait_online=False)
+    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+    assert storage_1_1.replicaset_name == storage_1_2.replicaset_name
+
+    leader.sql(
+        """
+        CREATE TABLE test (id INT PRIMARY KEY)
+        DISTRIBUTED BY (id) IN TIER storage
+        WAIT APPLIED GLOBALLY
+        """
+    )
+
+    for i in range(100):
+        leader.sql(f"INSERT INTO test VALUES ({i})")
+
+    # Send TRUNCATE request before rebalancing starts.
+    leader.sql("TRUNCATE test")
+    # Add a new replicaset, rebalancing process should start.
+    storage_2_1 = cluster.add_instance(tier="storage", wait_online=True)
+    storage_2_2 = cluster.add_instance(tier="storage", wait_online=True)
+    assert storage_2_1.replicaset_name != storage_1_1.replicaset_name
+    assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
+
+    def check_table_is_empty(peer):
+        # Test that no data is stored in rebalancing routes and that
+        # TRUNCATE was executed successfully.
+        assert peer.sql("SELECT * from test") == []
+
+    # We have to wait until rebalancing is over.
+    Retriable(timeout=10).call(check_table_is_empty, leader)
+
+    # Refill table.
+    for i in range(100):
+        leader.sql(f"INSERT INTO test VALUES ({i})")
+
+    # Send TRUNCATE request after rebalancing starts.
+    storage_3_1 = cluster.add_instance(tier="storage", wait_online=True)
+    storage_3_2 = cluster.add_instance(tier="storage", wait_online=True)
+    assert storage_3_1.replicaset_name != storage_1_1.replicaset_name
+    assert storage_3_1.replicaset_name == storage_3_2.replicaset_name
+    leader.sql("TRUNCATE test")
+    # We have to wait until rebalancing is over.
+    Retriable(timeout=15).call(check_table_is_empty, leader)
+
+
+def test_truncate_deals_with_aba_problem(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
+
+    ddl = i1.sql("CREATE TABLE t (id INT PRIMARY KEY)")
+    assert ddl["row_count"] == 1
+    dml = i1.sql("INSERT INTO t values (1), (2), (3)")
+    assert dml["row_count"] == 3
+
+    ddl = i1.sql("TRUNCATE t")
+    assert ddl["row_count"] == 1
+    ddl = i2.sql("DROP TABLE t")
+    assert ddl["row_count"] == 1
+    # Create new table with the same name as previous.
+    ddl = i2.sql("CREATE TABLE t (id INT PRIMARY KEY)")
+    assert ddl["row_count"] == 1
+    dml = i1.sql("INSERT INTO t values (1), (2), (3)")
+    assert dml["row_count"] == 3
+    # Local TRUNCATE is executed in parallel with other DDL operations.
+    # We should test that it doesn't touch newly created table and its data.
+    data = i1.sql("SELECT * from t")
+    assert data == [[1], [2], [3]]
+
+
+def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    _ = cluster.add_instance(replicaset_name="r2", wait_online=True)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
+
+    ddl = i1.sql("CREATE TABLE t(a int primary key) WAIT APPLIED GLOBALLY")
+    assert ddl["row_count"] == 1
+
+    for i in range(20):
+        i1.sql(f"INSERT INTO t VALUES ({i})")
+
+    i3_rows = i3.call("box.execute", 'select * from "t"')
+    assert len(i3_rows) != 0
+
+    # This is a replica which will be catching up
+    i3.terminate()
+
+    i1.sql("TRUNCATE t")
+
+    # i3 wakes up.
+    i3.start()
+    i3.wait_online()
+
+    # Check that TRUNCATE is applied on i2 and that it doesn't contain data.
+    i3_rows = i3.call("box.execute", 'select * from "t"')
+    assert len(i3_rows) != 0
+
+
+def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Cluster):
+    i1, i2, *_ = cluster.deploy(instance_count=5)
+
+    i1.sql("CREATE TABLE t(a int primary key)")
+
+    rows_to_insert_number = 10
+    for i in range(rows_to_insert_number):
+        i1.sql(f"INSERT INTO t VALUES ({i})")
+    assert [[i] for i in range(rows_to_insert_number)] == sorted(
+        i1.sql("SELECT * FROM t")
+    )
+
+    # Put i2 to sleep.
+    i2.terminate()
+
+    with pytest.raises(TimeoutError):
+        # TRUNCATE can't be executed because one of
+        # the replicasets masters is down.
+        i1.sql("TRUNCATE t")
+
+    # Table should not be operable before schema change is completed (before TRUNCATE is applied
+    # on all replicasets' masters).
+    t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
+    assert not t_is_opearable[0][0]
+
+    # i2 wakes up.
+    i2.start()
+    i2.wait_online()
+
+    # Wait until the schema change is finalized.
+    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
+    assert t_is_opearable[0][0]
+
+    # Check that data was erased by TRUNCATE.
+    data = i1.sql("SELECT * FROM t")
+    assert data == []
+
+
+def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluster):
+    i1, i2, *_ = cluster.deploy(instance_count=5)
+
+    i1.sql("CREATE TABLE gt(a int primary key) distributed globally")
+
+    rows_to_insert_number = 10
+    for i in range(rows_to_insert_number):
+        i1.sql(f"INSERT INTO gt VALUES ({i})")
+    assert [[i] for i in range(rows_to_insert_number)] == i1.sql("SELECT * FROM gt")
+
+    # Put i2 to sleep.
+    i2.terminate()
+
+    with pytest.raises(TimeoutError):
+        # TRUNCATE can't be executed because one of
+        # the replicasets masters is down.
+        i1.sql("TRUNCATE gt")
+
+    # Table should not be operable before schema change is completed (before TRUNCATE is applied
+    # on all replicasets' masters).
+    gt_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
+    assert not gt_is_opearable[0][0]
+
+    # i2 wakes up.
+    i2.start()
+    i2.wait_online()
+
+    # Wait until the schema change is finalized.
+    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+
+    gt_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
+    assert gt_is_opearable[0][0]
+
+    # Check that data was erased by TRUNCATE.
+    data = i1.sql("SELECT * FROM gt")
+    assert data == []

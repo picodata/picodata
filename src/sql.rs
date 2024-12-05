@@ -44,6 +44,7 @@ use sbroad::ir::node::{
     Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
     Update,
 };
+use sbroad::ir::node::{NodeId, TruncateTable};
 use tarantool::decimal::Decimal;
 
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
@@ -1309,6 +1310,19 @@ fn ddl_ir_node_to_op_or_result(
                 }
             };
             let ddl = OpDdl::DropTable {
+                id: space_def.id,
+                initiator: current_user,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        DdlOwned::TruncateTable(TruncateTable { name, .. }) => {
+            let Some(space_def) = storage.tables.by_name(name)? else {
+                return Err(error::DoesNotExist::Table(name.clone()).into());
+            };
+            let ddl = OpDdl::TruncateTable {
                 id: space_def.id,
                 initiator: current_user,
             };

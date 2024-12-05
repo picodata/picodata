@@ -1076,6 +1076,24 @@ impl NodeImpl {
                         );
                     }
 
+                    Ddl::TruncateTable { id, initiator } => {
+                        ddl_meta_space_update_operable(&self.storage, id, true)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator).expect("user must exist");
+
+                        let space_raw = self.storage.tables.get(id);
+                        let space = space_raw.ok().flatten().expect("failed to get space");
+                        let name = &space.name;
+                        crate::audit!(
+                            message: "truncated table `{name}`",
+                            title: "truncate_table",
+                            severity: Medium,
+                            name: &name,
+                            initiator: initiator_def.name,
+                        );
+                    }
+
                     Ddl::CreateProcedure {
                         id, name, owner, ..
                     } => {
@@ -1225,6 +1243,10 @@ impl NodeImpl {
                     Ddl::DropTable { id, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
+                    }
+
+                    Ddl::TruncateTable { .. } => {
+                        unreachable!("TRUNCATE execution should not reach Op::DdlAbort handling")
                     }
 
                     Ddl::CreateProcedure { id, .. } => {
@@ -1724,6 +1746,11 @@ impl NodeImpl {
             }
 
             Ddl::DropTable { id, .. } => {
+                ddl_meta_space_update_operable(&self.storage, id, false)
+                    .expect("storage shouldn't fail");
+            }
+
+            Ddl::TruncateTable { id, .. } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
                     .expect("storage shouldn't fail");
             }

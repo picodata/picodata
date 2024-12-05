@@ -2269,6 +2269,62 @@ def test_insert_on_conflict(cluster: Cluster):
     assert data == [[1, 2]]
 
 
+def test_truncate_simple_flow(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql("CREATE TABLE t(a INT PRIMARY KEY)")
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("INSERT INTO t VALUES (1), (2), (3)")
+    assert dml["row_count"] == 3
+
+    # TRUNCATE deletes all rows from sharded table.
+    ddl = i1.sql("TRUNCATE TABLE t")
+    assert ddl["row_count"] == 1
+    dql = i1.sql("SELECT * FROM t")
+    assert dql == []
+
+    # Refill table.
+    dml = i1.sql("INSERT INTO t VALUES (1), (2), (3)")
+    assert dml["row_count"] == 3
+
+    username = "vasya"
+    password = "Passw0rd"
+    acl = i1.sql(
+        f"""create user "{username}" with password '{password}' using chap-sha1"""
+    )
+    assert acl["row_count"] == 1
+
+    # TRUNCATE is denied without WRITE privilege.
+    with pytest.raises(
+        TarantoolError,
+        match=rf"Write access to space 't' is denied for user '{username}'",
+    ):
+        i1.sql("TRUNCATE t", user=username, password=password)
+
+    acl = i1.sql(f"GRANT WRITE ON TABLE t TO {username}")
+    assert acl["row_count"] == 1
+
+    # Now TRUNCATE is allowed.
+    ddl = i1.sql("TRUNCATE TABLE t", user=username, password=password)
+    assert ddl["row_count"] == 1
+    dql = i1.sql("SELECT * FROM t")
+    assert dql == []
+
+    ddl = i1.sql("CREATE TABLE gt(a INT PRIMARY KEY) DISTRIBUTED GLOBALLY")
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("INSERT INTO gt VALUES (1), (2), (3)")
+    assert dml["row_count"] == 3
+
+    # TRUNCATE deletes all rows from global table.
+    ddl = i1.sql("TRUNCATE TABLE gt")
+    assert ddl["row_count"] == 1
+    dql = i1.sql("SELECT * FROM gt")
+    assert dql == []
+
+
 def test_sql_limits(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

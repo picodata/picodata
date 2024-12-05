@@ -39,10 +39,11 @@ pub mod update_instance;
 
 static mut STATIC_PROCS: Option<HashSet<String>> = None;
 
+/// Returns vec of pairs [(instance_name, tier_name), ...]
 pub fn replicasets_masters<'a>(
     replicasets: &HashMap<&ReplicasetName, &'a Replicaset>,
     instances: &'a [Instance],
-) -> Vec<&'a InstanceName> {
+) -> Vec<(&'a InstanceName, &'a String)> {
     let mut masters = Vec::with_capacity(replicasets.len());
     // TODO: invert this loop to improve performance
     // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
@@ -56,13 +57,13 @@ pub fn replicasets_masters<'a>(
                 r.name,
             );
             // Send them a request anyway just to be safe
-            masters.push(&r.current_master_name);
+            masters.push((&r.current_master_name, &r.tier));
             continue;
         };
         if has_states!(master, Expelled -> *) {
             continue;
         }
-        masters.push(&master.name);
+        masters.push((&master.name, &master.tier));
     }
 
     masters

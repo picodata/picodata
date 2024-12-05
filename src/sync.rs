@@ -238,6 +238,7 @@ pub fn wait_for_index_globally(
         loop {
             let masters: HashSet<_> = crate::rpc::replicasets_masters(&replicasets, &instances)
                 .into_iter()
+                .map(|(instance_name, _)| instance_name)
                 .collect();
             let confirmed_copy = confirmed.clone();
             let unconfirmed: Vec<_> = masters.difference(&confirmed_copy).collect();

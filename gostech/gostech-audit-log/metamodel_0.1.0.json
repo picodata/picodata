@@ -903,6 +903,30 @@
         }
       ],
       "success": true
+    },
+    {
+      "description": "truncate table",
+      "mode": "reliability",
+      "name": "truncate_table",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "name",
+          "name": "name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
     }
   ],
   "metamodelVersion": "0.1.0",

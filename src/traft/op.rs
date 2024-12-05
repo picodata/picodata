@@ -122,6 +122,12 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
+                ddl: Ddl::TruncateTable { id, .. },
+            } => {
+                write!(f, "DdlPrepare({schema_version}, TruncateTable({id}))")
+            }
+            Self::DdlPrepare {
+                schema_version,
                 ddl: Ddl::CreateIndex {
                     space_id, index_id, ..
                 },
@@ -690,6 +696,10 @@ pub enum Ddl {
         owner: UserId,
     },
     DropTable {
+        id: SpaceId,
+        initiator: UserId,
+    },
+    TruncateTable {
         id: SpaceId,
         initiator: UserId,
     },

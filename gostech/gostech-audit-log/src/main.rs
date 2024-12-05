@@ -13,7 +13,7 @@ const USER_NODE: &str = "default";
 const X_NODE_ID: &str = "0.0.0";
 const MODULE: &str = "picodata";
 const METAMODEL_VERSION: &str = "0.1.0";
-const EVENT_TYPES: [&str; 34] = [
+const EVENT_TYPES: [&str; 35] = [
     "access_denied",
     "auth_fail",
     "auth_ok",
@@ -48,6 +48,7 @@ const EVENT_TYPES: [&str; 34] = [
     "shredding_failed",
     "shredding_finished",
     "shredding_started",
+    "truncate_table",
 ];
 
 enum LineReader {

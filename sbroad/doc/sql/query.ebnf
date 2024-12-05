@@ -151,7 +151,7 @@ grant       ::= 'GRANT' (
                 'TO' (role | user)
 ddl         ::= (alter_plugin | alter_procedure | alter_system
                 | create_index | create_plugin | create_procedure | create_table
-                | drop_index | drop_plugin | drop_procedure | drop_table)
+                | drop_index | drop_plugin | drop_procedure | drop_table | truncate_table)
 alter_system ::= 'ALTER' 'SYSTEM'
                     (
                         'RESET' ('ALL' | param_name)
@@ -224,6 +224,9 @@ drop_procedure ::= 'DROP' 'PROCEDURE' ('IF' 'EXISTS')? procedure ('(' type (',' 
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_table     ::= 'DROP' 'TABLE' ('IF' 'EXISTS')? table
+                   ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
+                   ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+truncate_table ::= 'TRUNCATE' ('TABLE')? table
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role

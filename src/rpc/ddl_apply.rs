@@ -6,6 +6,7 @@ use crate::storage::schema::ddl_drop_function_on_master;
 use crate::storage::schema::ddl_drop_index_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::schema::ddl_rename_function_on_master;
+use crate::storage::schema::ddl_truncate_space_on_master;
 use crate::storage::Catalog;
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
@@ -169,6 +170,13 @@ pub fn apply_schema_change(
             }
 
             let abort_reason = ddl_drop_space_on_master(id).map_err(Error::Other)?;
+            if let Some(e) = abort_reason {
+                return Err(Error::Aborted(e.into()));
+            }
+        }
+
+        Ddl::TruncateTable { id, .. } => {
+            let abort_reason = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
                 return Err(Error::Aborted(e.into()));
             }
