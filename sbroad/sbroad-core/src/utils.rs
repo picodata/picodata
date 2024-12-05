@@ -23,7 +23,10 @@ pub trait MutexLike<T> {
 }
 
 impl<T> MutexLike<T> for TMutex<T> {
-    type Guard<'a> = TMutexGuard<'a, T> where T: 'a;
+    type Guard<'a>
+        = TMutexGuard<'a, T>
+    where
+        T: 'a;
 
     fn lock(&self) -> Self::Guard<'_> {
         self.lock()
@@ -31,8 +34,10 @@ impl<T> MutexLike<T> for TMutex<T> {
 }
 
 impl<T> MutexLike<T> for RefCell<T> {
-    type Guard<'a> = RefMut<'a, T>
-    where T: 'a;
+    type Guard<'a>
+        = RefMut<'a, T>
+    where
+        T: 'a;
 
     fn lock(&self) -> Self::Guard<'_> {
         self.borrow_mut()
