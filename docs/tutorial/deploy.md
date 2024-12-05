@@ -34,7 +34,7 @@
 
 См. также:
 
-- [Файл конфигурации](../reference/config.md)
+- [Конфигурирование](../tutorial/configure.md)
 
 
 ## Простой кластер {: #simple_cluster }

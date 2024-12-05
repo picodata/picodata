@@ -43,6 +43,7 @@ Picodata — это распределенная система промышле
 
 #### Администрирование кластера {: #administration }
 
+* [Конфигурирование](tutorial/configure.md)
 * [Мониторинг](tutorial/monitoring.md)
 * [Резервное копирование](tutorial/backup.md)
 * [Управление доступом](tutorial/access_control.md)

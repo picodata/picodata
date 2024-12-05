@@ -21,6 +21,7 @@ picodata run
 
 Читайте далее:
 
+- [Конфигурирование](../tutorial/configure.md)
 - [Подключение и работа в консоли](../tutorial/connecting.md)
 
 ## Запуск нескольких инстансов {: #run_multiple_instances }

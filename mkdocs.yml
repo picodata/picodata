@@ -46,6 +46,7 @@ nav:
       - tutorial/sql_examples.md
       - tutorial/webui.md
     - Администрирование кластера:
+      - tutorial/configure.md
       - tutorial/monitoring.md
       - tutorial/backup.md
       - tutorial/access_control.md
