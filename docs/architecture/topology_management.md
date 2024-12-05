@@ -55,7 +55,7 @@
 - Инстанс выполняет алгоритм [discovery] — связывается с другими узлами
   из параметра [`picodata run --peer`] и определяет адрес текущего
   raft-лидера
-- Инстанс отправляет raft-лидеру запрос [proc_raft_join], содержащий
+- Инстанс отправляет raft-лидеру запрос [`.proc_raft_join`], содержащий
     - его сетевой адрес `advertise_address`
     - домен отказа `failure_domain`
     - тир `tier`
@@ -78,7 +78,7 @@
 [discovery]: ../architecture/discovery.md
 [instance_lifecycle]: ../architecture/instance_lifecycle.md
 [`picodata run --peer`]: ../reference/cli.md#run_peer
-[proc_raft_join]: ../architecture/rpc_api.md#proc_raft_join
+[`.proc_raft_join`]: ../architecture/rpc_api.md#proc_raft_join
 
 ### Штатное выключение инстанса {: #graceful_shutdown }
 

@@ -14,7 +14,7 @@ RPC API используется в следующих сценариях:
 - Инстансы взаимодействуют друг с другом под служебной учетной записью
   `pico_service`
 - Тестирование pytest использует для подключения клиент tarantool-python
-- Подключение `picodata connect` использует вызов [.proc_sql_dispatch](#proc_sql_dispatch)
+- Подключение `picodata connect` использует вызов [`.proc_sql_dispatch`](#proc_sql_dispatch)
 <!-- - Синтаксис вызова из Lua: `box.func[".proc_version_info"]:call()` -->
 <!-- - Команда `picodata expel` использует вызов [.proc_expel_instance](#proc_expel_instance) -->
 
@@ -242,7 +242,7 @@ fn proc_expel(cluster_name, instance_uuid)
 fn proc_expel_redirect(cluster_name, instance_uuid)
 ```
 
-Вызывает [proc_expel](#proc_expel) на текущем [raft-лидере](../overview/glossary.md#raft_leader).
+Вызывает [`.proc_expel`](#proc_expel) на текущем [raft-лидере](../overview/glossary.md#raft_leader).
 
 <!-- С большой вероятностью скоро будет удалена. -->
 
@@ -570,7 +570,7 @@ fn proc_replication_demote() -> Vclock
 ответ текущее значение своего [Vclock], которое
 дальше используется для синхронизации новой мастер-реплики.
 
-См. [.proc_replication](#proc_replication) о том, как в Picodata настраивается репликация.
+См. [`.proc_replication`](#proc_replication) о том, как в Picodata настраивается репликация.
 
 Возвращаемое значение:
 
@@ -700,7 +700,7 @@ fn proc_sql_execute(..) -> Result
   <br>Поля:
     - `row_count` (MP_INT), количество измененных строк
 
-Для более высокоуровневого RPC смотрите [.proc_sql_dispatch](#proc_sql_dispatch)
+Для более высокоуровневого RPC смотрите [`.proc_sql_dispatch`](#proc_sql_dispatch)
 
 ### .proc_update_instance {: #proc_update_instance }
 

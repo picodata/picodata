@@ -365,7 +365,7 @@ Governor управляет жизненными циклами инстансо
 этого параметра соответствует исходному фактическому.
 
 Технически данный алгоритм реализован в виде RPC-функции
-[.proc_cas](../architecture/rpc_api.md#proc_cas).
+[`.proc_cas`](../architecture/rpc_api.md#proc_cas).
 
 ### Бутстрап (bootstrap) {: #bootstrap }
 
