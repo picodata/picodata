@@ -220,7 +220,7 @@ start_boot/start_join -> create_local_db + connect_local_db
 ### create_local_db
 
 Создание базы данных. Событие фиксируется после добавления инстанса в
-кластер, см. [join_instance](#join_instance). Событие фиксируется на
+кластер, см. [`join_instance`](#join_instance). Событие фиксируется на
 всех узлах кластера, включая добавляемый.
 
 ```json
@@ -294,7 +294,7 @@ start_boot/start_join -> create_local_db + connect_local_db
 ### drop_local_db
 
 Удаление базы данных. Событие фиксируется после удаления инстанса из
-кластера, см. [expel_instance](#expel_instance). Событие фиксируется на
+кластера, см. [`expel_instance`](#expel_instance). Событие фиксируется на
 всех узлах кластера.
 
 ```json
@@ -418,7 +418,7 @@ start_boot/start_join -> create_local_db + connect_local_db
 ### init_audit
 
 Инициализация журнала аудита. Событие предшествует запуску инстанса, см.
-[local_startup](#local_startup).
+[`local_startup`](#local_startup).
 
 ```json
 {
@@ -480,7 +480,7 @@ new field: reason
 ### local_startup
 
 Запуск инстанса. Событие фиксируется после инициализации журнала аудита,
-см. [init_audit](#init_audit).
+см. [`init_audit`](#init_audit).
 
 ```json
 {
