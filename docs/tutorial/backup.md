@@ -30,10 +30,10 @@ rsync -r <data_dir> <backup_dir>
 где:
 
 - `<data_dir>` — рабочая директория инстанса, указанная при запуске в
-  параметре [picodata run --data-dir]
+  параметре [`picodata run --data-dir`]
 - `<backup_dir>` — целевая директория для хранения резервной копии
 
-[picodata run --data-dir]: ../reference/cli.md#run_data_dir
+[`picodata run --data-dir`]: ../reference/cli.md#run_data_dir
 
 ## Восстановление из резервной копии {: #local_restore }
 

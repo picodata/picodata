@@ -28,9 +28,9 @@ picodata run
 Для того чтобы запустить несколько инстансов на одном сервере,
 потребуется задать дополнительные параметры для каждого из них:
 
-- рабочую директорию ([--data-dir])
-- сетевой адрес ([--listen])
-- адрес одного или нескольких соседних инстансов ([--peer])
+- рабочую директорию ([`--data-dir`])
+- сетевой адрес ([`--listen`])
+- адрес одного или нескольких соседних инстансов ([`--peer`])
 
 Полный перечень возможных параметров запуска и их
 описание содержатся в разделе [Аргументы командной строки], а также в
@@ -56,9 +56,9 @@ picodata run --data-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
   нового кластера. Чтобы инстансы добавлялись в уже существующий кластер
   в этом параметре передается адрес первого инстанса
 
-[--data-dir]: ../reference/cli.md#run_data_dir
-[--listen]: ../reference/cli.md#run_listen
-[--peer]: ../reference/cli.md#run_peer
+[`--data-dir`]: ../reference/cli.md#run_data_dir
+[`--listen`]: ../reference/cli.md#run_listen
+[`--peer`]: ../reference/cli.md#run_peer
 
 Читайте далее:
 
@@ -139,12 +139,12 @@ psql postgres://admin@127.0.0.1:55432?sslmode=disable
 Для обеспечения мер безопасности рекомендуется организовать хранение
 пароля для внутреннего системного пользователя `pico_service` в
 отдельном файле. При запуске инстанса путь к этому файлу передайте в
-параметре [‑‑service‑password‑file][pwdfile].
+параметре [`‑‑service‑password‑file`].
 
-Дополнительно, в опции [‑‑audit][audit] явно укажите указать способ
-вывода [журнала аудита](../tutorial/audit_log.md).
+Дополнительно, в опции [`‑‑audit`] явно укажите указать способ вывода
+[журнала аудита](../tutorial/audit_log.md).
 
-Также рекомендуется использовать опцию [‑‑shredding][shredding], которая
+Также рекомендуется использовать опцию [`‑‑shredding`], которая
 обеспечивает безопасное удаление рабочих файлов.
 
 Пример команд, реализующих безопасный запуск:
@@ -155,9 +155,9 @@ chmod 600 secret.txt
 picodata run --service-password-file secret.txt --audit audit.log --shredding
 ```
 
-[pwdfile]: ../reference/cli.md#run_service_password_file
-[audit]: ../reference/cli.md#run_audit
-[shredding]: ../reference/cli.md#run_shredding
+[`‑‑service‑password‑file`]: ../reference/cli.md#run_service_password_file
+[`‑‑audit`]: ../reference/cli.md#run_audit
+[`‑‑shredding`]: ../reference/cli.md#run_shredding
 
 ## Безопасное завершение работы {: #secure_stop }
 

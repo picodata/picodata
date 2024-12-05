@@ -22,13 +22,13 @@ Picodata](install.md).
 веб-сервер будет отображать данные обо всем кластере.
 
 Для запуска инстанса с веб-сервером следует использовать параметр
-[picodata run --http-listen]. Пример команды:
+[`picodata run --http-listen`]. Пример команды:
 
 ```bash
 picodata run --http-listen 127.0.0.1:8080
 ```
 
-[picodata run --http-listen]: ../reference/cli.md#run_http_listen
+[`picodata run --http-listen`]: ../reference/cli.md#run_http_listen
 
 Можно запустить несколько инстансов с таким параметром, но нужно будет
 указать разные адреса — таким образом у кластера будет несколько

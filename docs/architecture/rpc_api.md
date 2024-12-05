@@ -269,8 +269,8 @@ fn proc_get_config() -> Result
 
 * `"default"` — по умолчанию
 * `"config_file"` — [файл конфигурации]
-* `"commandline_or_environment"` — параметры команды [picodata
-  run](../reference/cli.md#run) или переменные окружения
+* `"commandline_or_environment"` — параметры команды [`picodata
+  run`](../reference/cli.md#run) или переменные окружения
 
 Возвращаемое значение:
 
@@ -610,7 +610,7 @@ fn proc_runtime_info() -> RuntimeInfo
     - `http`: (optional MP_MAP `HttpServerInfo`)
       <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT }`
       <br>поле отсутствует в ответе, если инстанс запущен без параметра
-      [picodata run --http-listen](../reference/cli.md#run_http_listen)
+      [`picodata run --http-listen`](../reference/cli.md#run_http_listen)
     - `version_info`: (MP_MAP [`VersionInfo`](#proc_version_info))
     - `slab_info`: (MP_MAP `SlabInfo`)
 

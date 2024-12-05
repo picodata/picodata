@@ -262,10 +262,10 @@ GRANT ALTER USER TO <grantee>
 ```sql
 ALTER USER "alice" WITH NOLOGIN;
 ```
-После 4 неуспешных попыток аутентификации в [picodata connect] пользователь
+После 4 неуспешных попыток аутентификации в [`picodata connect`] пользователь
 блокируется автоматически.
 
-[picodata connect]: ../reference/cli.md#connect
+[`picodata connect`]: ../reference/cli.md#connect
 
 Для разблокировки пользователя используйте следующую SQL-команду:
 

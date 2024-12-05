@@ -42,7 +42,7 @@ expel`, выполнение которой требует ввода парол
 
  ### Примеры команд {: #usage_examples }
 
-Команда [picodata expel] в самом простом виде требует только указания
+Команда [`picodata expel`] в самом простом виде требует только указания
 идентификатора (uuid) инстанса:
 
 ```shell
@@ -78,12 +78,12 @@ picodata expel 96e38675-30e7-4f0d-b8cf-72132a2aa726
 
 - имя кластера не было переопределено (по умолчанию, это `demo`)
 - на текущем хосте выполняется инстанс со стандартным значением
-  параметра [listen], который по умолчанию равен значению параметра
-  [peer]
+  параметра [`--listen`], который по умолчанию равен значению параметра
+  [`--peer`]
 
 Соответственно, на практике может потребоваться явно указать имя
 кластера и/или задать сетевой адрес какого-либо из действующих
-инстансов ([peer]):
+инстансов ([`--peer`]):
 
 ```shell
 picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<[HOST][:PORT]>
@@ -99,14 +99,14 @@ picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<[HOST][:POR
 ```
  -->
 
-С помощью [picodata expel] можно удалить любой узел кластера, в том
+С помощью [`picodata expel`] можно удалить любой узел кластера, в том
 числе и единственный.
 
-[picodata expel]: ../reference/cli.md#expel
+[`picodata expel`]: ../reference/cli.md#expel
 [`_pico_instance`]: ../architecture/system_tables.md#_pico_instance
 [консоль администратора]: connecting.md#admin_console
-[peer]: ../reference/cli.md#run_peer
-[listen]: ../reference/cli.md#run_listen
+[`--peer`]: ../reference/cli.md#run_peer
+[`--listen`]: ../reference/cli.md#run_listen
 
 См. также:
 
