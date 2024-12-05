@@ -22,6 +22,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `picodata --version` now provides verbose output, including the build type (static or dynamic) and the build configuration (release or debug)
 
+### Configuration
+
+- New parameters for Vinyl configuration: `bloom_fpr`, `max_tuple_size`, `page_size`, `range_size`,
+  `run_count_per_size`, `run_size_ratio`, `read_threads`, `write_threads` and `timeout`.
+
 ### Compatibility
 
 - Added unique index on column `uuid` for `_pico_instance` table. IDs

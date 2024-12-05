@@ -1,12 +1,19 @@
-use crate::config::BootstrapStrategy;
-use crate::config::ElectionMode;
-use crate::config::PicodataConfig;
+use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
 use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::{self, error::Error};
+
+use std::collections::HashMap;
+use std::ffi::CStr;
+use std::io::Cursor;
+use std::mem;
+use std::ops::Range;
+use std::os::unix::ffi::OsStrExt;
+use std::slice;
+
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::msgpack;
@@ -14,15 +21,9 @@ use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThrea
 pub use ::tarantool::trigger::on_shutdown;
 use ::tarantool::tuple::Tuple;
 use file_shred::*;
+use rmpv::Value as RmpvValue;
+use serde::Deserialize;
 use smallvec::SmallVec;
-use std::collections::HashMap;
-use std::ffi::CStr;
-use std::io::Cursor;
-use std::mem;
-use std::ops::Range;
-use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
-use std::slice;
 use tarantool::error::IntoBoxError;
 use tarantool::network::protocol::{codec, iproto_key};
 use tlua::CallError;
@@ -193,12 +194,8 @@ pub struct Cfg {
     pub log: Option<String>,
     pub log_level: Option<u8>,
 
-    pub wal_dir: PathBuf,
-    pub memtx_dir: PathBuf,
-    pub vinyl_dir: PathBuf,
-
     #[serde(flatten)]
-    pub other_fields: HashMap<String, rmpv::Value>,
+    pub user_configured_fields: HashMap<String, RmpvValue>,
 }
 
 impl Cfg {
@@ -320,31 +317,57 @@ impl Cfg {
         self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);
 
-        self.wal_dir = config.instance.data_dir();
-        self.memtx_dir = config.instance.data_dir();
-        self.vinyl_dir = config.instance.data_dir();
-
-        // FIXME: make the loop below work with default values
-        self.other_fields.extend([
-            ("memtx_memory".into(), config.instance.memtx_memory().into()),
-            ("vinyl_memory".into(), config.instance.vinyl_memory().into()),
-            ("vinyl_cache".into(), config.instance.vinyl_cache().into()),
-        ]);
-
+        // here we handle fields with `ByteSize` types that are needed to be
+        // converted into `String`, and then parsed as `rmpv::Value::Integer`
         #[rustfmt::skip]
-        const MAPPING: &[(&str, &str)] = &[
-            // Other instance.log.* parameters are set explicitly above
-            ("checkpoint_count",            config_parameter_path!(instance.memtx.checkpoint_count)),
-            ("checkpoint_interval",         config_parameter_path!(instance.memtx.checkpoint_interval)),
-            ("log_format",                  config_parameter_path!(instance.log.format)),
-            ("net_msg_max",                 config_parameter_path!(instance.iproto.max_concurrent_messages)),
+        const BYTESIZE_FIELDS: &[(&str, &str)] = &[
+            ("memtx_memory",                config_parameter_path!(instance.memtx.memory)),
+            ("vinyl_memory",                config_parameter_path!(instance.vinyl.memory)),
+            ("vinyl_cache",                 config_parameter_path!(instance.vinyl.cache)),
+            ("vinyl_max_tuple_size",        config_parameter_path!(instance.vinyl.max_tuple_size)),
+            ("vinyl_page_size",             config_parameter_path!(instance.vinyl.page_size)),
+            ("vinyl_range_size",            config_parameter_path!(instance.vinyl.range_size)),
         ];
 
-        for (box_field, picodata_field) in MAPPING {
+        for (box_field, picodata_field) in BYTESIZE_FIELDS {
+            let bytesize_value = config
+                .get_field_as_rmpv(picodata_field)
+                .map_err(|e| Error::other(format!("internal error: {e}")))?;
+            let deser_value: u64 = ByteSize::deserialize(bytesize_value)
+                .as_ref()
+                .expect("ByteSize should represent correct unsigned integer")
+                .into();
+            self.user_configured_fields
+                .insert((*box_field).into(), deser_value.into());
+        }
+
+        // here we handle fields with primitive types that are not
+        // needed to be converted twice to be parsed as `rmpv::Value`
+        #[rustfmt::skip]
+        const FIELDS: &[(&str, &str)] = &[
+            // other instance.log.* parameters are set explicitly above
+            ("log_format",                  config_parameter_path!(instance.log.format)),
+            ("wal_dir",                     config_parameter_path!(instance.data_dir)),
+            ("memtx_dir",                   config_parameter_path!(instance.data_dir)),
+            ("vinyl_dir",                   config_parameter_path!(instance.data_dir)),
+            ("checkpoint_count",            config_parameter_path!(instance.memtx.checkpoint_count)),
+            ("checkpoint_interval",         config_parameter_path!(instance.memtx.checkpoint_interval)),
+            ("net_msg_max",                 config_parameter_path!(instance.iproto.max_concurrent_messages)),
+            ("vinyl_bloom_fpr",             config_parameter_path!(instance.vinyl.bloom_fpr)),
+            ("vinyl_run_count_per_level",   config_parameter_path!(instance.vinyl.run_count_per_level)),
+            ("vinyl_run_size_ratio",        config_parameter_path!(instance.vinyl.run_size_ratio)),
+            ("vinyl_read_threads",          config_parameter_path!(instance.vinyl.read_threads)),
+            ("vinyl_write_threads",         config_parameter_path!(instance.vinyl.write_threads)),
+            ("vinyl_timeout",               config_parameter_path!(instance.vinyl.timeout)),
+        ];
+
+        for (box_field, picodata_field) in FIELDS {
             let value = config
                 .get_field_as_rmpv(picodata_field)
                 .map_err(|e| Error::other(format!("internal error: {e}")))?;
-            self.other_fields.insert((*box_field).into(), value);
+            debug_assert_ne!(value, RmpvValue::Nil);
+            self.user_configured_fields
+                .insert((*box_field).into(), value);
         }
 
         Ok(())

@@ -1132,33 +1132,6 @@ impl InstanceConfig {
         self.shredding
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
-
-    #[inline]
-    pub fn memtx_memory(&self) -> u64 {
-        self.memtx
-            .memory
-            .as_ref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-            .into()
-    }
-
-    #[inline]
-    pub fn vinyl_memory(&self) -> u64 {
-        self.vinyl
-            .memory
-            .as_ref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-            .into()
-    }
-
-    #[inline]
-    pub fn vinyl_cache(&self) -> u64 {
-        self.vinyl
-            .cache
-            .as_ref()
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
-            .into()
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1324,6 +1297,60 @@ pub struct VinylSection {
     /// Corresponds to `box.cfg.vinyl_cache`
     #[introspection(config_default = "128M")]
     pub cache: Option<ByteSize>,
+
+    /// Bloom filter false positive rate.
+    ///
+    /// Corresponds to `box.cfg.vinyl_bloom_fpr`
+    #[introspection(config_default = 0.05)]
+    pub bloom_fpr: Option<f32>,
+
+    /// Size of the largest allocation unit.
+    ///
+    /// Corresponds to `box.cfg.vinyl_max_tuple_size`
+    #[introspection(config_default = "1M")]
+    pub max_tuple_size: Option<ByteSize>,
+
+    /// Read and write unit size for disk operations.
+    ///
+    /// Corresponds to `box.cfg.vinyl_page_size`
+    #[introspection(config_default = "8K")]
+    pub page_size: Option<ByteSize>,
+
+    /// The default maximum range size for an index.
+    ///
+    /// Corresponds to `box.cfg.vinyl_range_size`
+    #[introspection(config_default = "1G")]
+    pub range_size: Option<ByteSize>,
+
+    /// The maximal number of runs per level in LSM tree.
+    ///
+    /// Corresponds to `box.cfg.vinyl_run_count_per_level`
+    #[introspection(config_default = 2)]
+    pub run_count_per_level: Option<i32>,
+
+    /// Ratio between the sizes of different levels in the LSM tree.
+    ///
+    /// Corresponds to `box.cfg.vinyl_run_size_ratio`
+    #[introspection(config_default = 3.5)]
+    pub run_size_ratio: Option<f32>,
+
+    /// The maximum number of read threads can be used for concurrent operations.
+    ///
+    /// Corresponds to `box.cfg.vinyl_read_threads`
+    #[introspection(config_default = 1)]
+    pub read_threads: Option<i32>,
+
+    /// The maximum number of write threads can be used for concurrent operations.
+    ///
+    /// Corresponds to `box.cfg.vinyl_write_threads`
+    #[introspection(config_default = 4)]
+    pub write_threads: Option<i32>,
+
+    /// Timeout for queries in the compression scheduler when available memory is low.
+    ///
+    /// Corresponds to `box.cfg.vinyl_timeout`
+    #[introspection(config_default = 60.)]
+    pub timeout: Option<f32>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////

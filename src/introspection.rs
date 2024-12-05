@@ -448,6 +448,12 @@ mod test {
     }
 
     #[derive(Default, Debug, Introspection, PartialEq)]
+    struct OptionalS {
+        #[introspection(config_default = "42.0")]
+        c: Option<f32>,
+    }
+
+    #[derive(Default, Debug, Introspection, PartialEq)]
     struct Empty {}
 
     #[test]
@@ -628,10 +634,14 @@ mod test {
             },
             ignored: serde_yaml::Value::default(),
         };
+        let optional_s = OptionalS { c: None };
 
         //
         // Check `get_field_as_rmpv` error cases
         //
+        let e = optional_s.get_field_as_rmpv("c").unwrap();
+        assert_eq!(e, rmpv::Value::Nil);
+
         let e = s.get_field_as_rmpv("a").unwrap_err();
         assert_eq!(
             e.to_string(),

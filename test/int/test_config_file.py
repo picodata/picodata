@@ -94,7 +94,7 @@ instance:
                 value=f"{data_dir}/audit.log", source="commandline_or_environment"
             ),
             config_file=dict(
-                value=instance.config_path, source="commandline_or_environment"
+                value=f"{instance.config_path}", source="commandline_or_environment"
             ),
             data_dir=dict(value=data_dir, source="config_file"),
             listen=dict(value=f"{host}:{port}", source="config_file"),
@@ -106,11 +106,20 @@ instance:
             memtx=dict(
                 memory=dict(value="64M", source="default"),
                 checkpoint_count=dict(value=2, source="default"),
-                checkpoint_interval=dict(value=3600, source="default"),
+                checkpoint_interval=dict(value=3600.0, source="default"),
             ),
             vinyl=dict(
                 memory=dict(value="128M", source="default"),
                 cache=dict(value="128M", source="default"),
+                bloom_fpr=dict(value=0.05000000074505806, source="default"),
+                max_tuple_size=dict(value="1M", source="default"),
+                page_size=dict(value="8K", source="default"),
+                range_size=dict(value="1G", source="default"),
+                run_count_per_level=dict(value=2, source="default"),
+                run_size_ratio=dict(value=3.5, source="default"),
+                read_threads=dict(value=1, source="default"),
+                write_threads=dict(value=4, source="default"),
+                timeout=dict(value=60.0, source="default"),
             ),
             iproto=dict(
                 max_concurrent_messages=dict(value=768, source="default"),
@@ -305,13 +314,16 @@ cluster:
 
     assert box_cfg["vinyl_memory"] == 134217728
     assert box_cfg["vinyl_cache"] == 134217728
-    assert box_cfg["vinyl_read_threads"] == 1
-    assert box_cfg["vinyl_write_threads"] == 4
-    assert box_cfg["vinyl_defer_deletes"] == False  # noqa: E712
+    assert box_cfg["vinyl_bloom_fpr"] == 0.05000000074505806
+    assert box_cfg["vinyl_max_tuple_size"] == 1024 * 1024
     assert box_cfg["vinyl_page_size"] == 8 * 1024
+    assert box_cfg["vinyl_range_size"] == 1024 * 1024 * 1024
     assert box_cfg["vinyl_run_count_per_level"] == 2
     assert box_cfg["vinyl_run_size_ratio"] == 3.5
-    assert box_cfg["vinyl_bloom_fpr"] == 0.05
+    assert box_cfg["vinyl_read_threads"] == 1
+    assert box_cfg["vinyl_write_threads"] == 4
+    assert box_cfg["vinyl_timeout"] == 60.0
+    assert box_cfg["vinyl_defer_deletes"] == False  # noqa: E712
 
     assert box_cfg["net_msg_max"] == 0x300
 
