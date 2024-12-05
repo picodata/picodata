@@ -72,6 +72,15 @@ instance:
   vinyl:
     memory: 134217728 # (29)!
     cache: 134217728 # (28)!
+    bloom_fpr: 0.05 # (30)!
+    max_tuple_size: 1M # (31)!
+    page_size: 8K # (32)!
+    range_size: 1G # (33)!
+    run_count_per_level: 2 # (34)!
+    run_size_ratio: 3.5 # (35)!
+    read_threads: 1 # (36)!
+    write_threads: 4 # (37)!
+    timeout: 60.0 # (38)!
   iproto:
     max_concurrent_messages: 768 # (12)!
   pg:
@@ -108,6 +117,15 @@ instance:
 27. [instance.tier](#instance_tier)
 28. [instance.vinyl.cache](#instance_vinyl_cache)
 29. [instance.vinyl.memory](#instance_vinyl_memory)
+30. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+31. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+32. [instance.vinyl.page_size](#instance_vinyl_page_size)
+33. [instance.vinyl.range_size](#instance_vinyl_range_size)
+34. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+35. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+36. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+37. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+38. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -617,6 +635,30 @@ picodata run -c instance.pg.ssl=true
 
 [`picodata run --tier`]: cli.md#run_tier
 
+### instance.vinyl.bloom_fpr {: #instance_vinyl_bloom_fpr }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_bloom_fpr -->
+
+Вероятность ложноположительного срабатывания [фильтра Блума] для движка
+хранения `vinyl`, измеряемая в долях единицы.
+
+Предельные значения:
+
+* `bloom_fpr: 0` — ложноположительные срабатывания отсутствуют
+* `bloom_fpr: 1` — все срабатывания ложноположительные
+
+Данные:
+
+* Тип: *float*
+* Значение по умолчанию: `0.05`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.bloom_fpr=0.10
+```
+
+[фильтра Блума]: https://en.wikipedia.org/wiki/Bloom_filter
+
 ### instance.vinyl.cache {: #instance_vinyl_cache }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
 
@@ -634,6 +676,25 @@ picodata run -c instance.pg.ssl=true
 
 ```bash
 picodata run -c instance.vinyl.cache=256M
+```
+
+### instance.vinyl.max_tuple_size {: #instance_vinyl_max_tuple_size }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_max_tuple_size -->
+
+Максимальный размер кортежа *в байтах* для движка хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `1M` (1048576 Б)
+
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.max_tuple_size=2M
 ```
 
 ### instance.vinyl.memory {: #instance_vinyl_memory }
@@ -654,4 +715,126 @@ picodata run -c instance.vinyl.cache=256M
 
 ```bash
 picodata run -c instance.vinyl.memory=256M
+```
+
+### instance.vinyl.page_size {: #instance_vinyl_page_size }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_page_size -->
+
+Размер страницы *в байтах*, используемой движком хранения `vinyl` для
+операций чтения и записи на диск.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `8K` (8192 Б)
+
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.page_size=16M
+```
+
+### instance.vinyl.range_size {: #instance_vinyl_range_size }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_range_size -->
+
+Максимальный размер LSM-поддерева по умолчанию *в байтах* для движка
+хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `1G` (1073741824 Б)
+
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.range_size=2G
+```
+
+### instance.vinyl.read_threads {: #instance_vinyl_read_threads }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_read_threads -->
+
+Максимальное количество потоков чтения для движка хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `1`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.read_threads=2
+```
+
+### instance.vinyl.run_count_per_level {: #instance_vinyl_run_count_per_level }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_run_count_per_level -->
+
+Максимальное количество файлов на уровне в LSM-дереве для движка хранения
+`vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `2`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.run_count_per_level=4
+```
+
+### instance.vinyl.run_size_ratio {: #instance_vinyl_run_size_ratio }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_run_size_ratio -->
+
+Соотношение между размерами разных уровней в LSM-дереве для движка хранения
+`vinyl`.
+
+Данные:
+
+* Тип: *float*
+* Значение по умолчанию: `3.5`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.run_size_ratio=7.0
+```
+
+### instance.vinyl.timeout {: #instance_vinyl_timeout }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_timeout -->
+
+Максимальное время обработки запроса движком хранения `vinyl` *в секундах*.
+
+Данные:
+
+* Тип: *float*
+* Значение по умолчанию: `60.0`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.timeout=120.0
+```
+
+### instance.vinyl.write_threads {: #instance_vinyl_write_threads }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_write_threads -->
+
+Максимальное количество потоков записи для движка хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `4`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.write_threads=8
 ```
