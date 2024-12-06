@@ -634,6 +634,7 @@ cluster:
     }
 
     space_bucket_id = storage_instance.eval("return box.space._bucket.id")
+    total_bucket_count = 3000
 
     storage_vshard_config_explicit = storage_instance.call(
         ".proc_get_vshard_config", "storage"
@@ -642,6 +643,7 @@ cluster:
         discovery_mode="on",
         sharding=storage_sharding,
         space_bucket_id=space_bucket_id,
+        bucket_count=total_bucket_count,
     )
 
     storage_vshard_config_implicit = storage_instance.call(
@@ -656,6 +658,7 @@ cluster:
         discovery_mode="on",
         sharding=router_sharding,
         space_bucket_id=space_bucket_id,
+        bucket_count=total_bucket_count,
     )
 
     router_vshard_config_implicit = router_instance_1.call(

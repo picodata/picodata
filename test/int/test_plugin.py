@@ -2441,7 +2441,7 @@ cluster:
     # Check requesting RPC to unknown bucket id
     with pytest.raises(
         TarantoolError,
-        match="Bucket 9999 cannot be found.",
+        match="invalid bucket id: must be within 1..3000, got 9999",
     ):
         context = make_context()
         input = dict(
@@ -2459,7 +2459,7 @@ cluster:
         context = make_context()
         input = dict(
             path="/ping",
-            tier_and_bucket_id=("undefined", 9999),
+            tier_and_bucket_id=("undefined", 1500),
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)

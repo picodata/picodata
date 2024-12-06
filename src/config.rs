@@ -682,6 +682,14 @@ Using configuration file '{args_path}'.");
         1048576
     }
 
+    #[inline]
+    pub fn total_bucket_count() -> u64 {
+        // This is value is not configurable at the moment, but this may change
+        // in the future. At that point this function will probably also want to
+        // accept a `&self` parameter, but for now it's not necessary.
+        3000
+    }
+
     pub fn log_config_params(&self) {
         for path in &leaf_field_paths::<PicodataConfig>() {
             let value = self

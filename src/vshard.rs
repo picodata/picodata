@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
@@ -31,6 +32,12 @@ pub fn get_replicaset_priority_list(
 /// Returns the replicaset uuid and an array of replicas in descending priority
 /// order.
 pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<String, Error> {
+    let max_bucket_id = PicodataConfig::total_bucket_count();
+    if bucket_id < 1 || bucket_id > max_bucket_id {
+        #[rustfmt::skip]
+        return Err(Error::other(format!("invalid bucket id: must be within 1..{max_bucket_id}, got {bucket_id}")));
+    }
+
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
         .get("pico")
@@ -50,6 +57,9 @@ pub struct VshardConfig {
 
     /// Id of system table `_bucket`.
     space_bucket_id: SpaceId,
+
+    /// Total number of virtual buckets on each tier.
+    bucket_count: u64,
 
     /// This field is not stored in the global storage, instead
     /// it is set right before the config is passed into vshard.*.cfg,
@@ -153,6 +163,7 @@ impl VshardConfig {
             sharding,
             discovery_mode: DiscoveryMode::On,
             space_bucket_id: TABLE_ID_BUCKET,
+            bucket_count: PicodataConfig::total_bucket_count(),
         }
     }
 
