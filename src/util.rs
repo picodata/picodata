@@ -586,6 +586,33 @@ impl<T> std::ops::DerefMut for NoYieldsRefMut<'_, T> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DebugDiff
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct DebugDiff<'a, T>(pub &'a T, pub &'a T);
+
+impl<T> std::fmt::Display for DebugDiff<'_, T>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let old_text = format!("{:#?}", self.0);
+        let new_text = format!("{:#?}", self.1);
+        let diff = diff::lines(&old_text, &new_text);
+
+        for a in diff {
+            match a {
+                diff::Result::Left(l) => writeln!(f, "\x1b[31m-{l}\x1b[0m")?,
+                diff::Result::Both(a, _) => writeln!(f, " {a}")?,
+                diff::Result::Right(r) => writeln!(f, "\x1b[32m+{r}\x1b[0m")?,
+            }
+        }
+        Ok(())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ScopeGuard
 ////////////////////////////////////////////////////////////////////////////////
 // TODO: this one is copied from tarantool-module, it should instead be export from there

@@ -14,6 +14,7 @@ bytes = "1.8"
 chrono = "0.4"
 clap = { version = "3.0", features = ["derive", "env"] }
 comfy-table = "7.1"
+diff = "0.1"
 either = "1.13"
 file_shred = "1.1"
 futures = "0.3"

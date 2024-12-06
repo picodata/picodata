@@ -2667,6 +2667,7 @@ dependencies = [
  "chrono",
  "clap 3.2.25",
  "comfy-table",
+ "diff",
  "either",
  "file_shred",
  "futures",
