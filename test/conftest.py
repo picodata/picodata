@@ -1294,7 +1294,15 @@ class Instance:
             # it's fine, the process is still running
             pass
         else:
-            raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
+            message = f"process exited unexpectedly, {exit_code=}"
+            bt = os.path.join(self.cwd, "picodata.backtrace")
+            if os.path.exists(bt):
+                with open(bt, "r") as f:
+                    backtrace = f.read()
+                message += "\n"
+                message += backtrace
+
+            raise ProcessDead(message)
 
     def assert_process_dead(self):
         try:

@@ -8,10 +8,17 @@ fn main() -> ! {
     std::panic::set_hook(Box::new(|info| {
         // Capture a backtrace regardless of RUST_BACKTRACE and such.
         let backtrace = std::backtrace::Backtrace::force_capture();
-        picodata::tlog!(
-            Critical,
-            "\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic"
-        );
+        let message = format!("\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic");
+        picodata::tlog!(Critical, "{message}");
+
+        // Dump the backtrace to file for easier debugging experience.
+        // In particular this is used in the integration tests.
+        _ = std::fs::write("picodata.backtrace", message);
+        if let Ok(mut dir) = std::env::current_dir() {
+            dir.push("picodata.backtrace");
+            picodata::tlog!(Info, "dumped panic backtrace to `{}`", dir.display());
+        }
+
         std::process::abort();
     }));
 
