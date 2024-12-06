@@ -10,7 +10,9 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
 use crate::traft::error::Error;
+use crate::traft::node;
 use crate::traft::RaftId;
+use crate::traft::Result;
 use std::collections::HashMap;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
@@ -25,8 +27,11 @@ pub fn get_replicaset_priority_list(
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
-    func.call_with_args((tier, replicaset_uuid))
-        .map_err(|e| tlua::LuaError::from(e).into())
+    let res = func.call_with_args((tier, replicaset_uuid));
+    if res.is_err() {
+        check_tier_exists(tier)?;
+    }
+    res.map_err(|e| tlua::LuaError::from(e).into())
 }
 
 /// Returns the replicaset uuid and an array of replicas in descending priority
@@ -44,8 +49,27 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
-    func.call_with_args((tier, bucket_id))
-        .map_err(|e| tlua::LuaError::from(e).into())
+    let res = func.call_with_args((tier, bucket_id));
+    if res.is_err() {
+        check_tier_exists(tier)?;
+    }
+    res.map_err(|e| tlua::LuaError::from(e).into())
+}
+
+#[inline(always)]
+fn check_tier_exists(tier: &str) -> Result<()> {
+    // Check if tier exists, return corresponding error in that case
+    if node::global()
+        .expect("initilized by this point")
+        .storage
+        .tiers
+        .by_name(tier)?
+        .is_none()
+    {
+        return Err(Error::NoSuchTier(tier.into()));
+    }
+
+    Ok(())
 }
 
 #[rustfmt::skip]
