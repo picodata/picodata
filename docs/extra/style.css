@@ -300,3 +300,9 @@ article > p > img {
        border-radius: .1rem;
        padding: 0 .2941176471em; */
 }
+
+/* Suppress text wrapping within `keys` */
+/* See: mkdocs.yml — pymdownx.keys */
+span.keys {
+    white-space: nowrap;
+}
