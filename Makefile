@@ -107,6 +107,8 @@ generate:
 
 .PHONY: lint
 lint:
+	cargo version
+
 	cargo fmt --check
 
 	cargo check $(LOCKED) $(MAKE_JOBSERVER_ARGS)
