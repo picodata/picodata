@@ -10,15 +10,15 @@
 опций команды [`picodata run`](cli.md#run) и переменных окружения.
 
 Команда для запуска инстанса Picodata, если файл конфигурации назван
-`config.yaml` и расположен в директории вызова команды:
+`picodata.yaml` и расположен в директории вызова команды:
 
-```
+```shell
 picodata run
 ```
 
 Команда для запуска инстанса Picodata в остальных случаях:
 
-```
+```shell
 picodata run --config <PATH>
 ```
 
@@ -33,11 +33,11 @@ picodata run --config <PATH>
 
 <!-- Описание соответствует версии Picodata `24.3.0-179-gaf8647c7`. -->
 
-Результатом выполнения команды `picodata config default -o config.yaml`
+Результатом выполнения команды `picodata config default -o picodata.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
 значениями параметров:
 
-``` yaml title="config.yaml"
+``` yaml title="picodata.yaml"
 cluster:
   name: demo # (1)!
   tier:

@@ -42,7 +42,7 @@ picodata run [OPTIONS]
 
 !!! note "Примечание"
     Если в директории, из которой вызывается команда,
-    присутствует [файл конфигурации](config.md) с именем `config.yaml`,
+    присутствует [файл конфигурации](config.md) с именем `picodata.yaml`,
     инстанс Picodata будет запущен с указанными в нем параметрами.
 
 ### --admin-sock {: #run_admin_sock }
@@ -127,7 +127,7 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 
 Путь к [файлу конфигурации](./config.md) в формате YAML.
 
-По умолчанию используется `./config.yaml`, если такой существует.
+По умолчанию используется `./picodata.yaml`, если такой существует.
 
 Аналогичная переменная окружения: `PICODATA_CONFIG_FILE`
 
@@ -460,13 +460,13 @@ picodata config default [OPTIONS]
 **Пример**
 
 Сохранение файла конфигурации Picodata со значениями по умолчанию
-в файл `config.yaml`:
+в файл `picodata.yaml`:
 
 ```
-picodata config default -o config.yaml
+picodata config default -o picodata.yaml
 ```
 
-Подробнее об имени `config.yaml` — в описании команды [`picodata run`](#run).
+Подробнее об имени `picodata.yaml` — в описании команды [`picodata run`](#run).
 
 <!-- ********************************************************************** -->
 ## picodata connect {: #connect }
