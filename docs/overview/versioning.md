@@ -37,7 +37,7 @@ YY.MINOR.PATCH[-N-gHASH]
 
 Текущая политика версионирования применяется с версии 24.1.
 
-Cм. также:
+См. также:
 
 - [Gitlab — Changelog](https://git.picodata.io/core/picodata/-/blob/master/CHANGELOG.md)
 - [Gitlab — Tags](https://git.picodata.io/core/picodata/-/tags)

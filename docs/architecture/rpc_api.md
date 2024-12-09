@@ -124,7 +124,7 @@ fn proc_apply_schema_change(term, applied, timeout) -> Result
 
 Применяет текущие изменения глобальной схемы к локальному состоянию инстанса.
 
-Этy хранимую процедуру вызывает только
+Эту хранимую процедуру вызывает только
 [governor](../overview/glossary.md#governor) в рамках алгоритма
 отказоустойчивой смены кластерной схемы данных.
 <!-- ./clusterwide_schema.md#two_phase_algorithm -->
@@ -199,7 +199,7 @@ fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 fn proc_discover(request, request_to) -> Result
 ```
 
-Этy хранимую процедуру вызывают инстансы Picodata во время запуска с пустым
+Эту хранимую процедуру вызывают инстансы Picodata во время запуска с пустым
 состоянием ([bootstrap](../overview/glossary.md#bootstrap)) в рамках реализации
 алгоритма [discovery](./discovery.md).
 
@@ -382,7 +382,7 @@ fn proc_raft_info() -> RaftInfo
 fn proc_raft_interact(raft_messages)
 ```
 
-Этy хранимую процедуру вызывают все инстансы Picodata для передачи внутренних
+Эту хранимую процедуру вызывают все инстансы Picodata для передачи внутренних
 сообщений друг другу в рамках реализации алгоритма [raft](../overview/glossary.md#raft).
 
 Параметры:
@@ -398,7 +398,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
 в противном случае немедленно возвращает ошибку.
 
-Этy хранимую процедуру вызывают инстансы Picodata, присоединяющиеся к кластеру,
+Эту хранимую процедуру вызывают инстансы Picodata, присоединяющиеся к кластеру,
 то есть еще не состоящие в [raft-группе](../overview/glossary.md#raft).
 
 См. также:
@@ -445,7 +445,7 @@ fn proc_raft_snapshot_next_chunk(entry_id, position) -> Result
 
 Возвращает следующий отрезок данных [raft-снапшота](../overview/glossary.md#snapshot).
 
-Этy хранимую процедуру вызывают только инстансы с ролью [raft follower](../overview/glossary.md#node_states)
+Эту хранимую процедуру вызывают только инстансы с ролью [raft follower](../overview/glossary.md#node_states)
 в рамках процесса [актуализации raft-журнала](../overview/glossary.md#actualization).
 
 Текущий инстанс проверяет наличие снапшота соответствующего состоянию
@@ -627,7 +627,7 @@ fn proc_sharding(term, applied, timeout)
 Обновляет конфигурацию [шардирования данных](../overview/glossary.md#vshard)
 между [репликасетами](../overview/glossary.md#replicaset).
 
-Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+Эту хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
 в рамках алгоритма автоматической смены топологии кластера.
 
 См. также:
@@ -658,7 +658,7 @@ fn proc_sharding_bootstrap(term, applied, timeout, tier)
 Инициирует распределение [бакетов](../overview/glossary.md#bucket)
 между [репликасетами](../overview/glossary.md#replicaset).
 
-Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+Эту хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
 в рамках алгоритма автоматической смены топологии кластера.
 
 См. также:
@@ -713,7 +713,7 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 
 Обновляет информацию об указанном инстансе.
 
-Этy хранимую процедуру вызывают инстансы Picodata, уже состоящие в кластере,
+Эту хранимую процедуру вызывают инстансы Picodata, уже состоящие в кластере,
 чтобы обновить [свое целевое состояние](../overview/glossary.md#state) при
 перезапуске или в рамках [штатного выключения](../architecture/topology_management.md/#graceful_shutdown).
 

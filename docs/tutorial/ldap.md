@@ -73,7 +73,7 @@ ALTER USER "username" WITH PASSWORD '' USING ldap;
 в сообщении `IPROTO_AUTH`; в свою очередь Picodata будет использовать
 полученный пароль при взаимодействии с сервером LDAP.
 
-Cм. также:
+См. также:
 
 - [Управление доступом](access_control.md)
 

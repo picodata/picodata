@@ -87,7 +87,7 @@ box.execute([[EXPLAIN SELECT * FROM warehouse]])
 
  -->
 
-Cм. также:
+См. также:
 
   - [The SQLite Bytecode Engine](https://www.sqlite.org/opcode.html)
 

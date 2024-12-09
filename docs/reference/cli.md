@@ -283,7 +283,7 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 Объем оперативной памяти в байтах, используемый движком хранения
 [memtx](../overview/glossary.md#db_engine).
 
-По умолчанию используется 64 MБ.
+По умолчанию используется 64 МБ.
 
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
@@ -417,7 +417,7 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 ## picodata admin {: #admin }
 <!-- ********************************************************************** -->
 
-Подключается к консоли администратора, cм. [Подключение и работа в
+Подключается к консоли администратора, см. [Подключение и работа в
 консоли — Консоль администратора](../tutorial/connecting.md#admin_console).
 
 ```
