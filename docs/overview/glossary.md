@@ -254,8 +254,7 @@ Picodata прилагает все усилия, чтобы эти состоя�
 
 См. также:
 
-- [RFC — Storage schema — Raft snapshot](https://docs.google.com/document/d/1MEpGnpKKj6WezLKytvvonZzbpy1tlWtAK5ccxaeAOrE/edit#heading=h.687c3wywf9ub)
-- [Tarantool — Persistence](https://www.tarantool.io/en/doc/latest/concepts/data_model/persistence/)
+- [Tarantool — Persistence](https://www.tarantool.io/en/doc/latest/platform/storage/persistence/)
 
 ### Файбер (fiber) {: #fiber }
 
