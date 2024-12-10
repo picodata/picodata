@@ -52,6 +52,8 @@ pub fn proc_service_registrar(_attr: TokenStream, input: TokenStream) -> TokenSt
         pub extern "C" fn #ident(registry: &mut picodata_plugin::plugin::interface::ServiceRegistry) {
             #[inline(always)]
             fn #inner_fn_name (#inputs) {
+                picodata_plugin::internal::set_panic_hook();
+
                 #block
             }
 

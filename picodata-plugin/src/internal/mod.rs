@@ -42,6 +42,29 @@ pub fn raft_info() -> types::RaftInfo {
     unsafe { pico_ffi_raft_info() }
 }
 
+#[inline]
+pub fn set_panic_hook() {
+    // NOTE: this function is called ASAP when starting up the process.
+    // Even if `say` isn't properly initialized yet, we
+    // still should be able to print a simplified line to stderr.
+    std::panic::set_hook(Box::new(|info| {
+        // Capture a backtrace regardless of RUST_BACKTRACE and such.
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let message = format!("\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic");
+        tarantool::say_crit!("{message}");
+
+        // Dump the backtrace to file for easier debugging experience.
+        // In particular this is used in the integration tests.
+        _ = std::fs::write("picodata.backtrace", message);
+        if let Ok(mut dir) = std::env::current_dir() {
+            dir.push("picodata.backtrace");
+            tarantool::say_info!("dumped panic backtrace to `{}`", dir.display());
+        }
+
+        std::process::abort();
+    }));
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum InternalError {
     #[error("timeout")]

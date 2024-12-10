@@ -653,12 +653,34 @@ impl Service for ServiceWithStringConfigValue {
     type Config = StringyConfig;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// test_panic_in_plugin
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct TestPanicInPlugin;
+impl Service for TestPanicInPlugin {
+    type Config = ();
+
+    fn on_start(&mut self, context: &PicoContext, _: ()) -> CallbackResult<()> {
+        _ = context;
+        panic!("this is a unique phrase which makes it safe to use in a test");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
 
 #[tarantool::test]
 fn example_tarantool_test() {}
+
+////////////////////////////////////////////////////////////////////////////////
+// service_registrar
+////////////////////////////////////////////////////////////////////////////////
 
 #[service_registrar]
 pub fn service_registrar(reg: &mut ServiceRegistry) {
@@ -689,4 +711,6 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("testservice_w_string_conf2", "0.1.0", || {
         ServiceWithStringConfigValue
     });
+
+    reg.add("test_panic_in_plugin", "0.1.0", || TestPanicInPlugin);
 }

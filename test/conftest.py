@@ -809,11 +809,15 @@ class Instance:
             If the response instead contains just the "row_count" field, this
             parameter is ignored.
         """
-        with self.connect(timeout=timeout, user=user, password=password) as conn:
-            result = conn.sql(sql, sudo=sudo, *params, options=options)
-        if strip_metadata and "rows" in result:
-            return result["rows"]
-        return result
+        try:
+            with self.connect(timeout=timeout, user=user, password=password) as conn:
+                result = conn.sql(sql, sudo=sudo, *params, options=options)
+            if strip_metadata and "rows" in result:
+                return result["rows"]
+            return result
+        except Exception as e:
+            self.check_process_alive()
+            raise e from e
 
     def retriable_sql(
         self,
@@ -2154,45 +2158,59 @@ def binary_path() -> str:
 
     binary_path = os.path.realpath(os.path.join(target_dir, f"{profile}/picodata"))
 
-    ext = None
-    match sys.platform:
-        case "linux":
-            ext = "so"
-        case "darwin":
-            ext = "dylib"
-
     test_dir = get_test_dir()
     # Copy the test plugin library into the appropriate location
-    source = f"{os.path.dirname(binary_path)}/libtestplug.{ext}"
+    # TODO: it's too messy to have all of these files being copied in one place.
+    # We should just remove this and call `copy_plugin_library` in each
+    # corresponding test directly. That way the tests would be more self
+    # contained and this function would be much simpler.
     destinations = [
-        f"{test_dir}/testplug/testplug/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug/0.2.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_broken_manifest_1/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_broken_manifest_2/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_broken_manifest_3/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_small/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_small_svc2/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_w_migration/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_w_migration_2/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_w_migration/0.2.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_w_migration_in_tier/0.1.0/libtestplug.{ext}",
-        f"{test_dir}/testplug/testplug_sdk/0.1.0/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug/0.1.0",
+        f"{test_dir}/testplug/testplug/0.2.0",
+        f"{test_dir}/testplug/testplug_broken_manifest_1/0.1.0",
+        f"{test_dir}/testplug/testplug_broken_manifest_2/0.1.0",
+        f"{test_dir}/testplug/testplug_broken_manifest_3/0.1.0",
+        f"{test_dir}/testplug/testplug_small/0.1.0",
+        f"{test_dir}/testplug/testplug_small_svc2/0.1.0",
+        f"{test_dir}/testplug/testplug_w_migration/0.1.0",
+        f"{test_dir}/testplug/testplug_w_migration_2/0.1.0",
+        f"{test_dir}/testplug/testplug_w_migration/0.2.0",
+        f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken",
+        f"{test_dir}/testplug/testplug_w_migration_in_tier/0.1.0",
+        f"{test_dir}/testplug/testplug_sdk/0.1.0",
     ]
     for destination in destinations:
-        if os.path.exists(destination) and filecmp.cmp(source, destination):
-            continue
-        eprint(f"Copying '{source}' to '{destination}'")
-        shutil.copyfile(source, destination)
+        copy_plugin_library(binary_path, destination)
 
-    plug_wrong_version_dir = f"{test_dir}/plug_wrong_version/plug_wrong_version"
-    destination = f"{plug_wrong_version_dir}/0.1.0/libplug_wrong_version.{ext}"
-    source = f"{os.path.dirname(binary_path)}/libplug_wrong_version.{ext}"
-    if not (os.path.exists(destination) and filecmp.cmp(source, destination)):
-        eprint(f"Copying '{source}' to '{destination}'")
-        shutil.copyfile(source, destination)
+    copy_plugin_library(
+        binary_path,
+        f"{test_dir}/plug_wrong_version/plug_wrong_version/0.1.0",
+        "libplug_wrong_version",
+    )
 
     return binary_path
+
+
+def copy_plugin_library(
+    binary_path: Path | str, plugin_dir: Path | str, file_name: str = "libtestplug"
+):
+    ext = dynamic_library_extension()
+    lib_name = f"{file_name}.{ext}"
+    source = Path(binary_path).parent / lib_name
+    destination = Path(plugin_dir) / lib_name
+    if os.path.exists(destination) and filecmp.cmp(source, destination):
+        return
+    eprint(f"Copying '{source}' to '{destination}'")
+    shutil.copyfile(source, destination)
+
+
+def dynamic_library_extension() -> str:
+    match sys.platform:
+        case "linux":
+            return "so"
+        case "darwin":
+            return "dylib"
+    raise Exception("unsupported platform")
 
 
 @pytest.fixture(scope="session")

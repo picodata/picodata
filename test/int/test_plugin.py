@@ -15,10 +15,12 @@ from conftest import (
     ReturnError,
     Retriable,
     Instance,
+    ProcessDead,
     TarantoolError,
     get_test_dir,
     log_crawler,
     assert_starts_with,
+    copy_plugin_library,
 )
 from decimal import Decimal
 import requests
@@ -2568,6 +2570,63 @@ def test_plugin_rpc_sdk_single_instance(cluster: Cluster):
         to_master=False,
     )
     i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+
+def test_panic_in_plugin(cluster: Cluster):
+    plugin_name = "plugin_for_test_panic_in_plugin"
+    service_name = "test_panic_in_plugin"
+
+    #
+    # Prepare plugin
+    #
+    cluster.plugin_dir = cluster.data_dir
+    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
+    os.makedirs(plugin_dir)
+    copy_plugin_library(cluster.binary_path, str(plugin_dir))
+
+    # Create manifest
+    manifest_path = plugin_dir / "manifest.yaml"
+    manifest_path.write_text(
+        f"""
+description: plugin for test purposes
+name: {plugin_name}
+version: 0.1.0
+services:
+  - name: {service_name}
+    description:
+    default_configuration:
+"""
+    )
+
+    # Set the log configuration
+    log_file = Path(cluster.data_dir) / "test.log"
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    tier:
+        default:
+instance:
+    cluster_name: test
+    tier: default
+    log:
+        destination: {log_file}
+"""
+    )
+
+    #
+    # Start instance and check
+    #
+    [i1] = cluster.deploy(instance_count=1)
+
+    i1.sql(f"CREATE PLUGIN {plugin_name} 0.1.0")
+    i1.sql(
+        f"ALTER PLUGIN {plugin_name} 0.1.0 ADD SERVICE {service_name} TO TIER default"
+    )
+    with pytest.raises(ProcessDead):
+        i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ENABLE")
+
+    log = log_file.read_text()
+    assert "this is a unique phrase which makes it safe to use in a test" in log
 
 
 def test_sdk_internal(cluster: Cluster):
