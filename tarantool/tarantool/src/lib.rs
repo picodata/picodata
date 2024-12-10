@@ -63,14 +63,12 @@ pub mod clock;
 pub mod coio;
 pub mod datetime;
 pub mod decimal;
-#[doc(hidden)]
 pub mod define_str_enum;
 pub mod error;
 pub mod ffi;
 pub mod fiber;
 pub mod index;
 pub mod log;
-#[doc(hidden)]
 pub mod msgpack;
 pub mod net_box;
 pub mod network;
