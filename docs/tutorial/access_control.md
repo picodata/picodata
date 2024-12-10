@@ -463,7 +463,7 @@ REVOKE <priv> ON PROCEDURE <procedure name> FROM <grantee>
 
 ```sql
 CREATE USER <user name>
-    [ WITH ] PASSWORD 'password'
+    [ [ WITH ] PASSWORD 'password' ]
     [ USING chap-sha1 | ldap | md5 ]
 ALTER USER <user name>
     [ WITH ] PASSWORD 'password'
