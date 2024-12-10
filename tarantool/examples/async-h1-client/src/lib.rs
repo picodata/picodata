@@ -2,7 +2,6 @@ use http_types::{Method, Request, Url};
 use tarantool::error::Error;
 use tarantool::fiber;
 use tarantool::network::client::tcp::TcpStream;
-use tarantool::network::client::tcp::UnsafeSendSyncTcpStream;
 use tarantool::proc;
 
 #[proc]
@@ -17,14 +16,12 @@ fn get(url: &str) -> Result<(), Error> {
         let mut res = match url.scheme() {
             "http" => {
                 let stream = TcpStream::connect(host, 80).map_err(Error::other)?;
-                let stream = UnsafeSendSyncTcpStream(stream);
                 println!("Sending request over http...");
                 async_h1::connect(stream, req).await.map_err(Error::other)?
             }
             #[cfg(feature = "tls")]
             "https" => {
                 let stream = TcpStream::connect(host, 443).map_err(Error::other)?;
-                let stream = UnsafeSendSyncTcpStream(stream);
                 let stream = async_native_tls::connect(host, stream)
                     .await
                     .map_err(Error::other)?;

@@ -5,6 +5,11 @@
 ### Added
 - `network::client::tcp::TcpStream` not supports async connection, provided with `connect_async` and `connect_timeout_async` methods
 
+### Fixes
+- `network::client::tcp::TcpStream` does not close underlying fd anymore. Now fd will be closed only when the last copy of tcp stream is dropped.
+
+### Deprecated
+- `network::client::tcp::UnsafeSendSyncTcpStream` is now deprected. `network::client::tcp::TcpStream` should be used instead.
 
 
 # [6.0.0] Nov 20 2024

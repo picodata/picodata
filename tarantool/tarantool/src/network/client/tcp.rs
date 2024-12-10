@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 //! Contains an implementation of a custom async coio based [`TcpStream`].
 //!
 //! ## Example
@@ -16,14 +18,14 @@
 //! # };
 //! ```
 
-use std::cell::{self, Cell};
+use std::cell::Cell;
 use std::ffi::{CString, NulError};
 use std::future::{self};
 use std::mem::{self, MaybeUninit};
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::rc::{self, Rc};
+use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{io, marker, vec};
@@ -104,6 +106,54 @@ impl Drop for AutoCloseFd {
     }
 }
 
+/// A store for raw file descriptor so we can allow cloning actual `TcpStream` properly.
+#[derive(Debug)]
+struct TcpInner {
+    /// A raw tcp socket file descriptor. Replaced with `None` when the stream
+    /// is closed.
+    fd: Cell<Option<RawFd>>,
+}
+
+impl TcpInner {
+    #[inline(always)]
+    #[track_caller]
+    fn close(&self) -> io::Result<()> {
+        let Some(fd) = self.fd.take() else {
+            return Ok(());
+        };
+        // SAFETY: safe because we close the `fd` only once
+        let rc = unsafe { ffi::coio_close(fd) };
+        if rc != 0 {
+            let e = io::Error::last_os_error();
+            if e.raw_os_error() == Some(libc::EBADF) {
+                crate::say_error!("close({fd}): Bad file descriptor");
+                if cfg!(debug_assertions) {
+                    panic!("close({}): Bad file descriptor", fd);
+                }
+            }
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn fd(&self) -> io::Result<RawFd> {
+        let Some(fd) = self.fd.get() else {
+            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            return Err(e);
+        };
+        Ok(fd)
+    }
+}
+
+impl Drop for TcpInner {
+    fn drop(&mut self) {
+        if let Err(e) = self.close() {
+            crate::say_error!("TcpInner::drop: closing tcp stream inner failed: {e}");
+        }
+    }
+}
+
 /// Async TcpStream based on fibers and coio.
 ///
 /// Use [timeout][t] on top of read or write operations on [`TcpStream`]
@@ -118,15 +168,8 @@ impl Drop for AutoCloseFd {
 /// [t]: crate::fiber::async::timeout::timeout
 #[derive(Debug, Clone)]
 pub struct TcpStream {
-    /// A raw tcp socket file descriptor. Replaced with `None` when the stream
-    /// is closed.
-    ///
-    /// Note that it's wrapped in a `Rc`, because the outer `TcpStream` needs to
-    /// be mutably borrowable (thanks to AsyncWrite & AsyncRead traits) and it
-    /// doesn't make sense to wrap it in a Mutex of any sort, because it's
-    /// perfectly safe to read & write on a tcp socket even from concurrent threads,
-    /// but we only use it from different fibers.
-    fd: Rc<Cell<Option<RawFd>>>,
+    /// An actual fd which also stored it's open/close state.
+    inner: Rc<TcpInner>,
 }
 
 impl TcpStream {
@@ -248,32 +291,22 @@ impl TcpStream {
 
     #[inline(always)]
     #[track_caller]
-    pub fn close(&mut self) -> io::Result<()> {
-        let Some(fd) = self.fd.take() else {
-            // Already closed.
-            return Ok(());
-        };
-
-        // SAFETY: safe because we close the `fd` only once
-        let rc = unsafe { ffi::coio_close(fd) };
-        if rc != 0 {
-            let e = io::Error::last_os_error();
-            if e.raw_os_error() == Some(libc::EBADF) {
-                crate::say_error!("close({fd}): Bad file descriptor");
-                if cfg!(debug_assertions) {
-                    panic!("close({}): Bad file descriptor", fd);
-                }
-            }
-            return Err(e);
-        }
-        Ok(())
+    pub fn close(&self) -> io::Result<()> {
+        self.inner.close()
     }
 }
+
+/// SAFETY: completely unsafe, but we are allowed to do this cause sending/sharing following stream to/from another thread
+/// SAFETY: will take no effect due to no runtime within it
+unsafe impl Send for TcpStream {}
+unsafe impl Sync for TcpStream {}
 
 impl From<RawFd> for TcpStream {
     fn from(value: RawFd) -> Self {
         Self {
-            fd: rc::Rc::new(cell::Cell::new(Some(value))),
+            inner: Rc::new(TcpInner {
+                fd: Cell::new(Some(value)),
+            }),
         }
     }
 }
@@ -290,10 +323,7 @@ impl AsyncWrite for TcpStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        let Some(fd) = self.fd.get() else {
-            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
-            return Poll::Ready(Err(e));
-        };
+        let fd = self.inner.fd()?;
 
         let (result, err) = (
             // `self.fd` must be nonblocking for this to work correctly
@@ -325,11 +355,7 @@ impl AsyncWrite for TcpStream {
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if self.fd.get().is_none() {
-            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
-            return Poll::Ready(Err(e));
-        };
-
+        self.inner.fd()?;
         // [`TcpStream`] similarily to std does not buffer anything,
         // so there is nothing to flush.
         //
@@ -337,13 +363,9 @@ impl AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if self.fd.get().is_none() {
-            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
-            return Poll::Ready(Err(e));
-        };
-
-        let res = self.close();
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.inner.fd()?;
+        let res = self.inner.close();
         Poll::Ready(res)
     }
 }
@@ -354,13 +376,10 @@ impl AsyncRead for TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let Some(fd) = self.fd.get() else {
-            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
-            return Poll::Ready(Err(e));
-        };
+        let fd = self.inner.fd()?;
 
         let (result, err) = (
-            // `self.fd` must be nonblocking for this to work correctly
+            // `self.inner.fd` must be nonblocking for this to work correctly
             unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) },
             io::Error::last_os_error(),
         );
@@ -385,14 +404,6 @@ impl AsyncRead for TcpStream {
                 Poll::Pending
             }
             _ => Poll::Ready(Err(err)),
-        }
-    }
-}
-
-impl Drop for TcpStream {
-    fn drop(&mut self) {
-        if let Err(e) = self.close() {
-            crate::say_error!("TcpStream::drop: closing tcp stream failed: {e}");
         }
     }
 }
@@ -628,6 +639,7 @@ impl<'a> From<&'a SockAddr> for AddrInfo<'a> {
 /// necessary when working with our async runtime, which is single threaded.
 #[derive(Debug, Clone)]
 #[repr(transparent)]
+#[deprecated = "Use `TcpStream` instead"]
 pub struct UnsafeSendSyncTcpStream(pub TcpStream);
 
 unsafe impl Send for UnsafeSendSyncTcpStream {}
