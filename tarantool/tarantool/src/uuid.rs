@@ -257,8 +257,9 @@ impl<'de> serde::Deserialize<'de> for Uuid {
 static mut CTID_UUID: Option<u32> = None;
 
 fn ctid_uuid() -> u32 {
+    // SAFETY: only safe to call this from tx thread
     unsafe {
-        if CTID_UUID.is_none() {
+        if (*std::ptr::addr_of!(CTID_UUID)).is_none() {
             let lua = crate::global_lua();
             let ctid_uuid =
                 tlua::ffi::luaL_ctypeid(tlua::AsLua::as_lua(&lua), crate::c_ptr!("struct tt_uuid"));

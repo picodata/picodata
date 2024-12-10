@@ -246,7 +246,10 @@ pub fn closures_must_be_static() {
     }
     let f: LuaFunction<_> = lua.get("a").unwrap();
     let () = f.call().unwrap();
-    assert_eq!(unsafe { &GLOBAL }, &Some(vec![1, 2, 3]));
+    assert_eq!(
+        unsafe { &*std::ptr::addr_of!(GLOBAL) },
+        &Some(vec![1, 2, 3])
+    );
 }
 
 pub fn pcall() {
@@ -263,20 +266,20 @@ pub fn pcall() {
 pub fn error() {
     let lua = tarantool::lua_state();
     lua.set("error_callback",
-        tlua::function1(|lua: tlua::LuaState| tlua::error!(lua, "but it compiled :("))
+        tlua::function1(|lua: tlua::LuaState| -> () { tlua::error!(lua, "but it compiled :(") })
     );
     let msg = lua.exec("return error_callback()").unwrap_err().to_string();
     assert_eq!(msg, "but it compiled :(");
 
     lua.set("error_callback_2",
-        tlua::function2(|msg: String, lua: tlua::LuaState| tlua::error!(lua, "your message: {}", msg))
+        tlua::function2(|msg: String, lua: tlua::LuaState| -> () { tlua::error!(lua, "your message: {}", msg) })
     );
     let msg = lua.exec("return error_callback_2('my message')").unwrap_err().to_string();
     assert_eq!(msg, "your message: my message");
 
     lua.set("error_callback_3",
         tlua::Function::new(
-            |qualifier: String, lua: tlua::StaticLua| {
+            |qualifier: String, lua: tlua::StaticLua| -> () {
                 tlua::error!(lua, "this way is {qualifier}")
             }
         )

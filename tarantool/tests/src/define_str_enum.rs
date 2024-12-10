@@ -95,6 +95,7 @@ pub fn basic() {
 
     // other claimed traits
     impl<'de, L: tlua::AsLua> AssertImpl<'de, L> for Color {}
+    #[allow(unused)]
     trait AssertImpl<'de, L: tlua::AsLua>:
         AsRef<str>
         + Into<String>

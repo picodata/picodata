@@ -441,7 +441,7 @@ unsafe fn error_get_file_line(ptr: *const ffi::BoxError) -> Option<(String, u32)
     struct Failure;
     static mut FIELD_OFFSETS: Option<std::result::Result<(u32, u32), Failure>> = None;
 
-    if FIELD_OFFSETS.is_none() {
+    if (*std::ptr::addr_of!(FIELD_OFFSETS)).is_none() {
         let lua = crate::lua_state();
         let res = lua.eval::<(u32, u32)>(
             "ffi = require 'ffi'

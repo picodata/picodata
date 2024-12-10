@@ -94,6 +94,7 @@ pub fn get_or_create_metatable() {
     {
         let table = lua.get::<LuaTable<_>, _>("a").unwrap();
 
+        #[allow(deprecated)]
         let metatable = table.get_or_create_metatable();
         fn handler() -> i32 {
             5
@@ -180,6 +181,7 @@ pub fn registry_metatable() {
     let lua = Lua::new();
 
     let registry = LuaTable::registry(&lua);
+    #[allow(deprecated)]
     let metatable = registry.get_or_create_metatable();
     metatable.set(3, "hello");
 }

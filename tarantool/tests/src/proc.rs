@@ -256,7 +256,7 @@ pub fn inject() {
     fn global() -> &'static GlobalData {
         static mut GLOBAL: Option<GlobalData> = None;
         unsafe {
-            GLOBAL.get_or_insert_with(|| GlobalData {
+            (*std::ptr::addr_of_mut!(GLOBAL)).get_or_insert_with(|| GlobalData {
                 data: vec!["some".into(), "global".into(), "data".into()],
             })
         }

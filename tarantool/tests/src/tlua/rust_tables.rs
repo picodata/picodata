@@ -219,7 +219,7 @@ pub fn read_array_partial() {
         None::<[DropCheck; 4]>
     );
     let dropped = unsafe {
-        DROPPED
+        (*std::ptr::addr_of!(DROPPED))
             .as_ref()
             .unwrap()
             .borrow()
@@ -241,7 +241,11 @@ pub fn read_array_partial() {
     impl Drop for DropCheck {
         fn drop(&mut self) {
             unsafe {
-                DROPPED.as_ref().unwrap().borrow_mut().insert(self.0);
+                (*std::ptr::addr_of!(DROPPED))
+                    .as_ref()
+                    .unwrap()
+                    .borrow_mut()
+                    .insert(self.0);
             }
         }
     }

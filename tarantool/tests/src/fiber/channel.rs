@@ -303,6 +303,7 @@ pub fn into_clones() {
     struct NonClonable();
 
     #[derive(Clone)]
+    #[allow(unused)]
     struct MyChannel(fiber::Channel<NonClonable>);
 
     let (_, _) = MyChannel(fiber::Channel::new(1)).into_clones();

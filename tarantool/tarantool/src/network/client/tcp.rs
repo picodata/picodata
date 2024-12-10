@@ -28,7 +28,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use std::{io, marker, vec};
+use std::{io, marker};
 
 #[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};

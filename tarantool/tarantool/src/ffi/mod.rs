@@ -78,7 +78,7 @@ pub fn has_datetime() -> bool {
 #[inline]
 pub unsafe fn has_fiber_set_ctx() -> bool {
     static mut RESULT: Option<bool> = None;
-    if RESULT.is_none() {
+    if (*std::ptr::addr_of!(RESULT)).is_none() {
         RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_set_ctx")));
     }
     RESULT.unwrap()
@@ -114,7 +114,7 @@ pub fn has_fully_temporary_spaces() -> bool {
 #[inline]
 pub unsafe fn has_fiber_id() -> bool {
     static mut RESULT: Option<bool> = None;
-    if RESULT.is_none() {
+    if (*std::ptr::addr_of!(RESULT)).is_none() {
         RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_id")));
     }
     RESULT.unwrap()

@@ -808,6 +808,7 @@ pub fn push_cdata() {
 }
 
 pub fn as_cdata_wrong_size() {
+    #[allow(unused)]
     #[derive(Debug)]
     struct WrongSize(u64);
     unsafe impl AsCData for WrongSize {
@@ -888,6 +889,7 @@ pub fn readwrite_strings() {
 
     let lua = Lua::new();
 
+    #[allow(unused)]
     #[derive(tlua::Push)]
     struct S<'a, 'b, 'c> {
         os: &'a OsStr,

@@ -1370,7 +1370,7 @@ pub fn space_id_temporary_min() -> Option<SpaceId> {
     static mut VALUE: Option<Option<SpaceId>> = None;
     // SAFETY: this is safe as we only call this from tx thread.
     unsafe {
-        if VALUE.is_none() {
+        if (*std::ptr::addr_of!(VALUE)).is_none() {
             VALUE = Some(
                 crate::lua_state()
                     .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
