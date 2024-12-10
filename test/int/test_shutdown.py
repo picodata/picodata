@@ -35,7 +35,7 @@ def test_gl119_panic_on_shutdown(cluster2: Cluster):
     assert i2.terminate() == 0
 
     # though on_shutdown trigger fails
-    assert crawler.matched
+    crawler.wait_matched()
 
 
 def test_single(instance: Instance):
@@ -142,7 +142,7 @@ instance:
     i1.terminate()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
-    assert c1.matched
+    c1.wait_matched()
 
 
 def test_deploy_crash_with_wrong_bootstrap_leader(cluster: Cluster):
@@ -173,4 +173,4 @@ instance:
 
     i1.fail_to_start()
 
-    assert c1.matched
+    c1.wait_matched()
