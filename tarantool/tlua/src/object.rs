@@ -438,10 +438,10 @@ where
     ///
     /// # Possible errors
     /// - Returns an error if pushing `index` or `value` failed. This can only
-    /// happen for a limited set of types. You are encouraged to use the
-    /// [`NewIndex::set`] method if pushing cannot fail.
+    ///   happen for a limited set of types. You are encouraged to use the
+    ///   [`NewIndex::set`] method if pushing cannot fail.
     /// - Returns a `LuaError::ExecutionError` in case an error happened during
-    /// an attempt to set value.
+    ///   an attempt to set value.
     #[track_caller]
     #[inline(always)]
     fn try_checked_set<K, V>(

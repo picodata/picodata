@@ -3,7 +3,7 @@
 //! With the fiber module, you can:
 //! - create, run and manage [fibers](Builder),
 //! - use a synchronization mechanism for fibers, similar to “condition variables” and similar to operating-system
-//! functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`,
+//!   functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`,
 //! - spawn a fiber based [async runtime](async).
 //!
 //! See also:
@@ -110,14 +110,14 @@ pub struct Fiber<'a, T: 'a> {
 }
 
 #[allow(deprecated)]
-impl<'a, T> ::std::fmt::Debug for Fiber<'a, T> {
+impl<T> ::std::fmt::Debug for Fiber<'_, T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.debug_struct("Fiber").finish_non_exhaustive()
     }
 }
 
 #[allow(deprecated)]
-impl<'a, T> Fiber<'a, T> {
+impl<T> Fiber<'_, T> {
     /// Create a new fiber.
     ///
     /// Takes a fiber from fiber cache, if it's not empty. Can fail only if there is not enough memory for
@@ -1049,7 +1049,7 @@ pub struct JoinHandle<'f, T> {
     marker: PhantomData<&'f ()>,
 }
 
-impl<'f, T> std::fmt::Debug for JoinHandle<'f, T> {
+impl<T> std::fmt::Debug for JoinHandle<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("JoinHandle").finish_non_exhaustive()
     }
@@ -1082,7 +1082,7 @@ enum JoinHandleImpl<T> {
 
 type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
 
-impl<'f, T> JoinHandle<'f, T> {
+impl<T> JoinHandle<'_, T> {
     #[inline(always)]
     fn ffi(fiber: NonNull<ffi::Fiber>, result_cell: Option<FiberResultCell<T>>) -> Self {
         Self {
@@ -1253,7 +1253,7 @@ impl<'f, T> JoinHandle<'f, T> {
     }
 }
 
-impl<'f, T> Drop for JoinHandle<'f, T> {
+impl<T> Drop for JoinHandle<'_, T> {
     fn drop(&mut self) {
         if let Some(mut inner) = self.inner.take() {
             if let JoinHandleImpl::Ffi { result_cell, .. } = &mut inner {

@@ -53,7 +53,8 @@ impl Uuid {
             tt.tl = tt.tl.swap_bytes();
             tt.tm = tt.tm.swap_bytes();
             tt.th = tt.th.swap_bytes();
-            Self::from_bytes(std::mem::transmute(tt))
+            let bytes: [u8; 16] = std::mem::transmute(tt);
+            Self::from_bytes(bytes)
         }
     }
 
@@ -207,7 +208,7 @@ impl std::str::FromStr for Uuid {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Tuple
+// Tuple
 ////////////////////////////////////////////////////////////////////////////////
 
 impl serde::Serialize for Uuid {
@@ -251,7 +252,7 @@ impl<'de> serde::Deserialize<'de> for Uuid {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Lua
+// Lua
 ////////////////////////////////////////////////////////////////////////////////
 
 static mut CTID_UUID: Option<u32> = None;

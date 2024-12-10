@@ -598,7 +598,7 @@ impl<'a> VariantsInfo<'a> {
     }
 }
 
-impl<'a> VariantInfo<'a> {
+impl VariantInfo<'_> {
     fn push(&self) -> TokenStream {
         let Self { name, info } = self;
         if let Some(info) = info {
@@ -793,7 +793,7 @@ impl<'a> Context<'a> {
             is_generic: bool,
             type_params: &'a [&'a Ident],
         }
-        impl<'a, 'ast> syn::visit::Visit<'ast> for GenericTypeVisitor<'a> {
+        impl<'ast> syn::visit::Visit<'ast> for GenericTypeVisitor<'_> {
             // These cannot actually appear in struct/enum field types,
             // but who cares
             fn visit_type_impl_trait(&mut self, _: &'ast syn::TypeImplTrait) {

@@ -36,6 +36,7 @@ macro_rules! tuple_from_box_api {
         {
             let mut result = ::std::mem::MaybeUninit::uninit();
             #[allow(unused_unsafe)]
+            #[allow(clippy::macro_metavars_in_unsafe)]
             unsafe {
                 if $f($($args),*, result.as_mut_ptr()) < 0 {
                     return Err($crate::error::TarantoolError::last().into());

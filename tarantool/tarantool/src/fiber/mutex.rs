@@ -208,7 +208,7 @@ impl<T> From<T> for Mutex<T> {
     }
 }
 
-impl<T: ?Sized + Default> Default for Mutex<T> {
+impl<T: Default> Default for Mutex<T> {
     /// Creates a `Mutex<T>`, with the `Default` value for T.
     fn default() -> Mutex<T> {
         Mutex::new(Default::default())

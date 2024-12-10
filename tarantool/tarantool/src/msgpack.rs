@@ -906,6 +906,7 @@ mod test {
 }
 
 #[cfg(feature = "internal_test")]
+#[allow(clippy::disallowed_names)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;

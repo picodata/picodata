@@ -659,8 +659,7 @@ impl<E> From<PushIterError<E>> for AsTablePushError<E> {
 /// - `0` values => nothing happens
 /// - `1` value: `v` => `table[i] = v`
 /// - `2` values: `k` & `v` => `table[k] = v`
-/// - any other number => nothing is inserted into table,
-/// `AsTablePushError::TooManyValues(n)` is returned
+/// - any other number => nothing is inserted into table, `AsTablePushError::TooManyValues(n)` is returned
 ///
 /// If an error happens during attempt to push `T`,
 /// `AsTablePushError::ValuePushError(e)` is returned

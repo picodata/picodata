@@ -28,8 +28,8 @@ impl Sequence {
     /// The generation algorithm is simple:
     /// - If this is the first time, then return the `start` value.
     /// - If the previous value plus the `increment` value is less than the `minimum` value or greater than the
-    /// `maximum` value, that is "overflow", so either raise an error (if `cycle = false`) or return the `maximum` value
-    /// (if `cycle = true` and `step < 0`) or return the `minimum` value (if `cycle = true` and `step > 0`).
+    ///   `maximum` value, that is "overflow", so either raise an error (if `cycle = false`) or return the `maximum` value
+    ///   (if `cycle = true` and `step < 0`) or return the `minimum` value (if `cycle = true` and `step > 0`).
     ///
     /// If there was no error, then save the returned result, it is now the "previous value".
     pub fn next(&mut self) -> Result<i64, Error> {

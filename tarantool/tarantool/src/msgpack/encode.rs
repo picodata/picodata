@@ -398,9 +398,9 @@ where
     }
 }
 
-impl<'a, 'de, T> Decode<'de> for Cow<'a, T>
+impl<'de, T> Decode<'de> for Cow<'_, T>
 where
-    T: Decode<'de> + ToOwned + ?Sized,
+    T: Decode<'de> + ToOwned,
 {
     // Clippy doesn't notice the type difference
     #[allow(clippy::redundant_clone)]
@@ -746,7 +746,7 @@ where
     }
 }
 
-impl<'a, T> Encode for Cow<'a, T>
+impl<T> Encode for Cow<'_, T>
 where
     T: Encode + ToOwned + ?Sized,
 {

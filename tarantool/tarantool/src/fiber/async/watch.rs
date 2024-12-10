@@ -204,7 +204,7 @@ impl<T> Drop for Sender<T> {
 /// to keep the borrow as short lived as possible.
 pub struct ValueRef<'a, T>(Ref<'a, Value<T>>);
 
-impl<'a, T> Deref for ValueRef<'a, T> {
+impl<T> Deref for ValueRef<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -312,7 +312,7 @@ impl<T> Clone for Receiver<T> {
     }
 }
 
-impl<'a, T> Future for Notification<'a, T> {
+impl<T> Future for Notification<'_, T> {
     type Output = Result<(), RecvError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

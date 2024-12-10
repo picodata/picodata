@@ -409,10 +409,8 @@ pub trait AsLua {
     /// Push `v` onto the lua stack.
     ///
     /// This method is only available if
-    /// - `T` implements `PushOneInto`, which means that it pushes a single
-    /// value onto the stack
-    /// - `T::Err` implements `Into<Void>`, which means that no error can happen
-    /// during the attempt to push
+    /// - `T` implements `PushOneInto`, which means that it pushes a single value onto the stack
+    /// - `T::Err` implements `Into<Void>`, which means that no error can happen during the attempt to push
     ///
     /// Returns a `PushGuard` which captures `self` by value and stores the
     /// amount of values pushed onto the stack (ideally this will be 1, but it
@@ -431,9 +429,9 @@ pub trait AsLua {
     ///
     /// This method is only available if
     /// - `I::Item` implements `PushInto<LuaState>`, which means that it can be
-    /// pushed onto the lua stack by value
+    ///   pushed onto the lua stack by value
     /// - `I::Item::Err` implements `Into<Void>`, which means that no error can
-    /// happen during the attempt to push
+    ///   happen during the attempt to push
     ///
     /// If `I::Item` pushes a single value onto the stack, the resulting lua
     /// table is a lua sequence (a table with 1-based integer keys).

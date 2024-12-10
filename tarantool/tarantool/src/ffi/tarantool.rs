@@ -37,19 +37,15 @@ extern "C" {
     /// Wait until **READ** or **WRITE** event on socket (`fd`). Yields.
     /// - `fd` - non-blocking socket file description
     /// - `events` - requested events to wait.
-    /// Combination of `TNT_IO_READ` | `TNT_IO_WRITE` bit flags.
+    ///   Combination of `TNT_IO_READ` | `TNT_IO_WRITE` bit flags.
     /// - `timeout` - timeout in seconds.
     ///
     /// Returns:
     /// - `0` - timeout
-    /// - `>0` - returned events. Combination of `TNT_IO_READ` | `TNT_IO_WRITE`
-    /// bit flags.
+    /// - `>0` - returned events. Combination of `TNT_IO_READ` | `TNT_IO_WRITE` bit flags.
     pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
 
-    /**
-     * Close the fd and wake any fiber blocked in
-     * coio_wait() call on this fd.
-     */
+    /// Close the fd and wake any fiber blocked in coio_wait() call on this fd.
     pub fn coio_close(fd: c_int) -> c_int;
 
     /// Fiber-friendly version of getaddrinfo(3).
@@ -63,8 +59,8 @@ extern "C" {
     /// Returns:
     /// -  `0` on success, please free @a res using freeaddrinfo(3).
     /// - `-1` on error, check diag.
-    ///            Please note that the return value is not compatible with
-    ///            getaddrinfo(3).
+    ///
+    /// > Please note that the return value is not compatible with getaddrinfo(3).
     pub fn coio_getaddrinfo(
         host: *const c_char,
         port: *const c_char,

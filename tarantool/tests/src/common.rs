@@ -80,7 +80,7 @@ use once_cell::unsync::OnceCell;
 
 pub fn lib_name() -> String {
     thread_local! {
-        static LIB_NAME: OnceCell<String> = OnceCell::new();
+        static LIB_NAME: OnceCell<String> = const { OnceCell::new() };
     }
     LIB_NAME.with(|lib_name| {
         lib_name

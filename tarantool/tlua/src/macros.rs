@@ -114,11 +114,14 @@ macro_rules! c_ptr {
 macro_rules! error {
     ($l:expr, $($args:tt)+) => {{
         let msg = ::std::format!($($args)+);
+        // Bind the metavariable outside unsafe block to prevent users
+        // accidentally doing unsafe things
+        let l = &$l;
         #[allow(unused_unsafe)]
         unsafe {
-            let lua = $crate::AsLua::as_lua(&$l);
+            let lua = $crate::AsLua::as_lua(l);
             $crate::ffi::lua_pushlstring(lua, msg.as_ptr() as _, msg.len());
-            $crate::ffi::lua_error($crate::AsLua::as_lua(&$l));
+            $crate::ffi::lua_error($crate::AsLua::as_lua(l));
         }
         unreachable!("luaL_error never returns")
     }};

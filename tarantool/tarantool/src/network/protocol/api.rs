@@ -54,7 +54,7 @@ pub struct Call<'a, 'b, T: ?Sized> {
     pub args: &'b T,
 }
 
-impl<'a, 'b, T> Request for Call<'a, 'b, T>
+impl<T> Request for Call<'_, '_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -77,7 +77,7 @@ pub struct Eval<'a, 'b, T: ?Sized> {
     pub args: &'b T,
 }
 
-impl<'a, 'b, T> Request for Eval<'a, 'b, T>
+impl<T> Request for Eval<'_, '_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -100,7 +100,7 @@ pub struct Execute<'a, 'b, T: ?Sized> {
     pub bind_params: &'b T,
 }
 
-impl<'a, 'b, T> Request for Execute<'a, 'b, T>
+impl<T> Request for Execute<'_, '_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -125,7 +125,7 @@ pub struct Auth<'u, 'p, 's> {
     pub method: crate::auth::AuthMethod,
 }
 
-impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
+impl Request for Auth<'_, '_, '_> {
     const TYPE: IProtoType = IProtoType::Auth;
     type Response = ();
 
@@ -149,7 +149,7 @@ pub struct Select<'a, T: ?Sized> {
     pub key: &'a T,
 }
 
-impl<'a, T> Request for Select<'a, T>
+impl<T> Request for Select<'_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -183,7 +183,7 @@ where
     pub value: &'a T,
 }
 
-impl<'a, T> Request for Insert<'a, T>
+impl<T> Request for Insert<'_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -210,7 +210,7 @@ where
     pub value: &'a T,
 }
 
-impl<'a, T> Request for Replace<'a, T>
+impl<T> Request for Replace<'_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {
@@ -239,7 +239,7 @@ where
     pub ops: &'a [Op],
 }
 
-impl<'a, T, Op> Request for Update<'a, T, Op>
+impl<T, Op> Request for Update<'_, T, Op>
 where
     T: ToTupleBuffer + ?Sized,
     Op: Encode,
@@ -269,7 +269,7 @@ where
     pub ops: &'a [Op],
 }
 
-impl<'a, T, Op> Request for Upsert<'a, T, Op>
+impl<T, Op> Request for Upsert<'_, T, Op>
 where
     T: ToTupleBuffer + ?Sized,
     Op: Encode,
@@ -298,7 +298,7 @@ where
     pub key: &'a T,
 }
 
-impl<'a, T> Request for Delete<'a, T>
+impl<T> Request for Delete<'_, T>
 where
     T: ToTupleBuffer + ?Sized,
 {

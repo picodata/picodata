@@ -120,9 +120,9 @@ pub fn closures() {
 }
 
 pub fn closures_lifetime() {
-    fn t<F: 'static>(f: F)
+    fn t<F>(f: F)
     where
-        F: Fn(i32, i32) -> i32,
+        F: Fn(i32, i32) -> i32 + 'static,
     {
         let lua = Lua::new();
 

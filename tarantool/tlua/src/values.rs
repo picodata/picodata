@@ -523,7 +523,7 @@ where
     }
 }
 
-impl<'a, L> Deref for StringInLua<'a, L> {
+impl<L> Deref for StringInLua<'_, L> {
     type Target = str;
 
     #[inline]
@@ -871,7 +871,7 @@ impl From<ToString> for String {
     }
 }
 
-impl<'a> From<ToString> for Cow<'a, str> {
+impl From<ToString> for Cow<'_, str> {
     fn from(other: ToString) -> Self {
         Cow::Owned(other.0)
     }

@@ -8,6 +8,7 @@
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::useless_vec)]
 #![allow(clippy::get_first)]
+#![allow(clippy::unused_unit)]
 use std::io;
 
 use serde::Deserialize;

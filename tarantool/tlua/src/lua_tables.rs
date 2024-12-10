@@ -407,7 +407,7 @@ where
     }
 }
 
-impl<'t, L, K, V> Drop for LuaTableIterator<'t, L, K, V>
+impl<L, K, V> Drop for LuaTableIterator<'_, L, K, V>
 where
     L: AsLua,
 {

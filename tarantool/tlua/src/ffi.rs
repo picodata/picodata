@@ -389,6 +389,7 @@ extern "C" {
     /// - `0`: no errors;
     /// - [`LUA_ERRSYNTAX`]: syntax error during pre-compilation;
     /// - [`LUA_ERRMEM`]: memory allocation error.
+    ///
     /// This function only loads a chunk; it does not run it.
     ///
     /// `lua_load` automatically detects whether the chunk is text or binary,
@@ -685,7 +686,9 @@ extern "C" {
     /// uninitialized. Only numbers and pointers are supported.
     /// - `l`:       Lua State
     /// - `ctypeid`: FFI's CTypeID of this cdata
+    ///
     /// See also: [`luaL_checkcdata`]
+    ///
     /// **Returns** memory associated with this cdata
     pub fn luaL_pushcdata(l: *mut lua_State, ctypeid: CTypeID) -> *mut c_void;
 
@@ -693,13 +696,16 @@ extern "C" {
     /// * `l`:       Lua State
     /// * `idx`:     stack index
     /// * `ctypeid`: FFI's CTypeID of this cdata
+    ///
     /// See also: [`luaL_pushcdata`]
+    ///
     /// **Returns** memory associated with this cdata
     pub fn luaL_checkcdata(l: *mut lua_State, idx: c_int, ctypeid: *mut CTypeID) -> *mut c_void;
 
     /// Return CTypeID (FFI) of given CDATA type
     /// `ctypename` is a C type name as string (e.g. "struct request",
     /// "uint32_t", etc.).
+    ///
     /// See also: [`luaL_pushcdata`], [`luaL_checkcdata`]
     pub fn luaL_ctypeid(l: *mut lua_State, ctypename: *const c_char) -> CTypeID;
 

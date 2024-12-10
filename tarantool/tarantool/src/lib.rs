@@ -8,6 +8,7 @@
 #![allow(clippy::needless_late_init)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::manual_unwrap_or)]
 #![allow(rustdoc::redundant_explicit_links)]
 //! Tarantool C API bindings for Rust.
 //! This library contains the following Tarantool API's:
@@ -229,7 +230,7 @@ pub mod vclock;
 /// [`Display`]), the return values read as follows:
 /// - `Ok(v)`: the stored procedure will return `v`
 /// - `Err(e)`: the stored procedure will fail and `e` will be set as the last
-/// Tarantool error (see also [`TarantoolError::last`])
+///   Tarantool error (see also [`TarantoolError::last`])
 /// ```no_run
 /// use tarantool::{error::Error, index::IteratorType::Eq, space::Space};
 ///

@@ -31,9 +31,9 @@
 //! - The state machine starts in the `initial` state.
 //! - [Conn::new()](struct.Conn.html#method.new) method changes the state to `connecting` and spawns a worker fiber.
 //! - If authentication and schema upload are required, it’s possible later on to re-enter the `fetch_schema` state
-//! from `active` if a request fails due to a schema version mismatch error, so schema reload is triggered.
+//!   from `active` if a request fails due to a schema version mismatch error, so schema reload is triggered.
 //! - [conn.close()](struct.Conn.html#method.close) method sets the state to `closed` and kills the worker. If the
-//! transport is already in the `error` state, [close()](struct.Conn.html#method.close) does nothing.
+//!   transport is already in the `error` state, [close()](struct.Conn.html#method.close) does nothing.
 //!
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)

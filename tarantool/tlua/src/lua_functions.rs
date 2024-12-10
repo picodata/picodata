@@ -33,7 +33,7 @@ use crate::{
 #[derive(Debug)]
 pub struct LuaCode<'a>(pub &'a str);
 
-impl<'c, L> Push<L> for LuaCode<'c>
+impl<L> Push<L> for LuaCode<'_>
 where
     L: AsLua,
 {
@@ -47,7 +47,7 @@ where
     }
 }
 
-impl<'c, L> PushOne<L> for LuaCode<'c> where L: AsLua {}
+impl<L> PushOne<L> for LuaCode<'_> where L: AsLua {}
 
 /// Wrapper around a `Read` object. When pushed, the content will be parsed as Lua code and turned
 /// into a function.
@@ -254,8 +254,7 @@ where
     /// Returns an error if there is an error while executing the Lua code (eg. a function call
     /// returns an error), or if the requested return type doesn't match the actual return type.
     ///
-    /// > **Note**: In order to pass parameters, see `into_call_with_args`
-    /// instead.
+    /// > **Note**: In order to pass parameters, see `into_call_with_args` instead.
     #[track_caller]
     #[inline]
     pub fn into_call<V>(self) -> Result<V, LuaError>
