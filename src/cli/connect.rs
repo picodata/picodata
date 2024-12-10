@@ -8,6 +8,7 @@ use crate::address::IprotoAddress;
 use crate::config::DEFAULT_USERNAME;
 use crate::traft::error::Error;
 use crate::util::prompt_password;
+use nix::unistd::isatty;
 
 use super::args;
 use super::console::{Command, Console, ReplError, SpecialCommand};
@@ -282,12 +283,19 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
                     }
 
                     Err(err) => match err {
-                        tarantool::network::ClientError::ErrorResponse(err) => err.to_string(),
+                        tarantool::network::ClientError::ErrorResponse(err) => {
+                            let is_terminal = isatty(0).unwrap_or(false);
+                            if !is_terminal {
+                                return Err(ReplError::Other(err.to_string()));
+                            }
+
+                            err.to_string()
+                        }
                         tarantool::network::ClientError::ConnectionClosed(_) => {
                             return Err(ReplError::Other(
-                                "Server closed the connection unexpectedly. Try to reconnect."
-                                    .into(),
-                            ))
+                                "Server unexpectedly closed the connection. Try to reconnect."
+                                    .to_string(),
+                            ));
                         }
                         e => return Err(e.into()),
                     },
@@ -305,7 +313,7 @@ pub fn main(args: args::Connect) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
         if let Err(error) = sql_repl(args) {
-            println!("{}", error);
+            eprintln!("{}", error);
             std::process::exit(1);
         }
         std::process::exit(0)

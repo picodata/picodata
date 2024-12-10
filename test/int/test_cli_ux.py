@@ -696,3 +696,68 @@ def test_picodata_version(cluster: Cluster):
     assert_starts_with(next(lines), b"picodata ")
     assert_starts_with(next(lines), b"tarantool (fork) version")
     assert_starts_with(next(lines), b"target: Linux")
+
+
+def test_admin_cli_exit_code(cluster: Cluster):
+    setup_sql = f"{cluster.data_dir}/setup.sql"
+    with open(setup_sql, "w") as f:
+        f.write(
+            """
+        CREATE USER "alice" WITH PASSWORD 'T0psecret';
+        GRANT CREATE TABLE TO "alice";
+        GRANT_SYNTAX_ERROR READ TABLE TO "alice";
+        GRANT WRITE TABLE TO "alice";
+        """
+        )
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    process = subprocess.run(
+        [i1.binary_path, "admin", f"{i1.data_dir}/admin.sock"],
+        stdin=open(setup_sql, "r"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.stderr.find("rule parsing error") != -1
+    assert process.stderr.find('GRANT_SYNTAX_ERROR READ TABLE TO "alice"') != -1
+    assert (
+        process.returncode != 0
+    ), f"Process failed with exit code {process.returncode}\n"
+
+
+def test_connect_cli_exit_code(cluster: Cluster):
+    connect_sql = f"{cluster.data_dir}/connect.sql"
+    with open(connect_sql, "w") as f:
+        f.write(
+            """
+        CREATE TABLE index (id INTEGER PRIMARY KEY, item TEXT NOT NULL);
+        SELECT_WITH_SYNTAX_ERROR * FROM index;
+        SELECT id from index;
+        """
+        )
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+    i1.create_user(with_name="andy", with_password="Testpa55")
+    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
+
+    process = subprocess.run(
+        [i1.binary_path, "admin", f"{i1.data_dir}/admin.sock"],
+        stdin=open(connect_sql, "r"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.stderr.find("rule parsing error") != -1
+    assert process.stderr.find("SELECT_WITH_SYNTAX_ERROR * FROM index") != -1
+    assert (
+        process.returncode != 0
+    ), f"Process failed with exit code {process.returncode}\n"

@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::str::from_utf8;
 use std::time::Duration;
 
+use nix::unistd::isatty;
 use rustyline::completion::{extract_word, Completer};
 use rustyline::error::ReadlineError;
 use rustyline::Context;
@@ -280,6 +281,12 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
             Command::Expression(line) => {
                 temp_client.write(&line)?;
                 let raw_response = temp_client.read()?;
+
+                let is_terminal = isatty(0).unwrap_or(false);
+                if !is_terminal && raw_response.contains("parsing error") {
+                    return Err(ReplError::Other(raw_response));
+                }
+
                 let formatted = match temp_client.current_language {
                     ConsoleLanguage::Lua => raw_response,
                     ConsoleLanguage::Sql => serde_yaml::from_str::<ResultSet>(&raw_response)
@@ -290,6 +297,7 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                             ))
                         })?
                         .to_string(),
+
                 };
 
                 console.write(&formatted);
@@ -304,7 +312,7 @@ pub fn main(args: args::Admin) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
         if let Err(err) = admin_repl(args) {
-            println!("{}", err);
+            eprintln!("{}", err);
             std::process::exit(1);
         }
         std::process::exit(0)
