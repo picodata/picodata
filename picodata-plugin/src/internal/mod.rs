@@ -50,14 +50,16 @@ pub fn set_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         // Capture a backtrace regardless of RUST_BACKTRACE and such.
         let backtrace = std::backtrace::Backtrace::force_capture();
-        let message = format!("\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic");
-        tarantool::say_crit!("{message}");
+        let message = format!("{info}\n\nbacktrace:\n{backtrace}\naborting due to panic");
+        tarantool::say_crit!("\n\n{message}");
 
         // Dump the backtrace to file for easier debugging experience.
         // In particular this is used in the integration tests.
-        _ = std::fs::write("picodata.backtrace", message);
+        let pid = std::process::id();
+        let backtrace_filename = format!("picodata-{pid}.backtrace");
+        _ = std::fs::write(&backtrace_filename, message);
         if let Ok(mut dir) = std::env::current_dir() {
-            dir.push("picodata.backtrace");
+            dir.push(backtrace_filename);
             tarantool::say_info!("dumped panic backtrace to `{}`", dir.display());
         }
 

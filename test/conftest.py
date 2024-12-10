@@ -1299,11 +1299,12 @@ class Instance:
             pass
         else:
             message = f"process exited unexpectedly, {exit_code=}"
-            bt = os.path.join(self.cwd, "picodata.backtrace")
+            pid = self.process.pid
+            bt = os.path.join(self.cwd, f"picodata-{pid}.backtrace")
             if os.path.exists(bt):
                 with open(bt, "r") as f:
                     backtrace = f.read()
-                message += "\n"
+                message += "\n\n"
                 message += backtrace
 
             raise ProcessDead(message)
