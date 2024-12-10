@@ -176,8 +176,7 @@ create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    (('DISTRIBUTED' (('BY' '(' column (',' column)* ')' ('IN' 'TIER' tier)?) | 'GLOBALLY'))?)?
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user 'WITH'? 'PASSWORD' "'" password "'"
-                   ('USING' ('CHAP-SHA1' | 'LDAP' | 'MD5'))?
+create_user    ::= 'CREATE' 'USER' ('IF' 'NOT' 'EXISTS')? user (('USING' ('LDAP')) | ('WITH'? 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'MD5')?)?))
 alter_user     ::= 'ALTER' 'USER' user
                    'WITH'? (
                        'LOGIN'
