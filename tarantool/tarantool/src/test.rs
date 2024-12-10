@@ -308,6 +308,7 @@ pub mod util {
         let guard = on_scope_exit(move || {
             crate::say_info!("killing ldap server");
             ldap_server_process.kill().unwrap();
+            ldap_server_process.wait().unwrap();
 
             // Remove the temporary directory with it's contents
             drop(tempdir);
