@@ -33,7 +33,7 @@ use crate::transaction::TransactionError;
 use crate::util::to_cstring_lossy;
 
 /// A specialized [`Result`] type for the crate
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub type TimeoutError<E> = crate::fiber::r#async::timeout::Error<E>;
 

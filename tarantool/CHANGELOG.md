@@ -5,7 +5,12 @@
 ### Added
 - `network::client::tcp::TcpStream` not supports async connection, provided with `connect_async` and `connect_timeout_async` methods
 
-### Fixes
+### Changed
+- `error::Result` type alias now has another generic parameter E, which defaults
+  to `tarantool::error::Error`, but allows this type alias to be used as a drop
+  in replacement from `std::result::Result`.
+
+### Fixed
 - `network::client::tcp::TcpStream` does not close underlying fd anymore. Now fd will be closed only when the last copy of tcp stream is dropped.
 
 ### Deprecated
