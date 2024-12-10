@@ -823,6 +823,16 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    async fn read_clone() {
+        let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
+        let cloned = stream.clone();
+        drop(cloned);
+        // Read greeting
+        let mut buf = vec![0; 128];
+        stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
     async fn read_timeout() {
         let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
         // Read greeting
@@ -855,6 +865,39 @@ mod tests {
         {
             fiber::block_on(async {
                 let mut stream = TcpStream::connect_timeout("localhost", 3302, _10_SEC).unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
+                    .await
+                    .unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
+                    .await
+                    .unwrap();
+            });
+        }
+        let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(buf, vec![1, 2, 3, 4, 5])
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn write_clone() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        // Spawn listener
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut buf = vec![];
+                <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf).unwrap();
+                sender.send(buf).unwrap();
+            }
+        });
+        // Send data
+        {
+            fiber::block_on(async {
+                let mut stream =
+                    TcpStream::connect_timeout("localhost", addr.port(), _10_SEC).unwrap();
+                let cloned = stream.clone();
+                drop(cloned);
                 timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
                     .await
                     .unwrap();
