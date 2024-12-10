@@ -50,6 +50,13 @@ impl TarantoolLogger {
     }
 }
 
+impl Default for TarantoolLogger {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Log for TarantoolLogger {
     #[inline(always)]
     fn enabled(&self, metadata: &Metadata) -> bool {

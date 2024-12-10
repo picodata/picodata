@@ -4,6 +4,7 @@
 
 ### Added
 - `network::client::tcp::TcpStream` not supports async connection, provided with `connect_async` and `connect_timeout_async` methods
+- `impl Default for log::TarantoolLogger`
 
 ### Changed
 - `error::Result` type alias now has another generic parameter E, which defaults
