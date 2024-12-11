@@ -8,7 +8,6 @@ import os
 import hashlib
 from pathlib import Path
 
-import yaml
 from conftest import (
     Cluster,
     ErrorCode,
@@ -17,7 +16,6 @@ from conftest import (
     Instance,
     ProcessDead,
     TarantoolError,
-    get_test_dir,
     log_crawler,
     assert_starts_with,
     copy_plugin_library,
@@ -314,6 +312,56 @@ def install_and_enable_plugin(
                 )
         instance.call("pico.service_append_tier", plugin, version, s, _DEFAULT_TIER)
     instance.call("pico.enable_plugin", plugin, version, timeout=timeout)
+
+
+def init_dummy_plugin(
+    cluster: Cluster,
+    plugin: str,
+    version: str,
+    *,
+    # NOTE: here we have a default value of a mutable type which could
+    # be a source of hard to debug bugs.
+    # **DO NOT** modify `services` or `migrations` within this function!
+    # See https://florimond.dev/en/posts/2018/08/python-mutable-defaults-are-the-source-of-all-evil  # noqa: E501
+    services: list[str] = [],
+    migrations: list[str] = [],
+    library_name: str = "libtestplug",
+) -> Path:
+    """Does the following:
+    - Setup --plugin-dir option for the cluster
+    - Create plugin directory <cluster-plugin-dir>/<plugin>/<version>
+    - Create manifest.yaml in that directory with provided info
+    - Copy the <library_name>.so into that directory
+
+    Returns the path to the newly created plugin directory.
+
+    Does *NOT* create migration files, you have to do it yourself.
+
+    """
+    cluster.plugin_dir = cluster.instance_dir
+    # Initialize the plugin directory
+    plugin_dir = Path(cluster.plugin_dir) / plugin / version
+    os.makedirs(plugin_dir)
+
+    # Copy plugin library
+    copy_plugin_library(cluster.binary_path, plugin_dir, library_name)
+
+    # Create manifest
+    manifest_path = plugin_dir / "manifest.yaml"
+    with open(manifest_path, "w") as f:
+        print("description: plugin for test purposes", file=f)
+        print(f"name: {plugin}", file=f)
+        print(f"version: {version}", file=f)
+        print("services:", file=f)
+        for service in services:
+            print(f"  - name: {service}", file=f)
+            print("    description:", file=f)
+            print("    default_configuration:", file=f)
+        print("migration:", file=f)
+        for migration in migrations:
+            print(f"  - {migration}", file=f)
+
+    return plugin_dir
 
 
 def test_invalid_manifest_plugin(cluster: Cluster):
@@ -911,43 +959,29 @@ def test_migration_apply_err(cluster: Cluster):
     #
     # Prepare plugin
     #
-    cluster.plugin_dir = cluster.instance_dir
-    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
-    os.makedirs(plugin_dir)
-    with open(plugin_dir / "manifest.yaml", "w") as f:
-        f.write(
-            f"""
-description: plugin for test purposes
-name: {plugin_name}
-version: 0.1.0
-services:
-migration:
-  - good.db
-  - bad.db
-""",
-        )
+    plugin_dir = init_dummy_plugin(
+        cluster, plugin_name, "0.1.0", migrations=["good.db", "bad.db"]
+    )
 
-    with open(plugin_dir / "good.db", "w") as f:
-        f.write(
-            """
+    (plugin_dir / "good.db").write_text(
+        """
 -- pico.UP
 CREATE TABLE "stuff" (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL) USING memtx DISTRIBUTED BY (id);
 
 -- pico.DOWN
 DROP TABLE "stuff";
 """,  # noqa: E501
-        )
+    )
 
-    with open(plugin_dir / "bad.db", "w") as f:
-        f.write(
-            """
+    (plugin_dir / "bad.db").write_text(
+        """
 -- pico.UP
 CREATE DATABASE everything;
 
 -- pico.DOWN
 DROP DATABASE everything;
 """,
-        )
+    )
 
     #
     # Start instance and check
@@ -970,67 +1004,39 @@ DROP DATABASE everything;
 def test_migration_next_version_apply_err(cluster: Cluster):
     plugin_name = "plugin_for_test_migration_next_version_apply_err"
 
-    #
     # Prepare plugin
-    #
-    cluster.plugin_dir = cluster.instance_dir
-    base_plugin_dir = Path(cluster.plugin_dir)
-    plugin_dir_v1 = base_plugin_dir / plugin_name / "0.1.0"
-    os.makedirs(plugin_dir_v1)
-    plugin_dir_v2 = base_plugin_dir / plugin_name / "0.2.0"
-    os.makedirs(plugin_dir_v2)
+    plugin_dir = init_dummy_plugin(
+        cluster, plugin_name, "0.1.0", migrations=["../good.db"]
+    )
+    init_dummy_plugin(
+        cluster,
+        plugin_name,
+        "0.2.0",
+        migrations=["../good.db", "../good_v2.db", "../bad.db"],
+    )
 
-    with open(plugin_dir_v1 / "manifest.yaml", "w") as f:
-        f.write(
-            f"""
-description: plugin for test purposes
-name: {plugin_name}
-version: 0.1.0
-services:
-migration:
-  - ../good.db
-""",
-        )
-
-    with open(plugin_dir_v2 / "manifest.yaml", "w") as f:
-        f.write(
-            f"""
-description: plugin for test purposes
-name: {plugin_name}
-version: 0.2.0
-services:
-migration:
-  - ../good.db
-  - ../good_v2.db
-  - ../bad.db
-""",
-        )
-
-    with open(base_plugin_dir / plugin_name / "good.db", "w") as f:
-        f.write(
-            """
+    (plugin_dir / "../good.db").write_text(
+        """
 -- pico.UP
 CREATE TABLE "stuff" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
 
 -- pico.DOWN
 DROP TABLE "stuff";
 """,  # noqa: E501
-        )
+    )
 
-    with open(base_plugin_dir / plugin_name / "good_v2.db", "w") as f:
-        f.write(
-            """
+    (plugin_dir / "../good_v2.db").write_text(
+        """
 -- pico.UP
 CREATE TABLE "should_not_exist" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
 
 -- pico.DOWN
 DROP TABLE "should_not_exist";
 """,  # noqa: E501
-        )
+    )
 
-    with open(base_plugin_dir / plugin_name / "bad.db", "w") as f:
-        f.write(
-            """
+    (plugin_dir / "../bad.db").write_text(
+        """
 -- pico.UP
 CREATE TABLE "also_should_not_exist" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
 CREATE DATABASE everything;
@@ -1039,7 +1045,7 @@ CREATE DATABASE everything;
 DROP TABLE "also_should_not_exist";
 DROP DATABASE everything;
 """,  # noqa: E501
-        )
+    )
 
     #
     # Start instance and check
@@ -2575,28 +2581,7 @@ def test_plugin_rpc_sdk_single_instance(cluster: Cluster):
 def test_panic_in_plugin(cluster: Cluster):
     plugin_name = "plugin_for_test_panic_in_plugin"
     service_name = "test_panic_in_plugin"
-
-    #
-    # Prepare plugin
-    #
-    cluster.plugin_dir = cluster.instance_dir
-    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
-    os.makedirs(plugin_dir)
-    copy_plugin_library(cluster.binary_path, str(plugin_dir))
-
-    # Create manifest
-    manifest_path = plugin_dir / "manifest.yaml"
-    manifest_path.write_text(
-        f"""
-description: plugin for test purposes
-name: {plugin_name}
-version: 0.1.0
-services:
-  - name: {service_name}
-    description:
-    default_configuration:
-"""
-    )
+    init_dummy_plugin(cluster, plugin_name, "0.1.0", services=[service_name])
 
     # Set the log configuration
     log_file = Path(cluster.instance_dir) / "test.log"
@@ -2939,7 +2924,14 @@ def test_plugin_sql_permission_denied(cluster: Cluster):
 
 
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
-    cluster.plugin_dir = os.path.abspath("test/plug_wrong_version")
+    init_dummy_plugin(
+        cluster,
+        "plug_wrong_version",
+        "0.1.0",
+        services=["testservice"],
+        library_name="libplug_wrong_version",
+    )
+
     instance = cluster.add_instance()
 
     with pytest.raises(
@@ -3022,16 +3014,14 @@ def test_set_string_values_in_config(cluster: Cluster):
         set_service_3_test_type("['1', '2']")
 
 
-MANIFEST_WITH_MIGRATION = {
-    "description": "plugin for test purposes",
-    "name": "testplug_w_migration_in_tier",
-    "version": "0.1.0",
-    "services": [],
-    "migration": ["migration.sql"],
-}
+def test_plugin_migration_placeholder_substitution(cluster: Cluster):
+    plugin = "testplug_w_migration_in_tier"
 
-
-MIGRATION_OK_IN_TIER = """
+    plugin_dir = init_dummy_plugin(
+        cluster, plugin, "0.1.0", migrations=["migration.sql"]
+    )
+    (plugin_dir / "migration.sql").write_text(
+        """
 -- pico.UP
 
 CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
@@ -3041,29 +3031,8 @@ DISTRIBUTED BY ("id") IN TIER @_plugin_config.stringy_string;
 -- pico.DOWN
 DROP TABLE author;
 """
+    )
 
-MIGRATION_REF_MISSING_VAR = """
--- pico.UP
-
-CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
-USING memtx
-DISTRIBUTED BY ("id") IN TIER @_plugin_config.bubba;
-
--- pico.DOWN
-DROP TABLE author;
-"""
-
-
-def dump_manifest_and_migration(migration: str, to: Path):
-    manifest_path = to / "manifest.yaml"
-    migration_path = to / "migration.sql"
-
-    migration_path.write_text(migration)
-    manifest_path.write_text(yaml.safe_dump(MANIFEST_WITH_MIGRATION))
-
-
-def test_plugin_migration_placeholder_substitution(cluster: Cluster):
-    test_dir = get_test_dir()
     cluster.set_config_file(
         yaml="""
         cluster:
@@ -3075,11 +3044,6 @@ def test_plugin_migration_placeholder_substitution(cluster: Cluster):
     )
 
     i1 = cluster.add_instance(tier="nondefault")
-
-    plugin = "testplug_w_migration_in_tier"
-
-    plug_path = test_dir / "testplug" / plugin / "0.1.0"
-    dump_manifest_and_migration(MIGRATION_OK_IN_TIER, plug_path)
 
     # happy path, valid migration, everything is ok
     i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
@@ -3106,7 +3070,18 @@ def test_plugin_migration_placeholder_substitution(cluster: Cluster):
         assert i1.sql("SELECT * FROM author") == []
 
     # reference missing variable
-    dump_manifest_and_migration(MIGRATION_REF_MISSING_VAR, plug_path)
+    (plugin_dir / "migration.sql").write_text(
+        """
+-- pico.UP
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY ("id") IN TIER @_plugin_config.bubba;
+
+-- pico.DOWN
+DROP TABLE author;
+"""
+    )
     i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
 
     with pytest.raises(

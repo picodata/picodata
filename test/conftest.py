@@ -2263,17 +2263,10 @@ def binary_path() -> str:
         f"{test_dir}/testplug/testplug_w_migration_2/0.1.0",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken",
-        f"{test_dir}/testplug/testplug_w_migration_in_tier/0.1.0",
         f"{test_dir}/testplug/testplug_sdk/0.1.0",
     ]
     for destination in destinations:
         copy_plugin_library(binary_path, destination)
-
-    copy_plugin_library(
-        binary_path,
-        f"{test_dir}/plug_wrong_version/plug_wrong_version/0.1.0",
-        "libplug_wrong_version",
-    )
 
     return binary_path
 
