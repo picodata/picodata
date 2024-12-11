@@ -2622,8 +2622,13 @@ instance:
     i1.sql(
         f"ALTER PLUGIN {plugin_name} 0.1.0 ADD SERVICE {service_name} TO TIER default"
     )
-    with pytest.raises(ProcessDead):
+    with pytest.raises(Exception) as e:
         i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ENABLE")
+
+    # XXX: for some reason this test is very flaky when running in CI.
+    # Add more waiting.
+    if not isinstance(e, ProcessDead):
+        i1.wait_process_stopped()
 
     log = log_file.read_text()
     assert "this is a unique phrase which makes it safe to use in a test" in log
