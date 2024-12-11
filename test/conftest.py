@@ -1290,10 +1290,9 @@ class Instance:
             # Note: The process may have crashed due to the RPC, but there may
             # be a race between when the python connector receives the
             # connection reset error and when the OS will finish cleaning up
-            # the process (especially considering we have a supervisor
-            # process). So we introduce a tiny timeout here (which may still not
+            # the process. So we introduce a tiny timeout here (which may still not
             # be enough in every case).
-            exit_code = self.process.wait(timeout=0.1)  # type: ignore
+            exit_code = self.process.wait(timeout=1)  # type: ignore
         except subprocess.TimeoutExpired:
             # it's fine, the process is still running
             pass
