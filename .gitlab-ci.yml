@@ -530,12 +530,12 @@ docker-compose:
   tags:
     - picodata-shell
   rules:
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    - if: ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
       changes:
         compare_to: *main-branch
         paths:
           - helm/docker-compose.yml
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
       when: on_success
     - when: manual
       allow_failure: true
@@ -751,9 +751,9 @@ stress_tests:
 
 store-stress-results-for-main:
   rules:
-    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
+    - if: ($CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   stage: stress-test
-  image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG  
+  image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
   script:
     - |
       tar -czvf sbroad-main-test-results.tgz -C sbroad/sbroad-cartridge/stress-test/ .
@@ -767,7 +767,9 @@ store-stress-results-for-main:
 diff_stress-results:
   image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
   stage: stress-test
-  when: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
   variables:
     FARCH: "sbroad-main-test-results.tgz"
   script:
