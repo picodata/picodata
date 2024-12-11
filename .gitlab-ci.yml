@@ -770,6 +770,7 @@ diff_stress-results:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
       when: manual
+      allow_failure: true
   variables:
     FARCH: "sbroad-main-test-results.tgz"
   script:
