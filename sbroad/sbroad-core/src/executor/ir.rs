@@ -814,6 +814,7 @@ impl ExecutionPlan {
                 | NodeOwned::Ddl { .. }
                 | NodeOwned::Acl { .. }
                 | NodeOwned::Plugin { .. }
+                | NodeOwned::Deallocate { .. }
                 | NodeOwned::Block { .. } => {
                     panic!("Unexpected node in `take_subtree`: {node:?}")
                 }

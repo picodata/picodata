@@ -8,6 +8,8 @@ use node::ddl::{Ddl, MutDdl};
 use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
 use node::{Invalid, NodeAligned};
+use operator::Arithmetic;
+use relation::{Table, Type};
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
@@ -15,9 +17,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 use tree::traversal::LevelNode;
-
-use operator::Arithmetic;
-use relation::{Table, Type};
 
 use self::parameters::Parameters;
 use self::relation::Relations;
@@ -104,6 +103,7 @@ impl Nodes {
                 Node32::Union(un) => Node::Relational(Relational::Union(un)),
                 Node32::UnionAll(union_all) => Node::Relational(Relational::UnionAll(union_all)),
                 Node32::Values(values) => Node::Relational(Relational::Values(values)),
+                Node32::Deallocate(deallocate) => Node::Deallocate(deallocate),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
@@ -229,6 +229,7 @@ impl Nodes {
                         MutNode::Relational(MutRelational::SelectWithoutScan(select))
                     }
                     Node32::Values(values) => MutNode::Relational(MutRelational::Values(values)),
+                    Node32::Deallocate(deallocate) => MutNode::Deallocate(deallocate),
                 }),
             ArenaType::Arena64 => self
                 .arena64
@@ -1311,6 +1312,15 @@ impl Plan {
         Ok(matches!(self.get_node(top_id)?, Node::Plugin(_)))
     }
 
+    /// Checks that plan is a deallocate query.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_deallocate(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        Ok(matches!(self.get_node(top_id)?, Node::Deallocate(_)))
+    }
+
     /// Set top node of plan
     /// # Errors
     /// - top node doesn't exist in the plan.
@@ -1335,7 +1345,8 @@ impl Plan {
             | Node::Invalid(..)
             | Node::Acl(..)
             | Node::Block(..)
-            | Node::Plugin(..) => Err(SbroadError::Invalid(
+            | Node::Plugin(..)
+            | Node::Deallocate(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("node is not Relational type: {node:?}")),
             )),
@@ -1356,6 +1367,7 @@ impl Plan {
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
             | MutNode::Plugin(..)
+            | MutNode::Deallocate(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some("Node is not relational".into()),
@@ -1415,6 +1427,7 @@ impl Plan {
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
             | MutNode::Plugin(..)
+            | MutNode::Deallocate(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(

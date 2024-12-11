@@ -159,7 +159,11 @@ where
 
         if plan.is_block()? {
             plan.bind_params(params)?;
-        } else if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
+        } else if !plan.is_ddl()?
+            && !plan.is_acl()?
+            && !plan.is_plugin()?
+            && !plan.is_deallocate()?
+        {
             plan.bind_params(params)?;
             plan.apply_options()?;
             plan.optimize()?;
@@ -396,6 +400,14 @@ where
     /// - Plan is invalid
     pub fn is_plugin(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_plugin()
+    }
+
+    /// Checks that query is Deallocate.
+    ///
+    /// # Errors
+    /// - Plan is invalid
+    pub fn is_deallocate(&self) -> Result<bool, SbroadError> {
+        self.exec_plan.get_ir_plan().is_deallocate()
     }
 
     /// Checks that query is an empty query.

@@ -767,7 +767,11 @@ impl<'p> SyntaxPlan<'p> {
             .get_node(id)
             .expect("node {id} must exist in the plan");
         match node {
-            Node::Plugin(..) | Node::Ddl(..) | Node::Acl(..) | Node::Block(..) => {
+            Node::Deallocate(..)
+            | Node::Plugin(..)
+            | Node::Ddl(..)
+            | Node::Acl(..)
+            | Node::Block(..) => {
                 panic!("Node {node:?} is not supported in the syntax plan")
             }
             Node::Invalid(..) | Node::Parameter(..) => {

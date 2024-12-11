@@ -3,6 +3,7 @@
 //! Parses an SQL statement to the abstract syntax tree (AST)
 //! and builds the intermediate representation (IR).
 
+use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::{Reference, ReferenceAsteriskSource};
 use ahash::{AHashMap, AHashSet};
 use core::panic;
@@ -1028,6 +1029,15 @@ fn parse_set_param(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<SetPara
         param_value: param_value.unwrap(),
         timeout: get_default_timeout(),
     })
+}
+
+fn parse_deallocate(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<Deallocate, SbroadError> {
+    let param_name = if let Some(identifier_node_id) = node.children.first() {
+        Some(parse_identifier(ast, *identifier_node_id)?)
+    } else {
+        None
+    };
+    Ok(Deallocate { name: param_name })
 }
 
 fn parse_select_full(
@@ -4589,6 +4599,11 @@ impl AbstractSyntaxTree {
                         timeout: get_default_timeout(),
                     };
                     let plan_id = plan.nodes.push(set_transaction_node.into());
+                    map.add(id, plan_id);
+                }
+                Rule::Deallocate => {
+                    let deallocate = parse_deallocate(self, node)?;
+                    let plan_id = plan.nodes.push(deallocate.into());
                     map.add(id, plan_id);
                 }
                 _ => {}

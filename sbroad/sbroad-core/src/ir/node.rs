@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use acl::{Acl, AclOwned, MutAcl};
 use block::{Block, BlockOwned, MutBlock};
 use ddl::{Ddl, DdlOwned, MutDdl};
+use deallocate::Deallocate;
 use expression::{ExprOwned, Expression, MutExpression};
 use relational::{MutRelational, RelOwned, Relational};
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,7 @@ use plugin::{
 pub mod acl;
 pub mod block;
 pub mod ddl;
+pub mod deallocate;
 pub mod expression;
 pub mod plugin;
 pub mod relational;
@@ -1061,6 +1063,7 @@ pub enum Node32 {
     SelectWithoutScan(SelectWithoutScan),
     UnionAll(UnionAll),
     Values(Values),
+    Deallocate(Deallocate),
 }
 
 impl Node32 {
@@ -1089,6 +1092,7 @@ impl Node32 {
             Node32::Union(un) => NodeOwned::Relational(RelOwned::Union(un)),
             Node32::UnionAll(union_all) => NodeOwned::Relational(RelOwned::UnionAll(union_all)),
             Node32::Values(values) => NodeOwned::Relational(RelOwned::Values(values)),
+            Node32::Deallocate(deallocate) => NodeOwned::Deallocate(deallocate),
         }
     }
 }
@@ -1321,6 +1325,7 @@ pub enum Node<'nodes> {
     Parameter(&'nodes Parameter),
     Invalid(&'nodes Invalid),
     Plugin(Plugin<'nodes>),
+    Deallocate(&'nodes Deallocate),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -1334,6 +1339,7 @@ pub enum MutNode<'nodes> {
     Parameter(&'nodes mut Parameter),
     Invalid(&'nodes mut Invalid),
     Plugin(MutPlugin<'nodes>),
+    Deallocate(&'nodes mut Deallocate),
 }
 
 impl Node<'_> {
@@ -1348,6 +1354,7 @@ impl Node<'_> {
             Node::Parameter(param) => NodeOwned::Parameter((*param).clone()),
             Node::Invalid(inv) => NodeOwned::Invalid((*inv).clone()),
             Node::Plugin(plugin) => NodeOwned::Plugin(plugin.get_plugin_owned()),
+            Node::Deallocate(deallocate) => NodeOwned::Deallocate((*deallocate).clone()),
         }
     }
 }
@@ -1364,6 +1371,7 @@ pub enum NodeOwned {
     Parameter(Parameter),
     Invalid(Invalid),
     Plugin(PluginOwned),
+    Deallocate(Deallocate),
 }
 
 impl From<NodeOwned> for NodeAligned {
@@ -1377,6 +1385,7 @@ impl From<NodeOwned> for NodeAligned {
             NodeOwned::Parameter(param) => param.into(),
             NodeOwned::Relational(rel) => rel.into(),
             NodeOwned::Plugin(p) => p.into(),
+            NodeOwned::Deallocate(d) => d.into(),
         }
     }
 }

@@ -174,6 +174,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                 | Node::Relational(_)
                 | Node::Invalid(_)
                 | Node::Plugin(_)
+                | Node::Deallocate(_)
                 | Node::Parameter(_) => None,
             }
         }

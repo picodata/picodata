@@ -43,6 +43,10 @@ impl Plan {
                 Entity::Node,
                 Some("Plugin node has no type".to_smolstr()),
             )),
+            Node::Deallocate(_) => Err(SbroadError::Invalid(
+                Entity::Node,
+                Some("Deallocate node has no type".to_smolstr()),
+            )),
         }
     }
 }

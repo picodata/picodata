@@ -206,7 +206,8 @@ fn subtree_next<'plan>(
             | Node::Ddl(..)
             | Node::Acl(..)
             | Node::Block(..)
-            | Node::Plugin(..) => None,
+            | Node::Plugin(..)
+            | Node::Deallocate(..) => None,
             Node::Expression(expr) => match expr {
                 Expression::Alias { .. }
                 | Expression::ExprInParentheses { .. }

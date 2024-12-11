@@ -345,6 +345,15 @@ impl ExecutionPlan {
                                 Some("Plugin are not supported in the generated SQL".into()),
                             ));
                         }
+                        Node::Deallocate(_) => {
+                            return Err(SbroadError::Unsupported(
+                                Entity::Node,
+                                Some(
+                                    "Deallocate nodes are not supported in the generated SQL"
+                                        .into(),
+                                ),
+                            ));
+                        }
                         Node::Relational(rel) => match rel {
                             Relational::Except { .. } => sql.push_str("EXCEPT"),
                             Relational::GroupBy { .. } => sql.push_str("GROUP BY"),

@@ -37,6 +37,7 @@ pub enum QueryType {
     Dql = 3,
     Explain = 4,
     Empty = 5,
+    Deallocate = 7,
 }
 
 #[derive(Clone, Debug, Default, Deserialize_repr, Serialize_repr)]
@@ -55,6 +56,8 @@ pub enum CommandTag {
     DropProcedure = 15,
     DropRole = 3,
     DropTable = 4,
+    Deallocate = 48,
+    DeallocateAll = 49,
     Delete = 5,
     DisablePlugin = 33,
     DropIndex = 19,
@@ -87,6 +90,8 @@ impl CommandTag {
             Self::CreateRole => "CREATE ROLE",
             Self::CreateTable => "CREATE TABLE",
             Self::CreateIndex => "CREATE INDEX",
+            Self::Deallocate => "DEALLOCATE",
+            Self::DeallocateAll => "DEALLOCATE ALL",
             Self::DropRole => "DROP ROLE",
             Self::DropTable => "DROP TABLE",
             Self::DropIndex => "DROP INDEX",
@@ -159,6 +164,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CallProcedure => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
+            CommandTag::Deallocate | CommandTag::DeallocateAll => QueryType::Deallocate,
             CommandTag::EmptyQuery => QueryType::Empty,
         }
     }
@@ -207,6 +213,12 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Plugin::RemoveServiceFromTier { .. } => Ok(CommandTag::RemoveTier),
                 Plugin::ChangeConfig { .. } => Ok(CommandTag::ChangeConfig),
             },
+
+            Node::Deallocate(deallocate) => match deallocate.name {
+                Some(_) => Ok(CommandTag::Deallocate),
+                None => Ok(CommandTag::DeallocateAll),
+            },
+
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),
                 Relational::Insert { .. } => Ok(CommandTag::Insert),
@@ -379,7 +391,7 @@ impl Describe {
         };
         let query_type = command_tag.clone().into();
         match query_type {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => {
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Deallocate => {
                 Ok(Describe::default().with_command_tag(command_tag))
             }
             QueryType::Dql => Ok(Describe::default()
@@ -404,7 +416,11 @@ impl Describe {
 
     pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Empty => None,
+            QueryType::Acl
+            | QueryType::Ddl
+            | QueryType::Dml
+            | QueryType::Deallocate
+            | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let row_description = self
                     .metadata
@@ -487,7 +503,11 @@ impl PortalDescribe {
 impl PortalDescribe {
     pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Empty => None,
+            QueryType::Acl
+            | QueryType::Ddl
+            | QueryType::Dml
+            | QueryType::Deallocate
+            | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let metadata = &self.describe.metadata;
                 let output_format = &self.output_format;

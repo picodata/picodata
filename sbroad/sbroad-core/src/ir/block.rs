@@ -22,6 +22,7 @@ impl Plan {
             | Node::Acl(..)
             | Node::Invalid(..)
             | Node::Plugin(_)
+            | Node::Deallocate(..)
             | Node::Parameter(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(
@@ -45,6 +46,7 @@ impl Plan {
             | MutNode::Acl(..)
             | MutNode::Invalid(..)
             | MutNode::Plugin(_)
+            | MutNode::Deallocate(..)
             | MutNode::Parameter(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(

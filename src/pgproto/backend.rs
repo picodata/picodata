@@ -137,12 +137,17 @@ pub fn bind(
         plan.raw_options = apply_default_options(&plan.raw_options, &default_options);
     }
 
-    if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
+    if !plan.is_empty()
+        && !plan.is_ddl()?
+        && !plan.is_acl()?
+        && !plan.is_plugin()?
+        && !plan.is_deallocate()?
+    {
         plan.bind_params(params)?;
         plan.apply_options()?;
         plan.optimize()?;
     }
-    let portal = Portal::new(plan, statement.clone(), result_format)?;
+    let portal = Portal::new(plan, statement.clone(), result_format, client_id)?;
 
     PG_PORTALS.with(|storage| {
         storage
@@ -223,6 +228,19 @@ pub fn close_client_statements(id: ClientId) {
 
 pub fn close_client_portals(id: ClientId) {
     PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
+}
+
+pub fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
+    // In contrast to closing, deallocation can cause an error in PG.
+    PG_STATEMENTS.with(|storage| {
+        storage
+            .borrow_mut()
+            .remove(&(id, name.into()))
+            .ok_or_else(|| {
+                PgError::Other(format!("prepared statement {} does not exist.", name).into())
+            })
+    })?;
+    Ok(())
 }
 
 /// Each postgres client uses its own backend to handle incoming messages.

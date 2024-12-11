@@ -1,4 +1,5 @@
 use super::{
+    close_client_statements, deallocate_statement,
     describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
     result::{ExecuteResult, Rows},
 };
@@ -379,6 +380,7 @@ pub struct Portal {
     statement: Statement,
     describe: PortalDescribe,
     state: PortalState,
+    id: ClientId,
 }
 
 #[derive(Debug, Default)]
@@ -438,6 +440,7 @@ impl Portal {
         plan: Plan,
         statement: Statement,
         output_format: Vec<FieldFormat>,
+        id: ClientId,
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
@@ -446,6 +449,7 @@ impl Portal {
             statement,
             describe,
             state: PortalState::NotStarted,
+            id,
         })
     }
 
@@ -510,6 +514,18 @@ impl Portal {
                     .map(|row| mp_row_into_pg_row(row, metadata))
                     .collect::<PgResult<Vec<Vec<_>>>>()?;
                 PortalState::StreamingRows(pg_rows.into_iter())
+            }
+            QueryType::Deallocate => {
+                let tag = self.describe().command_tag();
+                let ir_plan = self.statement().plan();
+                let top_id = ir_plan.get_top()?;
+                let deallocate = ir_plan.get_deallocate_node(top_id)?;
+                let name = deallocate.name.as_ref().map(|name| name.as_str());
+                match name {
+                    Some(name) => deallocate_statement(self.id, name)?,
+                    None => close_client_statements(self.id),
+                };
+                PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
             }
             QueryType::Empty => PortalState::ResultReady(ExecuteResult::Empty),
         };

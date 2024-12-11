@@ -5,6 +5,8 @@ from conftest import Postgres
 from decimal import Decimal
 import psycopg
 from psycopg.pq import ExecStatus
+import pg8000.native as pg2  # type: ignore
+from pg8000.exceptions import DatabaseError  # type: ignore
 
 
 def test_simple_query_flow_errors(postgres: Postgres):
@@ -224,3 +226,64 @@ def test_empty_queries(postgres: Postgres):
     cur = conn.execute(" ; ", prepare=False)
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
+
+
+def test_deallocate(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    os.environ["PGSSLMODE"] = "disable"
+    conn = pg2.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
+    conn.autocommit = True
+
+    # Remove unprepared statement
+    statement_name = "not_existing_name"
+    with pytest.raises(
+        DatabaseError, match=f"prepared statement {statement_name} does not exist."
+    ):
+        conn.run(f"DEALLOCATE {statement_name}")
+
+    # Remove statement with .close()
+    ps = conn.prepare("SELECT 1")
+    ps.run()
+
+    ps.close()
+
+    # run a closed statement
+    with pytest.raises(DatabaseError, match="Couldn't find statement"):
+        ps.run()
+
+    # Remove statement with DEALLOCATE statement_name
+    ps = conn.prepare("SELECT 1")
+    ps.run()
+
+    # Decode the binary name to a string
+    statement_name = ps.name_bin.decode("utf-8").strip("\x00")
+    # Use the decoded name in the DEALLOCATE statement
+    conn.run(f"DEALLOCATE {statement_name}")
+
+    # run a closed statement
+    with pytest.raises(DatabaseError, match="Couldn't find statement"):
+        ps.run()
+
+    # Remove statements with DEALLOCATE ALL
+    ps1 = conn.prepare("SELECT 1")
+    ps1.run()
+
+    ps2 = conn.prepare("SELECT 1")
+    ps2.run()
+
+    conn.run("DEALLOCATE ALL")
+
+    # run a closed statement1
+    with pytest.raises(DatabaseError, match="Couldn't find statement"):
+        ps1.run()
+
+    # run a closed statement2
+    with pytest.raises(DatabaseError, match="Couldn't find statement"):
+        ps2.run()
+
+    conn.close()
