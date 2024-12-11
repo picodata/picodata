@@ -66,8 +66,10 @@ See https://github.com/picodata/brod for example usage.
 
 ### Features
 
-- `net_box` - Enables protocol implementation (enabled by default)
-- `schema` - Enables schema manipulation utils (WIP as of now)
+- `net_box` - Enables IPROTO fiber aware client (enabled by default)
+- `network_client` - Enables a second implementation of IPROTO fiber aware client but with Rust async support (enabled by default)
+- `picodata` - Enables support for custom features added in picodata's fork of tarantool
+- `tokio_components` - Enables support for interfacing with tokio based logic through cbus
 
 ### Stored procedures
 
