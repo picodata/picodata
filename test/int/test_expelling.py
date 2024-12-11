@@ -203,7 +203,7 @@ cluster:
     )
 
     # Update the fields on the object
-    storage5.instance_info()
+    Retriable().call(storage5.instance_info)
     # Instance is added to a new replicaset because 'r3' is not yet avaliable
     assert storage5.replicaset_name == "r4"
 
