@@ -537,6 +537,10 @@ pub struct Admin {
     #[clap(value_name = "PATH")]
     /// Unix socket path to connect.
     pub socket_path: String,
+
+    #[clap(long = "ignore-errors")]
+    /// Flag to continue execution despite invalid queries being sent in non-interactive mode.
+    pub ignore_errors: bool,
 }
 
 impl Admin {

@@ -22,6 +22,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - String cells are now output without double quotes during SELECT.
 
+- `picodata connect` and `picodata admin` return a non-zero exit code for file inputs with errors.
+
 - `picodata --version` now provides verbose output, including the build type (static or dynamic) and the build configuration (release or debug)
 
 ### Configuration

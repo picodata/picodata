@@ -283,7 +283,8 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                 let raw_response = temp_client.read()?;
 
                 let is_terminal = isatty(0).unwrap_or(false);
-                if !is_terminal && raw_response.contains("parsing error") {
+                // In error responses, '- null' always appears at the top of the message.
+                if !is_terminal && !args.ignore_errors && raw_response.contains("- null\n") {
                     return Err(ReplError::Other(raw_response));
                 }
 
@@ -297,7 +298,6 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                             ))
                         })?
                         .to_string(),
-
                 };
 
                 console.write(&formatted);

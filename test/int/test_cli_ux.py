@@ -699,6 +699,7 @@ def test_picodata_version(cluster: Cluster):
 
 
 def test_admin_cli_exit_code(cluster: Cluster):
+    # Test the exit code for SQL statements with syntax errors
     setup_sql = f"{cluster.data_dir}/setup.sql"
     with open(setup_sql, "w") as f:
         f.write(
@@ -723,8 +724,62 @@ def test_admin_cli_exit_code(cluster: Cluster):
         timeout=CLI_TIMEOUT,
     )
 
-    assert process.stderr.find("rule parsing error") != -1
+    assert process.stderr.find("- null\n") != -1
     assert process.stderr.find('GRANT_SYNTAX_ERROR READ TABLE TO "alice"') != -1
+    assert (
+        process.returncode != 0
+    ), f"Process failed with exit code {process.returncode}\n"
+
+    # Test the exit code when a duplicate values error occurs
+    insert_sql = f"{cluster.data_dir}/insert.sql"
+    with open(insert_sql, "w") as f:
+        f.write(
+            """
+        CREATE TABLE ad_warehouse (id INTEGER PRIMARY KEY);
+        INSERT INTO ad_warehouse VALUES(1);
+        INSERT INTO ad_warehouse VALUES(1);
+        """
+        )
+
+    i2 = cluster.add_instance(wait_online=False)
+    i2.start()
+    i2.wait_online()
+
+    process = subprocess.run(
+        [i2.binary_path, "admin", f"{i2.data_dir}/admin.sock"],
+        stdin=open(insert_sql, "r"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.stderr.find("- null\n") != -1
+    assert process.stderr.find("transaction: RolledBack") != -1
+    assert (
+        process.returncode != 0
+    ), f"Process failed with exit code {process.returncode}\n"
+
+    # Test the exit code when attempting to drop non-existent plugins
+    plugin_sql = f"{cluster.data_dir}/plugin.sql"
+    with open(plugin_sql, "w") as f:
+        f.write("DROP PLUGIN weather_cache 0.1.0;")
+
+    i3 = cluster.add_instance(wait_online=False)
+    i3.start()
+    i3.wait_online()
+
+    process = subprocess.run(
+        [i3.binary_path, "admin", f"{i3.data_dir}/admin.sock"],
+        stdin=open(plugin_sql, "r"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.stderr.find("- null\n") != -1
+    assert process.stderr.find("no such plugin") != -1
     assert (
         process.returncode != 0
     ), f"Process failed with exit code {process.returncode}\n"
@@ -760,4 +815,35 @@ def test_connect_cli_exit_code(cluster: Cluster):
     assert process.stderr.find("SELECT_WITH_SYNTAX_ERROR * FROM index") != -1
     assert (
         process.returncode != 0
+    ), f"Process failed with exit code {process.returncode}\n"
+
+
+def test_admin_cli_with_ignore_errors(cluster: Cluster):
+    setup_sql = f"{cluster.data_dir}/setup.sql"
+    with open(setup_sql, "w") as f:
+        f.write(
+            """
+        CREATE USER "alice" WITH PASSWORD 'T0psecret';
+        GRANT_SYNTAX_ERROR READ TABLE TO "alice";
+        GRANT WRITE TABLE TO "alice";
+        """
+        )
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    process = subprocess.run(
+        [i1.binary_path, "admin", f"{i1.data_dir}/admin.sock", "--ignore-errors"],
+        stdin=open(setup_sql, "r"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.stdout.find("rule parsing error") != -1
+    assert process.stdout.find('GRANT_SYNTAX_ERROR READ TABLE TO "alice"') != -1
+    assert (
+        process.returncode == 0
     ), f"Process failed with exit code {process.returncode}\n"
