@@ -64,6 +64,10 @@ to 2 and 3.
 - It's no longer possible to execute DML queries for tables that are not operable
 - Fixed panic on user/role creation when max user number was exceeded
 
+- `picodata expel` used to finish before the instance got finally expelled.
+  Now it will block until the instance is completely expelled, or the timeout
+  is exceeded.
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration

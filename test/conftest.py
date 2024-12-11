@@ -449,6 +449,19 @@ class NotALeader(Exception):
     pass
 
 
+class CommandFailed(Exception):
+    def __init__(self, stdout, stderr):
+        self.stdout = maybe_decode_utf8(stdout)
+        self.stderr = maybe_decode_utf8(stderr)
+
+
+def maybe_decode_utf8(s: bytes) -> str | bytes:
+    try:
+        return s.decode()
+    except UnicodeDecodeError:
+        return s
+
+
 class Retriable:
     """A utility class for handling retries.
 
@@ -1890,6 +1903,7 @@ class Cluster:
         self,
         target: Instance,
         peer: Instance | None = None,
+        timeout: int = 10,
     ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
@@ -1903,16 +1917,20 @@ class Cluster:
             "--cluster-name", target.cluster_name or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",
+            "--timeout", str(timeout),
             target_uuid,
         ]
         # fmt: on
 
         print(f"executing: {command}")
-        rc = subprocess.call(
-            command,
-            stdin=subprocess.DEVNULL,
-        )
-        assert rc == 0
+        try:
+            subprocess.check_output(
+                command,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as e:
+            raise CommandFailed(e.stdout, e.stderr) from e
 
     def raft_wait_index(self, index: int, timeout: float = 10):
         """

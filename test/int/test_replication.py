@@ -1,9 +1,11 @@
 import time
+import pytest
 
 from conftest import (
     Cluster,
     Instance,
     Retriable,
+    CommandFailed,
 )
 
 
@@ -270,7 +272,9 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     i1.promote_or_fail()
 
     # Initiate master switchover by expelling i4.
-    cluster.expel(i4)
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(i4, timeout=1)
+    assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Wait until governor switches the replicaset master from i4 to i5
     # and tries to reconfigure replication between them which will require i5 to synchronize first.
@@ -333,7 +337,9 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i1.promote_or_fail()
 
     # Initiate master switchover by expelling i4.
-    cluster.expel(i4)
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(i4, timeout=1)
+    assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Wait until governor switches the replicaset master from i4 to i5
     # and tries to reconfigure replication between them which will require i5 to synchronize first.

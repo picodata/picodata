@@ -161,7 +161,7 @@ pub fn determine_credentials_and_connect(
     user: Option<&str>,
     password_file: Option<&str>,
     auth_method: AuthMethod,
-    timeout: u64,
+    timeout: Duration,
 ) -> Result<(Client, String), Error> {
     let user = if let Some(user) = &address.user {
         user
@@ -184,7 +184,7 @@ pub fn determine_credentials_and_connect(
     let mut config = Config::default();
     config.creds = Some((user.into(), password));
     config.auth_method = auth_method;
-    config.connect_timeout = Some(Duration::from_secs(timeout));
+    config.connect_timeout = Some(timeout);
 
     let port = match address.port.parse::<u16>() {
         Ok(port) => port,
@@ -208,7 +208,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         Some(&args.user),
         args.password_file.as_deref(),
         args.auth_method,
-        args.timeout,
+        Duration::from_secs(args.timeout),
     )
     .map_err(|err| ReplError::Other(format!("Connection Error. Try to reconnect: {}", err)))?;
 

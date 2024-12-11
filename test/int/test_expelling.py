@@ -1,13 +1,14 @@
 import pytest
 import sys
 import pexpect  # type: ignore
-from conftest import CLI_TIMEOUT, Cluster, Instance, Retriable, log_crawler
-
-
-@pytest.fixture
-def cluster3(cluster: Cluster):
-    cluster.deploy(instance_count=3)
-    return cluster
+from conftest import (
+    CLI_TIMEOUT,
+    Cluster,
+    Instance,
+    Retriable,
+    log_crawler,
+    CommandFailed,
+)
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
@@ -22,19 +23,19 @@ def assert_voters(voters: list[Instance], instance: Instance):
     assert sorted(actual_voters) == sorted(expected_voters)
 
 
-def test_expel_follower(cluster3: Cluster):
+def test_expel_follower(cluster: Cluster):
     # Scenario: expel a Follower instance by command to Leader
     #   Given a cluster
     #   When a Follower instance expelled from the cluster
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
-    i1, i2, i3 = cluster3.instances
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster3.expel(i3, i1)
+    cluster.expel(i3, i1)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
@@ -47,19 +48,19 @@ def test_expel_follower(cluster3: Cluster):
     assert lc.matched
 
 
-def test_expel_leader(cluster3: Cluster):
+def test_expel_leader(cluster: Cluster):
     # Scenario: expel a Leader instance by command to itself
     #   Given a cluster
     #   When a Leader instance expelled from the cluster
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
-    i1, i2, i3 = cluster3.instances
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i1.assert_raft_status("Leader")
 
-    cluster3.expel(i1)
+    cluster.expel(i1)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i1, i2))
     Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
@@ -72,19 +73,19 @@ def test_expel_leader(cluster3: Cluster):
     assert lc.matched
 
 
-def test_expel_by_follower(cluster3: Cluster):
+def test_expel_by_follower(cluster: Cluster):
     # Scenario: expel an instance by command to a Follower
     #   Given a cluster
     #   When instance which is not a Leader receives expel CLI command
     #   Then expelling instance is expelled
 
-    i1, i2, i3 = cluster3.instances
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster3.expel(i3, i2)
+    cluster.expel(i3, i2)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
@@ -175,13 +176,23 @@ cluster:
     cluster.expel(storage2, peer=leader)
     leader.wait_governor_status("idle", old_step_counter=counter)
 
+    # Check `picodata expel` idempotency
+    cluster.expel(storage2, peer=leader, timeout=1)
+
     # Add another instance, it should be assigned to the no longer filled replicaset
     storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
     assert storage4.replicaset_name == "r2"
 
     # Attempt to expel an offline replicaset
     storage3.terminate()
-    cluster.expel(storage3, peer=leader)
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage3, peer=leader, timeout=1)
+    assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
+
+    # Check `picodata expel` idempotency
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage3, peer=leader, timeout=1)
+    assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Offline replicasets aren't allowed to be expelled,
     # so the cluster is blocked attempting to rebalance

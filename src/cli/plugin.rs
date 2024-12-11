@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{collections::HashMap, fs::read_to_string};
 
 use crate::{
@@ -88,6 +89,8 @@ fn main_impl(args: Plugin) -> Result<(), ReplError> {
                 service_names,
                 password_file,
             } = cfg;
+            // FIXME: should log a warning that the username specified by user
+            // is ignored
             address.user = None; // ignore username, we will connect as `pico_service`
             let password_file = password_file.as_ref().and_then(|path| path.to_str());
 
@@ -95,12 +98,16 @@ fn main_impl(args: Plugin) -> Result<(), ReplError> {
             let config_values: ConfigRepr = serde_yaml::from_str(&config_raw)
                 .map_err(|err| ReplError::Other(err.to_string()))?;
 
+            // FIXME: there should be a --timeout commandline parameter for this
+            // <https://git.picodata.io/core/picodata/-/issues/1234>
+            let timeout = Duration::from_secs(10);
+
             let (client, _) = determine_credentials_and_connect(
                 &address,
                 Some(PICO_SERVICE_USER_NAME),
                 password_file,
                 AuthMethod::ChapSha1,
-                10, /* timeout */
+                timeout,
             )
             .map_err(|err| ReplError::Other(err.to_string()))?;
 

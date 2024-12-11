@@ -393,10 +393,9 @@ pub struct Expel {
         short = 't',
         long = "timeout",
         value_name = "TIMEOUT",
-        default_value = "5",
-        env = "PICODATA_CONNECT_TIMEOUT"
+        default_value = "60"
     )]
-    /// Connection timeout in seconds.
+    /// Time to wait for the operation to complete.
     pub timeout: u64,
 }
 

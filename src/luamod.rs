@@ -704,6 +704,8 @@ pub(crate) fn setup() {
         Params:
 
             1. instance_name (string)
+            2. opts (table)
+                - timeout (number)
 
         Returns:
 
@@ -711,21 +713,35 @@ pub(crate) fn setup() {
             or
             (nil, string) in case of an error
         "},
-        tlua::function1(|instance_name: InstanceName| -> traft::Result<bool> {
-            let node = traft::node::global()?;
-            let raft_storage = &node.raft_storage;
-            let instance = node.storage.instances.get(&instance_name)?;
-            let cluster_name = raft_storage.cluster_name()?;
-            fiber::block_on(rpc::network_call_to_leader(
-                crate::proc_name!(rpc::expel::proc_expel),
-                &rpc::expel::Request {
-                    instance_uuid: instance.uuid,
-                    cluster_name,
-                },
-            ))?;
-            Ok(true)
-        }),
+        tlua::Function::new(
+            |instance_name: InstanceName, opts: Option<PicoExpelOptions>| -> traft::Result<bool> {
+                let mut timeout = Duration::from_secs(3600);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = Duration::from_secs_f64(t);
+                    }
+                }
+
+                let node = traft::node::global()?;
+                let raft_storage = &node.raft_storage;
+                let instance = node.storage.instances.get(&instance_name)?;
+                let cluster_name = raft_storage.cluster_name()?;
+                fiber::block_on(rpc::network_call_to_leader(
+                    crate::proc_name!(rpc::expel::proc_expel),
+                    &rpc::expel::Request {
+                        instance_uuid: instance.uuid,
+                        cluster_name,
+                        timeout,
+                    },
+                ))?;
+                Ok(true)
+            },
+        ),
     );
+    #[derive(tlua::LuaRead)]
+    struct PicoExpelOptions {
+        timeout: Option<f64>,
+    }
 
     ///////////////////////////////////////////////////////////////////////////
     #[derive(::tarantool::tlua::LuaRead, Default, Clone, Copy)]
