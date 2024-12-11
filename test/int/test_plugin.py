@@ -108,6 +108,8 @@ class PluginReflection:
         self.data = data
         return self
 
+    # TODO: remove this function. Instead assert concrete things in each case
+    # where this function is called currently
     def assert_synced(self):
         """Assert that plugin reflection and plugin state in cluster are synchronized.
         This means that system tables `_pico_plugin`, `_pico_service` and `_pico_service_route`
@@ -365,55 +367,106 @@ def init_dummy_plugin(
 
 
 def test_invalid_manifest_plugin(cluster: Cluster):
+    # This must be set before any instances start up
+    cluster.plugin_dir = cluster.instance_dir
+
     i1, i2 = cluster.deploy(instance_count=2)
 
     # try to create non-existent plugin
     with pytest.raises(
-        ReturnError, match="Error while discovering manifest for plugin"
+        TarantoolError, match="Error while discovering manifest for plugin"
     ):
-        i1.call("pico.install_plugin", "non-existent", "0.1.0")
+        i1.sql('CREATE PLUGIN "non-existent" 0.1.0')
     PluginReflection("non-existent", "0.1.0", [], [i1, i2]).assert_synced()
 
-    # try to use invalid manifest (with undefined plugin name)
-    with pytest.raises(ReturnError, match="missing field `name`"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_1", "0.1.0")
-    PluginReflection(
-        "testplug_broken_manifest_1", "0.1.0", _PLUGIN_SERVICES, [i1, i2]
-    ).assert_synced()
+    #
+    # Check plugin manifest missing mandatory information
+    #
+    plugin = "testplug_broken_manifest_1"
+    plugin_dir = init_dummy_plugin(cluster, plugin, "0.1.0")
+    # Overwrite the manifest with what we want
+    (plugin_dir / "manifest.yaml").write_text(
+        """
+# manifest without a plugin name
+description: plugin for test purposes
+version: 0.1.0
+"""
+    )
 
+    with pytest.raises(TarantoolError, match="missing field `name`"):
+        i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    PluginReflection(plugin, "0.1.0", _PLUGIN_SERVICES, [i1, i2]).assert_synced()
+
+    #
+    # Check plugin manifest with invalid default configuration
+    #
     plugin = "testplug_broken_manifest_2"
-    # try to use invalid manifest (with invalid default configuration)
-    i1.call("pico.install_plugin", plugin, "0.1.0")
-    i1.call(
-        "pico.service_append_tier",
-        plugin,
-        "0.1.0",
-        "testservice_1",
-        _DEFAULT_TIER,
+    plugin_dir = init_dummy_plugin(cluster, plugin, "0.1.0")
+    # Overwrite the manifest with what we want
+    (plugin_dir / "manifest.yaml").write_text(
+        f"""
+# manifest with invalid `testservice_1` default configuration
+description: plugin for test purposes
+name: {plugin}
+version: 0.1.0
+services:
+  - name: testservice_1
+    description: testservice_1 descr
+    default_configuration:
+      foo: true
+  - name: testservice_2
+    description: testservice_2 descr
+    default_configuration:
+"""
     )
-    i1.call(
-        "pico.service_append_tier",
-        plugin,
-        "0.1.0",
-        "testservice_2",
-        _DEFAULT_TIER,
-    )
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_1 TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_2 TO TIER default")
     with pytest.raises(
-        ReturnError, match=f"box error #{ErrorCode.PluginError}: missing field `bar`"
+        TarantoolError, match=f"box error #{ErrorCode.PluginError}: missing field `bar`"
     ):
-        i1.call("pico.enable_plugin", plugin, "0.1.0")
-    PluginReflection(plugin, "0.1.0", _PLUGIN_SERVICES, [i1, i2]).install(
-        True
-    ).assert_synced()
+        i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ENABLE")
+    PluginReflection(
+        plugin, "0.1.0", ["testservice_1", "testservice_2"], [i1, i2]
+    ).install(True).assert_synced()
 
-    # try to use invalid manifest (with non-existed extra service)
+    #
+    # Check plugin manifest with non-existed extra service
+    #
+    plugin = "testplug_broken_manifest_3"
+    plugin_dir = init_dummy_plugin(cluster, plugin, "0.1.0")
+    # Overwrite the manifest with what we want
+    (plugin_dir / "manifest.yaml").write_text(
+        f"""
+# invalid manifest with extra service
+description: plugin for test purposes
+name: {plugin}
+version: 0.1.0
+services:
+  - name: testservice_1
+    description: testservice_1 descr
+    default_configuration:
+      foo: true
+      bar: 101
+      baz:
+        - "one"
+        - "two"
+        - "three"
+  - name: testservice_2
+    description: testservice_2 descr
+    default_configuration:
+  - name: testservice_0
+    description: testservice_0 descr
+    default_configuration:
+"""
+    )
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=r'Other: Plugin partial load \(some of services not found: \["testservice_0"\]\)',
     ):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_3", "0.1.0")
+        i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
     PluginReflection(
-        "testplug_broken_manifest_3",
+        plugin,
         "0.1.0",
         ["testservice_1", "testservice_2", "testservice_3"],
         [i1, i2],
