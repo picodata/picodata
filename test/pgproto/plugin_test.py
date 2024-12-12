@@ -43,7 +43,7 @@ def test_create_plugin(postgres: Postgres):
     with pytest.raises(pg.DatabaseError, match="already exists"):
         cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
 
-    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1 }")
+    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1}")
     cur.execute(
         f"""
         CREATE PLUGIN {PLUGIN} {VERSION_1} OPTION (TIMEOUT = 1.1)

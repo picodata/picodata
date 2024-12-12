@@ -8,7 +8,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
-use crate::traft::op::{Ddl, Dml, Op};
+use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
 use crate::traft::{RaftIndex, RaftTerm};
@@ -64,6 +64,14 @@ pub fn check_dml_prohibited(space_id: SpaceId) -> traft::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn check_acl_limits(storage: &Clusterwide, acl: &Acl) -> traft::Result<()> {
+    if matches!(acl, Acl::CreateUser { .. } | Acl::CreateRole { .. }) {
+        storage.users.check_user_limit()
+    } else {
+        Ok(())
+    }
 }
 
 /// Performs a clusterwide compare and swap operation. Waits until the
@@ -291,6 +299,9 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
                 check_table_operable(storage, dml.space())?;
                 check_dml_prohibited(dml.space())?;
             }
+        }
+        Op::Acl(acl) => {
+            check_acl_limits(storage, acl)?;
         }
         _ => {}
     }

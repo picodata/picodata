@@ -972,6 +972,7 @@ fn acl_ir_node_to_op_or_result(
             ..
         }) => {
             check_name_emptyness(name)?;
+            storage.users.check_user_limit()?;
 
             let sys_user = Space::from(SystemSpace::User)
                 .index("name")
@@ -1007,6 +1008,8 @@ fn acl_ir_node_to_op_or_result(
             ..
         }) => {
             check_name_emptyness(name)?;
+            storage.users.check_user_limit()?;
+
             let method = parse_auth_method(auth_method)?;
             validate_password(password, &method, storage)?;
             let data = AuthData::new(&method, name, password);

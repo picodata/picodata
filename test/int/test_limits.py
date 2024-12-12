@@ -1,7 +1,11 @@
 import pytest
 from conftest import Cluster, TarantoolError
 
+
+# The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
+# 32 - sys users in picodata = 26
 max_picodata_users = 26
+
 
 def test_user_limit(cluster: Cluster):
     cluster.deploy(instance_count=2)
@@ -20,7 +24,6 @@ def test_user_limit(cluster: Cluster):
         )
         assert acl["row_count"] == 1
 
-    # FIXME: should not panic, should be an error instead
     with pytest.raises(
         TarantoolError,
         match="a limit on the total number of users has been reached: 32",
@@ -33,6 +36,7 @@ def test_user_limit(cluster: Cluster):
             """
         )
 
+
 def test_role_limit(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
@@ -43,7 +47,6 @@ def test_role_limit(cluster: Cluster):
         acl = i1.sql(f"create role {role}")
         assert acl["row_count"] == 1
 
-    # FIXME: should not panic, should be an error instead
     with pytest.raises(
         TarantoolError,
         match="a limit on the total number of users has been reached: 32",

@@ -1846,6 +1846,9 @@ impl ToEntryIter<MP_SERDE> for Indexes {
 // Users
 ////////////////////////////////////////////////////////////////////////////////
 
+/// The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
+const MAX_USERS: usize = 32;
+
 impl Users {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -1986,6 +1989,17 @@ impl Users {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(UserDef, auth), auth)?;
         self.space.update(&[user_id], ops)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn check_user_limit(&self) -> traft::Result<()> {
+        if self.space.len()? >= MAX_USERS {
+            return Err(Error::Other(
+                format!("a limit on the total number of users has been reached: {MAX_USERS}")
+                    .into(),
+            ));
+        }
         Ok(())
     }
 }

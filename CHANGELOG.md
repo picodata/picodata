@@ -48,6 +48,7 @@ to 2 and 3.
 ### Fixes
 
 - It's no longer possible to execute DML queries for tables that are not operable
+- Fixed panic on user/role creation when max user number was exceeded
 
 ## [24.6.1] - 2024-10-28
 
