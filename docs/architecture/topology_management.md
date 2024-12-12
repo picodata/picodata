@@ -58,7 +58,7 @@
 - Инстанс отправляет raft-лидеру запрос [`.proc_raft_join`], содержащий
     - его сетевой адрес `advertise_address`
     - домен отказа `failure_domain`
-    - тир `tier`
+    - [тир][tier] `tier`
     - также, опционально можно явно передать `instance_name`, `replicaset_name`
 - raft-лидер, получив этот запрос, выполняет ряд транзакций в глобальные
   таблицы:
@@ -79,6 +79,7 @@
 [instance_lifecycle]: ../architecture/instance_lifecycle.md
 [`picodata run --peer`]: ../reference/cli.md#run_peer
 [`.proc_raft_join`]: ../architecture/rpc_api.md#proc_raft_join
+[tier]: ../overview/glossary.md#tier
 
 ### Штатное выключение инстанса {: #graceful_shutdown }
 
@@ -192,7 +193,7 @@ Picodata следит за тем, чтобы в каждом
 
 Picodata следит за тем, чтобы [репликасеты](../overview/glossary.md#replicaset)
 содержали количество реплик не ниже чем [фактор репликации](../overview/glossary.md#replication_factor)
-соответствующего [тира](../overview/glossary.md#tier). До тех пор пока это
+соответствующего [тира][tier]. До тех пор пока это
 условие не будет выполнено, данные на такой репликасет подаваться не будут.
 Технически это реализовано при помощи так называемых _весов шардирования_, за
 актуальностью которых следит губернатор.

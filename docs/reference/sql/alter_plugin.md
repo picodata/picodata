@@ -11,12 +11,12 @@
 
 * **ENABLE** — включение плагина.
 * **DISABLE** — отключение плагина.
-* **ADD SERVICE TO TIER** — добавление сервиса плагина к [тиру][tiers].
-* **REMOVE SERVICE FROM TIER** — удаление сервиса плагина из [тира][tiers].
+* **ADD SERVICE TO TIER** — добавление сервиса плагина к [тиру][tier].
+* **REMOVE SERVICE FROM TIER** — удаление сервиса плагина из [тира][tier].
 * **SET** — установка значения отдельных параметров сервиса в формате `<service_name.property_key> = ‘<value>’`.
 * **MIGRATE TO** — объявление версии плагина и запуск [миграции]. Версия плагина указывается в формате semver.
 
-[tiers]: ../../overview/glossary.md#tier
+[tier]: ../../overview/glossary.md#tier
 [миграции]: ../../overview/glossary.md#migration
 
 ## Примеры {: #examples }

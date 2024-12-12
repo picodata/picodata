@@ -159,7 +159,7 @@ picodata> SELECT * FROM _pico_plugin_config;
 ```
 
 В таблице [`_pico_service`] со списком сервисов плагина (но пока без
-привязки к [тиру][tiers]):
+привязки к [тиру][tier]):
 
 ```sql
 picodata> SELECT * FROM _pico_service;
@@ -206,7 +206,7 @@ picodata> SELECT * FROM weather;
 
 Основная функциональность плагина реализуется через его сервисы, которые
 должны быть включены в явном виде. Сервисы работают с привязкой
-к [тирам][tiers]: если конфигурация тиров в кластере не была явно задана,
+к [тирам][tier]: если конфигурация тиров в кластере не была явно задана,
 то в примере с тестовым плагином укажите тир по умолчанию `default` в
 команде [ALTER PLUGIN](../reference/sql/alter_plugin.md):
 
@@ -234,7 +234,7 @@ picodata> SELECT * FROM _pico_service;
 [`_pico_plugin`]: ../architecture/system_tables.md#_pico_plugin
 [`_pico_plugin_config`]: ../architecture/system_tables.md#_pico_plugin_config
 [`_pico_service`]: ../architecture/system_tables.md#_pico_service
-[tiers]: ../overview/glossary.md#tier
+[tier]: ../overview/glossary.md#tier
 
 ## Включение и отключение плагина {: #enable_or_disable_plugin}
 

@@ -146,7 +146,7 @@ instance:
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
-Признак тира *<tier_name\>*, определяющий возможность инстансов участвовать
+Признак [тира] *<tier_name\>*, определяющий возможность инстансов участвовать
 в голосовании на выборах [raft-лидера](../overview/glossary.md#raft_leader).
 
 Данные:
@@ -165,6 +165,8 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 См. также:
 
 * [Динамическое переключение голосующих узлов в Raft](../architecture/raft_failover.md#raft_voter_failover)
+
+[тира]: ../overview/glossary.md#tier
 
 ### cluster.tier.<tier_name\>.replication_factor {: #cluster_tier_tier_replication_factor }
 
@@ -601,9 +603,9 @@ picodata run -c instance.pg.ssl=true
 
 ### instance.tier {: #instance_tier }
 
-Имя [тира](../overview/glossary.md#tier), которому будет принадлежать
-инстанс. Используется при инициализации кластера и присоединении
-инстанса к уже существующему кластеру.
+Имя [тира], которому будет принадлежать инстанс. Используется при
+инициализации кластера и присоединении инстанса к уже существующему
+кластеру.
 
 Данные:
 

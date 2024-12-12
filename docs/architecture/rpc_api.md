@@ -309,7 +309,7 @@ fn proc_get_vclock() -> Vclock
 fn proc_get_vshard_config(tier_name) -> Result
 ```
 
-Возвращает Vshard-конфигурацию тира `tier_name`. Если тир не указан,
+Возвращает Vshard-конфигурацию [тира] `tier_name`. Если тир не указан,
 возвращается Vshard-конфигурация тира текущего инстанса.
 
 Возвращаемое значение:
@@ -326,6 +326,8 @@ fn proc_get_vshard_config(tier_name) -> Result
                 - `name`: (MP_STR)
         - `weight`: (MP_FLOAT)
 -->
+
+[тира]: ../overview/glossary.md#tier
 
 ### .proc_instance_info {: #proc_instance_info }
 
@@ -412,7 +414,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 - `replicaset_name`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset)
 - `advertise_address`: (MP_STR)
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
-- `tier`: (MP_STR) идентификатор [тира](../overview/glossary.md#tier)
+- `tier`: (MP_STR) идентификатор [тира]
 
 Возвращаемое значение:
 
