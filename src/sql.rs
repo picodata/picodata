@@ -1154,16 +1154,9 @@ fn alter_system_ir_node_to_op_or_result(
             param_name,
             param_value,
         } => {
-            let Some(expected_type) = crate::config::get_type_of_alter_system_parameter(param_name)
-            else {
-                return Err(Error::other(format!("unknown parameter: '{param_name}'")));
-            };
-            let Ok(casted_value) = param_value.cast_and_encode(&expected_type) else {
-                let actual_type = value_type_str(param_value);
-                return Err(Error::other(format!(
-                    "invalid value for '{param_name}' expected {expected_type}, got {actual_type}",
-                )));
-            };
+            let casted_value =
+                crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
+
             let dml = Dml::replace(table, &(param_name, casted_value), initiator)?;
 
             Ok(Continue(Op::Dml(dml)))
@@ -1770,7 +1763,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 }
 
 // TODO: move this to sbroad
-fn value_type_str(value: &Value) -> &'static str {
+pub(crate) fn value_type_str(value: &Value) -> &'static str {
     match value {
         Value::Boolean { .. } => "boolean",
         Value::Decimal { .. } => "decimal",

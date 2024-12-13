@@ -11,7 +11,9 @@
 #![allow(clippy::vec_init_then_push)]
 #![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
+use config::apply_parameter;
 use serde::{Deserialize, Serialize};
+use storage::ToEntryIter;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
@@ -558,6 +560,15 @@ fn set_on_access_denied_audit_trigger() {
     .expect("setting on auth trigger should not fail")
 }
 
+/// Apply all dynamic parameters from `_pico_db_config` via box.cfg
+fn reapply_dynamic_parameters(storage: &Clusterwide) -> Result<()> {
+    for parameter in storage.db_config.iter()? {
+        apply_parameter(parameter);
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Entrypoint {
@@ -938,6 +949,8 @@ fn postjoin(
     tlog!(Info, "entering post-join phase");
 
     config.validate_storage(&storage, &raft_storage)?;
+
+    reapply_dynamic_parameters(&storage)?;
 
     if let Some(config) = &config.instance.audit {
         let raft_id = raft_storage

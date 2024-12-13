@@ -296,15 +296,24 @@ impl Clusterwide {
     ///
     /// This should be called within a transaction.
     ///
+    /// Returns changed dynamic parameters as key-value tuples from `_pico_db_config`.
+    ///
     #[allow(rustdoc::private_intra_doc_links)]
     /// [`NodeImpl::advance`]: crate::traft::node::NodeImpl::advance
-    pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
+    pub fn apply_snapshot_data(
+        &self,
+        data: &SnapshotData,
+        is_master: bool,
+    ) -> Result<Vec<Vec<u8>>> {
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
 
         // These need to be saved before we truncate the corresponding spaces.
         let mut old_table_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
+
+        let mut old_dynamic_parameters = HashSet::new();
+        let mut changed_parameters = Vec::new();
 
         for def in self.tables.iter()? {
             old_table_versions.insert(def.id, def.schema_version);
@@ -315,6 +324,10 @@ impl Clusterwide {
         for def in self.privileges.iter()? {
             let schema_version = def.schema_version();
             old_priv_versions.insert(def, schema_version);
+        }
+
+        for parameter in self.db_config.iter()? {
+            old_dynamic_parameters.insert(parameter.to_vec());
         }
 
         // There can be multiple space dumps for a given space in SnapshotData,
@@ -409,6 +422,13 @@ impl Clusterwide {
             tuples_count += tuples.len().expect("ValueIter::from_array sets the length");
 
             for tuple in tuples {
+                // We do not support removing tuples from _pico_db_config, but if we did we would have
+                // to keep track of which tuples were removed in the snapshot. Keep this in mind if
+                // in the future some ALTER SYSTEM parameters are removed and/or renamed
+                if space_id == PICO_DB_CONFIG && !old_dynamic_parameters.contains(tuple) {
+                    changed_parameters.push(tuple.to_vec())
+                }
+
                 space.insert(RawBytes::new(tuple))?;
             }
             // Debug:   restoring rest of snapshot data took 5.9393054s [4194323 tuples]
@@ -445,7 +465,7 @@ impl Clusterwide {
             tuples_count
         );
 
-        return Ok(());
+        return Ok(changed_parameters);
 
         const SCHEMA_DEFINITION_SPACES: &[SpaceId] = &[
             ClusterwideTable::Table.id(),
@@ -453,6 +473,8 @@ impl Clusterwide {
             ClusterwideTable::User.id(),
             ClusterwideTable::Privilege.id(),
         ];
+
+        const PICO_DB_CONFIG: SpaceId = ClusterwideTable::DbConfig.id();
     }
 
     /// Updates local storage of the given schema entity in accordance with
@@ -819,6 +841,7 @@ impl std::fmt::Display for SnapshotPosition {
 
 mod tests {
     use super::*;
+    use crate::config::PicodataConfig;
     use crate::instance::Instance;
     use crate::replicaset::Replicaset;
     use tarantool::transaction::transaction;
@@ -866,7 +889,8 @@ mod tests {
         });
 
         storage.for_each_space(|s| s.truncate()).unwrap();
-        if let Err(e) = transaction(|| -> Result<()> { storage.apply_snapshot_data(&data, true) }) {
+
+        if let Err(e) = transaction(|| -> Result<_> { storage.apply_snapshot_data(&data, true) }) {
             println!("{e}");
             panic!();
         }
@@ -908,6 +932,8 @@ mod tests {
 
         let r = Replicaset::for_tests();
         storage.replicasets.space.insert(&r).unwrap();
+
+        PicodataConfig::init_for_tests();
 
         let (snapshot_data, _) = storage
             .first_snapshot_data_chunk(Default::default(), Default::default())

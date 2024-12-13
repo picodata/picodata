@@ -364,7 +364,10 @@ Insert(_pico_db_config, ["governor_raft_op_timeout",3.0]),
 Insert(_pico_db_config, ["governor_common_rpc_timeout",3.0]),
 Insert(_pico_db_config, ["governor_plugin_rpc_timeout",10.0]),
 Insert(_pico_db_config, ["sql_vdbe_opcode_max",45000]),
-Insert(_pico_db_config, ["sql_motion_row_max",5000]))|
+Insert(_pico_db_config, ["sql_motion_row_max",5000]),
+Insert(_pico_db_config, ["memtx_checkpoint_count",2]),
+Insert(_pico_db_config, ["memtx_checkpoint_interval",3600]),
+Insert(_pico_db_config, ["iproto_net_msg_max",768]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_user, [0,"guest",0,["md5","md5084e0343a0486ff05530df6c705c8bb4"],1,"user"]),
 Insert(_pico_privilege, [1,0,"login","universe",0,0]),

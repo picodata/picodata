@@ -106,8 +106,6 @@ instance:
             peer=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
                 memory=dict(value="64M", source="default"),
-                checkpoint_count=dict(value=2, source="default"),
-                checkpoint_interval=dict(value=3600.0, source="default"),
             ),
             vinyl=dict(
                 memory=dict(value="128M", source="default"),
@@ -121,9 +119,6 @@ instance:
                 read_threads=dict(value=1, source="default"),
                 write_threads=dict(value=4, source="default"),
                 timeout=dict(value=60.0, source="default"),
-            ),
-            iproto=dict(
-                max_concurrent_messages=dict(value=768, source="default"),
             ),
             pg=dict(
                 # pg is enabled by default, so listen should be set
@@ -351,15 +346,10 @@ instance:
 
     memtx:
         memory: 2G
-        checkpoint_count: 8
-        checkpoint_interval: 1800
 
     vinyl:
         memory: 600M
         cache: 300M
-
-    iproto:
-        max_concurrent_messages: 0x600
 """
     )
 
@@ -395,13 +385,9 @@ instance:
     assert box_cfg["log_format"] == "json"
 
     assert box_cfg["memtx_memory"] == 2147483648
-    assert box_cfg["checkpoint_count"] == 8
-    assert box_cfg["checkpoint_interval"] == 1800
 
     assert box_cfg["vinyl_memory"] == 629145600
     assert box_cfg["vinyl_cache"] == 314572800
-
-    assert box_cfg["net_msg_max"] == 0x600
 
 
 def test_picodata_default_config(cluster: Cluster):

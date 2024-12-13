@@ -9,7 +9,10 @@ use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::pgproto;
 use crate::replicaset::ReplicasetName;
+use crate::sql::value_type_str;
 use crate::storage;
+use crate::system_parameter_name;
+use crate::tarantool::set_cfg_field;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
@@ -18,6 +21,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
+use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::convert::{From, Into};
@@ -28,8 +32,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tarantool::log::SayLevel;
-use tarantool::tlua;
-use tarantool::tuple::RawBytes;
 use tarantool::tuple::Tuple;
 
 /// This reexport is used in the derive macro for Introspection.
@@ -788,6 +790,16 @@ Using configuration file '{args_path}'.");
             }
         }
     }
+
+    // For the tests
+    pub(crate) fn init_for_tests() {
+        let config = Box::new(Self::with_defaults());
+        // Safe, because we only initialize config once in a single thread.
+        unsafe {
+            assert!(GLOBAL_CONFIG.is_none());
+            let _ = GLOBAL_CONFIG.insert(config);
+        };
+    }
 }
 
 /// Gets the logging configuration from all possible sources and initializes the core logger.
@@ -1142,10 +1154,6 @@ pub struct InstanceConfig {
 
     #[serde(default)]
     #[introspection(nested)]
-    pub iproto: IprotoSection,
-
-    #[serde(default)]
-    #[introspection(nested)]
     pub pg: pgproto::Config,
 
     /// Special catch-all field which will be filled by serde with all unknown
@@ -1351,27 +1359,6 @@ pub struct MemtxSection {
     /// Corresponds to `box.cfg.memtx_memory`.
     #[introspection(config_default = "64M")]
     pub memory: Option<ByteSize>,
-
-    /// The maximum number of snapshots that are stored in the memtx_dir
-    /// directory. If the number of snapshots after creating a new one exceeds
-    /// this value, the Tarantool garbage collector deletes old snapshots. If
-    /// the option is set to zero, the garbage collector does not delete old
-    /// snapshots.
-    ///
-    /// Corresponds to `box.cfg.checkpoint_count`.
-    #[introspection(config_default = 2)]
-    pub checkpoint_count: Option<u64>,
-
-    /// The interval in seconds between actions by the checkpoint daemon. If the
-    /// option is set to a value greater than zero, and there is activity that
-    /// causes change to a database, then the checkpoint daemon calls
-    /// box.snapshot() every checkpoint_interval seconds, creating a new
-    /// snapshot file each time. If the option is set to zero, the checkpoint
-    /// daemon is disabled.
-    ///
-    /// Corresponds to `box.cfg.checkpoint_interval`.
-    #[introspection(config_default = 3600.0)]
-    pub checkpoint_interval: Option<f64>,
 }
 
 tarantool::define_str_enum! {
@@ -1455,52 +1442,6 @@ pub struct VinylSection {
     /// Corresponds to `box.cfg.vinyl_timeout`
     #[introspection(config_default = 60.)]
     pub timeout: Option<f32>,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// IprotoSection
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
-#[serde(deny_unknown_fields)]
-pub struct IprotoSection {
-    /// To handle messages, Tarantool allocates fibers. To prevent fiber
-    /// overhead from affecting the whole system, Tarantool restricts how many
-    /// messages the fibers handle, so that some pending requests are blocked.
-    ///
-    /// On powerful systems, increase net_msg_max and the scheduler will
-    /// immediately start processing pending requests.
-    ///
-    /// On weaker systems, decrease net_msg_max and the overhead may decrease
-    /// although this may take some time because the scheduler must wait until
-    /// already-running requests finish.
-    ///
-    /// When net_msg_max is reached, Tarantool suspends processing of incoming
-    /// packages until it has processed earlier messages. This is not a direct
-    /// restriction of the number of fibers that handle network messages, rather
-    /// it is a system-wide restriction of channel bandwidth. This in turn
-    /// causes restriction of the number of incoming network messages that the
-    /// transaction processor thread handles, and therefore indirectly affects
-    /// the fibers that handle network messages. (The number of fibers is
-    /// smaller than the number of messages because messages can be released as
-    /// soon as they are delivered, while incoming requests might not be
-    /// processed until some time after delivery.)
-    ///
-    /// On typical systems, the default value (768) is correct.
-    ///
-    /// Corresponds to `box.cfg.net_msg_max`
-    #[introspection(config_default = 0x300)]
-    pub max_concurrent_messages: Option<u64>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1673,6 +1614,58 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
+
+    /// The maximum number of snapshots that are stored in the memtx_dir
+    /// directory. If the number of snapshots after creating a new one exceeds
+    /// this value, the Tarantool garbage collector deletes old snapshots. If
+    /// the option is set to zero, the garbage collector does not delete old
+    /// snapshots.
+    ///
+    /// Corresponds to `box.cfg.checkpoint_count`.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 2)]
+    pub memtx_checkpoint_count: u64,
+
+    /// The interval in seconds between actions by the checkpoint daemon. If the
+    /// option is set to a value greater than zero, and there is activity that
+    /// causes change to a database, then the checkpoint daemon calls
+    /// box.snapshot() every checkpoint_interval seconds, creating a new
+    /// snapshot file each time. If the option is set to zero, the checkpoint
+    /// daemon is disabled.
+    ///
+    /// Corresponds to `box.cfg.checkpoint_interval`.
+    #[introspection(config_default = 3600)]
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    pub memtx_checkpoint_interval: u64,
+
+    /// To handle messages, Tarantool allocates fibers. To prevent fiber
+    /// overhead from affecting the whole system, Tarantool restricts how many
+    /// messages the fibers handle, so that some pending requests are blocked.
+    ///
+    /// On powerful systems, increase net_msg_max and the scheduler will
+    /// immediately start processing pending requests.
+    ///
+    /// On weaker systems, decrease net_msg_max and the overhead may decrease
+    /// although this may take some time because the scheduler must wait until
+    /// already-running requests finish.
+    ///
+    /// When net_msg_max is reached, Tarantool suspends processing of incoming
+    /// packages until it has processed earlier messages. This is not a direct
+    /// restriction of the number of fibers that handle network messages, rather
+    /// it is a system-wide restriction of channel bandwidth. This in turn
+    /// causes restriction of the number of incoming network messages that the
+    /// transaction processor thread handles, and therefore indirectly affects
+    /// the fibers that handle network messages. (The number of fibers is
+    /// smaller than the number of messages because messages can be released as
+    /// soon as they are delivered, while incoming requests might not be
+    /// processed until some time after delivery.)
+    ///
+    /// On typical systems, the default value (768) is correct.
+    ///
+    /// Corresponds to `box.cfg.net_msg_max`
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 0x300)]
+    pub iproto_net_msg_max: u64,
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout
@@ -1700,43 +1693,33 @@ pub static MAX_PG_STATEMENTS: AtomicUsize = AtomicUsize::new(0);
 /// 0 means that the value must be read from the table.
 pub static MAX_PG_PORTALS: AtomicUsize = AtomicUsize::new(0);
 
-pub fn validate_alter_system_parameter_tuple(name: &str, tuple: &Tuple) -> Result<(), Error> {
+pub fn validate_alter_system_parameter_value<'v>(
+    name: &str,
+    value: &'v Value,
+) -> Result<EncodedValue<'v>, Error> {
     let Some(expected_type) = get_type_of_alter_system_parameter(name) else {
         return Err(Error::other(format!("unknown parameter: '{name}'")));
     };
 
-    let field_count = tuple.len();
-    if field_count != 2 {
-        #[rustfmt::skip]
-        return Err(Error::other(format!("too many fields: got {field_count}, expected 2")));
-    }
-
-    let raw_field = tuple.field::<&RawBytes>(1)?.expect("value is not nullable");
-    crate::util::check_msgpack_matches_type(raw_field, expected_type)?;
+    let Ok(casted_value) = value.cast_and_encode(&expected_type) else {
+        let actual_type = value_type_str(value);
+        return Err(Error::other(format!(
+            "invalid value for '{name}' expected {expected_type}, got {actual_type}",
+        )));
+    };
 
     // Not sure how I feel about this...
     if name.ends_with("_timeout") {
-        let value = tuple.field::<f64>(1)?.expect("type already checked");
+        let value = casted_value
+            .double()
+            .expect("unreachable, already casted to double");
+
         if value < 0.0 {
-            #[rustfmt::skip]
             return Err(Error::other("timeout value cannot be negative"));
         }
     }
 
-    // TODO: implement caching for all `config::AlterSystemParameters`.
-    if name == system_parameter_name!(max_pg_portals) {
-        let value = tuple.field::<usize>(1)?.expect("type already checked");
-        // Cache the value.
-        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
-    }
-
-    if name == system_parameter_name!(max_pg_statements) {
-        let value = tuple.field::<usize>(1)?.expect("type already checked");
-        // Cache the value.
-        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
-    }
-
-    Ok(())
+    Ok(casted_value)
 }
 
 /// Returns `None` if there's no such parameter.
@@ -1798,6 +1781,60 @@ pub fn get_defaults_for_all_alter_system_parameters() -> Vec<(String, rmpv::Valu
         result.push((name.clone(), default));
     }
     result
+}
+
+/// Non-persistent apply of parameter from _pico_db_config
+/// represented by key-value tuple.
+///
+/// In case of dynamic parameter, apply parameter via box.cfg.
+///
+/// Panic in following cases:
+///   - tuple is not key-value with predefined schema
+///   - while applying via box.cfg
+pub fn apply_parameter(tuple: Tuple) {
+    let name = tuple
+        .field::<&str>(0)
+        .expect("there is always 2 fields in _pico_db_config tuple")
+        .expect("key is always present and it's type string");
+
+    // set dynamic parameters
+    if name == system_parameter_name!(memtx_checkpoint_count) {
+        let value = tuple
+            .field::<u64>(1)
+            .expect("there is always 2 fields in _pico_db_config tuple")
+            .expect("type already checked");
+
+        set_cfg_field("checkpoint_count", value).expect("changing checkpoint_count shouldn't fail");
+    } else if name == system_parameter_name!(memtx_checkpoint_interval) {
+        let value = tuple
+            .field::<f64>(1)
+            .expect("there is always 2 fields in _pico_db_config tuple")
+            .expect("type already checked");
+
+        set_cfg_field("checkpoint_interval", value)
+            .expect("changing checkpoint_interval shouldn't fail");
+    } else if name == system_parameter_name!(iproto_net_msg_max) {
+        let value = tuple
+            .field::<u64>(1)
+            .expect("there is always 2 fields in _pico_db_config tuple")
+            .expect("type already checked");
+
+        set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
+    } else if name == system_parameter_name!(max_pg_portals) {
+        let value = tuple
+            .field::<usize>(1)
+            .expect("there is always 2 fields in _pico_db_config tuple")
+            .expect("type already checked");
+        // Cache the value.
+        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+    } else if name == system_parameter_name!(max_pg_statements) {
+        let value = tuple
+            .field::<usize>(1)
+            .expect("there is always 2 fields in _pico_db_config tuple")
+            .expect("type already checked");
+        // Cache the value.
+        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

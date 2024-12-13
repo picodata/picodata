@@ -962,6 +962,22 @@ pub enum EncodedValue<'v> {
     Owned(LuaValue),
 }
 
+impl<'v> EncodedValue<'v> {
+    /// Try to convert to double underlying value.
+    pub fn double(&self) -> Option<f64> {
+        match &self {
+            EncodedValue::Ref(msg_pack_value) => match msg_pack_value {
+                MsgPackValue::Double(value) => Some(**value),
+                _ => None,
+            },
+            EncodedValue::Owned(lua_value) => match lua_value {
+                LuaValue::Double(value) => Some(*value),
+                _ => None,
+            },
+        }
+    }
+}
+
 impl<'v> From<MsgPackValue<'v>> for EncodedValue<'v> {
     fn from(value: MsgPackValue<'v>) -> Self {
         EncodedValue::Ref(value)

@@ -27,6 +27,14 @@ with the `YY.MINOR.MICRO` scheme.
   PICODATA_PLUGIN_DIR -> PICODATA_SHARE_DIR, config: instance.plugin_dir ->
   instance.share_dir)
 
+- The following parameters has been moved from configuration file to `_pico_db_config` system table:
+
+  - checkpoint_interval
+  - checkpoint_count
+  - max_concurrent_messages
+
+- `max_concurrent_messages` parameter is renamed to `net_msg_max`
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

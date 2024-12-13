@@ -7,6 +7,7 @@
 
 use crate::access_control::user_by_id;
 use crate::access_control::UserMetadata;
+use crate::config::apply_parameter;
 use crate::config::PicodataConfig;
 use crate::governor;
 use crate::has_states;
@@ -460,6 +461,12 @@ pub(crate) struct NodeImpl {
     plugin_manager: Rc<PluginManager>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct AppliedDml {
+    table: ClusterwideTable,
+    new_tuple: Tuple,
+}
+
 impl NodeImpl {
     fn new(
         pool: Rc<ConnectionPool>,
@@ -686,7 +693,7 @@ impl NodeImpl {
                 }
             };
 
-            let mut apply_entry_result = EntryApplied;
+            let mut apply_entry_result = EntryApplied(None);
             let mut new_applied = None;
             transaction(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
@@ -695,7 +702,7 @@ impl NodeImpl {
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
                         apply_entry_result = self.handle_committed_normal_entry(entry, expelled);
-                        if apply_entry_result != EntryApplied {
+                        if !matches!(apply_entry_result, EntryApplied(_)) {
                             return Ok(());
                         }
                     }
@@ -730,7 +737,15 @@ impl NodeImpl {
                     fiber::sleep(timeout);
                     continue;
                 }
-                EntryApplied => {
+                EntryApplied(None) => {
+                    // Actually advance the iterator.
+                    let _ = entries.next();
+                }
+                EntryApplied(Some(AppliedDml { table, new_tuple })) => {
+                    // currently only parameters from _pico_db_config processed outside of transaction (here)
+                    debug_assert!(table == ClusterwideTable::DbConfig);
+                    apply_parameter(new_tuple);
+
                     // Actually advance the iterator.
                     let _ = entries.next();
                 }
@@ -776,8 +791,8 @@ impl NodeImpl {
 
     /// Actions needed when applying a DML entry.
     ///
-    /// Returns `true` if entry was applied successfully.
-    fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) -> bool {
+    /// Returns Ok(_) if entry was applied successfully
+    fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) -> Result<Option<AppliedDml>, ()> {
         let space = op.space().try_into();
 
         // In order to implement the audit log events, we have to compare
@@ -829,13 +844,13 @@ impl NodeImpl {
             Ok(v) => v,
             Err(e) => {
                 tlog!(Error, "clusterwide dml failed: {e}");
-                return false;
+                return Err(());
             }
         };
 
         let Ok(space) = space else {
             // Not a builtin system table, nothing left to do here
-            return true;
+            return Ok(None);
         };
 
         // FIXME: all of this should be done only after the transaction is committed
@@ -899,10 +914,18 @@ impl NodeImpl {
                 self.topology_cache.update_service_route(old, new);
             }
 
+            ClusterwideTable::DbConfig => {
+                let new_tuple = new.expect("can't delete tuple from _pico_db_config");
+                return Ok(Some(AppliedDml {
+                    table: ClusterwideTable::DbConfig,
+                    new_tuple,
+                }));
+            }
+
             _ => {}
         }
 
-        true
+        Ok(None)
     }
 
     /// Is called during a transaction
@@ -919,24 +942,23 @@ impl NodeImpl {
         self.wake_governor_if_needed(&op);
 
         let storage_properties = &self.storage.properties;
+        let mut res = ApplyEntryResult::EntryApplied(None);
 
         // apply the operation
         match op {
             Op::Nop => {}
             Op::BatchDml { ref ops } => {
                 for op in ops {
-                    let ok = self.handle_dml_entry(op, expelled);
-                    if !ok {
-                        return SleepAndRetry;
+                    match self.handle_dml_entry(op, expelled) {
+                        Ok(applied_dml) => res = EntryApplied(applied_dml),
+                        Err(()) => return SleepAndRetry,
                     }
                 }
             }
-            Op::Dml(op) => {
-                let ok = self.handle_dml_entry(&op, expelled);
-                if !ok {
-                    return SleepAndRetry;
-                }
-            }
+            Op::Dml(op) => match self.handle_dml_entry(&op, expelled) {
+                Ok(applied_dml) => res = EntryApplied(applied_dml),
+                Err(()) => return SleepAndRetry,
+            },
             Op::DdlPrepare {
                 ddl,
                 schema_version,
@@ -1298,7 +1320,7 @@ impl NodeImpl {
                 if let Some(plugin) = maybe_plugin {
                     if plugin.enabled {
                         warn_or_panic!("Op::DropPlugin for an enabled plugin");
-                        return EntryApplied;
+                        return EntryApplied(None);
                     }
 
                     let services = self
@@ -1515,7 +1537,7 @@ impl NodeImpl {
             let _ = notify.send(Err(e));
         }
 
-        EntryApplied
+        res
     }
 
     fn apply_op_ddl_prepare(&self, ddl: Ddl, schema_version: u64) -> traft::Result<()> {
@@ -2127,6 +2149,7 @@ impl NodeImpl {
             let mut new_term = None;
             let mut new_applied = None;
             let mut received_snapshot = false;
+            let mut changed_parameters = Vec::new();
 
             if let Err(e) = transaction(|| -> Result<(), Error> {
                 self.main_loop_status("persisting hard state, entries and/or snapshot");
@@ -2165,7 +2188,8 @@ impl NodeImpl {
                     } else {
                         // Persist the contents of the global tables from the snapshot data.
                         let is_master = !self.is_readonly();
-                        self.storage
+                        changed_parameters = self
+                            .storage
                             .apply_snapshot_data(&snapshot_data, is_master)?;
                         new_applied = Some(meta.index);
                         received_snapshot = true;
@@ -2201,6 +2225,11 @@ impl NodeImpl {
             }
 
             if received_snapshot {
+                // apply changed dynamic parameters
+                for changed_parameter in changed_parameters {
+                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?);
+                }
+
                 // Need to reload the whole topology cache. We could be more
                 // clever about it and only update the records which changed,
                 // but at the moment this would require doing a full scan and
@@ -2455,13 +2484,14 @@ impl NodeImpl {
 
 /// Return value of [`NodeImpl::handle_committed_normal_entry`], explains what should be
 /// done as result of attempting to apply a given entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum ApplyEntryResult {
     /// This entry failed to apply for some reason, and must be retried later.
     SleepAndRetry,
 
-    /// Entry applied successfully, proceed to next entry.
-    EntryApplied,
+    /// Entry applied to persistent storage successfully and should be
+    /// applied to non-persistent outside of transaction, proceed to next entry.
+    EntryApplied(Option<AppliedDml>),
 }
 
 pub(crate) struct MainLoop {

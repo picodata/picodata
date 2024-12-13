@@ -42,7 +42,6 @@ def test_statement_storage_config_limit(postgres: Postgres):
     conn = setup_pg8000_env(postgres)
 
     max_pg_statements = 32
-    # not sure about not using `?``
     postgres.instance.sql(
         f"ALTER SYSTEM SET max_pg_statements = {max_pg_statements}",
         sudo=True,

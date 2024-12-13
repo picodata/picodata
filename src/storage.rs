@@ -3072,8 +3072,6 @@ impl DbConfig {
             .if_not_exists(true)
             .create()?;
 
-        on_replace(space.id(), Self::on_replace)?;
-
         Ok(Self { space, index })
     }
 
@@ -3118,26 +3116,6 @@ impl DbConfig {
             .expect("parameter name is validated using system_parameter_name! macro");
         let res = rmpv::ext::from_value(value).expect("default value type is correct");
         Ok(res)
-    }
-
-    /// Callback which is called when data in _pico_db_config is updated.
-    pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
-        _ = old;
-
-        // Both `reset` and `set` (in context of alter system) command
-        // is insert operation, so `new` always is not none.
-        let new = new.expect("can't ");
-        let key = new
-            .field::<&str>(0)
-            .expect("key has type string")
-            .expect("key is not nullable");
-
-        // We can skip type checking (`get_type_of_alter_system_parameter`),
-        // because it was verified in sql.rs and via alter system
-        // we can't insert non whitelisted parameters in _pico_db_config.
-        config::validate_alter_system_parameter_tuple(key, &new)?;
-
-        Ok(())
     }
 
     #[inline]
@@ -3237,16 +3215,36 @@ impl DbConfig {
 
     #[inline]
     pub fn sql_motion_row_max(&self) -> tarantool::Result<u64> {
-        #[rustfmt::skip]
-        let res: u64 = self.get_or_default(system_parameter_name!(sql_motion_row_max))?;
-        Ok(res)
+        self.get_or_default(system_parameter_name!(sql_motion_row_max))
     }
 
     #[inline]
     pub fn sql_vdbe_opcode_max(&self) -> tarantool::Result<u64> {
-        #[rustfmt::skip]
-        let res: u64 = self.get_or_default(system_parameter_name!(sql_vdbe_opcode_max))?;
-        Ok(res)
+        self.get_or_default(system_parameter_name!(sql_vdbe_opcode_max))
+    }
+
+    #[inline]
+    pub fn memtx_checkpoint_count(&self) -> tarantool::Result<u64> {
+        self.get_or_default(system_parameter_name!(memtx_checkpoint_count))
+    }
+
+    #[inline]
+    pub fn memtx_checkpoint_interval(&self) -> tarantool::Result<u64> {
+        self.get_or_default(system_parameter_name!(memtx_checkpoint_interval))
+    }
+
+    #[inline]
+    pub fn iproto_net_msg_max(&self) -> tarantool::Result<u64> {
+        self.get_or_default(system_parameter_name!(iproto_net_msg_max))
+    }
+}
+
+impl ToEntryIter<MP_SERDE> for DbConfig {
+    type Entry = Tuple;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
