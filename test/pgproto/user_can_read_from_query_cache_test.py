@@ -1,4 +1,4 @@
-from conftest import Postgres
+from conftest import Postgres, Retriable
 import psycopg
 
 
@@ -32,13 +32,18 @@ def test_user_can_read_from_query_cache(postgres: Postgres):
         """,
     )
 
-    # put this query in the query cache
-    cur = conn.execute(
-        """
+    def select_returns_inserted():
+        cur = conn.execute(
+            """
         SELECT * FROM "t";
         """,
-    )
-    assert sorted(cur.fetchall()) == [(1,), (2,)]
+        )
+        assert sorted(cur.fetchall()) == [(1,), (2,)]
+
+    # put this query in the query cache
+    # we have to retry because of vshard rebalancing problems
+    # see https://git.picodata.io/core/sbroad/-/issues/848
+    Retriable().call(select_returns_inserted)
 
     # get this query from the cache
     cur = conn.execute(
