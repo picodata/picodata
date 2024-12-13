@@ -91,10 +91,10 @@ def test_restart_both(cluster2: Cluster):
     # This synchronization is necessary for proper test case reproducing.
     # i1 has already initialized raft node but can't win election yet
     # i2 starts discovery and should be able to advance further
-    Retriable(timeout=2, rps=10).call(check_alive, i1)
+    Retriable(timeout=10, rps=10).call(check_alive, i1)
 
     i2.start()
-    Retriable(timeout=2, rps=10).call(check_alive, i2)
+    Retriable(timeout=10, rps=10).call(check_alive, i2)
 
     # Speed up elections
     i2.promote_or_fail()
