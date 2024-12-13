@@ -49,7 +49,7 @@ from pathlib import Path
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
 BASE_HOST = "127.0.0.1"
-PORT_RANGE = 200
+PORT_RANGE = 400
 METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
