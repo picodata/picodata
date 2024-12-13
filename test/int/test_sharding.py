@@ -293,7 +293,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
 
     # Instance cannot become online until vshard is reconfigured
     with pytest.raises(AssertionError):
-        i3.wait_online(timeout=2)
+        i3.wait_online()
 
     # Disable the synthetic failure so that instance can come online
     i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", False)
