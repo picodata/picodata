@@ -113,6 +113,52 @@ def test_raft_id_after_expel(cluster: Cluster):
     assert i4.raft_id == 4
 
 
+def test_expel_offline_ro_replica(cluster: Cluster):
+    cluster.set_service_password("secret")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        storage:
+            replication_factor: 5
+"""
+    )
+    i1 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.add_instance(tier="storage", wait_online=False)
+    cluster.add_instance(tier="storage", wait_online=False)
+    i4 = cluster.add_instance(tier="storage", wait_online=False)
+    i5 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    counter = i1.wait_governor_status("idle")
+
+    i4.terminate()
+    i5.terminate()
+
+    # Synchronization: make sure governor does all it wanted
+    i1.wait_governor_status("idle", old_step_counter=counter)
+
+    # Check expelling offline replicas, this should be ok because no data loss
+    cluster.expel(i4, peer=i1)
+    [i4_state] = i1.sql(
+        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
+        i4.name,
+    )
+    # ignore incarnation
+    i4_state = [variant for [variant, incarnation] in i4_state]
+    assert i4_state == ["Expelled", "Expelled"]
+
+    cluster.expel(i5, peer=i1)
+    [i5_state] = i1.sql(
+        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
+        i5.name,
+    )
+    # ignore incarnation
+    i5_state = [variant for [variant, incarnation] in i5_state]
+    assert i5_state == ["Expelled", "Expelled"]
+
+
 def test_expel_timeout(cluster: Cluster):
     cluster.deploy(instance_count=1)
     [i1] = cluster.instances
