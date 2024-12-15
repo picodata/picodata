@@ -45,6 +45,7 @@ pub(super) fn action_plan<'i>(
     term: RaftTerm,
     applied: RaftIndex,
     cluster_name: String,
+    cluster_uuid: String,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, String>,
@@ -134,8 +135,9 @@ pub(super) fn action_plan<'i>(
         // replication leader is safe. Instead it should always first transfer
         // the replication leadership to another instance.
 
-        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
-            .with_current_state(instance.target_state);
+        let req =
+            rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
+                .with_current_state(instance.target_state);
         let cas_parameters = prepare_update_instance_cas_request(
             &req,
             instance,
@@ -462,7 +464,8 @@ pub(super) fn action_plan<'i>(
         };
 
         // Mark last instance as expelled
-        let mut req = rpc::update_instance::Request::new(master_name.clone(), cluster_name);
+        let mut req =
+            rpc::update_instance::Request::new(master_name.clone(), cluster_name, cluster_uuid);
 
         if has_states!(master, * -> Expelled) {
             req = req.with_current_state(master.target_state);
@@ -576,8 +579,9 @@ pub(super) fn action_plan<'i>(
             .get(&*instance.tier)
             .expect("tier info is always present");
 
-        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
-            .with_current_state(instance.target_state);
+        let req =
+            rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
+                .with_current_state(instance.target_state);
         let cas_parameters = prepare_update_instance_cas_request(
             &req,
             instance,
@@ -624,8 +628,9 @@ pub(super) fn action_plan<'i>(
             timeout: sync_timeout,
         };
 
-        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
-            .with_current_state(target_state);
+        let req =
+            rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
+                .with_current_state(target_state);
         let cas_parameters = prepare_update_instance_cas_request(
             &req,
             instance,

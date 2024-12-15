@@ -186,6 +186,7 @@ rerun with --force if you still want to expel the instance"""
 def test_expel_timeout(cluster: Cluster):
     cluster.deploy(instance_count=1)
     [i1] = cluster.instances
+    cluster.wait_online()
 
     # If the peer is not resolving, by default we hang on
     # for 5 seconds. We can change it by specifying `timeout`.

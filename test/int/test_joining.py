@@ -78,7 +78,7 @@ def test_discovery(cluster3: Cluster):
     # (proc_discover may return an error during raft leader elections).
     Retriable(timeout=5, rps=4).call(i1.assert_raft_status, "Follower", i2.raft_id)
 
-    def req_discover(instance: Instance):
+    def req_discover(instance: Instance) -> dict:
         request = dict(tmp_id="unused", peers=["test:3301"])
         request_to = instance.iproto_listen
         return instance.call(".proc_discover", request, request_to)

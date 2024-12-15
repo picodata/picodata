@@ -64,6 +64,7 @@ crate::define_rpc_request! {
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         pub box_replication: Vec<Address>,
         pub shredding: bool,
+        pub cluster_uuid: String,
     }
 }
 
@@ -102,11 +103,12 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
 pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<Response> {
     let node = node::global()?;
     let cluster_name = node.raft_storage.cluster_name()?;
+    let cluster_uuid = node.raft_storage.cluster_uuid()?;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
     if req.cluster_name != cluster_name {
-        return Err(Error::ClusterIdMismatch {
+        return Err(Error::ClusterNameMismatch {
             instance_cluster_name: req.cluster_name,
             cluster_name,
         });
@@ -210,11 +212,13 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         replication_addresses.insert(req.advertise_address.clone());
 
         drop(guard);
+
         return Ok(Response {
             instance: instance.into(),
             peer_addresses,
             box_replication: replication_addresses.into_iter().collect(),
             shredding: storage.db_config.shredding()?.expect("should be set"),
+            cluster_uuid,
         });
     }
 }

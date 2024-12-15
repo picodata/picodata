@@ -1763,7 +1763,8 @@ class Cluster:
     peer: Instance | None = None
 
     def __repr__(self):
-        return f'Cluster("{self.base_host}", n={len(self.instances)})'
+        ports = ",".join(str(i.port) for i in self.instances)
+        return f'Cluster("{self.base_host}:{{{ports}}}", n={len(self.instances)})'
 
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
@@ -2528,6 +2529,27 @@ def cluster(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor) ->
         base_host=BASE_HOST,
         port_distributor=port_distributor,
     )
+    cluster.set_service_password("password")
+
+    yield cluster
+    cluster.kill()
+
+
+@pytest.fixture
+def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
+    cluster2_dir = os.path.join(tmpdir, "cluster2")
+    os.makedirs(cluster2_dir, exist_ok=True)
+
+    cluster = Cluster(
+        binary_path=binary_path_fixt,
+        id=next(cluster_names),
+        data_dir=cluster2_dir,
+        base_host=BASE_HOST,
+        port_distributor=port_distributor,
+    )
+
+    cluster.set_service_password("password")
+
     yield cluster
     cluster.kill()
 

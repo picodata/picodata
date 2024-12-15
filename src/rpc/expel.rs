@@ -29,7 +29,7 @@ crate::define_rpc_request! {
         let cluster_name = raft_storage.cluster_name()?;
 
         if req.cluster_name != cluster_name {
-            return Err(Error::ClusterIdMismatch {
+            return Err(Error::ClusterNameMismatch {
                 instance_cluster_name: req.cluster_name,
                 cluster_name,
             });
@@ -64,7 +64,7 @@ crate::define_rpc_request! {
         }
 
         let timeout = req.timeout;
-        let req = rpc::update_instance::Request::new(instance.name.clone(), req.cluster_name)
+        let req = rpc::update_instance::Request::new(instance.name.clone(), req.cluster_name, raft_storage.cluster_uuid()?)
             .with_target_state(Expelled);
 
         // Must not hold this reference across yields

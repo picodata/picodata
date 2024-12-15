@@ -280,23 +280,24 @@ mod tests {
     use super::*;
 
     use crate::instance::Instance;
-    use crate::storage::Catalog;
     use crate::traft::network::ConnectionPool;
 
     #[::tarantool::test]
     async fn vclock_proc() {
-        let storage = Catalog::for_tests();
+        let node = traft::node::Node::for_tests();
+
         // Connect to the current Tarantool instance
-        let pool = ConnectionPool::new(storage.clone(), Default::default());
+        let pool = ConnectionPool::new(node.storage.clone(), Default::default());
         let l = ::tarantool::lua_state();
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = Instance {
             raft_id: 1337,
+            name: "default_1_1".into(),
             ..Instance::default()
         };
-        storage.instances.put(&instance).unwrap();
-        storage
+        node.storage.instances.put(&instance).unwrap();
+        node.storage
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();

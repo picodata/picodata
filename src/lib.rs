@@ -900,6 +900,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         ..Default::default()
     };
 
+    let cluster_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+
     let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, &storage)?;
 
     let hs = raft::HardState {
@@ -915,6 +917,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         raft_storage
             .persist_cluster_name(config.cluster_name())
             .unwrap();
+        raft_storage.persist_cluster_uuid(&cluster_uuid).unwrap();
         raft_storage.persist_entries(&bootstrap_entries).unwrap();
         raft_storage.persist_conf_state(&cs).unwrap();
         raft_storage.persist_hard_state(&hs).unwrap();
@@ -922,7 +925,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     })
     .unwrap();
 
-    // TODO: log cluster uuid here
+    tlog!(Info, "cluster_uuid {}", cluster_uuid);
     tlog!(Info, "created cluster {}", config.cluster_name());
     tlog!(Info, "raft_id: {}", instance.raft_id);
     tlog!(Info, "instance name: {}", instance.name);
@@ -1042,12 +1045,19 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         raft_storage
             .persist_cluster_name(config.cluster_name())
             .unwrap();
+        raft_storage
+            .persist_cluster_uuid(&resp.cluster_uuid)
+            .unwrap();
         raft_storage.persist_tier(config.instance.tier()).unwrap();
         Ok(())
     })
     .unwrap();
 
-    // TODO: log cluster uuid here
+    let cluster_uuid = raft_storage
+        .cluster_uuid()
+        .expect("storage should never fail");
+
+    tlog!(Info, "cluster_uuid {}", cluster_uuid);
     tlog!(Info, "joined cluster {}", config.cluster_name());
     tlog!(Info, "raft_id: {}", resp.instance.raft_id);
     tlog!(Info, "instance name: {}", resp.instance.name);
@@ -1201,6 +1211,9 @@ fn postjoin(
         let cluster_name = raft_storage
             .cluster_name()
             .expect("storage should never fail");
+        let cluster_uuid = raft_storage
+            .cluster_uuid()
+            .expect("storage should never fail");
         // Doesn't have to be leader - can be any online peer
         let leader_id = node.status().leader_id;
         let leader_address = leader_id.and_then(|id| {
@@ -1234,7 +1247,7 @@ fn postjoin(
             instance.name,
             instance.uuid
         );
-        let req = rpc::update_instance::Request::new(instance.name, cluster_name)
+        let req = rpc::update_instance::Request::new(instance.name, cluster_name, cluster_uuid)
             .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain().clone())
             .with_picodata_version(version);

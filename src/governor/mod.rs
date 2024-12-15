@@ -130,6 +130,9 @@ impl Loop {
         let cluster_name = raft_storage
             .cluster_name()
             .expect("storage should never fail");
+        let cluster_uuid = raft_storage
+            .cluster_uuid()
+            .expect("storage should never fail");
         let node = global().expect("must be initialized");
         let pending_schema_change = storage
             .properties
@@ -172,6 +175,7 @@ impl Loop {
             term,
             applied,
             cluster_name,
+            cluster_uuid,
             &instances,
             &existing_fds,
             &peer_addresses,

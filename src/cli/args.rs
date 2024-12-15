@@ -396,7 +396,7 @@ pub struct Expel {
         env = "PICODATA_CLUSTER_NAME",
         default_value = "demo"
     )]
-    /// Name of the cluster from instance should be expelled.
+    /// Name of the cluster from which the instance should be expelled.
     pub cluster_name: String,
 
     #[clap(value_name = "INSTANCE_UUID")]

@@ -53,6 +53,7 @@ crate::define_rpc_request! {
     pub struct Request {
         pub instance_name: InstanceName,
         pub cluster_name: String,
+        pub cluster_uuid: String,
         /// Only allowed to be set by leader
         pub current_state: Option<State>,
         /// Can be set by instance
@@ -69,10 +70,11 @@ crate::define_rpc_request! {
 
 impl Request {
     #[inline]
-    pub fn new(instance_name: InstanceName, cluster_name: String) -> Self {
+    pub fn new(instance_name: InstanceName, cluster_name: String, cluster_uuid: String) -> Self {
         Self {
             instance_name,
             cluster_name,
+            cluster_uuid,
             dont_retry: false,
             ..Request::default()
         }
@@ -117,14 +119,14 @@ impl Request {
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
     let node = node::global()?;
-    let cluster_name = node.raft_storage.cluster_name()?;
+    let cluster_uuid = node.raft_storage.cluster_uuid()?;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
-    if req.cluster_name != cluster_name {
-        return Err(Error::ClusterIdMismatch {
-            instance_cluster_name: req.cluster_name,
-            cluster_name,
+    if req.cluster_uuid != cluster_uuid {
+        return Err(Error::ClusterUuidMismatch {
+            instance_uuid: req.cluster_uuid,
+            cluster_uuid,
         });
     }
 

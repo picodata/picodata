@@ -289,6 +289,15 @@ def test_raft_log(instance: Instance):
             if columns[1].isdigit():
                 columns[1] = "69"
 
+            contents = columns[3]
+            if 'Insert(_pico_property, ["cluster_uuid",' in contents:
+                parts = contents.split('["cluster_uuid","')
+                if len(parts) == 2:
+                    uuid_and_rest = parts[1].split('"', 1)
+                    if len(uuid_and_rest) == 2:
+                        contents = parts[0] + '["cluster_uuid","<uuid>"' + uuid_and_rest[1]
+                        columns[3] = contents
+
             # now let's break up the gigantic raft log rows with long BatchDml
             # entries into several lines, so that each sub operation is on it's
             # own line.
@@ -296,7 +305,6 @@ def test_raft_log(instance: Instance):
             # is understandable enough.
             # By the way you probably want to also add `--no-showlocals` flag
             # when running this test.
-            contents = columns[3]
             if contents.startswith("BatchDml("):
                 res.append(str.join("|", columns[0:3] + ["BatchDml("]))
                 cursor = len("BatchDml(")
@@ -549,6 +557,7 @@ cluster:
     i2_version = i2.picodata_version()
 
     i1_info = i1.call(".proc_instance_info")
+    cluster_uuid = i1_info["cluster_uuid"]
     assert i1_info == dict(
         raft_id=1,
         name="storage_1_1",
@@ -558,6 +567,7 @@ cluster:
         replicaset_name="storage_1",
         replicaset_uuid=i1.replicaset_uuid(),
         cluster_name=i1.cluster_name,
+        cluster_uuid=cluster_uuid,
         current_state=dict(variant="Online", incarnation=1),
         target_state=dict(variant="Online", incarnation=1),
         tier="storage",
@@ -573,6 +583,7 @@ cluster:
         replicaset_name="router_1",
         replicaset_uuid=i2.replicaset_uuid(),
         cluster_name=i1.cluster_name,
+        cluster_uuid=cluster_uuid,
         current_state=dict(variant="Online", incarnation=1),
         target_state=dict(variant="Online", incarnation=1),
         tier="router",
@@ -815,3 +826,47 @@ def test_peer_connection_type(cluster: Cluster):
 
     # each instance has one iproto address and one pg adress, their length should be equal
     assert len(addr_list) == len(pg_addr_list)
+
+
+def test_join_cluster_name_mismatch(cluster: Cluster, second_cluster: Cluster):
+    i3 = second_cluster.add_instance(name="i3", wait_online=False)
+    second_cluster.wait_online()
+
+    # try to create first cluster with i3 from second cluster as a peer
+    i1 = cluster.add_instance(wait_online=False)
+    i1.peers.append(i3.iproto_listen)
+
+    lc = log_crawler(
+        i1,
+        "join request failed: server responded with error: box error #10000: cluster_name mismatch",
+    )
+
+    with pytest.raises(Exception, match="process exited unexpectedly"):
+        cluster.wait_online()
+
+    lc.wait_matched()
+
+
+def test_update_instance_cluster_uuid_protection(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+
+    cluster_info = i1.call(".proc_instance_info")
+    actual_cluster_uuid = cluster_info["cluster_uuid"]
+
+    first_char = "b" if actual_cluster_uuid[0] == "a" else "a"
+    invalid_cluster_uuid = first_char + actual_cluster_uuid[1:]
+
+    with pytest.raises(TarantoolError) as e:
+        i1.call(
+            ".proc_update_instance",
+            i1.name,
+            i1.cluster_name,
+            invalid_cluster_uuid,
+            None,
+            None,
+            None,
+            False,
+            None,
+        )
+
+    assert "cluster UUID mismatch" in str(e.value)

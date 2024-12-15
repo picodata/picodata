@@ -252,7 +252,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     let cluster_name = raft_storage.cluster_name()?;
 
     if req.cluster_name != cluster_name {
-        return Err(TraftError::ClusterIdMismatch {
+        return Err(TraftError::ClusterNameMismatch {
             instance_cluster_name: req.cluster_name.clone(),
             cluster_name,
         });

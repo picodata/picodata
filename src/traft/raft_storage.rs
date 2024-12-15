@@ -90,6 +90,9 @@ impl RaftSpaceAccess {
                 .unwrap();
             raft_storage.persist_tier("default").unwrap();
             raft_storage.persist_cluster_name("test_cluster").unwrap();
+            raft_storage
+                .persist_cluster_uuid("b071480d-080d-49fd-b7ae-8c5645783428")
+                .unwrap();
 
             let mut cs = raft::ConfState::default();
             cs.voters = vec![raft_id];
@@ -147,6 +150,15 @@ impl RaftSpaceAccess {
     pub fn cluster_name(&self) -> tarantool::Result<String> {
         let res = self.try_get_raft_state("cluster_name")?;
         let res = res.expect("cluster_name should always be set");
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn cluster_uuid(&self) -> tarantool::Result<String> {
+        // Use empty string as default for backward compatibility.
+        // This allows safe upgrade from previous versions where cluster_uuid might not be set.
+        let res = self.try_get_raft_state("cluster_uuid")?;
+        let res = res.unwrap_or_default();
         Ok(res)
     }
 
@@ -335,6 +347,13 @@ impl RaftSpaceAccess {
     pub fn persist_cluster_name(&self, cluster_name: &str) -> tarantool::Result<()> {
         self.space_raft_state
             .insert(&("cluster_name", cluster_name))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_cluster_uuid(&self, cluster_uuid: &str) -> tarantool::Result<()> {
+        self.space_raft_state
+            .insert(&("cluster_uuid", cluster_uuid))?;
         Ok(())
     }
 

@@ -368,7 +368,7 @@ mod tests {
         // Current state incarnation is allowed to go down,
         // governor has the authority over it
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_current_state(State::new(Offline, 0));
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -383,7 +383,7 @@ mod tests {
         //
         // idempotency
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_current_state(State::new(Offline, 0));
         let dml = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap();
         assert_eq!(dml, None);
@@ -391,7 +391,7 @@ mod tests {
         //
         // Offline takes incarnation from current state
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_target_state(Offline);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -406,7 +406,7 @@ mod tests {
         //
         // Online increases incarnation
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_target_state(Online);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -421,7 +421,7 @@ mod tests {
         //
         // No idempotency, incarnation goes up
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_target_state(Online);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -436,7 +436,7 @@ mod tests {
         //
         // State::Expelled takes incarnation from current state
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_target_state(Expelled);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -451,7 +451,7 @@ mod tests {
         //
         // Instance gets expelled
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_current_state(State::new(Expelled, 69));
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -466,7 +466,7 @@ mod tests {
         //
         // Updating expelled instances isn't allowed
         //
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_target_state(Online);
         let e = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
@@ -484,7 +484,7 @@ mod tests {
         add_instance(&storage, &instance).unwrap();
         let existing_fds = HashSet::new();
 
-        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into(), "".into())
             .with_picodata_version(new_picodata_version.clone());
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, global_cluster_version)
             .unwrap()
@@ -516,7 +516,7 @@ mod tests {
         add_instance(&storage, &expelled_instance).unwrap();
 
         // Now try to update the picodata_version on the expelled instance.
-        let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "".into(), "".into())
             .with_picodata_version(new_picodata_version.clone());
         let err = update_instance(&expelled_instance, &req, &existing_fds, global_cluster_version)
             .unwrap_err();
@@ -605,7 +605,7 @@ mod tests {
         //
         // reconfigure single instance, fail
         //
-        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
         let e = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
@@ -614,7 +614,7 @@ mod tests {
         // reconfigure single instance, success
         //
         let fd = faildoms! {planet: Mars, owner: Ivan};
-        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into(), "".into())
             .with_failure_domain(fd.clone());
         let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
@@ -648,7 +648,7 @@ mod tests {
         // reconfigure second instance, success
         //
         let fd = faildoms! {planet: Earth, owner: Mike};
-        let req = rpc::update_instance::Request::new(instance2.name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance2.name.clone(), "".into(), "".into())
             .with_failure_domain(fd.clone());
         let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 

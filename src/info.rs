@@ -105,6 +105,7 @@ pub struct InstanceInfo {
     pub target_state: State,
     pub tier: String,
     pub picodata_version: String,
+    pub cluster_uuid: String,
 }
 
 impl tarantool::tuple::Encode for InstanceInfo {}
@@ -132,6 +133,8 @@ impl InstanceInfo {
 
         let cluster_name = node.raft_storage.cluster_name()?;
 
+        let cluster_uuid = node.raft_storage.cluster_uuid()?;
+
         Ok(InstanceInfo {
             raft_id: instance.raft_id,
             iproto_advertise: peer_address,
@@ -140,6 +143,7 @@ impl InstanceInfo {
             replicaset_name: instance.replicaset_name,
             replicaset_uuid: instance.replicaset_uuid,
             cluster_name,
+            cluster_uuid,
             current_state: instance.current_state,
             target_state: instance.target_state,
             tier: instance.tier,
@@ -165,7 +169,7 @@ pub fn proc_instance_info(request: InstanceInfoRequest) -> Result<InstanceInfo, 
 
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize)]
 #[serde(untagged)]
-enum InstanceInfoRequest {
+pub(crate) enum InstanceInfoRequest {
     // FIXME: this is the simplest way I found to support a single optional
     // parameter to the stored procedure. We should probably do something about
     // it in our custom `Encode`/`Decode` traits.

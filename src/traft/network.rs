@@ -157,7 +157,7 @@ impl PoolWorker {
                                 port,
                                 opts.call_timeout,
                                 opts.max_concurrent_futs,
-                                instance_reachability
+                                instance_reachability,
                             ).fuse() => (),
                         _ = stop_receiver.fuse() => ()
                     }
@@ -650,20 +650,24 @@ mod tests {
         )
         .unwrap();
 
-        let storage = Catalog::for_tests();
+        let node = traft::node::Node::for_tests();
+
         // Connect to the current Tarantool instance
-        let pool = ConnectionPool::new(storage.clone(), Default::default());
+        let pool = ConnectionPool::new(node.storage.clone(), Default::default());
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
             raft_id: 1337,
+            name: "default_1_1".into(),
             ..traft::Instance::default()
         };
-        storage.instances.put(&instance).unwrap();
-        storage
+        node.storage.instances.put(&instance).unwrap();
+        node.storage
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
+
+        crate::init_handlers();
 
         let result: u32 = fiber::block_on(
             pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32), None)
@@ -695,25 +699,31 @@ mod tests {
             }),
         );
 
-        let storage = Catalog::for_tests();
+        let node = traft::node::Node::for_tests();
+
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
             call_timeout: Duration::from_millis(50),
             ..Default::default()
         };
-        let pool = ConnectionPool::new(storage.clone(), opts);
+        let pool = ConnectionPool::new(node.storage.clone(), opts);
+
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
             raft_id: 1337,
+            name: "default_1_1".into(),
             ..traft::Instance::default()
         };
-        storage.instances.put(&instance).unwrap();
-        storage
+        node.storage.instances.put(&instance).unwrap();
+        node.storage
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
+
+        crate::init_handlers();
+
         tlog!(Info, "TEST: connecting {listen}");
         // pool.connect(1337, listen);
 
@@ -781,25 +791,29 @@ mod tests {
             }),
         );
 
-        let storage = Catalog::for_tests();
+        let node = traft::node::Node::for_tests();
+
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
             call_timeout: Duration::from_millis(50),
             ..Default::default()
         };
-        let pool = ConnectionPool::new(storage.clone(), opts);
+        let pool = ConnectionPool::new(node.storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
             raft_id: 1337,
+            name: "default_1_1".into(),
             ..traft::Instance::default()
         };
-        storage.instances.put(&instance).unwrap();
-        storage
+        node.storage.instances.put(&instance).unwrap();
+        node.storage
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
+        crate::init_handlers();
+
         tlog!(Info, "TEST: connecting {listen}");
 
         // Send several messages one by one
