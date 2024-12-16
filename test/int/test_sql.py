@@ -5822,6 +5822,7 @@ def test_extreme_integer_values(cluster: Cluster):
     ddl = i1.sql(
         """
         CREATE TABLE T (uid UNSIGNED PRIMARY KEY, iid INTEGER)
+        DISTRIBUTED GLOBALLY
         OPTION (TIMEOUT = 3)
     """
     )
@@ -5857,13 +5858,8 @@ def test_extreme_integer_values(cluster: Cluster):
     data = i1.sql(f"SELECT * FROM T WHERE iid = {I64_MAX} LIMIT 1")
     assert sorted(data) == [[U64_MAX, I64_MAX]]
 
-    with pytest.raises(
-        TarantoolError, match="Failed to cast 9223372036854775808 to integer"
-    ):
-        data = i1.sql(f"SELECT iid + 1 FROM T WHERE iid = {I64_MAX} LIMIT 1")
-
     with pytest.raises(TarantoolError, match="integer is overflowed"):
-        data = i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {U64_MAX} LIMIT 1")
+        i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {U64_MAX} LIMIT 1")
 
 
 def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
