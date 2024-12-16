@@ -21,8 +21,25 @@
 
 [tier]: ../overview/glossary.md#tier
 
-Для разработки плагинов предусмотрена библиотека
-[`picodata-plugin`](https://git.picodata.io/core/picodata/-/tree/master/picodata-plugin).
+Для разработки плагинов предусмотрена библиотека [`picodata-plugin`].
+
+Для работы плагина версия Picodata должна совпадать с версией библиотеки
+`picodata-plugin`, которая использована для его сборки. Если версии
+различаются, при [установке] плагина будет выведена ошибка, содержащая
+текущую версию Picodata и ожидаемую версию `picodata-plugin`.
+
+Проверку совместимости версий можно отключить, задав следующую переменную
+окружения:
+
+```bash
+PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK=1
+```
+
+Отключение проверки совместимости может негативно повлиять на работу
+плагина и Picodata, поэтому должно быть хорошо обдумано.
+
+[`picodata-plugin`]: https://git.picodata.io/core/picodata/-/tree/master/picodata-plugin
+[установке]: #plugin_install
 
 ## Структура плагина {: #structure }
 
