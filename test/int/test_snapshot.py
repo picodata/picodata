@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from conftest import Cluster, Retriable
 
 
@@ -66,6 +68,9 @@ def assert_eq(lhs, rhs):
     assert lhs == rhs
 
 
+@pytest.mark.xfail(
+    reason="flaky, see: https://git.picodata.io/core/picodata/-/issues/779"
+)
 def test_large_snapshot(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
 
