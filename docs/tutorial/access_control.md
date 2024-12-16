@@ -426,6 +426,13 @@ GRANT WRITE ON TABLE <table name> TO <grantee>
 REVOKE <priv> ON TABLE <table name> FROM <grantee>
 ```
 
+В качестве `<table_name>` можно использовать имена [системных таблиц] —
+по умолчанию доступ к ним запрещен всем [пользователям СУБД][u], кроме
+`admin` и `pico_service`.
+
+[системных таблиц]: ../architecture/system_tables.md
+[u]: #users
+
 ## Управление доступом к процедурам {: #proc_access }
 
 <!--
