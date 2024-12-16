@@ -243,11 +243,16 @@ test-linux:
     - pushd sbroad && make test
     - make bench_check; popd
 
-    - make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
     - |
+      ci-log-section start "build" Build
+      make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+      ci-log-section end "build"
+    - |
+      ci-log-section start "test" Test
       make test \
         PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST" \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
+      ci-log-section end "test"
 
   artifacts:
     when: always
