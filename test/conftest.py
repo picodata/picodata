@@ -2469,10 +2469,12 @@ class Postgres:
     ssl_verify: bool = False
 
     def install(self):
-        # deploy 3 instances and configure pgproto on the first one
+        # deploy ~~3~~ 1 instances and configure pgproto on the first one
         i1 = self.cluster.add_instance(wait_online=False)
-        self.cluster.add_instance(wait_online=False)
-        self.cluster.add_instance(wait_online=False)
+        # See https://git.picodata.io/core/picodata/-/issues/1218
+        # TL;DR: this fixes flakiness
+        # self.cluster.add_instance(wait_online=False)
+        # self.cluster.add_instance(wait_online=False)
         i1.pg_host = self.host
         i1.pg_port = self.port
         i1.pg_ssl = self.ssl
