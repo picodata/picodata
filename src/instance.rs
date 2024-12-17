@@ -194,8 +194,8 @@ mod tests {
 
         let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i1.raft_id, 1);
-        assert_eq!(i1.name, "i1");
-        assert_eq!(i1.replicaset_name, "r1");
+        assert_eq!(i1.name, "default_1_1");
+        assert_eq!(i1.replicaset_name, "default_1");
         assert_eq!(i1.current_state, State::new(Offline, 0));
         assert_eq!(i1.target_state, State::new(Offline, 0));
         assert_eq!(i1.failure_domain, FailureDomain::default());
@@ -204,20 +204,20 @@ mod tests {
 
         let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i2.raft_id, 2);
-        assert_eq!(i2.name, "i2");
-        assert_eq!(i2.replicaset_name, "r2");
+        assert_eq!(i2.name, "default_2_1");
+        assert_eq!(i2.replicaset_name, "default_2");
         add_instance(&storage, &i2).unwrap();
 
         let i3 = build_instance(None, Some(&ReplicasetName::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i3.raft_id, 3);
-        assert_eq!(i3.name, "i3");
+        assert_eq!(i3.name, "R3_1");
         assert_eq!(i3.replicaset_name, "R3");
         add_instance(&storage, &i3).unwrap();
 
         let i4 = build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i4.raft_id, 4);
         assert_eq!(i4.name, "I4");
-        assert_eq!(i4.replicaset_name, "r3");
+        assert_eq!(i4.replicaset_name, "default_3");
         add_instance(&storage, &i4).unwrap();
     }
 
@@ -277,7 +277,7 @@ mod tests {
 
         let instance = build_instance(None, Some(&ReplicasetName::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(instance.raft_id, 3);
-        assert_eq!(instance.name, "i3-2");
+        assert_eq!(instance.name, "r2_1");
         assert_eq!(instance.replicaset_name, "r2");
     }
 
@@ -287,8 +287,11 @@ mod tests {
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(i1a.name, "i1");
-        assert_eq!(i1b.name, "i1");
+        assert_eq!(i1a.name, "default_1_1");
+        assert_eq!(i1b.name, "default_1_1");
+
+        assert_eq!(i1a.replicaset_name, "default_1");
+        assert_eq!(i1b.replicaset_name, "default_1");
         // Attention: not equal
         assert_ne!(i1a.uuid, i1b.uuid);
     }
@@ -297,39 +300,39 @@ mod tests {
     fn test_replication_factor() {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
-        add_instance(&storage, &dummy_instance(9, "i9", "r9", &State::new(Online, 1))).unwrap();
-        add_instance(&storage, &dummy_instance(10, "i10", "r9", &State::new(Online, 1))).unwrap();
+        add_instance(&storage, &dummy_instance(9, "i9", "default_1", &State::new(Online, 1))).unwrap();
+        add_instance(&storage, &dummy_instance(10, "i10", "default_1", &State::new(Online, 1))).unwrap();
 
         let i1 = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i1.raft_id, 11);
         assert_eq!(i1.name, "i1");
-        assert_eq!(i1.replicaset_name, "r1");
+        assert_eq!(i1.replicaset_name, "default_2");
         add_instance(&storage, &i1).unwrap();
 
-        assert_eq!(replication_names(&ReplicasetName::from("r1"), &storage), HashSet::from([11]));
+        assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11]));
 
         let i2 = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i2.raft_id, 12);
         assert_eq!(i2.name, "i2");
-        assert_eq!(i2.replicaset_name, "r1");
+        assert_eq!(i2.replicaset_name, "default_2");
         assert_eq!(i2.replicaset_uuid, i1.replicaset_uuid);
         add_instance(&storage, &i2).unwrap();
-        assert_eq!(replication_names(&ReplicasetName::from("r1"), &storage), HashSet::from([11, 12]));
+        assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11, 12]));
 
         let i3 = build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i3.raft_id, 13);
         assert_eq!(i3.name, "i3");
-        assert_eq!(i3.replicaset_name, "r2");
+        assert_eq!(i3.replicaset_name, "default_3");
         add_instance(&storage, &i3).unwrap();
-        assert_eq!(replication_names(&ReplicasetName::from("r2"), &storage), HashSet::from([13]));
+        assert_eq!(replication_names(&ReplicasetName::from("default_3"), &storage), HashSet::from([13]));
 
         let i4 = build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i4.raft_id, 14);
         assert_eq!(i4.name, "i4");
-        assert_eq!(i4.replicaset_name, "r2");
+        assert_eq!(i4.replicaset_name, "default_3");
         assert_eq!(i4.replicaset_uuid, i3.replicaset_uuid);
         add_instance(&storage, &i4).unwrap();
-        assert_eq!(replication_names(&ReplicasetName::from("r2"), &storage), HashSet::from([13, 14]));
+        assert_eq!(replication_names(&ReplicasetName::from("default_3"), &storage), HashSet::from([13, 14]));
     }
 
     #[track_caller]
@@ -466,31 +469,31 @@ mod tests {
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r1");
+        assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r2");
+        assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r1");
+        assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r3");
+        assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r2");
+        assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let e = build_instance(None, None, &faildoms! {os: Arch}, &storage, DEFAULT_TIER).unwrap_err();
@@ -499,19 +502,19 @@ mod tests {
         let instance =
             build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r1");
+        assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r2");
+        assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage, DEFAULT_TIER)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r3");
+        assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
         let e = build_instance(None, None, &faildoms! {}, &storage, DEFAULT_TIER).unwrap_err();
@@ -530,7 +533,7 @@ mod tests {
         add_instance(&storage, &instance1).unwrap();
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
-        assert_eq!(instance1.replicaset_name, "r1");
+        assert_eq!(instance1.replicaset_name, "default_1");
 
         //
         // reconfigure single instance, fail
@@ -572,7 +575,7 @@ mod tests {
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance2.failure_domain, fd);
         // doesn't fit into r1
-        assert_eq!(instance2.replicaset_name, "r2");
+        assert_eq!(instance2.replicaset_name, "default_2");
 
         //
         // reconfigure second instance, success
@@ -600,7 +603,7 @@ mod tests {
             instance3_v1.failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137}
         );
-        assert_eq!(instance3_v1.replicaset_name, "r1");
+        assert_eq!(instance3_v1.replicaset_name, "default_1");
 
         //
         // even though the only instance with failure domain subdivision of
@@ -625,31 +628,31 @@ mod tests {
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r1");
+        assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Mars}, &storage, second_tier)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r2");
+        assert_eq!(instance.replicaset_name, "compute_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Mars}, &storage, first_tier)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r1");
+        assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Pluto}, &storage, third_tier)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r3");
+        assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Venus}, &storage, third_tier)
                 .unwrap();
-        assert_eq!(instance.replicaset_name, "r3");
+        assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 
         let e = build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier").unwrap_err();

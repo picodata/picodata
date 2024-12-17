@@ -16,6 +16,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Default config name is `picodata.yaml`.
 
+- The default names for replicaset and instance are now generated using the following patterns:
+  - ReplicaSet Name: `{tier_name}_{replicaset_number_in_this_tier}`
+  - Instance Name: `{tier_name}_{replicaset_number_in_tier}_{instance_number_in_replicaset}`
+
+- New parameters for Vinyl configuration: `bloom_fpr`, `max_tuple_size`, `page_size`, `range_size`,
+  `run_count_per_size`, `run_size_ratio`, `read_threads`, `write_threads` and `timeout`.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.
@@ -29,11 +36,6 @@ with the `YY.MINOR.MICRO` scheme.
 ### Pgproto
 
 - Support LDAP authentication method
-
-### Configuration
-
-- New parameters for Vinyl configuration: `bloom_fpr`, `max_tuple_size`, `page_size`, `range_size`,
-  `run_count_per_size`, `run_size_ratio`, `read_threads`, `write_threads` and `timeout`.
 
 ### Compatibility
 

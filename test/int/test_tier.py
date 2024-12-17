@@ -378,7 +378,9 @@ cluster:
     content = storage_follower.eval("return box.space.table_in_storage:select()")
     assert sorted(select_first_column(content)) == [1, 2, 3]
 
-    r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('r2').uuid")
+    r2_uuid = router_instance.eval(
+        "return box.space._pico_replicaset:get('storage_1').uuid"
+    )
 
     # if we kill master of replicaset data will be unavailiable temporarily, until
     # governor make it right: consistent master switchower + deliver changed vshard

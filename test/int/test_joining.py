@@ -147,7 +147,7 @@ def test_replication(cluster: Cluster):
             "name": instance.name,
             "uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
-            "replicaset_name": "r1",
+            "replicaset_name": "default_1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
             "current_state": ["Online", 1],
             "target_state": ["Online", 1],
@@ -194,7 +194,7 @@ def test_tier_replication_factor(cluster: Cluster):
     """
     )
 
-    assert set(replicaset_names) == {"r1", "r2"}
+    assert set(replicaset_names) == {"default_1", "default_2"}
 
 
 def test_cluster_name_mismatch(instance: Instance):
@@ -292,9 +292,9 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
     i2 = cluster.add_instance(name=False)
 
     i1.assert_raft_status("Leader")
-    assert i1.name == "i1"
+    assert i1.name == "default_1_1"
     i2.assert_raft_status("Follower")
-    assert i2.name == "i2"
+    assert i2.name == "default_2_1"
 
 
 def test_failure_domains(cluster: Cluster):
@@ -302,7 +302,7 @@ def test_failure_domains(cluster: Cluster):
         failure_domain=dict(planet="Earth"), init_replication_factor=2
     )
     i1.assert_raft_status("Leader")
-    assert replicaset_name(i1) == "r1"
+    assert replicaset_name(i1) == "default_1"
 
     assert i1.cluster_name
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
@@ -316,7 +316,7 @@ def test_failure_domains(cluster: Cluster):
 
     i2 = cluster.add_instance(failure_domain=dict(planet="Mars", os="Arch"))
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
-    assert replicaset_name(i2) == "r1"
+    assert replicaset_name(i2) == "default_1"
 
     with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
         raft_join(
@@ -329,7 +329,7 @@ def test_failure_domains(cluster: Cluster):
 
     i3 = cluster.add_instance(failure_domain=dict(planet="Venus", os="BSD"))
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
-    assert replicaset_name(i3) == "r2"
+    assert replicaset_name(i3) == "default_2"
 
 
 def test_reconfigure_failure_domains(cluster: Cluster):
@@ -337,10 +337,10 @@ def test_reconfigure_failure_domains(cluster: Cluster):
         failure_domain=dict(planet="Earth"), init_replication_factor=2
     )
     i1.assert_raft_status("Leader")
-    assert replicaset_name(i1) == "r1"
+    assert replicaset_name(i1) == "default_1"
 
     i2 = cluster.add_instance(failure_domain=dict(planet="Mars"))
-    assert replicaset_name(i2) == "r1"
+    assert replicaset_name(i2) == "default_1"
 
     i2.terminate()
     # fail to start without needed domain subdivisions
@@ -352,7 +352,7 @@ def test_reconfigure_failure_domains(cluster: Cluster):
     i2.start()
     i2.wait_online()
     # replicaset doesn't change automatically
-    assert replicaset_name(i2) == "r1"
+    assert replicaset_name(i2) == "default_1"
 
     i2.terminate()
     # fail to remove domain subdivision
@@ -574,8 +574,8 @@ cluster:
     instance = cluster.add_instance(
         replicaset_name="r2", tier="router", wait_online=False
     )
-    msg = "tier mismatch: instance i3 is from tier: 'router', \
-but replicaset r2 is from tier: 'default'"
+
+    msg = "tier mismatch: requested replicaset 'r2' is from tier 'default', but specified tier is 'router'"  # noqa E501
 
     lc = log_crawler(instance, msg)
     with pytest.raises(

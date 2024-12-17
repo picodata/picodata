@@ -211,11 +211,11 @@ cluster:
 
     # Deploy a cluster with at least one full replicaset
     storage1 = cluster.add_instance(name="storage1", wait_online=True, tier="storage")
-    assert storage1.replicaset_name == "r2"
+    assert storage1.replicaset_name == "storage_1"
     storage2 = cluster.add_instance(name="storage2", wait_online=True, tier="storage")
-    assert storage2.replicaset_name == "r2"
+    assert storage2.replicaset_name == "storage_1"
     storage3 = cluster.add_instance(name="storage3", wait_online=True, tier="storage")
-    assert storage3.replicaset_name == "r3"
+    assert storage3.replicaset_name == "storage_2"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
@@ -227,7 +227,7 @@ cluster:
 
     # Add another instance, it should be assigned to the no longer filled replicaset
     storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
-    assert storage4.replicaset_name == "r2"
+    assert storage4.replicaset_name == "storage_1"
 
     # Attempt to expel an offline replicaset
     storage3.terminate()
@@ -245,10 +245,10 @@ cluster:
     counter = leader.wait_governor_status("transfer buckets from replicaset")
 
     # The replicaset is in progress of being expelled
-    [[r3_state, r3_old_uuid]] = leader.sql(
-        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'r3' """
+    [[storage_2_state, storage_2_old_uuid]] = leader.sql(
+        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'storage_2' """
     )
-    assert r3_state == "to-be-expelled"
+    assert storage_2_state == "to-be-expelled"
 
     # Add another instance
     storage5 = cluster.add_instance(name="storage5", tier="storage", wait_online=False)
@@ -261,12 +261,12 @@ cluster:
 
     # Update the fields on the object
     Retriable().call(storage5.instance_info)
-    # Instance is added to a new replicaset because 'r3' is not yet avaliable
-    assert storage5.replicaset_name == "r4"
+    # Instance is added to a new replicaset because 'storage_2' is not yet avaliable
+    assert storage5.replicaset_name == "storage_3"
 
-    # Try adding an instance to 'r3' directly, which is not allowed
+    # Try adding an instance to 'storage_2' directly, which is not allowed
     storage6 = cluster.add_instance(
-        name="storage6", replicaset_name="r3", tier="storage", wait_online=False
+        name="storage6", replicaset_name="storage_2", tier="storage", wait_online=False
     )
     lc = log_crawler(storage6, "cannot join replicaset which is being expelled")
     storage6.fail_to_start()
@@ -279,17 +279,17 @@ cluster:
     leader.wait_governor_status("idle")
 
     # The replicaset is finally expelled
-    [[r3_state]] = leader.sql(
-        """ SELECT state FROM _pico_replicaset WHERE name = 'r3' """
+    [[storage_2_state]] = leader.sql(
+        """ SELECT state FROM _pico_replicaset WHERE name = 'storage_2' """
     )
-    assert r3_state == "expelled"
+    assert storage_2_state == "expelled"
 
     # Now it's ok to reuse the 'r3' replicaset name, but it will be a different replicaset
-    cluster.add_instance(replicaset_name="r3", tier="storage", wait_online=True)
+    cluster.add_instance(replicaset_name="storage_2", tier="storage", wait_online=True)
 
     # The new replicaset is created
-    [[r3_state, r3_new_uuid]] = leader.sql(
-        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'r3' """
+    [[storage_2_state, storage_2_new_uuid]] = leader.sql(
+        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'storage_2' """
     )
-    assert r3_state != "expelled"
-    assert r3_old_uuid != r3_new_uuid
+    assert storage_2_state != "expelled"
+    assert storage_2_old_uuid != storage_2_new_uuid

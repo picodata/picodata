@@ -751,9 +751,18 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 
     let raft_id = 1;
     let instance_name = config.instance.name();
-    let instance_name = instance_name.unwrap_or_else(|| instance::InstanceName::from("i1"));
+
+    let replicaset_number = 1;
+    let instances_in_replicaset = 1;
+    let instance_name = instance_name.unwrap_or_else(|| {
+        instance::InstanceName::from(format!(
+            "{my_tier_name}_{replicaset_number}_{instances_in_replicaset}"
+        ))
+    });
     let replicaset_name = config.instance.replicaset_name();
-    let replicaset_name = replicaset_name.unwrap_or_else(|| replicaset::ReplicasetName::from("r1"));
+    let replicaset_name = replicaset_name.unwrap_or_else(|| {
+        replicaset::ReplicasetName::from(format!("{my_tier_name}_{replicaset_number}"))
+    });
 
     let instance = Instance {
         raft_id,

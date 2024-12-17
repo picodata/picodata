@@ -60,12 +60,12 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     assert i1.eval("return rawget(_G, 'vshard') == nil")
     assert not vshard_bootstrapped(i1)
 
-    i2 = cluster.add_instance(replicaset_name="r2")
+    i2 = cluster.add_instance(replicaset_name="default_2")
     time.sleep(0.5)
     assert i2.eval("return rawget(_G, 'vshard') == nil")
     assert not vshard_bootstrapped(i2)
 
-    i3 = cluster.add_instance(replicaset_name="r1")
+    i3 = cluster.add_instance(replicaset_name="default_1")
     time.sleep(0.5)
     assert vshard_bootstrapped(i3)
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 3000)

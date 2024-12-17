@@ -173,10 +173,9 @@ invalid configuration: instance restarted with a different `tier`, which is not 
     #
     was = instance.replicaset_name  # type: ignore
     instance.replicaset_name = "new-replicaset-name"
-    # instance.replicaset_name = "r2"
     assert instance.replicaset_name != was
-    err = """\
-invalid configuration: instance restarted with a different `replicaset_name`, which is not allowed, was: 'r1' became: 'new-replicaset-name'
+    err = f"""\
+invalid configuration: instance restarted with a different `replicaset_name`, which is not allowed, was: '{was}' became: 'new-replicaset-name'
 """  # noqa: E501
     crawler = log_crawler(instance, err)
     instance.fail_to_start()
@@ -247,7 +246,7 @@ def test_pico_instance_info(instance: Instance):
     myself = instance_info("i1")
     assert myself["raft_id"] == 1
     assert myself["name"] == "i1"
-    assert myself["replicaset_name"] == "r1"
+    assert myself["replicaset_name"] == "default_1"
 
     with pytest.raises(ReturnError) as e:
         instance_info("i2")
@@ -340,8 +339,8 @@ def test_raft_log(instance: Instance):
 +-----+----+--------+
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
-Insert(_pico_instance, ["i1","{i1_uuid}",1,"r1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
-Insert(_pico_replicaset, ["r1","{r1_uuid}","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
+Insert(_pico_instance, ["i1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
+Insert(_pico_replicaset, ["default_1","{r1_uuid}","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
@@ -441,11 +440,11 @@ Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_key","tree",[{{"unique
 |  0  | 2  |-|
 |  0  | 2  |BatchDml(
 Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]]),
-Update(_pico_replicaset, ["r1"], [["=","target_config_version",1]]),
+Update(_pico_replicaset, ["default_1"], [["=","target_config_version",1]]),
 Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
-|  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","current_config_version",1]])|
-|  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
+|  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",1]])|
+|  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]])|
 |  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",1]])|
 |  69 | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
 |  69 | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
@@ -541,7 +540,7 @@ cluster:
         advertise_address=f"{i1.host}:{i1.port}",
         name="i1",
         uuid=i1.uuid(),
-        replicaset_name="r1",
+        replicaset_name="storage_1",
         replicaset_uuid=i1.replicaset_uuid(),
         cluster_name=i1.cluster_name,
         current_state=dict(variant="Online", incarnation=1),
@@ -555,7 +554,7 @@ cluster:
         advertise_address=f"{i2.host}:{i2.port}",
         name="i2",
         uuid=i2.uuid(),
-        replicaset_name="r2",
+        replicaset_name="router_1",
         replicaset_uuid=i2.replicaset_uuid(),
         cluster_name=i1.cluster_name,
         current_state=dict(variant="Online", incarnation=1),
@@ -581,7 +580,7 @@ cluster:
     i3 = cluster.add_instance(tier="storage")
     i3_info = i3.call(".proc_instance_info")
     assert i3_info["name"] == "i3"
-    assert i3_info["replicaset_name"] == "r1"
+    assert i3_info["replicaset_name"] == "storage_1"
     assert i3_info["replicaset_uuid"] == i1_info["replicaset_uuid"]
 
 

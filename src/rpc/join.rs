@@ -13,7 +13,7 @@ use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
-use crate::traft::{self, RaftId};
+use crate::traft::{self};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 use std::collections::HashSet;
 use std::time::Duration;
@@ -211,29 +211,6 @@ pub fn build_instance(
         .expect("storage should not fail")
         + 1;
 
-    // Resolve instance_name
-    let instance_name;
-    if let Some(name) = requested_instance_name {
-        if let Ok(existing_instance) = storage.instances.get(name) {
-            let is_expelled = has_states!(existing_instance, Expelled -> *);
-            if is_expelled {
-                // The instance was expelled explicitly, it's ok to replace it
-            } else {
-                // NOTE: We used to allow the so called "auto expel", i.e.
-                // joining an instance with the same name as an existing but
-                // offline instance. But we no longer allow this, because it
-                // could lead to race conditions, because when an instance is
-                // joined it has both states Offline, which means it may be
-                // replaced by another one of the name before it sends a request
-                // for self activation.
-                return Err(Error::other(format!("`{name}` is already joined")));
-            }
-        }
-        instance_name = name.clone();
-    } else {
-        instance_name = choose_instance_name(raft_id, storage);
-    }
-
     // Check tier exists
     let Some(tier) = storage
         .tiers
@@ -242,13 +219,6 @@ pub fn build_instance(
     else {
         return Err(Error::other(format!(r#"tier "{tier}" doesn't exist"#)));
     };
-
-    // Check failure domain constraints
-    let existing_fds = storage
-        .instances
-        .failure_domain_names()
-        .expect("storage should not fail");
-    failure_domain.check(&existing_fds)?;
 
     //
     // Resolve replicaset
@@ -260,7 +230,10 @@ pub fn build_instance(
         match replicaset {
             Some(replicaset) if replicaset.state != ReplicasetState::Expelled => {
                 if replicaset.tier != tier.name {
-                    return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {requested_replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
+                    return Err(Error::other(format!(
+                        "tier mismatch: requested replicaset '{}' is from tier '{}', but specified tier is '{}'",
+                        requested_replicaset_name, replicaset.tier, tier.name
+                    )));
                 }
 
                 if replicaset.state == ReplicasetState::ToBeExpelled {
@@ -295,6 +268,36 @@ pub fn build_instance(
         }
     }
 
+    // Check failure domain constraints
+    let existing_fds = storage
+        .instances
+        .failure_domain_names()
+        .expect("storage should not fail");
+    failure_domain.check(&existing_fds)?;
+
+    // Resolve instance_name
+    let instance_name;
+    if let Some(name) = requested_instance_name {
+        if let Ok(existing_instance) = storage.instances.get(name) {
+            let is_expelled = has_states!(existing_instance, Expelled -> *);
+            if is_expelled {
+                // The instance was expelled explicitly, it's ok to replace it
+            } else {
+                // NOTE: We used to allow the so called "auto expel", i.e.
+                // joining an instance with the same name as an existing but
+                // offline instance. But we no longer allow this, because it
+                // could lead to race conditions, because when an instance is
+                // joined it has both states Offline, which means it may be
+                // replaced by another one of the name before it sends a request
+                // for self activation.
+                return Err(Error::other(format!("`{name}` is already joined")));
+            }
+        }
+        instance_name = name.clone();
+    } else {
+        instance_name = choose_instance_name(storage, replicaset_name.clone());
+    }
+
     // Generate a unique instance_uuid
     let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
 
@@ -311,26 +314,28 @@ pub fn build_instance(
     })
 }
 
-// TODO: choose instance name based on tier name instead
-/// Choose [`InstanceName`] based on `raft_id`.
-fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName {
-    let mut suffix: Option<u64> = None;
+/// Choose [`InstanceName`] based on `tier name`.
+fn choose_instance_name(storage: &Clusterwide, replicaset_name: ReplicasetName) -> InstanceName {
+    let mut instance_number_in_replicaset = 1;
     loop {
-        let ret = match suffix {
-            None => format!("i{raft_id}"),
-            Some(x) => format!("i{raft_id}-{x}"),
-        }
-        .into();
+        // tier name is already included in replicaset name
+        let instance_name = InstanceName(format!(
+            "{}_{}",
+            replicaset_name, instance_number_in_replicaset
+        ));
 
-        if !storage
-            .instances
-            .contains(&ret)
-            .expect("storage should not fail")
-        {
-            return ret;
-        }
+        match storage.instances.get(&instance_name) {
+            Ok(instance) => {
+                if has_states!(instance, Expelled -> *) {
+                    return instance_name;
+                }
 
-        suffix = Some(suffix.map_or(2, |x| x + 1));
+                instance_number_in_replicaset += 1;
+            }
+            Err(_) => {
+                return instance_name;
+            }
+        }
     }
 }
 
@@ -419,13 +424,31 @@ fn choose_replicaset(
         return Ok(Ok(info.replicaset.clone()));
     }
 
-    let mut i = 0u64;
+    let mut replicaset_number = 1;
     loop {
-        i += 1;
-        let replicaset_name = ReplicasetName(format!("r{i}"));
-        if !all_replicasets.contains(&replicaset_name) {
-            // Not found, hence id is ok
-            return Ok(Err(replicaset_name));
+        let replicaset_name = ReplicasetName(format!("{}_{}", tier.name, replicaset_number));
+        match storage.replicasets.get(&replicaset_name)? {
+            Some(replicaset) => {
+                match replicaset.state {
+                    ReplicasetState::Expelled => {
+                        // replicaset name is available
+                        return Ok(Err(replicaset_name));
+                    }
+                    ReplicasetState::ToBeExpelled => {
+                        // replicaset isn't expelled yet, generate a new name
+                        replicaset_number += 1;
+                        continue;
+                    }
+                    _ => {
+                        // replicaset exists, generate a new name
+                        replicaset_number += 1;
+                        continue;
+                    }
+                }
+            }
+            None => {
+                return Ok(Err(replicaset_name));
+            }
         }
     }
 

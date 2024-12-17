@@ -62,7 +62,7 @@ def test_webui_basic(instance: Instance):
                             "used": instance_slab["quota_used"],
                         },
                         "uuid": instance.replicaset_uuid(),
-                        "name": "r1",
+                        "name": "default_1",
                     }
                 ],
                 "replicasetCount": 1,
@@ -183,19 +183,19 @@ def test_webui_with_plugin(cluster: Cluster):
     r1 = {
         **replicaset_template,
         "uuid": i1.replicaset_uuid(),
-        "name": "r1",
+        "name": "red_1",
         "instances": [instance_1],
     }
     r2 = {
         **replicaset_template,
         "uuid": i2.replicaset_uuid(),
-        "name": "r2",
+        "name": "blue_1",
         "instances": [instance_2],
     }
     r3 = {
         **replicaset_template,
         "uuid": i3.replicaset_uuid(),
-        "name": "r3",
+        "name": "green_1",
         "instances": [instance_3],
     }
 

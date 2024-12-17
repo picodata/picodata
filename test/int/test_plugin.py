@@ -2645,7 +2645,7 @@ def test_sdk_internal(cluster: Cluster):
 
     PluginReflection.assert_data_eq(i1, "name", i1.name)
     PluginReflection.assert_data_eq(i1, "uuid", i1.uuid())
-    PluginReflection.assert_data_eq(i1, "replicaset_name", "r1")
+    PluginReflection.assert_data_eq(i1, "replicaset_name", "default_1")
     PluginReflection.assert_data_eq(i1, "replicaset_uuid", i1.replicaset_uuid())
     PluginReflection.assert_data_eq(i1, "cluster_name", i1.cluster_name)
     PluginReflection.assert_data_eq(i1, "tier", _DEFAULT_TIER)
