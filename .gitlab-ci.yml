@@ -258,6 +258,9 @@ lint:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
@@ -605,6 +608,9 @@ integration-sbroad:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   tags:
     - docker-k8s
   script:
