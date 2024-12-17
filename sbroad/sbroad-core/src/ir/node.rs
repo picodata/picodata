@@ -1067,6 +1067,8 @@ pub enum Node32 {
     Values(Values),
     Deallocate(Deallocate),
     Tcl(Tcl),
+    CreateSchema,
+    DropSchema,
 }
 
 impl Node32 {
@@ -1101,6 +1103,8 @@ impl Node32 {
                 Tcl::Commit => NodeOwned::Tcl(Tcl::Commit),
                 Tcl::Rollback => NodeOwned::Tcl(Tcl::Rollback),
             },
+            Node32::CreateSchema => NodeOwned::Ddl(DdlOwned::CreateSchema),
+            Node32::DropSchema => NodeOwned::Ddl(DdlOwned::DropSchema),
         }
     }
 }

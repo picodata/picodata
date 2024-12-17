@@ -427,3 +427,39 @@ def test_tcl(postgres: Postgres):
     assert rows == [(1, "Alice"), (2, "Bob")]
 
     cur = conn.execute("DROP TABLE test_table;")
+
+
+def test_create_schema(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(
+        f"user={user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    cur = conn.execute("CREATE SCHEMA test_schema;", prepare=True)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+    assert cur.statusmessage == "CREATE SCHEMA"
+
+
+def test_drop_schema(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(
+        f"user={user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    cur = conn.execute("DROP SCHEMA test_schema;", prepare=True)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+    assert cur.statusmessage == "DROP SCHEMA"

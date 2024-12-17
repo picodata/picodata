@@ -3,6 +3,7 @@
 //! Parses an SQL statement to the abstract syntax tree (AST)
 //! and builds the intermediate representation (IR).
 
+use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{Reference, ReferenceAsteriskSource};
@@ -4301,6 +4302,11 @@ impl AbstractSyntaxTree {
                     let plan_id = plan.nodes.push(create_index.into());
                     map.add(id, plan_id);
                 }
+                Rule::CreateSchema => {
+                    let create_schema = DdlOwned::CreateSchema;
+                    let plan_id = plan.nodes.push(create_schema.into());
+                    map.add(id, plan_id);
+                }
                 Rule::AlterSystem => {
                     let alter_system =
                         parse_alter_system(self, node, pairs_map, &mut worker, &mut plan)?;
@@ -4346,6 +4352,11 @@ impl AbstractSyntaxTree {
                 Rule::DropIndex => {
                     let drop_index = parse_drop_index(self, node)?;
                     let plan_id = plan.nodes.push(drop_index.into());
+                    map.add(id, plan_id);
+                }
+                Rule::DropSchema => {
+                    let drop_schema = DdlOwned::DropSchema;
+                    let plan_id = plan.nodes.push(drop_schema.into());
                     map.add(id, plan_id);
                 }
                 Rule::DropRole => {

@@ -34,7 +34,7 @@ use sbroad::ir::acl::{AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::{AlterSystemType, ParamDef};
 use sbroad::ir::node::acl::AclOwned;
 use sbroad::ir::node::block::Block;
-use sbroad::ir::node::ddl::DdlOwned;
+use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::node::NodeId;
@@ -51,6 +51,7 @@ use sbroad::ir::node::plugin::{
     AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
     MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
 };
+use sbroad::ir::node::Node;
 use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
@@ -237,6 +238,25 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     if query.is_ddl()? || query.is_acl()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
+
+        if let Node::Ddl(_) = ir_plan.get_node(top_id)? {
+            let ddl_node = ir_plan.get_ddl_node(top_id)?;
+            if let Ddl::CreateSchema = ddl_node {
+                tlog!(
+                    Warning,
+                    "DDL for schemas is currently unsupported. Empty query response provided for CREATE SCHEMA."
+                );
+                return empty_query_response();
+            }
+            if let Ddl::DropSchema = ddl_node {
+                tlog!(
+                    Warning,
+                    "DDL for schemas is currently unsupported. Empty query response provided for DROP SCHEMA."
+                );
+                return empty_query_response();
+            }
+        }
+
         let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
 
         let ir_node = ir_plan_mut.replace_with_stub(top_id);
@@ -1500,6 +1520,11 @@ fn ddl_ir_node_to_op_or_result(
                 "Transaction setting is currently disabled. Skipping."
             );
             Ok(Break(ConsumerResult { row_count: 0 }))
+        }
+        DdlOwned::CreateSchema | DdlOwned::DropSchema => {
+            return Err(Error::Other(
+                "unreachable CreateSchema/DropSchema".to_string().into(),
+            ));
         }
     }
 }

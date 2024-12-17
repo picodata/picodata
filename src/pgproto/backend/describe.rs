@@ -54,6 +54,7 @@ pub enum CommandTag {
     CreateTable = 2,
     CreateIndex = 18,
     CreatePlugin = 31,
+    CreateSchema = 50,
     ChangeConfig = 39,
     Commit = 53,
     DropProcedure = 15,
@@ -65,6 +66,7 @@ pub enum CommandTag {
     DisablePlugin = 33,
     DropIndex = 19,
     DropPlugin = 34,
+    DropSchema = 51,
     EnablePlugin = 32,
     EmptyQuery = 55,
     Explain = 6,
@@ -92,11 +94,13 @@ impl CommandTag {
             Self::AlterRole => "ALTER ROLE",
             Self::AlterSystem => "ALTER SYSTEM",
             Self::CreateRole => "CREATE ROLE",
+            Self::CreateSchema => "CREATE SCHEMA",
             Self::CreateTable => "CREATE TABLE",
             Self::CreateIndex => "CREATE INDEX",
             Self::Deallocate => "DEALLOCATE",
             Self::DeallocateAll => "DEALLOCATE ALL",
             Self::DropRole => "DROP ROLE",
+            Self::DropSchema => "DROP SCHEMA",
             Self::DropTable => "DROP TABLE",
             Self::DropIndex => "DROP INDEX",
             Self::Delete => "DELETE",
@@ -152,8 +156,10 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
             | CommandTag::CreateIndex
+            | CommandTag::CreateSchema
             | CommandTag::RenameRoutine
             | CommandTag::DropIndex
+            | CommandTag::DropSchema
             | CommandTag::SetParam
             | CommandTag::SetTransaction
             | CommandTag::CreatePlugin
@@ -205,6 +211,8 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
                 Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
                 Ddl::CreateIndex { .. } => Ok(CommandTag::CreateIndex),
+                Ddl::CreateSchema => Ok(CommandTag::CreateSchema),
+                Ddl::DropSchema => Ok(CommandTag::DropSchema),
                 Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
                 Ddl::DropIndex { .. } => Ok(CommandTag::DropIndex),
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),

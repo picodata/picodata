@@ -110,6 +110,8 @@ impl Nodes {
                     Tcl::Commit => Node::Tcl(Tcl::Commit),
                     Tcl::Rollback => Node::Tcl(Tcl::Rollback),
                 },
+                Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
+                Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
@@ -241,6 +243,8 @@ impl Nodes {
                         Tcl::Commit => MutNode::Tcl(node::tcl::Tcl::Commit),
                         Tcl::Rollback => MutNode::Tcl(node::tcl::Tcl::Rollback),
                     },
+                    Node32::CreateSchema => MutNode::Ddl(MutDdl::CreateSchema),
+                    Node32::DropSchema => MutNode::Ddl(MutDdl::DropSchema),
                 }),
             ArenaType::Arena64 => self
                 .arena64

@@ -78,7 +78,7 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             PrivilegeUsage = { ^"usage" }
             PrivilegeWrite = { ^"write" }
 
-DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex
+DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
          | CreatePartition }
     CreatePartition = ${
@@ -171,6 +171,11 @@ DDL = _{ CreateTable | DropTable | CreateIndex | DropIndex
             Manhattan = { ^"manhattan" }
         Hint = !{ ^"hint" ~ "=" ~ (True | False) }
     DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+
+    CreateSchema = ${ ^"create" ~ W ~ ^"schema" ~ W ~ (IfNotExists ~ W)? ~ Identifier }
+    DropSchema = ${ ^"drop" ~ W ~ ^"schema" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ (Cascade | Restrict))? }
+        Cascade = _{ ^"cascade" }
+        Restrict = _{ ^"restrict" }
 
     SetParam = ${ ^"set" ~ W ~ (SetScope ~ W)? ~ ConfParam  }
         SetScope = { ScopeSession | ScopeLocal }

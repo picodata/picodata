@@ -1,12 +1,11 @@
-use serde::Serialize;
-use smol_str::{format_smolstr, ToSmolStr};
-
-use crate::errors::{Entity, SbroadError};
-
 use super::{
     AlterSystem, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc, DropTable, NodeAligned,
     RenameRoutine, SetParam, SetTransaction,
 };
+use crate::errors::{Entity, SbroadError};
+use crate::ir::Node32;
+use serde::Serialize;
+use smol_str::{format_smolstr, ToSmolStr};
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -19,6 +18,8 @@ pub enum DdlOwned {
     AlterSystem(AlterSystem),
     CreateIndex(CreateIndex),
     DropIndex(DropIndex),
+    CreateSchema,
+    DropSchema,
     SetParam(SetParam),
     SetTransaction(SetTransaction),
 }
@@ -39,16 +40,16 @@ impl DdlOwned {
             | DdlOwned::AlterSystem(AlterSystem { ref timeout, .. })
             | DdlOwned::CreateProc(CreateProc { ref timeout, .. })
             | DdlOwned::DropProc(DropProc { ref timeout, .. })
-            | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
+            | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
+                timeout.to_smolstr().parse().map_err(|e| {
+                    SbroadError::Invalid(
+                        Entity::SpaceMetadata,
+                        Some(format_smolstr!("timeout parsing error {e:?}")),
+                    )
+                })
+            }
+            DdlOwned::CreateSchema | DdlOwned::DropSchema => Ok(0.0),
         }
-        .to_smolstr()
-        .parse()
-        .map_err(|e| {
-            SbroadError::Invalid(
-                Entity::SpaceMetadata,
-                Some(format_smolstr!("timeout parsing error {e:?}")),
-            )
-        })
     }
 
     pub fn wait_applied_globally(&self) -> bool {
@@ -92,9 +93,11 @@ impl From<DdlOwned> for NodeAligned {
             DdlOwned::CreateIndex(create_index) => create_index.into(),
             DdlOwned::CreateProc(create_proc) => create_proc.into(),
             DdlOwned::CreateTable(create_table) => create_table.into(),
+            DdlOwned::CreateSchema => Self::Node32(Node32::CreateSchema),
             DdlOwned::DropIndex(drop_index) => drop_index.into(),
             DdlOwned::DropProc(drop_proc) => drop_proc.into(),
             DdlOwned::DropTable(drop_table) => drop_table.into(),
+            DdlOwned::DropSchema => Self::Node32(Node32::DropSchema),
             DdlOwned::AlterSystem(alter_system) => alter_system.into(),
             DdlOwned::RenameRoutine(rename) => rename.into(),
             DdlOwned::SetParam(set_param) => set_param.into(),
@@ -114,6 +117,8 @@ pub enum MutDdl<'a> {
     AlterSystem(&'a mut AlterSystem),
     CreateIndex(&'a mut CreateIndex),
     DropIndex(&'a mut DropIndex),
+    CreateSchema,
+    DropSchema,
     SetParam(&'a mut SetParam),
     SetTransaction(&'a mut SetTransaction),
 }
@@ -129,6 +134,8 @@ pub enum Ddl<'a> {
     AlterSystem(&'a AlterSystem),
     CreateIndex(&'a CreateIndex),
     DropIndex(&'a DropIndex),
+    CreateSchema,
+    DropSchema,
     SetParam(&'a SetParam),
     SetTransaction(&'a SetTransaction),
 }
@@ -149,16 +156,16 @@ impl Ddl<'_> {
             | Ddl::AlterSystem(AlterSystem { ref timeout, .. })
             | Ddl::CreateProc(CreateProc { ref timeout, .. })
             | Ddl::DropProc(DropProc { ref timeout, .. })
-            | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
+            | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => {
+                timeout.to_smolstr().parse().map_err(|e| {
+                    SbroadError::Invalid(
+                        Entity::SpaceMetadata,
+                        Some(format_smolstr!("timeout parsing error {e:?}")),
+                    )
+                })
+            }
+            Ddl::CreateSchema | Ddl::DropSchema => Ok(0.0),
         }
-        .to_smolstr()
-        .parse()
-        .map_err(|e| {
-            SbroadError::Invalid(
-                Entity::SpaceMetadata,
-                Some(format_smolstr!("timeout parsing error {e:?}")),
-            )
-        })
     }
 
     pub fn wait_applied_globally(&self) -> bool {
@@ -202,6 +209,8 @@ impl Ddl<'_> {
             Ddl::CreateProc(create_proc) => DdlOwned::CreateProc((*create_proc).clone()),
             Ddl::CreateTable(create_table) => DdlOwned::CreateTable((*create_table).clone()),
             Ddl::DropIndex(drop_index) => DdlOwned::DropIndex((*drop_index).clone()),
+            Ddl::CreateSchema => DdlOwned::CreateSchema,
+            Ddl::DropSchema => DdlOwned::DropSchema,
             Ddl::DropProc(drop_proc) => DdlOwned::DropProc((*drop_proc).clone()),
             Ddl::DropTable(drop_table) => DdlOwned::DropTable((*drop_table).clone()),
             Ddl::AlterSystem(alter_system) => DdlOwned::AlterSystem((*alter_system).clone()),
