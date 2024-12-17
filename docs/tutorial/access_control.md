@@ -77,6 +77,11 @@ Picodata является распределенной СУБД, и управл
 - `LOGIN` — право подключаться к экземпляру кластера. Автоматически выдается
   новым пользователям при создании.
 
+!!! note "Примечание" 
+    Более подробная информация о синтаксисе SQL-команд для
+    управления привелегиями приведена в [справочнике терминов и команд
+    SQL](../sql_index.md)
+
 ### Пользователи СУБД {: #users }
 
 При подключении к системе пользователь указывает имя учетной записи.
@@ -140,17 +145,17 @@ Picodata предоставляет несколько встроенных уч
 - создавать, модифицировать и удалять процедуры (программный код), хранимые в БД.
 -->
 
-Наделить пользователя СУБД правами Администратора БД можно следующим
+Наделить пользователя `alice` правами Администратора БД можно следующим
 набором SQL-команд:
 
 ```sql
-CREATE ROLE "db_admin"
-GRANT READ TABLE TO "db_admin"
-GRANT CREATE TABLE TO "db_admin"
-GRANT CREATE USER TO "db_admin"
-GRANT CREATE ROLE TO "db_admin"
-GRANT CREATE PROCEDURE TO "db_admin"
-GRANT "db_admin" to <grantee>
+CREATE ROLE db_admin;
+GRANT READ TABLE TO db_admin;
+GRANT CREATE TABLE TO db_admin;
+GRANT CREATE USER TO db_admin;
+GRANT CREATE ROLE TO db_admin;
+GRANT CREATE PROCEDURE TO db_admin;
+GRANT db_admin to alice;
 ```
 
 Это обеспечивает наличие у администратора БД следующих прав:
@@ -182,10 +187,13 @@ Picodata позволяет наделить пользователя БД сл�
 
 Для этого используйте следующие SQL-команды:
 
-```sql
-GRANT WRITE ON TABLE <table name> TO <grantee>
-GRANT READ ON TABLE <table name> TO <grantee>
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
+```sql title="Пример для таблицы `warehouse` и пользователя `alice`"
+GRANT WRITE ON TABLE warehouse TO alice;
+GRANT READ ON TABLE warehouse TO alice;
+```
+
+```sql title="Пример для процедуры `proc` и пользователя `alice`"
+GRANT EXECUTE ON PROCEDURE proc TO alice;
 ```
 
 ### Роли {: #roles }
@@ -214,6 +222,18 @@ GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 
 ## Управление пользователями {: #user_management }
 
+### Методы аутентификации {: #auth_types }
+
+При создании и модификации пользователей в Picodata поддерживаются следующие
+методы аутентификации:
+
+- [chap-sha1](https://ru.wikipedia.org/wiki/SHA-1)
+- [md5](https://ru.wikipedia.org/wiki/MD5)
+- [ldap](https://ru.wikipedia.org/wiki/LDAP)
+
+Для первых двух методов действуют [требования](#allowed_passwords). Для метода
+`ldap` пароль не требуется и игнорируется.
+
 ### Создание {: #create_user }
 
 Для создания пользователя используйте SQL-команду [CREATE
@@ -222,8 +242,8 @@ USER](../reference/sql/create_user.md).
 Пример:
 
 ```sql
-CREATE USER "alice" WITH PASSWORD 'P@ssw0rd' USING chap-sha1;
-CREATE USER "bob" USING ldap;
+CREATE USER alice WITH PASSWORD 'P@ssw0rd' USING chap-sha1;
+CREATE USER bob USING ldap;
 ```
 
 Для имени пользователя (и в целом для объектов в Picodata) действуют
@@ -234,7 +254,7 @@ CREATE USER "bob" USING ldap;
 Для выполнения команды требуется привилегия `CREATE USER`:
 
 ```sql
-GRANT CREATE USER TO <grantee>
+GRANT CREATE USER TO alice;
 ```
 
 Такое право по умолчанию есть у [Администратора СУБД](#admin) (`admin`).
@@ -248,8 +268,8 @@ USER](../reference/sql/alter_user.md).
 конкретную учетную запись или на все учетные записи сразу:
 
 ```sql
-GRANT ALTER ON USER <user name> TO <grantee>
-GRANT ALTER USER TO <grantee>
+GRANT ALTER ON USER bob TO alice;
+GRANT ALTER USER TO alice;
 ```
 
 Привилегия `ALTER USER` есть по умолчанию у создателя данной учетной
@@ -257,11 +277,12 @@ GRANT ALTER USER TO <grantee>
 
 ### Блокирование {: #block_user }
 
-Для блокировки пользователя используйте следующую SQL-команду:
+Для блокировки пользователя `alice` используйте следующую SQL-команду:
 
 ```sql
-ALTER USER "alice" WITH NOLOGIN;
+ALTER USER alice WITH NOLOGIN;
 ```
+
 После 4 неуспешных попыток аутентификации в [`picodata connect`] пользователь
 блокируется автоматически.
 
@@ -270,7 +291,7 @@ ALTER USER "alice" WITH NOLOGIN;
 Для разблокировки пользователя используйте следующую SQL-команду:
 
 ```sql
-ALTER USER "alice" WITH LOGIN;
+ALTER USER alice WITH LOGIN;
 ```
 
 Для выполнения команд требуется привилегия `ALTER USER` — на все учетные
@@ -281,21 +302,19 @@ ALTER USER "alice" WITH LOGIN;
 
 ### Удаление {: #drop_user }
 
-Для удаления пользователя используйте SQL-команду
-[DROP USER](../reference/sql/drop_user.md).
-
-Пример:
+Для удаления пользователя `alice` используйте SQL-команду
+[DROP USER](../reference/sql/drop_user.md):
 
 ```sql
-DROP USER "alice";
+DROP USER alice;
 ```
 
 Для выполнения команды требуется привилегия `DROP USER` на
 конкретную учетную запись или на все учетные записи сразу:
 
 ```sql
-GRANT DROP ON USER <user name> TO <grantee>
-GRANT DROP USER TO <grantee>
+GRANT DROP ON USER bob TO alice;
+GRANT DROP USER TO alice;
 ```
 
 Привилегия `DROP USER` есть по умолчанию у создателя данной учетной
@@ -308,29 +327,30 @@ GRANT DROP USER TO <grantee>
 команда:
 
 ```sql
-SELECT * FROM "_pico_user";
+SELECT * FROM _pico_user;
 ```
 
 Доступ к списку пользователей есть у Администратора СУБД, а также у тех
 пользователей, которым была явно выдана такая привилегия:
 
 ```sql
-GRANT READ ON TABLE "_pico_user" TO <grantee>
+GRANT READ ON TABLE _pico_user TO alice;
 ```
 
 ### Установка и изменение пароля {: #setting_password }
 
-Для установки или изменения пароля пользователя используйте следующую
+Для установки или изменения пароля на `T0psecret` для пользователя `alice` используйте следующую
 SQL-команду:
 
 ```sql
-ALTER USER <user name> WITH PASSWORD '<password>'
+ALTER USER "alice" WITH PASSWORD 'T0psecret';
 ```
 
 ### Требования к паролю {: #allowed_passwords }
 
-При установке или изменении пароля пользователя следует учитывать
-требования к его длине и сложности:
+При установке или изменении пароля пользователя следует учитывать требования к
+его длине и сложности в том случае, если используются методы аутентификации
+`chap-sha1` и `md5` (для метода `ldap` пароль не требуется и игнорируется):
 
 - пароль должен быть не короче 8 символов
 - пароль должен одновременно содержать минимум один символ в нижнем
@@ -350,12 +370,6 @@ PasswordEnforceDigits (default value: true)
 PasswordEnforceSpecialchars (default value: false)
 -->
 
-!!! note "Примечание"
-    Требования к паролю применимы при использовании
-    методов аутентификации `chap-sha1` и `md5`. Для метода `ldap` пароль не
-    требуется и игнорируется.
-
-
 ### Использование ролей {: #role_management }
 
 Для создания и удаления ролей используйте команды
@@ -365,19 +379,23 @@ PasswordEnforceSpecialchars (default value: false)
 Выполнение данных действий требует наличия привилегий `CREATE ROLE` /
 `DROP ROLE` соответственно.
 
-Для назначения роли используйте команду [GRANT](../reference/sql/grant.md):
+Для назначения роли `manager` пользователю `alice` используйте команду [GRANT](../reference/sql/grant.md):
 
 ```sql
-GRANT <role name> TO <grantee>
+GRANT manager TO alice;
 ```
 
-Назначение привилегий роли:
+Назначение привилегии `ALTER` на таблицу `warehouse` для роли `manager`:
 
-```sql
-GRANT <action> ON <object name> TO <grantee>
+```sql title="На конкретную таблицу `warehouse`"
+GRANT WRITE ON TABLE warehouse TO manager;
 ```
 
-В качестве `grantee` может выступать идентификатор как роли, так и
+```sql title="На все таблицы"
+GRANT WRITE TABLE TO manager;
+```
+
+В подобных командах можно использовать как идентификатор роли, так и
 пользователя. Стоит отметить, что не все привилегии можно выдать ролям,
 например, привилегия `SESSION` не может быть выдана другой роли при
 помощи `GRANT`, а только командой [`ALTER USER`](#alter_user).
@@ -388,8 +406,13 @@ GRANT <action> ON <object name> TO <grantee>
 
 Отозвать роль можно с помощью команды [REVOKE](../reference/sql/revoke.md):
 
-```sql
-REVOKE <role name> FROM <grantee>
+
+```sql title="Отзыв привилегии у роли"
+REVOKE WRITE ON TABLE warehouse FROM manager;
+```
+
+```sql title="Отзыв роли у пользователя"
+REVOKE manager FROM alice;
 ```
 
 ## Управление доступом к таблицам {: #tables_access }
@@ -407,23 +430,24 @@ Picodata позволяет задавать разрешение пользов
 выполнять следующие операции в отношении таблиц БД: создание,
 модификация, удаление, чтение.
 
-Для наделения пользователя и созданных им процедур указанными
-привилегиями используйте SQL-команду [GRANT](../reference/sql/grant.md):
+Для наделения пользователя `alice` и созданных им процедур указанными
+привилегиями на таблицу `warehouse` используйте SQL-команды
+[GRANT](../reference/sql/grant.md):
 
 <!-- Keep in sync with #db_user -->
 ```sql
-GRANT CREATE TABLE TO <grantee>
-GRANT ALTER ON TABLE <table name> TO <grantee>
-GRANT DROP ON TABLE <table name> TO <grantee>
-GRANT READ ON TABLE <table name> TO <grantee>
-GRANT WRITE ON TABLE <table name> TO <grantee>
+GRANT CREATE TABLE TO alice;
+GRANT ALTER ON TABLE warehouse TO alice;
+GRANT DROP ON TABLE warehouse TO alice;
+GRANT READ ON TABLE warehouse TO alice;
+GRANT WRITE ON TABLE warehouse TO alice;
 ```
 
 Отозвать привилегию можно SQL-командой
-[REVOKE](../reference/sql/revoke.md):
+[REVOKE](../reference/sql/revoke.md). Например:
 
 ```sql
-REVOKE <priv> ON TABLE <table name> FROM <grantee>
+REVOKE DROP ON TABLE warehouse FROM alice;
 ```
 
 В качестве `<table_name>` можно использовать имена [системных таблиц] —
@@ -449,65 +473,19 @@ Picodata позволяет задавать разрешение пользов
 выполнять следующие операции в отношении процедур: создание,
 модификация, удаление, исполнение.
 
-Для наделения пользователя указанными привилегиями используйте
+Для наделения пользователя `alice` указанными привилегиями для процедуры `proc` используйте
 SQL-команду [GRANT](../reference/sql/grant.md):
 
 <!-- Keep in sync with #db_user -->
 ```sql
-GRANT CREATE PROCEDURE TO <grantee>
-GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
+GRANT CREATE PROCEDURE TO alice;
+GRANT DROP ON PROCEDURE proc TO alice;
+GRANT EXECUTE ON PROCEDURE proc TO alice;
 ```
 
 Отозвать привилегию можно SQL-командой
-[REVOKE](../reference/sql/revoke.md):
+[REVOKE](../reference/sql/revoke.md). Например:
 
 ```sql
-REVOKE <priv> ON PROCEDURE <procedure name> FROM <grantee>
-```
-
-## Дополнительные примеры SQL-запросов {: #sql_examples }
-
-```sql
-CREATE USER <user name>
-    [ WITH ] PASSWORD 'password'
-    [ USING chap-sha1 | md5 ]
-CREATE USER <user name>
-    USING ldap
-ALTER USER <user name>
-    [ WITH ] PASSWORD 'password'
-    [ USING chap-sha1 | md5 ]
-DROP USER <user name>
-
-CREATE ROLE <role name>
-DROP ROLE <role name>
-
-GRANT READ ON TABLE <table name> TO <grantee>
-GRANT READ TABLE TO <grantee>
-
-GRANT WRITE TABLE TO <grantee>
-GRANT WRITE ON TABLE <table name> TO <grantee>
-
-GRANT CREATE TABLE TO <grantee>
-GRANT CREATE ROLE TO <grantee>
-GRANT CREATE USER TO <grantee>
-GRANT CREATE PROCEDURE TO <grantee>
-
-GRANT ALTER TABLE TO <grantee> -- alter any table
-GRANT ALTER USER TO <grantee> -- alter any user
-GRANT ALTER ON TABLE <table name> TO <grantee>
-GRANT ALTER ON USER <user name> to <grantee>;
-GRANT DROP TABLE TO <grantee> -- drop any table
-GRANT DROP USER TO <grantee> -- drop any user
-GRANT DROP ROLE TO <grantee> -- drop any role
-GRANT DROP PROCEDURE TO <grantee>; -- drop any procedure
-GRANT DROP ON TABLE <table name> TO <grantee>
-GRANT DROP ON USER <user name> TO <grantee>
-GRANT DROP ON ROLE <role name> TO <grantee>
-GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
-
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
-GRANT EXECUTE PROCEDURE TO <grantee> -- execute any procedure
-
-GRANT <role name> TO <grantee>
+REVOKE DROP ON PROCEDURE proc FROM alice;
 ```
