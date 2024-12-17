@@ -377,6 +377,14 @@ where
         self.exec_plan.get_ir_plan().is_acl()
     }
 
+    /// Checks that query is TCL.
+    ///
+    /// # Errors
+    /// - Plan is invalid
+    pub fn is_tcl(&self) -> Result<bool, SbroadError> {
+        self.exec_plan.get_ir_plan().is_tcl()
+    }
+
     #[cfg(test)]
     pub fn get_motion_id(&self, slice_id: usize, pos_idx: usize) -> NodeId {
         *self

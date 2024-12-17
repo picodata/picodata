@@ -39,6 +39,9 @@ fn dispatch_query_inner(args: &RawBytes) -> anyhow::Result<RawProcResult> {
         if let Ok(true) = query.is_acl() {
             bail!("ACL queries are not supported");
         }
+        if let Ok(true) = query.is_tcl() {
+            bail!("TCL queries are not supported");
+        }
         if let Ok(true) = query.is_block() {
             bail!("blocks of commands are not supported");
         }

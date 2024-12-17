@@ -45,6 +45,9 @@ pub fn process_execute_message(
         ExecuteResult::AclOrDdl { tag } => {
             stream.write_message_noflush(messages::command_complete(&tag))?;
         }
+        ExecuteResult::Tcl { tag } => {
+            stream.write_message_noflush(messages::command_complete(&tag))?;
+        }
         ExecuteResult::Dml { tag, row_count } => {
             stream.write_message_noflush(messages::command_complete_with_row_count(
                 &tag, row_count,

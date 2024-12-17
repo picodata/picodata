@@ -53,6 +53,10 @@ pub enum ExecuteResult {
         tag: CommandTag,
         row_count: usize,
     },
+    Tcl {
+        /// Tag of the command.
+        tag: CommandTag,
+    },
     SuspendedDql {
         /// Rows we'll send to the client.
         rows: Rows,

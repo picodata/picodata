@@ -771,6 +771,7 @@ impl<'p> SyntaxPlan<'p> {
             | Node::Plugin(..)
             | Node::Ddl(..)
             | Node::Acl(..)
+            | Node::Tcl(..)
             | Node::Block(..) => {
                 panic!("Node {node:?} is not supported in the syntax plan")
             }

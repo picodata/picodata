@@ -287,3 +287,76 @@ def test_deallocate(postgres: Postgres):
         ps2.run()
 
     conn.close()
+
+
+def test_tcl(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(
+        f"user={user} password={password} host={host} port={port} sslmode=disable"
+    )
+    # With autocommit
+    conn.autocommit = True
+
+    cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
+
+    cur = conn.execute(
+        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
+    )
+
+    cur = conn.execute("SELECT * FROM test_table;")
+    rows = cur.fetchall()
+    assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
+
+    cur = conn.execute("DROP TABLE test_table;")
+
+    # Without autocommit
+    conn.autocommit = False
+
+    cur = conn.execute("BEGIN;", prepare=False)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
+
+    cur = conn.execute(
+        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
+    )
+
+    cur = conn.execute("SELECT * FROM test_table;")
+    rows = cur.fetchall()
+    assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
+
+    cur = conn.execute("ROLLBACK;", prepare=False)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("SELECT * FROM test_table;")
+    rows = cur.fetchall()
+    assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
+
+    cur = conn.execute("DROP TABLE test_table;")
+
+    cur = conn.execute("BEGIN;", prepare=False)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
+
+    cur = conn.execute(
+        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
+    )
+
+    cur = conn.execute("COMMIT;", prepare=False)
+    assert cur.pgresult is not None
+    cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("SELECT * FROM test_table;")
+    rows = cur.fetchall()
+    assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
+
+    cur = conn.execute("DROP TABLE test_table;")

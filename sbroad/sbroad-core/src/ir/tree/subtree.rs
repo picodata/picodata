@@ -205,6 +205,7 @@ fn subtree_next<'plan>(
             | Node::Parameter(..)
             | Node::Ddl(..)
             | Node::Acl(..)
+            | Node::Tcl(..)
             | Node::Block(..)
             | Node::Plugin(..)
             | Node::Deallocate(..) => None,

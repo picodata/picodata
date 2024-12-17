@@ -14,6 +14,9 @@ pub fn process_query_message(
         ExecuteResult::AclOrDdl { tag } => {
             stream.write_message(messages::command_complete(&tag))?;
         }
+        ExecuteResult::Tcl { tag } => {
+            stream.write_message(messages::command_complete(&tag))?;
+        }
         ExecuteResult::Dml { tag, row_count } => {
             stream.write_message(messages::command_complete_with_row_count(&tag, row_count))?;
         }

@@ -501,6 +501,10 @@ impl Portal {
                 let tag = self.describe().command_tag();
                 PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
             }
+            QueryType::Tcl => {
+                let tag = self.describe().command_tag();
+                PortalState::ResultReady(ExecuteResult::Tcl { tag })
+            }
             QueryType::Dml => {
                 let row_count = get_row_count_from_tuple(&tuple)?;
                 let tag = self.describe().command_tag();

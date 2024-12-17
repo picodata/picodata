@@ -142,6 +142,8 @@ pub fn bind(
         && !plan.is_acl()?
         && !plan.is_plugin()?
         && !plan.is_deallocate()?
+        && !plan.is_tcl()?
+        && !plan.is_plugin()?
     {
         plan.bind_params(params)?;
         plan.apply_options()?;
@@ -186,7 +188,7 @@ pub fn parse(cid: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> 
         Ok(plan)
     })
     .map_err(|e| PgError::Other(e.into()))??;
-    if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? {
+    if !plan.is_empty() && !plan.is_tcl()? && !plan.is_ddl()? && !plan.is_acl()? {
         cache.put(query.into(), plan.clone())?;
     }
     let statement = Statement::new(plan, param_oids)?;

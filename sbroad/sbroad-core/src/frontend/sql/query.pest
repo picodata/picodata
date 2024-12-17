@@ -1,4 +1,4 @@
-Command = _{ SOI ~ (Query | ExplainQuery | Block | DDL | ACL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+Command = _{ SOI ~ (Query | ExplainQuery | Block | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
 
 // Helper rule to denote we have to update plan relations from metadata
 // (with Table which name corresponds to current node).
@@ -313,6 +313,11 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
 Deallocate = ${ ^"deallocate" ~ (WithPrepare | WithoutPrepare) }
     WithPrepare = _{ W ~ ^"prepare" ~ W ~ (^"all" | Identifier) }
     WithoutPrepare = _{ W ~ (^"all" | Identifier) }
+    
+TCL = _{ Begin | Commit | Rollback }
+    Begin = { ^"begin" }
+    Commit = { ^"commit" }
+    Rollback = { ^"rollback" }
 
 EmptyQuery = { WHITESPACE* }
 

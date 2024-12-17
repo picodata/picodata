@@ -222,6 +222,18 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         return empty_query_response();
     }
 
+    if query.is_tcl()? {
+        let ir_plan = query.get_exec_plan().get_ir_plan();
+        let top_id = ir_plan.get_top()?;
+        let tcl = ir_plan.get_tcl_node(top_id)?;
+        tlog!(
+            Warning,
+            "Transactions are currently unsupported. Empty query response provided for {}.",
+            tcl.as_str()
+        );
+        return empty_query_response();
+    }
+
     if query.is_ddl()? || query.is_acl()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;

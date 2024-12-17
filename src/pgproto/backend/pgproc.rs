@@ -79,7 +79,10 @@ pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDes
 pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tuple> {
     let result = backend::execute(id, name, max_rows)?;
     let bytes = match &result {
-        ExecuteResult::AclOrDdl { .. } | ExecuteResult::Dml { .. } | ExecuteResult::Empty => {
+        ExecuteResult::AclOrDdl { .. }
+        | ExecuteResult::Dml { .. }
+        | ExecuteResult::Tcl { .. }
+        | ExecuteResult::Empty => {
             let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
                 Some(row_count)
             } else {

@@ -13,6 +13,7 @@ use tarantool::{
     index::{IndexType, RtreeIndexDistanceType},
     space::SpaceEngineType,
 };
+use tcl::Tcl;
 
 use super::{
     ddl::AlterSystemType,
@@ -40,6 +41,7 @@ pub mod deallocate;
 pub mod expression;
 pub mod plugin;
 pub mod relational;
+pub mod tcl;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, Hash, Copy)]
 pub enum ArenaType {
@@ -1064,6 +1066,7 @@ pub enum Node32 {
     UnionAll(UnionAll),
     Values(Values),
     Deallocate(Deallocate),
+    Tcl(Tcl),
 }
 
 impl Node32 {
@@ -1093,6 +1096,11 @@ impl Node32 {
             Node32::UnionAll(union_all) => NodeOwned::Relational(RelOwned::UnionAll(union_all)),
             Node32::Values(values) => NodeOwned::Relational(RelOwned::Values(values)),
             Node32::Deallocate(deallocate) => NodeOwned::Deallocate(deallocate),
+            Node32::Tcl(tcl) => match tcl {
+                Tcl::Begin => NodeOwned::Tcl(Tcl::Begin),
+                Tcl::Commit => NodeOwned::Tcl(Tcl::Commit),
+                Tcl::Rollback => NodeOwned::Tcl(Tcl::Rollback),
+            },
         }
     }
 }
@@ -1326,6 +1334,7 @@ pub enum Node<'nodes> {
     Invalid(&'nodes Invalid),
     Plugin(Plugin<'nodes>),
     Deallocate(&'nodes Deallocate),
+    Tcl(Tcl),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -1340,6 +1349,7 @@ pub enum MutNode<'nodes> {
     Invalid(&'nodes mut Invalid),
     Plugin(MutPlugin<'nodes>),
     Deallocate(&'nodes mut Deallocate),
+    Tcl(Tcl),
 }
 
 impl Node<'_> {
@@ -1355,6 +1365,7 @@ impl Node<'_> {
             Node::Invalid(inv) => NodeOwned::Invalid((*inv).clone()),
             Node::Plugin(plugin) => NodeOwned::Plugin(plugin.get_plugin_owned()),
             Node::Deallocate(deallocate) => NodeOwned::Deallocate((*deallocate).clone()),
+            Node::Tcl(tcl) => NodeOwned::Tcl(tcl),
         }
     }
 }
@@ -1372,6 +1383,7 @@ pub enum NodeOwned {
     Invalid(Invalid),
     Plugin(PluginOwned),
     Deallocate(Deallocate),
+    Tcl(Tcl),
 }
 
 impl From<NodeOwned> for NodeAligned {
@@ -1386,6 +1398,7 @@ impl From<NodeOwned> for NodeAligned {
             NodeOwned::Relational(rel) => rel.into(),
             NodeOwned::Plugin(p) => p.into(),
             NodeOwned::Deallocate(d) => d.into(),
+            NodeOwned::Tcl(tcl) => tcl.into(),
         }
     }
 }

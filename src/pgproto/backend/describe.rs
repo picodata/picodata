@@ -13,7 +13,7 @@ use sbroad::{
         acl::GrantRevokeType,
         node::{
             acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
-            relational::Relational, Alias, GrantPrivilege, Node, RevokePrivilege,
+            relational::Relational, tcl::Tcl, Alias, GrantPrivilege, Node, RevokePrivilege,
         },
         relation::Type as SbroadType,
         Plan,
@@ -37,6 +37,7 @@ pub enum QueryType {
     Dql = 3,
     Explain = 4,
     Empty = 5,
+    Tcl = 6,
     Deallocate = 7,
 }
 
@@ -46,6 +47,7 @@ pub enum CommandTag {
     AddTrier = 37,
     AlterRole = 0,
     AlterSystem = 22,
+    Begin = 52,
     CallProcedure = 16,
     CreateProcedure = 14,
     CreateRole = 1,
@@ -53,6 +55,7 @@ pub enum CommandTag {
     CreateIndex = 18,
     CreatePlugin = 31,
     ChangeConfig = 39,
+    Commit = 53,
     DropProcedure = 15,
     DropRole = 3,
     DropTable = 4,
@@ -72,6 +75,7 @@ pub enum CommandTag {
     RemoveTier = 38,
     RenameRoutine = 17,
     Revoke = 10,
+    Rollback = 54,
     RevokeRole = 11,
     #[default]
     Select = 12,
@@ -123,6 +127,9 @@ impl CommandTag {
             Self::AddTrier => "ALTER PLUGIN ADD SERVICE TO TIER",
             Self::RemoveTier => "ALTER PLUGIN REMOVE SERVICE FROM TIER",
             Self::ChangeConfig => "ALTER PLUGIN SET",
+            Self::Begin => "BEGIN",
+            Self::Commit => "COMMIT",
+            Self::Rollback => "ROLLBACK",
             // Response on an empty query is EmptyQueryResponse with no tag.
             // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-EMPTYQUERYRESPONSE
             Self::EmptyQuery => "",
@@ -165,6 +172,7 @@ impl From<CommandTag> for QueryType {
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
             CommandTag::Deallocate | CommandTag::DeallocateAll => QueryType::Deallocate,
+            CommandTag::Begin | CommandTag::Commit | CommandTag::Rollback => QueryType::Tcl,
             CommandTag::EmptyQuery => QueryType::Empty,
         }
     }
@@ -202,6 +210,11 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
                 Ddl::SetParam { .. } => Ok(CommandTag::SetParam),
                 Ddl::SetTransaction { .. } => Ok(CommandTag::SetTransaction),
+            },
+            Node::Tcl(tcl) => match tcl {
+                Tcl::Begin => Ok(CommandTag::Begin),
+                Tcl::Commit => Ok(CommandTag::Commit),
+                Tcl::Rollback => Ok(CommandTag::Rollback),
             },
             Node::Plugin(plugin) => match plugin {
                 Plugin::Create { .. } => Ok(CommandTag::CreatePlugin),
@@ -397,6 +410,7 @@ impl Describe {
             QueryType::Dql => Ok(Describe::default()
                 .with_command_tag(command_tag)
                 .with_metadata(dql_output_format(plan)?)),
+            QueryType::Tcl => Ok(Describe::default().with_command_tag(command_tag)),
             QueryType::Explain => Ok(Describe::default()
                 .with_command_tag(command_tag)
                 .with_metadata(explain_output_format())),
@@ -420,6 +434,7 @@ impl Describe {
             | QueryType::Ddl
             | QueryType::Dml
             | QueryType::Deallocate
+            | QueryType::Tcl
             | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let row_description = self
@@ -507,6 +522,7 @@ impl PortalDescribe {
             | QueryType::Ddl
             | QueryType::Dml
             | QueryType::Deallocate
+            | QueryType::Tcl
             | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let metadata = &self.describe.metadata;

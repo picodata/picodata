@@ -813,6 +813,7 @@ impl ExecutionPlan {
                 NodeOwned::Invalid { .. }
                 | NodeOwned::Ddl { .. }
                 | NodeOwned::Acl { .. }
+                | NodeOwned::Tcl(_)
                 | NodeOwned::Plugin { .. }
                 | NodeOwned::Deallocate { .. }
                 | NodeOwned::Block { .. } => {

@@ -4,6 +4,7 @@
 //! and builds the intermediate representation (IR).
 
 use crate::ir::node::deallocate::Deallocate;
+use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{Reference, ReferenceAsteriskSource};
 use ahash::{AHashMap, AHashSet};
 use core::panic;
@@ -4604,6 +4605,21 @@ impl AbstractSyntaxTree {
                 Rule::Deallocate => {
                     let deallocate = parse_deallocate(self, node)?;
                     let plan_id = plan.nodes.push(deallocate.into());
+                    map.add(id, plan_id);
+                }
+                Rule::Begin => {
+                    let begin = Tcl::Begin;
+                    let plan_id = plan.nodes.push(begin.into());
+                    map.add(id, plan_id);
+                }
+                Rule::Commit => {
+                    let commit = Tcl::Commit;
+                    let plan_id = plan.nodes.push(commit.into());
+                    map.add(id, plan_id);
+                }
+                Rule::Rollback => {
+                    let rollback = Tcl::Rollback;
+                    let plan_id = plan.nodes.push(rollback.into());
                     map.add(id, plan_id);
                 }
                 _ => {}

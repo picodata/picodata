@@ -171,6 +171,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                 Node::Acl(_)
                 | Node::Block(_)
                 | Node::Ddl(_)
+                | Node::Tcl(_)
                 | Node::Relational(_)
                 | Node::Invalid(_)
                 | Node::Plugin(_)

@@ -26,6 +26,7 @@ use crate::errors::{Action, Entity, SbroadError, TypeError};
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::TableVersionMap;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
+use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, ExprInParentheses,
     GroupBy, Having, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64,
@@ -104,6 +105,11 @@ impl Nodes {
                 Node32::UnionAll(union_all) => Node::Relational(Relational::UnionAll(union_all)),
                 Node32::Values(values) => Node::Relational(Relational::Values(values)),
                 Node32::Deallocate(deallocate) => Node::Deallocate(deallocate),
+                Node32::Tcl(tcl) => match *tcl {
+                    Tcl::Begin => Node::Tcl(Tcl::Begin),
+                    Tcl::Commit => Node::Tcl(Tcl::Commit),
+                    Tcl::Rollback => Node::Tcl(Tcl::Rollback),
+                },
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
@@ -230,6 +236,11 @@ impl Nodes {
                     }
                     Node32::Values(values) => MutNode::Relational(MutRelational::Values(values)),
                     Node32::Deallocate(deallocate) => MutNode::Deallocate(deallocate),
+                    Node32::Tcl(tcl) => match *tcl {
+                        Tcl::Begin => MutNode::Tcl(node::tcl::Tcl::Begin),
+                        Tcl::Commit => MutNode::Tcl(node::tcl::Tcl::Commit),
+                        Tcl::Rollback => MutNode::Tcl(node::tcl::Tcl::Rollback),
+                    },
                 }),
             ArenaType::Arena64 => self
                 .arena64
@@ -1303,6 +1314,16 @@ impl Plan {
         Ok(matches!(top, Node::Acl(_)))
     }
 
+    /// Checks that plan is TCL query.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_tcl(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        let top = self.get_node(top_id)?;
+        Ok(matches!(top, Node::Tcl(_)))
+    }
+
     /// Checks that plan is a plugin query.
     ///
     /// # Errors
@@ -1344,6 +1365,7 @@ impl Plan {
             | Node::Ddl(..)
             | Node::Invalid(..)
             | Node::Acl(..)
+            | Node::Tcl(..)
             | Node::Block(..)
             | Node::Plugin(..)
             | Node::Deallocate(..) => Err(SbroadError::Invalid(
@@ -1366,6 +1388,7 @@ impl Plan {
             | MutNode::Ddl(..)
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
+            | MutNode::Tcl(..)
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(
@@ -1426,6 +1449,7 @@ impl Plan {
             | MutNode::Ddl(..)
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
+            | MutNode::Tcl(..)
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(

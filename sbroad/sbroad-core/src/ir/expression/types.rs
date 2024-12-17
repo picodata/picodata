@@ -23,25 +23,29 @@ impl Plan {
             // Parameter nodes must recalculate their type during
             // binding (see `bind_params` function).
             Node::Parameter(ty) => Ok(ty.param_type.unwrap_or(Type::Scalar)),
-            Node::Ddl(_) => Err(SbroadError::Invalid(
+            Node::Ddl(ddl) => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some("DDL node has no type".to_smolstr()),
+                Some(format_smolstr!("DDL node {ddl:?} has no type")),
             )),
-            Node::Acl(_) => Err(SbroadError::Invalid(
+            Node::Acl(acl) => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some("ACL node has no type".to_smolstr()),
+                Some(format_smolstr!("ACL node {acl:?} has no type")),
             )),
-            Node::Invalid(_) => Err(SbroadError::Invalid(
+            Node::Tcl(tcl) => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some("Invalid node has no type".to_smolstr()),
+                Some(format_smolstr!("TCL node {tcl:?} has no type")),
             )),
-            Node::Block(_) => Err(SbroadError::Invalid(
+            Node::Invalid(invalid) => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some("code block node has no type".to_smolstr()),
+                Some(format_smolstr!("Invalid node {invalid:?} has no type")),
             )),
-            Node::Plugin(_) => Err(SbroadError::Invalid(
+            Node::Plugin(plugin) => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some("Plugin node has no type".to_smolstr()),
+                Some(format_smolstr!("Plugin node {plugin:?} has no type")),
+            )),
+            Node::Block(block) => Err(SbroadError::Invalid(
+                Entity::Node,
+                Some(format_smolstr!("Block node {block:?} has no type")),
             )),
             Node::Deallocate(_) => Err(SbroadError::Invalid(
                 Entity::Node,

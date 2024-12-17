@@ -371,6 +371,7 @@ impl<'binder> ParamsBinder<'binder> {
                 | Node::Parameter(..)
                 | Node::Ddl(..)
                 | Node::Acl(..)
+                | Node::Tcl(..)
                 | Node::Plugin(_)
                 | Node::Deallocate(..) => {}
             }
@@ -557,6 +558,7 @@ impl<'binder> ParamsBinder<'binder> {
                 MutNode::Invalid(..)
                 | MutNode::Parameter(..)
                 | MutNode::Ddl(..)
+                | MutNode::Tcl(..)
                 | MutNode::Plugin(_)
                 | MutNode::Acl(..)
                 | MutNode::Deallocate(..) => {}
