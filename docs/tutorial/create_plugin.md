@@ -61,7 +61,7 @@ crate-type = ["lib", "cdylib"]
 Далее добавим наш SDK в проект:
 
 ```shell
-cargo add picodata_plugin
+cargo add picodata-plugin
 ```
 
 Выполняемая сервисом логика будет находиться в файле
