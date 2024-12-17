@@ -4,7 +4,7 @@ default:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: always
-  interruptible: true 
+  interruptible: true
   retry:
     max: 1
     when:
@@ -126,7 +126,7 @@ variables:
     - docker-k8s
   variables:
     GIT_USERNAME: $CI_REGISTRY_USER
-    GIT_PASSWORD: $CI_REGISTRY_PASSWORD    
+    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
@@ -602,7 +602,7 @@ integration-sbroad:
   rules:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}    
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
   tags:
     - docker-k8s
   script:
