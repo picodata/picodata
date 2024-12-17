@@ -21,7 +21,7 @@
 
 [tier]: ../overview/glossary.md#tier
 
-Для разработки плагинов предусмотрена библиотека [`picodata-plugin`].
+Для [разработки плагинов] предусмотрена библиотека [`picodata-plugin`].
 
 Для работы плагина версия Picodata должна совпадать с версией библиотеки
 `picodata-plugin`, которая использована для его сборки. Если версии
@@ -38,6 +38,7 @@ PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK=1
 Отключение проверки совместимости может негативно повлиять на работу
 плагина и Picodata, поэтому должно быть хорошо обдумано.
 
+[разработки плагинов]: ../tutorial/create_plugin.md#develop_plugin
 [`picodata-plugin`]: https://git.picodata.io/core/picodata/-/tree/master/picodata-plugin
 [установке]: #plugin_install
 
