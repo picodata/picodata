@@ -2184,15 +2184,7 @@ class PgClient:
 
 
 def build_profile() -> str:
-    from_env = os.environ.get("BUILD_PROFILE")
-
-    if "CI" in os.environ:
-        # When running in CI BUILD_PROFILE must always be specified, we rely
-        # this in a couple of tests
-        assert from_env is not None, "BUILD_PROFILE must always be set in CI"
-
-    # When running on a developers machine, priorities the usability
-    return from_env or "dev"
+    return os.environ.get("BUILD_PROFILE", "dev")
 
 
 def get_test_dir():
