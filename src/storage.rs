@@ -16,6 +16,7 @@ use tarantool::util::NumOrStr;
 
 use crate::config;
 use crate::failure_domain::FailureDomain;
+use crate::info::PICODATA_VERSION;
 use crate::instance::{self, Instance};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
@@ -796,6 +797,15 @@ impl From<ClusterwideTable> for SpaceId {
         /// Used for checking compatibility and upgrading system tables
         /// between picodata versions.
         SystemCatalogVersion = "system_catalog_version",
+
+        /// Current cluster version.
+        ///
+        /// The lowest version number among all instances currently in the cluster.
+        /// Instance versions are stored in the `_pico_instance` table under the `picodata_version` column.
+        ///
+        /// Note that picodata only supports clusters of instances with 2 successive versions.
+        /// Therefore, each instance's version is either equal to `cluster_version` or `cluster_version + 1`.
+        ClusterVersion = "cluster_version",
     }
 }
 
@@ -843,6 +853,10 @@ impl PropertyName {
             Self::PendingPluginOperation => {
                 // Check it decodes into `PluginOp`.
                 _ = new.field::<PluginOp>(1).map_err(map_err)?;
+            }
+            Self::ClusterVersion => {
+                // Check it's a String
+                _ = new.field::<String>(1).map_err(map_err)?;
             }
         }
 
@@ -1003,6 +1017,14 @@ impl Properties {
             let current = self.global_schema_version()?;
             current + 1
         };
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn cluster_version(&self) -> tarantool::Result<String> {
+        let res: String = self
+            .get::<String>(PropertyName::ClusterVersion.as_str())?
+            .expect("ClusterVersion should be initialized");
         Ok(res)
     }
 }
@@ -3348,16 +3370,17 @@ mod tests {
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
         let faildom = FailureDomain::from([("a", "b")]);
+        let picodata_version = PICODATA_VERSION.to_string();
 
         for instance in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
-            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
             // r2
-            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
-            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
             // r3
-            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
         ] {
             storage.space_by_name(ClusterwideTable::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
@@ -3375,6 +3398,7 @@ mod tests {
                 raft_id: 1,
                 name: "i99".into(),
                 tier: DEFAULT_TIER.into(),
+                picodata_version: PICODATA_VERSION.to_string(),
                 ..Instance::default()
             }),
             format!(
@@ -3384,14 +3408,15 @@ mod tests {
                     " in unique index \"_pico_instance_raft_id\"",
                     " in space \"_pico_instance\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default"]"#,
+                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default", "{picodata_version}"]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default"]"#,
+                    r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "default", "{picodata_version}"]"#,
                 ),
                 gon = Online,
                 goff = Offline,
                 tgon = Online,
                 tgoff = Offline,
+                picodata_version = PICODATA_VERSION.to_string(),
             )
         );
 

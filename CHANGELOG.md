@@ -76,7 +76,7 @@ to 2 and 3.
 
 - New special command `\set delimiter enter` to change the default delimiter to EOL (End Of Line). Introduced a new inner prompt prefix to indicate when input is waiting for a delimiter. EOF is now treated as a delimiter when reading files.
 
-- Now, for instance to join a cluster, it's version must be the same as the cluster's version or one minor version lower. For example, if the cluster's version is 24.7, only instances with versions 24.7 or 24.6 can join.
+- Now, for instance to join a cluster, its version must equal to the cluster's version or one minor version greater. For example, if the cluster's version is 24.7, only instances with versions 24.7 or 24.8 can join the cluster.
 
 - Global rename
   - Config File Changes:

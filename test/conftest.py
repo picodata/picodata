@@ -620,6 +620,9 @@ class Instance:
     def replicaset_uuid(self):
         return self.eval("return box.info.cluster.uuid")
 
+    def picodata_version(self):
+        return self.call(".proc_version_info")["picodata_version"]
+
     @property
     def audit_flag_value(self):
         """

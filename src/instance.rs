@@ -1,6 +1,7 @@
 use super::failure_domain::FailureDomain;
 use super::replicaset::ReplicasetName;
 use crate::has_states;
+use crate::info::PICODATA_VERSION;
 use crate::traft::RaftId;
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
@@ -48,6 +49,10 @@ pub struct Instance {
 
     /// Instance tier. Each instance belongs to only one tier.
     pub tier: String,
+
+    /// Version of picodata executable which running this instance.
+    /// It should match the version returned by `.proc_version_info` on this instance.
+    pub picodata_version: String,
 }
 
 impl Encode for Instance {}
@@ -82,6 +87,7 @@ impl Instance {
             Field::from(("target_state", FieldType::Array)),
             Field::from(("failure_domain", FieldType::Map)),
             Field::from(("tier", FieldType::String)),
+            Field::from(("picodata_version", FieldType::String)),
         ]
     }
 
@@ -110,13 +116,14 @@ impl std::fmt::Display for Instance {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f,
-            "({}, {}, {}, {}, {}, {})",
+            "({}, {}, {}, {}, {}, {}, {})",
             self.name,
             self.raft_id,
             self.replicaset_name,
             Transition { from: self.current_state, to: self.target_state },
             &self.failure_domain,
             self.tier,
+            self.picodata_version,
         )
     }
 }
@@ -168,6 +175,7 @@ mod tests {
             target_state: *state,
             failure_domain: FailureDomain::default(),
             tier: DEFAULT_TIER.into(),
+            picodata_version: PICODATA_VERSION.into(),
         }
     }
 
@@ -192,7 +200,7 @@ mod tests {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
 
-        let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i1.raft_id, 1);
         assert_eq!(i1.name, "default_1_1");
         assert_eq!(i1.replicaset_name, "default_1");
@@ -202,19 +210,19 @@ mod tests {
         assert_eq!(i1.tier, DEFAULT_TIER);
         add_instance(&storage, &i1).unwrap();
 
-        let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i2.raft_id, 2);
         assert_eq!(i2.name, "default_2_1");
         assert_eq!(i2.replicaset_name, "default_2");
         add_instance(&storage, &i2).unwrap();
 
-        let i3 = build_instance(None, Some(&ReplicasetName::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i3 = build_instance(None, Some(&ReplicasetName::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i3.raft_id, 3);
         assert_eq!(i3.name, "R3_1");
         assert_eq!(i3.replicaset_name, "R3");
         add_instance(&storage, &i3).unwrap();
 
-        let i4 = build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i4 = build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i4.raft_id, 4);
         assert_eq!(i4.name, "I4");
         assert_eq!(i4.replicaset_name, "default_3");
@@ -233,7 +241,7 @@ mod tests {
         // - Even if it's a fair rebootstrap, it will be marked as
         //   unreachable soon (when we implement failover) the error
         //   will be gone.
-        let e = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap_err();
+        let e = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), "`i1` is already joined");
 
         // join::Request with a given instance_name offline (or unreachable).
@@ -246,7 +254,7 @@ mod tests {
         //      not, if replication_factor / failure_domain were edited.
         // - Even if it's an impostor, rely on auto-expel policy.
         //   Disruption isn't destructive if auto-expel allows (TODO).
-        let instance = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let instance = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(instance.raft_id, 3);
         assert_eq!(instance.name, "i2");
         // Attention: generated replicaset_name differs from the original
@@ -275,7 +283,7 @@ mod tests {
         add_instance(&storage, &dummy_instance(2, "i3", "r3", &State::new(Online, 1))).unwrap();
         // Attention: i3 has raft_id=2
 
-        let instance = build_instance(None, Some(&ReplicasetName::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let instance = build_instance(None, Some(&ReplicasetName::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(instance.raft_id, 3);
         assert_eq!(instance.name, "r2_1");
         assert_eq!(instance.replicaset_name, "r2");
@@ -285,8 +293,8 @@ mod tests {
     fn test_uuid_randomness() {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
-        let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
+        let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i1a.name, "default_1_1");
         assert_eq!(i1b.name, "default_1_1");
 
@@ -303,7 +311,7 @@ mod tests {
         add_instance(&storage, &dummy_instance(9, "i9", "default_1", &State::new(Online, 1))).unwrap();
         add_instance(&storage, &dummy_instance(10, "i10", "default_1", &State::new(Online, 1))).unwrap();
 
-        let i1 = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i1 = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i1.raft_id, 11);
         assert_eq!(i1.name, "i1");
         assert_eq!(i1.replicaset_name, "default_2");
@@ -311,7 +319,7 @@ mod tests {
 
         assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11]));
 
-        let i2 = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i2 = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i2.raft_id, 12);
         assert_eq!(i2.name, "i2");
         assert_eq!(i2.replicaset_name, "default_2");
@@ -319,14 +327,14 @@ mod tests {
         add_instance(&storage, &i2).unwrap();
         assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11, 12]));
 
-        let i3 = build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i3 = build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i3.raft_id, 13);
         assert_eq!(i3.name, "i3");
         assert_eq!(i3.replicaset_name, "default_3");
         add_instance(&storage, &i3).unwrap();
         assert_eq!(replication_names(&ReplicasetName::from("default_3"), &storage), HashSet::from([13]));
 
-        let i4 = build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i4 = build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         assert_eq!(i4.raft_id, 14);
         assert_eq!(i4.name, "i4");
         assert_eq!(i4.replicaset_name, "default_3");
@@ -352,6 +360,7 @@ mod tests {
         let instance = dummy_instance(1, "i1", "r1", &State::new(Online, 1));
         add_instance(&storage, &instance).unwrap();
         let existing_fds = HashSet::new();
+        let global_cluster_version = PICODATA_VERSION.to_string();
 
         //
         // Current state incarnation is allowed to go down,
@@ -359,7 +368,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Offline, 0)).unwrap();
@@ -374,7 +383,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        let dml = update_instance(&instance, &req, &existing_fds).unwrap();
+        let dml = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap();
         assert_eq!(dml, None);
 
         //
@@ -382,7 +391,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Offline);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Offline, 0)).unwrap();
@@ -397,7 +406,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 1)).unwrap();
@@ -412,7 +421,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 2)).unwrap();
@@ -427,7 +436,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Expelled);
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Expelled, 0)).unwrap();
@@ -442,7 +451,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Expelled, 69));
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Expelled, 69)).unwrap();
@@ -457,8 +466,70 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
-        let e = update_instance(&instance, &req, &existing_fds).unwrap_err();
+        let e = update_instance(&instance, &req, &existing_fds, &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
+    }
+
+    #[::tarantool::test]
+    fn test_update_picodata_version() {
+        let storage = Clusterwide::for_tests();
+        add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
+        let global_cluster_version = PICODATA_VERSION.to_string();
+
+        let next_minor_version = |version: &str| -> String {
+            let parts: Vec<&str> = version.split('.').collect();
+            let major: u8 = parts[0].parse().expect("Invalid major version");
+            let minor: u8 = parts[1].parse().expect("Invalid minor version");
+            format!("{}.{}.x", major, minor + 1)
+        };
+        let new_picodata_version = next_minor_version(&global_cluster_version);
+
+        let instance_name = "default_r1_1";
+        let instance = dummy_instance(1, instance_name, "r1", &State::new(Online, 1));
+        add_instance(&storage, &instance).unwrap();
+        let existing_fds = HashSet::new();
+
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
+            .with_picodata_version(new_picodata_version.clone());
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version)
+            .unwrap()
+            .expect("expected update picodata version");
+
+        let mut ops = UpdateOps::new();
+        ops.assign("picodata_version", new_picodata_version.clone()).unwrap();
+        assert_eq!(dml, update_instance_dml(instance_name, ops));
+        assert_eq!(do_bump, false);
+
+        storage.do_dml(&dml).unwrap();
+        let instance = storage.instances.get(&InstanceName::from(instance_name)).unwrap();
+        assert_eq!(instance.picodata_version, new_picodata_version);
+
+        // Create an instance that is already expelled.
+        let instance_name = "default_r1_expelled";
+        let expelled_instance = Instance {
+            name: instance_name.into(),
+            uuid: format!("{instance_name}-uuid"),
+            raft_id: 2,
+            replicaset_name: "r1".into(),
+            replicaset_uuid: "r1-uuid".into(),
+            current_state: State::new(Expelled, 69),
+            target_state: State::new(Expelled, 0),
+            failure_domain: FailureDomain::default(),
+            tier: DEFAULT_TIER.into(),
+            picodata_version: PICODATA_VERSION.to_string(),
+        };
+        add_instance(&storage, &expelled_instance).unwrap();
+
+        // Now try to update the picodata_version on the expelled instance.
+        let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "".into())
+            .with_picodata_version(new_picodata_version.clone());
+        let err = update_instance(&expelled_instance, &req, &existing_fds, &global_cluster_version)
+            .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("cannot update expelled instance \"{}\"", expelled_instance.name)
+        );
     }
 
     #[::tarantool::test]
@@ -467,57 +538,57 @@ mod tests {
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
-        let e = build_instance(None, None, &faildoms! {os: Arch}, &storage, DEFAULT_TIER).unwrap_err();
+        let e = build_instance(None, None, &faildoms! {os: Arch}, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage, DEFAULT_TIER)
+            build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
-        let e = build_instance(None, None, &faildoms! {}, &storage, DEFAULT_TIER).unwrap_err();
+        let e = build_instance(None, None, &faildoms! {}, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: OS, PLANET");
     }
 
@@ -525,11 +596,12 @@ mod tests {
     fn reconfigure_failure_domain() {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
+        let global_cluster_version = PICODATA_VERSION.to_string();
 
         //
         // first instance
         //
-        let instance1 = build_instance(Some(&InstanceName::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER).unwrap();
+        let instance1 = build_instance(Some(&InstanceName::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         add_instance(&storage, &instance1).unwrap();
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
@@ -540,7 +612,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
-        let e = update_instance(&instance1, &req, &existing_fds).unwrap_err();
+        let e = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         //
@@ -549,7 +621,7 @@ mod tests {
         let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -562,7 +634,7 @@ mod tests {
         // second instance won't be joined without the newly added required
         // failure domain subdivision of "OWNER"
         //
-        let e = build_instance(Some(&InstanceName::from("i2")), None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER).unwrap_err();
+        let e = build_instance(Some(&InstanceName::from("i2")), None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: OWNER");
 
         //
@@ -570,7 +642,7 @@ mod tests {
         //
         let fd = faildoms! {planet: Mars, owner: Mike};
         #[rustfmt::skip]
-        let instance2 = build_instance(Some(&InstanceName::from("i2")), None, &fd, &storage, DEFAULT_TIER).unwrap();
+        let instance2 = build_instance(Some(&InstanceName::from("i2")), None, &fd, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         add_instance(&storage, &instance2).unwrap();
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance2.failure_domain, fd);
@@ -583,7 +655,7 @@ mod tests {
         let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.name.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds, &global_cluster_version).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -596,7 +668,7 @@ mod tests {
         // add instance with new subdivision
         //
         #[rustfmt::skip]
-        let instance3_v1 = build_instance(Some(&InstanceName::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage, DEFAULT_TIER)
+        let instance3_v1 = build_instance(Some(&InstanceName::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage, DEFAULT_TIER, PICODATA_VERSION)
             .unwrap();
         add_instance(&storage, &instance3_v1).unwrap();
         assert_eq!(
@@ -610,7 +682,7 @@ mod tests {
         // `DIMENSION` is inactive, we can't add an instance without that
         // subdivision
         //
-        let e = build_instance(Some(&InstanceName::from("i4")), None, &faildoms! {planet: Theia, owner: Me}, &storage, DEFAULT_TIER).unwrap_err();
+        let e = build_instance(Some(&InstanceName::from("i4")), None, &faildoms! {planet: Theia, owner: Me}, &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: DIMENSION");
     }
 
@@ -626,40 +698,40 @@ mod tests {
         add_tier(&storage, third_tier, 2, true).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier)
+            build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, second_tier)
+            build_instance(None, None, &faildoms! {planet: Mars}, &storage, second_tier, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "compute_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, first_tier)
+            build_instance(None, None, &faildoms! {planet: Mars}, &storage, first_tier, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Pluto}, &storage, third_tier)
+            build_instance(None, None, &faildoms! {planet: Pluto}, &storage, third_tier, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus}, &storage, third_tier)
+            build_instance(None, None, &faildoms! {planet: Venus}, &storage, third_tier, PICODATA_VERSION)
                 .unwrap();
         assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 
-        let e = build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier").unwrap_err();
+        let e = build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier", PICODATA_VERSION).unwrap_err();
         assert_eq!(e.to_string(), r#"tier "noexistent_tier" doesn't exist"#);
 
         // gl589
-        let e = build_instance(None, Some(&ReplicasetName::from("just to skip choose_replicaset function call")), &faildoms! {planet: 5}, &storage, "noexistent_tier") .unwrap_err();
+        let e = build_instance(None, Some(&ReplicasetName::from("just to skip choose_replicaset function call")), &faildoms! {planet: 5}, &storage, "noexistent_tier", PICODATA_VERSION) .unwrap_err();
         assert_eq!(e.to_string(), r#"tier "noexistent_tier" doesn't exist"#);
     }
 }

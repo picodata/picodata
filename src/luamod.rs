@@ -239,6 +239,7 @@ pub(crate) fn setup() {
                 `{variant = string, incarnation = number}`, where variant is one of
                 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled'
             - tier (string)
+            - picodata_version (string)
 
         Example:
 
@@ -273,6 +274,7 @@ pub(crate) fn setup() {
                 ("current_state", info.current_state),
                 ("target_state", info.target_state),
                 ("tier", info.tier),
+                ("picodata_version", info.picodata_version),
             )))
         }),
     );

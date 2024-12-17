@@ -6,6 +6,7 @@ use ::tarantool::msgpack;
 use crate::access_control::validate_password;
 use crate::config;
 use crate::config::PicodataConfig;
+use crate::info::PICODATA_VERSION;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
@@ -114,6 +115,14 @@ pub(super) fn prepare(
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::SystemCatalogVersion, 1),
+            ADMIN_ID,
+        )
+        .expect("serialization cannot fail"),
+    );
+    ops.push(
+        op::Dml::insert(
+            ClusterwideTable::Property,
+            &(PropertyName::ClusterVersion, PICODATA_VERSION.to_string()),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),

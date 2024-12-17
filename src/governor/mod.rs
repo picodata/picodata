@@ -153,6 +153,11 @@ impl Loop {
             .pending_plugin_op()
             .expect("i just want to feel something");
 
+        let global_cluster_version = storage
+            .properties
+            .cluster_version()
+            .expect("storage should never fail");
+
         let plan = action_plan(
             term,
             applied,
@@ -170,6 +175,7 @@ impl Loop {
             &services,
             plugin_op.as_ref(),
             rpc_timeout,
+            global_cluster_version,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -244,6 +250,17 @@ impl Loop {
                 set_status!("update target replication leader");
                 governor_step! {
                     "proposing replicaset target master change"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::UpdateClusterVersion(UpdateClusterVersion { cas }) => {
+                set_status!("update global cluster version");
+                governor_step! {
+                    "updating cluster version"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;

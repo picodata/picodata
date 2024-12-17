@@ -12,6 +12,7 @@
 #![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
 use config::apply_parameter;
+use info::PICODATA_VERSION;
 use serde::{Deserialize, Serialize};
 use storage::ToEntryIter;
 
@@ -784,6 +785,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         target_state: instance::State::new(Offline, 0),
         failure_domain: config.instance.failure_domain(),
         tier: my_tier_name.into(),
+        picodata_version: PICODATA_VERSION.to_string(),
     };
 
     if !tier.can_vote {
@@ -846,8 +848,9 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     #[allow(unused_mut)]
     let mut version = info::PICODATA_VERSION.to_string();
     #[cfg(feature = "error_injection")]
-    crate::error_injection!("INCOMPATIBLE_PICODATA_VERSION" => {
-        version = "24.5.0-82-g79a5b6f0".to_string();
+    crate::error_injection!("UPDATE_PICODATA_VERSION" => {
+        version = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE")
+            .unwrap_or_else(|_| info::PICODATA_VERSION.to_string());
     });
 
     let req = rpc::join::Request {
@@ -938,6 +941,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         raft_id: %raft_id,
         initiator: "admin",
     );
+
     Ok(())
 }
 
@@ -1062,10 +1066,19 @@ fn postjoin(
             continue;
         };
 
+        #[allow(unused_mut)]
+        let mut version = info::PICODATA_VERSION.to_string();
+        #[cfg(feature = "error_injection")]
+        crate::error_injection!("UPDATE_PICODATA_VERSION" => {
+            version = std::env::var("PICODATA_INTERNAL_VERSION_OVERRIDE")
+                .unwrap_or_else(|_| info::PICODATA_VERSION.to_string());
+        });
+
         tlog!(Info, "initiating self-activation of {}", instance.name);
         let req = rpc::update_instance::Request::new(instance.name, cluster_name)
             .with_target_state(Online)
-            .with_failure_domain(config.instance.failure_domain());
+            .with_failure_domain(config.instance.failure_domain())
+            .with_picodata_version(version);
         let fut = rpc::network_call(
             &leader_address,
             proc_name!(rpc::update_instance::proc_update_instance),

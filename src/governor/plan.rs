@@ -52,6 +52,7 @@ pub(super) fn action_plan<'i>(
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
     sync_timeout: std::time::Duration,
+    global_cluster_version: String,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -128,8 +129,14 @@ pub(super) fn action_plan<'i>(
 
         let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(instance.target_state);
-        let cas_parameters =
-            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
+        let cas_parameters = prepare_update_instance_cas_request(
+            &req,
+            instance,
+            replicaset,
+            tier,
+            existing_fds,
+            &global_cluster_version,
+        )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
@@ -451,8 +458,14 @@ pub(super) fn action_plan<'i>(
         // Mark last instance as expelled
         let req = rpc::update_instance::Request::new(master_name.clone(), cluster_name)
             .with_current_state(master.target_state);
-        let update_instance =
-            prepare_update_instance_cas_request(&req, master, replicaset, tier, existing_fds)?;
+        let update_instance = prepare_update_instance_cas_request(
+            &req,
+            master,
+            replicaset,
+            tier,
+            existing_fds,
+            &global_cluster_version,
+        )?;
         let (mut ops, ranges) = update_instance.expect("already checked target state != current");
 
         // Mark replicaset as expelled
@@ -542,8 +555,14 @@ pub(super) fn action_plan<'i>(
 
         let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(instance.target_state);
-        let cas_parameters =
-            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
+        let cas_parameters = prepare_update_instance_cas_request(
+            &req,
+            instance,
+            replicaset,
+            tier,
+            existing_fds,
+            &global_cluster_version,
+        )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
@@ -584,8 +603,14 @@ pub(super) fn action_plan<'i>(
 
         let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(target_state);
-        let cas_parameters =
-            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
+        let cas_parameters = prepare_update_instance_cas_request(
+            &req,
+            instance,
+            replicaset,
+            tier,
+            existing_fds,
+            &global_cluster_version,
+        )?;
 
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
@@ -861,6 +886,64 @@ pub(super) fn action_plan<'i>(
         .into());
     }
 
+    let mut new_cluster_version_candidate: Option<String> = None;
+    let mut new_candidate_counter = 0;
+    let mut expelled_instances = 0;
+    for instance in instances {
+        if has_states!(instance, Expelled -> *) {
+            expelled_instances += 1;
+            continue;
+        }
+
+        let instance_version = instance.picodata_version.clone();
+        match rpc::join::compare_picodata_versions(&global_cluster_version, &instance_version) {
+            Ok(0) => {
+                // if at least one version is equal to global_cluster_version
+                // don't upgrade the global_cluster_version
+                break;
+            }
+            Ok(1) => {
+                // Version is exactly one higher, collect it
+                new_candidate_counter += 1;
+                new_cluster_version_candidate = Some(instance_version);
+            }
+            Err(e) => {
+                tlog!(
+                    Warning,
+                    "Instance {} has incompatible version {} compared to cluster version {}",
+                    instance.name,
+                    instance_version,
+                    global_cluster_version
+                );
+                return Err(e);
+            }
+            _ => {}
+        }
+    }
+
+    // number of instances that has states either Online or Offline
+    let retained_instances = instances.len() - expelled_instances;
+
+    // If all instances have new version, update the cluster version
+    if new_candidate_counter == retained_instances {
+        if let Some(new_version) = &new_cluster_version_candidate {
+            let mut ops = UpdateOps::new();
+            ops.assign("value", new_version)?;
+
+            let dml = Dml::replace(
+                ClusterwideTable::Property,
+                &(PropertyName::ClusterVersion, new_version),
+                ADMIN_ID,
+            )?;
+
+            let ranges = vec![cas::Range::for_dml(&dml)?];
+            let predicate = cas::Predicate::new(applied, ranges);
+            let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+
+            return Ok(UpdateClusterVersion { cas }.into());
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // no action needed
     Ok(Plan::None)
@@ -931,6 +1014,11 @@ pub mod stage {
 
         pub struct UpdateTargetReplicasetMaster {
             /// Global DML operation which updates `target_master_name` in table `_pico_replicaset`.
+            pub cas: cas::Request,
+        }
+
+        pub struct UpdateClusterVersion {
+            /// Global DML operation in _pico_property to update _cluster_version
             pub cas: cas::Request,
         }
 

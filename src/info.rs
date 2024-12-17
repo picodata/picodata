@@ -103,6 +103,7 @@ pub struct InstanceInfo {
     pub current_state: State,
     pub target_state: State,
     pub tier: String,
+    pub picodata_version: String,
 }
 
 impl tarantool::tuple::Encode for InstanceInfo {}
@@ -141,6 +142,7 @@ impl InstanceInfo {
             current_state: instance.current_state,
             target_state: instance.target_state,
             tier: instance.tier,
+            picodata_version: instance.picodata_version,
         })
     }
 }

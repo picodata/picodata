@@ -257,7 +257,6 @@ def test_pico_instance_info(instance: Instance):
 
 def test_raft_log(instance: Instance):
     raft_log = instance.call("pico.raft_log", dict(max_width=99000))
-
     raft_log = str.join("\n", raft_log)
 
     def preprocess(s: str):
@@ -339,13 +338,14 @@ def test_raft_log(instance: Instance):
 +-----+----+--------+
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
-Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
+Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}"]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
 Insert(_pico_property, ["system_catalog_version",1]),
+Insert(_pico_property, ["cluster_version","{picodata_version}"]),
 Insert(_pico_db_config, ["auth_password_length_min",8]),
 Insert(_pico_db_config, ["auth_password_enforce_uppercase",true]),
 Insert(_pico_db_config, ["auth_password_enforce_lowercase",true]),
@@ -402,7 +402,7 @@ Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}]
 Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"string","is_nullable":false,"name":"picodata_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_instance},0,"_pico_instance_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},1,"_pico_instance_uuid","tree",[{{"unique":true}}],[["uuid","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},2,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
@@ -456,6 +456,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
         b="{}",
         i1_uuid=instance.uuid(),
         r1_uuid=instance.replicaset_uuid(),
+        picodata_version=instance.picodata_version(),
         _pico_peer_address=space_id("_pico_peer_address"),
         _pico_property=space_id("_pico_property"),
         _pico_replicaset=space_id("_pico_replicaset"),
@@ -536,11 +537,15 @@ cluster:
     i1 = cluster.add_instance(tier="storage")
     i2 = cluster.add_instance(tier="router")
 
+    i1_version = i1.picodata_version()
+    i2_version = i2.picodata_version()
+
     i1_info = i1.call(".proc_instance_info")
     assert i1_info == dict(
         raft_id=1,
         name="storage_1_1",
         iproto_advertise=f"{i1.host}:{i1.port}",
+        picodata_version=i1_version,
         uuid=i1.uuid(),
         replicaset_name="storage_1",
         replicaset_uuid=i1.replicaset_uuid(),
@@ -555,6 +560,7 @@ cluster:
         raft_id=2,
         name="router_1_1",
         iproto_advertise=f"{i2.host}:{i2.port}",
+        picodata_version=i2_version,
         uuid=i2.uuid(),
         replicaset_name="router_1",
         replicaset_uuid=i2.replicaset_uuid(),

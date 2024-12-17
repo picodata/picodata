@@ -310,6 +310,7 @@ def test_read_from_system_tables(cluster: Cluster):
     # Ignore values for the sake of stability
     keys = [row[0] for row in data["rows"]]
     assert keys == [
+        "cluster_version",
         "global_schema_version",
         "next_schema_version",
         "system_catalog_version",
@@ -331,6 +332,7 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "target_state", "type": "array"},
         {"name": "failure_domain", "type": "map"},
         {"name": "tier", "type": "string"},
+        {"name": "picodata_version", "type": "string"},
     ]
     assert len(data["rows"]) == instance_count
 

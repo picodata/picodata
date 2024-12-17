@@ -64,30 +64,44 @@ crate::define_rpc_request! {
     }
 }
 
-// compare versions of instances before join
-fn compare_picodata_versions(leader_version: &str, req_version: &str) -> Result<(), Error> {
+// Compares the versions of instances before joining the cluster.
+// A cluster is considered compatible if the versions have a minor difference of 1.
+// For example, if the leader's version is 25.X, the follower's version must be either 25.X or 25.(X+1).
+pub fn compare_picodata_versions(
+    leader_version: &str,
+    follower_version: &str,
+) -> Result<u8, Error> {
     let parse_version = |version: &str| -> (u8, u8) {
         let parts: Vec<&str> = version.split('.').collect();
-        let major: u8 = parts[0].parse::<u8>().unwrap();
-        let minor: u8 = parts[1].parse::<u8>().unwrap();
+        let major: u8 = parts[0]
+            .parse::<u8>()
+            .expect("Invalid major picodata version");
+        let minor: u8 = parts[1]
+            .parse::<u8>()
+            .expect("Invalid minor picodata version");
         (major, minor)
     };
 
-    let v1 = parse_version(leader_version);
-    let v2 = parse_version(req_version);
+    let (leader_major, leader_minor) = parse_version(leader_version);
+    let (follower_major, follower_minor) = parse_version(follower_version);
 
-    let majors_are_equal = v1.0 == v2.0;
-    let minor_is_curr_or_next = v1.1.abs_diff(v2.1) <= 1;
-
-    if majors_are_equal && minor_is_curr_or_next {
-        tlog!(Info, "join instance with sufficient version");
-        return Ok(());
+    if leader_major != follower_major {
+        return Err(Error::PicodataVersionMismatch {
+            leader_version: leader_version.to_string(),
+            instance_version: follower_version.to_string(),
+        });
     }
 
-    return Err(Error::PicodataVersionMismatch {
-        leader_version: leader_version.to_string(),
-        instance_version: req_version.to_string(),
-    });
+    if leader_minor == follower_minor {
+        return Ok(0);
+    } else if follower_minor == leader_minor + 1 {
+        return Ok(1);
+    } else {
+        return Err(Error::PicodataVersionMismatch {
+            leader_version: leader_version.to_string(),
+            instance_version: follower_version.to_string(),
+        });
+    }
 }
 
 /// Processes the [`crate::rpc::join::Request`] and appends necessary
@@ -109,7 +123,12 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         });
     }
 
-    compare_picodata_versions(crate::info::PICODATA_VERSION, req.picodata_version.as_ref())?;
+    let global_cluster_version = storage
+        .properties
+        .cluster_version()
+        .expect("storage should never fail");
+
+    compare_picodata_versions(&global_cluster_version, req.picodata_version.as_ref())?;
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
@@ -119,6 +138,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             &req.failure_domain,
             storage,
             &req.tier,
+            req.picodata_version.as_ref(),
         )?;
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
@@ -196,6 +216,7 @@ pub fn build_instance(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     tier: &str,
+    picodata_version: &str,
 ) -> Result<Instance> {
     // NOTE: currently we don't ever remove entries from `_pico_instance` even
     // when expelling instances. This makes it so we can get a unique raft_id by
@@ -311,6 +332,7 @@ pub fn build_instance(
         target_state: State::new(Offline, 0),
         failure_domain: failure_domain.clone(),
         tier: tier.name.clone(),
+        picodata_version: picodata_version.to_string(),
     })
 }
 

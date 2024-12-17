@@ -19,6 +19,8 @@ use std::time::Duration;
 use tarantool::fiber;
 use tarantool::space::UpdateOps;
 
+use super::join::compare_picodata_versions;
+
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 crate::define_rpc_request! {
@@ -57,6 +59,8 @@ crate::define_rpc_request! {
         pub failure_domain: Option<FailureDomain>,
         /// If `true` then the resulting CaS request is not retried upon failure.
         pub dont_retry: bool,
+        /// Only set by instance when it is waking up.
+        pub picodata_version: Option<String>,
     }
 
     pub struct Response {}
@@ -96,6 +100,11 @@ impl Request {
         self.failure_domain = Some(value);
         self
     }
+    #[inline]
+    pub fn with_picodata_version(mut self, value: String) -> Self {
+        self.picodata_version = Some(value);
+        self
+    }
 }
 
 /// Processes the [`crate::rpc::update_instance::Request`] and appends
@@ -117,6 +126,11 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             cluster_name,
         });
     }
+
+    let global_cluster_version = storage
+        .properties
+        .cluster_version()
+        .expect("storage should never fail");
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
@@ -143,6 +157,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             &replicaset,
             &tier,
             &existing_fds,
+            &global_cluster_version,
         )?
         else {
             return Ok(());
@@ -172,12 +187,13 @@ pub fn prepare_update_instance_cas_request(
     replicaset: &Replicaset,
     tier: &Tier,
     existing_fds: &HashSet<Uppercase>,
+    global_cluster_version: &str,
 ) -> Result<Option<(Vec<Dml>, Vec<cas::Range>)>> {
     debug_assert_eq!(instance.replicaset_name, replicaset.name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
 
-    let dml = update_instance(instance, request, existing_fds)?;
+    let dml = update_instance(instance, request, existing_fds, global_cluster_version)?;
     let Some((dml, version_bump_needed)) = dml else {
         // No point in proposing an operation which doesn't change anything.
         // Note: if the request tried setting target state Online while it
@@ -226,6 +242,7 @@ pub fn update_instance(
     instance: &Instance,
     req: &Request,
     existing_fds: &HashSet<Uppercase>,
+    global_cluster_version: &str,
 ) -> Result<Option<(Dml, bool)>> {
     if instance.current_state.variant == Expelled
         && !matches!(
@@ -253,6 +270,14 @@ pub fn update_instance(
     if let Some(state) = req.current_state {
         if state != instance.current_state {
             ops.assign(column_name!(Instance, current_state), state)?;
+        }
+    }
+
+    if let Some(picodata_version) = req.picodata_version.as_ref() {
+        compare_picodata_versions(global_cluster_version, picodata_version)?;
+
+        if instance.picodata_version != *picodata_version {
+            ops.assign(column_name!(Instance, picodata_version), picodata_version)?;
         }
     }
 
