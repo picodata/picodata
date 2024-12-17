@@ -50,7 +50,7 @@ RUN set -e; \
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
 sh -s -- -y --profile default --default-toolchain ${RUST_VERSION} && \
 rustup component add rustfmt && \
-cargo install cargo-audit
+cargo install cargo-audit --locked
 
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 
