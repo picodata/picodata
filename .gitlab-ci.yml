@@ -89,7 +89,6 @@ variables:
       paths:
         - docker-build-base/**
       compare_to: *main-branch
-
   - &else {}
 
 .base_cache: &base_cache
@@ -141,8 +140,10 @@ build-base-image:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
-    - <<: *else
-      when: never
+    - when: manual
+      allow_failure: true
+      variables:
+        BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
   variables:
     DOCKERFILE: docker-build-base/Dockerfile
     DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
@@ -386,6 +387,7 @@ gamayun-prepare:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - when: manual
   script:
     - export CARGO_HOME=$HOME/.cargo
     - cargo -V
