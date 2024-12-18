@@ -163,6 +163,7 @@ where
             && !plan.is_acl()?
             && !plan.is_plugin()?
             && !plan.is_deallocate()?
+            && !plan.is_tcl()?
         {
             plan.bind_params(params)?;
             plan.apply_options()?;
