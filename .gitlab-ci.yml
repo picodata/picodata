@@ -218,6 +218,9 @@ test-linux:
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
         CACHE_POLICY: pull
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        CACHE_POLICY: pull-push
     - <<: *else
       variables:
         CACHE_POLICY: pull
