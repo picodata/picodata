@@ -39,7 +39,7 @@ PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK=1
 плагина и Picodata, поэтому должно быть хорошо обдумано.
 
 [разработки плагинов]: ../tutorial/create_plugin.md#develop_plugin
-[`picodata-plugin`]: https://git.picodata.io/core/picodata/-/tree/master/picodata-plugin
+[`picodata-plugin`]: https://crates.io/crates/picodata-plugin
 [установке]: #plugin_install
 
 ## Структура плагина {: #structure }
