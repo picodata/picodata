@@ -1,6 +1,6 @@
 ARG BASE_IMAGE_TAG
 
-FROM docker-public.binary.picodata.io/sbroad-builder:${BASE_IMAGE_TAG}
+FROM ${BASE_IMAGE}:${BASE_IMAGE_TAG}
 
 ENV STRESS_TEST=""
 COPY docker-build-base/entrypoint-stress.sh sbroad/Makefile /sbroad/

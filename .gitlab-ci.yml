@@ -129,7 +129,11 @@ variables:
   script:
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION} --build-arg RUST_VERSION=${RUST_VERSION} --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ${PUSH_DOCKER}
+      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION} 
+      --build-arg RUST_VERSION=${RUST_VERSION}
+      --build-arg BASE_IMAGE=${BASE_IMAGE}
+      --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG}
+      ${PUSH_DOCKER}
       --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
       --destination ${DESTINATION}
 
