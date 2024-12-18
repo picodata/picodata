@@ -59,7 +59,6 @@ variables:
   KUBERNETES_CPU_REQUEST: 2
   KUBERNETES_MEMORY_REQUEST: "4Gi"
 
-
 # job:rules explained:
 #
 # - if build-base changes on master branch (compared to HEAD~1)
@@ -120,7 +119,7 @@ variables:
 .kaniko_image: &kaniko_image
   image:
     name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
-    entrypoint: ['']
+    entrypoint: [""]
     pull_policy: [if-not-present]
   tags:
     - docker-k8s
@@ -156,13 +155,14 @@ build-base-image:
 build-stress-image:
   stage: build-stress-image
   <<: *kaniko_image
-  needs: []
+  rules:
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
+      needs: ["build-base-image"]
   variables:
     DOCKERFILE: docker-build-base/stress.Dockerfile
     DESTINATION: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  before_script:
-    - BASE_IMAGE_TAG=$(cd sbroad && git describe --tags --abbrev=0 2>/dev/null || echo "latest")
-
 
 .test:
   stage: test
@@ -506,7 +506,8 @@ deploy-docker:
 
 docker-compose:
   stage: docker
-  needs: ["helm-image: [docker/picodata.Dockerfile, ${REGISTRY}/picodata:master]"]
+  needs:
+    ["helm-image: [docker/picodata.Dockerfile, ${REGISTRY}/picodata:master]"]
   tags:
     - picodata-shell
   rules:
@@ -638,10 +639,10 @@ stress_tests:
   parallel:
     matrix:
       - STRESS_TEST:
-        - projection
-        - projection_wide
-        - groupby
-        - insert
+          - projection
+          - projection_wide
+          - groupby
+          - insert
   tags:
     - docker-k8s
   rules:
