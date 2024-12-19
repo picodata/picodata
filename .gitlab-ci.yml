@@ -129,7 +129,7 @@ variables:
   script:
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION} 
+      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION}
       --build-arg RUST_VERSION=${RUST_VERSION}
       --build-arg BASE_IMAGE=${BASE_IMAGE}
       --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG}
@@ -361,9 +361,9 @@ test-mac-m1:
       changes:
         compare_to: *main-branch
         paths:
-          - helm/picodata.Dockerfile
-          - helm/picodata-distroless.Dockerfile
-          - helm/docker-compose.yml
+          - docker/picodata.Dockerfile
+          - docker/picodata-distroless.Dockerfile
+          - docker/docker-compose.yml
       variables:
         PUSH_DOCKER: "--no-push"
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
@@ -381,9 +381,9 @@ helm-image:
     MULTIARCH: "true"
   parallel:
     matrix:
-      - DOCKERFILE: helm/picodata.Dockerfile
+      - DOCKERFILE: docker/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:master
-      - DOCKERFILE: helm/picodata-distroless.Dockerfile
+      - DOCKERFILE: docker/picodata-distroless.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:master-distroless
   trigger:
     project: picodata/devops/picodata-in-docker
@@ -487,9 +487,9 @@ deploy-docker:
   extends: .deploy-docker-tmpl
   parallel:
     matrix:
-      - DOCKERFILE: helm/picodata.Dockerfile
+      - DOCKERFILE: docker/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
-      - DOCKERFILE: helm/picodata-distroless.Dockerfile
+      - DOCKERFILE: docker/picodata-distroless.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}-distroless
 
   trigger:
@@ -499,7 +499,7 @@ deploy-docker:
 
 docker-compose:
   stage: docker
-  needs: ["helm-image: [helm/picodata.Dockerfile, ${REGISTRY}/picodata:master]"]
+  needs: ["helm-image: [docker/picodata.Dockerfile, ${REGISTRY}/picodata:master]"]
   tags:
     - picodata-shell
   rules:
@@ -507,18 +507,18 @@ docker-compose:
       changes:
         compare_to: *main-branch
         paths:
-          - helm/docker-compose.yml
+          - docker/docker-compose.yml
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
       when: on_success
     - when: manual
       allow_failure: true
   script:
     - mkdir --mode=777 pico/
-    - docker-compose -f helm/docker-compose.yml up -d --wait
+    - docker-compose -f docker/docker-compose.yml up -d --wait
     - sleep 30 # the cluster does not manage to assemble quickly enough
     - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
   after_script:
-    - docker-compose -f helm/docker-compose.yml rm -fsv
+    - docker-compose -f docker/docker-compose.yml rm -fsv
     - sudo rm -rf pico/
 
 # Stages of independent stress testing in downstream pipeline
