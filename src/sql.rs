@@ -1135,7 +1135,7 @@ fn alter_system_ir_node_to_op_or_result(
             else {
                 return Err(Error::other(format!("unknown parameter: '{param_name}'")));
             };
-            let Ok(casted_value) = param_value.cast(&expected_type) else {
+            let Ok(casted_value) = param_value.cast_and_encode(&expected_type) else {
                 let actual_type = value_type_str(param_value);
                 return Err(Error::other(format!(
                     "invalid value for '{param_name}' expected {expected_type}, got {actual_type}",

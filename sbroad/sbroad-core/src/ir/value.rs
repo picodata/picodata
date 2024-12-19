@@ -780,6 +780,97 @@ impl Value {
         }
     }
 
+    /// Cast a value to a different type.
+    #[allow(clippy::too_many_lines)]
+    pub fn cast(self, column_type: Type) -> Result<Self, SbroadError> {
+        let cast_error = SbroadError::Invalid(
+            Entity::Value,
+            Some(format_smolstr!("Failed to cast {self} to {column_type}.")),
+        );
+
+        match column_type {
+            Type::Any => Ok(self),
+            Type::Array | Type::Map => match self {
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Boolean => match self {
+                Value::Boolean(_) => Ok(self),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Datetime => match self {
+                Value::Null => Ok(Value::Null),
+                Value::Datetime(_) => Ok(self),
+                _ => Err(cast_error),
+            },
+            Type::Decimal => match self {
+                Value::Decimal(_) => Ok(self),
+                Value::Double(v) => Ok(Value::Decimal(
+                    Decimal::from_str(&format!("{v}")).map_err(|_| cast_error)?,
+                )),
+                Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v))),
+                Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v))),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Double => match self {
+                Value::Double(_) => Ok(self),
+                Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
+                Value::Integer(v) => Ok(Value::Double(Double::from(v))),
+                Value::Unsigned(v) => Ok(Value::Double(Double::from(v))),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Integer => match self {
+                Value::Integer(_) => Ok(self),
+                Value::Decimal(v) => Ok(Value::Integer(v.to_i64().ok_or(cast_error)?)),
+                Value::Double(v) => v
+                    .to_string()
+                    .parse::<i64>()
+                    .map(Value::Integer)
+                    .map_err(|_| cast_error),
+                Value::Unsigned(v) => Ok(Value::Integer(i64::try_from(v).map_err(|_| cast_error)?)),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Scalar => match self {
+                Value::Tuple(_) => Err(cast_error),
+                _ => Ok(self),
+            },
+            Type::String => match self {
+                Value::String(_) => Ok(self),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Uuid => match self {
+                Value::Uuid(_) => Ok(self),
+                Value::String(v) => Ok(Value::Uuid(Uuid::parse_str(&v).map_err(|_| cast_error)?)),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Number => match self {
+                Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_) => {
+                    Ok(self)
+                }
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+            Type::Unsigned => match self {
+                Value::Unsigned(_) => Ok(self),
+                Value::Integer(v) => Ok(Value::Unsigned(u64::try_from(v).map_err(|_| cast_error)?)),
+                Value::Decimal(v) => Ok(Value::Unsigned(v.to_u64().ok_or(cast_error)?)),
+                Value::Double(v) => v
+                    .to_string()
+                    .parse::<u64>()
+                    .map(Value::Unsigned)
+                    .map_err(|_| cast_error),
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error),
+            },
+        }
+    }
+
     /// Cast a value to a different type and wrap into encoded value.
     /// If the target type is the same as the current type, the value
     /// is returned by reference. Otherwise, the value is cloned.
@@ -787,102 +878,27 @@ impl Value {
     /// # Errors
     /// - the value cannot be cast to the given type.
     #[allow(clippy::too_many_lines)]
-    pub fn cast(&self, column_type: &Type) -> Result<EncodedValue, SbroadError> {
-        let cast_error = SbroadError::Invalid(
-            Entity::Value,
-            Some(format_smolstr!("Failed to cast {self} to {column_type}.")),
-        );
-
-        match column_type {
-            Type::Any => Ok(self.into()),
-            Type::Array | Type::Map => match self {
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Boolean => match self {
-                Value::Boolean(_) => Ok(self.into()),
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Datetime => match self {
-                Value::Null => Ok(Value::Null.into()),
-                Value::Datetime(_) => Ok(self.into()),
-                _ => Err(cast_error),
-            },
-            Type::Decimal => match self {
-                Value::Decimal(_) => Ok(self.into()),
-                Value::Double(v) => Ok(Value::Decimal(
-                    Decimal::from_str(&format!("{v}")).map_err(|_| cast_error)?,
-                )
-                .into()),
-                Value::Integer(v) => Ok(Value::Decimal(Decimal::from(*v)).into()),
-                Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(*v)).into()),
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Double => match self {
-                Value::Double(_) => Ok(self.into()),
-                Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?).into()),
-                Value::Integer(v) => Ok(Value::Double(Double::from(*v)).into()),
-                Value::Unsigned(v) => Ok(Value::Double(Double::from(*v)).into()),
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Integer => match self {
-                Value::Integer(_) => Ok(self.into()),
-                Value::Decimal(v) => Ok(Value::Integer(v.to_i64().ok_or(cast_error)?).into()),
-                Value::Double(v) => v
-                    .to_string()
-                    .parse::<i64>()
-                    .map(Value::Integer)
-                    .map(EncodedValue::from)
-                    .map_err(|_| cast_error),
-                Value::Unsigned(v) => {
-                    Ok(Value::Integer(i64::try_from(*v).map_err(|_| cast_error)?).into())
-                }
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Scalar => match self {
-                Value::Tuple(_) => Err(cast_error),
-                _ => Ok(self.into()),
-            },
-            Type::String => match self {
-                Value::String(_) => Ok(self.into()),
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Uuid => match self {
-                Value::Uuid(_) => Ok(self.into()),
-                Value::String(v) => {
-                    Ok(Value::Uuid(Uuid::parse_str(v).map_err(|_| cast_error)?).into())
-                }
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Number => match self {
-                Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_) => {
-                    Ok(self.into())
-                }
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
-            Type::Unsigned => match self {
-                Value::Unsigned(_) => Ok(self.into()),
-                Value::Integer(v) => {
-                    Ok(Value::Unsigned(u64::try_from(*v).map_err(|_| cast_error)?).into())
-                }
-                Value::Decimal(v) => Ok(Value::Unsigned(v.to_u64().ok_or(cast_error)?).into()),
-                Value::Double(v) => v
-                    .to_string()
-                    .parse::<u64>()
-                    .map(Value::Unsigned)
-                    .map(EncodedValue::from)
-                    .map_err(|_| cast_error),
-                Value::Null => Ok(Value::Null.into()),
-                _ => Err(cast_error),
-            },
+    pub fn cast_and_encode(&self, column_type: &Type) -> Result<EncodedValue, SbroadError> {
+        // First, try variants returning EncodedValue::Ref to avoid cloning.
+        match (column_type, self) {
+            (Type::Any | Type::Scalar, value) => return Ok(value.into()),
+            (Type::Boolean, Value::Boolean(_)) => return Ok(self.into()),
+            (Type::Datetime, Value::Datetime(_)) => return Ok(self.into()),
+            (Type::Decimal, Value::Decimal(_)) => return Ok(self.into()),
+            (Type::Double, Value::Double(_)) => return Ok(self.into()),
+            (Type::Integer, Value::Integer(_)) => return Ok(self.into()),
+            (Type::String, Value::String(_)) => return Ok(self.into()),
+            (Type::Uuid, Value::Uuid(_)) => return Ok(self.into()),
+            (Type::Unsigned, Value::Unsigned(_)) => return Ok(self.into()),
+            (
+                Type::Number,
+                Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_),
+            ) => return Ok(self.into()),
+            _ => (),
         }
+
+        // Then, apply cast with clone.
+        self.clone().cast(*column_type).map(Into::into)
     }
 
     #[must_use]

@@ -649,7 +649,7 @@ pub fn build_insert_args<'t>(
                         )),
                     )
                 })?;
-                insert_tuple.push(value.cast(table_type)?);
+                insert_tuple.push(value.cast_and_encode(table_type)?);
             }
             TupleBuilderCommand::SetValue(value) => {
                 insert_tuple.push(EncodedValue::Ref(MsgPackValue::from(value)));
@@ -1693,7 +1693,7 @@ fn execute_sharded_update(
                                     )),
                                 )
                             })?;
-                            insert_tuple.push(value.cast(table_type)?);
+                            insert_tuple.push(value.cast_and_encode(table_type)?);
                         }
                         TupleBuilderCommand::CalculateBucketId(_) => {
                             insert_tuple.push(EncodedValue::Ref(MsgPackValue::Unsigned(bucket_id)));
@@ -1784,7 +1784,7 @@ pub fn build_update_args<'t>(
                         )),
                     )
                 })?;
-                key_tuple.push(value.cast(table_type)?);
+                key_tuple.push(value.cast_and_encode(table_type)?);
             }
             TupleBuilderCommand::UpdateColToCastedPos(table_col, pos, table_type) => {
                 let value = vt_tuple.get(*pos).ok_or_else(|| {
@@ -1798,7 +1798,7 @@ pub fn build_update_args<'t>(
                 let op = [
                     EncodedValue::Ref(MsgPackValue::from(eq_op())),
                     EncodedValue::Owned(LuaValue::Unsigned(*table_col as u64)),
-                    value.cast(table_type)?,
+                    value.cast_and_encode(table_type)?,
                 ];
                 ops.push(op);
             }

@@ -167,7 +167,7 @@ impl ProducerResult {
                 if value.get_type() == column.r#type {
                     tuple.push(value);
                 } else {
-                    tuple.push(Value::from(value.cast(&column.r#type)?));
+                    tuple.push(value.cast(column.r#type)?);
                 }
             }
             data.push(tuple);

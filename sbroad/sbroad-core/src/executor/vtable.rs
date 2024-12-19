@@ -194,7 +194,7 @@ impl VirtualTable {
         for tuple in self.get_mut_tuples() {
             for (i, v) in tuple.iter_mut().enumerate() {
                 let (_, ty) = fixed_types.get(i).expect("Type expected.");
-                let cast_value = v.cast(ty)?;
+                let cast_value = v.cast_and_encode(ty)?;
                 match cast_value {
                     EncodedValue::Ref(_) => {
                         // Value type is already ok.

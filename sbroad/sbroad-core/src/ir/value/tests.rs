@@ -34,7 +34,9 @@ fn uuid() {
         Some(TrivalentOrdering::Equal)
     );
     assert_eq!(
-        Value::String(uid.to_string()).cast(&Type::Uuid).is_ok(),
+        Value::String(uid.to_string())
+            .cast_and_encode(&Type::Uuid)
+            .is_ok(),
         true
     );
     assert_eq!(v_uid.partial_cmp(&Value::String(t_uid_2.to_string())), None);
@@ -44,7 +46,7 @@ fn uuid() {
 fn uuid_negative() {
     assert_eq!(
         Value::String("hello".to_string())
-            .cast(&Type::Uuid)
+            .cast_and_encode(&Type::Uuid)
             .unwrap_err(),
         SbroadError::Invalid(
             Entity::Value,
