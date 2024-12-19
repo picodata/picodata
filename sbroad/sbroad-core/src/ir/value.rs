@@ -783,36 +783,39 @@ impl Value {
     /// Cast a value to a different type.
     #[allow(clippy::too_many_lines)]
     pub fn cast(self, column_type: Type) -> Result<Self, SbroadError> {
-        let cast_error = SbroadError::Invalid(
-            Entity::Value,
-            Some(format_smolstr!("Failed to cast {self} to {column_type}.")),
-        );
+        fn cast_error(value: &Value, column_type: Type) -> SbroadError {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!("Failed to cast {value} to {column_type}.")),
+            )
+        }
 
         match column_type {
             Type::Any => Ok(self),
             Type::Array | Type::Map => match self {
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Datetime => match self {
                 Value::Null => Ok(Value::Null),
                 Value::Datetime(_) => Ok(self),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Decimal => match self {
                 Value::Decimal(_) => Ok(self),
-                Value::Double(v) => Ok(Value::Decimal(
-                    Decimal::from_str(&format!("{v}")).map_err(|_| cast_error)?,
+                Value::Double(ref v) => Ok(Value::Decimal(
+                    Decimal::from_str(&format!("{v}"))
+                        .map_err(|_| cast_error(&self, column_type))?,
                 )),
                 Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v))),
                 Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v))),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Double => match self {
                 Value::Double(_) => Ok(self),
@@ -820,53 +823,63 @@ impl Value {
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
                 Value::Unsigned(v) => Ok(Value::Double(Double::from(v))),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Integer => match self {
                 Value::Integer(_) => Ok(self),
-                Value::Decimal(v) => Ok(Value::Integer(v.to_i64().ok_or(cast_error)?)),
-                Value::Double(v) => v
+                Value::Decimal(v) => Ok(Value::Integer(
+                    v.to_i64().ok_or_else(|| cast_error(&self, column_type))?,
+                )),
+                Value::Double(ref v) => v
                     .to_string()
                     .parse::<i64>()
                     .map(Value::Integer)
-                    .map_err(|_| cast_error),
-                Value::Unsigned(v) => Ok(Value::Integer(i64::try_from(v).map_err(|_| cast_error)?)),
+                    .map_err(|_| cast_error(&self, column_type)),
+                Value::Unsigned(v) => Ok(Value::Integer(
+                    i64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
+                )),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Scalar => match self {
-                Value::Tuple(_) => Err(cast_error),
+                Value::Tuple(_) => Err(cast_error(&self, column_type)),
                 _ => Ok(self),
             },
             Type::String => match self {
                 Value::String(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Uuid => match self {
                 Value::Uuid(_) => Ok(self),
-                Value::String(v) => Ok(Value::Uuid(Uuid::parse_str(&v).map_err(|_| cast_error)?)),
+                Value::String(ref v) => Ok(Value::Uuid(
+                    Uuid::parse_str(v).map_err(|_| cast_error(&self, column_type))?,
+                )),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Number => match self {
                 Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_) => {
                     Ok(self)
                 }
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
             Type::Unsigned => match self {
                 Value::Unsigned(_) => Ok(self),
-                Value::Integer(v) => Ok(Value::Unsigned(u64::try_from(v).map_err(|_| cast_error)?)),
-                Value::Decimal(v) => Ok(Value::Unsigned(v.to_u64().ok_or(cast_error)?)),
-                Value::Double(v) => v
+                Value::Integer(v) => Ok(Value::Unsigned(
+                    u64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
+                )),
+                Value::Decimal(v) => Ok(Value::Unsigned(
+                    v.to_u64().ok_or_else(|| cast_error(&self, column_type))?,
+                )),
+                Value::Double(ref v) => v
                     .to_string()
                     .parse::<u64>()
                     .map(Value::Unsigned)
-                    .map_err(|_| cast_error),
+                    .map_err(|_| cast_error(&self, column_type)),
                 Value::Null => Ok(Value::Null),
-                _ => Err(cast_error),
+                _ => Err(cast_error(&self, column_type)),
             },
         }
     }
