@@ -57,6 +57,7 @@ impl Plan {
     /// # Errors
     /// - Failed to optimize the plan.
     pub fn optimize(&mut self) -> Result<(), SbroadError> {
+        self.cast_constants()?;
         self.replace_in_operator()?;
         self.push_down_not()?;
         self.split_columns()?;

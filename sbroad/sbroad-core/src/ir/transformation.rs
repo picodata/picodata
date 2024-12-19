@@ -3,6 +3,7 @@
 //! Contains rule-based transformations.
 
 pub mod bool_in;
+pub mod cast_constants;
 pub mod dnf;
 pub mod equality_propagation;
 pub mod merge_tuples;

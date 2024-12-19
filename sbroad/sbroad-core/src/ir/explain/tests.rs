@@ -585,3 +585,6 @@ mod delete;
 
 #[cfg(test)]
 mod query_explain;
+
+#[cfg(test)]
+mod cast_constants;

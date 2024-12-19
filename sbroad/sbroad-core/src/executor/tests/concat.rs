@@ -5,7 +5,7 @@ use crate::ir::value::Value;
 fn concat1_test() {
     broadcast_check(
         r#"SELECT CAST('1' as string) || 'hello' FROM "t1""#,
-        r#"SELECT (CAST (? as string)) || (?) as "col_1" FROM "t1""#,
+        r#"SELECT (?) || (?) as "col_1" FROM "t1""#,
         vec![Value::from("1"), Value::from("hello")],
     );
 }
