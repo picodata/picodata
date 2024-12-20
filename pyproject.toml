@@ -30,6 +30,7 @@ types-pyyaml = "^6.0.12.20240917"
 types-requests = "^2.32.0.20241016"
 gitpython = "^3.1.43"
 tqdm = "^4.67.0"
+ipdb = "^0.13.13"
 
 [build-system]
 requires = ["poetry-core"]

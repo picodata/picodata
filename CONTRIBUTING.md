@@ -169,6 +169,18 @@ poetry run pytest -k test_sql_acl
 poetry run pytest -n 20
 ```
 
+#### Debugging tests
+
+There are a few tricks that help in debugging python tests.
+
+First one is to use NOLOG env var like that: `NOLOG=1 pytest ...`. `NOLOG` removes instance log output printed on test failure.
+This is useful when you're debugging the test itself and instance logs just pollute the output.
+
+Second tip is to use debugger, namely `ipdb`. You just need to place `import ipdb; ipdb.set_trace()` on the line and
+run pytest with `-s` argument to avoid stdout interception. This will open a REPL when you run the test, which is a convenient
+way to look around, run arbitrary code, etc. It is more productive compared to endlessly rerunning the test with various
+print statements.
+
 #### Running manual/test_scaling.py::test_cas_conflicts
 
 This test is not ran by default, but can be used for benchmarking instance join time and cas conflicts.
