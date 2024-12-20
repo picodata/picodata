@@ -148,6 +148,7 @@ crate::define_rpc_request! {
         let _ = req;
 
         let node = node::global()?;
+        node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
         let was_read_only = is_read_only()?;
@@ -167,6 +168,8 @@ crate::define_rpc_request! {
     /// Request to promote instance to tarantool replication leader.
     pub struct DemoteRequest {
         pub term: RaftTerm,
+        pub applied: RaftIndex,
+        pub timeout: Duration,
     }
 
     /// Response to [`DemoteRequest`].
