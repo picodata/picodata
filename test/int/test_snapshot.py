@@ -13,15 +13,15 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     i1.raft_wait_index(ret, _3_SEC)
     assert i1.raft_read_index(_3_SEC) == ret
 
-    # Compact the whole log
-    assert i1.raft_compact_log() == ret + 1
+    # Compact the log up to insert
+    i1.raft_compact_log(ret + 1)
 
     # Ensure i2 bootstraps from a snapshot
     i2 = cluster.add_instance(wait_online=True)
-    # Whenever a snapshot is applied, all preceeding raft log is
-    # implicitly compacted. Adding an instance implies appending 2
-    # entries to the raft log. i2 catches them via a snapshot.
-    assert i2.raft_first_index() == i1.raft_first_index() + 2
+    # The snapshot was receieved and applied.
+    # Several entries related to joining an instance have already been committed
+    # on i1 after the compaction, so i2 first index from snapshot will be higher.
+    assert i2.raft_first_index() > i1.raft_first_index()
 
     # Ensure new instance replicates the property
     assert i2.call("box.space._pico_property:get", "animal") == ["animal", "horse"]
