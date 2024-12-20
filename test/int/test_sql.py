@@ -209,6 +209,17 @@ def test_pg_params(cluster: Cluster):
             """
         )
 
+    with pytest.raises(
+        TarantoolError, match="cannot be parsed as unsigned param number"
+    ):
+        i1.sql("select $18446744073709551616", 1)
+
+    with pytest.raises(
+        TarantoolError,
+        match="Parameter binding error: Index 3333 out of bounds. Valid range: 1..2.",
+    ):
+        i1.sql("select $1, $2, $3333", 1, 2)
+
 
 def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)

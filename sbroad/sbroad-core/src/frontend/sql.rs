@@ -1481,9 +1481,13 @@ impl<'parameter> ParameterSource<'parameter> {
                         let Some(ref param_index_value) = param_index_node.value else {
                             unreachable!("Expected value for Unsigned")
                         };
-                        let param_index_usize = param_index_value
-                            .parse::<usize>()
-                            .expect("usize param expected under PgParameter");
+                        let param_index_usize =
+                            param_index_value.parse::<usize>().map_err(|_| {
+                                SbroadError::Invalid(
+                                    Entity::Query,
+                                    Some(format_smolstr!("{param_index_value} cannot be parsed as unsigned param number")),
+                                )
+                            })?;
                         Some(param_index_usize)
                     }
                     _ => unreachable!("Unexpected node met under Parameter"),
@@ -1502,11 +1506,14 @@ impl<'parameter> ParameterSource<'parameter> {
                             .into_inner()
                             .next()
                             .expect("Unsigned not found under PgParameter");
-                        let value_idx = inner_unsigned
-                            .as_str()
-                            .parse::<usize>()
-                            .expect("usize param expected under PgParameter");
-
+                        let value_idx = inner_unsigned.as_str().parse::<usize>().map_err(|_| {
+                            SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "{inner_unsigned} cannot be parsed as unsigned param number"
+                                )),
+                            )
+                        })?;
                         if value_idx == 0 {
                             return Err(SbroadError::Invalid(
                                 Entity::Query,

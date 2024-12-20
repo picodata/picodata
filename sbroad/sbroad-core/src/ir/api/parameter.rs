@@ -103,10 +103,20 @@ impl<'binder> ParamsBinder<'binder> {
             // than once in order to get the same hash.
             // See https://git.picodata.io/picodata/picodata/sbroad/-/issues/583
             let mut used_values = vec![false; self.values.len()];
-            let invalid_idx = |param_id: NodeId, value_idx: usize| {
-                panic!("Out of bounds value index {value_idx} for pg parameter {param_id:?}.");
+            let values_len = self.values.len();
+            let invalid_idx = |value_idx: usize| {
+                Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some(
+                        format!(
+                            "Parameter binding error: Index {} out of bounds. Valid range: 1..{}.",
+                            value_idx + 1,
+                            values_len,
+                        )
+                        .into(),
+                    ),
+                ))
             };
-
             // NB: we can't use `param_node_ids`, we need to traverse
             // parameters in the same order they will be bound,
             // otherwise we may get different hashes for plans
@@ -120,7 +130,7 @@ impl<'binder> ParamsBinder<'binder> {
                 });
                 if used_values.get(value_idx).copied().unwrap_or(true) {
                     let Some(value) = self.values.get(value_idx) else {
-                        invalid_idx(*param_id, value_idx)
+                        invalid_idx(value_idx)?
                     };
                     self.values.push(value.clone());
                     self.pg_params_map
@@ -129,7 +139,7 @@ impl<'binder> ParamsBinder<'binder> {
                 } else if let Some(used) = used_values.get_mut(value_idx) {
                     *used = true;
                 } else {
-                    invalid_idx(*param_id, value_idx)
+                    invalid_idx(value_idx)?
                 }
             }
         }
