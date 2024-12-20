@@ -41,6 +41,8 @@ to 2 and 3.
 
 - Now, for instance to join a cluster, it's version must be the same as the cluster's version or one minor version lower. For example, if the cluster's version is 24.7, only instances with versions 24.7 or 24.6 can join.
 
+- Global rename `data_dir` to `instance_dir` in sources and config file, environment variable `PICODATA_DATA_DIR` renamed to `PICODATA_INSTANCE_DIR`
+
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.

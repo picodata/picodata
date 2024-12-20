@@ -33,7 +33,7 @@ if __name__ == "__main__":
         cluster = Cluster(
             binary_path=conftest.binary_path(),
             id="cluster_to_gen_snap",
-            data_dir=str(tmpdir),
+            instance_dir=str(tmpdir),
             base_host="localhost",
             port_distributor=port_distributor,
         )

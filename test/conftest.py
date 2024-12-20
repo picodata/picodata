@@ -579,7 +579,7 @@ class Instance:
 
     plugin_dir: str | None = None
     cluster_name: str | None = None
-    _data_dir: str | None = None
+    _instance_dir: str | None = None
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
@@ -601,9 +601,9 @@ class Instance:
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
     @property
-    def data_dir(self):
-        assert self._data_dir
-        return self._data_dir
+    def instance_dir(self):
+        assert self._instance_dir
+        return self._instance_dir
 
     @property
     def listen(self):
@@ -656,7 +656,7 @@ class Instance:
             *([f"--cluster-name={self.cluster_name}"] if self.cluster_name else []),
             *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
-            *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
+            *([f"--instance-dir={self._instance_dir}"] if self._instance_dir else []),
             *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
             *([f"--listen={self.listen}"] if self.listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
@@ -1049,7 +1049,7 @@ class Instance:
         self.start()
 
     def remove_data(self):
-        shutil.rmtree(self.data_dir)
+        shutil.rmtree(self.instance_dir)
 
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
@@ -1574,18 +1574,18 @@ class Instance:
 
     def latest_snapshot(self, into: Path):
         def modification_time(f):
-            return os.path.getmtime(os.path.join(self.data_dir, f))
+            return os.path.getmtime(os.path.join(self.instance_dir, f))
 
         all_snapshots = list()
-        for filename in os.listdir(self.data_dir):
-            full_path = os.path.join(self.data_dir, filename)
+        for filename in os.listdir(self.instance_dir):
+            full_path = os.path.join(self.instance_dir, filename)
             if os.path.isfile(full_path) and filename.endswith(".snap"):
                 all_snapshots.append(filename)
         if not all_snapshots:
             return None
 
         latest_snapshot = max(all_snapshots, key=modification_time)
-        return Path(f"{self.data_dir}/{latest_snapshot}")
+        return Path(f"{self.instance_dir}/{latest_snapshot}")
 
     def fill_with_data(self):
         ddl = self.sql(
@@ -1679,7 +1679,7 @@ CLUSTER_COLORS = (
 class Cluster:
     binary_path: str
     id: str
-    data_dir: str
+    instance_dir: str
     base_host: str
     port_distributor: PortDistributor
     instances: list[Instance] = field(default_factory=list)
@@ -1733,7 +1733,7 @@ class Cluster:
         assert config or yaml
         assert self.config_path is None
 
-        self.config_path = self.data_dir + "/picodata.yaml"
+        self.config_path = self.instance_dir + "/picodata.yaml"
 
         if config:
             yaml = yaml_lib.dump(config, default_flow_style=False)
@@ -1743,7 +1743,7 @@ class Cluster:
             yaml_file.write(yaml)
 
     def set_service_password(self, service_password: str):
-        self.service_password_file = self.data_dir + "/password.txt"
+        self.service_password_file = self.instance_dir + "/password.txt"
         with open(self.service_password_file, "w") as f:
             print(service_password, file=f)
         os.chmod(self.service_password_file, 0o600)
@@ -1799,11 +1799,11 @@ class Cluster:
 
         instance = Instance(
             binary_path=self.binary_path,
-            cwd=self.data_dir,
+            cwd=self.instance_dir,
             cluster_name=self.id,
             name=generated_instance_name,
             replicaset_name=replicaset_name,
-            _data_dir=f"{self.data_dir}/i{i}",
+            _instance_dir=f"{self.instance_dir}/i{i}",
             plugin_dir=self.plugin_dir,
             host=self.base_host,
             port=port,
@@ -1864,7 +1864,7 @@ class Cluster:
             raise Exception(errors)
 
     def remove_data(self):
-        shutil.rmtree(self.data_dir)
+        shutil.rmtree(self.instance_dir)
 
     def expel(
         self,
@@ -2355,7 +2355,7 @@ def cluster(
     cluster = Cluster(
         binary_path=binary_path_fixt,
         id=next(cluster_names),
-        data_dir=tmpdir,
+        instance_dir=tmpdir,
         plugin_dir=plugin_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
@@ -2568,7 +2568,7 @@ class Postgres:
         i1.pg_ssl = self.ssl
 
         ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
-        instance_dir = Path(self.cluster.data_dir) / "i1"
+        instance_dir = Path(self.cluster.instance_dir) / "i1"
         instance_dir.mkdir()
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")

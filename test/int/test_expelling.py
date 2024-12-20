@@ -119,7 +119,7 @@ def test_expel_timeout(cluster: Cluster):
     # If the peer is not resolving, by default we hang on
     # for 5 seconds. We can change it by specifying `timeout`.
     cli = pexpect.spawn(
-        cwd=i1.data_dir,
+        cwd=i1.instance_dir,
         command=i1.binary_path,
         args=[
             "expel",

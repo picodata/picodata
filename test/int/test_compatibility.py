@@ -15,7 +15,7 @@ from conftest import (
 @pytest.mark.xfail
 def test_upgrade_major(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
-    os.makedirs(inst.data_dir, exist_ok=True)
+    os.makedirs(inst.instance_dir, exist_ok=True)
 
     version, path = Compatibility().previous_tag()
     snapshot = get_tt_snapshot_by_path(path)
@@ -23,7 +23,7 @@ def test_upgrade_major(cluster: Cluster):
         snapshot
     ), f"Snapshot of the previous MAJOR version was not found. Generate one using `make generate` on a previous MAJOR version. {version} is current version."  # noqa: E501
 
-    shutil.copy(snapshot, f"{inst.data_dir}/")
+    shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()
     inst.wait_online()
 
@@ -31,7 +31,7 @@ def test_upgrade_major(cluster: Cluster):
 @pytest.mark.xfail
 def test_upgrade_minor(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
-    os.makedirs(inst.data_dir, exist_ok=True)
+    os.makedirs(inst.instance_dir, exist_ok=True)
 
     tag = Compatibility().previous_minor_tag()
     assert (
@@ -44,7 +44,7 @@ def test_upgrade_minor(cluster: Cluster):
         snapshot
     ), f"Snapshot of the previous MINOR version was not found. Generate one using `make generate` on a previous MINOR version. {version} is current version."  # noqa: E501
 
-    shutil.copy(snapshot, f"{inst.data_dir}/")
+    shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()
     inst.wait_online()
 

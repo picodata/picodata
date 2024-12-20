@@ -127,7 +127,7 @@ pub(crate) fn setup() {
             - instance:
                 log_level: info
                 listen: 127.0.0.1:3301
-                data_dir: .
+                instance_dir: .
                 peers:
                   - 127.0.0.1:3301
             ...

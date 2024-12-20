@@ -249,8 +249,8 @@ Using configuration file '{args_path}'.");
             }
         }
 
-        if let Some(data_dir) = args.data_dir {
-            config_from_args.instance.data_dir = Some(data_dir);
+        if let Some(instance_dir) = args.instance_dir {
+            config_from_args.instance.instance_dir = Some(instance_dir);
         }
 
         if let Some(service_password_file) = args.service_password_file {
@@ -981,7 +981,7 @@ impl ClusterConfig {
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct InstanceConfig {
     #[introspection(config_default = PathBuf::from("."))]
-    pub data_dir: Option<PathBuf>,
+    pub instance_dir: Option<PathBuf>,
     pub service_password_file: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain this option,
@@ -1016,7 +1016,7 @@ pub struct InstanceConfig {
 
     pub http_listen: Option<HttpAddress>,
 
-    #[introspection(config_default = self.data_dir.as_ref().map(|dir| dir.join("admin.sock")))]
+    #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
 
     // TODO:
@@ -1069,8 +1069,8 @@ pub struct InstanceConfig {
 // TODO: remove all of the .clone() calls from these methods
 impl InstanceConfig {
     #[inline]
-    pub fn data_dir(&self) -> PathBuf {
-        self.data_dir
+    pub fn instance_dir(&self) -> PathBuf {
+        self.instance_dir
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
@@ -2312,7 +2312,7 @@ instance:
                 "PICODATA_CONFIG_PARAMETERS",
                 "  instance.tier = ABC;cluster.name=DEF  ;
                 instance.audit=audit.txt ;;
-                ; instance.data_dir=. ;"
+                ; instance.instance_dir=. ;"
             );
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.log .level =debug  ",
@@ -2323,7 +2323,7 @@ instance:
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx.memory.unwrap().to_string(), String::from("999B"));
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
-            assert_eq!(config.instance.data_dir.unwrap(), PathBuf::from("."));
+            assert_eq!(config.instance.instance_dir.unwrap(), PathBuf::from("."));
 
             //
             // Errors

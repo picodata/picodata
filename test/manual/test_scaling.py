@@ -82,7 +82,7 @@ def test_cas_conflicts(binary_path, tmpdir_factory, cluster_names, port_range):
         cluster = Cluster(
             binary_path=binary_path,
             id=next(cluster_names),
-            data_dir=tmpdir_factory.mktemp(f"cluster{size}"),
+            instance_dir=tmpdir_factory.mktemp(f"cluster{size}"),
             base_host=BASE_HOST,
             base_port=base_port,
             max_port=max_port,

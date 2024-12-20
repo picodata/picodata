@@ -911,7 +911,7 @@ def test_migration_apply_err(cluster: Cluster):
     #
     # Prepare plugin
     #
-    cluster.plugin_dir = cluster.data_dir
+    cluster.plugin_dir = cluster.instance_dir
     plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
     os.makedirs(plugin_dir)
     with open(plugin_dir / "manifest.yaml", "w") as f:
@@ -973,7 +973,7 @@ def test_migration_next_version_apply_err(cluster: Cluster):
     #
     # Prepare plugin
     #
-    cluster.plugin_dir = cluster.data_dir
+    cluster.plugin_dir = cluster.instance_dir
     base_plugin_dir = Path(cluster.plugin_dir)
     plugin_dir_v1 = base_plugin_dir / plugin_name / "0.1.0"
     os.makedirs(plugin_dir_v1)
@@ -2579,7 +2579,7 @@ def test_panic_in_plugin(cluster: Cluster):
     #
     # Prepare plugin
     #
-    cluster.plugin_dir = cluster.data_dir
+    cluster.plugin_dir = cluster.instance_dir
     plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
     os.makedirs(plugin_dir)
     copy_plugin_library(cluster.binary_path, str(plugin_dir))
@@ -2599,7 +2599,7 @@ services:
     )
 
     # Set the log configuration
-    log_file = Path(cluster.data_dir) / "test.log"
+    log_file = Path(cluster.instance_dir) / "test.log"
     cluster.set_config_file(
         yaml=f"""
 cluster:

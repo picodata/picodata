@@ -42,16 +42,16 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    pub fn from_data_dir(data_dir: &Path) -> Result<Self, TlsConfigError> {
+    pub fn from_instance_dir(instance_dir: &Path) -> Result<Self, TlsConfigError> {
         // We should use the absolute paths here, because SslContextBuilder::set_certificate_chain_file
         // fails for relative paths with an unclear error, represented as an empty error stack.
-        let cert = data_dir.join("server.crt");
+        let cert = instance_dir.join("server.crt");
         let cert = fs::canonicalize(&cert).map_err(|e| TlsConfigError::CertFile(cert, e))?;
 
-        let key = data_dir.join("server.key");
+        let key = instance_dir.join("server.key");
         let key = fs::canonicalize(&key).map_err(|e| TlsConfigError::KeyFile(key, e))?;
 
-        let ca_cert = data_dir.join("ca.crt");
+        let ca_cert = instance_dir.join("ca.crt");
         let ca_cert = match fs::canonicalize(&ca_cert) {
             Ok(path) => Some(path),
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
@@ -89,8 +89,8 @@ impl TlsAcceptor {
         Ok(Self(builder.build().into()))
     }
 
-    pub fn new_from_dir(data_dir: &Path) -> Result<Self, TlsConfigError> {
-        let tls_config = TlsConfig::from_data_dir(data_dir)?;
+    pub fn new_from_dir(instance_dir: &Path) -> Result<Self, TlsConfigError> {
+        let tls_config = TlsConfig::from_instance_dir(instance_dir)?;
         Self::new(&tls_config)
     }
 

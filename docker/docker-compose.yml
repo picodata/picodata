@@ -8,7 +8,7 @@ services:
     environment:
       PICODATA_PEER: picodata-1-1:3301
       PICODATA_LISTEN: picodata-1-1:3301
-      PICODATA_DATA_DIR: /pico/data/picodata-1-1
+      PICODATA_INSTANCE_DIR: /pico/data/picodata-1-1
       PICODATA_ADVERTISE: picodata-1-1:3301
       PICODATA_FAILURE_DOMAIN: HOST=picodata-1
       PICODATA_INIT_REPLICATION_FACTOR: 2
@@ -30,7 +30,7 @@ services:
     environment:
       PICODATA_PEER: picodata-1-1:3301
       PICODATA_LISTEN: picodata-1-2:3301
-      PICODATA_DATA_DIR: /pico/data/picodata-1-2
+      PICODATA_INSTANCE_DIR: /pico/data/picodata-1-2
       PICODATA_ADVERTISE: picodata-1-2:3301
       PICODATA_FAILURE_DOMAIN: HOST=picodata-1
       PICODATA_INIT_REPLICATION_FACTOR: 2
@@ -49,7 +49,7 @@ services:
     environment:
       PICODATA_PEER: picodata-1-1:3301
       PICODATA_LISTEN: picodata-2-1:3301
-      PICODATA_DATA_DIR: /pico/data/picodata-2-1
+      PICODATA_INSTANCE_DIR: /pico/data/picodata-2-1
       PICODATA_ADVERTISE: picodata-2-1:3301
       PICODATA_FAILURE_DOMAIN: HOST=picodata-2
       PICODATA_INIT_REPLICATION_FACTOR: 2
@@ -68,7 +68,7 @@ services:
     environment:
       PICODATA_PEER: picodata-1-1:3301
       PICODATA_LISTEN: picodata-2-2:3301
-      PICODATA_DATA_DIR: /pico/data/picodata-2-2
+      PICODATA_INSTANCE_DIR: /pico/data/picodata-2-2
       PICODATA_ADVERTISE: picodata-2-2:3301
       PICODATA_FAILURE_DOMAIN: HOST=picodata-2
       PICODATA_INIT_REPLICATION_FACTOR: 2

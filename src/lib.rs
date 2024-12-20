@@ -587,12 +587,12 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
         }
         StartBoot => {
             // Cleanup the data directory with WALs from the previous StartDiscover run
-            tarantool::rm_tarantool_files(config.instance.data_dir())?;
+            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             start_boot(config)?;
         }
         StartJoin { leader_address } => {
             // Cleanup the data directory with WALs from the previous StartDiscover run
-            tarantool::rm_tarantool_files(config.instance.data_dir())?;
+            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             start_join(config, leader_address)?;
         }
     }
@@ -612,10 +612,10 @@ fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
 ) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
-    std::fs::create_dir_all(config.instance.data_dir()).map_err(|err| {
+    std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
             "failed creating data directory {}: {}",
-            config.instance.data_dir().display(),
+            config.instance.instance_dir().display(),
             err
         ))
     })?;
@@ -1114,7 +1114,7 @@ fn postjoin(
 
     let pg_config = &config.instance.pg;
     if pg_config.enabled() {
-        pgproto::start(pg_config, config.instance.data_dir())?;
+        pgproto::start(pg_config, config.instance.instance_dir())?;
     }
 
     Ok(())

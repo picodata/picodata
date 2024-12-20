@@ -219,14 +219,14 @@ class LDAPServerState:
     process: subprocess.Popen
 
 
-def configure_ldap_server(username, password, data_dir) -> LDAPServerState:
+def configure_ldap_server(username, password, instance_dir) -> LDAPServerState:
     # Check `glauth` executable is available
     subprocess.Popen(["glauth", "--version"])
 
     LDAP_SERVER_HOST = "127.0.0.1"
     LDAP_SERVER_PORT = 1389
 
-    ldap_cfg_path = f"{data_dir}/ldap.cfg"
+    ldap_cfg_path = f"{instance_dir}/ldap.cfg"
     with open(ldap_cfg_path, "x") as f:
         password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
         f.write(
@@ -282,7 +282,7 @@ def test_connect_auth_type_ldap(cluster: Cluster):
     username = "ldapuser"
     password = "ldappass"
 
-    ldap_server = configure_ldap_server(username, password, cluster.data_dir)
+    ldap_server = configure_ldap_server(username, password, cluster.instance_dir)
     try:
         #
         # Configure the instance
@@ -452,7 +452,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
         #   </path/to/admin.sock>
         #
         # We were unable to debug it quickly and used cwd as a workaround
-        cwd=i1.data_dir,
+        cwd=i1.instance_dir,
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
@@ -524,7 +524,7 @@ def test_connect_with_wrong_password_path(binary_path_fixt: str):
 
 
 def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
-    password_path = i1.data_dir + "/password"
+    password_path = i1.instance_dir + "/password"
     with open(password_path, "w") as f:
         f.write("Testpa55")
 
@@ -577,7 +577,7 @@ def test_connect_connection_info_and_help(i1: Instance):
 def test_admin_connection_info_and_help(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
 
-    socket_path = f"{i1.data_dir}/explicit.sock"
+    socket_path = f"{i1.instance_dir}/explicit.sock"
     i1.env["PICODATA_ADMIN_SOCK"] = socket_path
     i1.start()
     i1.wait_online()
@@ -590,7 +590,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
         #   </path/to/admin.sock>
         #
         # We were unable to debug it quickly and used cwd as a workaround
-        cwd=i1.data_dir,
+        cwd=i1.instance_dir,
         command=i1.binary_path,
         args=["admin", socket_path],
         encoding="utf-8",
@@ -613,7 +613,7 @@ def test_connect_with_incorrect_url(cluster: Cluster):
 
     def connect_to(address):
         cli = pexpect.spawn(
-            cwd=i1.data_dir,
+            cwd=i1.instance_dir,
             command=i1.binary_path,
             args=["connect", address],
             encoding="utf-8",
@@ -653,7 +653,7 @@ def test_connect_timeout(cluster: Cluster):
 
     def connect_to(address, timeout=None):
         cli = pexpect.spawn(
-            cwd=i1.data_dir,
+            cwd=i1.instance_dir,
             command=i1.binary_path,
             args=[
                 "connect",

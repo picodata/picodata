@@ -42,11 +42,11 @@ pub struct Run {
     /// By default this will be "demo".
     pub cluster_name: Option<String>,
 
-    #[clap(long, value_name = "PATH", env = "PICODATA_DATA_DIR")]
+    #[clap(long, value_name = "PATH", env = "PICODATA_INSTANCE_DIR")]
     /// Here the instance persists all of its data.
     ///
     /// By default this is the current working directory (".").
-    pub data_dir: Option<PathBuf>,
+    pub instance_dir: Option<PathBuf>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.
@@ -68,7 +68,7 @@ pub struct Run {
     /// Key is a `.` separated path to a configuration parameter.
     /// The data in the `VALUE` is interpreted as YAML.
     ///
-    /// For example: `-c instance.log.level=debug -c instance.data_dir=/path/to/dir`
+    /// For example: `-c instance.log.level=debug -c instance.instance_dir=/path/to/dir`
     ///
     /// Can also be provided via PICODATA_CONFIG_PARAMETERS environment variable.
     pub config_parameter: Vec<String>,

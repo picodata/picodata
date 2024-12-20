@@ -34,14 +34,14 @@ def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     host = cluster.base_host
     port = port_distributor.get()
     listen = f"{host}:{port}"
-    data_dir = f"{cluster.data_dir}/my-instance"
+    instance_dir = f"{cluster.instance_dir}/my-instance"
     cluster.set_config_file(
         yaml=f"""
 cluster:
     tier:
         deluxe:
 instance:
-    data_dir: {data_dir}
+    instance_dir: {instance_dir}
     listen: {listen}
     peer:
         - {listen}
@@ -55,10 +55,10 @@ instance:
     )
     instance = Instance(
         binary_path=cluster.binary_path,
-        cwd=cluster.data_dir,
+        cwd=cluster.instance_dir,
         color=color.cyan,
         config_path=cluster.config_path,
-        audit=f"{data_dir}/audit.log",
+        audit=f"{instance_dir}/audit.log",
     )
     cluster.instances.append(instance)
 
@@ -82,7 +82,7 @@ instance:
             default_replication_factor=dict(value=1, source="default"),
         ),
         instance=dict(
-            admin_socket=dict(value=f"{data_dir}/admin.sock", source="default"),
+            admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
             advertise_address=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
             shredding=dict(value=False, source="default"),
@@ -91,12 +91,12 @@ instance:
             replicaset_name=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
             audit=dict(
-                value=f"{data_dir}/audit.log", source="commandline_or_environment"
+                value=f"{instance_dir}/audit.log", source="commandline_or_environment"
             ),
             config_file=dict(
                 value=f"{instance.config_path}", source="commandline_or_environment"
             ),
-            data_dir=dict(value=data_dir, source="config_file"),
+            instance_dir=dict(value=instance_dir, source="config_file"),
             listen=dict(value=f"{host}:{port}", source="config_file"),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),
@@ -136,7 +136,7 @@ def test_default_path_to_config_file(cluster: Cluster):
     instance = cluster.add_instance(name=False, wait_online=False)
 
     # By default ./picodata.yaml will be used in the instance's current working directory
-    work_dir = cluster.data_dir + "/work-dir"
+    work_dir = cluster.instance_dir + "/work-dir"
     os.mkdir(work_dir)
     with open(work_dir + "/picodata.yaml", "w") as f:
         f.write(
@@ -157,7 +157,7 @@ instance:
     instance.terminate()
 
     # But if a config is specified explicitly, it will be used instead
-    config_path = cluster.data_dir + "/explicit-picodata.yaml"
+    config_path = cluster.instance_dir + "/explicit-picodata.yaml"
     with open(config_path, "w") as f:
         f.write(
             """
@@ -202,7 +202,7 @@ def test_config_file_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
     err = f"""\
-can't read from '{cluster.data_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
+can't read from '{cluster.instance_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
 """  # noqa: E501
     crawler = log_crawler(i1, err)
 
@@ -411,9 +411,9 @@ def test_picodata_default_config(cluster: Cluster):
     # Explicit filename
     subprocess.call(
         [cluster.binary_path, "config", "default", "-o", "filename.yaml"],
-        cwd=cluster.data_dir,
+        cwd=cluster.instance_dir,
     )
-    with open(f"{cluster.data_dir}/filename.yaml", "r") as f:
+    with open(f"{cluster.instance_dir}/filename.yaml", "r") as f:
         default_config_2 = f.read()
     assert default_config.strip() == default_config_2.strip()
 
@@ -475,7 +475,7 @@ def test_output_config_parameters(cluster: Cluster):
     output_params = """'cluster.name':
         'cluster.tier':
         'cluster.default_replication_factor':
-        'instance.data_dir':
+        'instance.instance_dir':
         'instance.config_file':
         'instance.cluster_name':
         'instance.name': "i1"
@@ -512,7 +512,7 @@ def test_output_config_parameters(cluster: Cluster):
 
 
 def test_logger_configuration(cluster: Cluster):
-    log_file = f"{cluster.data_dir}/i1.log"
+    log_file = f"{cluster.instance_dir}/i1.log"
     cluster.set_config_file(
         yaml=f"""
 cluster:
@@ -533,7 +533,7 @@ instance:
     i1.terminate()
     os.remove(log_file)
 
-    other_log_file = f"{cluster.data_dir}/other-i1.log"
+    other_log_file = f"{cluster.instance_dir}/other-i1.log"
     assert not os.path.exists(other_log_file)
 
     i1.env["PICODATA_LOG"] = other_log_file

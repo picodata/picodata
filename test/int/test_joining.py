@@ -395,7 +395,7 @@ def test_fail_to_join(cluster: Cluster):
 
 
 def test_pico_service_invalid_existing_password(cluster: Cluster):
-    password_file = f"{cluster.data_dir}/service-password.txt"
+    password_file = f"{cluster.instance_dir}/service-password.txt"
     with open(password_file, "w") as f:
         print("secret", file=f)
 
@@ -429,7 +429,7 @@ def test_pico_service_invalid_existing_password(cluster: Cluster):
 
 
 def test_pico_service_invalid_requirements_password(cluster: Cluster):
-    password_file = f"{cluster.data_dir}/service-password.txt"
+    password_file = f"{cluster.instance_dir}/service-password.txt"
     i1 = cluster.add_instance(wait_online=False)
 
     with open(password_file, "wb") as f:

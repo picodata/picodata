@@ -19,7 +19,9 @@ from conftest import (
 
 @pytest.fixture
 def instance_with_audit_file(unstarted_instance: Instance):
-    unstarted_instance.audit = os.path.join(unstarted_instance.data_dir, "audit.log")
+    unstarted_instance.audit = os.path.join(
+        unstarted_instance.instance_dir, "audit.log"
+    )
     unstarted_instance.start()
     unstarted_instance.wait_online()
     yield unstarted_instance
@@ -114,7 +116,7 @@ def test_integrity_violation(instance_with_audit_file: Instance):
     instance.terminate()
 
     # Then data files were modified and instance restarted
-    snap_name = f"{instance.data_dir}/00000000000000000000.snap"
+    snap_name = f"{instance.instance_dir}/00000000000000000000.snap"
     with open(snap_name, "w") as snap:
         snap.write("abc")
 
@@ -372,7 +374,7 @@ def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
 
 def test_join_expel_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.data_dir, "i1", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "i1", "audit.log")
     i1 = cluster.add_instance(audit=audit)
 
     audit_i1 = AuditFile(i1.audit_flag_value)
@@ -380,7 +382,7 @@ def test_join_expel_instance(cluster: Cluster):
         pass
     events = audit_i1.events()
 
-    audit = os.path.join(cluster.data_dir, "i2", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "i2", "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit)
 
     join_instance = take_until_title(events, "join_instance")
@@ -419,10 +421,10 @@ def test_join_expel_instance(cluster: Cluster):
 
 def test_join_connect_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.data_dir, "i1", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "i1", "audit.log")
     i1 = cluster.add_instance(audit=audit)
 
-    audit = os.path.join(cluster.data_dir, "i2", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "i2", "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit)
     i2.terminate()
 

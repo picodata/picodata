@@ -117,9 +117,9 @@ def test_process_management(instance: Instance):
 def test_graceful_stop(instance: Instance):
     instance.terminate()
     *_, last_xlog = sorted(
-        [f for f in os.listdir(instance.data_dir) if f.endswith(".xlog")]
+        [f for f in os.listdir(instance.instance_dir) if f.endswith(".xlog")]
     )
-    with open(os.path.join(instance.data_dir, last_xlog), "rb") as f:
+    with open(os.path.join(instance.instance_dir, last_xlog), "rb") as f:
         assert f.read()[-4:] == b"\xd5\x10\xad\xed"
 
 
@@ -772,7 +772,7 @@ def test_file_shredding(cluster: Cluster, tmp_path):
 
 
 def test_pico_service_password_security_warning(cluster: Cluster):
-    password_file = f"{cluster.data_dir}/service-password.txt"
+    password_file = f"{cluster.instance_dir}/service-password.txt"
     with open(password_file, "w") as f:
         print("secret", file=f)
 

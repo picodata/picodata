@@ -5,7 +5,7 @@ import pytest
 @pytest.mark.xfail
 def test_script_failure(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
-    script = f"{cluster.data_dir}/fail.lua"
+    script = f"{cluster.instance_dir}/fail.lua"
     with open(script, "w") as f:
         f.write("assert(false)")
     instance.env["PICODATA_SCRIPT"] = script
@@ -15,7 +15,7 @@ def test_script_failure(cluster: Cluster):
 
 def test_script(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
-    script = f"{cluster.data_dir}/ok.lua"
+    script = f"{cluster.instance_dir}/ok.lua"
     with open(script, "w") as f:
         f.write("assert(type(box.cfg) == 'table')")
     instance.env["PICODATA_SCRIPT"] = script

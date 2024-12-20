@@ -114,7 +114,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(config: &Config, data_dir: &Path) -> Result<Self, Error> {
+    pub fn new(config: &Config, instance_dir: &Path) -> Result<Self, Error> {
         assert!(config.enabled(), "must be checked before the call");
 
         let listen = config.listen();
@@ -125,7 +125,7 @@ impl Context {
 
         let tls_acceptor = config
             .ssl()
-            .then(|| TlsAcceptor::new_from_dir(data_dir))
+            .then(|| TlsAcceptor::new_from_dir(instance_dir))
             .transpose()
             .map_err(Error::invalid_configuration)?
             .inspect(|tls| tlog!(Info, "configured {} for pgproto", tls.kind()));
@@ -142,8 +142,8 @@ impl Context {
 }
 
 /// Start a postgres server fiber.
-pub fn start(config: &Config, data_dir: PathBuf) -> Result<(), Error> {
-    let context = Context::new(config, &data_dir)?;
+pub fn start(config: &Config, instance_dir: PathBuf) -> Result<(), Error> {
+    let context = Context::new(config, &instance_dir)?;
 
     tarantool::fiber::Builder::new()
         .name("pgproto")

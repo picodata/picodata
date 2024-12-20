@@ -347,9 +347,9 @@ impl Cfg {
         const FIELDS: &[(&str, &str)] = &[
             // other instance.log.* parameters are set explicitly above
             ("log_format",                  config_parameter_path!(instance.log.format)),
-            ("wal_dir",                     config_parameter_path!(instance.data_dir)),
-            ("memtx_dir",                   config_parameter_path!(instance.data_dir)),
-            ("vinyl_dir",                   config_parameter_path!(instance.data_dir)),
+            ("wal_dir",                     config_parameter_path!(instance.instance_dir)),
+            ("memtx_dir",                   config_parameter_path!(instance.instance_dir)),
+            ("vinyl_dir",                   config_parameter_path!(instance.instance_dir)),
             ("checkpoint_count",            config_parameter_path!(instance.memtx.checkpoint_count)),
             ("checkpoint_interval",         config_parameter_path!(instance.memtx.checkpoint_interval)),
             ("net_msg_max",                 config_parameter_path!(instance.iproto.max_concurrent_messages)),
@@ -546,9 +546,9 @@ extern "C" fn xlog_remove_cb(
 }
 
 pub fn rm_tarantool_files(
-    data_dir: impl AsRef<std::path::Path>,
+    instance_dir: impl AsRef<std::path::Path>,
 ) -> Result<(), tarantool::error::Error> {
-    let entries = std::fs::read_dir(data_dir)?;
+    let entries = std::fs::read_dir(instance_dir)?;
     for entry in entries {
         let path = entry?.path();
         if !path.is_file() {
