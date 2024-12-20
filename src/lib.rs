@@ -1000,7 +1000,7 @@ fn postjoin(
 
     // We will shut down, if we don't receive a confirmation of target state
     // change from leader before this time.
-    let activation_deadline = Instant::now_fiber().saturating_add(Duration::from_secs(10));
+    let activation_deadline = Instant::now_fiber().saturating_add(Duration::from_secs(2 * 60 * 60));
 
     // This will be doubled on each retry, until max_retry_timeout is reached.
     let mut retry_timeout = Duration::from_millis(250);
