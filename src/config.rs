@@ -317,7 +317,7 @@ Using configuration file '{args_path}'.");
 
         config_from_args.instance.plugin_dir = args.plugin_dir;
 
-        if let Some(admin_socket) = args.admin_sock {
+        if let Some(admin_socket) = args.admin_socket {
             config_from_args.instance.admin_socket = Some(admin_socket);
         }
 
@@ -1016,7 +1016,7 @@ pub struct InstanceConfig {
 
     pub http_listen: Option<HttpAddress>,
 
-    #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
+    #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.socket")))]
     pub admin_socket: Option<PathBuf>,
 
     // TODO:
