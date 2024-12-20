@@ -32,8 +32,8 @@ Getting a basic distributed cluster made of two instances running on
 different hosts involves two commands, like this:
 
 ```bash
-picodata run --listen 192.168.0.1:3301
-picodata run --listen 192.168.0.2:3301 --peer 192.168.0.1:3301
+picodata run --listen 192.168.0.1:3301 --pg-listen 192.168.0.1:5432
+picodata run --listen 192.168.0.2:3301 --pg-listen 192.168.0.2:5432 --peer 192.168.0.1:3301
 ```
 
 You can find out more about getting started procedures and first steps

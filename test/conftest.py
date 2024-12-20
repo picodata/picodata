@@ -58,6 +58,10 @@ PICO_SERVICE_ID = 32
 
 CLI_TIMEOUT = 10  # seconds
 
+IPROTO_DEFAULT_PORT = 3301
+HTTP_DEFAULT_PORT = 8080
+PGPROTO_DEFAULT_PORT = 4327
+
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:
@@ -167,10 +171,14 @@ class PortDistributor:
     def __init__(self, start: int, end: int) -> None:
         self.gen = iter(range(start, end))
 
-    def get(self) -> int:
+    def get(self, pg: bool = False) -> int:
         for port in self.gen:
             if can_bind(port):
-                return port
+                if not pg:
+                    return port
+
+                if pg and port != HTTP_DEFAULT_PORT and port != IPROTO_DEFAULT_PORT:
+                    return port
 
         raise Exception(
             "No more free ports left in configured range, consider enlarging it"
@@ -1760,6 +1768,7 @@ class Cluster:
         tier: str | None = None,
         audit: bool | str = True,
         enable_http: bool = False,
+        pg_port: int | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1798,6 +1807,14 @@ class Cluster:
             assert isinstance(self.instances[0].port, int)  # for mypy
             bootstrap_port = self.instances[0].port
 
+        # NOTE: because we literally skip the redefinition
+        # of a pgproto port at the config stage, we have to
+        # pass them manually and check it's correctness
+        if pg_port is None:
+            pg_port = self.port_distributor.get(pg=True)
+            if bootstrap_port == pg_port or port == pg_port:
+                pg_port = self.port_distributor.get(pg=True)
+
         instance = Instance(
             binary_path=self.binary_path,
             cwd=self.instance_dir,
@@ -1808,6 +1825,8 @@ class Cluster:
             plugin_dir=self.plugin_dir,
             host=self.base_host,
             port=port,
+            pg_host=self.base_host,
+            pg_port=pg_port,
             peers=peers or [f"{self.base_host}:{bootstrap_port}"],
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,

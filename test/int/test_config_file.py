@@ -125,7 +125,8 @@ instance:
                 max_concurrent_messages=dict(value=768, source="default"),
             ),
             pg=dict(
-                # by default listen is None, so pg is disabled
+                # pg is enabled by default, so listen should be set
+                listen=dict(source="default", value="127.0.0.1:4327"),
                 ssl=dict(source="default", value=False),
             ),
         ),

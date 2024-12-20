@@ -1,5 +1,5 @@
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
-use crate::{address::IprotoAddress, introspection::Introspection, tlog, traft::error::Error};
+use crate::{address::PgprotoAddress, introspection::Introspection, tlog, traft::error::Error};
 use std::{
     os::fd::{AsRawFd, BorrowedFd},
     path::{Path, PathBuf},
@@ -20,19 +20,17 @@ mod value;
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub listen: Option<IprotoAddress>,
+    #[introspection(
+        config_default = PgprotoAddress::default()
+    )]
+    pub listen: Option<PgprotoAddress>,
 
     #[introspection(config_default = false)]
     pub ssl: Option<bool>,
 }
 
 impl Config {
-    pub fn enabled(&self) -> bool {
-        // Pgproto is enabled if listen was specified.
-        self.listen.is_some()
-    }
-
-    pub fn listen(&self) -> IprotoAddress {
+    pub fn listen(&self) -> PgprotoAddress {
         self.listen
             .clone()
             .expect("must be checked before the call")
@@ -115,8 +113,6 @@ pub struct Context {
 
 impl Context {
     pub fn new(config: &Config, instance_dir: &Path) -> Result<Self, Error> {
-        assert!(config.enabled(), "must be checked before the call");
-
         let listen = config.listen();
         let host = listen.host.as_str();
         let port = listen.port.parse::<u16>().map_err(|_| {

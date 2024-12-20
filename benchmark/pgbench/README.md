@@ -13,11 +13,10 @@ First, build picodata in release mode:
 cargo build --release
 ```
 
-Run picodata with the `--pg-listen` option to start the pgproto server
-and `-i` for interactive mode:
+Run picodata with the `-i` for interactive mode:
 
 ```bash
-./target/release/picodata --pg-listen 127.0.0.1:5433 -i
+./target/release/picodata -i
 ```
 
 #### 2. **Create a Test User**
@@ -40,7 +39,7 @@ Initialize the database with using the `init.py` script. Scale is used as a mult
 
 ```bash
 poetry run python init.py \
-    "postgres://postgres:Passw0rd@localhost:5433?sslmode=disable" \
+    "postgres://postgres:Passw0rd@localhost:4327?sslmode=disable" \
     --scale 10
 ```
 
@@ -52,7 +51,7 @@ Once the database is initialized, run the benchmark using `pgbench` with a custo
 
 ```bash
 pgbench \
-    "postgres://postgres:Passw0rd@127.0.0.1:5433?sslmode=disable" \
+    "postgres://postgres:Passw0rd@127.0.0.1:4327?sslmode=disable" \
     --file script.sql \
     --scale 10 \
     --time 30 \

@@ -35,7 +35,9 @@ use tarantool::tuple::Tuple;
 /// This reexport is used in the derive macro for Introspection.
 pub use sbroad::ir::relation::Type as SbroadType;
 
-pub use crate::address::{DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_USERNAME};
+pub use crate::address::{
+    DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_PGPROTO_PORT, DEFAULT_USERNAME,
+};
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1813,6 +1815,7 @@ macro_rules! config_parameter_path {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::PgprotoAddress;
     use crate::util::{on_scope_exit, ScopeGuard};
     use clap::Parser as _;
     use pretty_assertions::assert_eq;
@@ -2048,8 +2051,8 @@ instance:
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.name(), None);
-            assert_eq!(config.instance.listen().to_host_port(), "127.0.0.1:3301");
-            assert_eq!(config.instance.advertise_address().to_host_port(), "127.0.0.1:3301");
+            assert_eq!(config.instance.listen().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.advertise_address().to_host_port(), IprotoAddress::default_host_port());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -2355,8 +2358,12 @@ instance:
 instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
-        // pg section wasn't specified so it shouldn't be enabled
-        assert!(!config.instance.pg.enabled());
+        let pg = config.instance.pg;
+        // pg section wasn't specified, but it should be enabled by default
+        assert_eq!(
+            pg.listen().to_host_port(),
+            PgprotoAddress::default_host_port()
+        );
 
         let yaml = r###"
 instance:
@@ -2366,7 +2373,6 @@ instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         let pg = config.instance.pg;
-        assert!(pg.enabled());
         assert_eq!(&pg.listen().to_host_port(), "127.0.0.1:5432");
         assert!(pg.ssl());
 
@@ -2378,10 +2384,9 @@ instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         let pg = config.instance.pg;
-        assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
+            PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
@@ -2389,20 +2394,18 @@ instance:
         let config =
             setup_for_tests(None, &["run", "-c", "instance.pg.listen=127.0.0.1:5432"]).unwrap();
         let pg = config.instance.pg;
-        assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
+            PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
         // test config from run args
         let config = setup_for_tests(None, &["run", "--pg-listen", "127.0.0.1:5432"]).unwrap();
         let pg = config.instance.pg;
-        assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
+            PgprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
@@ -2410,10 +2413,9 @@ instance:
         std::env::set_var("PICODATA_PG_LISTEN", "127.0.0.1:1234");
         let config = setup_for_tests(None, &["run"]).unwrap();
         let pg = config.instance.pg;
-        assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("127.0.0.1:1234").unwrap()
+            PgprotoAddress::from_str("127.0.0.1:1234").unwrap()
         );
         assert!(!pg.ssl());
     }

@@ -48,19 +48,7 @@ def test_admin_auth(cluster: Cluster):
 
     os.environ["PICODATA_ADMIN_PASSWORD"] = "#AdminX12345"
 
-    cluster.set_config_file(
-        yaml="""
-    cluster:
-        name: test
-        tier:
-            default:
-    instance:
-        pg:
-            listen: "127.0.0.1:5442"
-            ssl: False
-    """
-    )
-    i1 = cluster.add_instance(wait_online=False)
+    i1 = cluster.add_instance(wait_online=False, pg_port=5442)
     i1.env.update(os.environ)
     i1.start()
     i1.wait_online()
@@ -72,9 +60,10 @@ def test_admin_auth(cluster: Cluster):
     with pytest.raises(
         pg.DatabaseError, match=f"authentication failed for user '{user}'"
     ):
-        pg.Connection(user, password="wrong password", host="127.0.0.1", port=5442)
+        pg.Connection(user, password="wrong password", host=i1.pg_host, port=i1.pg_port)
 
-    conn = pg.Connection(user=user, password=password, host="127.0.0.1", port=5442)
+    conn = pg.Connection(user=user, password=password, host=i1.pg_host, port=i1.pg_port)
+
     conn.close()
 
 
@@ -96,7 +85,7 @@ def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(cluster: Clu
     """
     )
 
-    i1 = cluster.add_instance(wait_online=False)
+    i1 = cluster.add_instance(wait_online=False, pg_port=int(port))
     user_banned_lc = log_crawler(
         i1, "Maximum number of login attempts exceeded; user blocked"
     )

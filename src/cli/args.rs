@@ -1,4 +1,4 @@
-use crate::address::{HttpAddress, IprotoAddress};
+use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
 use crate::info::version_for_help;
 use crate::util::Uppercase;
@@ -107,7 +107,7 @@ pub struct Run {
 
     /// Pgproto server address.
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_PG_LISTEN")]
-    pub pg_listen: Option<IprotoAddress>,
+    pub pg_listen: Option<PgprotoAddress>,
 
     #[clap(
         long = "peer",
