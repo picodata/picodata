@@ -993,7 +993,7 @@ pub(crate) fn setup() {
         {
             tlua::function1(|up_to: RaftIndex| -> traft::Result<RaftIndex> {
                 let raft_storage = &node::global()?.raft_storage;
-                let ret = transaction(|| raft_storage.compact_log(up_to));
+                let ret = transaction(|| raft_storage.compact_log(up_to, false));
                 Ok(ret?)
             })
         },

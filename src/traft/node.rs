@@ -2473,7 +2473,7 @@ impl NodeImpl {
 
         transaction(|| -> traft::Result<()> {
             self.main_loop_status("log auto compaction");
-            self.raft_storage.compact_log(compact_until)?;
+            self.raft_storage.compact_log(compact_until, false)?;
 
             Ok(())
         })?;

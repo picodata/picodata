@@ -440,7 +440,7 @@ impl RaftSpaceAccess {
         let meta_index = meta.index;
         // We don't want to have a hole in the log, so we clear everything
         // before applying the snapshot
-        self.compact_log(meta.index + 1)?;
+        self.compact_log(meta.index + 1, true)?;
 
         let compacted_index = self.compacted_index()?;
         #[rustfmt::skip]
@@ -514,16 +514,24 @@ impl RaftSpaceAccess {
     /// raft-state values, so it **should be invoked within a
     /// transaction**.
     ///
+    /// If `for_snapshot` is `false` the `up_to` index is adjusted so that we
+    /// don't compact any entries which haven't been applied yet.
+    ///
     /// # Panics
     ///
     /// In debug mode panics if invoked out of a transaction.
     ///
-    pub fn compact_log(&self, up_to: RaftIndex) -> tarantool::Result<u64> {
+    pub fn compact_log(&self, mut up_to: RaftIndex, for_snapshot: bool) -> tarantool::Result<u64> {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
-        // We cannot drop entries, which weren't applied yet
-        let applied = self.applied()?;
-        let up_to = up_to.min(applied + 1);
+        if for_snapshot {
+            // Ok to delete unapplied entries in case of snapshot,
+            // because snapshot already contains the applied state.
+        } else {
+            // We cannot drop entries, which weren't applied yet
+            let applied = self.applied()?;
+            up_to = up_to.min(applied + 1);
+        }
 
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
@@ -998,7 +1006,7 @@ mod tests {
         storage.persist_applied(applied).unwrap();
         let entries =
             |lo, hi| S::entries(&storage, lo, hi, u64::MAX, GetEntriesContext::empty(false));
-        let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
+        let compact_log = |up_to| transaction(|| storage.compact_log(up_to, false));
 
         assert_eq!(S::first_index(&storage), Ok(first));
         assert_eq!(S::last_index(&storage), Ok(last));
