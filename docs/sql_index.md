@@ -54,6 +54,7 @@ article.md-typeset.md-typeset ul {
 * [CALL](reference/sql/call.md)
 * [CASE](reference/sql/case.md)
 * [CAST](reference/sql/cast.md)
+* [COALESCE](reference/sql/coalesce.md)
 * [column](reference/sql/object.md)
 * [COUNT](reference/sql/aggregate.md#functions)
 * [CREATE INDEX](reference/sql/create_index.md)

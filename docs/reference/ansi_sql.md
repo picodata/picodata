@@ -938,9 +938,9 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">F261-04</span></td>
+            <td class="center"><span class="full">F261-04</span></td>
             <td>COALESCE</td>
-            <td class="td3 center"></td>
+            <td class="td3 center">[COALESCE](sql/coalesce.md)</td>
             <td></td>
         </tr>
 <!-- F311 Schema definition statement -->

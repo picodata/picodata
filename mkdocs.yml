@@ -105,6 +105,7 @@ nav:
         - reference/sql/aggregate.md
         - reference/sql/case.md
         - reference/sql/cast.md
+        - reference/sql/coalesce.md
         - reference/sql/ilike.md
         - reference/sql/like.md
         - reference/sql/lower.md
