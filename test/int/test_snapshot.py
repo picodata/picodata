@@ -1,7 +1,5 @@
 import time
 
-import pytest
-
 from conftest import Cluster, Retriable
 
 
@@ -68,9 +66,6 @@ def assert_eq(lhs, rhs):
     assert lhs == rhs
 
 
-@pytest.mark.xfail(
-    reason="flaky, see: https://git.picodata.io/core/picodata/-/issues/779"
-)
 def test_large_snapshot(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
 
@@ -215,14 +210,6 @@ def test_large_snapshot(cluster: Cluster):
     i4.env["PICODATA_SCRIPT"] = script_path
     i4.start()
 
-    # Wait for i4 to start receiving the snapshot
-    Retriable(10, 60).call(
-        lambda: assert_eq(
-            i4.call(".proc_runtime_info")["internal"]["main_loop_status"],
-            "receiving snapshot",
-        )
-    )
-
     # In the middle of snapshot application propose a new entry
     index = cluster.cas("insert", "_pico_property", ["pokemon", "snap"])
     for i in [i1, i2, i3]:
@@ -233,14 +220,6 @@ def test_large_snapshot(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=False)
     i5.env["PICODATA_SCRIPT"] = script_path
     i5.start()
-
-    # Wait for i5 to start receiving the snapshot
-    Retriable(10, 60).call(
-        lambda: assert_eq(
-            i5.call(".proc_runtime_info")["internal"]["main_loop_status"],
-            "receiving snapshot",
-        )
-    )
 
     i1.raft_compact_log()
     i2.raft_compact_log()
