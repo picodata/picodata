@@ -26,7 +26,7 @@ Some signs that you might need an ADR:
 
 ## How to propose an Architectural Decision
 
-Make a copy of [adr-template](./adr-template.md) in this directory. Rename it to `{creation-date}-{adr-title}.md` (e.g. `01-01-2024-plugins.md`).
+Make a copy of [adr-template](./adr-template.md) in this directory. Rename it to `{creation-date}-{adr-title}.md` (e.g. `2024-09-28-plugins.md`).
 We use the date so it's possible to sort them correctly by file name. 
 
 Fill the sections that you find relevant for the discussion. Feel free to add additional sections if needed.
