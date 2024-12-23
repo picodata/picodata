@@ -24,16 +24,16 @@
 следующей командой:
 
 ```shell
-rsync -r <data_dir> <backup_dir>
+rsync -r <instance_dir> <backup_dir>
 ```
 
 где:
 
-- `<data_dir>` — рабочая директория инстанса, указанная при запуске в
-  параметре [`picodata run --data-dir`]
+- `<instance_dir>` — рабочая директория инстанса, указанная при запуске в
+  параметре [`picodata run --instance-dir`]
 - `<backup_dir>` — целевая директория для хранения резервной копии
 
-[`picodata run --data-dir`]: ../reference/cli.md#run_data_dir
+[`picodata run --instance-dir`]: ../reference/cli.md#run_instance_dir
 
 ## Восстановление из резервной копии {: #local_restore }
 
@@ -41,7 +41,7 @@ rsync -r <data_dir> <backup_dir>
 командой `rsync`, но в обратную сторону:
 
 ```shell
-rsync -r <backup_dir> <data_dir>
+rsync -r <backup_dir> <instance_dir>
 ```
 
 !!! note "Примечание"

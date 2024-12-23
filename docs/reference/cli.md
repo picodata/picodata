@@ -45,18 +45,18 @@ picodata run [OPTIONS]
     присутствует [файл конфигурации](config.md) с именем `picodata.yaml`,
     инстанс Picodata будет запущен с указанными в нем параметрами.
 
-### --admin-sock {: #run_admin_sock }
+### --admin-socket {: #run_admin_socket }
 
-`--admin-sock <PATH>`
+`--admin-socket <PATH>`
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
 команды [`picodata admin`](#admin). В отличие от `picodata connect`,
 коммуникация осуществляется в виде обычного текста и всегда происходит
 под учетной записью администратора.
 
-По умолчанию используется `admin.sock` в рабочей директории инстанса.
+По умолчанию используется `admin.socket` в рабочей директории инстанса.
 
-Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCKET`<br>
 Аналогичный параметр файла конфигурации: [`instance.admin_socket`]
 
 [`instance.admin_socket`]: config.md#instance_admin_socket
@@ -147,23 +147,10 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 **Пример**
 
 ```
-picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
+picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 ```
 
 Аналогичная переменная окружения: `PICODATA_CONFIG_PARAMETERS`
-
-### --data-dir {: #run_data_dir }
-
-`--data-dir <PATH>`
-
-Рабочая директория инстанса. Здесь Picodata хранит все данные.
-
-По умолчанию используется текущая директория `./`.
-
-Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
-Аналогичный параметр файла конфигурации: [`instance.data_dir`]
-
-[`instance.data_dir`]: config.md#instance_data_dir
 
 ### --failure-domain {: #run_failure_domain }
 
@@ -208,6 +195,19 @@ picodata run -c instance.log.level=verbose -c instance.data_dir=/path/to/dir
 Аналогичный параметр файла конфигурации: [`cluster.default_replication_factor`]
 
 [`cluster.default_replication_factor`]: config.md#cluster_default_replication_factor
+
+### --instance-dir {: #run_instance_dir }
+
+`--instance-dir <PATH>`
+
+Рабочая директория инстанса. Здесь Picodata хранит все данные.
+
+По умолчанию используется текущая директория `./`.
+
+Аналогичная переменная окружения: `PICODATA_INSTANCE_DIR`<br>
+Аналогичный параметр файла конфигурации: [`instance.instance_dir`]
+
+[`instance.instance_dir`]: config.md#instance_instance_dir
 
 ### --instance-name {: #run_instance_name }
 
@@ -425,13 +425,13 @@ picodata admin <PATH>
 ```
 
 - `PATH`: Путь к unix-сокету, соответствующий опции [`picodata run
-  --admin-sock`](#run_admin_sock)
+  --admin-socket`](#run_admin_socket)
 
 **Пример**
 
 ```console
-$ picodata admin ./admin.sock
-Connected to admin console by socket path "admin.sock"
+$ picodata admin ./admin.socket
+Connected to admin console by socket path "admin.socket"
 type '\help' for interactive help
 picodata>
 ```

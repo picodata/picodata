@@ -46,7 +46,7 @@ cluster:
       can_vote: true # (3)!
   default_replication_factor: 1 # (2)!
 instance:
-  data_dir: . # (8)!
+  instance_dir: . # (8)!
   service_password_file: null # (25)!
   name: null # (11)!
   replicaset_name: null # (24)!
@@ -57,7 +57,7 @@ instance:
   listen: 127.0.0.1:3301 # (13)!
   advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (10)!
-  admin_socket: ./admin.sock # (5)!
+  admin_socket: ./admin.socket # (5)!
   plugin_dir: null # (23)!
   audit: null # (7)!
   shredding: false # (26)!
@@ -95,9 +95,9 @@ instance:
 5. [instance.admin_socket](#instance_admin_socket)
 6. [instance.advertise_address](#instance_advertise_address)
 7. [instance.audit](#instance_audit)
-8. [instance.data_dir](#instance_data_dir)
-9. [instance.failure_domain](#instance_failure_domain)
-10. [instance.http_listen](#instance_http_listen)
+8. [instance.failure_domain](#instance_failure_domain)
+9. [instance.http_listen](#instance_http_listen)
+10. [instance.instance_dir](#instance_instance_dir)
 11. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
 12. [instance.listen](#instance_listen)
 13. [instance.log.destination](#instance_log_destination)
@@ -211,12 +211,12 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `./admin.sock`
+* Значение по умолчанию: `./admin.socket`
 
-Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
-Аналогичная команда: [`picodata run --admin-sock`]
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCKET`<br>
+Аналогичная команда: [`picodata run --admin-socket`]
 
-[`picodata run --admin-sock`]: cli.md#run_admin_sock
+[`picodata run --admin-socket`]: cli.md#run_admin_socket
 
 ### instance.advertise_address {: #instance_advertise_address }
 
@@ -250,20 +250,6 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная команда: [`picodata run --audit`]
 
 [`picodata run --audit`]: cli.md#run_audit
-
-### instance.data_dir {: #instance_data_dir }
-
-Рабочая директория инстанса. Здесь Picodata хранит все данные.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `.`
-
-Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
-Аналогичная команда: [`picodata run --data-dir`]
-
-[`picodata run --data-dir`]: cli.md#run_data_dir
 
 ### instance.failure_domain {: #instance_failure_domain }
 
@@ -301,6 +287,20 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная команда: [`picodata run --http-listen`]
 
 [`picodata run --http-listen`]: cli.md#run_http_listen
+
+### instance.instance_dir {: #instance_instance_dir }
+
+Рабочая директория инстанса. Здесь Picodata хранит все данные.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `.`
+
+Аналогичная переменная окружения: `PICODATA_INSTANCE_DIR`<br>
+Аналогичная команда: [`picodata run --instance-dir`]
+
+[`picodata run --instance-dir`]: cli.md#run_instance_dir
 
 ### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
@@ -540,7 +540,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Признак использования протокола SSL при подключении к Pgproto.
 
 Если для признака указано значение `true`, [в рабочей директории
-инстанса](cli.md#run_data_dir) `<DATA_DIR>` должны находиться необходимые
+инстанса](cli.md#run_instance_dir) `<DATA_DIR>` должны находиться необходимые
 SSL-сертификаты:
 
 * `server.crt`

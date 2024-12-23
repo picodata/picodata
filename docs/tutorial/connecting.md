@@ -26,21 +26,21 @@
 консоли используйте следующую команду с указанием файла unix-сокета:
 
 ```
-picodata admin ./admin.sock
+picodata admin ./admin.socket
 ```
 
 По умолчанию файл unix-сокета расположен в рабочей директории инстанса,
-указанной при запуске в параметре [`picodata run --data-dir`]. Путь
-к этому файлу можно переопределить параметром [`picodata run --admin-sock`].
+указанной при запуске в параметре [`picodata run --instance-dir`]. Путь
+к этому файлу можно переопределить параметром [`picodata run --admin-socket`].
 
-[`picodata run --data-dir`]: ../reference/cli.md#run_data_dir
-[`picodata run --admin-sock`]: ../reference/cli.md#run_admin_sock
+[`picodata run --instance-dir`]: ../reference/cli.md#run_instance_dir
+[`picodata run --admin-socket`]: ../reference/cli.md#run_admin_socket
 
 При успешном подключении отобразится приглашение:
 
 ```
-$ picodata admin ./admin.sock
-Connected to admin console by socket path "./admin.sock"
+$ picodata admin ./admin.socket
+Connected to admin console by socket path "./admin.socket"
 type '\help' for interactive help
 picodata>
 ```
@@ -114,13 +114,13 @@ GRANT CREATE TABLE TO "alice";
 Запустите этот скрипт в консоли администратора:
 
 ```shell
-picodata admin ./admin.sock < ../setup.sql
+picodata admin ./admin.socket < ../setup.sql
 ```
 
 Пример вывода:
 
 ```
-Connected to admin console by socket path "admin.sock"
+Connected to admin console by socket path "admin.socket"
 type '\help' for interactive help
 1
 1
@@ -165,7 +165,7 @@ echo "SELECT * FROM warehouse;" | picodata connect alice@127.0.0.1:3301
 ```
 
 ```sql title="Список команд в административной консоли"
-cat file.sql | picodata admin ./admin.sock
+cat file.sql | picodata admin ./admin.socket
 ```
 
 ??? example "Пример файла с командами"
@@ -244,11 +244,11 @@ psql postgres://alice:T0psecret@127.0.0.1:5432?sslmode=disable
     1. Задайте в [файле конфигурации](../reference/config.md#instance_pg_ssl)
        параметр `instance.pg.ssl: true`
 
-    1. Добавьте в [рабочую директорию инстанса](../reference/cli.md#run_data_dir)
+    1. Добавьте в [рабочую директорию инстанса](../reference/cli.md#run_instance_dir)
        `<DATA_DIR>` SSL-сертификат и ключ `server.crt`, `server.key`
 
     1. (опционально) Для включения [mTLS] добавьте в
-       [рабочую директорию инстанса](../reference/cli.md#run_data_dir) `<DATA_DIR>`
+       [рабочую директорию инстанса](../reference/cli.md#run_instance_dir) `<DATA_DIR>`
        SSL-сертификат `ca.crt`. В результате PostgreSQL-сервер в Picodata будет
        принимать подключения только в том случае, если клиент предоставит сертификат,
        подписанный с помощью `ca.crt`.

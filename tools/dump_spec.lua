@@ -2,7 +2,7 @@
 --
 -- Usage:
 --
---   rm -rf /tmp/picospec; picodata run --data-dir /tmp/picospec --script tools/dump_spec.lua
+--   rm -rf /tmp/picospec; picodata run --instance-dir /tmp/picospec --script tools/dump_spec.lua
 --
 -- Dump system tables schema to the "system_tables.spec" file. The output format self-defined by the script.
 --

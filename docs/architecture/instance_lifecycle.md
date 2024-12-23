@@ -150,7 +150,7 @@ governor](../overview/glossary.md#governor).
 Инициализация инстанса подразумевает следующие шаги:
 
 - создание директории с данными инстанса (из аргумента `picodata run
-  --data-dir`);
+  --instance-dir`);
 - первичный вызов `box.cfg`
 - инициализация журнала событий безопасности
 - инициализация Lua-модулей `vshard` и `http`
@@ -167,5 +167,5 @@ governor](../overview/glossary.md#governor).
 | read_only   | false            | false        | from `join` response |
 | uuids       | _random_         | _given_      | from `join` response |
 | replication | None             | None         | from `join` response |
-| data_dir    | _from args_      | _from args_  | _from args_          |
+| instance_dir    | _from args_      | _from args_  | _from args_          |
 | log_level   | _from args_      | _from args_  | _from args_          |

@@ -85,7 +85,7 @@ docker-compose up -d
 3.&nbsp;Создайте отдельного пользователя для подключения по JDBC и выдайте ему права на создание таблиц:
 
 ```shell
-docker-compose exec picodata-1 bash -c "echo -ne \"CREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.sock"
+docker-compose exec picodata-1 bash -c "echo -ne \"CREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.socket"
 ```
 
 4.&nbsp;Вернитесь в исходную директорию `picodata-jdbc-example` и
@@ -304,7 +304,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         hostname: picodata-1
         environment:
         PICODATA_INSTANCE_NAME: picodata-1
-        PICODATA_DATA_DIR: picodata-1
+        PICODATA_INSTANCE_DIR: picodata-1
         PICODATA_LISTEN: picodata-1:3301
         PICODATA_ADVERTISE: picodata-1:3301
         PICODATA_PEER: picodata-1:3301
@@ -322,7 +322,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         - picodata-1
         environment:
         PICODATA_INSTANCE_NAME: picodata-2
-        PICODATA_DATA_DIR: picodata-2
+        PICODATA_INSTANCE_DIR: picodata-2
         PICODATA_LISTEN: picodata-2:3302
         PICODATA_ADVERTISE: picodata-2:3302
         PICODATA_PEER: picodata-1:3301
@@ -338,7 +338,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         - picodata-1
         environment:
         PICODATA_INSTANCE_NAME: picodata-3
-        PICODATA_DATA_DIR: picodata-3
+        PICODATA_INSTANCE_DIR: picodata-3
         PICODATA_LISTEN: picodata-3:3303
         PICODATA_ADVERTISE: picodata-3:3303
         PICODATA_PEER: picodata-1:3301

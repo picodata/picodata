@@ -29,7 +29,7 @@ picodata run
 Для того чтобы запустить несколько инстансов на одном сервере,
 потребуется задать дополнительные параметры для каждого из них:
 
-- рабочую директорию ([`--data-dir`])
+- рабочую директорию ([`--instance-dir`])
 - сетевой адрес ([`--listen`])
 - адрес одного или нескольких соседних инстансов ([`--peer`])
 
@@ -43,11 +43,11 @@ picodata run
 выполните в двух соседних терминалах следующие команды:
 
 ```shell
-picodata run --data-dir ./data/i1 --listen 127.0.0.1:3301
+picodata run --instance-dir ./data/i1 --listen 127.0.0.1:3301
 ```
 
 ```shell
-picodata run --data-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
+picodata run --instance-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
 ```
 
 Обратите внимание на различия в запуске инстансов:
@@ -57,7 +57,7 @@ picodata run --data-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
   нового кластера. Чтобы инстансы добавлялись в уже существующий кластер
   в этом параметре передается адрес первого инстанса
 
-[`--data-dir`]: ../reference/cli.md#run_data_dir
+[`--instance-dir`]: ../reference/cli.md#run_instance_dir
 [`--listen`]: ../reference/cli.md#run_listen
 [`--peer`]: ../reference/cli.md#run_peer
 
@@ -111,7 +111,7 @@ docker-compose up -d
 используйте команду:
 
 ```shell
-picodata admin pico/data/picodata-1-1/admin.sock
+picodata admin pico/data/picodata-1-1/admin.socket
 ```
 
 Для подключения к [SQL-консоли](../tutorial/connecting.md#sql_console)
