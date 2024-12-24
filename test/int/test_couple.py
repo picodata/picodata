@@ -1,6 +1,8 @@
 import pytest
 from conftest import Cluster, Instance, Retriable
 
+from framework.log import log
+
 
 @pytest.fixture
 def cluster2(cluster: Cluster):
@@ -84,6 +86,8 @@ def test_restart_both(cluster2: Cluster):
     i1.terminate()
     i2.terminate()
 
+    log.info("terminated both")
+
     def check_alive(instance: Instance):
         assert instance.call(".proc_raft_info")["leader_id"] == 0
 
@@ -91,8 +95,10 @@ def test_restart_both(cluster2: Cluster):
     # This synchronization is necessary for proper test case reproducing.
     # i1 has already initialized raft node but can't win election yet
     # i2 starts discovery and should be able to advance further
+    log.info("waiting for i1")
     Retriable(timeout=10, rps=10).call(check_alive, i1)
 
+    log.info("waiting for i2")
     i2.start()
     Retriable(timeout=10, rps=10).call(check_alive, i2)
 

@@ -43,6 +43,7 @@ from tarantool.error import (  # type: ignore
 from multiprocessing import Process, Queue
 from pathlib import Path
 
+from framework.log import log
 
 # From raft.rs:
 # A constant represents invalid id of raft.
@@ -493,10 +494,12 @@ class Retriable:
         """
         while self._next_try():
             try:
+                log.info(f"Retriable.call {func.__name__}")
                 return func(*args, **kwargs)
             except self.fatal as e:
                 raise e from e
             except Exception as e:
+                log.info(f"got retriable exception: {e}")
                 if self.fatal_predicate(e):
                     raise e from e
                 now = time.monotonic()
@@ -525,8 +528,6 @@ class Retriable:
 
 
 OUT_LOCK = threading.Lock()
-
-POSITION_IN_SPACE_INSTANCE_NAME = 3
 
 
 class Connection(tarantool.Connection):  # type: ignore
