@@ -219,8 +219,16 @@ class LDAPServerState:
     process: subprocess.Popen
 
 
+def is_glauth_available():
+    try:
+        subprocess.Popen(["glauth", "--version"])
+    except Exception:
+        return False
+
+    return True
+
+
 def configure_ldap_server(username, password, instance_dir) -> LDAPServerState:
-    # Check `glauth` executable is available
     subprocess.Popen(["glauth", "--version"])
 
     LDAP_SERVER_HOST = "127.0.0.1"
@@ -257,7 +265,7 @@ def configure_ldap_server(username, password, instance_dir) -> LDAPServerState:
         """
         )
 
-    process = subprocess.Popen(["glauth", "-c", ldap_cfg_path])
+    process = subprocess.Popen(["glauth", "-c", ldap_cfg_path], stdout=subprocess.PIPE)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     deadline = time.time() + 3
@@ -274,8 +282,8 @@ def configure_ldap_server(username, password, instance_dir) -> LDAPServerState:
     )
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skipif(
+    not is_glauth_available(),
     reason=("need installed glauth"),
 )
 def test_connect_auth_type_ldap(cluster: Cluster):
@@ -315,7 +323,7 @@ def test_connect_auth_type_ldap(cluster: Cluster):
         cli.expect_exact(f"Enter password for {username}: ")
         cli.sendline(password)
 
-        cli.expect_exact("picosql :)")
+        cli.expect_exact("sql> ")
 
     finally:
         ldap_server.process.kill()
