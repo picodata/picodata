@@ -1,8 +1,11 @@
 use crate::pgproto::error::PgError;
 use crate::pgproto::stream::{FeMessage, PgStream};
 use crate::pgproto::{error::PgResult, messages};
+use crate::storage::Clusterwide;
+use crate::tlog;
 use pgwire::messages::startup::PasswordMessageFamily;
 use std::{io, os::raw::c_int};
+use tarantool::auth::AuthMethod;
 
 extern "C" {
     /// pointers must have valid and non-null values, salt must be at least 20 bytes
@@ -16,8 +19,8 @@ extern "C" {
 }
 
 /// Build auth_info that is used by authenticate_raw.
-fn build_auth_info(client_pass: &str) -> Vec<u8> {
-    let auth_packet = ["md5", client_pass];
+fn build_auth_info(client_pass: &str, auth_method: &AuthMethod) -> Vec<u8> {
+    let auth_packet = [auth_method.as_str(), client_pass];
 
     // mp_sizeof(["md5", md5-hash]) == 42,
     // but it may vary if we get a non md5 password.
@@ -28,8 +31,13 @@ fn build_auth_info(client_pass: &str) -> Vec<u8> {
 }
 
 /// Perform authentication, throwing a [`PgError::InvalidPassword`] if it failed.
-pub fn do_authenticate(user: &str, salt: [u8; 4], client_pass: &str) -> Result<(), PgError> {
-    let auth_info = build_auth_info(client_pass);
+pub fn do_authenticate(
+    user: &str,
+    salt: [u8; 4],
+    client_pass: &str,
+    auth_method: AuthMethod,
+) -> Result<(), PgError> {
+    let auth_info = build_auth_info(client_pass, &auth_method);
 
     // Tarantool requires that the salt array contains no less than 20 bytes!
     let mut extended_salt = [0u8; 20];
@@ -58,13 +66,31 @@ fn extract_password(message: PasswordMessageFamily) -> String {
         .unwrap_or_default()
 }
 
-fn auth_exchage<S>(stream: &mut PgStream<S>, salt: [u8; 4]) -> PgResult<String>
+fn auth_exchage<S>(
+    username: &str,
+    stream: &mut PgStream<S>,
+    salt: [u8; 4],
+    auth_method: AuthMethod,
+) -> PgResult<String>
 where
     S: io::Read + io::Write,
 {
-    stream.write_message(messages::md5_auth_request(&salt))?;
-    let message = stream.read_message()?;
+    match auth_method {
+        AuthMethod::ChapSha1 => {
+            tlog!(Warning, "user {username} attempted to login using chap-sha1 which is unsupported in pgproto");
+            // we cant return different error message because
+            // it'll allow an attacker to brute force user names
+            return Err(PgError::InvalidPassword(username.to_owned()));
+        }
+        AuthMethod::Md5 => {
+            stream.write_message(messages::md5_auth_request(&salt))?;
+        }
+        AuthMethod::Ldap => {
+            stream.write_message(messages::cleartext_auth_request())?;
+        }
+    }
 
+    let message = stream.read_message()?;
     let FeMessage::PasswordMessageFamily(message) = message else {
         return Err(PgError::ProtocolViolation(format!(
             "expected Password, got {message:?}"
@@ -76,13 +102,26 @@ where
 
 /// Perform exchange of authentication messages and authentication.
 /// Authentication failure is treated as an error.
-pub fn authenticate<S>(stream: &mut PgStream<S>, username: &str) -> PgResult<()>
+pub fn authenticate<S>(
+    stream: &mut PgStream<S>,
+    username: &str,
+    storage: &Clusterwide,
+) -> PgResult<()>
 where
     S: io::Read + io::Write,
 {
+    // Do not allow attackers to detect which users exist through returned error.
+    let err = || PgError::InvalidPassword(username.to_owned());
+    let Some(user) = storage.users.by_name(username)? else {
+        return Err(err());
+    };
+
+    let auth = user.auth.ok_or_else(err)?;
+
+    // Note: salt is not used by ldap, but `authenticate_raw` still needs it.
     let salt = rand::random();
-    let password = auth_exchage(stream, salt)?;
-    do_authenticate(username, salt, &password)?;
+    let password = auth_exchage(username, stream, salt, auth.method)?;
+    do_authenticate(username, salt, &password, auth.method)?;
     stream.write_message_noflush(messages::auth_ok())?;
 
     Ok(())

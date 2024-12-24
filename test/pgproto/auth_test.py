@@ -1,6 +1,9 @@
+from pg8000 import DatabaseError  # type: ignore
 import pytest
 import pg8000.dbapi as pg  # type: ignore
 from conftest import Postgres, Cluster, log_crawler
+from framework.ldap import LdapServer, is_glauth_available
+from framework.port_distributor import PortDistributor
 
 
 def test_auth(postgres: Postgres):
@@ -148,3 +151,58 @@ def test_user_auth_failure_counter_resets_on_success(postgres: Postgres):
 
     # check if the user is not banned
     pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+
+
+@pytest.mark.skipif(
+    not is_glauth_available(),
+    reason=("need installed glauth"),
+)
+def test_auth_ldap(
+    cluster: Cluster, ldap_server: LdapServer, port_distributor: PortDistributor
+):
+    # Configure the instance
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
+    i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    i1.pg_host = "127.0.0.1"
+    i1.pg_port = port_distributor.get()
+    i1.start()
+    i1.wait_online()
+
+    i1.sql(
+        f"""
+            CREATE USER "{ldap_server.user}" PASSWORD '{ldap_server.password}' USING ldap
+        """
+    )
+
+    # valid creds
+    conn = pg.Connection(
+        ldap_server.user,
+        password=ldap_server.password,
+        host=i1.pg_host,
+        port=i1.pg_port,
+    )
+
+    assert conn.execute_simple("SELECT 1").rows == [[1]]
+
+    # invalid creds
+    with pytest.raises(
+        DatabaseError, match=f"authentication failed for user '{ldap_server.user}'"
+    ):
+        pg.Connection(
+            ldap_server.user,
+            password="invalid",
+            host=i1.pg_host,
+            port=i1.pg_port,
+        )
+
+    # nonexistent user should give the same error as invalid password
+    with pytest.raises(
+        DatabaseError, match="authentication failed for user 'missing_user'"
+    ):
+        pg.Connection(
+            "missing_user",
+            password="invalid",
+            host=i1.pg_host,
+            port=i1.pg_port,
+        )

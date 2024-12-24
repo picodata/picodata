@@ -6,7 +6,7 @@ use super::{
     stream::{BeMessage, FeMessage, PgStream},
     tls::TlsAcceptor,
 };
-use crate::tlog;
+use crate::{storage::Clusterwide, tlog};
 use pgwire::messages::startup::*;
 use std::io;
 
@@ -31,11 +31,15 @@ pub struct PgClient<S> {
 
 impl<S: io::Read + io::Write> PgClient<S> {
     /// Create a client context by receiving a startup message and authenticating the client.
-    pub fn accept(stream: PgStream<S>, tls_acceptor: Option<TlsAcceptor>) -> PgResult<PgClient<S>> {
+    pub fn accept(
+        stream: PgStream<S>,
+        tls_acceptor: Option<TlsAcceptor>,
+        storage: &Clusterwide,
+    ) -> PgResult<PgClient<S>> {
         let (mut stream, params) = startup::handshake(stream, tls_acceptor.as_ref())?;
         tlog!(Info, "processed startup");
 
-        auth::authenticate(&mut stream, &params.username).map_err(|error| {
+        auth::authenticate(&mut stream, &params.username, storage).map_err(|error| {
             tlog!(Info, "failed to establish client connection: {error}");
             // At this point we don't care about failed writes (best effort approach).
             let _ = stream.write_message(messages::error_response(error.info()));

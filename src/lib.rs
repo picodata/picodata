@@ -1113,7 +1113,7 @@ fn postjoin(
     node.sentinel_loop.on_self_activate();
 
     let pg_config = &config.instance.pg;
-    pgproto::start(pg_config, config.instance.instance_dir())?;
+    pgproto::start(pg_config, config.instance.instance_dir(), &node.storage)?;
 
     Ok(())
 }

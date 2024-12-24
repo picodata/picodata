@@ -5,7 +5,6 @@ import os
 import re
 import filecmp
 import shutil
-import socket
 import sys
 import time
 import threading
@@ -33,7 +32,7 @@ from typing import (
     Type,
 )
 from itertools import count
-from contextlib import closing, contextmanager, suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 import tarantool
 from tarantool.error import (  # type: ignore

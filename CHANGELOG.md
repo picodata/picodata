@@ -26,6 +26,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `picodata --version` now provides verbose output, including the build type (static or dynamic) and the build configuration (release or debug)
 
+### Pgproto
+
+- Support LDAP authentication method
+
 ### Configuration
 
 - New parameters for Vinyl configuration: `bloom_fpr`, `max_tuple_size`, `page_size`, `range_size`,

@@ -14,6 +14,12 @@ pub fn md5_auth_request(salt: &[u8; 4]) -> BeMessage {
     BeMessage::Authentication(Authentication::MD5Password(salt.to_vec()))
 }
 
+/// CleartextPassword retrieves password from client in open form.
+/// Can be used not only with open password auth but with LDAP too.
+pub fn cleartext_auth_request() -> BeMessage {
+    BeMessage::Authentication(Authentication::CleartextPassword)
+}
+
 /// AuthOk informs the frontend that the authentication has been passed.
 pub const fn auth_ok() -> BeMessage {
     BeMessage::Authentication(Authentication::Ok)
