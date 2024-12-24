@@ -438,9 +438,20 @@ impl RaftSpaceAccess {
     ///
     pub fn handle_snapshot_metadata(&self, meta: &raft::SnapshotMetadata) -> tarantool::Result<()> {
         let meta_index = meta.index;
+
+        #[cfg(debug_assertions)]
+        let applied = self.applied()?;
+        #[cfg(debug_assertions)]
+        #[rustfmt::skip]
+        debug_assert!(meta_index >= applied, "meta_index: {meta_index}, applied: {applied}");
+        // Must bump the applied index before doing log compaction,
+        // because log compaction only removes applied entries
+        self.persist_applied(meta_index)?;
+        self.persist_conf_state(meta.get_conf_state())?;
+
         // We don't want to have a hole in the log, so we clear everything
         // before applying the snapshot
-        self.compact_log(meta.index + 1, true)?;
+        self.compact_log(meta.index + 1)?;
 
         let compacted_index = self.compacted_index()?;
         #[rustfmt::skip]
@@ -449,12 +460,6 @@ impl RaftSpaceAccess {
         // the coordinates of the last entry which was in our log.
         self.persist_compacted_term(meta.term)?;
         self.persist_compacted_index(meta.index)?;
-
-        let applied = self.applied()?;
-        #[rustfmt::skip]
-        debug_assert!(meta_index >= applied, "meta_index: {meta_index}, applied: {applied}");
-        self.persist_applied(meta.index)?;
-        self.persist_conf_state(meta.get_conf_state())?;
         Ok(())
     }
 
@@ -502,8 +507,12 @@ impl RaftSpaceAccess {
         Ok(count as _)
     }
 
-    /// Trims raft log up to the given index (excluding the index
+    /// Trims raft log up to the given index `up_to` (excluding the index
     /// itself).
+    ///
+    /// Note that `up_to` must not be greater than current applied index + 1,
+    /// because it doesn't make sense to compact entries which haven't been
+    /// applied yet.
     ///
     /// Returns the new `first_index` after log compaction. It may
     /// differ from the requested one if the corresponding entry doesn't
@@ -514,24 +523,20 @@ impl RaftSpaceAccess {
     /// raft-state values, so it **should be invoked within a
     /// transaction**.
     ///
-    /// If `for_snapshot` is `false` the `up_to` index is adjusted so that we
-    /// don't compact any entries which haven't been applied yet.
-    ///
     /// # Panics
     ///
-    /// In debug mode panics if invoked out of a transaction.
+    /// In debug mode panics in case:
+    /// - invoked outside of a transaction
+    /// - `up_to > applied + 1`
     ///
-    pub fn compact_log(&self, mut up_to: RaftIndex, for_snapshot: bool) -> tarantool::Result<u64> {
+    pub fn compact_log(&self, up_to: RaftIndex) -> tarantool::Result<u64> {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
-        if for_snapshot {
-            // Ok to delete unapplied entries in case of snapshot,
-            // because snapshot already contains the applied state.
-        } else {
-            // We cannot drop entries, which weren't applied yet
-            let applied = self.applied()?;
-            up_to = up_to.min(applied + 1);
-        }
+        // We cannot drop entries, which weren't applied yet
+        #[cfg(debug_assertions)]
+        let applied = self.applied()?;
+        #[cfg(debug_assertions)]
+        debug_assert!(up_to <= applied + 1, "up_to: {up_to}, applied: {applied}");
 
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
@@ -1006,7 +1011,7 @@ mod tests {
         storage.persist_applied(applied).unwrap();
         let entries =
             |lo, hi| S::entries(&storage, lo, hi, u64::MAX, GetEntriesContext::empty(false));
-        let compact_log = |up_to| transaction(|| storage.compact_log(up_to, false));
+        let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
 
         assert_eq!(S::first_index(&storage), Ok(first));
         assert_eq!(S::last_index(&storage), Ok(last));
@@ -1036,14 +1041,12 @@ mod tests {
         assert_eq!(compact_log(0).unwrap(), first);
         assert_eq!(compact_log(first).unwrap(), first);
 
-        // cannot compact past applied
-        assert_eq!(compact_log(applied + 2).unwrap(), applied + 1);
-
-        storage.persist_applied(last).unwrap();
-
-        // trim to the end
-        assert_eq!(compact_log(u64::MAX).unwrap(), last + 1);
-        assert_eq!(storage.space_raft_log.len().unwrap(), 0);
+        // cannot compact past applied, this call will panic
+        // Note that we could use `#[tarantool::test(should_panic)]` but in this
+        // case a panic would happen inside a tarantool transaction, and
+        // unwinding from within it will leave an unfinished transaction, which
+        // we don't want to have
+        // _ = compact_log(applied + 2);
     }
 
     #[::tarantool::test]

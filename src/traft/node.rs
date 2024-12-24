@@ -2420,10 +2420,10 @@ impl NodeImpl {
         let mut last_ddl_finalizer = None;
         let mut last_plugin_op_finalizer = None;
 
-        let last_index = self.raft_storage.last_index()?;
+        let last_applied = self.applied.get();
         let newly_added_entries =
             self.raft_storage
-                .entries(old_last_index + 1, last_index + 1, None)?;
+                .entries(old_last_index + 1, last_applied + 1, None)?;
 
         // Check if there's a finalizer (e.g. DdlCommit, Plugin::Abort, etc.)
         // operation among the newly added entries. The finalizers a relied upon
@@ -2456,7 +2456,7 @@ impl NodeImpl {
         }
 
         // Add 1 because this entry is to be removed.
-        let mut compact_until = last_index + 1;
+        let mut compact_until = last_applied + 1;
         if let Some(index) = last_ddl_finalizer {
             if compact_until > index {
                 tlog!(Debug, "preserving ddl finalizer raft op at index {index}");
@@ -2473,7 +2473,7 @@ impl NodeImpl {
 
         transaction(|| -> traft::Result<()> {
             self.main_loop_status("log auto compaction");
-            self.raft_storage.compact_log(compact_until, false)?;
+            self.raft_storage.compact_log(compact_until)?;
 
             Ok(())
         })?;
