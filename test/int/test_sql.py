@@ -5928,3 +5928,37 @@ Exceeded maximum number of rows (1) in virtual table: 2"""
         i1.sql(
             f"SELECT * FROM (VALUES (1), (2)) OPTION (VTABLE_MAX_ROWS = {new_vtable_max_rows})"
         )
+
+
+def test_varchar_cast(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table t (a varchar not null, primary key (a))
+        using memtx
+        distributed by (a)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("""insert into t values ('test_string')""")
+    assert dml["row_count"] == 1
+
+    data = i1.sql("""select cast(a as varchar(20)) from t""")
+    assert data == [["test_string"]]
+
+    # VARCHAR cast without length
+    data = i1.sql("""select cast(a as varchar) from t""")
+    assert data == [["test_string"]]
+
+    # VARCHAR cast with string literal
+    data = i1.sql("""select cast('direct_string' as varchar)""")
+    assert data == [["direct_string"]]
+
+    data = i1.sql(
+        """select cast(a as varchar) from t where a = 'test_string'""",
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "col_1", "type": "string"}]

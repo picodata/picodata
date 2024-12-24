@@ -2395,16 +2395,22 @@ fn cast_type_from_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
     }
 
     let mut type_pairs_inner = column_def_type.into_inner();
-    let varchar_length = type_pairs_inner
-        .next()
-        .expect("Length is missing under Varchar");
-    let len = varchar_length.as_str().parse::<usize>().map_err(|e| {
-        SbroadError::ParsingError(
-            Entity::Value,
-            format_smolstr!("Failed to parse varchar length: {e:?}."),
-        )
-    })?;
-    Ok(CastType::Varchar(len))
+    let type_cast = type_pairs_inner.next().map_or_else(
+        || Ok(CastType::Text),
+        |varchar_length| {
+            varchar_length
+                .as_str()
+                .parse::<usize>()
+                .map(CastType::Varchar)
+                .map_err(|e| {
+                    SbroadError::ParsingError(
+                        Entity::Value,
+                        format_smolstr!("Failed to parse varchar length: {e:?}."),
+                    )
+                })
+        },
+    )?;
+    Ok(type_cast)
 }
 
 /// Function responsible for parsing expressions using Pratt parser.

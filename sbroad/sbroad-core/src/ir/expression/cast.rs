@@ -97,7 +97,10 @@ impl From<&Type> for SmolStr {
             Type::Text => "text".to_smolstr(),
             Type::Uuid => "uuid".to_smolstr(),
             Type::Unsigned => "unsigned".to_smolstr(),
-            Type::Varchar(length) => format_smolstr!("varchar({length})"),
+            Type::Varchar(length) => match length {
+                0 => "varchar".to_smolstr(),
+                _ => format_smolstr!("varchar({length})"),
+            },
         }
     }
 }
