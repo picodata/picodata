@@ -14,26 +14,28 @@ use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::ConnectionType;
 use crate::traft::RaftId;
+use crate::traft::Result;
 use ::tarantool::msgpack::ViaMsgpack;
 use serde::{Deserialize, Serialize};
-use crate::traft::Result;
 use sbroad::executor::engine::Vshard;
 use std::collections::HashMap;
+use std::time::Duration;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
 
-use tarantool::tlua::LuaRead;
 use tarantool::tuple::Tuple;
 
-#[derive(Debug, Clone, Serialize, Deserialize, LuaRead)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdlMapCallRwRes {
     pub uuid: String,
-    pub response: ViaMsgpack<Response>,
+    pub response: Response,
 }
 
+/// This function **yields**
 pub fn ddl_map_callrw(
     tier: &str,
     function_name: &str,
+    rpc_timeout: Duration,
     req: Request,
 ) -> Result<Vec<DdlMapCallRwRes>, Error> {
     let lua = tarantool::lua_state();
@@ -41,18 +43,31 @@ pub fn ddl_map_callrw(
         .get("pico")
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
-    let func: tlua::LuaFunction<_> = pico.try_get("ddl_map_callrw")?;
-    let args = Tuple::new(&req).expect("Request to Tuple conversion failed");
+    let func: tlua::LuaFunction<_> = pico.try_get("_ddl_map_callrw")?;
+    let args = Tuple::new(&req)?;
 
-    func.call_with_args::<Vec<DdlMapCallRwRes>, _>((
-        String::from(tier),
-        String::from(function_name),
-        args,
-    ))
-    .map_err(|e| match e {
-        tlua::CallError::LuaError(lua_error) => Error::from(lua_error),
-        tlua::CallError::PushError(_) => panic!("Push error not ready yet"),
-    })
+    let res_raw = func
+        .call_with_args::<HashMap<String, HashMap<usize, ViaMsgpack<Response>>>, _>((
+            tier,
+            rpc_timeout.as_secs_f64(),
+            function_name,
+            args,
+        ))
+        .map_err(|e| Error::from(tlua::LuaError::from(e)))?;
+    let res = res_raw
+        .into_iter()
+        .map(|(uuid, response_map)| {
+            // `response_map` key is an index in lua table which we should ignore.
+            let response = response_map
+                .into_iter()
+                .next()
+                .expect("Single deserialized map_callrw response should be present")
+                .1
+                 .0;
+            DdlMapCallRwRes { uuid, response }
+        })
+        .collect();
+    Ok(res)
 }
 
 /// This function **never yields**

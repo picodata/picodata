@@ -1691,66 +1691,140 @@ cluster:
             assert table_ids[table_name] == table_id
 
 
-def test_truncate_stops_rebalancing(cluster: Cluster):
-    cluster.set_config_file(
-        yaml="""
-cluster:
-    name: test
-    tier:
-        voter:
-            replication_factor: 1
-            can_vote: true
-        storage:
-            replication_factor: 2
-            can_vote: false
-"""
+def test_truncate_stops_rebalancing_before(cluster: Cluster):
+    # Initially cluster consists of single replicaset.
+    r1 = cluster.deploy(instance_count=1)[0]
+
+    r1.sql("""CREATE TABLE test (id INT PRIMARY KEY)""")
+
+    # Fill table with data.
+    for i in range(10):
+        r1.sql(f"INSERT INTO test VALUES ({i})")
+
+    # Disable rebalancing on the first replicaset.
+    r1.call("vshard.storage.rebalancer_disable")
+
+    # Pause DDL (TRUNCATE) application.
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    r1.call("pico._inject_error", error_injection, True)
+
+    # Add a new replicaset, rebalancing shouldn't start
+    # because being blocked on r1.
+    r2 = cluster.add_instance(wait_online=True)
+
+    lc = log_crawler(r1, injection_log)
+    with pytest.raises(TimeoutError):
+        # Send TRUNCATE request before rebalancing starts.
+        # It should be blocked.
+        r1.sql("TRUNCATE test")
+    lc.wait_matched(timeout=30)
+
+    # Check that all buckets are stored on the r1.
+    # Disable rebalancing on the first replicaset.
+    r1_active_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
+    )["rows"][0][0]
+    assert r1_active_buckets_count == 3000
+
+    # Pause buckets receiving during rebalancing on a r2.
+    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = true")
+
+    # Rebalancer fiber works on a replicaset master with the smallest uuid.
+    rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
+
+    lc = log_crawler(
+        rebalancer_r, "Some buckets are not active, retry rebalancing later"
     )
+    # Enable rebalancing and wakeup it forcibly on the r1.
+    r1.call("vshard.storage.rebalancer_enable")
+    r1.call("vshard.storage.rebalancer_wakeup")
+    # Buckets receiving is paused on r2, check it.
+    lc.wait_matched(timeout=30)
 
-    leader = cluster.add_instance(tier="voter", wait_online=False)
-    storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
-    storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
-    cluster.wait_online()
-    assert storage_1_1.replicaset_name == storage_1_2.replicaset_name
+    # On r1 single bucket should be in a SENDING state.
+    # `rebalancer_max_sending` parameter defines the number of rebalancer workers that
+    # may work in parallel. By default it equals to 1, so buckets should be sending
+    # one by one.
+    r1_active_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
+    )["rows"][0][0]
+    assert r1_active_buckets_count == 2999
+    r1_sending_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'sending'"""
+    )["rows"][0][0]
+    assert r1_sending_buckets_count == 1
 
-    leader.sql(
-        """
-        CREATE TABLE test (id INT PRIMARY KEY)
-        DISTRIBUTED BY (id) IN TIER storage
-        WAIT APPLIED GLOBALLY
-        """
+    # Resume DDL (TRUNCATE) execution.
+    lc = log_crawler(r1, "UNBLOCKING")
+    r1.call("pico._inject_error", error_injection, False)
+    lc.wait_matched(timeout=30)
+
+    # Resume buckets receiving on r2.
+    lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
+    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = false")
+    # Wait for rebalancing to finish.
+    lc.wait_matched()
+
+    # Test that no data is stored in rebalancing routes and that
+    # TRUNCATE was executed successfully.
+    assert r1.sql("SELECT * from test") == []
+
+
+def test_truncate_stops_rebalancing_after(cluster: Cluster):
+    # Tests almost the same scenario as `test_truncate_stops_rebalancing_before`
+    # except that TRUNCATE is called after rebalancing is started. See comments there.
+
+    r1 = cluster.deploy(instance_count=1)[0]
+
+    r1.sql("""CREATE TABLE test (id INT PRIMARY KEY)""")
+
+    for i in range(10):
+        r1.sql(f"INSERT INTO test VALUES ({i})")
+
+    r1.call("vshard.storage.rebalancer_disable")
+
+    r2 = cluster.add_instance(wait_online=True)
+
+    r1_active_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
+    )["rows"][0][0]
+    assert r1_active_buckets_count == 3000
+
+    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = true")
+
+    rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
+
+    lc = log_crawler(
+        rebalancer_r, "Some buckets are not active, retry rebalancing later"
     )
+    r1.call("vshard.storage.rebalancer_enable")
+    r1.call("vshard.storage.rebalancer_wakeup")
+    lc.wait_matched(timeout=30)
 
-    for i in range(100):
-        leader.sql(f"INSERT INTO test VALUES ({i})")
+    r1_active_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
+    )["rows"][0][0]
+    assert r1_active_buckets_count == 2999
+    r1_sending_buckets_count = r1.call(
+        "box.execute", """select count(*) from "_bucket" where "status" = 'sending'"""
+    )["rows"][0][0]
+    assert r1_sending_buckets_count == 1
 
-    # Send TRUNCATE request before rebalancing starts.
-    leader.sql("TRUNCATE test")
-    # Add a new replicaset, rebalancing process should start.
-    storage_2_1 = cluster.add_instance(tier="storage", wait_online=True)
-    storage_2_2 = cluster.add_instance(tier="storage", wait_online=True)
-    assert storage_2_1.replicaset_name != storage_1_1.replicaset_name
-    assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
+    with pytest.raises(TimeoutError):
+        # Execute TRUNCATE while rebalancing is in progress.
+        # If fails because rebalancer has refed storages.
+        r1.sql("TRUNCATE test")
 
-    def check_table_is_empty(peer):
-        # Test that no data is stored in rebalancing routes and that
-        # TRUNCATE was executed successfully.
-        assert peer.sql("SELECT * from test") == []
+    lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
+    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = false")
+    lc.wait_matched()
 
-    # We have to wait until rebalancing is over.
-    Retriable(timeout=10).call(check_table_is_empty, leader)
+    # Execute TRUNCATE after rebalancing is finished.
+    ddl = r1.sql("TRUNCATE test")
+    assert ddl["row_count"] == 1
 
-    # Refill table.
-    for i in range(100):
-        leader.sql(f"INSERT INTO test VALUES ({i})")
-
-    # Send TRUNCATE request after rebalancing starts.
-    storage_3_1 = cluster.add_instance(tier="storage", wait_online=True)
-    storage_3_2 = cluster.add_instance(tier="storage", wait_online=True)
-    assert storage_3_1.replicaset_name != storage_1_1.replicaset_name
-    assert storage_3_1.replicaset_name == storage_3_2.replicaset_name
-    leader.sql("TRUNCATE test")
-    # We have to wait until rebalancing is over.
-    Retriable(timeout=15).call(check_table_is_empty, leader)
+    assert r1.sql("SELECT * from test") == []
 
 
 def test_truncate_deals_with_aba_problem(cluster: Cluster):
@@ -1765,15 +1839,30 @@ def test_truncate_deals_with_aba_problem(cluster: Cluster):
     assert ddl["row_count"] == 1
     ddl = i2.sql("DROP TABLE t")
     assert ddl["row_count"] == 1
-    # Create new table with the same name as previous.
+    # Create new table with the same name and format as previous.
     ddl = i2.sql("CREATE TABLE t (id INT PRIMARY KEY)")
     assert ddl["row_count"] == 1
-    dml = i1.sql("INSERT INTO t values (1), (2), (3)")
+    dml = i1.sql("INSERT INTO t values (4), (5), (6)")
     assert dml["row_count"] == 3
+
     # Local TRUNCATE is executed in parallel with other DDL operations.
     # We should test that it doesn't touch newly created table and its data.
     data = i1.sql("SELECT * from t")
-    assert data == [[1], [2], [3]]
+    assert data == [[4], [5], [6]]
+
+    # Check that on leader operations were executed in the order above.
+    i1.assert_raft_status("Leader")
+    raft_log_rows = i1.call("box.execute", """ select * from "_raft_log" """)["rows"]
+    ops = []
+    for row in raft_log_rows:
+        context = row[4]
+        if context is None or context[0] != "ddl_prepare":
+            continue
+        ops.append(context[2])
+    assert ops[0][0] == "create_table"
+    assert ops[1][0] == "truncate_table"
+    assert ops[2][0] == "drop_table"
+    assert ops[3][0] == "create_table"
 
 
 def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
@@ -1812,9 +1901,8 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
     rows_to_insert_number = 10
     for i in range(rows_to_insert_number):
         i1.sql(f"INSERT INTO t VALUES ({i})")
-    assert [[i] for i in range(rows_to_insert_number)] == sorted(
-        i1.sql("SELECT * FROM t")
-    )
+    dql = i1.sql("SELECT * FROM t")
+    assert [[i] for i in range(rows_to_insert_number)] == sorted(dql)
 
     # Put i2 to sleep.
     i2.terminate()
@@ -1835,8 +1923,6 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
 
     # Wait until the schema change is finalized.
     Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
-    t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
-    assert t_is_opearable[0][0]
 
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM t")
@@ -1851,7 +1937,8 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     rows_to_insert_number = 10
     for i in range(rows_to_insert_number):
         i1.sql(f"INSERT INTO gt VALUES ({i})")
-    assert [[i] for i in range(rows_to_insert_number)] == i1.sql("SELECT * FROM gt")
+    dql = i1.sql("SELECT * FROM gt")
+    assert [[i] for i in range(rows_to_insert_number)] == dql
 
     # Put i2 to sleep.
     i2.terminate()
@@ -1873,9 +1960,74 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
     # Wait until the schema change is finalized.
     Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
 
-    gt_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
-    assert gt_is_opearable[0][0]
-
     # Check that data was erased by TRUNCATE.
     data = i1.sql("SELECT * FROM gt")
     assert data == []
+
+
+def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    ddl = i1.sql("CREATE TABLE t(a int primary key)")
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7)")
+    assert dml["row_count"] == 7
+
+    # Check i2 contains data.
+    i2_rows = i2.call("box.execute", 'select * from "t"')
+    assert len(i2_rows) != 0
+
+    # i2 goes sleeping.
+    i2.terminate()
+
+    with pytest.raises(TimeoutError):
+        i1.sql("TRUNCATE t")
+
+    # Compact the log to trigger snapshot applying on the catching up instance.
+    i1.raft_compact_log()
+    i3.raft_compact_log()
+
+    # i2 wakes up.
+    i2.start()
+    i2.wait_online()
+
+    # # Wait until the schema change is finalized.
+    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
+    t_is_opearable = i1.sql("select operable from _pico_table where name = 't'")
+    assert t_is_opearable[0][0]
+
+    dql = i1.sql("SELECT * FROM t")
+    assert dql == []
+
+
+def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    ddl = i1.sql("CREATE TABLE gt(a int primary key) distributed globally")
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("INSERT INTO gt VALUES (1)")
+    assert dml["row_count"] == 1
+
+    # i2 goes sleeping.
+    i2.terminate()
+
+    with pytest.raises(TimeoutError):
+        i1.sql("TRUNCATE gt")
+
+    # Compact the log to trigger snapshot applying on the catching up instance.
+    i1.raft_compact_log()
+    i3.raft_compact_log()
+
+    # i2 wakes up.
+    i2.start()
+    i2.wait_online()
+
+    # Wait until the schema change is finalized.
+    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i2)
+    t_is_opearable = i1.sql("select operable from _pico_table where name = 'gt'")
+    assert t_is_opearable[0][0]
+
+    dql = i1.sql("SELECT * FROM gt")
+    assert dql == []

@@ -13,6 +13,7 @@ use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetName};
 use crate::rpc;
 use crate::rpc::update_instance::prepare_update_instance_cas_request;
+use crate::schema::TableDef;
 use crate::schema::{
     PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
 };
@@ -24,6 +25,7 @@ use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::IdOfInstance;
+use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
 #[allow(unused_imports)]
@@ -35,6 +37,7 @@ use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use tarantool::space::SpaceId;
 use tarantool::vclock::Vclock;
 
 #[allow(clippy::too_many_arguments)]
@@ -50,7 +53,8 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     tiers: &HashMap<&str, &'i Tier>,
     my_raft_id: RaftId,
-    has_pending_schema_change: bool,
+    pending_schema_change: Option<Ddl>,
+    tables: &HashMap<SpaceId, &'i TableDef>,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
@@ -647,14 +651,27 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // ddl
-    if has_pending_schema_change {
-        let targets = rpc::replicasets_masters(replicasets, instances);
+    if let Some(ddl) = pending_schema_change {
+        let targets: Vec<(&InstanceName, &String)> =
+            rpc::replicasets_masters(replicasets, instances);
         let rpc = rpc::ddl_apply::Request {
             term,
             applied,
             timeout: sync_timeout,
         };
-        return Ok(ApplySchemaChange { rpc, targets }.into());
+
+        let tier = if let Ddl::TruncateTable { id, .. } = ddl {
+            let space = tables.get(&id).expect("failed to get space");
+            match &space.distribution {
+                crate::schema::Distribution::Global => None,
+                crate::schema::Distribution::ShardedImplicitly { tier, .. }
+                | crate::schema::Distribution::ShardedByField { tier, .. } => Some(tier),
+            }
+        } else {
+            None
+        };
+
+        return Ok(ApplySchemaChange { tier, rpc, targets }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1196,6 +1213,7 @@ pub mod stage {
         }
 
         pub struct ApplySchemaChange<'i> {
+            pub tier: Option<&'i String>,
             /// These are masters of all the replicasets in the cluster
             /// (their instance names with corresponding tier names).
             pub targets: Vec<(&'i InstanceName, &'i String)>,

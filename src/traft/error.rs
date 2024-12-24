@@ -9,7 +9,6 @@ use tarantool::error::IntoBoxError;
 use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::fiber::r#async::timeout;
 use tarantool::tlua::LuaError;
-use tarantool::tlua::{self, LuaRead};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -302,7 +301,7 @@ impl IntoBoxError for Error {
 /// This is a serializable version of [`BoxError`].
 ///
 /// TODO<https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/221> just make BoxError serializable.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, LuaRead)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ErrorInfo {
     pub error_code: u32,
     pub message: String,

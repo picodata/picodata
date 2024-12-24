@@ -13,7 +13,7 @@ const USER_NODE: &str = "default";
 const X_NODE_ID: &str = "0.0.0";
 const MODULE: &str = "picodata";
 const METAMODEL_VERSION: &str = "0.1.0";
-const EVENT_TYPES: [&str; 35] = [
+const EVENT_TYPES: &[&str] = &[
     "access_denied",
     "auth_fail",
     "auth_ok",

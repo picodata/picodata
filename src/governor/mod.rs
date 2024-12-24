@@ -36,10 +36,8 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
-use crate::traft::node;
 use crate::traft::node::global;
 use crate::traft::node::Status;
-use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
@@ -135,7 +133,12 @@ impl Loop {
             .properties
             .pending_schema_change()
             .expect("storage should never fail");
-        let has_pending_schema_change = pending_schema_change.is_some();
+        let tables: Vec<_> = storage
+            .tables
+            .iter()
+            .expect("storage should never fail")
+            .collect();
+        let tables: HashMap<_, _> = tables.iter().map(|t| (t.id, t)).collect();
 
         let plugins: HashMap<_, _> = storage
             .plugins
@@ -175,7 +178,8 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
-            has_pending_schema_change,
+            pending_schema_change,
+            &tables,
             &plugins,
             &services,
             plugin_op.as_ref(),
@@ -602,36 +606,15 @@ impl Loop {
                 }
             }
 
-            Plan::ApplySchemaChange(ApplySchemaChange { targets, rpc }) => {
+            Plan::ApplySchemaChange(ApplySchemaChange { tier, targets, rpc }) => {
                 set_status!("apply clusterwide schema change");
                 let mut next_op = Op::Nop;
                 governor_step! {
                     "applying pending schema change"
                     async {
-                        let node = node::global()
-                            .expect("shouldn't be called before node is initialized");
-                        let storage = &node.storage;
-                        let ddl = storage.properties
-                            .pending_schema_change()
-                            .expect("conversion should not fail")
-                            .expect("pending schema change should exist");
-
-                        let tier = if let Ddl::TruncateTable { id, .. } = ddl {
-                            let space_raw = storage.tables.get(id);
-                            let space = space_raw.ok().flatten().expect("failed to get space");
-                            match space.distribution {
-                                crate::schema::Distribution::Global => None,
-                                crate::schema::Distribution::ShardedImplicitly { tier, .. }
-                                | crate::schema::Distribution::ShardedByField { tier, .. } => Some(tier),
-                            }
-                        } else {
-                            None
-                        };
-
-                        if tier.is_some() {
+                        if let Some(tier) = tier {
                             // Case of TRUNCATE on sharded tables.
-                            let tier = tier.unwrap();
-                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc);
+                            let map_callrw_res = vshard::ddl_map_callrw(tier, proc_name!(proc_apply_schema_change), rpc_timeout, rpc);
 
                             let proc_rpc_res_vec = match map_callrw_res {
                                 Ok(proc_rpc_res_vec) => proc_rpc_res_vec,
@@ -642,23 +625,23 @@ impl Loop {
                                 }
                             };
 
-                            let expected_tier_masters_len = targets.iter().filter(|(_, tier_name)| tier_name == &&tier).count();
-                            if proc_rpc_res_vec.len() < expected_tier_masters_len {
+                            let expected_tier_masters_num = targets.iter().filter(|(_, tier_name)| tier_name == &tier).count();
+                            let actual_tier_masters_num = proc_rpc_res_vec.len();
+                            if actual_tier_masters_num != expected_tier_masters_num {
                                 // Some of the replicasets' masters went down so we've executed our
                                 // `proc_apply_schema_change` only on some of them. Have to retry the query.
-                                //
-                                // It's okay if some masters were added during TRUNCATE execution.
                                 tlog!(
                                     Error,
                                     "failed to execute map_callrw for TRUNCATE: some masters are down";
-                                    "expected" => %expected_tier_masters_len,
-                                    "actual" => %(proc_rpc_res_vec.len())
+                                    "expected" => %expected_tier_masters_num,
+                                    "actual" => %actual_tier_masters_num
                                 );
-                                // TODO: Should change error?
-                                return Err(Error::Timeout)
+                                return Err(Error::other(
+                                    format!("failed to execute map_callrw for TRUNCATE: expected {expected_tier_masters_num} masters, got {actual_tier_masters_num}")
+                                ))
                             }
                             for res in proc_rpc_res_vec {
-                                match res.response.0 {
+                                match res.response {
                                     rpc::ddl_apply::Response::Ok => {},
                                     rpc::ddl_apply::Response::Abort { .. } => {
                                         panic!("TRUNCATE can't cause Abort on `proc_apply_schema_change` call")
@@ -693,7 +676,7 @@ impl Loop {
                                     }
                                 });
                             }
-    
+
                         let res = try_join_all(fs).await;
                             if let Err(OnError::Abort(cause)) = res {
                                 next_op = Op::DdlAbort { cause };

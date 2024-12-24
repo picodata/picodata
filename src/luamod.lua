@@ -66,26 +66,15 @@ end
 
 pico.get_router_for_tier = get_router_for_tier
 
-function pico.ddl_map_callrw(tier, function_name, args)
+function pico._ddl_map_callrw(tier, timeout, function_name, args)
     local router = get_router_for_tier(tier)
-    
+
     -- Default timeout is 0.5 seconds.
-    local res, err, uuid = router:map_callrw(function_name, args, { timeout = 2 })
+    local res, err, uuid = router:map_callrw(function_name, args, { timeout = timeout })
     if not res then
         error(err)
     else
-        local res_vec = {}
-        for uuid, response_table in pairs(res) do
-            for _, response in pairs(response_table) do
-                -- Table key is an index which would be incorrecly deserialized
-                -- and wthich we should skip
-                local response_pair = {}
-                response_pair.uuid = uuid
-                response_pair.response = response
-                table.insert(res_vec, response_pair)
-            end
-        end
-        return res_vec
+        return res
     end
 end
 
