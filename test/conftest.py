@@ -43,13 +43,16 @@ from tarantool.error import (  # type: ignore
 from multiprocessing import Process, Queue
 from pathlib import Path
 
+from framework import ldap
 from framework.log import log
+from framework.constants import BASE_HOST
+from framework.port_distributor import PortDistributor
+
 
 # From raft.rs:
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
-BASE_HOST = "127.0.0.1"
 PORT_RANGE = 400
 METRICS_PORT = 7500
 
@@ -57,10 +60,6 @@ MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
 
 CLI_TIMEOUT = 10  # seconds
-
-IPROTO_DEFAULT_PORT = 3301
-HTTP_DEFAULT_PORT = 8080
-PGPROTO_DEFAULT_PORT = 4327
 
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
@@ -154,31 +153,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         for item in items:
             if "webui" in item.keywords:
                 item.add_marker(skip)
-
-
-def can_bind(port):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-        try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((BASE_HOST, port))
-        except socket.error:
-            eprint(f"Cant bind to {port}. Skipping")
-            return False
-        return True
-
-
-class PortDistributor:
-    def __init__(self, start: int, end: int) -> None:
-        self.gen = iter(range(start, end))
-
-    def get(self) -> int:
-        for port in self.gen:
-            if can_bind(port):
-                return port
-
-        raise Exception(
-            "No more free ports left in configured range, consider enlarging it"
-        )
 
 
 @pytest.fixture(scope="session")
@@ -2704,3 +2678,19 @@ class Compatibility:
             sys.exit(-1)
         else:
             return (prev_tag, prev_path)
+
+
+@pytest.fixture
+def ldap_server(
+    cluster: Cluster, port_distributor: PortDistributor
+) -> Generator[ldap.LdapServer, None, None]:
+    server = ldap.configure_ldap_server(
+        username="ldapuser",
+        password="ldappass",
+        instance_dir=cluster.instance_dir,
+        port=port_distributor.get(),
+    )
+
+    yield server
+
+    server.process.kill()

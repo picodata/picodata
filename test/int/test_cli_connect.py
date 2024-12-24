@@ -1,12 +1,9 @@
 import pexpect  # type: ignore
 import pytest
-import subprocess
-import hashlib
-import socket
-import time
 import sys
 from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
-from dataclasses import dataclass
+
+from framework.ldap import is_glauth_available, LdapServer
 
 
 @pytest.fixture
@@ -212,121 +209,50 @@ def test_connect_auth_type_md5(i1: Instance):
     cli.expect_exact("sql> ")
 
 
-@dataclass
-class LDAPServerState:
-    host: str
-    port: int
-    process: subprocess.Popen
-
-
-def is_glauth_available():
-    try:
-        subprocess.Popen(["glauth", "--version"])
-    except Exception:
-        return False
-
-    return True
-
-
-def configure_ldap_server(username, password, instance_dir) -> LDAPServerState:
-    subprocess.Popen(["glauth", "--version"])
-
-    LDAP_SERVER_HOST = "127.0.0.1"
-    LDAP_SERVER_PORT = 1389
-
-    ldap_cfg_path = f"{instance_dir}/ldap.cfg"
-    with open(ldap_cfg_path, "x") as f:
-        password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
-        f.write(
-            f"""
-            [ldap]
-                enabled = true
-                listen = "{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"
-
-            [ldaps]
-                enabled = false
-
-            [backend]
-                datastore = "config"
-                baseDN = "dc=example,dc=org"
-
-            [[users]]
-                name = "{username}"
-                uidnumber = 5001
-                primarygroup = 5501
-                passsha256 = "{password_sha256}"
-                    [[users.capabilities]]
-                        action = "search"
-                        object = "*"
-
-            [[groups]]
-                name = "ldapgroup"
-                gidnumber = 5501
-        """
-        )
-
-    process = subprocess.Popen(["glauth", "-c", ldap_cfg_path], stdout=subprocess.PIPE)
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    deadline = time.time() + 3
-
-    while deadline > time.time():
-        try:
-            sock.connect((LDAP_SERVER_HOST, LDAP_SERVER_PORT))
-            break
-        except ConnectionRefusedError:
-            time.sleep(0.1)
-
-    return LDAPServerState(
-        host=LDAP_SERVER_HOST, port=LDAP_SERVER_PORT, process=process
-    )
-
-
 @pytest.mark.skipif(
     not is_glauth_available(),
     reason=("need installed glauth"),
 )
-def test_connect_auth_type_ldap(cluster: Cluster):
-    username = "ldapuser"
-    password = "ldappass"
+def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
+    #
+    # Configure the instance
+    #
 
-    ldap_server = configure_ldap_server(username, password, cluster.instance_dir)
-    try:
-        #
-        # Configure the instance
-        #
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
+    i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    i1.start()
+    i1.wait_online()
 
-        i1 = cluster.add_instance(wait_online=False)
-        i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
-        i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
-        i1.start()
-        i1.wait_online()
+    i1.sql(
+        f"""
+            CREATE USER "{ldap_server.user}" PASSWORD '{ldap_server.password}' USING ldap
+        """
+    )
 
-        i1.sql(
-            f"""
-                CREATE USER "{username}" PASSWORD '{password}' USING ldap
-            """
-        )
+    #
+    # Try connecting
+    #
 
-        #
-        # Try connecting
-        #
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=[
+            "connect",
+            f"{i1.host}:{i1.port}",
+            "-u",
+            ldap_server.user,
+            "-a",
+            "ldap",
+        ],
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    cli.logfile = sys.stdout
 
-        cli = pexpect.spawn(
-            command=i1.binary_path,
-            args=["connect", f"{i1.host}:{i1.port}", "-u", username, "-a", "ldap"],
-            encoding="utf-8",
-            timeout=CLI_TIMEOUT,
-        )
-        cli.logfile = sys.stdout
+    cli.expect_exact(f"Enter password for {ldap_server.user}: ")
+    cli.sendline(ldap_server.password)
 
-        cli.expect_exact(f"Enter password for {username}: ")
-        cli.sendline(password)
-
-        cli.expect_exact("sql> ")
-
-    finally:
-        ldap_server.process.kill()
+    cli.expect_exact("sql> ")
 
 
 def test_connect_auth_type_unknown(binary_path_fixt: str):
