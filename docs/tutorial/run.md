@@ -32,6 +32,7 @@ picodata run
 - рабочую директорию ([`--instance-dir`])
 - сетевой адрес ([`--listen`])
 - адрес одного или нескольких соседних инстансов ([`--peer`])
+- адрес сервера PostgreSQL ([`--pg-listen`])
 
 Полный перечень возможных параметров запуска и их
 описание содержатся в разделе [Аргументы командной строки], а также в
@@ -43,11 +44,11 @@ picodata run
 выполните в двух соседних терминалах следующие команды:
 
 ```shell
-picodata run --instance-dir ./data/i1 --listen 127.0.0.1:3301
+picodata run --instance-dir ./data/i1 --listen 127.0.0.1:3301 --pg-listen 127.0.0.1:5432
 ```
 
 ```shell
-picodata run --instance-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
+picodata run --instance-dir ./data/i2 --listen 127.0.0.1:3302 --pg-listen 127.0.0.1:5433 --peer 127.0.0.1:3301
 ```
 
 Обратите внимание на различия в запуске инстансов:
@@ -60,6 +61,7 @@ picodata run --instance-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3
 [`--instance-dir`]: ../reference/cli.md#run_instance_dir
 [`--listen`]: ../reference/cli.md#run_listen
 [`--peer`]: ../reference/cli.md#run_peer
+[`--pg-listen`]: ../reference/cli.md#run_pg_listen
 
 Читайте далее:
 

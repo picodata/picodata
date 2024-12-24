@@ -111,6 +111,7 @@
     export PICODATA_INSTANCE_NAME="i2"
     export PICODATA_INSTANCE_DIR="./data/my_cluster/i2"
     export PICODATA_LISTEN="127.0.0.1:3302"
+    export PICODATA_PG_LISTEN="127.0.0.1:5433"
 
     picodata run
     ```
@@ -124,6 +125,7 @@
     export PICODATA_INSTANCE_NAME="i3"
     export PICODATA_INSTANCE_DIR="./data/my_cluster/i3"
     export PICODATA_LISTEN="127.0.0.1:3303"
+    export PICODATA_PG_LISTEN="127.0.0.1:5434"
 
     picodata run
     ```
@@ -137,6 +139,7 @@
     export PICODATA_INSTANCE_NAME="i4"
     export PICODATA_INSTANCE_DIR="./data/my_cluster/i4"
     export PICODATA_LISTEN="127.0.0.1:3304"
+    export PICODATA_PG_LISTEN="127.0.0.1:5435"
 
     picodata run
     ```
@@ -260,6 +263,7 @@ compute и storage. Создайте отдельные файлы конфиг�
     export PICODATA_INSTANCE_NAME="storage_1"
     export PICODATA_INSTANCE_DIR="./data/multi_tier_cluster/storage_1"
     export PICODATA_LISTEN="127.0.0.1:3302"
+    export PICODATA_PG_LISTEN="127.0.0.1:5433"
 
     picodata run
     ```
@@ -273,6 +277,7 @@ compute и storage. Создайте отдельные файлы конфиг�
     export PICODATA_INSTANCE_NAME="storage_2"
     export PICODATA_INSTANCE_DIR="./data/multi_tier_cluster/storage_2"
     export PICODATA_LISTEN="127.0.0.1:3303"
+    export PICODATA_PG_LISTEN="127.0.0.1:5434"
 
     picodata run
     ```

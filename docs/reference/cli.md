@@ -321,6 +321,8 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 Адрес сервера для подключения по протоколу
 [PostgreSQL](../tutorial/connecting.md#pgproto).
 
+Значение по умолчанию: `127.0.0.1:4327`
+
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
 Аналогичный параметр файла конфигурации: [`instance.pg.listen`]
 

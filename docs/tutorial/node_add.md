@@ -95,6 +95,7 @@
     export PICODATA_INSTANCE_NAME="storage_3"
     export PICODATA_INSTANCE_DIR="./data/multi_tier_cluster/storage_3"
     export PICODATA_LISTEN="127.0.0.1:3304"
+    export PICODATA_PG_LISTEN="127.0.0.1:5435"
 
     picodata run
     ```

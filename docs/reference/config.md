@@ -84,7 +84,7 @@ instance:
   iproto:
     max_concurrent_messages: 768 # (12)!
   pg:
-    listen: null # (21)!
+    listen: 127.0.0.1:4327 # (21)!
     ssl: false # (22)!
 ```
 
@@ -528,7 +528,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `null`
+* Значение по умолчанию: `127.0.0.1:4327`
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
 Аналогичная команда: [`picodata run --pg-listen`]
