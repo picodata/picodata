@@ -90,7 +90,7 @@ crate::define_rpc_request! {
                 "vshard = require('vshard')
                 local tier_name, cfg = ...
                 local router = pico.router[tier_name]
-                if router ~= null then
+                if router ~= nil then
                     router:cfg(cfg)
                 else
                     pico.router[tier_name] = vshard.router.new(tier_name, cfg)
