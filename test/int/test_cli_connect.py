@@ -600,38 +600,35 @@ def test_connect_timeout(cluster: Cluster):
         cli.logfile = sys.stdout
         return cli
 
+    # The main purpose of tests below is to show that connection
+    # to non-existent address:
+    # * won't crash and result in panic and
+    # * will end up with timeout or error.
+    #
+    # Expected error message pattern is selected to be general
+    # specifically to cover all possible error. E.g.:
+    # * timeout error
+    # * connection refused (os error 111)
+    # * no route to host (os error 113)
+    # * many others that depend on your/CI network settings and
+    #   which we don't want to list here
+
     cli = connect_to("100")
-
-    if sys.platform == "darwin":
-        cli.expect_exact(
-            "Connection Error. Try to reconnect: failed to connect to address '100:3301': "
-            "No route to host (os error 65)"
-        )
-    else:
-        cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
-
+    cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1")
-
-    if sys.platform == "darwin":
-        cli.expect_exact(
-            "Connection Error. Try to reconnect: failed to connect to address '192.168.0.1:3301': "
-            "Connection refused (os error 61)"
-        )
-    else:
-        cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
-
+    cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002")
-    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002", timeout=CLI_TIMEOUT)
-    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1", timeout=0)
-    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
