@@ -428,6 +428,8 @@ impl Loop {
                 governor_step! {
                     "configuring replication"
                     async {
+                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL");
+
                         let mut fs = vec![];
                         let mut rpc = rpc::replication::ConfigureReplicationRequest {
                             term,

@@ -794,3 +794,36 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     i1.start()
     i1.wait_online()
     assert not lc.matched
+
+
+def test_stale_governor_replication_requests(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i2 = cluster.add_instance(wait_online=False)
+
+    governor_message = "configuring replication"
+    lc = log_crawler(i1, governor_message)
+
+    cluster.wait_online()
+
+    initial_term = i1.raft_term()
+
+    # inject an error to cause a timeout during synchronization before promotion
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", True)
+
+    # promote i2 to master
+    i2.promote_or_fail()
+
+    new_term = i2.raft_term()
+    assert new_term > initial_term, "Term should increase after new leader election"
+
+    # verify that i1 logs the replication configuration attempt
+    lc.wait_matched(timeout=10)
+
+    # remove the injected error that caused the synchronization timeout
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", False)
+
+    def check_replication():
+        i1.assert_raft_status("Follower")
+        i2.assert_raft_status("Leader")
+
+    Retriable(timeout=10).call(check_replication)
