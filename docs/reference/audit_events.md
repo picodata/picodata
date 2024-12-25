@@ -456,6 +456,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "severity": "low",
      "instance_name": ...,
      "raft_id": ...,
+     "picodata_version": ...,
      ...
 }
 ```
