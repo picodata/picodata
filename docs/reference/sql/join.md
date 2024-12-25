@@ -209,7 +209,7 @@ ON items.name = orders.item;
 своим колонкам "id":
 
 ```sql
-picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+sql> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.id = orders.id;
@@ -236,7 +236,7 @@ vtable_max_rows = 5000
 "orders" — по какой-то другой колонке:
 
 ```sql
-picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+sql> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.id = orders.id;
@@ -265,7 +265,7 @@ vtable_max_rows = 5000
 том, что обе таблицы распределены только по `id`:
 
 ```sql
-picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+sql> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.name = orders.item;
@@ -286,7 +286,7 @@ vtable_max_rows = 5000
 Также, при использовании математических выражений или литералов, перемещение всегда будет полным:
 
 ```sql
-picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+sql> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.id > 2;
@@ -305,7 +305,7 @@ vtable_max_rows = 5000
 ```
 
 ```sql
-picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+sql> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON TRUE;

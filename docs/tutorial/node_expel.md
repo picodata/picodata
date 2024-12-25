@@ -52,7 +52,7 @@ picodata expel <INSTANCE_UUID>
 Узнать идентификатор можно из системной таблицы [`_pico_instance`]:
 
 ```sql
-picodata> SELECT "name","uuid" FROM _pico_instance;
+(admin) sql> SELECT "name","uuid" FROM _pico_instance;
 +------+----------------------------------------+
 | name | uuid                                   |
 +===============================================+

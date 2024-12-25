@@ -433,7 +433,7 @@ picodata admin <PATH>
 $ picodata admin ./admin.socket
 Connected to admin console by socket path "admin.socket"
 type '\help' for interactive help
-picodata>
+(admin) sql>
 ```
 
 <!-- ********************************************************************** -->
@@ -489,7 +489,7 @@ $ picodata connect alice@127.0.0.1:3301;
 Enter password for alice:
 Connected to interactive console by address "127.0.0.1:3301" under "alice" user
 type '\help' for interactive help
-picodata>
+sql>
 ```
 
 ### -a, --auth-type {: #connect_auth_type }
@@ -529,7 +529,7 @@ picodata>
 [pico.cas()](api.md#pico.cas), например, так:
 
 ```lua
-picodata> pico.cas({
+(admin) lua> pico.cas({
     kind = 'replace',
     table = '_pico_property',
     tuple = {'max_login_attempts', 6},

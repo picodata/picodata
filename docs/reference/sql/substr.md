@@ -29,7 +29,7 @@
 ## Примеры {: #examples }
 
 ```title="Запрос VALUES с функцией SUBSTR и параметром <i>from</i>"
-picodata> VALUES ( SUBSTR('picodata', 3) );
+sql> VALUES ( SUBSTR('picodata', 3) );
 +----------+
 | COLUMN_1 |
 +==========+
@@ -40,7 +40,7 @@ picodata> VALUES ( SUBSTR('picodata', 3) );
 ```
 
 ```title="Запрос VALUES с функцией SUBSTR и параметрами <i>from</i> и <i>count</i>"
-picodata> VALUES ( SUBSTR('picodata', 3, 4) );
+sql> VALUES ( SUBSTR('picodata', 3, 4) );
 +----------+
 | COLUMN_1 |
 +==========+

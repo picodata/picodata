@@ -212,11 +212,11 @@ picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 
 $ picodata admin i1/admin.socket
 Connected to admin console by socket path "i1/admin.socket"
 type '\help' for interactive help
-picodata> CREATE PLUGIN weather_cache 0.1.0;
+(admin) sql> CREATE PLUGIN weather_cache 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 1
 ```
 
@@ -230,9 +230,9 @@ I started with config: ()
 Попробуем выключить и удалить плагин:
 
 ```sql
-picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 1
-picodata> DROP PLUGIN weather_cache 0.1.0;
+(admin) sql> DROP PLUGIN weather_cache 0.1.0;
 1
 ```
 
@@ -305,20 +305,20 @@ cp 0001_weather.sql build/weather_cache/0.1.0
 $ picodata admin i1/admin.socket
 Connected to admin console by socket path "i1/admin.socket"
 type '\help' for interactive help
-picodata> CREATE PLUGIN weather_cache 0.1.0;
+(admin) sql> CREATE PLUGIN weather_cache 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 1
-picodata> ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
+(admin) sql> ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 1
 ```
 
 Убедимся, что была создана таблица `weather`:
 
 ```sql
-picodata> SELECT * FROM weather;
+(admin) sql> SELECT * FROM weather;
 
 +----+----------+-----------+-------------+
 | id | latitude | longitude | temperature |
@@ -331,16 +331,16 @@ picodata> SELECT * FROM weather;
 миграциями таблицы:
 
 ```sql
-picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
+(admin) sql> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 1
-picodata> DROP PLUGIN weather_cache 0.1.0 WITH DATA;
+(admin) sql> DROP PLUGIN weather_cache 0.1.0 WITH DATA;
 1
 ```
 
 Убедимся в успешности `DOWN`-миграции:
 
 ```sql
-picodata> SELECT * FROM weather;
+(admin) sql> SELECT * FROM weather;
 sbroad: table with name "weather" not found
 ```
 

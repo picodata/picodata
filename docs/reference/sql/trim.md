@@ -34,7 +34,7 @@
 ## Примеры {: #examples }
 
 ```sql title="Запрос SELECT"
-picodata> SELECT item FROM warehouse;
+sql> SELECT item FROM warehouse;
 +----------+
 | ITEM     |
 +==========+
@@ -51,7 +51,7 @@ picodata> SELECT item FROM warehouse;
 ```
 
 ```sql title="Запрос SELECT с функцией TRIM"
-picodata> SELECT TRIM(TRAILING 's' FROM item) FROM warehouse;
+sql> SELECT TRIM(TRAILING 's' FROM item) FROM warehouse;
 +---------+
 | COL_1   |
 +=========+

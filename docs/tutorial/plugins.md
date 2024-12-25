@@ -135,7 +135,7 @@ CREATE PLUGIN weather_cache 0.1.0;
 В таблице [`_pico_plugin`] со списком добавленных плагинов:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin;
+(admin) sql> SELECT * FROM _pico_plugin;
 +-------------+---------+-------------+---------+-------------+------------+
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |
@@ -153,7 +153,7 @@ picodata> SELECT * FROM _pico_plugin;
 В таблице [`_pico_plugin_config`] с конфигурацией сервисов плагина:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin_config;
+(admin) sql> SELECT * FROM _pico_plugin_config;
 +-----------------+---------+-------------------+------------------+-------+
 | plugin          | version | entity            | key              | value |
 +==========================================================================+
@@ -167,7 +167,7 @@ picodata> SELECT * FROM _pico_plugin_config;
 привязки к [тиру][tier]):
 
 ```sql
-picodata> SELECT * FROM _pico_service;
+(admin) sql> SELECT * FROM _pico_service;
 +-----------------+-------------------+---------+-------+------------------+
 | plugin_name     | name              | version | tiers | description      |
 +==========================================================================+
@@ -195,7 +195,7 @@ ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 Успешная миграция означает, что в БД появилась новая таблица `weather`:
 
 ```sql
-picodata> SELECT * FROM weather;
+(admin) sql> SELECT * FROM weather;
 +----+----------+-----------+-------------+
 | id | latitude | longitude | temperature |
 +=========================================+
@@ -223,7 +223,7 @@ ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 появится привязка сервиса к указанному тиру:
 
 ```sql
-picodata> SELECT * FROM _pico_service;
+(admin) sql> SELECT * FROM _pico_service;
 +----------------+----------------+---------+-------------+----------------+
 | plugin_name    | name           | version | tiers       | description    |
 +==========================================================================+
@@ -253,7 +253,7 @@ ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 [`_pico_plugin`] установится значение `true`:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin;
+(admin) sql> SELECT * FROM _pico_plugin;
 +-------------+---------+-------------+---------+-------------+------------+
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |

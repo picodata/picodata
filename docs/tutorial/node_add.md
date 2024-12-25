@@ -146,7 +146,7 @@ run`](../reference/cli.md#run).
 таблице [`_pico_instance`] в состоянии `Online`:
 
 ```sql
-picodata> SELECT "name","current_state" FROM _pico_instance;
+(admin) sql> SELECT "name","current_state" FROM _pico_instance;
 +-------------+---------------+
 | name        | current_state |
 +=============================+

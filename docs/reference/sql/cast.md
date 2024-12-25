@@ -47,7 +47,7 @@ SELECT "score" FROM "scoring";
 Преобразуем тип значений из колонки `score` в INT с помощью функции `CAST`:
 
 ```sql
-picodata> SELECT CAST("score" AS INT) FROM "scoring";
+sql> SELECT CAST("score" AS INT) FROM "scoring";
 +-------+
 | COL_1 |
 +=======+
@@ -64,7 +64,7 @@ picodata> SELECT CAST("score" AS INT) FROM "scoring";
 двойное двоеточие:
 
 ```sql
-picodata> SELECT "score"::INT FROM "scoring";
+sql> SELECT "score"::INT FROM "scoring";
 +-------+
 | COL_1 |
 +=======+

@@ -42,7 +42,7 @@ picodata admin ./admin.socket
 $ picodata admin ./admin.socket
 Connected to admin console by socket path "./admin.socket"
 type '\help' for interactive help
-picodata>
+(admin) sql>
 ```
 
 Консоль администратора интерпретирует вводимые команды на языке SQL.

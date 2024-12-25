@@ -22,7 +22,7 @@ Picodata](../tutorial/connecting.md) при использовании ввод�
 Пример:
 
 ```
-picodata> pico.help("help");
+(admin) lua> pico.help("help");
 -- Печатает данную справку
 -- и список доступных разделов (topics)
 ```
@@ -64,7 +64,7 @@ Versioning][semver]).
 Пример:
 
 ```console
-picodata> pico.LUA_API_VERSION;
+(admin) lua> pico.LUA_API_VERSION;
 ---
 - 1.0.0
 ...
@@ -81,7 +81,7 @@ Versioning][calver]) с форматом `YY.0M.MICRO`.
 Пример:
 
 ```console
-picodata> pico.PICODATA_VERSION;
+(admin) lua> pico.PICODATA_VERSION;
 ---
 - 23.06.0
 ...
@@ -245,7 +245,7 @@ function help(topic)
 Пример:
 
 ```
-picodata> pico.help("help");
+(admin) lua> pico.help("help");
 -- Печатает данную справку
 -- и список доступных разделов (topics)
 ```
@@ -281,7 +281,7 @@ function instance_info(instance)
 Пример:
 
 ```lua
- picodata> pico.instance_info();
+(admin) lua> pico.instance_info();
  ---
 - target_state:
     variant: Online
@@ -398,7 +398,7 @@ function raft_read_index(timeout)
 Пример:
 
 ```console
-picodata> pico.raft_read_index(1);
+(admin) lua> pico.raft_read_index(1);
 ---
 - 42
 ...
@@ -427,7 +427,7 @@ picodata> pico.raft_read_index(1);
 Пример:
 
 ```console
-picodata> pico.raft_status();
+(admin) lua> pico.raft_status();
 ---
 - term: 2
   leader_id: 1
@@ -623,7 +623,7 @@ function whoami()
 Пример:
 
 ```console
-picodata> pico.whoami();
+(admin) lua> pico.whoami();
 - raft_id: 1
   cluster_name: demo
   instance_name: i1

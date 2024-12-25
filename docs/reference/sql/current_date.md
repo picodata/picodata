@@ -12,7 +12,7 @@
 ## Примеры {: #examples }
 
 ```sql
-picodata> VALUES (CURRENT_DATE);
+sql> VALUES (CURRENT_DATE);
 +------------------------+
 | COL_1                  |
 +========================+

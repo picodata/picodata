@@ -30,7 +30,7 @@
     таблицам](../legend.md).
 
 ```sql title="Преобразование объектов DATETIME в строковые литералы заданного формата"
-picodata> SELECT to_char(since, 'In stock since: %d %b %Y') FROM orders;
+sql> SELECT to_char(since, 'In stock since: %d %b %Y') FROM orders;
 +-------------------------------+
 | COL_1                         |
 +===============================+
