@@ -8,7 +8,6 @@ dql         ::= (with? select | values)
 with        ::= 'WITH'
                 cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')'
                 (',' cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')')*
-                select
 select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* ('FROM' scan
                 (( 'INNER' | 'LEFT' 'OUTER'? )? 'JOIN' scan 'ON' expression)*
                 ('WHERE' expression)?
@@ -31,10 +30,8 @@ expression  ::= ('NOT'* (
                     | to_char
                     | to_date
                     | trim
-                    | substr
                     | lower
                     | upper
-                    | '(' expression ')'
                     | 'NOT'? 'EXISTS' '(' dql ')'
                     | '(' dql ')'
                     | '(' expression (',' expression)* ')'
@@ -55,8 +52,8 @@ case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
 cast        ::= 'CAST' '(' expression 'AS' type ')' | expression '::' type
-like        ::= (expression 'LIKE' expression ('ESCAPE' expression)?)
-ilike        ::= (expression 'ILIKE' expression ('ESCAPE' expression)?)
+like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
+ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'
 trim        ::= 'TRIM' '('
@@ -156,7 +153,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                              | ('HINT' '=' ('TRUE' | 'FALSE'))
                          )
                      )*
-                 ')')? 
+                 ')')?
                  ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                  ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' type (',' type)* ')'
