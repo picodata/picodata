@@ -85,10 +85,10 @@ overview](https://docs.docker.com/compose/)
 Скачайте файл [docker-compose.yml], который описывает тестовый кластер
 из 4-х инстансов:
 
-[docker-compose.yml]: https://git.picodata.io/core/picodata/-/blob/master/helm/docker-compose.yml
+[docker-compose.yml]: https://git.picodata.io/core/picodata/-/blob/master/docker/docker-compose.yml
 
 ```bash
-curl -O https://git.picodata.io/core/picodata/-/raw/master/helm/docker-compose.yml
+curl -O https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml
 ```
 
 Создайте директорию для рабочих файлов проекта и
@@ -124,7 +124,7 @@ picodata connect admin@127.0.0.1:13301
 Пароль администратора `T0psecret` задан через
 переменную окружения `PICODATA_ADMIN_PASSWORD`, см. [docker-compose.yml:17]
 
-[docker-compose.yml:17]: https://git.picodata.io/core/picodata/-/blame/master/helm/docker-compose.yml#L17
+[docker-compose.yml:17]: https://git.picodata.io/core/picodata/-/blob/master/docker/docker-compose.yml#L17
 
 Для подключения по протоколу [PostgreSQL](../tutorial/connecting.md#pgproto)
 используйте команду:
