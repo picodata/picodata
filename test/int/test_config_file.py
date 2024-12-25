@@ -82,7 +82,7 @@ instance:
             default_replication_factor=dict(value=1, source="default"),
         ),
         instance=dict(
-            admin_socket=dict(value=f"{instance_dir}/admin.socket", source="default"),
+            admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
             advertise_address=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
             shredding=dict(value=False, source="default"),

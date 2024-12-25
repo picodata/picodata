@@ -47,11 +47,9 @@ to 2 and 3.
 
   - Source Code Changes:
     - `data_dir` renamed to `instance_dir`
-    - `admin.sock` renamed to `admin.socket`
 
   - Environment Variable Changes:
     - `PICODATA_DATA_DIR` renamed to `PICODATA_INSTANCE_DIR`
-    - `PICODATA_ADMIN_SOCK` renamed to `PICODATA_ADMIN_SOCKET`
 
 - PgProto is now enabled by default and listens at `127.0.0.1:4327`.
 

@@ -179,14 +179,14 @@ pub struct Run {
     /// Enable interactive console. Deprecated in 24.1.
     pub interactive_mode: bool,
 
-    #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCKET")]
+    #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCK")]
     /// Unix socket for the interactive console to connect using
     /// `picodata admin`. Unlike connecting via `picodata connect`
     /// console communication occurs in plain text
     /// and always operates under the admin account.
     ///
-    /// By default the "admin.socket" in the data directory is used.
-    pub admin_socket: Option<PathBuf>,
+    /// By default the "admin.sock" in the instance directory is used.
+    pub admin_sock: Option<PathBuf>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR")]
     /// Path to directory with plugin files

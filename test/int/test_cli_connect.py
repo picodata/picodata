@@ -338,7 +338,7 @@ def test_connect_auth_type_unknown(binary_path_fixt: str):
 def test_admin_enoent(binary_path_fixt: str):
     cli = pexpect.spawn(
         command=binary_path_fixt,
-        args=["admin", "wrong/path/t.socket"],
+        args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -346,7 +346,7 @@ def test_admin_enoent(binary_path_fixt: str):
     cli.logfile = sys.stdout
 
     cli.expect_exact(
-        "Connection via unix socket by path 'wrong/path/t.socket' is not established"
+        "Connection via unix socket by path 'wrong/path/t.sock' is not established"
     )
     cli.expect_exact("No such file or directory (os error 2)")
     cli.expect_exact(pexpect.EOF)
@@ -447,14 +447,14 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli = pexpect.spawn(
         # For some uninvestigated reason, readline trims the propmt in CI
         # Instead of
-        #   unix/:/some/path/to/admin.socket>
+        #   unix/:/some/path/to/admin.sock>
         # it prints
-        #   </path/to/admin.socket>
+        #   </path/to/admin.sock>
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
@@ -577,17 +577,17 @@ def test_connect_connection_info_and_help(i1: Instance):
 def test_admin_connection_info_and_help(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
 
-    socket_path = f"{i1.instance_dir}/explicit.socket"
-    i1.env["PICODATA_ADMIN_SOCKET"] = socket_path
+    socket_path = f"{i1.instance_dir}/explicit.sock"
+    i1.env["PICODATA_ADMIN_SOCK"] = socket_path
     i1.start()
     i1.wait_online()
 
     cli = pexpect.spawn(
         # For some uninvestigated reason, readline trims the propmt in CI
         # Instead of
-        #   unix/:/some/path/to/admin.socket>
+        #   unix/:/some/path/to/admin.sock>
         # it prints
-        #   </path/to/admin.socket>
+        #   </path/to/admin.sock>
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
@@ -623,9 +623,9 @@ def test_connect_with_incorrect_url(cluster: Cluster):
         return cli
 
     # GL685
-    cli = connect_to("unix:/tmp/socket")
+    cli = connect_to("unix:/tmp/sock")
     cli.expect_exact(
-        "Error while parsing instance port '/tmp/socket': invalid digit found in string"
+        "Error while parsing instance port '/tmp/sock': invalid digit found in string"
     )
     cli.expect_exact(pexpect.EOF)
 

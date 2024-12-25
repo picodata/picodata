@@ -586,12 +586,12 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
             next_entrypoint = start_discover(config)?;
         }
         StartBoot => {
-            // Cleanup the data directory with WALs from the previous StartDiscover run
+            // Cleanup the instance directory with WALs from the previous StartDiscover run
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             start_boot(config)?;
         }
         StartJoin { leader_address } => {
-            // Cleanup the data directory with WALs from the previous StartDiscover run
+            // Cleanup the instance directory with WALs from the previous StartDiscover run
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             start_join(config, leader_address)?;
         }
@@ -614,7 +614,7 @@ fn init_common(
 ) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
-            "failed creating data directory {}: {}",
+            "failed creating instance directory {}: {}",
             config.instance.instance_dir().display(),
             err
         ))

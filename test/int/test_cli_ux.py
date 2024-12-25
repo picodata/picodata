@@ -106,14 +106,14 @@ def test_admin_ux(cluster: Cluster):
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
 
     cli.logfile = sys.stdout
 
-    cli.expect_exact('Connected to admin console by socket path "./admin.socket"')
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
 
     # in admin console language switching is availiable
@@ -275,7 +275,7 @@ def test_lua_completion(cluster: Cluster):
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
@@ -325,7 +325,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
@@ -465,7 +465,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli = pexpect.spawn(
         cwd=i2.instance_dir,
         command=i2.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
@@ -554,7 +554,7 @@ def test_input_with_delimiter(cluster: Cluster):
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.binary_path, "admin", f"{instance.instance_dir}/admin.socket"],
+        [cluster.binary_path, "admin", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
@@ -570,7 +570,7 @@ SELECT * FROM ids
     assert (
         data
         == f"""\
-Connected to admin console by socket path "{instance.instance_dir}/admin.socket"
+Connected to admin console by socket path "{instance.instance_dir}/admin.sock"
 type '\\help' for interactive help
 1
 1
@@ -589,7 +589,7 @@ def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
     i1 = cluster.add_instance()
 
     data = subprocess.check_output(
-        [cluster.binary_path, "admin", f"{i1.instance_dir}/admin.socket"],
+        [cluster.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
         input=b"""\
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice"
@@ -599,7 +599,7 @@ GRANT CREATE TABLE TO "alice"
     assert (
         data
         == f"""\
-Connected to admin console by socket path "{i1.instance_dir}/admin.socket"
+Connected to admin console by socket path "{i1.instance_dir}/admin.sock"
 type '\\help' for interactive help
 1
 1
@@ -704,13 +704,13 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.socket"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
     )
 
     cli.logfile = sys.stdout
-    cli.expect_exact('Connected to admin console by socket path "./admin.socket"')
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("(admin) sql> ")
 
@@ -829,7 +829,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.socket"],
+        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -859,7 +859,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i2.wait_online()
 
     process = subprocess.run(
-        [i2.binary_path, "admin", f"{i2.instance_dir}/admin.socket"],
+        [i2.binary_path, "admin", f"{i2.instance_dir}/admin.sock"],
         stdin=open(insert_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -883,7 +883,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i3.wait_online()
 
     process = subprocess.run(
-        [i3.binary_path, "admin", f"{i3.instance_dir}/admin.socket"],
+        [i3.binary_path, "admin", f"{i3.instance_dir}/admin.sock"],
         stdin=open(plugin_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -916,7 +916,7 @@ def test_connect_cli_exit_code(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.socket"],
+        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(connect_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -947,7 +947,7 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.socket", "--ignore-errors"],
+        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock", "--ignore-errors"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
