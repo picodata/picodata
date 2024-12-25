@@ -23,6 +23,7 @@ expression  ::= ('NOT'* (
                     | literal
                     | case
                     | cast
+                    | coalesce
                     | current_date
                     | like
                     | ilike
@@ -52,6 +53,7 @@ case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
 cast        ::= 'CAST' '(' expression 'AS' type ')' | expression '::' type
+coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
