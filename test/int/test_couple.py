@@ -100,7 +100,6 @@ def test_restart_both(cluster2: Cluster):
 
     log.info("waiting for i2")
     i2.start()
-    Retriable(timeout=10, rps=10).call(check_alive, i2)
 
     # Speed up elections
     i2.promote_or_fail()
