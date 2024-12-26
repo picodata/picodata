@@ -243,7 +243,7 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
   инстансы Picodata
 - для каждого инстанса требуется удалить его [рабочие
   файлы](../architecture/instance_runtime_files.md). Например: `rm -rf
-  *.xlog *.vylog *.snap *.socket`
+  *.xlog *.vylog *.snap *.sock`
 - если Picodata была установлена из готового пакета для определенной ОС,
   то следует удалить этот пакет, используя системный менеджер пакетов
   (например, `sudo apt remove picodata` или `sudo dnf remove picodata`)

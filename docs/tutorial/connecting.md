@@ -26,21 +26,21 @@
 консоли используйте следующую команду с указанием файла unix-сокета:
 
 ```
-picodata admin ./admin.socket
+picodata admin ./admin.sock
 ```
 
 По умолчанию файл unix-сокета расположен в рабочей директории инстанса,
 указанной при запуске в параметре [`picodata run --instance-dir`]. Путь
-к этому файлу можно переопределить параметром [`picodata run --admin-socket`].
+к этому файлу можно переопределить параметром [`picodata run --admin-sock`].
 
 [`picodata run --instance-dir`]: ../reference/cli.md#run_instance_dir
-[`picodata run --admin-socket`]: ../reference/cli.md#run_admin_socket
+[`picodata run --admin-sock`]: ../reference/cli.md#run_admin_sock
 
 При успешном подключении отобразится приглашение:
 
 ```
-$ picodata admin ./admin.socket
-Connected to admin console by socket path "./admin.socket"
+$ picodata admin ./admin.sock
+Connected to admin console by socket path "./admin.sock"
 type '\help' for interactive help
 (admin) sql>
 ```
@@ -114,13 +114,13 @@ GRANT CREATE TABLE TO "alice";
 Запустите этот скрипт в консоли администратора:
 
 ```shell
-picodata admin ./admin.socket < ../setup.sql
+picodata admin ./admin.sock < ../setup.sql
 ```
 
 Пример вывода:
 
 ```
-Connected to admin console by socket path "admin.socket"
+Connected to admin console by socket path "admin.sock"
 type '\help' for interactive help
 1
 1
@@ -165,7 +165,7 @@ echo "SELECT * FROM warehouse;" | picodata connect alice@127.0.0.1:3301
 ```
 
 ```sql title="Список команд в административной консоли"
-cat file.sql | picodata admin ./admin.socket
+cat file.sql | picodata admin ./admin.sock
 ```
 
 ??? example "Пример файла с командами"

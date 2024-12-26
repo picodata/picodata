@@ -85,7 +85,7 @@ docker-compose up -d
 3.&nbsp;Создайте отдельного пользователя для подключения по JDBC и выдайте ему права на создание таблиц:
 
 ```shell
-docker-compose exec picodata-1 bash -c "echo -ne \"CREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.socket"
+docker-compose exec picodata-1 bash -c "echo -ne \"CREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.sock"
 ```
 
 4.&nbsp;Вернитесь в исходную директорию `picodata-jdbc-example` и

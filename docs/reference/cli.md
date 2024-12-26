@@ -45,18 +45,18 @@ picodata run [OPTIONS]
     присутствует [файл конфигурации](config.md) с именем `picodata.yaml`,
     инстанс Picodata будет запущен с указанными в нем параметрами.
 
-### --admin-socket {: #run_admin_socket }
+### --admin-sock {: #run_admin_sock }
 
-`--admin-socket <PATH>`
+`--admin-sock <PATH>`
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
 команды [`picodata admin`](#admin). В отличие от `picodata connect`,
 коммуникация осуществляется в виде обычного текста и всегда происходит
 под учетной записью администратора.
 
-По умолчанию используется `admin.socket` в рабочей директории инстанса.
+По умолчанию используется `admin.sock` в рабочей директории инстанса.
 
-Аналогичная переменная окружения: `PICODATA_ADMIN_SOCKET`<br>
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
 Аналогичный параметр файла конфигурации: [`instance.admin_socket`]
 
 [`instance.admin_socket`]: config.md#instance_admin_socket
@@ -425,13 +425,13 @@ picodata admin <PATH>
 ```
 
 - `PATH`: Путь к unix-сокету, соответствующий опции [`picodata run
-  --admin-socket`](#run_admin_socket)
+  --admin-sock`](#run_admin_sock)
 
 **Пример**
 
 ```console
-$ picodata admin ./admin.socket
-Connected to admin console by socket path "admin.socket"
+$ picodata admin ./admin.sock
+Connected to admin console by socket path "admin.sock"
 type '\help' for interactive help
 (admin) sql>
 ```

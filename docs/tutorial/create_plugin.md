@@ -209,8 +209,8 @@ picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 
 Запуск плагина:
 
 ```sql
-$ picodata admin i1/admin.socket
-Connected to admin console by socket path "i1/admin.socket"
+$ picodata admin i1/admin.sock
+Connected to admin console by socket path "i1/admin.sock"
 type '\help' for interactive help
 (admin) sql> CREATE PLUGIN weather_cache 0.1.0;
 1
@@ -302,8 +302,8 @@ cp 0001_weather.sql build/weather_cache/0.1.0
 миграции:
 
 ```shell
-$ picodata admin i1/admin.socket
-Connected to admin console by socket path "i1/admin.socket"
+$ picodata admin i1/admin.sock
+Connected to admin console by socket path "i1/admin.sock"
 type '\help' for interactive help
 (admin) sql> CREATE PLUGIN weather_cache 0.1.0;
 1

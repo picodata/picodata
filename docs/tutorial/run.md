@@ -111,7 +111,7 @@ docker-compose up -d
 используйте команду:
 
 ```shell
-picodata admin pico/data/picodata-1-1/admin.socket
+picodata admin pico/data/picodata-1-1/admin.sock
 ```
 
 Для подключения к [SQL-консоли](../tutorial/connecting.md#sql_console)

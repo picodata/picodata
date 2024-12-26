@@ -73,7 +73,7 @@ docker-compose up -d
 3.&nbsp;Настройте авторизацию для Picodata в контейнере:
 
 ```shell
-docker-compose exec picodata-1 bash -c "echo -ne \"ALTER USER \\\"admin\\\" WITH PASSWORD 'P@ssw0rd';\" | picodata admin /home/picouser/picodata-1/admin.socket"
+docker-compose exec picodata-1 bash -c "echo -ne \"ALTER USER \\\"admin\\\" WITH PASSWORD 'P@ssw0rd';\" | picodata admin /home/picouser/picodata-1/admin.sock"
 ```
 
 4.&nbsp;Вернитесь в исходную директорию `picodata-java-example` и

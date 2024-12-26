@@ -57,7 +57,7 @@ instance:
   listen: 127.0.0.1:3301 # (13)!
   advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (10)!
-  admin_socket: ./admin.socket # (5)!
+  admin_socket: ./admin.sock # (5)!
   plugin_dir: null # (23)!
   audit: null # (7)!
   shredding: false # (26)!
@@ -211,12 +211,12 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `./admin.socket`
+* Значение по умолчанию: `./admin.sock`
 
-Аналогичная переменная окружения: `PICODATA_ADMIN_SOCKET`<br>
-Аналогичная команда: [`picodata run --admin-socket`]
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
+Аналогичная команда: [`picodata run --admin-sock`]
 
-[`picodata run --admin-socket`]: cli.md#run_admin_socket
+[`picodata run --admin-sock`]: cli.md#run_admin_sock
 
 ### instance.advertise_address {: #instance_advertise_address }
 
