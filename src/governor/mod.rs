@@ -442,6 +442,8 @@ impl Loop {
                             rpc.is_master = Some(instance_name) == master_name;
                             tlog!(Info, "calling proc_replication"; "instance_name" => %instance_name, "is_master" => rpc.is_master);
 
+                            crate::error_injection!(block "BLOCK_REPLICATION_RPC_ON_CLIENT");
+
                             let resp = pool.call(instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {

@@ -796,6 +796,43 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     assert not lc.matched
 
 
+def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+    i2 = cluster.add_instance(wait_online=True)
+
+    injection_hit = log_crawler(
+        i1, "ERROR INJECTION 'BLOCK_REPLICATION_RPC_ON_CLIENT': BLOCKING"
+    )
+    different_term_error = log_crawler(
+        i1,
+        "failed calling rpc::replication: server responded with error: "
+        "box error #10003: operation request from different term",
+    )
+    i3_replication_configured = log_crawler(
+        i2, "configured replication with instance, instance_name: i3"
+    )
+
+    i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", True)
+
+    i3 = cluster.add_instance(wait_online=False)
+    i3.start()
+
+    # wait till governor starts to configure replication and gets to injected failure
+    injection_hit.wait_matched()
+
+    # bump term
+    i2.promote_or_fail()
+
+    # remove injected error
+    i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", False)
+
+    # check i1 has expected error in the log
+    different_term_error.wait_matched(timeout=2)
+
+    # check i3 has replication configured by i2
+    i3_replication_configured.wait_matched(timeout=2)
+
+
 def test_stale_governor_replication_requests(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i2 = cluster.add_instance(wait_online=False)
