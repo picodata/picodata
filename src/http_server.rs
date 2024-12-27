@@ -71,7 +71,7 @@ struct InstanceInfo {
 //
 // --[[
 // export interface ReplicasetType {
-//     id: string;
+//     name: string;
 //     instanceCount: number;
 //     instances: InstanceType[];
 //     version: string;
