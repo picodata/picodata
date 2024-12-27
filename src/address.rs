@@ -57,20 +57,8 @@ impl IprotoAddress {
         };
         let (host, port) = match host_port.rsplit_once(':') {
             Some((host, port)) => {
-                if host.contains(':') {
+                if host.contains(':') || port.is_empty() {
                     return format_err();
-                }
-                if port.is_empty() {
-                    return format_err();
-                }
-                if port == DEFAULT_HTTP_PORT {
-                    return Err(format!(
-                        "IPROTO cannot listen on port {DEFAULT_HTTP_PORT} because it is default port for HTTP"
-                    ));
-                } else if port == DEFAULT_PGPROTO_PORT {
-                    return Err(format!(
-                        "IPROTO cannot listen on port {DEFAULT_PGPROTO_PORT} because it is default port for PGPROTO"
-                    ));
                 }
                 let host = if host.is_empty() { None } else { Some(host) };
                 (host, Some(port))
@@ -161,20 +149,8 @@ impl HttpAddress {
         let format_err = || Err("valid format: [host][:port]".to_string());
         let (host, port) = match addr.rsplit_once(':') {
             Some((host, port)) => {
-                if host.contains(':') {
+                if host.contains(':') || port.is_empty() {
                     return format_err();
-                }
-                if port.is_empty() {
-                    return format_err();
-                }
-                if port == DEFAULT_IPROTO_PORT {
-                    return Err(format!(
-                        "HTTP cannot listen on port {DEFAULT_IPROTO_PORT} because it is default port for IPROTO"
-                    ));
-                } else if port == DEFAULT_PGPROTO_PORT {
-                    return Err(format!(
-                        "HTTP cannot listen on port {DEFAULT_PGPROTO_PORT} because it is default port for PGPROTO"
-                    ));
                 }
                 let host = if host.is_empty() { None } else { Some(host) };
                 (host, Some(port))
@@ -260,20 +236,8 @@ impl PgprotoAddress {
         let format_err = || Err("valid format: [host][:port]".to_string());
         let (host, port) = match addr.rsplit_once(':') {
             Some((host, port)) => {
-                if host.contains(':') {
+                if host.contains(':') || port.is_empty() {
                     return format_err();
-                }
-                if port.is_empty() {
-                    return format_err();
-                }
-                if port == DEFAULT_IPROTO_PORT {
-                    return Err(format!(
-                        "PGPROTO cannot listen on port {DEFAULT_IPROTO_PORT} because it is default port for IPROTO"
-                    ));
-                } else if port == DEFAULT_HTTP_PORT {
-                    return Err(format!(
-                        "PGPROTO cannot listen on port {DEFAULT_HTTP_PORT} because it is default port for HTTP"
-                    ));
                 }
                 let host = if host.is_empty() { None } else { Some(host) };
                 (host, Some(port))
@@ -430,37 +394,19 @@ mod tests {
         //
 
         let iproto_conflict_with_http = format!("host:{DEFAULT_HTTP_PORT}");
-        assert_eq!(
-            iproto_conflict_with_http.parse::<IprotoAddress>().unwrap_err(),
-            format!("IPROTO cannot listen on port {DEFAULT_HTTP_PORT} because it is default port for HTTP")
-        );
+        assert!(iproto_conflict_with_http.parse::<IprotoAddress>().is_ok(),);
         let iproto_conflict_with_pg = format!("host:{DEFAULT_PGPROTO_PORT}");
-        assert_eq!(
-            iproto_conflict_with_pg.parse::<IprotoAddress>().unwrap_err(),
-            format!("IPROTO cannot listen on port {DEFAULT_PGPROTO_PORT} because it is default port for PGPROTO")
-        );
+        assert!(iproto_conflict_with_pg.parse::<IprotoAddress>().is_ok());
 
         let http_conflict_with_iproto = format!("host:{DEFAULT_IPROTO_PORT}");
-        assert_eq!(
-            http_conflict_with_iproto.parse::<HttpAddress>().unwrap_err(),
-            format!("HTTP cannot listen on port {DEFAULT_IPROTO_PORT} because it is default port for IPROTO")
-        );
+        assert!(http_conflict_with_iproto.parse::<HttpAddress>().is_ok(),);
         let http_conflict_with_pg = format!("host:{DEFAULT_PGPROTO_PORT}");
-        assert_eq!(
-            http_conflict_with_pg.parse::<HttpAddress>().unwrap_err(),
-            format!("HTTP cannot listen on port {DEFAULT_PGPROTO_PORT} because it is default port for PGPROTO")
-        );
+        assert!(http_conflict_with_pg.parse::<HttpAddress>().is_ok(),);
 
         let pg_conflict_with_iproto = format!("host:{DEFAULT_IPROTO_PORT}");
-        assert_eq!(
-            pg_conflict_with_iproto.parse::<PgprotoAddress>().unwrap_err(),
-            format!("PGPROTO cannot listen on port {DEFAULT_IPROTO_PORT} because it is default port for IPROTO")
-        );
+        assert!(pg_conflict_with_iproto.parse::<PgprotoAddress>().is_ok(),);
         let pg_conflict_with_http = format!("host:{DEFAULT_HTTP_PORT}");
-        assert_eq!(
-            pg_conflict_with_http.parse::<PgprotoAddress>().unwrap_err(),
-            format!("PGPROTO cannot listen on port {DEFAULT_HTTP_PORT} because it is default port for HTTP")
-        );
+        assert!(pg_conflict_with_http.parse::<PgprotoAddress>().is_ok(),);
 
         //
         // check correctness of default values to avoid human factor

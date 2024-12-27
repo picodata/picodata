@@ -171,14 +171,10 @@ class PortDistributor:
     def __init__(self, start: int, end: int) -> None:
         self.gen = iter(range(start, end))
 
-    def get(self, pg: bool = False) -> int:
+    def get(self) -> int:
         for port in self.gen:
             if can_bind(port):
-                if not pg:
-                    return port
-
-                if pg and port != HTTP_DEFAULT_PORT and port != IPROTO_DEFAULT_PORT:
-                    return port
+                return port
 
         raise Exception(
             "No more free ports left in configured range, consider enlarging it"
@@ -1824,9 +1820,9 @@ class Cluster:
         # of a pgproto port at the config stage, we have to
         # pass them manually and check it's correctness
         if pg_port is None:
-            pg_port = self.port_distributor.get(pg=True)
+            pg_port = self.port_distributor.get()
             if bootstrap_port == pg_port or port == pg_port:
-                pg_port = self.port_distributor.get(pg=True)
+                pg_port = self.port_distributor.get()
 
         instance = Instance(
             binary_path=self.binary_path,
