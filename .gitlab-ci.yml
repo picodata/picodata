@@ -340,6 +340,7 @@ test-mac-m1:
   extends: .test
   tags:
     - mac-dev-m1
+  timeout: 30m
   script:
     # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
