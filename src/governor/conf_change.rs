@@ -145,7 +145,7 @@ pub(crate) fn raft_conf_change(
         }
 
         if has_states!(instance, Expelled -> *) {
-            // Instance was already expelled => remove it unconditionally.
+            // Instance was already expelled, remove it entirely.
             let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
             changes.push(ccs);
             continue;
@@ -153,15 +153,30 @@ pub(crate) fn raft_conf_change(
 
         if has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled) {
             // A voter is shutting down or getting expelled.
-            // Replace it with another online instance if possible.
-            let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
+            // First try to replace it with another online instance.
+            if let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) {
+                let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+                let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
+                changes.extend_from_slice(&[ccs1, ccs2]);
+                promotable.remove(&next_voter_id);
                 continue;
-            };
+            }
 
-            let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
-            let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
-            changes.extend_from_slice(&[ccs1, ccs2]);
-            promotable.remove(&next_voter_id);
+            if has_states!(instance, * -> Expelled) {
+                // If no replacement found, but instance is getting expelled, demote it anyway
+                let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+                changes.push(ccs);
+                continue;
+            }
+
+            let have_excess_voters = raft_conf.voters.len() > voters_needed;
+            if have_excess_voters && has_states!(instance, * -> Offline) {
+                // If no replacement found, but there's already an excess in
+                // voters, the Offline instance should be the one being demoted
+                let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+                changes.push(ccs);
+                continue;
+            }
         }
     }
 
@@ -329,20 +344,24 @@ mod tests {
         }};
     }
 
-    fn cc(p: &[Instance], v: &[RaftId], l: &[RaftId]) -> Option<raft::ConfChangeV2> {
-        let mut t = HashMap::new();
-        let tier = Tier::default();
-        t.insert(tier.name.as_str(), &tier);
-        cc_with_tiers(p, v, l, &t)
+    fn cc(
+        all_instances: &[Instance],
+        voter_ids: &[RaftId],
+        learner_ids: &[RaftId],
+    ) -> Option<raft::ConfChangeV2> {
+        let mut all_tiers = HashMap::new();
+        let default_tier = Tier::default();
+        all_tiers.insert(default_tier.name.as_str(), &default_tier);
+        cc_with_tiers(all_instances, voter_ids, learner_ids, &all_tiers)
     }
 
     fn cc_with_tiers(
-        p: &[Instance],
-        v: &[RaftId],
-        l: &[RaftId],
-        t: &HashMap<&str, &Tier>,
+        all_instances: &[Instance],
+        voter_ids: &[RaftId],
+        learner_ids: &[RaftId],
+        all_tiers: &HashMap<&str, &Tier>,
     ) -> Option<raft::ConfChangeV2> {
-        let mut cc = super::raft_conf_change(p, v, l, t)?;
+        let mut cc = super::raft_conf_change(all_instances, voter_ids, learner_ids, all_tiers)?;
         cc.changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
         Some(cc)
     }
@@ -614,6 +633,23 @@ mod tests {
             ),
             // Vouters number should not fall below the optimal number
             cc![AddLearnerNode(1), AddNode(4)]
+        );
+
+        assert_eq!(
+            cc(
+                &[
+                    p!(1, Online),
+                    p!(2, Online -> Expelled),
+                    p!(3, Online -> Offline),
+                    p!(4, Online),
+                    p!(5, Online),
+                ],
+                &[1, 2, 3, 4, 5],
+                &[]
+            ),
+            // One instance is getting expelled, now total voter count is 3, and
+            // we demote the 2 degenerate instances
+            cc![AddLearnerNode(2), AddLearnerNode(3)]
         );
 
         let mut tiers = HashMap::new();
