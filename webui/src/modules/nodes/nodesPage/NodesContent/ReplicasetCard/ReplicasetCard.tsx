@@ -15,7 +15,7 @@ import { InstanceCard } from "./instanceBlock/InstanceCard";
 import styles from "./ReplicasetCard.module.scss";
 
 export type TReplicaset = {
-  id: string;
+  name: string;
   instanceCount: number;
   instances: InstanceType[];
   version: string;
@@ -59,7 +59,7 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
               {replicasetTranslations.name.label}
             </div>
             <div className={cn(styles.infoValue, styles.hiddenValue)}>
-              <HiddenWrapper>{replicaset.id}</HiddenWrapper>
+              <HiddenWrapper>{replicaset.name}</HiddenWrapper>
             </div>
           </div>
           <div className={cn(styles.infoColumn, styles.inctancesColumn)}>

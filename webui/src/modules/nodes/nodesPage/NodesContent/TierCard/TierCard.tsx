@@ -106,7 +106,7 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
         <div className={styles.replicasetsWrapper}>
           {tier.replicasets.map((replicaset) => (
             <ReplicasetCard
-              key={replicaset.id}
+              key={replicaset.name}
               replicaset={replicaset}
               theme="secondary"
             />

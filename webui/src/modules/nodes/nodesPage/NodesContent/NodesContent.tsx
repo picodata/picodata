@@ -63,7 +63,7 @@ export const NodesContent = () => {
               ))}
             {groupedByReplicates &&
               data?.replicasets.map((rep) => (
-                <ReplicasetCard key={rep.id} replicaset={rep} />
+                <ReplicasetCard key={rep.name} replicaset={rep} />
               ))}
             {groupedByInstances &&
               sortedFilteredInstances.map((instance) => (
