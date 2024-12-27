@@ -4,7 +4,7 @@ export const components: (typeof en)["components"] = {
   networkState: {
     label: {
       online: "онлайн",
-      offline: "оффлайн",
+      offline: "офлайн",
       unknown: "неизвестно",
     },
   },

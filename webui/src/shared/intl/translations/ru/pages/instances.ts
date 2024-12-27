@@ -16,7 +16,7 @@ export const instances: TPages["instances"] = {
     instances: {
       label: "Инстансы",
       onlineState: "онлайн",
-      offlineState: "оффлайн",
+      offlineState: "офлайн",
     },
     version: {
       label: "Версия",
@@ -103,13 +103,13 @@ export const instances: TPages["instances"] = {
         label: "Целевое состояние",
       },
       currentState: {
-        label: "Текущие состояние",
+        label: "Текущее состояние",
       },
       binaryAddress: {
-        label: "RPC адрес",
+        label: "RPC-адрес",
       },
       httpAddress: {
-        label: "HTTP адрес",
+        label: "HTTP-адрес",
       },
       version: {
         label: "Версия",
