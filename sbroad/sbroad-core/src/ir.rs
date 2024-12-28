@@ -144,6 +144,7 @@ impl Nodes {
                 Node64::ValuesRow(values_row) => {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
+                Node64::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
@@ -293,6 +294,9 @@ impl Nodes {
                     }
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
+                    }
+                    Node64::LocalTimestamp(lt) => {
+                        MutNode::Expression(MutExpression::LocalTimestamp(lt))
                     }
                 }),
             ArenaType::Arena96 => self
@@ -1622,7 +1626,8 @@ impl Plan {
             }
             MutExpression::Constant { .. }
             | MutExpression::Reference { .. }
-            | MutExpression::CountAsterisk { .. } => {}
+            | MutExpression::CountAsterisk { .. }
+            | MutExpression::LocalTimestamp { .. } => {}
         }
         Err(SbroadError::FailedTo(
             Action::Replace,

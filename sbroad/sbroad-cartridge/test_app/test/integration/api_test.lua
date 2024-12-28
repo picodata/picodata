@@ -674,6 +674,91 @@ g.test_current_date = function ()
 end
 
 
+g.test_localtimestamp = function()
+    local api = cluster:server("api-1").net_box
+
+    -- Basic localtimestamp functionality
+    local r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "col_1", type = "datetime"},
+    })
+    t.assert_equals(#r.rows, 1)
+
+    -- Test precision parameter
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp(0)
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "col_1", type = "datetime"},
+    })
+
+    -- Verify format for precision 0 (no fractional seconds)
+    local timestamp = r.rows[1][1]
+    t.assert_str_matches(tostring(timestamp), "%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$")
+
+    -- Test that extremely large precision is maxxed at 6
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp(999999999999999999999999999999999999999999) = localtimestamp(6)
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "col_1", type = "boolean"},
+    })
+    t.assert_equals(r.rows[1][1], true)
+
+    -- Test that precision > 6 is capped at 6
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp = localtimestamp(7)
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "col_1", type = "boolean"},
+    })
+    t.assert_equals(r.rows[1][1], true)
+
+    -- Test type casting
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp::text
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "col_1", type = "string"},
+    })
+    t.assert(type(r.rows[1][1]) == 'string')
+
+    -- Test that different precision produce different results
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp(2) = localtimestamp(4)
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.rows[1][1], false)
+
+    -- Test in expressions
+    r, err = api:call("sbroad.execute", { [[
+        SELECT localtimestamp > to_date('2010/10/10', '%Y/%d/%m')
+    ]]})
+    t.assert_equals(err, nil)
+    t.assert_equals(r.rows[1][1], true)
+
+    -- New test case: Attempt to create a table with the name 'localtimestamp'
+    local _, create_table_err = api:call("sbroad.execute", { [[
+        CREATE TABLE localtimestamp (localtimestamp datetime primary key)
+    ]]})
+
+    -- Check that an error is returned
+    t.assert_not_equals(create_table_err, nil,
+                        "Expected an error when trying to create table with name 'localtimestamp'")
+
+    -- Verify the error message contains relevant information
+    t.assert_str_contains(tostring(create_table_err), "expected IfNotExists, NewTable, or Identifier",
+                          "Error message should indicate the issue with 'localtimestamp' as a table name")
+end
+
+
 g.test_union_operator_works = function ()
     local api = cluster:server("api-1").net_box
 

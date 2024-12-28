@@ -406,7 +406,8 @@ impl ExecutionPlan {
                                 | Expression::Like { .. }
                                 | Expression::Row { .. }
                                 | Expression::Trim { .. }
-                                | Expression::Unary { .. } => {}
+                                | Expression::Unary { .. }
+                                | Expression::LocalTimestamp { .. } => {}
                                 Expression::Constant(Constant { value, .. }) => {
                                     write!(sql, "{value}").map_err(|e| {
                                         SbroadError::FailedTo(

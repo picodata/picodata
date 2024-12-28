@@ -118,7 +118,9 @@ impl ReferredMap {
                         .add(referred.get_or_none(*target)),
                     None => referred.get_or_none(*target).clone(),
                 },
-                Expression::Constant { .. } | Expression::CountAsterisk { .. } => Referred::None,
+                Expression::Constant { .. }
+                | Expression::CountAsterisk { .. }
+                | Expression::LocalTimestamp { .. } => Referred::None,
                 Expression::Reference(Reference {
                     targets, parent, ..
                 }) => {

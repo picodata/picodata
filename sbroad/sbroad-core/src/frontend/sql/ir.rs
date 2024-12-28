@@ -157,6 +157,7 @@ impl SubtreeCloner {
         // be updated, or compilation will fail.
         match &mut copied {
             ExprOwned::Constant(Constant { value: _ })
+            | ExprOwned::LocalTimestamp(_)
             | ExprOwned::Reference(Reference {
                 parent: _,
                 targets: _,

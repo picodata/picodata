@@ -824,6 +824,7 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::Unary { .. } => self.add_unary_op(id),
                 Expression::StableFunction { .. } => self.add_stable_func(id),
                 Expression::Trim { .. } => self.add_trim(id),
+                Expression::LocalTimestamp { .. } => {}
             },
         }
     }

@@ -22,11 +22,6 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-
-use std::any::Any;
-use std::collections::HashMap;
-use std::rc::Rc;
-
 use self::engine::query_id;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
@@ -41,6 +36,9 @@ use crate::ir::value::Value;
 use crate::ir::{Options, Plan, Slices};
 use crate::utils::MutexLike;
 use smol_str::SmolStr;
+use std::any::Any;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub mod bucket;
 pub mod engine;
@@ -57,6 +55,7 @@ impl Plan {
     /// # Errors
     /// - Failed to optimize the plan.
     pub fn optimize(&mut self) -> Result<(), SbroadError> {
+        self.update_local_timestamps()?;
         self.cast_constants()?;
         self.replace_in_operator()?;
         self.push_down_not()?;

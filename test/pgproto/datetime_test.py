@@ -231,3 +231,75 @@ def test_invalid_dates(postgres: Postgres):
             p=dt_invalid_format,
             types={"p": pg8000.TIMESTAMPTZ},
         )
+
+
+def test_localtimestamp(postgres: Postgres):
+    conn = setup_psycopg_test_env(postgres)
+    cur = conn.cursor()
+
+    # Test simple SELECT
+    cur.execute("SELECT localtimestamp;")
+    result = cur.fetchall()
+    assert len(result) == 1
+
+    # Test that extremely large precision is maxxed at 6
+    cur.execute(
+        """
+        SELECT localtimestamp(999999999999999999999999999999999999999999) = localtimestamp(6);
+    """
+    )
+    result = cur.fetchall()
+    assert result == [(True,)]
+
+    # Test that precision > 6 is capped at 6
+    cur.execute(
+        """
+        SELECT localtimestamp(7) = localtimestamp(6);
+    """
+    )
+    result = cur.fetchall()
+    assert result == [(True,)]
+
+    # Test that different precisions have different results
+    cur.execute(
+        """
+        SELECT localtimestamp(2) = localtimestamp(4);
+    """
+    )
+    result = cur.fetchall()
+    assert result == [(False,)]
+
+    # Verify that precision 0 has no fractional sec
+    cur.execute(
+        """
+        SELECT localtimestamp(0)::text;
+    """
+    )
+    result = cur.fetchall()
+    timestamp_str = result[0][0]
+    assert datetime.datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
+
+    # Test localtimestamp in a WHERE clause not NULL
+    cur.execute(
+        "SELECT localtimestamp from (VALUES (1)) WHERE localtimestamp IS NOT NULL;"
+    )
+    result = cur.fetchall()
+    assert len(result) == 1
+
+    # Test localtimestamp in a WHERE clause is NULL
+    cur.execute("SELECT localtimestamp from (VALUES (1)) WHERE localtimestamp IS NULL;")
+    result = cur.fetchall()
+    assert len(result) == 0
+
+    # Test localtimestamp in a subquery
+    cur.execute("SELECT * FROM (SELECT localtimestamp AS current_time) AS subquery;")
+    result = cur.fetchall()
+    assert len(result) == 1
+
+    # Test localtimestamp in VALUES clause
+    cur.execute("INSERT INTO T (ID) VALUES (localtimestamp);")
+
+    # Test localtimestamp in a projection
+    cur.execute("SELECT localtimestamp AS current_time FROM T;")
+    result = cur.fetchall()
+    assert len(result) == 1

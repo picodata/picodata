@@ -307,7 +307,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"from" | ^"group"
                         | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
-                        | ^"join" | ^"left" | ^"limit" | ^"not" | ^"null" | ^"number" | ^"numeric"
+                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null" | ^"number" | ^"numeric"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
                         | ^"scalar" | ^"select" | ^"set" | ^"smallint" |^"string"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
@@ -357,7 +357,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
         CastPostfix = { "::" ~ ColumnDefType }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
-        AtomicExpr = _{ Literal | Parameter | CastOp | Trim | CurrentDate | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
+        AtomicExpr = _{ Literal | Parameter | CastOp | Trim | CurrentDate | LocalTimestamp | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
                 False    = { ^"false" }
@@ -379,6 +379,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                     CountAsterisk = { "*" }
             ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
             CurrentDate = { ^"current_date" }
+            LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             Trim = ${
                 ^"trim" ~ WO ~ "(" ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ ")"
             }

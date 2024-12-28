@@ -26,6 +26,7 @@ expression  ::= ('NOT'* (
                     | coalesce
                     | current_date
                     | like
+                    | localtimestamp
                     | ilike
                     | substr
                     | to_char
@@ -55,6 +56,7 @@ case        ::= 'CASE' expression?
 cast        ::= 'CAST' '(' expression 'AS' type ')' | expression '::' type
 coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
+localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'

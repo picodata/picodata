@@ -291,7 +291,8 @@ impl Plan {
                     | MutExpression::Constant(_)
                     | MutExpression::Like(_)
                     | MutExpression::Reference(_)
-                    | MutExpression::CountAsterisk(_) => {}
+                    | MutExpression::CountAsterisk(_)
+                    | MutExpression::LocalTimestamp(_) => {}
                 }
             }
             // Checks if the top node is a new node.

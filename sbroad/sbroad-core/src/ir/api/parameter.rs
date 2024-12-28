@@ -3,14 +3,17 @@ use crate::ir::node::block::{Block, MutBlock};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, ExprInParentheses, Having, Join, Like,
-    MutNode, Node64, NodeId, Parameter, Procedure, Row, Selection, StableFunction, Trim, UnaryExpr,
-    ValuesRow,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, ExprInParentheses, Having, Join,
+    Like, LocalTimestamp, MutNode, Node64, NodeId, Parameter, Procedure, Row, Selection,
+    StableFunction, Trim, UnaryExpr, ValuesRow,
 };
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan, ValueIdx};
+use chrono::Local;
 use smol_str::format_smolstr;
+use tarantool::datetime::Datetime;
+use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet, RandomState};
@@ -361,7 +364,8 @@ impl<'binder> ParamsBinder<'binder> {
                     }
                     Expression::Reference { .. }
                     | Expression::Constant { .. }
-                    | Expression::CountAsterisk { .. } => {}
+                    | Expression::CountAsterisk { .. }
+                    | Expression::LocalTimestamp { .. } => {}
                 },
                 Node::Block(block) => match block {
                     Block::Procedure(Procedure { ref values, .. }) => {
@@ -556,7 +560,8 @@ impl<'binder> ParamsBinder<'binder> {
                     }
                     MutExpression::Reference { .. }
                     | MutExpression::Constant { .. }
-                    | MutExpression::CountAsterisk { .. } => {}
+                    | MutExpression::CountAsterisk { .. }
+                    | MutExpression::LocalTimestamp { .. } => {}
                 },
                 MutNode::Block(block) => match block {
                     MutBlock::Procedure(Procedure { ref mut values, .. }) => {
@@ -736,5 +741,74 @@ impl Plan {
         binder.update_value_rows()?;
 
         Ok(())
+    }
+
+    pub fn update_local_timestamps(&mut self) -> Result<(), SbroadError> {
+        let offset_in_sec = Local::now().offset().local_minus_utc();
+        let utc_offset_result =
+            UtcOffset::from_whole_seconds(offset_in_sec).unwrap_or(UtcOffset::UTC);
+
+        let datetime = OffsetDateTime::now_utc().to_offset(utc_offset_result);
+        let local_datetime = PrimitiveDateTime::new(datetime.date(), datetime.time()).assume_utc();
+
+        let mut local_timestamps = Vec::new();
+
+        for (id, node) in self.nodes.arena64.iter().enumerate() {
+            if let Node64::LocalTimestamp(_) = node {
+                let node_id = NodeId {
+                    offset: u32::try_from(id).unwrap(),
+                    arena_type: ArenaType::Arena64,
+                };
+
+                if let Node::Expression(Expression::LocalTimestamp(LocalTimestamp { precision })) =
+                    self.get_node(node_id)?
+                {
+                    local_timestamps.push((node_id, *precision));
+                }
+            }
+        }
+
+        for (node_id, precision) in local_timestamps {
+            let value = Self::create_datetime_value(local_datetime, precision);
+            self.nodes
+                .replace(node_id, Node64::Constant(Constant { value }))?;
+        }
+
+        Ok(())
+    }
+
+    fn create_datetime_value(local_datetime: OffsetDateTime, precision: usize) -> Value {
+        // Format according to precision
+        if precision == 0 {
+            // For precision 0, create new time with 0 nanoseconds
+            let truncated_time = Time::from_hms(
+                local_datetime.hour(),
+                local_datetime.minute(),
+                local_datetime.second(),
+            )
+            .unwrap();
+            Value::Datetime(Datetime::from_inner(
+                local_datetime.replace_time(truncated_time),
+            ))
+        } else {
+            // Calculate scaling
+            // Convert nanoseconds to the desired precision
+            // 9 - numbers in nanoseconds
+            let scale = 10_u64.pow((9 - precision) as u32) as i64;
+            let nanos = local_datetime.nanosecond() as i64;
+            let rounded_nanos = (nanos / scale) * scale;
+
+            let adjusted_time = Time::from_hms_nano(
+                local_datetime.hour(),
+                local_datetime.minute(),
+                local_datetime.second(),
+                rounded_nanos as u32,
+            )
+            .unwrap();
+
+            Value::Datetime(Datetime::from_inner(
+                local_datetime.replace_time(adjusted_time),
+            ))
+        }
     }
 }

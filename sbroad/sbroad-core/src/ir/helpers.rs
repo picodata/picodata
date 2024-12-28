@@ -18,7 +18,7 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{ArithmeticExpr, Like, Limit};
+use super::node::{ArithmeticExpr, Like, Limit, LocalTimestamp};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.
@@ -228,6 +228,9 @@ impl Plan {
                     self.formatted_arena_node(buf, tabulation_number + 1, *left)?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "Right child")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *right)?;
+                }
+                Expression::LocalTimestamp(LocalTimestamp { precision }) => {
+                    writeln!(buf, "LocalTimestamp [precision = {precision}]")?;
                 }
             };
         }

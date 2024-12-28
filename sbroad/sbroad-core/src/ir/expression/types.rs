@@ -180,6 +180,7 @@ impl Expression<'_> {
                 }
             }
             Expression::CountAsterisk(_) => Ok(Type::Integer),
+            Expression::LocalTimestamp(_) => Ok(Type::Datetime),
         }
     }
 

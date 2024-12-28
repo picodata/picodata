@@ -3449,6 +3449,7 @@ dependencies = [
  "base64ct",
  "bincode",
  "blake3",
+ "chrono",
  "hash32 0.2.1",
  "itertools",
  "lazy_static",

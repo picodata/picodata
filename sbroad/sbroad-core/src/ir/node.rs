@@ -398,6 +398,17 @@ impl From<CountAsterisk> for NodeAligned {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LocalTimestamp {
+    pub precision: usize,
+}
+
+impl From<LocalTimestamp> for NodeAligned {
+    fn from(value: LocalTimestamp) -> Self {
+        Self::Node64(Node64::LocalTimestamp(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ScanCte {
     /// CTE's name.
@@ -1136,6 +1147,8 @@ pub enum Node64 {
     SetParam(SetParam),
     SetTransaction(SetTransaction),
     Invalid(Invalid),
+    // Not in Node32 to allow in-place swapping with Constant using the replace()
+    LocalTimestamp(LocalTimestamp),
 }
 
 impl Node64 {
@@ -1172,6 +1185,7 @@ impl Node64 {
                 NodeOwned::Ddl(DdlOwned::SetTransaction(set_trans))
             }
             Node64::ValuesRow(values_row) => NodeOwned::Relational(RelOwned::ValuesRow(values_row)),
+            Node64::LocalTimestamp(lt) => NodeOwned::Expression(ExprOwned::LocalTimestamp(lt)),
         }
     }
 }

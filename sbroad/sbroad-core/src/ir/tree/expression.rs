@@ -165,7 +165,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         Expression::Case { .. } => iter.handle_case_iter(expr),
                         Expression::Constant { .. }
                         | Expression::Reference { .. }
-                        | Expression::CountAsterisk { .. } => None,
+                        | Expression::CountAsterisk { .. }
+                        | Expression::LocalTimestamp { .. } => None,
                     }
                 }
                 Node::Acl(_)

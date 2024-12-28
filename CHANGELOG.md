@@ -202,7 +202,7 @@ to 2 and 3.
 - SQL supports `COALESCE` function
 - `CREATE USER` no need to specify `PASSWORD` for LDAP authentification
 - SQL supports `STRING_AGG` as an alias for `GROUP_CONCAT` aggregate function
-
+- SQL support `LOCALTIMESTAMP` function
 ### Pgproto
 - "vdbe_max_steps" and "vtable_max_rows" options are supported in connection
   string. These options allow to override the defalt values of the

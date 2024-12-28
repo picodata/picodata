@@ -6,7 +6,7 @@
 use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
-use crate::ir::node::{Alias, Reference, ReferenceAsteriskSource};
+use crate::ir::node::{Alias, LocalTimestamp, Reference, ReferenceAsteriskSource};
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
 use core::panic;
@@ -24,7 +24,9 @@ use tarantool::datetime::Datetime;
 use tarantool::index::{IndexType, RtreeIndexDistanceType};
 use time::{OffsetDateTime, Time};
 
+use crate::errors::Entity::AST;
 use crate::errors::{Action, Entity, SbroadError};
+use crate::executor::engine::helpers::{normalize_name_from_sql, to_user};
 use crate::executor::engine::Metadata;
 use crate::frontend::sql::ast::{
     AbstractSyntaxTree, ParseNode, ParseNodes, ParseTree, Rule, StackParseNode,
@@ -32,14 +34,23 @@ use crate::frontend::sql::ast::{
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::frontend::sql::ir::Translation;
 use crate::frontend::Ast;
+use crate::ir::acl::AlterOption;
+use crate::ir::acl::{GrantRevokeType, Privilege};
+use crate::ir::aggregates::AggregateKind;
 use crate::ir::ddl::{AlterSystemType, ColumnDef, SetParamScopeType, SetParamValue};
 use crate::ir::ddl::{Language, ParamDef};
 use crate::ir::expression::cast::Type as CastType;
+use crate::ir::expression::NewColumnsSource;
 use crate::ir::expression::{
     ColumnPositionMap, ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, FunctionFeature,
     Position, TrimKind,
 };
+use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
+use crate::ir::node::plugin::{
+    AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
+    MigrateTo, MigrateToOpts, RemoveServiceFromTier, ServiceSettings, SettingsPair,
+};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     AlterSystem, AlterUser, BoolExpr, Constant, CountAsterisk, CreateIndex, CreateProc, CreateRole,
@@ -51,22 +62,10 @@ use crate::ir::operator::{
     Arithmetic, Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
 };
 use crate::ir::relation::{Column, ColumnRole, TableKind, Type as RelationType};
+use crate::ir::transformation::redistribution::ColumnPosition;
 use crate::ir::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
-
-use crate::errors::Entity::AST;
-use crate::executor::engine::helpers::{normalize_name_from_sql, to_user};
-use crate::ir::acl::AlterOption;
-use crate::ir::acl::{GrantRevokeType, Privilege};
-use crate::ir::aggregates::AggregateKind;
-use crate::ir::expression::NewColumnsSource;
-use crate::ir::helpers::RepeatableState;
-use crate::ir::node::plugin::{
-    AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
-    MigrateTo, MigrateToOpts, RemoveServiceFromTier, ServiceSettings, SettingsPair,
-};
-use crate::ir::transformation::redistribution::ColumnPosition;
 use crate::warn;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
@@ -1688,7 +1687,7 @@ where
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
     column_positions_cache: HashMap<NodeId, ColumnPositionMap>,
-    /// Time at the start of the plan building stage without timezone.
+    /// Time at the start of the plan building stage with timezone.
     /// It is used to replace CURRENT_DATE to actual value.
     current_time: OffsetDateTime,
 }
@@ -2769,6 +2768,14 @@ where
                     let date = worker.current_time.replace_time(Time::MIDNIGHT);
                     let val = Value::Datetime(Datetime::from_inner(date));
                     let plan_id = plan.add_const(val);
+                    ParseExpression::PlanId { plan_id }
+                }
+                Rule::LocalTimestamp => {
+                    // Get precision from parsing (max value 6)
+                    let precision = primary.into_inner().next()
+                        .map(|p| p.as_str().parse::<usize>().unwrap_or(usize::MAX).min(6))
+                        .unwrap_or(6); // Default for Postgres is 6
+                    let plan_id = plan.nodes.push(LocalTimestamp{precision}.into());
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::CountAsterisk => {

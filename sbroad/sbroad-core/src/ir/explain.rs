@@ -388,6 +388,13 @@ impl ColExpr {
                     let alias_expr = ColExpr::Unary(op.clone(), Box::new(expr));
                     stack.push((alias_expr, id));
                 }
+                Expression::LocalTimestamp(_) => {
+                    let expr = ColExpr::Column(
+                        "LocalTimestamp".to_string(),
+                        current_node.calculate_type(plan)?,
+                    );
+                    stack.push((expr, id));
+                }
             }
         }
 

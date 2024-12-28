@@ -7,7 +7,8 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    ExprInParentheses, Like, NodeAligned, NodeId, Reference, Row, StableFunction, Trim, UnaryExpr,
+    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Reference, Row, StableFunction,
+    Trim, UnaryExpr,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -28,6 +29,7 @@ pub enum ExprOwned {
     CountAsterisk(CountAsterisk),
     Case(Case),
     ExprInParentheses(ExprInParentheses),
+    LocalTimestamp(LocalTimestamp),
 }
 
 impl From<ExprOwned> for NodeAligned {
@@ -48,6 +50,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::StableFunction(stable_func) => stable_func.into(),
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
+            ExprOwned::LocalTimestamp(lt) => lt.into(),
         }
     }
 }
@@ -81,6 +84,7 @@ pub enum Expression<'a> {
     CountAsterisk(&'a CountAsterisk),
     Case(&'a Case),
     ExprInParentheses(&'a ExprInParentheses),
+    LocalTimestamp(&'a LocalTimestamp),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -101,6 +105,7 @@ pub enum MutExpression<'a> {
     CountAsterisk(&'a mut CountAsterisk),
     Case(&'a mut Case),
     ExprInParentheses(&'a mut ExprInParentheses),
+    LocalTimestamp(&'a mut LocalTimestamp),
 }
 
 #[allow(dead_code)]
@@ -200,6 +205,7 @@ impl Expression<'_> {
             Expression::StableFunction(sfunc) => ExprOwned::StableFunction((*sfunc).clone()),
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
+            Expression::LocalTimestamp(lt) => ExprOwned::LocalTimestamp((*lt).clone()),
         }
     }
 }

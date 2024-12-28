@@ -231,7 +231,9 @@ fn subtree_next<'plan>(
                         }
                     };
                 }
-                Expression::Constant { .. } | Expression::CountAsterisk { .. } => None,
+                Expression::Constant { .. }
+                | Expression::CountAsterisk { .. }
+                | Expression::LocalTimestamp { .. } => None,
                 Expression::Reference { .. } => {
                     let step = *iter.get_child().borrow();
                     if step == 0 {

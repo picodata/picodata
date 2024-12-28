@@ -791,7 +791,9 @@ impl ExecutionPlan {
                             *child = subtree_map.get_id(*child);
                         }
                     }
-                    ExprOwned::Constant { .. } | ExprOwned::CountAsterisk { .. } => {}
+                    ExprOwned::Constant { .. }
+                    | ExprOwned::CountAsterisk { .. }
+                    | ExprOwned::LocalTimestamp(_) => {}
                     ExprOwned::Case(Case {
                         search_expr,
                         when_blocks,
