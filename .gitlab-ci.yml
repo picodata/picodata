@@ -160,6 +160,9 @@ build-stress-image:
       variables:
         BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
       needs: ["build-base-image"]
+
+    - when: manual
+      allow_failure: true
   variables:
     DOCKERFILE: docker-build-base/stress.Dockerfile
     DESTINATION: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
