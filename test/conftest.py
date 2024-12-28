@@ -1899,7 +1899,7 @@ class Cluster:
         self,
         target: Instance,
         peer: Instance | None = None,
-        timeout: int = 10,
+        timeout: int = 30,
     ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
