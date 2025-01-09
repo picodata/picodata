@@ -180,7 +180,7 @@ def test_aggregates(postgres: Postgres):
 
     cur.execute(
         """
-        INSERT INTO "tall" ("id") VALUES (1)
+        INSERT INTO "tall" ("id", "str") VALUES (1, 'apple')
         """
     )
 
@@ -194,7 +194,7 @@ def test_aggregates(postgres: Postgres):
 
     cur.execute(
         """
-        INSERT INTO "tall" ("id") VALUES (2)
+        INSERT INTO "tall" ("id", "str") VALUES (2, 'banana')
         """
     )
     # floating decimal
@@ -204,6 +204,50 @@ def test_aggregates(postgres: Postgres):
     """
     )
     assert cur.fetchall() == ([Decimal(1.5)],)
+
+    cur.execute(
+        """
+        INSERT INTO "tall" ("id", "str") VALUES (3, 'cherry')
+        """
+    )
+
+    # Test group_concat
+    cur.execute(
+        """
+        SELECT group_concat("str", ',') FROM "tall";
+        """
+    )
+    group_concat_result = cur.fetchall()[0][0]
+
+    # Test string_agg
+    cur.execute(
+        """
+        SELECT string_agg("str", ',') FROM "tall";
+        """
+    )
+    string_agg_result = cur.fetchall()[0][0]
+
+    # Verify both functions produce identical results
+    assert group_concat_result == string_agg_result
+    assert group_concat_result == "apple,banana,cherry"
+
+    # Test with GROUP BY
+    cur.execute(
+        """
+        SELECT "bool", group_concat("str", ',') FROM "tall" GROUP BY "bool";
+        """
+    )
+    group_concat_grouped = cur.fetchall()
+
+    cur.execute(
+        """
+        SELECT "bool", string_agg("str", ',') FROM "tall" GROUP BY "bool";
+        """
+    )
+    string_agg_grouped = cur.fetchall()
+
+    # Verify grouped results are identical
+    assert group_concat_grouped == string_agg_grouped
 
 
 def test_empty_queries(postgres: Postgres):

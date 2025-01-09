@@ -66,7 +66,7 @@ impl AggregateKind {
             "total" => Some(AggregateKind::TOTAL),
             "min" => Some(AggregateKind::MIN),
             "max" => Some(AggregateKind::MAX),
-            "group_concat" => Some(AggregateKind::GRCONCAT),
+            "group_concat" | "string_agg" => Some(AggregateKind::GRCONCAT),
             _ => None,
         }
     }

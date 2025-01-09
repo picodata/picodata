@@ -1881,6 +1881,39 @@ execution options:
 }
 
 #[test]
+fn front_sql_string_agg_alias_to_group_concat() {
+    // Test 1
+    check_output(
+        r#"SELECT string_agg("FIRST_NAME", ',') FROM "test_space""#,
+        vec![],
+        r#"projection (group_concat(("group_concat_696"::string, ','::string))::string -> "col_1")
+    motion [policy: full]
+        projection (group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_696")
+            scan "test_space"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+"#,
+    );
+
+    // Test 2
+    check_output(
+        r#"SELECT "id", string_agg("FIRST_NAME", ',') FROM "test_space" GROUP BY "id""#,
+        vec![],
+        r#"projection ("column_596"::unsigned -> "id", group_concat(("group_concat_1396"::string, ','::string))::string -> "col_1")
+    group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "group_concat_1396"::string -> "group_concat_1396")
+        motion [policy: segment([ref("column_596")])]
+            projection ("test_space"."id"::unsigned -> "column_596", group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_1396")
+                group by ("test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
+                    scan "test_space"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+"#,
+    );
+}
+
+#[test]
 fn front_sql_count_asterisk1() {
     let input = r#"SELECT count(*), count(*) FROM "t""#;
 
