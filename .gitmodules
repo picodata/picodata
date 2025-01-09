@@ -4,7 +4,7 @@
 	branch = picodata-24.6
 [submodule "tarantool-sys"]
 	path = tarantool-sys
-	url = ../../tarantool.git
+	url = ../tarantool.git
 	branch = picodata-24.6
 	ignore = dirty
 [submodule "vshard"]
