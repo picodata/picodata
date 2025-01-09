@@ -58,7 +58,11 @@ fn server_start(context: Context) {
     // Help DBA diagnose storages by initializing them asap.
     backend::storage::force_init_portals_and_statements();
 
-    while let Ok(raw) = context.server.accept() {
+    while let Ok(raw) = context
+        .server
+        .accept()
+        .inspect_err(|e| tlog!(Error, "accept failed: {e:?}"))
+    {
         if let Err(e) = enable_tcp_nodelay(&raw) {
             tlog!(Error, "failed to enable TCP_NODELAY on socket: {e:?}");
         }
@@ -67,6 +71,8 @@ fn server_start(context: Context) {
             tlog!(Error, "failed to handle client {e}");
         }
     }
+
+    tlog!(Info, "shut down postgres server");
 }
 
 fn handle_client(
