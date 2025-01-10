@@ -145,7 +145,7 @@ impl TarantoolBuildRoot {
                 // to forward parameters to tarantool cmake project
                 configure_cmd
                     .args(["-S", "tarantool-sys/static-build"])
-                    .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", args.join(";")))
+                    .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", args.join(";")));
             } else {
                 // for dynamic build we do not use most of the bundled dependencies
                 configure_cmd
@@ -163,20 +163,25 @@ impl TarantoolBuildRoot {
                     .arg(format!(
                         "-DCMAKE_INSTALL_PREFIX={}",
                         tarantool_root.display(),
-                    ))
+                    ));
             }
-            .run();
+            configure_cmd.run();
         }
 
-        Command::new("cmake")
+        let mut build_cmd = Command::new("cmake");
+        build_cmd
+            // CONFIG_SITE is a path to a systemwide autoconf script, which may modify its
+            // parameters. On OpenSUSE, running this script breaks our build, because it
+            // modifies the (project-local!) paths to compiled libraries in submodules.
+            .env_remove("CONFIG_SITE")
             .set_make_jobserver(jsc)
             .arg("--build")
-            .arg(tarantool_root)
-            .args(match use_static_build {
-                false => vec!["--", "install"],
-                true => vec![],
-            })
-            .run();
+            .arg(tarantool_root);
+        // Must be passed after all normal flags.
+        if !use_static_build {
+            build_cmd.args(["--", "install"]);
+        }
+        build_cmd.run();
 
         self
     }
