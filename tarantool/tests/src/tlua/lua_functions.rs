@@ -344,10 +344,10 @@ pub fn non_string_error() {
     }
 
     match lua
-        .exec("error(box.error.new(box.error.SYSTEM, 'oops'))")
+        .exec("error(box.error.new(box.error.NO_SUCH_USER, 'John'))")
         .unwrap_err()
     {
-        LuaError::ExecutionError(msg) => assert_eq!(msg, "oops"),
+        LuaError::ExecutionError(msg) => assert_eq!(msg, "User 'John' is not found"),
         _ => unreachable!(),
     }
 }

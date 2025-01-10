@@ -943,7 +943,12 @@ mod tests {
         assert_eq!(e.error_type(), "ClientError");
         assert_eq!(e.file(), Some("eval"));
         assert_eq!(e.line(), Some(1));
-        assert_eq!(e.fields().len(), 0);
+        let fields_len = e.fields().len();
+        // Starting from tarantool 2.11.5 it will contain `name` field
+        assert!(fields_len == 1 || fields_len == 0);
+        if fields_len == 1 {
+            assert_eq!(e.fields()["name"], rmpv::Value::from("UNSUPPORTED"));
+        }
 
         let e = e.cause().unwrap();
 
