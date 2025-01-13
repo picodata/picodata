@@ -165,7 +165,7 @@ k6:
 
 [group("misc")]
 [doc("remove cargo and python cache, clean submodules")]
-[confirm("Do you really want to clear all cache and submodules?")]
+[confirm("Do you really want to clear all cache and submodules? (y/n)")]
 clean:
 	cargo clean || true
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'

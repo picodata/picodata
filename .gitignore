@@ -1,8 +1,17 @@
-/target
-.rocks
-./*.snap
-*.xlog
+# Build & dependency folders
+target/
+venv/
+node_modules/
 __pycache__/
+
+.rocks
+
+# Saved panic backtraces
+*.backtrace
+# Snapshot and WAL storage of running instances
+*.snap
+*.xlog
+
 tmp/
 *.rustfmt
 tags
@@ -11,7 +20,9 @@ test/manual/sql/*.json
 **/libtestplug.dylib
 **/libplug_wrong_version.so
 **/libplug_wrong_version.dylib
-venv
 .direnv
 .envrc
-.vscode
+
+# IDE configuration folders
+.idea/
+.vscode/
