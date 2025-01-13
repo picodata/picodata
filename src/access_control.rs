@@ -29,7 +29,7 @@
 use std::collections::{HashMap, HashSet};
 
 use tarantool::auth::AuthMethod;
-use tarantool::error::TarantoolErrorCode::AccessDenied;
+use tarantool::error::TarantoolErrorCode::{self, AccessDenied};
 use tarantool::{
     access_control::{
         box_access_check_ddl, box_access_check_space, PrivType,
@@ -93,20 +93,24 @@ fn make_no_such_user(name: &str) -> tarantool::error::Error {
     tarantool::error::TarantoolError::last().into()
 }
 
+/// Get user by id. If there is no such user the last tarantool error is set to no such user
+/// and returned.
 pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
-    let sys_user = Space::from(SystemSpace::User).get(&(id,))?;
+    user_by_id_if_exists(id)?.ok_or(
+        BoxError::new(
+            TarantoolErrorCode::NoSuchUser,
+            format!("no such user #{id}"),
+        )
+        .into(),
+    )
+}
 
-    match sys_user {
-        Some(u) => u.decode(),
-        None => {
-            tarantool::set_error!(
-                tarantool::error::TarantoolErrorCode::NoSuchUser,
-                "no such user #{}",
-                id
-            );
-            return Err(tarantool::error::TarantoolError::last().into());
-        }
-    }
+/// Get user by id. If there is no such user None is returned.
+pub fn user_by_id_if_exists(id: UserId) -> tarantool::Result<Option<UserMetadata>> {
+    let Some(sys_user) = Space::from(SystemSpace::User).get(&(id,))? else {
+        return Ok(None);
+    };
+    sys_user.decode().map(Some)
 }
 
 pub fn validate_password(
@@ -597,7 +601,14 @@ fn access_check_acl(
             )
         }
         op::Acl::DropUser { user_id, .. } => {
-            let sys_user = user_by_id(*user_id)?;
+            let Some(sys_user) = user_by_id_if_exists(*user_id)? else {
+                // The user has already been dropped.
+                // This may have occurred during the execution of proc_cas_local,
+                // but it would result in a schema version change, causing the proposed operation
+                // to be rejected during the predicate check and retried later. Upon retry, the
+                // initiator will detect that the user has been dropped and handle it accordingly.
+                return Ok(());
+            };
 
             assert_eq!(sys_user.id, *user_id, "user metadata id mismatch");
 
@@ -627,7 +638,14 @@ fn access_check_acl(
         op::Acl::DropRole { role_id, .. } => {
             // In vanilla roles and users are stored in the same space
             // so we can reuse the definition
-            let sys_user = user_by_id(*role_id)?;
+            let Some(sys_user) = user_by_id_if_exists(*role_id)? else {
+                // The role has already been dropped.
+                // This may have occurred during the execution of proc_cas_local,
+                // but it would result in a schema version change, causing the proposed operation
+                // to be rejected during the predicate check and retried later. Upon retry, the
+                // initiator will detect that the role has been dropped and handle it accordingly.
+                return Ok(());
+            };
 
             assert_eq!(sys_user.id, *role_id, "user metadata id mismatch");
 
@@ -1250,6 +1268,31 @@ mod tests {
                 actor_user_id,
             )
             .unwrap();
+        }
+
+        // it is allowed to drop nonexistent users and roles if if_exists option is passed
+        {
+            let drop_user_access = access_check_acl(
+                &storage,
+                &Acl::DropUser {
+                    user_id: 42,
+                    initiator: actor_user_id,
+                    schema_version: 0,
+                },
+                actor_user_id,
+            );
+            assert!(drop_user_access.is_ok());
+
+            let drop_role_access = access_check_acl(
+                &storage,
+                &Acl::DropRole {
+                    role_id: 42,
+                    initiator: actor_user_id,
+                    schema_version: 0,
+                },
+                actor_user_id,
+            );
+            assert!(drop_user_access.is_ok());
         }
 
         // rename user
