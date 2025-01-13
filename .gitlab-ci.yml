@@ -331,14 +331,16 @@ test-patch-tarantool:
   <<: *test-patch-rules
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
-    VARDIR: tmp/t
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
-    - pushd tarantool-sys/ && make -f .test.mk VARDIR=${VARDIR} test-release;
+    - pushd tarantool-sys/ && make -f .test.mk test-release;
+  after_script:
+    - find /tmp/t/ -type s -delete
+    - mv /tmp/t tarantool-sys/test/artifacts
   artifacts:
     when: always
     paths:
-      - tarantool-sys/test/${VARDIR}/artifacts/
+      - tarantool-sys/test/artifacts/
 
 test-mac-m1:
   extends: .test
