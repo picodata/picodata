@@ -7,7 +7,8 @@ use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
-use crate::storage::ClusterwideTable;
+use crate::storage;
+use crate::storage::TClusterwideTable;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
@@ -202,7 +203,7 @@ pub fn prepare_update_instance_cas_request(
         return Ok(None);
     };
     debug_assert!(matches!(dml, Dml::Update { .. }), "{dml:?}");
-    debug_assert_eq!(dml.table_id(), ClusterwideTable::Instance.id());
+    debug_assert_eq!(dml.table_id(), storage::Instances::TABLE_ID);
 
     let mut ops = vec![];
     ops.push(dml);
@@ -215,7 +216,7 @@ pub fn prepare_update_instance_cas_request(
         #[rustfmt::skip]
         update_ops.assign(column_name!(Replicaset, target_config_version), replicaset.target_config_version + 1)?;
         #[rustfmt::skip]
-        let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[&replicaset.name], update_ops, ADMIN_ID)?;
+        let replicaset_dml = Dml::update(storage::Replicasets::TABLE_ID, &[&replicaset.name], update_ops, ADMIN_ID)?;
         ops.push(replicaset_dml);
     }
 
@@ -227,9 +228,9 @@ pub fn prepare_update_instance_cas_request(
     }
 
     let ranges = vec![
-        cas::Range::new(ClusterwideTable::Instance),
-        cas::Range::new(ClusterwideTable::Address),
-        cas::Range::new(ClusterwideTable::Tier),
+        cas::Range::new(storage::Instances::TABLE_ID),
+        cas::Range::new(storage::PeerAddresses::TABLE_ID),
+        cas::Range::new(storage::Tiers::TABLE_ID),
     ];
     Ok(Some((ops, ranges)))
 }
@@ -299,7 +300,12 @@ pub fn update_instance(
         return Ok(None);
     }
 
-    let instance_dml = Dml::update(ClusterwideTable::Instance, &[&instance.name], ops, ADMIN_ID)?;
+    let instance_dml = Dml::update(
+        storage::Instances::TABLE_ID,
+        &[&instance.name],
+        ops,
+        ADMIN_ID,
+    )?;
 
     Ok(Some((instance_dml, replication_config_version_bump_needed)))
 }

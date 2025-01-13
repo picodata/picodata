@@ -4,7 +4,6 @@ use protobuf::Message;
 use ::tarantool::msgpack;
 
 use crate::access_control::validate_password;
-use crate::config;
 use crate::config::PicodataConfig;
 use crate::info::PICODATA_VERSION;
 use crate::instance::Instance;
@@ -12,12 +11,13 @@ use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::{ADMIN_ID, GUEST_ID};
 use crate::storage::PropertyName;
-use crate::storage::{Clusterwide, ClusterwideTable};
+use crate::storage::{Clusterwide, TClusterwideTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op;
+use crate::{config, storage};
 use std::collections::HashMap;
 use std::env;
 use tarantool::auth::{AuthData, AuthDef, AuthMethod};
@@ -36,7 +36,7 @@ pub(super) fn prepare(
     //
     ops.push(
         op::Dml::replace(
-            ClusterwideTable::Address,
+            storage::PeerAddresses::TABLE_ID,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
                 address: config.instance.iproto_advertise().to_host_port(),
@@ -46,12 +46,12 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
     );
     ops.push(
-        op::Dml::insert(ClusterwideTable::Instance, &instance, ADMIN_ID)
+        op::Dml::insert(storage::Instances::TABLE_ID, &instance, ADMIN_ID)
             .expect("serialization cannot fail"),
     );
     ops.push(
         op::Dml::insert(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &Replicaset::with_one_instance(instance),
             ADMIN_ID,
         )
@@ -75,7 +75,7 @@ pub(super) fn prepare(
     let mut ops = vec![];
     for tier in tiers.values() {
         ops.push(
-            op::Dml::insert(ClusterwideTable::Tier, &tier, ADMIN_ID)
+            op::Dml::insert(storage::Tiers::TABLE_ID, &tier, ADMIN_ID)
                 .expect("serialization cannot fail"),
         );
     }
@@ -97,7 +97,7 @@ pub(super) fn prepare(
     let mut ops = vec![];
     ops.push(
         op::Dml::insert(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(PropertyName::GlobalSchemaVersion, 0),
             ADMIN_ID,
         )
@@ -105,7 +105,7 @@ pub(super) fn prepare(
     );
     ops.push(
         op::Dml::insert(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(PropertyName::NextSchemaVersion, 1),
             ADMIN_ID,
         )
@@ -113,7 +113,7 @@ pub(super) fn prepare(
     );
     ops.push(
         op::Dml::insert(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(PropertyName::SystemCatalogVersion, "25.1.0".to_owned()),
             ADMIN_ID,
         )
@@ -121,7 +121,7 @@ pub(super) fn prepare(
     );
     ops.push(
         op::Dml::insert(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(PropertyName::ClusterVersion, PICODATA_VERSION.to_string()),
             ADMIN_ID,
         )
@@ -135,7 +135,7 @@ pub(super) fn prepare(
         #[rustfmt::skip]
         ops.push(
             op::Dml::insert(
-                ClusterwideTable::DbConfig,
+                storage::DbConfig::TABLE_ID,
                 &(name, default),
                 ADMIN_ID,
             )
@@ -163,13 +163,13 @@ pub(super) fn prepare(
     let mut ops = vec![];
     for (user_def, privilege_defs) in &schema::system_user_definitions() {
         ops.push(
-            op::Dml::insert(ClusterwideTable::User, user_def, ADMIN_ID)
+            op::Dml::insert(storage::Users::TABLE_ID, user_def, ADMIN_ID)
                 .expect("serialization cannot fail"),
         );
 
         for priv_def in privilege_defs {
             ops.push(
-                op::Dml::insert(ClusterwideTable::Privilege, priv_def, ADMIN_ID)
+                op::Dml::insert(storage::Privileges::TABLE_ID, priv_def, ADMIN_ID)
                     .expect("serialization cannot fail"),
             );
         }
@@ -180,13 +180,13 @@ pub(super) fn prepare(
     //
     for (role_def, privilege_defs) in &schema::system_role_definitions() {
         ops.push(
-            op::Dml::insert(ClusterwideTable::User, role_def, ADMIN_ID)
+            op::Dml::insert(storage::Users::TABLE_ID, role_def, ADMIN_ID)
                 .expect("serialization cannot fail"),
         );
 
         for priv_def in privilege_defs {
             ops.push(
-                op::Dml::insert(ClusterwideTable::Privilege, priv_def, ADMIN_ID)
+                op::Dml::insert(storage::Privileges::TABLE_ID, priv_def, ADMIN_ID)
                     .expect("serialization cannot fail"),
             );
         }
@@ -270,7 +270,7 @@ pub(super) fn prepare(
     for (table_def, index_defs) in schema::system_table_definitions() {
         ops.push(
             op::Dml::insert_raw(
-                ClusterwideTable::Table,
+                storage::Tables::TABLE_ID,
                 msgpack::encode(&table_def),
                 ADMIN_ID,
             )
@@ -278,7 +278,7 @@ pub(super) fn prepare(
         );
         for index_def in index_defs {
             ops.push(
-                op::Dml::insert(ClusterwideTable::Index, &index_def, ADMIN_ID)
+                op::Dml::insert(storage::Indexes::TABLE_ID, &index_def, ADMIN_ID)
                     .expect("serialization cannot fail"),
             );
         }

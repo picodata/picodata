@@ -8,8 +8,8 @@ use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::replicaset::ReplicasetState;
 use crate::schema::ADMIN_ID;
-use crate::storage::ClusterwideTable;
-use crate::storage::{Clusterwide, ToEntryIter as _};
+use crate::storage::TClusterwideTable;
+use crate::storage::{self, Clusterwide, ToEntryIter as _};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
@@ -134,11 +134,11 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
         let mut ops = Vec::with_capacity(3);
         ops.push(
-            Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_ID)
+            Dml::replace(storage::PeerAddresses::TABLE_ID, &peer_address, ADMIN_ID)
                 .expect("encoding should not fail"),
         );
         ops.push(
-            Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_ID)
+            Dml::replace(storage::Instances::TABLE_ID, &instance, ADMIN_ID)
                 .expect("encoding should not fail"),
         );
 
@@ -153,16 +153,16 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 // The new replicaset will have a new unique uuid, so once we
                 // make the uuid the primary key, we can switch back to using
                 // insert here.
-                Dml::replace(ClusterwideTable::Replicaset, &replicaset, ADMIN_ID)
+                Dml::replace(storage::Replicasets::TABLE_ID, &replicaset, ADMIN_ID)
                     .expect("encoding should not fail"),
             );
         }
 
         let ranges = vec![
-            cas::Range::new(ClusterwideTable::Instance),
-            cas::Range::new(ClusterwideTable::Address),
-            cas::Range::new(ClusterwideTable::Tier),
-            cas::Range::new(ClusterwideTable::Replicaset),
+            cas::Range::new(storage::Instances::TABLE_ID),
+            cas::Range::new(storage::PeerAddresses::TABLE_ID),
+            cas::Range::new(storage::Tiers::TABLE_ID),
+            cas::Range::new(storage::Replicasets::TABLE_ID),
         ];
         let predicate = cas::Predicate::with_applied_index(ranges);
         let cas_req = crate::cas::Request::new(Op::BatchDml { ops }, predicate, ADMIN_ID)?;

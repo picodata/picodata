@@ -5,9 +5,7 @@ use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::ServiceId;
-use crate::storage::{self, RoutineId, ToEntryIter};
-use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
-use crate::storage::{ClusterwideTable, PropertyName};
+use crate::storage::*;
 use crate::tier::DEFAULT_TIER;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
@@ -140,24 +138,49 @@ impl TableDef {
 /// Definitions of builtin tables & their respective indexes.
 /// These should be inserted into "_pico_table" & "_pico_index" at cluster bootstrap.
 pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
-    let mut result = Vec::with_capacity(ClusterwideTable::all_tables().len());
-    for sys_table in ClusterwideTable::all_tables() {
-        let table_def = TableDef {
-            id: sys_table.id(),
-            name: sys_table.name().into(),
-            distribution: Distribution::Global,
-            format: sys_table.format(),
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            operable: true,
-            engine: SpaceEngineType::Memtx,
-            owner: ADMIN_ID,
-            description: sys_table.description(),
-        };
+    let mut result = Vec::new();
 
-        let index_defs = sys_table.index_definitions();
-        result.push((table_def, index_defs));
+    macro_rules! push_definitions {
+        ($result:ident, $( $table:ident ),*) => {
+            $(
+                let table_def = TableDef {
+                    id: $table::TABLE_ID,
+                    name: $table::TABLE_NAME.into(),
+                    distribution: Distribution::Global,
+                    format: $table::format(),
+                    // This means the local schema is already up to date and main loop doesn't need to do anything
+                    schema_version: INITIAL_SCHEMA_VERSION,
+                    operable: true,
+                    engine: SpaceEngineType::Memtx,
+                    owner: ADMIN_ID,
+                    description: $table::DESCRIPTION.into(),
+                };
+                let index_defs = $table::index_definitions();
+                $result.push((table_def, index_defs));
+            )*
+        };
     }
+
+    use crate::storage::*;
+    push_definitions!(
+        result,
+        Tables,
+        Indexes,
+        PeerAddresses,
+        Instances,
+        Properties,
+        Replicasets,
+        Users,
+        Privileges,
+        Tiers,
+        Routines,
+        Plugins,
+        Services,
+        ServiceRouteTable,
+        PluginMigrations,
+        PluginConfig,
+        DbConfig
+    );
 
     // TODO: there's also "_raft_log" & "_raft_state" spaces, but we don't treat
     // them the same as others for some reason?
@@ -1445,7 +1468,7 @@ pub fn init_user_pico_service() {
         panic!("Couldn't find definition for '{PICO_SERVICE_USER_NAME}' system user");
     };
 
-    let res = storage::schema::acl::on_master_create_user(user_def, false);
+    let res = schema::acl::on_master_create_user(user_def, false);
     if let Err(e) = res {
         panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
     }
@@ -2466,9 +2489,9 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
 
         #[rustfmt::skip]
         let ranges = vec![
-            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::PendingSchemaChange]),
-            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::GlobalSchemaVersion]),
-            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::NextSchemaVersion]),
+            cas::Range::new(Properties::TABLE_ID).eq([PropertyName::PendingSchemaChange]),
+            cas::Range::new(Properties::TABLE_ID).eq([PropertyName::GlobalSchemaVersion]),
+            cas::Range::new(Properties::TABLE_ID).eq([PropertyName::NextSchemaVersion]),
         ];
         let predicate = cas::Predicate::with_applied_index(ranges);
         let req = cas::Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;

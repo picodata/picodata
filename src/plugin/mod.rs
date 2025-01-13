@@ -15,7 +15,7 @@ use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::PluginNotFound;
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
-use crate::storage::{ClusterwideTable, PropertyName};
+use crate::storage::{self, PropertyName, TClusterwideTable};
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::node::Node;
@@ -441,8 +441,12 @@ pub fn replace_routes(items: &[ServiceRouteItem], timeout: Duration) -> traft::R
     let ops = items
         .iter()
         .map(|routing_item| {
-            Dml::replace(ClusterwideTable::ServiceRouteTable, &routing_item, ADMIN_ID)
-                .expect("encoding should not fail")
+            Dml::replace(
+                storage::ServiceRouteTable::TABLE_ID,
+                &routing_item,
+                ADMIN_ID,
+            )
+            .expect("encoding should not fail")
         })
         .collect();
 
@@ -468,7 +472,7 @@ pub fn remove_routes(keys: &[ServiceRouteKey], timeout: Duration) -> traft::Resu
     let ops = keys
         .iter()
         .map(|routing_key| {
-            Dml::delete(ClusterwideTable::ServiceRouteTable, &routing_key, ADMIN_ID)
+            Dml::delete(storage::ServiceRouteTable::TABLE_ID, &routing_key, ADMIN_ID)
                 .expect("encoding should not fail")
         })
         .collect();
@@ -620,17 +624,17 @@ pub fn create_plugin(
             inherit_topology,
         };
         let dml = Dml::replace(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
         let ranges = vec![
             // Fail if someone proposes another plugin operation
-            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            Range::new(storage::Properties::TABLE_ID).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
-            Range::new(ClusterwideTable::PluginConfig).eq([&ident.name]),
-            Range::new(ClusterwideTable::Service).eq([&ident.name]),
+            Range::new(storage::Plugins::TABLE_ID).eq([&ident.name]),
+            Range::new(storage::PluginConfig::TABLE_ID).eq([&ident.name]),
+            Range::new(storage::Services::TABLE_ID).eq([&ident.name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
@@ -844,21 +848,21 @@ pub fn enable_plugin(
             timeout: on_start_timeout,
         };
         let dml = Dml::replace(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
         let ranges = vec![
             // Fail if someone proposes another plugin operation
-            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            Range::new(storage::Properties::TABLE_ID).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
+            Range::new(storage::Plugins::TABLE_ID).eq([&plugin.name]),
             // Fail if someone updates this plugin's service records
-            Range::new(ClusterwideTable::Service).eq([&plugin.name]),
+            Range::new(storage::Services::TABLE_ID).eq([&plugin.name]),
             // Fail if someone updates this plugin's migration records
-            Range::new(ClusterwideTable::PluginMigration).eq([&plugin.name]),
+            Range::new(storage::PluginMigrations::TABLE_ID).eq([&plugin.name]),
             // Fail if someone updates this plugin's service route table
-            Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
+            Range::new(storage::ServiceRouteTable::TABLE_ID).eq([&plugin.name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
@@ -922,7 +926,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
         };
         let ranges = vec![
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+            Range::new(storage::Plugins::TABLE_ID).eq([&ident.name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
@@ -1007,11 +1011,11 @@ pub fn drop_plugin(
         };
         let ranges = vec![
             // Fail if any plugin migration in process
-            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            Range::new(storage::Properties::TABLE_ID).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&plugin_name]),
+            Range::new(storage::Plugins::TABLE_ID).eq([&plugin_name]),
             // Fail if someone updates any service record of this plugin
-            Range::new(ClusterwideTable::Service).eq([&plugin_name]),
+            Range::new(storage::Services::TABLE_ID).eq([&plugin_name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
@@ -1083,17 +1087,17 @@ pub fn update_service_tiers(
             kind,
         };
         let dml = Dml::replace(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
         let ranges = vec![
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&plugin.name, &plugin.version]),
+            Range::new(storage::Plugins::TABLE_ID).eq([&plugin.name, &plugin.version]),
             // Fail if someone updates this service record
-            Range::new(ClusterwideTable::Service).eq([&plugin.name, service, &plugin.version]),
+            Range::new(storage::Services::TABLE_ID).eq([&plugin.name, service, &plugin.version]),
             // Fail if someone proposes another plugin operation
-            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            Range::new(storage::Properties::TABLE_ID).eq([PropertyName::PendingPluginOperation]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
@@ -1139,12 +1143,12 @@ pub fn change_config_atom(
         let mut service_config_part = Vec::with_capacity(kv.len());
         let mut ranges = Vec::with_capacity(kv.len());
         for (service, kv) in kv {
-            ranges.push(Range::new(ClusterwideTable::Service).eq((
+            ranges.push(Range::new(storage::Services::TABLE_ID).eq((
                 &ident.name,
                 service,
                 &ident.version,
             )));
-            ranges.push(Range::new(ClusterwideTable::PluginConfig).eq((
+            ranges.push(Range::new(storage::PluginConfig::TABLE_ID).eq((
                 &ident.name,
                 &ident.version,
                 service,

@@ -15,7 +15,9 @@ use crate::rpc::update_instance::prepare_update_instance_cas_request;
 use crate::schema::{
     PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
 };
-use crate::storage::{ClusterwideTable, PropertyName};
+use crate::storage;
+use crate::storage::PropertyName;
+use crate::storage::TClusterwideTable;
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
@@ -158,14 +160,14 @@ pub(super) fn action_plan<'i>(
         let mut ops = UpdateOps::new();
         ops.assign(column_name!(Replicaset, target_master_name), &to.name)?;
         let dml = Dml::update(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &[&to.replicaset_name],
             ops,
             ADMIN_ID,
         )?;
         let ranges = vec![
-            cas::Range::new(ClusterwideTable::Instance).eq([&to.name]),
-            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&to.name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&replicaset.target_master_name]),
         ];
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
@@ -193,7 +195,7 @@ pub(super) fn action_plan<'i>(
             replicaset.target_config_version,
         )?;
         let dml = Dml::update(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &[replicaset_name],
             ops,
             ADMIN_ID,
@@ -254,7 +256,7 @@ pub(super) fn action_plan<'i>(
         let ranges = vec![
             // We make a decision based on this instance's state so the operation
             // should fail in case there's a change to it in the uncommitted log
-            cas::Range::new(ClusterwideTable::Instance).eq([old_master_name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([old_master_name]),
         ];
 
         let old_master_may_respond = instances
@@ -270,7 +272,7 @@ pub(super) fn action_plan<'i>(
             };
 
             let master_actualize_dml = Dml::update(
-                ClusterwideTable::Replicaset,
+                storage::Replicasets::TABLE_ID,
                 &[replicaset_name],
                 replicaset_dml,
                 ADMIN_ID,
@@ -314,7 +316,7 @@ pub(super) fn action_plan<'i>(
         }
         uops.assign(column_name!(Replicaset, state), ReplicasetState::Ready)?;
         let dml = Dml::update(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &[replicaset_name],
             uops,
             ADMIN_ID,
@@ -378,7 +380,7 @@ pub(super) fn action_plan<'i>(
                 tier.target_vshard_config_version,
             )?;
 
-            let bump = Dml::update(ClusterwideTable::Tier, &[tier_name], uops, ADMIN_ID)?;
+            let bump = Dml::update(storage::Tiers::TABLE_ID, &[tier_name], uops, ADMIN_ID)?;
 
             let ranges = vec![cas::Range::for_dml(&bump)?];
             let predicate = cas::Predicate::new(applied, ranges);
@@ -418,7 +420,7 @@ pub(super) fn action_plan<'i>(
             let mut uops = UpdateOps::new();
             uops.assign(column_name!(Tier, vshard_bootstrapped), true)?;
 
-            let dml = Dml::update(ClusterwideTable::Tier, &[tier_name], uops, ADMIN_ID)?;
+            let dml = Dml::update(storage::Tiers::TABLE_ID, &[tier_name], uops, ADMIN_ID)?;
 
             let ranges = vec![cas::Range::for_dml(&dml)?];
             let predicate = cas::Predicate::new(applied, ranges);
@@ -472,7 +474,7 @@ pub(super) fn action_plan<'i>(
         let mut update_ops = UpdateOps::new();
         update_ops.assign(column_name!(Replicaset, state), ReplicasetState::Expelled)?;
         let dml = Dml::update(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &[&replicaset_name],
             update_ops,
             ADMIN_ID,
@@ -508,7 +510,7 @@ pub(super) fn action_plan<'i>(
 
         let mut ops = vec![];
         let dml = Dml::update(
-            ClusterwideTable::Replicaset,
+            storage::Replicasets::TABLE_ID,
             &[&replicaset_name],
             update_ops,
             ADMIN_ID,
@@ -521,7 +523,7 @@ pub(super) fn action_plan<'i>(
 
         let ranges = vec![
             // Decision was made based on this instance's state so we must make sure it was up to date.
-            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.current_master_name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&replicaset.current_master_name]),
             // The rest of the ranges are implicit.
         ];
 
@@ -667,7 +669,7 @@ pub(super) fn action_plan<'i>(
         let mut ranges = vec![];
         let mut ops = vec![];
 
-        let dml = Dml::replace(ClusterwideTable::Plugin, &plugin_def, ADMIN_ID)?;
+        let dml = Dml::replace(storage::Plugins::TABLE_ID, &plugin_def, ADMIN_ID)?;
         ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
@@ -676,7 +678,7 @@ pub(super) fn action_plan<'i>(
             if let Some(service_topology) = inherit_topology.get(&service_def.name) {
                 service_def.tiers = service_topology.clone();
             }
-            let dml = Dml::replace(ClusterwideTable::Service, &service_def, ADMIN_ID)?;
+            let dml = Dml::replace(storage::Services::TABLE_ID, &service_def, ADMIN_ID)?;
             ranges.push(cas::Range::for_dml(&dml)?);
             ops.push(dml);
 
@@ -687,14 +689,14 @@ pub(super) fn action_plan<'i>(
                 PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
 
             for config_rec in config_records {
-                let dml = Dml::replace(ClusterwideTable::PluginConfig, &config_rec, ADMIN_ID)?;
+                let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
                 ranges.push(cas::Range::for_dml(&dml)?);
                 ops.push(dml);
             }
         }
 
         let dml = Dml::delete(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
         )?;
@@ -733,7 +735,7 @@ pub(super) fn action_plan<'i>(
         let mut enable_ops = UpdateOps::new();
         enable_ops.assign(column_name!(PluginDef, enabled), true)?;
         let dml = Dml::update(
-            ClusterwideTable::Plugin,
+            storage::Plugins::TABLE_ID,
             &[&plugin.name, &plugin.version],
             enable_ops,
             ADMIN_ID,
@@ -747,7 +749,7 @@ pub(super) fn action_plan<'i>(
                     continue;
                 }
                 let dml = Dml::replace(
-                    ClusterwideTable::ServiceRouteTable,
+                    storage::ServiceRouteTable::TABLE_ID,
                     &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &svc.name),
                     ADMIN_ID,
                 )?;
@@ -757,7 +759,7 @@ pub(super) fn action_plan<'i>(
         }
 
         let dml = Dml::delete(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
         )?;
@@ -826,7 +828,7 @@ pub(super) fn action_plan<'i>(
                 if new_tiers.contains(&i.tier) {
                     enable_targets.push(&i.name);
                     let dml = Dml::replace(
-                        ClusterwideTable::ServiceRouteTable,
+                        storage::ServiceRouteTable::TABLE_ID,
                         &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &service_def.name),
                         ADMIN_ID,
                     )?;
@@ -842,19 +844,19 @@ pub(super) fn action_plan<'i>(
                         plugin_version: &plugin.version,
                         service_name: &service_def.name,
                     };
-                    let dml = Dml::delete(ClusterwideTable::ServiceRouteTable, &key, ADMIN_ID)?;
+                    let dml = Dml::delete(storage::ServiceRouteTable::TABLE_ID, &key, ADMIN_ID)?;
                     ranges.push(cas::Range::for_dml(&dml)?);
                     on_success_dml.push(dml);
                 }
             }
         }
 
-        let dml = Dml::replace(ClusterwideTable::Service, &new_service_def, ADMIN_ID)?;
+        let dml = Dml::replace(storage::Services::TABLE_ID, &new_service_def, ADMIN_ID)?;
         ranges.push(cas::Range::for_dml(&dml)?);
         on_success_dml.push(dml);
 
         let dml = Dml::delete(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
         )?;
@@ -931,7 +933,7 @@ pub(super) fn action_plan<'i>(
             ops.assign("value", new_version)?;
 
             let dml = Dml::replace(
-                ClusterwideTable::Property,
+                storage::Properties::TABLE_ID,
                 &(PropertyName::ClusterVersion, new_version),
                 ADMIN_ID,
             )?;
@@ -1431,7 +1433,7 @@ fn get_replicaset_config_version_bump_op_if_needed(
     )
     .expect("won't fail");
     let dml = Dml::update(
-        ClusterwideTable::Replicaset,
+        storage::Replicasets::TABLE_ID,
         &[replicaset_name],
         ops,
         ADMIN_ID,

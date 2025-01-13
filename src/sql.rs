@@ -11,7 +11,7 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::space_by_name;
+use crate::storage::{space_by_name, TClusterwideTable};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
@@ -1145,7 +1145,7 @@ fn alter_system_ir_node_to_op_or_result(
         )));
     }
 
-    let table = crate::storage::ClusterwideTable::DbConfig;
+    let table = crate::storage::DbConfig::TABLE_ID;
     let initiator = current_user;
     match ty {
         AlterSystemType::AlterSystemSet {

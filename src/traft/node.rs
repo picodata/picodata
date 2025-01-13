@@ -36,8 +36,8 @@ use crate::storage::schema::ddl_meta_drop_space;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
+use crate::storage::{self, Clusterwide, PropertyName, TClusterwideTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
-use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
 use crate::system_parameter_name;
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
@@ -72,6 +72,7 @@ use ::tarantool::fiber::Mutex;
 use ::tarantool::index::IndexType;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
+use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
@@ -494,7 +495,7 @@ pub(crate) struct NodeImpl {
 
 #[derive(Debug, Clone, PartialEq)]
 struct AppliedDml {
-    table: ClusterwideTable,
+    table: SpaceId,
     new_tuple: Tuple,
 }
 
@@ -774,7 +775,7 @@ impl NodeImpl {
                 }
                 EntryApplied(Some(AppliedDml { table, new_tuple })) => {
                     // currently only parameters from _pico_db_config processed outside of transaction (here)
-                    debug_assert!(table == ClusterwideTable::DbConfig);
+                    debug_assert!(table == storage::DbConfig::TABLE_ID);
                     apply_parameter(new_tuple);
 
                     // Actually advance the iterator.
@@ -797,11 +798,11 @@ impl NodeImpl {
         #[inline(always)]
         fn dml_is_governor_wakeup_worthy(op: &Dml) -> bool {
             matches!(
-                op.space().try_into(),
-                Ok(ClusterwideTable::Property
-                    | ClusterwideTable::Replicaset
-                    | ClusterwideTable::Instance
-                    | ClusterwideTable::Tier)
+                op.space(),
+                storage::Properties::TABLE_ID
+                    | storage::Replicasets::TABLE_ID
+                    | storage::Instances::TABLE_ID
+                    | storage::Tiers::TABLE_ID
             )
         }
 
@@ -824,7 +825,7 @@ impl NodeImpl {
     ///
     /// Returns Ok(_) if entry was applied successfully
     fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) -> Result<Option<AppliedDml>, ()> {
-        let space = op.space().try_into();
+        let space = op.space();
 
         // In order to implement the audit log events, we have to compare
         // tuples from certain system spaces before and after a DML operation.
@@ -839,14 +840,12 @@ impl NodeImpl {
         //
         // TODO: merge this into `do_dml` once `box_tuple_extract_key` is fixed.
         let old = match space {
-            Ok(
-                s @ (ClusterwideTable::Property
-                | ClusterwideTable::Instance
-                | ClusterwideTable::Replicaset
-                | ClusterwideTable::Tier
-                | ClusterwideTable::ServiceRouteTable),
-            ) => {
-                let s = space_by_id(s.id()).expect("system space must exist");
+            s @ (storage::Properties::TABLE_ID
+            | storage::Instances::TABLE_ID
+            | storage::Replicasets::TABLE_ID
+            | storage::Tiers::TABLE_ID
+            | storage::ServiceRouteTable::TABLE_ID) => {
+                let s = space_by_id(s).expect("system space must exist");
                 match &op {
                     // There may be no previous version for inserts.
                     Dml::Insert { .. } => Ok(None),
@@ -879,15 +878,10 @@ impl NodeImpl {
             }
         };
 
-        let Ok(space) = space else {
-            // Not a builtin system table, nothing left to do here
-            return Ok(None);
-        };
-
         // FIXME: all of this should be done only after the transaction is committed
         // See <https://git.picodata.io/core/picodata/-/issues/1149>
         match space {
-            ClusterwideTable::Instance => {
+            storage::Instances::TABLE_ID => {
                 let old = old
                     .as_ref()
                     .map(|x| x.decode().expect("schema upgrade not supported yet"));
@@ -915,7 +909,7 @@ impl NodeImpl {
                 self.topology_cache.update_instance(old, new);
             }
 
-            ClusterwideTable::Replicaset => {
+            storage::Replicasets::TABLE_ID => {
                 let old = old
                     .as_ref()
                     .map(|x| x.decode().expect("schema upgrade not supported yet"));
@@ -925,7 +919,7 @@ impl NodeImpl {
                 self.topology_cache.update_replicaset(old, new);
             }
 
-            ClusterwideTable::Tier => {
+            storage::Tiers::TABLE_ID => {
                 let old = old
                     .as_ref()
                     .map(|x| x.decode().expect("schema upgrade not supported yet"));
@@ -935,7 +929,7 @@ impl NodeImpl {
                 self.topology_cache.update_tier(old, new);
             }
 
-            ClusterwideTable::ServiceRouteTable => {
+            storage::ServiceRouteTable::TABLE_ID => {
                 let old = old
                     .as_ref()
                     .map(|x| x.decode().expect("schema upgrade not supported yet"));
@@ -945,10 +939,10 @@ impl NodeImpl {
                 self.topology_cache.update_service_route(old, new);
             }
 
-            ClusterwideTable::DbConfig => {
+            storage::DbConfig::TABLE_ID => {
                 let new_tuple = new.expect("can't delete tuple from _pico_db_config");
                 return Ok(Some(AppliedDml {
-                    table: ClusterwideTable::DbConfig,
+                    table: storage::DbConfig::TABLE_ID,
                     new_tuple,
                 }));
             }

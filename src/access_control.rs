@@ -41,7 +41,7 @@ use tarantool::{
     tuple::Encode,
 };
 
-use crate::storage::{ClusterwideTable, SPACE_ID_INTERNAL_MAX};
+use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::{
@@ -182,13 +182,15 @@ pub fn validate_password(
     Ok(())
 }
 
-fn forbid_drop_if_system_space(space_id: u32) -> tarantool::Result<()> {
+fn forbid_drop_if_system_space(storage: &Clusterwide, space_id: u32) -> tarantool::Result<()> {
     if space_id > SPACE_ID_INTERNAL_MAX {
         return Ok(());
     }
 
-    let table_name = ClusterwideTable::try_from(space_id)
-        .map_or(format!("id={}", space_id), |t| t.name().to_string());
+    let table_name = storage
+        .tables
+        .get(space_id)?
+        .map_or(format!("id={}", space_id), |table| table.name);
 
     return Err(BoxError::new(
         TarantoolErrorCode::AccessDenied,
@@ -220,11 +222,13 @@ fn box_access_check_ddl_as_user(
     box_access_check_ddl(object_name, object_id, owner_id, object_type, access)
 }
 
-fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_dml(storage: &Clusterwide, dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
     let space_id = dml.space();
     if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
-        let table_name = ClusterwideTable::try_from(space_id)
-            .map_or(format!("id={}", space_id), |table| table.name().to_string());
+        let table_name = storage
+            .tables
+            .get(space_id)?
+            .map_or(format!("id={}", space_id), |table| table.name);
 
         return Err(tarantool::error::BoxError::new(
             TarantoolErrorCode::AccessDenied,
@@ -242,7 +246,11 @@ fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
 
 /// This function performs access control checks that are identical to ones performed in
 /// vanilla tarantool in on_replace_dd_space, on_replace_dd_index and on_replace_dd_func respectively
-fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_ddl(
+    storage: &Clusterwide,
+    ddl: &op::Ddl,
+    as_user: UserId,
+) -> tarantool::Result<()> {
     match ddl {
         op::Ddl::CreateTable {
             id, name, owner, ..
@@ -262,7 +270,7 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
             )
         }
         op::Ddl::DropTable { id, .. } => {
-            forbid_drop_if_system_space(*id)?;
+            forbid_drop_if_system_space(storage, *id)?;
 
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
@@ -290,7 +298,7 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
             )
         }
         op::Ddl::DropIndex { space_id, .. } => {
-            forbid_drop_if_system_space(*space_id)?;
+            forbid_drop_if_system_space(storage, *space_id)?;
 
             let space = space_by_id(*space_id)?;
             let meta = space.meta()?;
@@ -698,16 +706,16 @@ pub(super) fn access_check_op(
     match op {
         Op::Nop => Ok(()),
         Op::Dml(dml) => {
-            access_check_dml(dml, as_user)?;
+            access_check_dml(storage, dml, as_user)?;
             Ok(())
         }
         Op::BatchDml { ops } => {
             for op in ops {
-                access_check_dml(op, as_user)?;
+                access_check_dml(storage, op, as_user)?;
             }
             Ok(())
         }
-        Op::DdlPrepare { ddl, .. } => access_check_ddl(ddl, as_user),
+        Op::DdlPrepare { ddl, .. } => access_check_ddl(storage, ddl, as_user),
         Op::DdlCommit | Op::DdlAbort { .. } => {
             if as_user != ADMIN_ID {
                 let sys_user = user_by_id(as_user)?;
@@ -905,7 +913,7 @@ mod tests {
                 owner: user_id,
             };
 
-            let e = access_check_ddl(&space_to_be_created, user_id).unwrap_err();
+            let e = access_check_ddl(&storage, &space_to_be_created, user_id).unwrap_err();
 
             assert_eq!(
                 e.to_string(),
@@ -921,12 +929,13 @@ mod tests {
                 None,
             );
 
-            access_check_ddl(&space_to_be_created, user_id).unwrap();
+            access_check_ddl(&storage, &space_to_be_created, user_id).unwrap();
         }
 
         // drop can be granted with wildcard, check on particular entity works
         {
             let e = access_check_ddl(
+                &storage,
                 &Ddl::DropTable {
                     id: space.id(),
                     initiator: user_id,
@@ -950,6 +959,7 @@ mod tests {
             );
 
             access_check_ddl(
+                &storage,
                 &Ddl::DropTable {
                     id: space.id(),
                     initiator: user_id,
@@ -970,6 +980,7 @@ mod tests {
         // drop on particular entity works
         {
             let e = access_check_ddl(
+                &storage,
                 &Ddl::DropTable {
                     id: space.id(),
                     initiator: user_id,
@@ -993,6 +1004,7 @@ mod tests {
             );
 
             access_check_ddl(
+                &storage,
                 &Ddl::DropTable {
                     id: space.id(),
                     initiator: user_id,

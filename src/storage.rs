@@ -11,7 +11,7 @@ use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
 use tarantool::tuple::DecodeOwned;
 use tarantool::tuple::KeyDef;
-use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple};
+use tarantool::tuple::{RawBytes, Tuple};
 use tarantool::util::NumOrStr;
 
 use crate::config;
@@ -50,194 +50,15 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use std::ptr::addr_of;
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use pico_proc_macro::get_doc_literal;
-
 pub mod schema;
 pub mod snapshot;
-
-macro_rules! define_clusterwide_tables {
-    (
-        $(#[$Clusterwide_meta:meta])*
-        pub struct $Clusterwide:ident {
-            pub #space_name_lower: #space_name_upper,
-            $(
-                $(#[$Clusterwide_extra_field_meta:meta])*
-                pub $Clusterwide_extra_field:ident: $Clusterwide_extra_field_type:ty,
-            )*
-        }
-
-        $(#[$ClusterwideTable_meta:meta])*
-        pub enum $ClusterwideTable:ident {
-            $(
-                $(#[$cw_field_meta:meta])*
-                $cw_space_var:ident = $cw_space_id:expr, $cw_space_name:expr => {
-                    $_Clusterwide:ident :: $Clusterwide_field:ident;
-
-                    $(#[$space_struct_meta:meta])*
-                    pub struct $space_struct:ident {
-                        $space_field:ident: $space_ty:ty,
-                        #[primary]
-                        $index_field_pk:ident: $index_ty_pk:ty => $index_name_pk:expr,
-                        $( $index_field:ident: $index_ty:ty => $index_name:expr, )*
-                    }
-                }
-            )+
-        }
-    ) => {
-        ////////////////////////////////////////////////////////////////////////
-        // ClusterwideTable
-        ::tarantool::define_str_enum! {
-            $(#[$ClusterwideTable_meta])*
-            pub enum $ClusterwideTable {
-                $(
-                    $(#[$cw_field_meta])*
-                    $cw_space_var = $cw_space_name = $cw_space_id,
-                )+
-            }
-        }
-
-        impl $ClusterwideTable {
-            pub fn format(&self) -> Vec<tarantool::space::Field> {
-                match self {
-                    $( Self::$cw_space_var => $space_struct::format(), )+
-                }
-            }
-
-            pub fn index_definitions(&self) -> Vec<$crate::schema::IndexDef> {
-                match self {
-                    $( Self::$cw_space_var => $space_struct::index_definitions(), )+
-                }
-            }
-
-            const fn index_names(&self) -> &'static [&'static str] {
-                match self {
-                    $( Self::$cw_space_var => $space_struct::INDEX_NAMES, )+
-                }
-            }
-
-            const fn struct_name(&self) -> &'static str {
-                match self {
-                    $( Self::$cw_space_var => ::std::stringify!($space_struct), )+
-                }
-            }
-
-            pub fn description(&self) -> String {
-                match self {
-                    $( Self::$cw_space_var => $space_struct::description_from_doc_comments(), )+
-                }
-            }
-
-            #[allow(unused)]
-            const fn doc_comments_raw(&self) -> &'static [&'static str] {
-                match self {
-                    $( Self::$cw_space_var => $space_struct::DOC_COMMENTS_RAW, )+
-                }
-            }
-        }
-
-        const _TEST_ID_AND_NAME_ARE_CORRECT: () = {
-            use $crate::util::str_eq;
-            $(
-                assert!($ClusterwideTable::$cw_space_var.id() == $cw_space_id);
-                assert!(str_eq($ClusterwideTable::$cw_space_var.name(), $cw_space_name));
-            )+
-        };
-
-        $( const _: $crate::util::CheckIsSameType<$_Clusterwide, $Clusterwide> = (); )+
-
-        ////////////////////////////////////////////////////////////////////////
-        // Clusterwide
-        $(#[$Clusterwide_meta])*
-        #[derive(Clone, Debug)]
-        pub struct $Clusterwide {
-            $( pub $Clusterwide_field: $space_struct, )+
-            $(
-                $(#[$Clusterwide_extra_field_meta])*
-                pub $Clusterwide_extra_field: $Clusterwide_extra_field_type,
-            )*
-        }
-
-        impl $Clusterwide {
-            /// Initialize the clusterwide storage.
-            ///
-            /// This function is private because it should only be called once
-            /// per picodata instance on boot.
-            #[inline(always)]
-            fn initialize() -> tarantool::Result<Self> {
-                // SAFETY: safe as long as only called from tx thread.
-                static mut WAS_CALLED: bool = false;
-                unsafe {
-                    assert!(!WAS_CALLED, "Clusterwide storage must only be initialized once");
-                    WAS_CALLED = true;
-                }
-
-                Ok(Self {
-                    $( $Clusterwide_field: $space_struct::new()?, )+
-                    $( $Clusterwide_extra_field: Default::default(), )*
-                })
-            }
-
-            #[inline(always)]
-            fn space_by_name(&self, space: impl AsRef<str>) -> tarantool::Result<Space> {
-                let space = space.as_ref();
-                match space {
-                    $( $cw_space_name => Ok(self.$Clusterwide_field.space.clone()), )+
-                    _ => space_by_name(space),
-                }
-            }
-
-            #[inline(always)]
-            fn space_by_id(&self, space: SpaceId) -> tarantool::Result<Space> {
-                match space {
-                    $( $cw_space_id => Ok(self.$Clusterwide_field.space.clone()), )+
-                    _ => space_by_id(space),
-                }
-            }
-
-            /// Apply `cb` to each clusterwide space.
-            #[inline(always)]
-            pub fn for_each_space(
-                &self,
-                mut cb: impl FnMut(&Space) -> tarantool::Result<()>,
-            ) -> tarantool::Result<()>
-            {
-                $( cb(&self.$Clusterwide_field.space)?; )+
-                Ok(())
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////
-        // Instances, Replicasets, etc.
-        $(
-            $(#[$space_struct_meta])*
-            #[derive(Clone, Debug)]
-            pub struct $space_struct {
-                $space_field: $space_ty,
-                #[allow(unused)]
-                $index_field_pk: $index_ty_pk,
-                $( $index_field: $index_ty, )*
-            }
-
-            impl TClusterwideTable for $space_struct {
-                const TABLE_NAME: &'static str = $cw_space_name;
-                const TABLE_ID: SpaceId = $cw_space_id;
-                const INDEX_NAMES: &'static [&'static str] = &[
-                    $index_name_pk,
-                    $( $index_name, )*
-                ];
-                const DOC_COMMENTS_RAW: &'static [&'static str] = &[
-                    $(get_doc_literal!($space_struct_meta), )*
-                ];
-            }
-        )+
-    }
-}
 
 /// A helper macro for getting name of the struct field in a type safe phasion.
 #[macro_export]
@@ -283,206 +104,33 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
     Ok(space)
 }
 
+pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
+
 ////////////////////////////////////////////////////////////////////////////////
 // Clusterwide
 ////////////////////////////////////////////////////////////////////////////////
 
-define_clusterwide_tables! {
-    pub struct Clusterwide {
-        pub #space_name_lower: #space_name_upper,
-        pub snapshot_cache: Rc<SnapshotCache>,
-        // It's ok to lose this information during restart.
-        pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
-    }
-
-    /// An enumeration of builtin cluster-wide tables.
-    ///
-    /// Use [`Self::id`] to get [`SpaceId`].
-    /// Use [`Self::name`] to get space name.
-    /// Each variant (e.g. system space) should have `new` and `format` methods in its implementation.
-    pub enum ClusterwideTable {
-        Table = 512, "_pico_table" => {
-            Clusterwide::tables;
-
-            /// A struct for accessing definitions of all the user-defined tables.
-            ///
-            /// # Table description
-            ///
-            /// Stores metadata of all the cluster tables in picodata.
-            pub struct Tables {
-                space: Space,
-                #[primary]
-                index_id:       Index => "_pico_table_id",
-                index_name:     Index => "_pico_table_name",
-                index_owner_id: Index => "_pico_table_owner_id",
-            }
-        }
-        Index = 513, "_pico_index" => {
-            Clusterwide::indexes;
-
-            /// A struct for accessing definitions of all the user-defined indexes.
-            pub struct Indexes {
-                space: Space,
-                #[primary]
-                index_id:   Index => "_pico_index_id",
-                index_name: Index => "_pico_index_name",
-            }
-        }
-        Address = 514, "_pico_peer_address" => {
-            Clusterwide::peer_addresses;
-
-            /// A struct for accessing storage of peer addresses.
-            pub struct PeerAddresses {
-                space: Space,
-                #[primary]
-                index: Index => "_pico_peer_address_raft_id",
-            }
-        }
-        Instance = 515, "_pico_instance" => {
-            Clusterwide::instances;
-
-            /// A struct for accessing storage of all the cluster instances.
-            pub struct Instances {
-                space: Space,
-                #[primary]
-                index_instance_name:   Index => "_pico_instance_name",
-                index_instance_uuid:   Index => "_pico_instance_uuid",
-                index_raft_id:       Index => "_pico_instance_raft_id",
-                index_replicaset_name: Index => "_pico_instance_replicaset_name",
-            }
-        }
-        Property = 516, "_pico_property" => {
-            Clusterwide::properties;
-
-            /// A struct for accessing storage of the cluster-wide key-value properties
-            pub struct Properties {
-                space: Space,
-                #[primary]
-                index: Index => "_pico_property_key",
-            }
-        }
-        Replicaset = 517, "_pico_replicaset" => {
-            Clusterwide::replicasets;
-
-            /// A struct for accessing replicaset info from storage
-            pub struct Replicasets {
-                space: Space,
-                #[primary]
-                index_replicaset_name:   Index => "_pico_replicaset_name",
-                index_replicaset_uuid: Index => "_pico_replicaset_uuid",
-            }
-        }
-
-        User = 520, "_pico_user" => {
-            Clusterwide::users;
-
-            /// A struct for accessing info of all the user-defined users.
-            pub struct Users {
-                space: Space,
-                #[primary]
-                index_id:   Index => "_pico_user_id",
-                index_name: Index => "_pico_user_name",
-                index_owner_id: Index => "_pico_user_owner_id",
-            }
-        }
-        Privilege = 521, "_pico_privilege" => {
-            Clusterwide::privileges;
-
-            /// A struct for accessing info of all privileges granted to
-            /// user-defined users.
-            pub struct Privileges {
-                space: Space,
-                #[primary]
-                primary_key: Index => "_pico_privilege_primary",
-                object_idx:  Index => "_pico_privilege_object",
-            }
-        }
-        Tier = 523, "_pico_tier" => {
-            Clusterwide::tiers;
-
-            /// A struct for accessing info of all tiers in cluster.
-            pub struct Tiers {
-                space: Space,
-                #[primary]
-                index_name: Index => "_pico_tier_name",
-            }
-        }
-        Routine = 524, "_pico_routine" => {
-            Clusterwide::routines;
-
-            /// A struct for accessing info of all the user-defined routines.
-            pub struct Routines {
-                space: Space,
-                #[primary]
-                index_id:       Index => "_pico_routine_id",
-                index_name:     Index => "_pico_routine_name",
-                index_owner_id: Index => "_pico_routine_owner_id",
-            }
-        }
-        Plugin = 526, "_pico_plugin" => {
-            Clusterwide::plugins;
-
-            /// A struct for accessing info of all known plugins.
-            pub struct Plugins {
-                space: Space,
-                #[primary]
-                primary_key: Index => "_pico_plugin_name",
-            }
-        }
-        Service = 527, "_pico_service" => {
-            Clusterwide::services;
-
-            /// A struct for accessing info of all known plugin services.
-            pub struct Services {
-                space: Space,
-                #[primary]
-                index_name: Index => "_pico_service_name",
-            }
-        }
-        ServiceRouteTable = 528, "_pico_service_route" => {
-            Clusterwide::service_route_table;
-
-            /// A struct for accessing info of plugin services routing table.
-            pub struct ServiceRouteTable {
-                space: Space,
-                #[primary]
-                primary_key: Index => "_pico_service_routing_key",
-            }
-        }
-        PluginMigration = 529, "_pico_plugin_migration" => {
-            Clusterwide::plugin_migrations;
-
-            /// A struct for accessing info of applied plugin migrations.
-            pub struct PluginMigration {
-                space: Space,
-                #[primary]
-                primary_key: Index => "_pico_plugin_migration_primary_key",
-            }
-        }
-        PluginConfig = 530, "_pico_plugin_config" => {
-            Clusterwide::plugin_config;
-
-            /// Structure for storing plugin configuration.
-            /// Configuration is represented by a set of key-value pairs
-            /// belonging to either service or extension.
-            pub struct PluginConfig {
-                space: Space,
-                #[primary]
-                primary: Index => "_pico_plugin_config_pk",
-            }
-        }
-        DbConfig = 531, "_pico_db_config" => {
-            Clusterwide::db_config;
-
-            /// A struct for accessing storage of the cluster-wide and tier-wide configs that
-            /// can be modified via alter system.
-            pub struct DbConfig {
-                space: Space,
-                #[primary]
-                index: Index => "_pico_db_config_key",
-            }
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct Clusterwide {
+    pub snapshot_cache: Rc<SnapshotCache>,
+    // It's ok to lose this information during restart.
+    pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
+    pub tables: Tables,
+    pub indexes: Indexes,
+    pub peer_addresses: PeerAddresses,
+    pub instances: Instances,
+    pub properties: Properties,
+    pub replicasets: Replicasets,
+    pub users: Users,
+    pub privileges: Privileges,
+    pub tiers: Tiers,
+    pub routines: Routines,
+    pub plugins: Plugins,
+    pub services: Services,
+    pub service_route_table: ServiceRouteTable,
+    pub plugin_migrations: PluginMigrations,
+    pub plugin_config: PluginConfig,
+    pub db_config: DbConfig,
 }
 
 /// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
@@ -493,6 +141,73 @@ define_clusterwide_tables! {
 pub const TABLE_ID_BUCKET: SpaceId = 532;
 
 impl Clusterwide {
+    /// Initialize the clusterwide storage.
+    ///
+    /// This function is private because it should only be called once
+    /// per picodata instance on boot.
+    #[inline(always)]
+    fn initialize() -> tarantool::Result<Self> {
+        // SAFETY: safe as long as only called from tx thread.
+        static mut WAS_CALLED: bool = false;
+        unsafe {
+            assert!(
+                !WAS_CALLED,
+                "Clusterwide storage must only be initialized once"
+            );
+            WAS_CALLED = true;
+        }
+
+        Ok(Self {
+            tables: Tables::new()?,
+            indexes: Indexes::new()?,
+            peer_addresses: PeerAddresses::new()?,
+            instances: Instances::new()?,
+            properties: Properties::new()?,
+            replicasets: Replicasets::new()?,
+            users: Users::new()?,
+            privileges: Privileges::new()?,
+            tiers: Tiers::new()?,
+            routines: Routines::new()?,
+            plugins: Plugins::new()?,
+            services: Services::new()?,
+            service_route_table: ServiceRouteTable::new()?,
+            plugin_migrations: PluginMigrations::new()?,
+            plugin_config: PluginConfig::new()?,
+            db_config: DbConfig::new()?,
+            snapshot_cache: Default::default(),
+            login_attempts: Default::default(),
+        })
+    }
+
+    pub fn system_space_name_by_id(id: SpaceId) -> Option<&'static str> {
+        match id {
+            Tables::TABLE_ID => Some(Tables::TABLE_NAME),
+            Indexes::TABLE_ID => Some(Indexes::TABLE_NAME),
+            PeerAddresses::TABLE_ID => Some(PeerAddresses::TABLE_NAME),
+            Instances::TABLE_ID => Some(Instances::TABLE_NAME),
+            Properties::TABLE_ID => Some(Properties::TABLE_NAME),
+            Replicasets::TABLE_ID => Some(Replicasets::TABLE_NAME),
+            Users::TABLE_ID => Some(Users::TABLE_NAME),
+            Privileges::TABLE_ID => Some(Privileges::TABLE_NAME),
+            Tiers::TABLE_ID => Some(Tiers::TABLE_NAME),
+            Routines::TABLE_ID => Some(Routines::TABLE_NAME),
+            Plugins::TABLE_ID => Some(Plugins::TABLE_NAME),
+            Services::TABLE_ID => Some(Services::TABLE_NAME),
+            ServiceRouteTable::TABLE_ID => Some(ServiceRouteTable::TABLE_NAME),
+            PluginMigrations::TABLE_ID => Some(PluginMigrations::TABLE_NAME),
+            PluginConfig::TABLE_ID => Some(PluginConfig::TABLE_NAME),
+            DbConfig::TABLE_ID => Some(DbConfig::TABLE_NAME),
+            _ => None,
+        }
+    }
+
+    fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
+        let Some(space_def) = self.tables.get(id)? else {
+            return Err(Error::other(format!("global space #{id} not found")));
+        };
+        Ok(space_def.name.into())
+    }
+
     /// Get a reference to a global instance of clusterwide storage.
     /// If `init` is true, will do the initialization which may involve creation
     /// of system spaces. This should only be done at instance initialization in
@@ -550,13 +265,6 @@ impl Clusterwide {
         storage.clone()
     }
 
-    fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
-        let Some(space_def) = self.tables.get(id)? else {
-            return Err(Error::other(format!("global space #{id} not found")));
-        };
-        Ok(space_def.name.into())
-    }
-
     /// Perform the `dml` operation on the local storage.
     /// When possible, return the new tuple produced by the operation:
     ///   * `Some(tuple)` in case of insert and replace;
@@ -611,7 +319,7 @@ fn cached_key_def_impl(
     // yield while holding this reference, because of the NoYieldsGuard above.
     let system_key_defs: &'static mut _ = unsafe { &mut *addr_of_mut!(SYSTEM_KEY_DEFS) };
     let system_key_defs = system_key_defs.get_or_insert_with(HashMap::new);
-    if ClusterwideTable::try_from(space_id).is_ok() {
+    if SYSTEM_TABLES_ID_RANGE.contains(&space_id) {
         // System table definition's never change during a single
         // execution, so it's safe to cache these
         let key_def = get_or_create_key_def(system_key_defs, id)?;
@@ -677,95 +385,435 @@ fn get_or_create_key_def(cache: &mut KeyDefCache, id: KeyDefId) -> tarantool::Re
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ClusterwideTable
-////////////////////////////////////////////////////////////////////////////////
-
-impl ClusterwideTable {
-    /// Id of the corresponding system global space.
-    #[inline(always)]
-    pub const fn id(&self) -> SpaceId {
-        *self as _
-    }
-
-    /// Name of the corresponding system global space.
-    #[inline(always)]
-    pub const fn name(&self) -> &'static str {
-        self.as_str()
-    }
-
-    /// A slice of all possible variants of `Self`.
-    /// Guaranteed to return spaces in ascending order of their id
-    #[inline(always)]
-    pub const fn all_tables() -> &'static [Self] {
-        Self::VARIANTS
-    }
-
-    #[inline]
-    pub(crate) fn get(&self) -> tarantool::Result<Space> {
-        Space::find_cached(self.as_str()).ok_or_else(|| {
-            tarantool::set_error!(
-                tarantool::error::TarantoolErrorCode::NoSuchSpace,
-                "no such space \"{}\"",
-                self
-            );
-            tarantool::error::TarantoolError::last().into()
-        })
-    }
-
-    #[inline]
-    pub fn insert(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
-        self.get()?.insert(tuple)
-    }
-
-    #[inline]
-    pub fn replace(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
-        self.get()?.replace(tuple)
-    }
-}
-
 /// Types implementing this trait represent clusterwide spaces.
 pub trait TClusterwideTable {
     const TABLE_NAME: &'static str;
     const TABLE_ID: SpaceId;
-    const INDEX_NAMES: &'static [&'static str];
-    const DOC_COMMENTS_RAW: &'static [&'static str];
+    const DESCRIPTION: &'static str = "";
 
-    fn description_from_doc_comments() -> String {
-        let mut res = String::with_capacity(256);
+    fn format() -> Vec<tarantool::space::Field>;
 
-        let mut lines = Self::DOC_COMMENTS_RAW.iter();
-        for line in &mut lines {
-            if line.trim() == "# Table description" {
-                break;
-            }
-        }
+    fn index_definitions() -> Vec<crate::schema::IndexDef>;
+}
 
-        for line in lines {
-            let line = line.trim();
-            if res.is_empty() && line.is_empty() {
-                continue;
-            }
-            res.push_str(line.trim());
-            res.push('\n');
-        }
+////////////////////////////////////////////////////////////////////////////////
+// Tables
+////////////////////////////////////////////////////////////////////////////////
 
-        // Remove any trailing whitespace
-        while let Some(last) = res.pop() {
-            if !last.is_whitespace() {
-                res.push(last);
-                break;
-            }
-        }
+/// A struct for accessing definitions of all picodata tables.
+#[derive(Debug, Clone)]
+pub struct Tables {
+    pub space: Space,
+    pub index_name: Index,
+    pub index_id: Index,
+    pub index_owner_id: Index,
+}
 
-        res
+impl TClusterwideTable for Tables {
+    const TABLE_NAME: &'static str = "_pico_table";
+    const TABLE_ID: SpaceId = 512;
+    const DESCRIPTION: &'static str = "Stores metadata of all the cluster tables in picodata.";
+
+    fn format() -> Vec<tarantool::space::Field> {
+        TableDef::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "_pico_table_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "_pico_table_name".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
+                name: "_pico_table_owner_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+        ]
     }
 }
 
-impl From<ClusterwideTable> for SpaceId {
+impl Tables {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder("_pico_table_id")
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("_pico_table_name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_owner_id = space
+            .index_builder("_pico_table_owner_id")
+            .unique(false)
+            .part("owner")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+            index_owner_id,
+        })
+    }
+
+    #[inline]
+    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
+        use ::tarantool::msgpack;
+
+        let Some(tuple) = self.space.get(&[id])? else {
+            return Ok(None);
+        };
+        let buf = tuple.to_vec();
+        let table_def = msgpack::decode(&buf)?;
+        Ok(Some(table_def))
+    }
+
+    #[inline]
+    pub fn put(&self, table_def: &TableDef) -> tarantool::Result<()> {
+        use ::tarantool::msgpack;
+
+        self.space
+            .replace(RawBytes::new(&msgpack::encode(table_def)))?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn insert(&self, table_def: &TableDef) -> tarantool::Result<()> {
+        use ::tarantool::msgpack;
+
+        self.space
+            .insert(RawBytes::new(&msgpack::encode(table_def)))?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(column_name!(TableDef, operable), operable)?;
+        self.space.update(&[id], ops)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, id: SpaceId) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[id])
+    }
+
+    #[inline]
+    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<TableDef>> {
+        use ::tarantool::msgpack;
+
+        let tuple = self.index_name.get(&[name])?;
+        if let Some(tuple) = tuple {
+            let table_def = msgpack::decode(&tuple.to_vec())?;
+            Ok(Some(table_def))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn by_owner_id(
+        &self,
+        owner_id: UserId,
+    ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
+        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        Ok(EntryIter::new(iter))
+    }
+}
+
+impl ToEntryIter<MP_CUSTOM> for Tables {
+    type Entry = TableDef;
+
     #[inline(always)]
-    fn from(space: ClusterwideTable) -> SpaceId {
-        space.id()
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Indexes
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing definitions of all picodata indexes.
+#[derive(Debug, Clone)]
+pub struct Indexes {
+    pub space: Space,
+    pub index_id: Index,
+    pub index_name: Index,
+}
+
+impl TClusterwideTable for Indexes {
+    const TABLE_NAME: &'static str = "_pico_index";
+    const TABLE_ID: SpaceId = 513;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        IndexDef::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "_pico_index_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![
+                    Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
+                    Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false),
+                ],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "_pico_index_name".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+        ]
+    }
+}
+
+impl Indexes {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder("_pico_index_id")
+            .unique(true)
+            .part("table_id")
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("_pico_index_name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline]
+    pub fn get(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<IndexDef>> {
+        let tuple = self.space.get(&(space_id, index_id))?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn put(&self, index_def: &IndexDef) -> tarantool::Result<()> {
+        self.space.replace(index_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn insert(&self, index_def: &IndexDef) -> tarantool::Result<()> {
+        self.space.insert(index_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn update_operable(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        operable: bool,
+    ) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(column_name!(IndexDef, operable), operable)?;
+        self.space.update(&(space_id, index_id), ops)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[space_id, index_id])
+    }
+
+    #[inline]
+    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<IndexDef>> {
+        let tuple = self.index_name.get(&[name])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn by_space_id(
+        &self,
+        space_id: SpaceId,
+    ) -> tarantool::Result<EntryIter<IndexDef, MP_SERDE>> {
+        let iter = self.space.select(IteratorType::Eq, &[space_id])?;
+        Ok(EntryIter::new(iter))
+    }
+}
+
+impl ToEntryIter<MP_SERDE> for Indexes {
+    type Entry = IndexDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerAddresses
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing storage of peer addresses.
+#[derive(Debug, Clone)]
+pub struct PeerAddresses {
+    pub space: Space,
+    pub index: Index,
+}
+
+impl TClusterwideTable for PeerAddresses {
+    const TABLE_NAME: &'static str = "_pico_peer_address";
+    const TABLE_ID: SpaceId = 514;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("raft_id", FieldType::Unsigned)),
+            Field::from(("address", FieldType::String)),
+        ]
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "_pico_peer_address_raft_id".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
+            operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        }]
+    }
+}
+
+impl PeerAddresses {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index = space
+            .index_builder("_pico_peer_address_raft_id")
+            .unique(true)
+            .part("raft_id")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index })
+    }
+
+    #[inline]
+    pub fn put(&self, raft_id: RaftId, address: &traft::Address) -> tarantool::Result<()> {
+        self.space.replace(&(raft_id, address))?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn delete(&self, raft_id: RaftId) -> tarantool::Result<()> {
+        self.space.delete(&[raft_id])?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn get(&self, raft_id: RaftId) -> Result<Option<traft::Address>> {
+        let Some(tuple) = self.space.get(&[raft_id])? else {
+            return Ok(None);
+        };
+        tuple.field(1).map_err(Into::into)
+    }
+
+    #[inline(always)]
+    pub fn try_get(&self, raft_id: RaftId) -> Result<traft::Address> {
+        self.get(raft_id)?
+            .ok_or(Error::AddressUnknownForRaftId(raft_id))
+    }
+
+    #[inline]
+    pub fn addresses_by_ids(
+        &self,
+        ids: impl IntoIterator<Item = RaftId>,
+    ) -> Result<HashSet<traft::Address>> {
+        ids.into_iter().map(|id| self.try_get(id)).collect()
+    }
+}
+
+impl ToEntryIter<MP_SERDE> for PeerAddresses {
+    type Entry = traft::PeerAddress;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -831,8 +879,10 @@ impl PropertyName {
     /// being set (or not being unset).
     #[inline(always)]
     fn must_not_delete(&self) -> bool {
-        matches!(self, |Self::GlobalSchemaVersion| Self::NextSchemaVersion
-            | Self::ClusterVersion)
+        matches!(
+            self,
+            Self::GlobalSchemaVersion | Self::NextSchemaVersion | Self::ClusterVersion
+        )
     }
 
     /// Verify type of the property value being inserted (or replaced) in the
@@ -881,434 +931,28 @@ impl PropertyName {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Properties
-////////////////////////////////////////////////////////////////////////////////
-
-impl Properties {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index = space
-            .index_builder("_pico_property_key")
-            .unique(true)
-            .part("key")
-            .if_not_exists(true)
-            .create()?;
-
-        on_replace(space.id(), Self::on_replace)?;
-
-        Ok(Self { space, index })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        use tarantool::space::Field;
-        vec![
-            Field::from(("key", FieldType::String)),
-            Field::from(("value", FieldType::Any)),
-        ]
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_property_key".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
-            operable: true,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
-    }
-
-    /// Callback which is called when data in _pico_property is updated.
-    pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
-        match (old, new) {
-            (Some(old), None) => {
-                // Delete
-                let Ok(Some(key)) = old.field::<PropertyName>(0) else {
-                    // Not a builtin property.
-                    return Ok(());
-                };
-
-                if key.must_not_delete() {
-                    return Err(Error::other(format!("property {key} cannot be deleted")));
-                }
-            }
-            (old, Some(new)) => {
-                // Insert or Update
-                let key = new
-                    .field::<&str>(0)
-                    .expect("key has type string")
-                    .expect("key is not nullable");
-
-                let Ok(key) = key.parse::<PropertyName>() else {
-                    // Not a builtin property.
-                    // Cannot be a wrong type error, because tarantool checks
-                    // the format for us.
-                    if old.is_none() {
-                        // Insert
-                        // FIXME: this is currently printed twice
-                        tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
-                    }
-                    return Ok(());
-                };
-
-                let field_count = new.len();
-                if field_count != 2 {
-                    return Err(Error::other(format!(
-                        "too many fields: got {field_count}, expected 2"
-                    )));
-                }
-
-                key.verify_new_tuple(&new)?;
-            }
-            (None, None) => unreachable!(),
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    pub fn get<T>(&self, key: &'static str) -> tarantool::Result<Option<T>>
-    where
-        T: DecodeOwned,
-    {
-        match self.space.get(&[key])? {
-            Some(t) => t.field(1),
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
-    pub fn put(&self, key: PropertyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
-        self.space.put(&(key, value))?;
-        Ok(())
-    }
-
-    /// Returns the deleted tuple if it was deleted, `None` if there was no
-    /// tuple with the given `key`.
-    #[inline]
-    pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
-        self.space.delete(&[key])
-    }
-
-    #[inline]
-    pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
-        self.get(PropertyName::PendingSchemaChange.as_str())
-    }
-
-    #[inline]
-    pub fn pending_schema_version(&self) -> tarantool::Result<Option<u64>> {
-        self.get(PropertyName::PendingSchemaVersion.as_str())
-    }
-
-    #[inline]
-    pub fn global_schema_version(&self) -> tarantool::Result<u64> {
-        let res = self
-            .get(PropertyName::GlobalSchemaVersion.as_str())?
-            .unwrap_or(INITIAL_SCHEMA_VERSION);
-        Ok(res)
-    }
-
-    #[inline]
-    pub fn pending_plugin_op(&self) -> tarantool::Result<Option<PluginOp>> {
-        self.get(PropertyName::PendingPluginOperation.as_str())
-    }
-
-    #[inline]
-    pub fn next_schema_version(&self) -> tarantool::Result<u64> {
-        let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion.as_str())? {
-            version
-        } else {
-            let current = self.global_schema_version()?;
-            current + 1
-        };
-        Ok(res)
-    }
-
-    #[inline]
-    pub fn cluster_version(&self) -> tarantool::Result<String> {
-        let res: String = self
-            .get::<String>(PropertyName::ClusterVersion.as_str())?
-            .expect("ClusterVersion should be initialized");
-        Ok(res)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Replicasets
-////////////////////////////////////////////////////////////////////////////////
-
-impl Replicasets {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_name = space
-            .index_builder("_pico_replicaset_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_uuid = space
-            .index_builder("_pico_replicaset_uuid")
-            .unique(true)
-            .part("uuid")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            index_replicaset_name,
-            index_replicaset_uuid,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        Replicaset::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                // Primary index
-                id: 0,
-                name: "_pico_replicaset_name".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                id: 1,
-                name: "_pico_replicaset_uuid".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("uuid", IndexFieldType::String)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-        ]
-    }
-
-    #[inline]
-    pub fn put(&self, replicaset: &Replicaset) -> tarantool::Result<()> {
-        self.space.replace(replicaset)?;
-        Ok(())
-    }
-
-    #[allow(unused)]
-    #[inline]
-    pub fn get(&self, replicaset_name: &str) -> tarantool::Result<Option<Replicaset>> {
-        let tuple = self.space.get(&[replicaset_name])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline(always)]
-    pub fn get_raw(&self, replicaset_name: &str) -> Result<Tuple> {
-        let Some(tuple) = self.space.get(&[replicaset_name])? else {
-            return Err(Error::NoSuchReplicaset {
-                name: replicaset_name.into(),
-                id_is_uuid: false,
-            });
-        };
-        Ok(tuple)
-    }
-
-    #[allow(unused)]
-    #[inline]
-    pub fn by_uuid_raw(&self, replicaset_uuid: &str) -> Result<Tuple> {
-        let Some(tuple) = self.index_replicaset_uuid.get(&[replicaset_uuid])? else {
-            return Err(Error::NoSuchReplicaset {
-                name: replicaset_uuid.into(),
-                id_is_uuid: true,
-            });
-        };
-        Ok(tuple)
-    }
-}
-
-impl ToEntryIter<MP_SERDE> for Replicasets {
-    type Entry = Replicaset;
-
-    #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PeerAddresses
-////////////////////////////////////////////////////////////////////////////////
-
-impl PeerAddresses {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index = space
-            .index_builder("_pico_peer_address_raft_id")
-            .unique(true)
-            .part("raft_id")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self { space, index })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        use tarantool::space::Field;
-        vec![
-            Field::from(("raft_id", FieldType::Unsigned)),
-            Field::from(("address", FieldType::String)),
-        ]
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_peer_address_raft_id".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
-            operable: true,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
-    }
-
-    #[inline]
-    pub fn put(&self, raft_id: RaftId, address: &traft::Address) -> tarantool::Result<()> {
-        self.space.replace(&(raft_id, address))?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub fn delete(&self, raft_id: RaftId) -> tarantool::Result<()> {
-        self.space.delete(&[raft_id])?;
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub fn get(&self, raft_id: RaftId) -> Result<Option<traft::Address>> {
-        let Some(tuple) = self.space.get(&[raft_id])? else {
-            return Ok(None);
-        };
-        tuple.field(1).map_err(Into::into)
-    }
-
-    #[inline(always)]
-    pub fn try_get(&self, raft_id: RaftId) -> Result<traft::Address> {
-        self.get(raft_id)?
-            .ok_or(Error::AddressUnknownForRaftId(raft_id))
-    }
-
-    #[inline]
-    pub fn addresses_by_ids(
-        &self,
-        ids: impl IntoIterator<Item = RaftId>,
-    ) -> Result<HashSet<traft::Address>> {
-        ids.into_iter().map(|id| self.try_get(id)).collect()
-    }
-}
-
-impl ToEntryIter<MP_SERDE> for PeerAddresses {
-    type Entry = traft::PeerAddress;
-
-    #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Instance
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Instances {
-    pub fn new() -> tarantool::Result<Self> {
-        let space_instances = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
+/// A struct for accessing information about all the cluster instances.
+#[derive(Debug, Clone)]
+pub struct Instances {
+    pub space: Space,
+    pub index_instance_name: Index,
+    pub index_instance_uuid: Index,
+    pub index_raft_id: Index,
+    pub index_replicaset_name: Index,
+}
 
-        let index_instance_name = space_instances
-            .index_builder("_pico_instance_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
+impl TClusterwideTable for Instances {
+    const TABLE_NAME: &'static str = "_pico_instance";
+    const TABLE_ID: SpaceId = 515;
 
-        let index_instance_uuid = space_instances
-            .index_builder("_pico_instance_uuid")
-            .unique(true)
-            .part("uuid")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_raft_id = space_instances
-            .index_builder("_pico_instance_raft_id")
-            .unique(true)
-            .part("raft_id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_name = space_instances
-            .index_builder("_pico_instance_replicaset_name")
-            .unique(false)
-            .part("replicaset_name")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space: space_instances,
-            index_instance_name,
-            index_instance_uuid,
-            index_raft_id,
-            index_replicaset_name,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
+    fn format() -> Vec<tarantool::space::Field> {
         Instance::format()
     }
 
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
+    fn index_definitions() -> Vec<IndexDef> {
         vec![
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -1358,6 +1002,53 @@ impl Instances {
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
+    }
+}
+
+impl Instances {
+    pub fn new() -> tarantool::Result<Self> {
+        let space_instances = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_instance_name = space_instances
+            .index_builder("_pico_instance_name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_instance_uuid = space_instances
+            .index_builder("_pico_instance_uuid")
+            .unique(true)
+            .part("uuid")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_raft_id = space_instances
+            .index_builder("_pico_instance_raft_id")
+            .unique(true)
+            .part("raft_id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_replicaset_name = space_instances
+            .index_builder("_pico_instance_replicaset_name")
+            .unique(false)
+            .part("replicaset_name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space: space_instances,
+            index_instance_name,
+            index_instance_uuid,
+            index_raft_id,
+            index_replicaset_name,
+        })
     }
 
     #[inline]
@@ -1508,6 +1199,306 @@ impl InstanceName for instance::InstanceName {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Properties
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing cluster-wide key-value properties
+#[derive(Debug, Clone)]
+pub struct Properties {
+    pub space: Space,
+    pub index: Index,
+}
+
+impl TClusterwideTable for Properties {
+    const TABLE_NAME: &'static str = "_pico_property";
+    const TABLE_ID: SpaceId = 516;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("key", FieldType::String)),
+            Field::from(("value", FieldType::Any)),
+        ]
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "_pico_property_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
+            operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        }]
+    }
+}
+
+impl Properties {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index = space
+            .index_builder("_pico_property_key")
+            .unique(true)
+            .part("key")
+            .if_not_exists(true)
+            .create()?;
+
+        on_replace(space.id(), Self::on_replace)?;
+
+        Ok(Self { space, index })
+    }
+
+    /// Callback which is called when data in _pico_property is updated.
+    pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
+        match (old, new) {
+            (Some(old), None) => {
+                // Delete
+                let Ok(Some(key)) = old.field::<PropertyName>(0) else {
+                    // Not a builtin property.
+                    return Ok(());
+                };
+
+                if key.must_not_delete() {
+                    return Err(Error::other(format!("property {key} cannot be deleted")));
+                }
+            }
+            (old, Some(new)) => {
+                // Insert or Update
+                let key = new
+                    .field::<&str>(0)
+                    .expect("key has type string")
+                    .expect("key is not nullable");
+
+                let Ok(key) = key.parse::<PropertyName>() else {
+                    // Not a builtin property.
+                    // Cannot be a wrong type error, because tarantool checks
+                    // the format for us.
+                    if old.is_none() {
+                        // Insert
+                        // FIXME: this is currently printed twice
+                        tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
+                    }
+                    return Ok(());
+                };
+
+                let field_count = new.len();
+                if field_count != 2 {
+                    return Err(Error::other(format!(
+                        "too many fields: got {field_count}, expected 2"
+                    )));
+                }
+
+                key.verify_new_tuple(&new)?;
+            }
+            (None, None) => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn get<T>(&self, key: &'static str) -> tarantool::Result<Option<T>>
+    where
+        T: DecodeOwned,
+    {
+        match self.space.get(&[key])? {
+            Some(t) => t.field(1),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    pub fn put(&self, key: PropertyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
+        self.space.put(&(key, value))?;
+        Ok(())
+    }
+
+    /// Returns the deleted tuple if it was deleted, `None` if there was no
+    /// tuple with the given `key`.
+    #[inline]
+    pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[key])
+    }
+
+    #[inline]
+    pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
+        self.get(PropertyName::PendingSchemaChange.as_str())
+    }
+
+    #[inline]
+    pub fn pending_schema_version(&self) -> tarantool::Result<Option<u64>> {
+        self.get(PropertyName::PendingSchemaVersion.as_str())
+    }
+
+    #[inline]
+    pub fn global_schema_version(&self) -> tarantool::Result<u64> {
+        let res = self
+            .get(PropertyName::GlobalSchemaVersion.as_str())?
+            .unwrap_or(INITIAL_SCHEMA_VERSION);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn pending_plugin_op(&self) -> tarantool::Result<Option<PluginOp>> {
+        self.get(PropertyName::PendingPluginOperation.as_str())
+    }
+
+    #[inline]
+    pub fn next_schema_version(&self) -> tarantool::Result<u64> {
+        let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion.as_str())? {
+            version
+        } else {
+            let current = self.global_schema_version()?;
+            current + 1
+        };
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn cluster_version(&self) -> tarantool::Result<String> {
+        let res: String = self
+            .get::<String>(PropertyName::ClusterVersion.as_str())?
+            .expect("ClusterVersion should be initialized");
+        Ok(res)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Replicasets
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing replicaset info from storage
+#[derive(Debug, Clone)]
+pub struct Replicasets {
+    pub space: Space,
+    pub index_replicaset_name: Index,
+    pub index_replicaset_uuid: Index,
+}
+
+impl TClusterwideTable for Replicasets {
+    const TABLE_NAME: &'static str = "_pico_replicaset";
+    const TABLE_ID: SpaceId = 517;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        Replicaset::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "_pico_replicaset_name".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "_pico_replicaset_uuid".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![Part::from(("uuid", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+        ]
+    }
+}
+
+impl Replicasets {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_replicaset_name = space
+            .index_builder("_pico_replicaset_name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_replicaset_uuid = space
+            .index_builder("_pico_replicaset_uuid")
+            .unique(true)
+            .part("uuid")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_replicaset_name,
+            index_replicaset_uuid,
+        })
+    }
+
+    #[inline]
+    pub fn put(&self, replicaset: &Replicaset) -> tarantool::Result<()> {
+        self.space.replace(replicaset)?;
+        Ok(())
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn get(&self, replicaset_name: &str) -> tarantool::Result<Option<Replicaset>> {
+        let tuple = self.space.get(&[replicaset_name])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline(always)]
+    pub fn get_raw(&self, replicaset_name: &str) -> Result<Tuple> {
+        let Some(tuple) = self.space.get(&[replicaset_name])? else {
+            return Err(Error::NoSuchReplicaset {
+                name: replicaset_name.into(),
+                id_is_uuid: false,
+            });
+        };
+        Ok(tuple)
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn by_uuid_raw(&self, replicaset_uuid: &str) -> Result<Tuple> {
+        let Some(tuple) = self.index_replicaset_uuid.get(&[replicaset_uuid])? else {
+            return Err(Error::NoSuchReplicaset {
+                name: replicaset_uuid.into(),
+                id_is_uuid: true,
+            });
+        };
+        Ok(tuple)
+    }
+}
+
+impl ToEntryIter<MP_SERDE> for Replicasets {
+    type Entry = Replicaset;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // EntryIter
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1587,60 +1578,37 @@ impl<T, const MP: MpImpl> std::fmt::Debug for EntryIter<T, MP> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Tables
+// Users
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Tables {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
+/// The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
+const MAX_USERS: usize = 32;
 
-        let index_id = space
-            .index_builder("_pico_table_id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
+/// A struct for accessing info of all the picodata users.
+#[derive(Debug, Clone)]
+pub struct Users {
+    pub space: Space,
+    pub index_name: Index,
+    pub index_id: Index,
+    pub index_owner_id: Index,
+}
 
-        let index_name = space
-            .index_builder("_pico_table_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
+impl TClusterwideTable for Users {
+    const TABLE_NAME: &'static str = "_pico_user";
+    // FIXME: gap in ids
+    const TABLE_ID: SpaceId = 520;
 
-        let index_owner_id = space
-            .index_builder("_pico_table_owner_id")
-            .unique(false)
-            .part("owner")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-            index_owner_id,
-        })
+    fn format() -> Vec<tarantool::space::Field> {
+        UserDef::format()
     }
 
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        TableDef::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
+    fn index_definitions() -> Vec<IndexDef> {
         vec![
             IndexDef {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "_pico_table_id".into(),
+                name: "_pico_user_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
@@ -1651,7 +1619,7 @@ impl Tables {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "_pico_table_name".into(),
+                name: "_pico_user_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
@@ -1662,7 +1630,7 @@ impl Tables {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 2,
-                name: "_pico_table_owner_id".into(),
+                name: "_pico_user_owner_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
@@ -1672,220 +1640,7 @@ impl Tables {
             },
         ]
     }
-
-    #[inline]
-    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
-        use ::tarantool::msgpack;
-
-        let Some(tuple) = self.space.get(&[id])? else {
-            return Ok(None);
-        };
-        let buf = tuple.to_vec();
-        let table_def = msgpack::decode(&buf)?;
-        Ok(Some(table_def))
-    }
-
-    #[inline]
-    pub fn put(&self, table_def: &TableDef) -> tarantool::Result<()> {
-        use ::tarantool::msgpack;
-
-        self.space
-            .replace(RawBytes::new(&msgpack::encode(table_def)))?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn insert(&self, table_def: &TableDef) -> tarantool::Result<()> {
-        use ::tarantool::msgpack;
-
-        self.space
-            .insert(RawBytes::new(&msgpack::encode(table_def)))?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
-        let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(column_name!(TableDef, operable), operable)?;
-        self.space.update(&[id], ops)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn delete(&self, id: SpaceId) -> tarantool::Result<Option<Tuple>> {
-        self.space.delete(&[id])
-    }
-
-    #[inline]
-    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<TableDef>> {
-        use ::tarantool::msgpack;
-
-        let tuple = self.index_name.get(&[name])?;
-        if let Some(tuple) = tuple {
-            let table_def = msgpack::decode(&tuple.to_vec())?;
-            Ok(Some(table_def))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn by_owner_id(
-        &self,
-        owner_id: UserId,
-    ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
-        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
-        Ok(EntryIter::new(iter))
-    }
 }
-
-impl ToEntryIter<MP_CUSTOM> for Tables {
-    type Entry = TableDef;
-
-    #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Indexes
-////////////////////////////////////////////////////////////////////////////////
-
-impl Indexes {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_id = space
-            .index_builder("_pico_index_id")
-            .unique(true)
-            .part("table_id")
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_index_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        IndexDef::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                // Primary index
-                id: 0,
-                name: "_pico_index_id".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![
-                    Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
-                    Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false),
-                ],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                id: 1,
-                name: "_pico_index_name".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-        ]
-    }
-
-    #[inline]
-    pub fn get(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<IndexDef>> {
-        let tuple = self.space.get(&(space_id, index_id))?;
-        tuple.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline]
-    pub fn put(&self, index_def: &IndexDef) -> tarantool::Result<()> {
-        self.space.replace(index_def)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn insert(&self, index_def: &IndexDef) -> tarantool::Result<()> {
-        self.space.insert(index_def)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn update_operable(
-        &self,
-        space_id: SpaceId,
-        index_id: IndexId,
-        operable: bool,
-    ) -> tarantool::Result<()> {
-        let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(column_name!(IndexDef, operable), operable)?;
-        self.space.update(&(space_id, index_id), ops)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn delete(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<Tuple>> {
-        self.space.delete(&[space_id, index_id])
-    }
-
-    #[inline]
-    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<IndexDef>> {
-        let tuple = self.index_name.get(&[name])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline]
-    pub fn by_space_id(
-        &self,
-        space_id: SpaceId,
-    ) -> tarantool::Result<EntryIter<IndexDef, MP_SERDE>> {
-        let iter = self.space.select(IteratorType::Eq, &[space_id])?;
-        Ok(EntryIter::new(iter))
-    }
-}
-
-impl ToEntryIter<MP_SERDE> for Indexes {
-    type Entry = IndexDef;
-
-    #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Users
-////////////////////////////////////////////////////////////////////////////////
-
-/// The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
-const MAX_USERS: usize = 32;
 
 impl Users {
     pub fn new() -> tarantool::Result<Self> {
@@ -1923,51 +1678,6 @@ impl Users {
             index_name,
             index_owner_id,
         })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        UserDef::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                // Primary index
-                id: 0,
-                name: "_pico_user_id".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                id: 1,
-                name: "_pico_user_name".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                id: 2,
-                name: "_pico_user_owner_id".into(),
-                ty: IndexType::Tree,
-                opts: vec![IndexOption::Unique(false)],
-                parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
-                operable: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            },
-        ]
     }
 
     #[inline]
@@ -2055,44 +1765,23 @@ impl ToEntryIter<MP_SERDE> for Users {
 // Privileges
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Privileges {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
+/// A struct for accessing info of all privileges granted to users.
+#[derive(Debug, Clone)]
+pub struct Privileges {
+    pub space: Space,
+    pub primary_key: Index,
+    pub object_idx: Index,
+}
 
-        let primary_key = space
-            .index_builder("_pico_privilege_primary")
-            .unique(true)
-            .parts(["grantee_id", "object_type", "object_id", "privilege"])
-            .if_not_exists(true)
-            .create()?;
+impl TClusterwideTable for Privileges {
+    const TABLE_NAME: &'static str = "_pico_privilege";
+    const TABLE_ID: SpaceId = 521;
 
-        let object_idx = space
-            .index_builder("_pico_privilege_object")
-            .unique(false)
-            .part("object_type")
-            .part("object_id")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            primary_key,
-            object_idx,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
+    fn format() -> Vec<tarantool::space::Field> {
         PrivilegeDef::format()
     }
 
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
+    fn index_definitions() -> Vec<IndexDef> {
         vec![
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -2126,6 +1815,38 @@ impl Privileges {
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
+    }
+}
+
+impl Privileges {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let primary_key = space
+            .index_builder("_pico_privilege_primary")
+            .unique(true)
+            .parts(["grantee_id", "object_type", "object_id", "privilege"])
+            .if_not_exists(true)
+            .create()?;
+
+        let object_idx = space
+            .index_builder("_pico_privilege_object")
+            .unique(false)
+            .part("object_type")
+            .part("object_id")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            primary_key,
+            object_idx,
+        })
     }
 
     #[inline(always)]
@@ -2261,6 +1982,37 @@ impl ToEntryIter<MP_SERDE> for Privileges {
 ////////////////////////////////////////////////////////////////////////////////
 // Tiers
 ////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing info of all tiers in cluster.
+#[derive(Debug, Clone)]
+pub struct Tiers {
+    pub space: Space,
+    pub index_name: Index,
+}
+
+impl TClusterwideTable for Tiers {
+    const TABLE_NAME: &'static str = "_pico_tier";
+    const TABLE_ID: SpaceId = 523;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        Tier::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "_pico_tier_name".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+            operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        }]
+    }
+}
 impl Tiers {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -2278,27 +2030,6 @@ impl Tiers {
             .create()?;
 
         Ok(Self { space, index_name })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        Tier::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_tier_name".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-            operable: true,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
     }
 
     #[inline(always)]
@@ -2326,51 +2057,25 @@ impl ToEntryIter<MP_SERDE> for Tiers {
 ////////////////////////////////////////////////////////////////////////////////
 // Routines
 ////////////////////////////////////////////////////////////////////////////////
-impl Routines {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
 
-        let index_id = space
-            .index_builder("_pico_routine_id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
+/// A struct for accessing info of all the user-defined routines.
+#[derive(Debug, Clone)]
+pub struct Routines {
+    pub space: Space,
+    pub index_id: Index,
+    pub index_name: Index,
+    pub index_owner_id: Index,
+}
 
-        let index_name = space
-            .index_builder("_pico_routine_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
+impl TClusterwideTable for Routines {
+    const TABLE_NAME: &'static str = "_pico_routine";
+    const TABLE_ID: SpaceId = 524;
 
-        let index_owner_id = space
-            .index_builder("_pico_routine_owner_id")
-            .unique(false)
-            .part("owner")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-            index_owner_id,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
+    fn format() -> Vec<tarantool::space::Field> {
         RoutineDef::format()
     }
 
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
+    fn index_definitions() -> Vec<IndexDef> {
         vec![
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -2407,6 +2112,45 @@ impl Routines {
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
+    }
+}
+
+impl Routines {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder("_pico_routine_id")
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("_pico_routine_name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_owner_id = space
+            .index_builder("_pico_routine_owner_id")
+            .unique(false)
+            .part("owner")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+            index_owner_id,
+        })
     }
 
     #[inline(always)]
@@ -2481,6 +2225,38 @@ pub type RoutineId = u32;
 // Plugins
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A struct for accessing info of all known plugins.
+#[derive(Debug, Clone)]
+pub struct Plugins {
+    pub space: Space,
+    pub primary_key: Index,
+}
+
+impl TClusterwideTable for Plugins {
+    const TABLE_NAME: &'static str = "_pico_plugin";
+    const TABLE_ID: SpaceId = 526;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        PluginDef::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_plugin_name".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+}
 impl Plugins {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -2499,29 +2275,6 @@ impl Plugins {
             .create()?;
 
         Ok(Self { space, primary_key })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        PluginDef::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            id: 0,
-            name: "_pico_plugin_name".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![
-                Part::from(("name", IndexFieldType::String)).is_nullable(false),
-                Part::from(("version", IndexFieldType::String)).is_nullable(false),
-            ],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            operable: true,
-        }]
     }
 
     #[inline]
@@ -2590,6 +2343,39 @@ impl ToEntryIter<MP_SERDE> for Plugins {
 // Services
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A struct for accessing info of all known plugin services.
+#[derive(Debug, Clone)]
+pub struct Services {
+    pub space: Space,
+    pub index_name: Index,
+}
+
+impl TClusterwideTable for Services {
+    const TABLE_NAME: &'static str = "_pico_service";
+    const TABLE_ID: SpaceId = 527;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        ServiceDef::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_service_name".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+}
 impl Services {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -2700,6 +2486,40 @@ impl ToEntryIter<MP_SERDE> for Services {
 // ServiceRouteTable
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A struct for accessing info of plugin services routing table.
+#[derive(Debug, Clone)]
+pub struct ServiceRouteTable {
+    pub space: Space,
+    pub primary_key: Index,
+}
+
+impl TClusterwideTable for ServiceRouteTable {
+    const TABLE_NAME: &'static str = "_pico_service_route";
+    const TABLE_ID: SpaceId = 528;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        ServiceRouteItem::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_service_routing_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("plugin_version", IndexFieldType::String)).is_nullable(false),
+                Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("instance_name", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+}
 impl ServiceRouteTable {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -2720,31 +2540,6 @@ impl ServiceRouteTable {
             .create()?;
 
         Ok(Self { space, primary_key })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        ServiceRouteItem::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            id: 0,
-            name: "_pico_service_routing_key".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![
-                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
-                Part::from(("plugin_version", IndexFieldType::String)).is_nullable(false),
-                Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
-                Part::from(("instance_name", IndexFieldType::String)).is_nullable(false),
-            ],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            operable: true,
-        }]
     }
 
     #[inline]
@@ -2833,7 +2628,39 @@ impl ToEntryIter<MP_SERDE> for ServiceRouteTable {
 // PluginMigration
 ////////////////////////////////////////////////////////////////////////////////
 
-impl PluginMigration {
+/// A struct for accessing info of applied plugin migrations.
+#[derive(Debug, Clone)]
+pub struct PluginMigrations {
+    pub space: Space,
+    pub primary_key: Index,
+}
+
+impl TClusterwideTable for PluginMigrations {
+    const TABLE_NAME: &'static str = "_pico_plugin_migration";
+    const TABLE_ID: SpaceId = 529;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        PluginMigrationRecord::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_plugin_migration_primary_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("migration_file", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+}
+impl PluginMigrations {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
@@ -2853,29 +2680,6 @@ impl PluginMigration {
         Ok(Self { space, primary_key })
     }
 
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        PluginMigrationRecord::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            id: 0,
-            name: "_pico_plugin_migration_primary_key".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![
-                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
-                Part::from(("migration_file", IndexFieldType::String)).is_nullable(false),
-            ],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            operable: true,
-        }]
-    }
-
     pub fn get_by_plugin(
         &self,
         plugin_name: &str,
@@ -2891,6 +2695,42 @@ impl PluginMigration {
 // PluginConfig
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Structure for storing plugin configuration.
+/// Configuration is represented by a set of key-value pairs
+/// belonging to either service or extension.
+#[derive(Debug, Clone)]
+pub struct PluginConfig {
+    pub space: Space,
+    pub primary: Index,
+}
+
+impl TClusterwideTable for PluginConfig {
+    const TABLE_NAME: &'static str = "_pico_plugin_config";
+    const TABLE_ID: SpaceId = 530;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        PluginConfigRecord::format()
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_plugin_config_pk".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
+                Part::from(("entity", IndexFieldType::String)).is_nullable(false),
+                Part::from(("key", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+}
 impl PluginConfig {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -3094,6 +2934,41 @@ impl PluginConfig {
 // DbConfig
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A struct for accessing storage of the cluster-wide and tier-wide configs that
+/// can be modified via alter system.
+#[derive(Debug, Clone)]
+pub struct DbConfig {
+    pub space: Space,
+    pub index: Index,
+}
+
+impl TClusterwideTable for DbConfig {
+    const TABLE_NAME: &'static str = "_pico_db_config";
+    const TABLE_ID: SpaceId = 531;
+
+    fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("key", FieldType::String)),
+            Field::from(("value", FieldType::Any)),
+        ]
+    }
+
+    fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "_pico_db_config_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
+            operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        }]
+    }
+}
 impl DbConfig {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -3111,31 +2986,6 @@ impl DbConfig {
             .create()?;
 
         Ok(Self { space, index })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        use tarantool::space::Field;
-        vec![
-            Field::from(("key", FieldType::String)),
-            Field::from(("value", FieldType::Any)),
-        ]
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_db_config_key".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
-            operable: true,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
     }
 
     #[inline]
@@ -3398,7 +3248,7 @@ mod tests {
             // r3
             ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER, &picodata_version),
         ] {
-            storage.space_by_name(ClusterwideTable::Instance).unwrap().put(&instance).unwrap();
+            space_by_name(Instances::TABLE_NAME).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
             space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
@@ -3479,7 +3329,7 @@ mod tests {
             assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
-        let space = storage.space_by_name(ClusterwideTable::Instance).unwrap();
+        let space = space_by_name(Instances::TABLE_NAME).unwrap();
         space.drop().unwrap();
 
         assert_err!(
@@ -3495,13 +3345,11 @@ mod tests {
     fn clusterwide_space_index() {
         let storage = Clusterwide::for_tests();
 
-        storage
-            .space_by_name(ClusterwideTable::Address)
+        space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
             .insert(&(1, "foo"))
             .unwrap();
-        storage
-            .space_by_name(ClusterwideTable::Address)
+        space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
             .insert(&(2, "bar"))
             .unwrap();
@@ -3520,18 +3368,6 @@ mod tests {
         let i: Instance = t.decode().unwrap();
         assert_eq!(i.raft_id, 1);
         assert_eq!(i.name, "bob");
-    }
-
-    #[::tarantool::test]
-    fn system_clusterwide_spaces_are_ordered_by_id() {
-        let all_tables: Vec<SpaceId> = ClusterwideTable::all_tables()
-            .iter()
-            .map(|s| s.id())
-            .collect();
-
-        let mut sorted = all_tables.clone();
-        sorted.sort_unstable();
-        assert_eq!(all_tables, sorted);
     }
 
     #[track_caller]
@@ -3592,48 +3428,6 @@ mod tests {
     }
 
     #[track_caller]
-    fn check_macro_matches_index_definitions(sys_table: &ClusterwideTable, index_def: &IndexDef) {
-        let from_macro = sys_table.index_names()[index_def.id as usize];
-        let from_function = &index_def.name;
-        assert_eq!(
-            from_macro,
-            from_function,
-            r#"{struct}::INDEX_NAMES doesn't match {struct}::index_definitions()
-
-    You must make sure that this part in the macro:
-    | define_clusterwide_tables! {{
-    | ...
-    |    {sys_table:?} = {table_id}, "{table_name}" => {{
-    | ...
-    |        <index_name>: Index => "{from_macro}"
-    |                                {from_macro_underline}
-    Matches with this part in {struct}::index_definitions():
-    | impl {struct} {{
-    | ...
-    |     pub fn index_definitions() -> Vec<IndexDef> {{
-    | ...
-    |         name: "{from_function}".into(),
-    |                {from_function_unreline}
-    don't ask why
-"#,
-            struct = sys_table.struct_name(),
-            table_id = sys_table.id(),
-            table_name = sys_table.name(),
-            from_function_unreline = Highlight(&"^".repeat(from_function.len())),
-            from_macro_underline = Highlight(&"^".repeat(from_macro.len())),
-        );
-
-        struct Highlight<'a>(&'a str);
-        impl std::fmt::Display for Highlight<'_> {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("\x1b[1;31m")?;
-                f.write_str(self.0)?;
-                f.write_str("\x1b[0m")
-            }
-        }
-    }
-
-    #[track_caller]
     fn get_number_of_indexes_defined_for_space(space_id: SpaceId) -> usize {
         let sys_index = SystemSpace::Index.as_space();
         let iter = sys_index.select(IteratorType::Eq, &[space_id]).unwrap();
@@ -3648,48 +3442,42 @@ mod tests {
         let sys_space = SystemSpace::Space.as_space();
         let sys_index = SystemSpace::Index.as_space();
 
-        for sys_table in ClusterwideTable::all_tables() {
+        for sys_table in storage.tables.iter().unwrap() {
             //
             // box.space._space
             //
 
             // Check space metadata is in tarantool's "_space"
-            let tuple = sys_space.get(&[sys_table.id()]).unwrap().unwrap();
+            let tuple = sys_space.get(&[sys_table.id]).unwrap().unwrap();
             let tt_space_def: SpaceMetadata = tuple.decode().unwrap();
 
             // This check is a bit redundant, but better safe than sorry
-            assert_eq!(tt_space_def.id, sys_table.id());
-            assert_eq!(tt_space_def.name, sys_table.name());
+            assert_eq!(tt_space_def.id, sys_table.id);
+            assert_eq!(tt_space_def.name, sys_table.name);
 
             // Check "_space" agrees with `ClusterwideTable.format`
-            assert_eq!(tt_space_def.format, fields_to_format(&sys_table.format()));
+            assert_eq!(tt_space_def.format, fields_to_format(&sys_table.format));
 
             //
             // box.space._pico_table
             //
 
             // Check table definition is in picodata's "_pico_table"
-            let pico_table_def = storage.tables.get(sys_table.id()).unwrap().unwrap();
+            let pico_table_def = storage.tables.get(sys_table.id).unwrap().unwrap();
 
             // Check picodata & tarantool agree on the definition
             assert_eq!(pico_table_def.to_space_metadata().unwrap(), tt_space_def);
 
-            let index_definitions = sys_table.index_definitions();
+            let index_definitions: Vec<_> =
+                storage.indexes.by_space_id(sys_table.id).unwrap().collect();
             assert_eq!(
                 index_definitions.len(),
-                get_number_of_indexes_defined_for_space(sys_table.id()),
+                get_number_of_indexes_defined_for_space(sys_table.id),
                 "Mismatched number of indexes defined for table '{}'",
-                sys_table.name(),
-            );
-            assert_eq!(
-                index_definitions.len(),
-                sys_table.index_names().len(),
-                "Mismatched number of indexes defined for table '{}'",
-                sys_table.name(),
+                sys_table.name,
             );
             for mut index_def in index_definitions {
-                assert_eq!(index_def.table_id, sys_table.id());
-                check_macro_matches_index_definitions(sys_table, &index_def);
+                assert_eq!(index_def.table_id, sys_table.id);
 
                 //
                 // box.space._pico_index
@@ -3719,7 +3507,7 @@ mod tests {
                     &index_def,
                     &parts_as_known_by_picodata,
                     &parts_as_known_by_tarantool,
-                    &sys_table.format(),
+                    &sys_table.format,
                 );
 
                 // Check "_index" agrees with `ClusterwideTable.index_definitions`

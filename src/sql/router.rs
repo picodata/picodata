@@ -32,7 +32,7 @@ use std::rc::Rc;
 use crate::sql::DEFAULT_BUCKET_COUNT;
 
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
-use crate::storage::{Clusterwide, ClusterwideTable};
+use crate::storage::{self, Clusterwide};
 
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::Metadata;
@@ -523,17 +523,14 @@ impl Metadata for RouterMetadata {
         let pk_cols = space_pk_columns(&name, &columns)?;
         let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
 
-        // Try to find the sharding columns of the space in "_pico_table".
-        // If nothing found then the space is local and we can't query it with
-        // distributed SQL.
-        let is_system_table = ClusterwideTable::values()
-            .iter()
-            .any(|sys_name| *sys_name == name.as_str());
-
+        let is_system_table = storage::SYSTEM_TABLES_ID_RANGE.contains(&table.id);
         if is_system_table {
             return Table::new_system(&name, columns, pk_cols_str);
         }
 
+        // Try to find the sharding columns of the space in "_pico_table".
+        // If nothing found then the space is local and we can't query it with
+        // distributed SQL.
         match table.distribution {
             Distribution::Global => Table::new_global(&name, columns, pk_cols_str),
             Distribution::ShardedImplicitly {

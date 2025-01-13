@@ -4,7 +4,7 @@ use tarantool::{space::UpdateOps, tuple::Encode};
 use crate::{
     column_name,
     schema::ADMIN_ID,
-    storage::ClusterwideTable,
+    storage::{TClusterwideTable, Tiers},
     traft::{error::Error, op::Dml},
 };
 
@@ -50,7 +50,7 @@ impl Tier {
                 tier.target_vshard_config_version + 1,
             )?;
 
-            let dml = Dml::update(ClusterwideTable::Tier, &[&tier.name], uops, ADMIN_ID)?;
+            let dml = Dml::update(Tiers::TABLE_ID, &[&tier.name], uops, ADMIN_ID)?;
 
             return Ok(Some(dml));
         }

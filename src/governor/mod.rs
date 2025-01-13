@@ -27,8 +27,9 @@ use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
+use crate::storage;
 use crate::storage::Clusterwide;
-use crate::storage::ClusterwideTable;
+use crate::storage::TClusterwideTable;
 use crate::storage::ToEntryIter as _;
 use crate::sync::proc_get_vclock;
 use crate::tlog;
@@ -308,7 +309,7 @@ impl Loop {
                             column_name!(Replicaset, promotion_vclock), &promotion_vclock
                         ).expect("shan't fail");
                         let op = Dml::update(
-                            ClusterwideTable::Replicaset,
+                            storage::Replicasets::TABLE_ID,
                             &[replicaset_name],
                             replicaset_dml,
                             ADMIN_ID,
@@ -379,7 +380,7 @@ impl Loop {
                                 column_name!(Replicaset, promotion_vclock), &new_promotion_vclock
                             ).expect("shan't fail");
                             let op = Dml::update(
-                                ClusterwideTable::Replicaset,
+                                storage::Replicasets::TABLE_ID,
                                 &[replicaset_name],
                                 replicaset_dml,
                                 ADMIN_ID,

@@ -5,7 +5,7 @@ use crate::plugin::PluginIdentifier;
 use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
 use crate::schema::ADMIN_ID;
-use crate::storage::{Clusterwide, ClusterwideTable};
+use crate::storage::{self, Clusterwide, TClusterwideTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
@@ -578,7 +578,7 @@ fn down_single_file_with_commit(
         lock::lock_is_acquired_by_us()?;
 
         let dml = Dml::delete(
-            ClusterwideTable::PluginMigration,
+            storage::PluginMigrations::TABLE_ID,
             &[plugin_name, &queries.filename_from_manifest],
             ADMIN_ID,
         )?;
@@ -667,7 +667,7 @@ pub fn apply_up_migrations(
             lock::lock_is_acquired_by_us()?;
 
             let dml = Dml::replace(
-                ClusterwideTable::PluginMigration,
+                storage::PluginMigrations::TABLE_ID,
                 &(
                     &plugin_ident.name,
                     &migration.filename_from_manifest,

@@ -3,7 +3,7 @@ use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
 };
-use crate::storage::Clusterwide;
+use crate::storage::{self, Clusterwide};
 use crate::storage::{space_by_name, RoutineId};
 use crate::traft::error::Error as TRaftError;
 use crate::traft::error::ErrorInfo;
@@ -297,8 +297,8 @@ impl std::fmt::Display for Op {
         struct DisplayClusterwideTable(SpaceId);
         impl std::fmt::Display for DisplayClusterwideTable {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                if let Ok(table) = crate::storage::ClusterwideTable::try_from(self.0) {
-                    f.write_str(table.name())
+                if let Some(table_name) = storage::Clusterwide::system_space_name_by_id(self.0) {
+                    f.write_str(table_name)
                 } else {
                     self.0.fmt(f)
                 }

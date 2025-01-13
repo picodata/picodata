@@ -4,15 +4,14 @@ use crate::schema::PrivilegeDef;
 use crate::schema::TableDef;
 use crate::schema::UserDef;
 use crate::schema::INITIAL_SCHEMA_VERSION;
-use crate::storage::ignore_only_error;
-use crate::storage::local_schema_version;
 use crate::storage::schema::acl;
 use crate::storage::schema::ddl_create_space_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
-use crate::storage::set_local_schema_version;
-use crate::storage::Clusterwide;
-use crate::storage::ClusterwideTable;
-use crate::storage::ToEntryIter;
+use crate::storage::{self, ignore_only_error, space_by_id, Privileges};
+use crate::storage::{local_schema_version, Tables};
+use crate::storage::{set_local_schema_version, TClusterwideTable};
+use crate::storage::{Clusterwide, Indexes};
+use crate::storage::{ToEntryIter, Users};
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::RaftEntryId;
@@ -347,8 +346,7 @@ impl Clusterwide {
                 // schema changes to them.
                 continue;
             }
-            let space = self
-                .space_by_id(space_id)
+            let space = space_by_id(space_id)
                 .expect("global schema definition spaces should always be present");
 
             if !truncated_spaces.contains(&space_id) {
@@ -404,7 +402,7 @@ impl Clusterwide {
                 // Already handled in the loop above.
                 continue;
             }
-            let Ok(space) = self.space_by_id(space_id) else {
+            let Ok(space) = space_by_id(space_id) else {
                 warn_or_panic!(
                     "a dump for a non existent space #{} arrived via snapshot",
                     space_id
@@ -425,7 +423,9 @@ impl Clusterwide {
                 // We do not support removing tuples from _pico_db_config, but if we did we would have
                 // to keep track of which tuples were removed in the snapshot. Keep this in mind if
                 // in the future some ALTER SYSTEM parameters are removed and/or renamed
-                if space_id == PICO_DB_CONFIG && !old_dynamic_parameters.contains(tuple) {
+                if space_id == storage::DbConfig::TABLE_ID
+                    && !old_dynamic_parameters.contains(tuple)
+                {
                     changed_parameters.push(tuple.to_vec())
                 }
 
@@ -468,13 +468,11 @@ impl Clusterwide {
         return Ok(changed_parameters);
 
         const SCHEMA_DEFINITION_SPACES: &[SpaceId] = &[
-            ClusterwideTable::Table.id(),
-            ClusterwideTable::Index.id(),
-            ClusterwideTable::User.id(),
-            ClusterwideTable::Privilege.id(),
+            Tables::TABLE_ID,
+            Indexes::TABLE_ID,
+            Users::TABLE_ID,
+            Privileges::TABLE_ID,
         ];
-
-        const PICO_DB_CONFIG: SpaceId = ClusterwideTable::DbConfig.id();
     }
 
     /// Updates local storage of the given schema entity in accordance with
@@ -844,6 +842,9 @@ mod tests {
     use crate::config::PicodataConfig;
     use crate::instance::Instance;
     use crate::replicaset::Replicaset;
+    use crate::schema::system_table_definitions;
+    use crate::storage;
+    use crate::storage::*;
     use tarantool::transaction::transaction;
     use tarantool::tuple::Decode;
     use tarantool::tuple::ToTupleBuffer;
@@ -865,31 +866,32 @@ mod tests {
         };
         let tuples = [&i].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideTable::Instance.into(),
+            space_id: Instances::TABLE_ID,
             tuples,
         });
 
         let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideTable::Address.into(),
+            space_id: PeerAddresses::TABLE_ID,
             tuples,
         });
 
         let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideTable::Property.into(),
+            space_id: Properties::TABLE_ID,
             tuples,
         });
 
         let r = Replicaset::for_tests();
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideTable::Replicaset.into(),
+            space_id: Replicasets::TABLE_ID,
             tuples,
         });
 
-        storage.for_each_space(|s| s.truncate()).unwrap();
-
+        for (table_def, _) in system_table_definitions() {
+            space_by_id(table_def.id).unwrap().truncate().unwrap();
+        }
         if let Err(e) = transaction(|| -> Result<_> { storage.apply_snapshot_data(&data, true) }) {
             println!("{e}");
             panic!();
@@ -941,18 +943,18 @@ mod tests {
         assert!(snapshot_data.next_chunk_position.is_none());
 
         let space_dumps = snapshot_data.space_dumps;
-        let n_internal_spaces = ClusterwideTable::values().len();
+        let n_internal_spaces = system_table_definitions().len();
         assert_eq!(space_dumps.len(), n_internal_spaces);
 
         for space_dump in &space_dumps {
             match space_dump.space_id {
-                s if s == ClusterwideTable::Instance.id() => {
+                s if s == Instances::TABLE_ID => {
                     let [instance]: [Instance; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(instance, i);
                 }
 
-                s if s == ClusterwideTable::Address.id() => {
+                s if s == PeerAddresses::TABLE_ID => {
                     let addrs: [(i32, String); 2] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(
@@ -961,13 +963,13 @@ mod tests {
                     );
                 }
 
-                s if s == ClusterwideTable::Property.id() => {
+                s if s == Properties::TABLE_ID => {
                     let [property]: [(String, String); 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(property, ("foo".to_owned(), "bar".to_owned()));
                 }
 
-                s if s == ClusterwideTable::Replicaset.id() => {
+                s if s == Replicasets::TABLE_ID => {
                     let [replicaset]: [Replicaset; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(replicaset, r);
@@ -975,8 +977,7 @@ mod tests {
 
                 s_id => {
                     dbg!(s_id);
-                    #[rustfmt::skip]
-                    assert!(ClusterwideTable::all_tables().iter().any(|s| s.id() == s_id));
+                    assert!(storage::SYSTEM_TABLES_ID_RANGE.contains(&s_id));
                     // FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/570
                     // let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }

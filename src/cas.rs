@@ -3,7 +3,8 @@ use crate::error_code::ErrorCode;
 use crate::proc_name;
 use crate::storage;
 use crate::storage::Clusterwide;
-use crate::storage::ClusterwideTable;
+use crate::storage::Properties;
+use crate::storage::TClusterwideTable;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
@@ -31,12 +32,12 @@ use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 /// These tables cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these tables
 /// requires automatically updating corresponding local spaces.
-const PROHIBITED_TABLES: &[ClusterwideTable] = &[
-    ClusterwideTable::Table,
-    ClusterwideTable::Index,
-    ClusterwideTable::User,
-    ClusterwideTable::Privilege,
-    ClusterwideTable::Routine,
+const PROHIBITED_TABLES: &[SpaceId] = &[
+    storage::Tables::TABLE_ID,
+    storage::Indexes::TABLE_ID,
+    storage::Users::TABLE_ID,
+    storage::Privileges::TABLE_ID,
+    storage::Routines::TABLE_ID,
 ];
 
 pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
@@ -53,13 +54,14 @@ pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::
     Ok(())
 }
 
-pub fn check_dml_prohibited(space_id: SpaceId) -> traft::Result<()> {
-    let Ok(table) = &ClusterwideTable::try_from(space_id) else {
-        return Ok(());
-    };
-    if PROHIBITED_TABLES.contains(table) {
+pub fn check_dml_prohibited(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
+    if PROHIBITED_TABLES.contains(&space_id) {
         return Err(Error::TableNotAllowed {
-            table: table.name().into(),
+            table: storage
+                .tables
+                .get(space_id)?
+                .expect("system tables exist")
+                .name,
         }
         .into());
     }
@@ -293,12 +295,12 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     match &req.op {
         Op::Dml(dml) => {
             check_table_operable(storage, dml.space())?;
-            check_dml_prohibited(dml.space())?;
+            check_dml_prohibited(storage, dml.space())?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
                 check_table_operable(storage, dml.space())?;
-                check_dml_prohibited(dml.space())?;
+                check_dml_prohibited(storage, dml.space())?;
             }
         }
         Op::Acl(acl) => {
@@ -672,7 +674,7 @@ pub fn check_predicate(
                 }
             }
             Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
-                let space = ClusterwideTable::Property.id();
+                let space = storage::Properties::TABLE_ID;
                 if space != range.table {
                     continue;
                 }
@@ -685,7 +687,7 @@ pub fn check_predicate(
                 }
             }
             Op::Plugin { .. } => {
-                let space = ClusterwideTable::Property.id();
+                let space = storage::Properties::TABLE_ID;
                 if space != range.table {
                     continue;
                 }
@@ -760,7 +762,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
         if (*addr_of!(DATA)).is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
-                let r = Range::new(ClusterwideTable::Property).eq((key,));
+                let r = Range::new(storage::Properties::TABLE_ID).eq((key,));
                 data.push(r);
             }
             DATA = Some(data);
@@ -873,12 +875,12 @@ impl Range {
                 ops.iter().map(Self::for_dml).collect()
             }
             Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
-                let range = Self::new(ClusterwideTable::Property)
+                let range = Self::new(Properties::TABLE_ID)
                     .eq([storage::PropertyName::GlobalSchemaVersion]);
                 Ok(vec![range])
             }
             Op::Plugin { .. } => {
-                let range = Self::new(ClusterwideTable::Property)
+                let range = Self::new(Properties::TABLE_ID)
                     .eq([storage::PropertyName::PendingPluginOperation]);
                 Ok(vec![range])
             }
@@ -1099,6 +1101,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
+    use storage::Tables;
     use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
@@ -1238,49 +1241,48 @@ mod tests {
         let test =
             |op: &Dml, range: Range| check_predicate(2, &Op::Dml(op.clone()), &[range], &storage);
 
-        let table = ClusterwideTable::Table;
+        let table = Tables::TABLE_ID;
         let ops = &[
             Dml::Insert {
-                table: table.into(),
+                table,
                 tuple: tuple.clone(),
                 initiator: ADMIN_ID,
             },
             Dml::Replace {
-                table: table.into(),
+                table,
                 tuple,
                 initiator: ADMIN_ID,
             },
             Dml::Update {
-                table: table.into(),
+                table,
                 key: key.clone(),
                 ops: vec![],
                 initiator: ADMIN_ID,
             },
             Dml::Delete {
-                table: table.into(),
+                table,
                 key: key.clone(),
                 initiator: ADMIN_ID,
             },
         ];
 
-        let space = ClusterwideTable::Table.id();
         for op in ops {
-            test(op, Range::new(space)).unwrap_err();
-            test(op, Range::new(space).le((12,))).unwrap_err();
-            test(op, Range::new(space).ge((12,))).unwrap_err();
-            test(op, Range::new(space).eq((12,))).unwrap_err();
+            test(op, Range::new(table)).unwrap_err();
+            test(op, Range::new(table).le((12,))).unwrap_err();
+            test(op, Range::new(table).ge((12,))).unwrap_err();
+            test(op, Range::new(table).eq((12,))).unwrap_err();
 
-            test(op, Range::new(space).lt((12,))).unwrap();
-            test(op, Range::new(space).le((11,))).unwrap();
+            test(op, Range::new(table).lt((12,))).unwrap();
+            test(op, Range::new(table).le((11,))).unwrap();
 
-            test(op, Range::new(space).gt((12,))).unwrap();
-            test(op, Range::new(space).ge((13,))).unwrap();
+            test(op, Range::new(table).gt((12,))).unwrap();
+            test(op, Range::new(table).ge((13,))).unwrap();
 
             test(op, Range::new(69105u32)).unwrap();
 
             assert_eq!(
                 Range::for_dml(op).unwrap(),
-                Range::new(space).eq(key.clone())
+                Range::new(table).eq(key.clone())
             )
         }
     }

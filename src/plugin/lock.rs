@@ -5,7 +5,7 @@ use crate::plugin::migration::Error;
 use crate::plugin::{
     reenterable_plugin_cas_request, PluginError, PluginOp, PreconditionCheckResult,
 };
-use crate::storage::{ClusterwideTable, PropertyName};
+use crate::storage::{self, PropertyName, TClusterwideTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
@@ -81,13 +81,13 @@ pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
 
         let new_lock = PluginOp::MigrationLock(PicoPropertyLock::from(my_instance_info));
         let dml = Dml::replace(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &(&PropertyName::PendingPluginOperation, new_lock),
             effective_user_id(),
         )?;
         let ranges = vec![
             //  if someone acquires the lock
-            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            Range::new(storage::Properties::TABLE_ID).eq([PropertyName::PendingPluginOperation]),
         ];
 
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
@@ -142,13 +142,14 @@ pub fn release(deadline: Instant) -> crate::plugin::Result<()> {
         };
 
         let dml = Dml::delete(
-            ClusterwideTable::Property,
+            storage::Properties::TABLE_ID,
             &[PropertyName::PendingPluginOperation],
             effective_user_id(),
         )?;
 
         let ranges =
-            vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation])];
+            vec![Range::new(storage::Properties::TABLE_ID)
+                .eq([PropertyName::PendingPluginOperation])];
 
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };

@@ -132,6 +132,7 @@ impl std::fmt::Display for Instance {
 mod tests {
     use std::collections::HashSet;
     use tarantool::space::UpdateOps;
+    use crate::storage::TClusterwideTable;
     use crate::tier::DEFAULT_TIER;
     use crate::failure_domain::FailureDomain;
     use crate::instance::state::State;
@@ -347,7 +348,7 @@ mod tests {
     #[track_caller]
     fn update_instance_dml(instance_name: impl Into<InstanceName>, ops: UpdateOps) -> Dml {
         Dml::update(
-            crate::storage::ClusterwideTable::Instance,
+            crate::storage::Instances::TABLE_ID,
             &[&instance_name.into()],
             ops,
             crate::schema::ADMIN_ID,
