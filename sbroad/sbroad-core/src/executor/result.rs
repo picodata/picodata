@@ -16,9 +16,8 @@ use std::collections::HashMap;
 use tarantool::tlua::{self, LuaRead};
 use tarantool::tuple::Encode;
 
-use crate::debug;
 use crate::errors::SbroadError;
-use crate::executor::vtable::{VTableColumn, VTableTuple, VirtualTable};
+use crate::executor::vtable::{VTableTuple, VirtualTable};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
 use crate::ir::relation::{Column, ColumnRole, Type};
@@ -139,48 +138,18 @@ impl ProducerResult {
     ///
     /// # Errors
     /// - convert to virtual table error
-    pub fn as_virtual_table(&mut self) -> Result<VirtualTable, SbroadError> {
-        let mut vtable = VirtualTable::new();
-
-        // Decode metadata
-        for col in &self.metadata {
-            let column: Column = col.try_into()?;
-            vtable.add_column(VTableColumn {
-                r#type: column.r#type,
-                role: column.role,
-                is_nullable: column.is_nullable,
-            });
-        }
-        debug!(
-            Option::from("as_virtual_table"),
-            &format!("virtual table columns: {:?}", vtable.get_columns())
-        );
+    pub fn as_virtual_table(&mut self, columns: Vec<Column>) -> Result<VirtualTable, SbroadError> {
+        let mut vtable = VirtualTable::with_columns(columns);
 
         // Decode data
         let mut data: Vec<VTableTuple> = Vec::with_capacity(self.rows.len());
         let columns = vtable.get_columns();
-
-        crate::warn!(Some("as_virtual_table"), "started matching types");
 
         for mut encoded_tuple in self.rows.drain(..) {
             let mut tuple = Vec::with_capacity(encoded_tuple.len());
             for (i, value) in encoded_tuple.drain(..).enumerate() {
                 let column = &columns[i];
                 let value = Value::from(value);
-
-                crate::warn!(
-                    Some("as_virtual_table"),
-                    &format!(
-                        "row type (value): {:?}, column type: {:?}, match: {}",
-                        value.get_type(),
-                        column.r#type,
-                        if value.get_type() == column.r#type {
-                            "yes"
-                        } else {
-                            "no "
-                        },
-                    )
-                );
 
                 if value.get_type() == column.r#type {
                     tuple.push(value);
@@ -191,8 +160,6 @@ impl ProducerResult {
             data.push(tuple);
         }
         std::mem::swap(vtable.get_mut_tuples(), &mut data);
-
-        crate::warn!(Some("as_virtual_table"), "ended matching types");
 
         Ok(vtable)
     }

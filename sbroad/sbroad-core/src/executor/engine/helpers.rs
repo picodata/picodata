@@ -2,6 +2,7 @@ use ahash::AHashMap;
 
 use crate::{
     error,
+    executor::vtable::vtable_indexed_column_name,
     ir::node::{
         expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
         Update, Values, ValuesRow,
@@ -918,6 +919,20 @@ pub fn dispatch_by_buckets(
     }
 }
 
+fn vtable_columns(plan: &Plan, top_id: NodeId) -> Result<Vec<Column>, SbroadError> {
+    let top = plan.get_relation_node(top_id)?;
+    let output_id = top.output();
+    let columns = plan.get_row_list(output_id)?;
+    let mut res = Vec::with_capacity(columns.len());
+    for (pos, col_id) in columns.iter().enumerate() {
+        let col = plan.get_expression_node(*col_id)?;
+        let name = vtable_indexed_column_name(pos);
+        let col_type = col.calculate_type(plan)?;
+        res.push(Column::new(name.as_str(), col_type, ColumnRole::User, true));
+    }
+    Ok(res)
+}
+
 /// Helper function reused for Cartridge/Picodata `materialize_values` method of Router.
 ///
 /// # Errors
@@ -1018,6 +1033,7 @@ pub fn materialize_values(
         vtable
     } else {
         // We need to execute VALUES as a local SQL.
+        let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
         runtime
             .dispatch(
                 exec_plan,
@@ -1027,7 +1043,7 @@ pub fn materialize_values(
             )?
             .downcast::<ProducerResult>()
             .expect("must've failed earlier")
-            .as_virtual_table()?
+            .as_virtual_table(columns)?
     };
 
     let unified_types = calculate_vtable_unified_types(&vtable)?;
@@ -1068,15 +1084,17 @@ pub fn materialize_motion(
     } else {
         panic!("Expected motion node, got {motion_node:?}");
     };
+    let columns = vtable_columns(plan.get_ir_plan(), top_id)?;
     // Dispatch the motion subtree (it will be replaced with invalid values).
     let mut result = *runtime
         .dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?
         .downcast::<ProducerResult>()
         .expect("must've failed earlier");
+
     // Unlink motion node's child sub tree (it is already replaced with invalid values).
     plan.unlink_motion_subtree(motion_node_id)?;
-    let mut vtable = result.as_virtual_table()?;
 
+    let mut vtable = result.as_virtual_table(columns)?;
     if let Some(name) = alias {
         vtable.set_alias(name.as_str());
     }
@@ -1579,12 +1597,14 @@ where
             format_smolstr!("motion node {child_id:?}. {e}"),
         )
     })?;
+    let ir_plan = optional.exec_plan.get_ir_plan();
+    let columns = vtable_columns(ir_plan, child_id)?;
     let vtable = data
         .get_mut(0)
         .ok_or_else(|| SbroadError::NotFound(Entity::ProducerResult, "from the tuple".into()))?
         // It is a DML query, so we don't need to care about the column types
         // in response. So, simply use scalar type for all the columns.
-        .as_virtual_table()?;
+        .as_virtual_table(columns)?;
     optional
         .exec_plan
         .set_motion_vtable(&child_id, vtable, runtime)?;

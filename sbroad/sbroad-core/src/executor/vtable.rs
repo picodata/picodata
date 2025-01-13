@@ -143,6 +143,16 @@ impl VirtualTable {
         }
     }
 
+    pub fn with_columns(columns: Vec<Column>) -> Self {
+        VirtualTable {
+            columns,
+            tuples: vec![],
+            name: None,
+            primary_key: None,
+            bucket_index: VTableIndex::new(),
+        }
+    }
+
     #[must_use]
     pub fn metadata(&self) -> VirtualTableMeta {
         VirtualTableMeta {
