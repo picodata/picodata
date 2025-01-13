@@ -1,5 +1,5 @@
 diff --git a/src/lj_vmmath.c b/src/lj_vmmath.c
-index 506867f8..04e4e052 100644
+index faebe719..007673f3 100644
 --- a/src/lj_vmmath.c
 +++ b/src/lj_vmmath.c
 @@ -8,6 +8,7 @@
@@ -18,6 +18,6 @@ index 506867f8..04e4e052 100644
 +    fprintf(stderr, "modulo with zero divisor %s:%d", __FILE__, __LINE__);
 +    abort();
 +  }
-   ua = a < 0 ? (uint32_t)-a : (uint32_t)a;
-   ub = b < 0 ? (uint32_t)-b : (uint32_t)b;
+   ua = a < 0 ? ~(uint32_t)a+1u : (uint32_t)a;
+   ub = b < 0 ? ~(uint32_t)b+1u : (uint32_t)b;
    y = ua % ub;

@@ -1,10 +1,10 @@
 diff --git a/src/tool_paramhlp.c b/src/tool_paramhlp.c
-index c4fd0a192..50b6204a7 100644
+index d4024e134..efe11ee9a 100644
 --- a/src/tool_paramhlp.c
 +++ b/src/tool_paramhlp.c
-@@ -362,9 +362,10 @@ ParameterError proto2num(struct OperationConfig *config,
+@@ -397,9 +397,10 @@ ParameterError proto2num(struct OperationConfig *config,
  
-   /* Allow strtok() here since this isn't used threaded */
+   /* Allow strtok() here since this is not used threaded */
    /* !checksrc! disable BANNEDFUNC 2 */
 -  for(token = strtok(buffer, sep);
 +  char *saveptr = NULL;

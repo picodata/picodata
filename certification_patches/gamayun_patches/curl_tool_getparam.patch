@@ -1,18 +1,18 @@
 diff --git a/src/tool_getparam.c b/src/tool_getparam.c
-index 0beb94572..4c91212e4 100644
+index 9a5de1e73..5b54e8157 100644
 --- a/src/tool_getparam.c
 +++ b/src/tool_getparam.c
-@@ -2008,7 +2008,8 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
+@@ -2212,7 +2212,8 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
            if(!err && string) {
-             /* Allow strtok() here since this isn't used threaded */
+             /* Allow strtok() here since this is not used threaded */
              /* !checksrc! disable BANNEDFUNC 2 */
 -            char *h = strtok(string, "\r\n");
 +            char *saveptr = NULL;
 +            char *h = strtok_r(string, "\r\n", &saveptr);
              while(h) {
-               if(subletter == 'p') /* --proxy-header */
+               if(cmd == C_PROXY_HEADER) /* --proxy-header */
                  err = add2list(&config->proxyheaders, h);
-@@ -2016,7 +2017,8 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
+@@ -2220,7 +2221,8 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
                  err = add2list(&config->headers, h);
                if(err)
                  break;

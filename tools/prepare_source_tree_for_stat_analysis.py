@@ -63,7 +63,7 @@ def cd(target: Path):
 
 
 def apply(patch: Path):
-    subprocess.check_call(["git", "apply", str(patch)])  # nosec
+    subprocess.check_call(["git", "apply", "--reject", str(patch)])  # nosec
 
 
 def apply_from_dir(path: Path):

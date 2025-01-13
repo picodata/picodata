@@ -1,10 +1,10 @@
 diff --git a/src/tool_dirhie.c b/src/tool_dirhie.c
-index d80623e25..9e32c2f96 100644
+index 772664c5f..a8b7d89a0 100644
 --- a/src/tool_dirhie.c
 +++ b/src/tool_dirhie.c
-@@ -118,11 +118,12 @@ CURLcode create_dir_hierarchy(const char *outfile, FILE *errors)
+@@ -117,11 +117,12 @@ CURLcode create_dir_hierarchy(const char *outfile, struct GlobalConfig *global)
  
-   /* Allow strtok() here since this isn't used threaded */
+   /* Allow strtok() here since this is not used threaded */
    /* !checksrc! disable BANNEDFUNC 2 */
 -  tempdir = strtok(outdup, PATH_DELIMITERS);
 +  char *saveptr = NULL;
