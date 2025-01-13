@@ -5,7 +5,15 @@
 
 ## Идентификация кластера {: #cluster_traits }
 
-Кластер в Picodata может быть идентифицирован по имени, которое задается администратором при первоначальном
+Для идентификации кластера Picodata используется его [имя]. Данный
+параметр задается администратором и используется только при
+[первоначальной сборке] кластера. Впоследствии, при добавление к
+работающему кластеру новых инстансов, указание имени кластера
+игнорируется.
+
+См. также:
+
+- [Файл конфигурации](../reference/config.md#config_file_description)
 
 ## Идентификация узлов {: #instance_traits }
 
@@ -24,9 +32,11 @@
 Имена и идентификаторы инстансов кластера содержатся в системной таблице
 [`_pico_instance`].
 
+[имя]: ../reference/cli.md#run_cluster_name
 [инстансом]: ../overview/glossary.md#instance
 [UUID]: https://en.wikipedia.org/wiki/Universally_unique_identifier
 [`_pico_instance`]: ../architecture/system_tables.md#_pico_instance
+[первоначальной сборке]: ../overview/glossary.md#bootstrap
 
 ## Обязательные параметры {: #essentials }
 
