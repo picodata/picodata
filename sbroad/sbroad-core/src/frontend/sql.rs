@@ -6,7 +6,8 @@
 use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
-use crate::ir::node::{Reference, ReferenceAsteriskSource};
+use crate::ir::node::{Alias, Reference, ReferenceAsteriskSource};
+use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
 use core::panic;
 use itertools::Itertools;
@@ -3620,13 +3621,30 @@ impl AbstractSyntaxTree {
                         )),
                             )
                         })?;
-                        if index_usize > sq_output_len {
+
+                        let sq_output = plan.get_row_list(sq_output_id)?;
+                        if let Some(alias_node_id) = sq_output.get(index_usize - 1) {
+                            let alias_node = plan.get_expression_node(*alias_node_id)?;
+                            if let Expression::Alias(Alias { child, .. }) = alias_node {
+                                if let Expression::Reference(Reference { col_type: Type::Array, .. }) = plan.get_expression_node(*child)? {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Expression,
+                                        Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
+                                    ));
+                                }
+                            }
+                        } else {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
                                 Some(format_smolstr!("Ordering index ({index}) is bigger than child projection output length ({sq_output_len})."))
                             ));
                         }
                         OrderByEntity::Index { value: index_usize }
+                    } else if let Expression::Reference(Reference {col_type: Type::Array, ..}) = expr {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
+                        ));
                     } else {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.

@@ -5978,3 +5978,56 @@ def test_varchar_cast(cluster: Cluster):
         strip_metadata=False,
     )
     assert data["metadata"] == [{"name": "col_1", "type": "string"}]
+
+
+def test_forbid_order_by_with_array(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1 = cluster.instances[0]
+
+    error_message = (
+        "sbroad: invalid expression: "
+        + "Array is not supported as a sort type for ORDER BY"
+    )
+    error_message = re.escape(error_message)
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql(
+            """SELECT * FROM
+                            (SELECT PI.name instance_name,
+                                PI.current_state,
+                                PI.target_state,
+                                PI."uuid" instance_uuid,
+                                PI.replicaset_uuid,
+                                PI.tier, PA.address uri
+                            FROM _pico_peer_address PA
+                            JOIN _pico_instance PI ON PA.raft_id = PI.raft_id)
+                        ORDER BY current_state, target_state;
+        """
+        )
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM _pico_instance ORDER BY current_state""")
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM _pico_instance ORDER BY target_state""")
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM _pico_instance ORDER BY 6""")
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM _pico_instance ORDER BY 7""")
