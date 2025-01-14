@@ -2219,7 +2219,15 @@ def binary_path_fixt(cargo_build_fixt: None) -> str:
 
 def binary_path() -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
-    metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
+    metadata = subprocess.check_output(
+        [
+            "cargo",
+            "metadata",
+            "--format-version=1",
+            "--frozen",
+            "--no-deps",
+        ]
+    )
     target_dir = json.loads(metadata)["target_directory"]
     # This file is huge, hide it from pytest output in case there's an exception
     # somewhere in this function.
