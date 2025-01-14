@@ -895,42 +895,6 @@ pub fn enable_plugin(
     Ok(())
 }
 
-/// Update plugin service configuration.
-pub fn update_plugin_service_configuration(
-    ident: &PluginIdentifier,
-    service: &str,
-    new_cfg_raw: &[u8],
-    timeout: Duration,
-) -> traft::Result<()> {
-    let deadline = Instant::now_fiber().saturating_add(timeout);
-    let node = node::global()?;
-
-    node.plugin_manager
-        .handle_event_sync(PluginEvent::BeforeServiceConfigurationUpdated {
-            ident,
-            service,
-            new_raw: new_cfg_raw,
-        })?;
-
-    let new_cfg: rmpv::Value = rmp_serde::from_slice(new_cfg_raw).expect("out of memory");
-
-    let check_and_make_op = || {
-        let op = PluginRaftOp::UpdatePluginConfig {
-            ident: ident.clone(),
-            service_name: service.to_string(),
-            config: new_cfg.clone(),
-        };
-        let ranges = vec![
-            // Fail if someone updates this service record
-            Range::new(ClusterwideTable::Service).eq((&ident.name, service, &ident.version)),
-        ];
-        Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
-    };
-
-    reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
-    Ok(())
-}
-
 /// Disable plugin:
 /// 1) call `on_stop` for each service in plugin
 /// 2) update routes in `_pico_service_route`

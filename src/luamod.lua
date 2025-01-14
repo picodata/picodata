@@ -53,29 +53,6 @@ end
 
 local TIMEOUT_INFINITY = 100 * 365 * 24 * 60 * 60
 
-help.update_plugin_config = [[
-pico.update_plugin_config(plugin_name, plugin_version, service_name, new_config, [opts])
-======================
-
-Update a plugin service configuration.
-
-Params:
-        1. plugin_name - plugin name
-
-        2. plugin_version - plugin version
-
-        3. service_name - service name
-
-        4. new_config - new configuration
-
-        5. opts (optional table)
-            - timeout (optional number), in seconds, default: 10
-]]
-function pico.update_plugin_config(plugin_name, plugin_version, service_name, new_config, opts)
-    local raw_new_config = require'msgpack'.encode(new_config)
-    return pico._update_plugin_config(plugin_name, plugin_version, service_name, raw_new_config, opts)
-end
-
 pico.router = {}
 
 local function get_router_for_tier(tier_name)

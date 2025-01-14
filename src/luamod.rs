@@ -1577,45 +1577,6 @@ pub(crate) fn setup() {
     #[rustfmt::skip]
     luamod_set(
         &l,
-        "_update_plugin_config",
-        indoc! {"
-        pico._update_plugin_config(plugin_name, plugin_version, service_name, new_config, [opts])
-        =================
-
-        Internal API, see src/luamod.rs for the details.
-
-        Params:
-
-            1. plugin_name - plugin name
-            2. plugin_version - plugin version
-            3. service_name - service name
-            4. new_config - new configuration
-            5. opts (optional table)
-                - timeout (optional number), in seconds, default: 10
-        "},
-        {
-            use tarantool::tlua::AnyLuaString;
-
-            #[derive(::tarantool::tlua::LuaRead)]
-            struct Opts {
-                timeout: Option<f64>,
-            }
-            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, new_cfg_raw: AnyLuaString, opts: Option<Opts>| -> traft::Result<()> {
-                let mut timeout = Duration::from_secs(10);
-                if let Some(opts) = opts {
-                    if let Some(t) = opts.timeout {
-                        timeout = duration_from_secs_f64_clamped(t);
-                    }
-                }
-                plugin::update_plugin_service_configuration(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, new_cfg_raw.as_bytes(), timeout)
-            })
-        },
-    );
-
-    ///////////////////////////////////////////////////////////////////////////
-    #[rustfmt::skip]
-    luamod_set(
-        &l,
         "disable_plugin",
         indoc! {"
         pico.disable_plugin(name, version, [opts])

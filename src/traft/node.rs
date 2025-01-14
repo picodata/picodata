@@ -1234,52 +1234,6 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
 
-            Op::Plugin(PluginRaftOp::UpdatePluginConfig {
-                ident,
-                service_name,
-                config,
-            }) => {
-                let maybe_service = self
-                    .storage
-                    .services
-                    .get(&ident, &service_name)
-                    .expect("storage should not fail");
-
-                if let Some(svc) = maybe_service {
-                    let old_config = self
-                        .storage
-                        .plugin_config
-                        .get_by_entity_as_mp(&ident, &service_name)
-                        .expect("storage should not fail");
-
-                    self.storage
-                        .plugin_config
-                        .replace(&ident, &service_name, config.clone())
-                        .expect("storage should not fail");
-
-                    self.storage
-                        .services
-                        .put(&svc)
-                        .expect("storage should not fail");
-
-                    let new_raw_cfg =
-                        rmp_serde::encode::to_vec_named(&config).expect("out of memory");
-                    let old_cfg_raw =
-                        rmp_serde::encode::to_vec_named(&old_config).expect("out of memory");
-
-                    if let Err(e) = self.plugin_manager.handle_event_async(
-                        PluginAsyncEvent::ServiceConfigurationUpdated {
-                            ident,
-                            service: svc.name,
-                            old_raw: old_cfg_raw,
-                            new_raw: new_raw_cfg,
-                        },
-                    ) {
-                        tlog!(Warning, "async plugin event: {e}");
-                    }
-                }
-            }
-
             Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 let plugin = self
                     .storage

@@ -1349,20 +1349,13 @@ def test_config_validation(cluster: Cluster):
     # test custom validator
     plugin_ref.inject_error("testservice_1", "on_config_validate", "test error", i1)
     with pytest.raises(
-        ReturnError, match="New configuration validation error:.* test error"
+        TarantoolError, match="New configuration validation error:.* test error"
     ):
-        i1.eval(
-            "return pico.update_plugin_config('testplug', '0.1.0', "
-            "'testservice_1', {foo = true, bar = 102, baz = {'a', 'b'}})"
-        )
-
-    # test default validator
-    with pytest.raises(
-        ReturnError,
-        match="New configuration validation error:.* expected struct Service2Config",
-    ):
-        i1.eval(
-            "return pico.update_plugin_config('testplug', '0.1.0', 'testservice_2', {})"
+        i1.sql(
+            f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+            f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+            f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+            f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
         )
 
 
@@ -1371,16 +1364,18 @@ def test_on_config_update(cluster: Cluster):
     plugin_ref = PluginReflection.default(i1, i2)
 
     i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref.assert_in_table_config("testservice_1", _DEFAULT_CFG, i1, i2)
+    plugin_ref.assert_in_table_config(_PLUGIN_SERVICES[0], _DEFAULT_CFG, i1, i2)
 
     # change configuration of non-enabled plugin
-    i1.eval(
-        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
-        "true, bar = 102, baz = {'a', 'b'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
     # retrying, cause new service configuration callback call asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_in_table_config("testservice_1", _NEW_CFG, i1, i2)
+        lambda: plugin_ref.assert_in_table_config(_PLUGIN_SERVICES[0], _NEW_CFG, i1, i2)
     )
 
     # change configuration of enabled plugin
@@ -1388,16 +1383,18 @@ def test_on_config_update(cluster: Cluster):
         "pico.service_append_tier",
         _PLUGIN,
         _PLUGIN_VERSION_1,
-        "testservice_1",
+        _PLUGIN_SERVICES[0],
         _DEFAULT_TIER,
     )
     i1.call("pico.enable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    i1.eval(
-        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
-        "false, bar = 102, baz = {'a', 'b'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'false',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
+        lambda: plugin_ref.assert_config(_PLUGIN_SERVICES[0], _NEW_CFG_2, i1, i2)
     )
 
 
@@ -1409,37 +1406,48 @@ def test_plugin_double_config_update(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
-    plugin_ref.inject_error("testservice_1", "assert_config_changed", True, i1)
-    plugin_ref.inject_error("testservice_1", "assert_config_changed", True, i2)
+    plugin_ref.inject_error(_PLUGIN_SERVICES[0], "assert_config_changed", True, i1)
+    plugin_ref.inject_error(_PLUGIN_SERVICES[0], "assert_config_changed", True, i2)
 
-    i1.eval(
-        f'pico.update_plugin_config("testplug", "{_PLUGIN_VERSION_1}", "testservice_1",'
-        '{foo = true, bar = 102, baz = {"a", "b"}})'
-        f'return pico.update_plugin_config("testplug", "{_PLUGIN_VERSION_1}", "testservice_1",'
-        '{foo = false, bar = 102, baz = {"a", "b"}})'
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
+    )
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'false',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
     # both configs were applied
     # retrying, cause callback call asynchronously
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_cb_called(
-            "testservice_1", "on_config_change", 2, i1, i2
+            _PLUGIN_SERVICES[0], "on_config_change", 2, i1, i2
         )
     )
-    plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
+    plugin_ref.assert_config(_PLUGIN_SERVICES[0], _NEW_CFG_2, i1, i2)
 
-    i1.eval(
-        f'pico.update_plugin_config("testplug", "{_PLUGIN_VERSION_1}", "testservice_1",'
-        '{foo =true, bar = 102, baz = {"a", "b"}})'
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
-    i2.eval(
-        f'pico.update_plugin_config("testplug", "{_PLUGIN_VERSION_1}", "testservice_1",'
-        '{foo = true, bar = 102, baz = {"a", "b"}})'
+    i2.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
+
     # both configs were applied and result config may be any of applied
     # retrying, cause callback call asynchronously
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_cb_called(
-            "testservice_1", "on_config_change", 4, i1, i2
+            _PLUGIN_SERVICES[0], "on_config_change", 4, i1, i2
         )
     )
 
@@ -1452,34 +1460,36 @@ def test_error_on_config_update(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
-    plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
+    plugin_ref.assert_config(_PLUGIN_SERVICES[0], _DEFAULT_CFG, i1, i2)
 
-    plugin_ref.inject_error("testservice_1", "on_config_change", "test error", i1)
+    plugin_ref.inject_error(_PLUGIN_SERVICES[0], "on_config_change", "test error", i1)
 
-    i1.eval(
-        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
-        "true, bar = 102, baz = {'a', 'b'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
 
     # check that at i1 new configuration exists in global space
     # but not really applied to service because error
-    cfg_space = plugin_ref.get_config("testservice_1", i1)
+    cfg_space = plugin_ref.get_config(_PLUGIN_SERVICES[0], i1)
     assert cfg_space == _NEW_CFG
-    cfg_seen = plugin_ref.get_seen_config("testservice_1", i1)
+    cfg_seen = plugin_ref.get_seen_config(_PLUGIN_SERVICES[0], i1)
     assert cfg_seen == _DEFAULT_CFG
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i2)
+        lambda: plugin_ref.assert_config(_PLUGIN_SERVICES[0], _NEW_CFG, i2)
     )
 
     # assert that the first instance now has a poison service
     # and the second instance is not poisoned
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_route_poisoned(i1.name, "testservice_1")
+        lambda: plugin_ref.assert_route_poisoned(i1.name, _PLUGIN_SERVICES[0])
     )
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
-            i2.name, "testservice_1", poisoned=False
+            i2.name, _PLUGIN_SERVICES[0], poisoned=False
         )
     )
 
@@ -1492,34 +1502,38 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
-    plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
-    plugin_ref.inject_error("testservice_1", "on_config_change", "test error", i1)
+    plugin_ref.assert_config(_PLUGIN_SERVICES[0], _DEFAULT_CFG, i1, i2)
+    plugin_ref.inject_error(_PLUGIN_SERVICES[0], "on_config_change", "test error", i1)
 
-    i1.eval(
-        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
-        "true, bar = 102, baz = {'a', 'b'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
 
     # assert that the first instance now has a poison service
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_route_poisoned(i1.name, "testservice_1")
+        lambda: plugin_ref.assert_route_poisoned(i1.name, _PLUGIN_SERVICES[0])
     )
 
-    plugin_ref.remove_error("testservice_1", "on_config_change", i1)
+    plugin_ref.remove_error(_PLUGIN_SERVICES[0], "on_config_change", i1)
 
-    i1.eval(
-        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
-        "false, bar = 102, baz = {'a', 'b'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'false',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
 
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
-            i1.name, "testservice_1", poisoned=False
+            i1.name, _PLUGIN_SERVICES[0], poisoned=False
         )
     )
-    plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
+    plugin_ref.assert_config(_PLUGIN_SERVICES[0], _NEW_CFG_2, i1, i2)
 
 
 # -------------------------- leader change test -----------------------------------
@@ -1642,9 +1656,11 @@ def _test_plugin_install_and_enable_on_catchup(
     p3_ref = p3_ref.install(True).enable(True)
 
     # update first plugin config
-    i1.eval(
-        f'pico.update_plugin_config("testplug", "{_PLUGIN_VERSION_1}", "testservice_1",'
-        '{foo = true, bar = 102, baz = {"a", "b"}})'
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_SERVICES[0]}.foo = 'true',"
+        f"    {_PLUGIN_SERVICES[0]}.bar = '102',"
+        f'    {_PLUGIN_SERVICES[0]}.baz = \'["a", "b"]\''
     )
 
     # disable second plugin
@@ -2857,6 +2873,7 @@ def test_sdk_log(cluster: Cluster):
     crawler.wait_matched()
 
 
+# noinspection HttpUrlsUsage
 @pytest.mark.webui
 def test_sdk_metrics(instance: Instance):
     plugin = _PLUGIN_W_SDK
@@ -2921,10 +2938,11 @@ def test_sdk_background(cluster: Cluster):
     )
 
     # now shutdown 1 and check that job ended
-    i1.eval(
-        f"pico.update_plugin_config"
-        f"('{_PLUGIN_W_SDK}', '0.1.0', '{_PLUGIN_W_SDK_SERVICES[0]}', {{test_type = 'no_test'}})"
+    i1.sql(
+        f"ALTER PLUGIN {_PLUGIN_W_SDK} {_PLUGIN_VERSION_1} SET"
+        f"    {_PLUGIN_W_SDK_SERVICES[0]}.test_type = 'no_test'"
     )
+
     i1.restart()
     i1.wait_online()
     PluginReflection.assert_persisted_data_exists("background_job_stopped", i1)

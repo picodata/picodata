@@ -246,13 +246,6 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
             }
-            Self::Plugin(PluginRaftOp::UpdatePluginConfig {
-                ident,
-                service_name,
-                ..
-            }) => {
-                write!(f, "UpdatePluginConfig({ident}, {service_name})")
-            }
             Self::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 #[rustfmt::skip]
                 write!(f, "DisablePlugin({ident}{})", DisplayCause(cause))?;
@@ -893,12 +886,6 @@ impl Acl {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "op_kind")]
 pub enum PluginRaftOp {
-    /// Update plugin service configuration.
-    UpdatePluginConfig {
-        ident: PluginIdentifier,
-        service_name: String,
-        config: rmpv::Value,
-    },
     /// Disable selected plugin.
     DisablePlugin {
         ident: PluginIdentifier,
