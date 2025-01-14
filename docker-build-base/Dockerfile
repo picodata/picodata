@@ -15,17 +15,25 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && dnf install -y \
            bzip2-devel \
            cmake \
+           cyrus-sasl-devel \
+           curl-devel \
            findutils \
            git \
            gcc \
            gcc-c++ \
            golang \
+           libcurl-devel \
            libffi-devel \
            libicu-devel \
            libstdc++-static \
            libtool \
+           libunwind \
+           libunwind-devel \
+           libyaml-devel \
+           libzstd-devel \
            make \
            nodejs \
+           openldap-devel \
            openssl-devel \
            python3.11 \
            python3-gevent \

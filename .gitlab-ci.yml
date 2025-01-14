@@ -299,6 +299,12 @@ lint:
 .test-patch-rules: &test-patch-rules
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
+    - <<: *if-build-base-changes-on-dev-branch
+      when: manual
+      allow_failure: true
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+
     - when: manual
       allow_failure: true
 
