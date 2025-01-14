@@ -4264,12 +4264,12 @@ def test_order_by(cluster: Cluster):
 
     data = i1.sql(""" select name as relname from _pico_instance order by relname """)
     assert data == [
-        ["i1"],
+        ["default_1_1"],
     ]
 
     data = i1.sql(""" select name as relname from _pico_instance order by 1 """)
     assert data == [
-        ["i1"],
+        ["default_1_1"],
     ]
 
     data = i1.sql(""" select nb as new_nb from null_t order by new_nb """)
@@ -4308,7 +4308,7 @@ def test_order_by(cluster: Cluster):
     )
     assert data == [
         [
-            "i1",
+            "default_1_1",
             ["Online", 1],
             ["Online", 1],
             "default",

@@ -565,7 +565,7 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
     assert entry[4][0] == "ddl_prepare"
 
     # Expel the last conflicting instance to fix the conflict.
-    i1.call("pico.expel", "i5")
+    i1.call("pico.expel", i5.name)
     applied_index = i1.call("box.space._raft_state:get", "applied")[1]
 
     # After that expel we expect a ddl commit

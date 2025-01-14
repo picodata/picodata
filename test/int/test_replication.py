@@ -21,7 +21,8 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
 
 # fmt: off
 def test_2_of_3_writable(cluster: Cluster):
-    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
+    i1, i2, i3 = sorted(cluster.deploy(instance_count=3, init_replication_factor=3),
+                        key=lambda i: i.name or "")
 
     master_name = i1.replicaset_master_name()
     assert i2.replicaset_master_name() == master_name

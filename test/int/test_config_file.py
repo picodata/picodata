@@ -19,7 +19,7 @@ instance:
         memory: 42069
 """
     )
-    instance = cluster.add_instance(name=False, wait_online=False)
+    instance = cluster.add_instance(wait_online=False)
     instance.start()
     instance.wait_online()
 
@@ -134,7 +134,7 @@ instance:
 
 
 def test_default_path_to_config_file(cluster: Cluster):
-    instance = cluster.add_instance(name=False, wait_online=False)
+    instance = cluster.add_instance(wait_online=False)
 
     # By default ./picodata.yaml will be used in the instance's current working directory
     work_dir = cluster.instance_dir + "/work-dir"
@@ -479,7 +479,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.instance_dir':
         'instance.config_file':
         'instance.cluster_name':
-        'instance.name': "i1"
+        'instance.name': "from-config"
         'instance.replicaset_name': "with-love"
         'instance.tier': "default"
         'instance.failure_domain': {}

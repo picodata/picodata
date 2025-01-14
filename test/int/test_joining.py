@@ -288,8 +288,8 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
 
     # don't generate instance_names so that the Leader
     # chooses ones for them when they join
-    i1 = cluster.add_instance(name=False)
-    i2 = cluster.add_instance(name=False)
+    i1 = cluster.add_instance()
+    i2 = cluster.add_instance()
 
     i1.assert_raft_status("Leader")
     assert i1.name == "default_1_1"

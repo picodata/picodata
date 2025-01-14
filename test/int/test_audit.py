@@ -68,14 +68,14 @@ def test_startup(instance_with_audit_file: Instance):
 
     event = take_until_title(iter(events), "join_instance")
     assert event is not None
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
     assert event["initiator"] == "admin"
 
     event = take_until_title(iter(events), "change_target_state")
     assert event is not None
     assert event["new_state"] == "Offline(0)"
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
@@ -87,7 +87,7 @@ def test_startup(instance_with_audit_file: Instance):
     event = take_until_title(iter(events), "change_current_state")
     assert event is not None
     assert event["new_state"] == "Offline(0)"
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
@@ -99,13 +99,13 @@ def test_startup(instance_with_audit_file: Instance):
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["initiator"] == "admin"
-    assert create_db["instance_name"] == "i1"
+    assert create_db["instance_name"] == "default_1_1"
     assert create_db["raft_id"] == "1"
 
     event = take_until_title(events, "connect_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
 
 
@@ -150,20 +150,20 @@ def test_recover_database(instance_with_audit_file: Instance):
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["initiator"] == "admin"
-    assert create_db["instance_name"] == "i1"
+    assert create_db["instance_name"] == "default_1_1"
     assert create_db["raft_id"] == "1"
 
     # On restart instance recovers it's local data
     event = take_until_title(iter(events), "recover_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
 
     event = take_until_title(events, "connect_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_name"] == "i1"
+    assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
 
 
@@ -368,7 +368,7 @@ def test_index(instance_with_audit_file: Instance):
 
 def test_join_expel_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.instance_dir, "i1", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "audit.log")
     i1 = cluster.add_instance(audit=audit, replicaset_name="default_1")
 
     audit_i1 = AuditFile(i1.audit_flag_value)
@@ -376,7 +376,7 @@ def test_join_expel_instance(cluster: Cluster):
         pass
     events = audit_i1.events()
 
-    audit = os.path.join(cluster.instance_dir, "i2", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit, replicaset_name="default_1")
 
     join_instance = take_until_title(events, "join_instance")
@@ -415,10 +415,10 @@ def test_join_expel_instance(cluster: Cluster):
 
 def test_join_connect_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.instance_dir, "i1", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "audit.log")
     i1 = cluster.add_instance(audit=audit)
 
-    audit = os.path.join(cluster.instance_dir, "i2", "audit.log")
+    audit = os.path.join(cluster.instance_dir, "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit)
     i2.terminate()
 
@@ -426,7 +426,7 @@ def test_join_connect_instance(cluster: Cluster):
 
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
-    assert create_db["instance_name"] == "i1"
+    assert create_db["instance_name"] == "default_1_1"
     assert create_db["raft_id"] == str(i1.raft_id)
     assert create_db["severity"] == "low"
     assert create_db["initiator"] == "admin"

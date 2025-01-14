@@ -926,7 +926,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
         i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
     assert e.value.args[:-1] == (
         ErrorCode.Other,
-        f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
+        f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:default_2_1] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
     )
 
     # plugin installed but disabled
@@ -2371,12 +2371,12 @@ cluster:
         router:
 """
     )
-    i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
-    i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
-    i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
-    i4 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    i1 = cluster.add_instance(name="i1", replicaset_name="r1", wait_online=False)
+    i2 = cluster.add_instance(name="i2", replicaset_name="r1", wait_online=False)
+    i3 = cluster.add_instance(name="i3", replicaset_name="r2", wait_online=False)
+    i4 = cluster.add_instance(name="i4", replicaset_name="r2", wait_online=False)
     router_instance = cluster.add_instance(
-        wait_online=False, replicaset_name="r3", tier="router"
+        name="i5", wait_online=False, replicaset_name="r3", tier="router"
     )
     cluster.wait_online()
 

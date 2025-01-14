@@ -167,7 +167,7 @@ instance:
 
     c1 = log_crawler(
         i1,
-        "CRITICAL: invalid configuration: instance with instance_name 'i1' from tier "
+        "CRITICAL: invalid configuration: instance with instance_name 'storage_1_1' from tier "
         "'storage' with `can_vote = false` cannot be a bootstrap leader",
     )
 

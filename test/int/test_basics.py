@@ -200,7 +200,7 @@ invalid configuration: instance restarted with a different `advertise_address`, 
 def test_whoami(instance: Instance):
     assert instance.call("pico.whoami") == {
         "raft_id": 1,
-        "instance_name": "i1",
+        "instance_name": "default_1_1",
         "cluster_name": instance.cluster_name,
         "tier": "default",
     }
@@ -225,14 +225,14 @@ cluster:
 
     assert i1.call("pico.whoami") == {
         "raft_id": 1,
-        "instance_name": "i1",
+        "instance_name": "storage_1_1",
         "cluster_name": i1.cluster_name,
         "tier": "storage",
     }
 
     assert i2.call("pico.whoami") == {
         "raft_id": 2,
-        "instance_name": "i2",
+        "instance_name": "router_1_1",
         "cluster_name": i2.cluster_name,
         "tier": "router",
     }
@@ -243,9 +243,9 @@ def test_pico_instance_info(instance: Instance):
         return instance.call("pico.instance_info", iid)
 
     # Don't compare entire structure, a couple of fields is enough
-    myself = instance_info("i1")
+    myself = instance_info("default_1_1")
     assert myself["raft_id"] == 1
-    assert myself["name"] == "i1"
+    assert myself["name"] == "default_1_1"
     assert myself["replicaset_name"] == "default_1"
 
     with pytest.raises(ReturnError) as e:
@@ -339,8 +339,8 @@ def test_raft_log(instance: Instance):
 +-----+----+--------+
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
-Insert(_pico_instance, ["i1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
-Insert(_pico_replicaset, ["default_1","{r1_uuid}","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
+Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
+Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
@@ -439,7 +439,7 @@ Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_key","tree",[{{"unique
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |BatchDml(
-Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]]),
+Update(_pico_instance, ["default_1_1"], [["=","target_state",["Online",1]]]),
 Update(_pico_replicaset, ["default_1"], [["=","target_config_version",1]]),
 Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
@@ -447,7 +447,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 |  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]])|
 |  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",1]])|
 |  69 | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
-|  69 | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
+|  69 | 2  |Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,
@@ -538,7 +538,7 @@ cluster:
     assert i1_info == dict(
         raft_id=1,
         advertise_address=f"{i1.host}:{i1.port}",
-        name="i1",
+        name="storage_1_1",
         uuid=i1.uuid(),
         replicaset_name="storage_1",
         replicaset_uuid=i1.replicaset_uuid(),
@@ -552,7 +552,7 @@ cluster:
     assert i2_info == dict(
         raft_id=2,
         advertise_address=f"{i2.host}:{i2.port}",
-        name="i2",
+        name="router_1_1",
         uuid=i2.uuid(),
         replicaset_name="router_1",
         replicaset_uuid=i2.replicaset_uuid(),
@@ -562,11 +562,11 @@ cluster:
         tier="router",
     )
 
-    assert i1.call(".proc_instance_info", "i1") == i1_info
-    assert i2.call(".proc_instance_info", "i1") == i1_info
+    assert i1.call(".proc_instance_info", "storage_1_1") == i1_info
+    assert i2.call(".proc_instance_info", "storage_1_1") == i1_info
 
-    assert i1.call(".proc_instance_info", "i2") == i2_info
-    assert i2.call(".proc_instance_info", "i2") == i2_info
+    assert i1.call(".proc_instance_info", "router_1_1") == i2_info
+    assert i2.call(".proc_instance_info", "router_1_1") == i2_info
 
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_instance_info", "i3")
@@ -579,7 +579,7 @@ cluster:
     # Instances of the same replicaset should have the same replicaset_uuid
     i3 = cluster.add_instance(tier="storage")
     i3_info = i3.call(".proc_instance_info")
-    assert i3_info["name"] == "i3"
+    assert i3_info["name"] == "storage_1_2"
     assert i3_info["replicaset_name"] == "storage_1"
     assert i3_info["replicaset_uuid"] == i1_info["replicaset_uuid"]
 
@@ -606,7 +606,7 @@ cluster:
             "replicas": {
                 f"{storage_instance.uuid()}": {
                     "master": True,
-                    "name": "i1",
+                    "name": "storage_1_1",
                     "uri": f"pico_service@{storage_instance.host}:{storage_instance.port}",
                 }
             },
@@ -619,12 +619,12 @@ cluster:
             "replicas": {
                 f"{router_instance_1.uuid()}": {
                     "master": True,
-                    "name": "i2",
+                    "name": "router_1_1",
                     "uri": f"pico_service@{router_instance_1.host}:{router_instance_1.port}",
                 },
                 f"{router_instance_2.uuid()}": {
                     "master": False,
-                    "name": "i3",
+                    "name": "router_1_2",
                     "uri": f"pico_service@{router_instance_2.host}:{router_instance_2.port}",
                 },
             },
@@ -808,7 +808,7 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
         "box error #10003: operation request from different term",
     )
     i3_replication_configured = log_crawler(
-        i2, "configured replication with instance, instance_name: i3"
+        i2, "configured replication with instance, instance_name: default_3_1"
     )
 
     i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", True)

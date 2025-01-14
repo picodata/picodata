@@ -49,7 +49,7 @@ def test_webui_basic(instance: Instance):
                                 "isLeader": True,
                                 "currentState": "Online",
                                 "targetState": "Online",
-                                "name": "i1",
+                                "name": "default_1_1",
                                 "version": instance_version,
                                 "httpAddress": http_listen,
                                 "binaryAddress": instance.listen,
@@ -151,19 +151,19 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     instance_1 = {
         **instance_template,
-        "name": "i1",
+        "name": "red_1_1",
         "binaryAddress": i1.listen,
         "httpAddress": http_listen,
     }
     instance_2 = {
         **instance_template,
-        "name": "i2",
+        "name": "blue_1_1",
         "binaryAddress": i2.listen,
         "httpAddress": "",
     }
     instance_3 = {
         **instance_template,
-        "name": "i3",
+        "name": "green_1_1",
         "binaryAddress": i3.listen,
         "httpAddress": "",
     }

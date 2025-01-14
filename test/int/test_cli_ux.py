@@ -971,8 +971,7 @@ def test_picodata_status(cluster: Cluster):
 
     cluster.deploy(instance_count=3)
     cluster.wait_online()
-
-    i1, i2, i3 = cluster.instances
+    i1, i2, i3 = sorted(cluster.instances, key=lambda i: i.name or "")
 
     i1_address = f"{i1.host}:{i1.port}"
     i2_address = f"{i2.host}:{i2.port}"
@@ -1008,11 +1007,11 @@ CLUSTER NAME: {i1.cluster_name}
 +---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
 | instance_name | current_state | target_state  | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
 +========================================================================================================================================================+
-| {i1.name}            | ["Online", 1] | ["Online", 1] | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+| {i1.name}   | ["Online", 1] | ["Online", 1] | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
 |---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}            | ["Online", 1] | ["Online", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
+| {i2.name}   | ["Online", 1] | ["Online", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
 |---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}            | ["Online", 1] | ["Online", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
+| {i3.name}   | ["Online", 1] | ["Online", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
 +---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
 (3 rows)
 """  # noqa: E501
@@ -1043,11 +1042,11 @@ CLUSTER NAME: {i1.cluster_name}
 +---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
 | instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
 +==========================================================================================================================================================+
-| {i1.name}            | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+| {i1.name}   | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
 |---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}            | ["Online", 1]  | ["Online", 1]  | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
+| {i3.name}   | ["Online", 1]  | ["Online", 1]  | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
 |---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}            | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
+| {i2.name}   | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
 +---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
 (3 rows)
 """  # noqa: E501
@@ -1078,11 +1077,11 @@ CLUSTER NAME: {i1.cluster_name}
 +---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
 | instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
 +==========================================================================================================================================================+
-| {i1.name}            | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+| {i1.name}   | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
 |---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}            | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
+| {i2.name}   | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
 |---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}            | ["Offline", 1] | ["Offline", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
+| {i3.name}   | ["Offline", 1] | ["Offline", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
 +---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
 (3 rows)
 """  # noqa: E501
