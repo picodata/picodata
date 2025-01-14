@@ -80,7 +80,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
     # compaction because a new entry will be added to the log which will
     # increase it's size past the newly introduced limit.
     max_size = size
-    i1.sql(f"ALTER SYSTEM SET cluster_wal_max_size = {max_size}")
+    i1.sql(f"ALTER SYSTEM SET raft_wal_size_max = {max_size}")
 
     count, size = get_raft_log_count_and_size(i1)
     assert count == 0
@@ -136,7 +136,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
 
     # Set the maximum raft log entry count.
     max_count = 2
-    i1.sql(f"ALTER SYSTEM SET cluster_wal_max_count = {max_count}")
+    i1.sql(f"ALTER SYSTEM SET raft_wal_count_max = {max_count}")
 
     # Alter system statement results in one raft log entry
     count, size = get_raft_log_count_and_size(i1)
@@ -159,7 +159,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
 
     # Increase the maximum raft log entry count.
     max_count = 5
-    i1.sql(f"ALTER SYSTEM SET cluster_wal_max_count = {max_count}")
+    i1.sql(f"ALTER SYSTEM SET raft_wal_count_max = {max_count}")
 
     count, size = get_raft_log_count_and_size(i1)
     assert count == 1
@@ -188,7 +188,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
 
     # Disable limit on number of tuples all together
     old_max_count = max_count
-    i1.sql("ALTER SYSTEM SET cluster_wal_max_count = 9999")
+    i1.sql("ALTER SYSTEM SET raft_wal_count_max = 9999")
 
     # Insert more stuff until log compacts based on number of bytes
     prev_count = bulk_insert_until_compaction()
@@ -200,7 +200,7 @@ def test_raft_log_auto_compaction_preserves_finalizers(cluster: Cluster):
 
     # Compact the log and make it so compaction is triggerred the moment a
     # DdlCommit entry is added to the log
-    i1.sql("ALTER SYSTEM SET cluster_wal_max_count = 1")
+    i1.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
 
     assert i1.call("box.space._raft_log:len") == 0
 

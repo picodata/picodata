@@ -94,7 +94,7 @@ impl Clusterwide {
         let mut space_dumps = Vec::with_capacity(global_spaces.len());
         let mut total_size = 0;
         let mut hit_threashold = false;
-        let snapshot_chunk_max_size = self.db_config.snapshot_chunk_max_size()?;
+        let snapshot_chunk_max_size = self.db_config.raft_snapshot_chunk_size_max()?;
         let t0 = std::time::Instant::now();
         for &(space_id, index_id) in global_spaces {
             debug_assert_eq!(index_id, 0, "only primary keys should be added");
@@ -260,7 +260,7 @@ impl Clusterwide {
             rv.ref_count = 1;
         }
 
-        let timeout = self.db_config.snapshot_read_view_close_timeout()?;
+        let timeout = self.db_config.raft_snapshot_read_view_close_timeout()?;
         let now = fiber::clock();
         // Clear old snapshots.
         // This is where we clear any stale snapshots with no references

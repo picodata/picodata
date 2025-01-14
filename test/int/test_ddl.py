@@ -1675,7 +1675,7 @@ cluster:
     )
 
     # Trigger log compaction
-    leader.sql("ALTER SYSTEM SET cluster_wal_max_count TO 1")
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 1")
 
     # Add a new replicaset, which catches up by raft snapshot
     storage_3_1 = cluster.add_instance(tier="storage", wait_online=True)

@@ -126,7 +126,7 @@ pub fn validate_password(
     // This check is called from user facing API.
     // A user is not expected to have access to _pico_property
     let password_min_length =
-        session::with_su(ADMIN_ID, || storage.db_config.password_min_length())??;
+        session::with_su(ADMIN_ID, || storage.db_config.auth_password_length_min())??;
     if password.len() < password_min_length {
         return Err(Error::Other(
             format!(
@@ -138,24 +138,27 @@ pub fn validate_password(
         ));
     }
 
-    let password_enforce_uppercase =
-        session::with_su(ADMIN_ID, || storage.db_config.password_enforce_uppercase())??;
+    let password_enforce_uppercase = session::with_su(ADMIN_ID, || {
+        storage.db_config.auth_password_enforce_uppercase()
+    })??;
     if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
         return Err(Error::Other(
             "invalid password: password should contains at least one uppercase letter".into(),
         ));
     }
 
-    let password_enforce_lowercase =
-        session::with_su(ADMIN_ID, || storage.db_config.password_enforce_lowercase())??;
+    let password_enforce_lowercase = session::with_su(ADMIN_ID, || {
+        storage.db_config.auth_password_enforce_lowercase()
+    })??;
     if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
         return Err(Error::Other(
             "invalid password: password should contains at least one lowercase letter".into(),
         ));
     }
 
-    let password_enforce_digits =
-        session::with_su(ADMIN_ID, || storage.db_config.password_enforce_digits())??;
+    let password_enforce_digits = session::with_su(ADMIN_ID, || {
+        storage.db_config.auth_password_enforce_digits()
+    })??;
     if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
         return Err(Error::Other(
             "invalid password: password should contains at least one digit".into(),
@@ -163,7 +166,7 @@ pub fn validate_password(
     }
 
     let password_enforce_specialchars = session::with_su(ADMIN_ID, || {
-        storage.db_config.password_enforce_specialchars()
+        storage.db_config.auth_password_enforce_specialchars()
     })??;
     if password_enforce_specialchars && !password.chars().any(|ch| SPECIAL_CHARACTERS.contains(&ch))
     {

@@ -274,26 +274,25 @@ def test_read_from_system_tables(cluster: Cluster):
     # Ignore values for the sake of stability
     keys = [row[0] for row in data["rows"]]
     assert keys == [
-        "auto_offline_timeout",
-        "cluster_wal_max_count",
-        "cluster_wal_max_size",
+        "auth_login_attempt_max",
+        "auth_password_enforce_digits",
+        "auth_password_enforce_lowercase",
+        "auth_password_enforce_specialchars",
+        "auth_password_enforce_uppercase",
+        "auth_password_length_min",
+        "governor_auto_offline_timeout",
         "governor_common_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
         "iproto_net_msg_max",
-        "max_heartbeat_period",
-        "max_login_attempts",
-        "max_pg_portals",
-        "max_pg_statements",
         "memtx_checkpoint_count",
         "memtx_checkpoint_interval",
-        "password_enforce_digits",
-        "password_enforce_lowercase",
-        "password_enforce_specialchars",
-        "password_enforce_uppercase",
-        "password_min_length",
-        "snapshot_chunk_max_size",
-        "snapshot_read_view_close_timeout",
+        "pg_portal_max",
+        "pg_statement_max",
+        "raft_snapshot_chunk_size_max",
+        "raft_snapshot_read_view_close_timeout",
+        "raft_wal_count_max",
+        "raft_wal_size_max",
         "sql_motion_row_max",
         "sql_vdbe_opcode_max",
     ]
@@ -3252,14 +3251,14 @@ def test_sql_user_password_checks(cluster: Cluster):
     # let's turn off uppercase check and turn on special characters check
     dml = i1.sql(
         """
-        ALTER SYSTEM SET password_enforce_uppercase=false
+        ALTER SYSTEM SET auth_password_enforce_uppercase=false
         """
     )
     assert dml["row_count"] == 1
 
     dml = i1.sql(
         """
-        ALTER SYSTEM SET password_enforce_specialchars=true
+        ALTER SYSTEM SET auth_password_enforce_specialchars=true
         """
     )
     assert dml["row_count"] == 1
@@ -5042,24 +5041,23 @@ def test_alter_system_property(cluster: Cluster):
     i1 = cluster.instances[0]
 
     non_default_prop = [
-        ("password_min_length", 10),
-        ("password_enforce_digits", True),
-        ("password_enforce_uppercase", True),
-        ("password_enforce_lowercase", True),
-        ("password_enforce_specialchars", False),
-        ("auto_offline_timeout", 12),
-        ("max_heartbeat_period", 6.6),
-        ("max_login_attempts", 4),
-        ("max_pg_statements", 1024),
-        ("max_pg_portals", 1024),
-        ("snapshot_chunk_max_size", 1500),
-        ("snapshot_read_view_close_timeout", 12312.4),
-        ("password_enforce_uppercase", False),
-        ("password_enforce_lowercase", False),
-        ("password_enforce_specialchars", True),
-        ("max_login_attempts", 8),
-        ("max_pg_statements", 4096),
-        ("max_pg_portals", 2048),
+        ("auth_password_length_min", 10),
+        ("auth_password_enforce_digits", True),
+        ("auth_password_enforce_uppercase", True),
+        ("auth_password_enforce_lowercase", True),
+        ("auth_password_enforce_specialchars", False),
+        ("governor_auto_offline_timeout", 12),
+        ("auth_login_attempt_max", 4),
+        ("pg_statement_max", 1024),
+        ("pg_portal_max", 1024),
+        ("raft_snapshot_chunk_size_max", 1500),
+        ("raft_snapshot_read_view_close_timeout", 12312.4),
+        ("auth_password_enforce_uppercase", False),
+        ("auth_password_enforce_lowercase", False),
+        ("auth_password_enforce_specialchars", True),
+        ("auth_login_attempt_max", 8),
+        ("pg_statement_max", 4096),
+        ("pg_portal_max", 2048),
         ("governor_raft_op_timeout", 10),
         ("governor_common_rpc_timeout", 10),
         ("governor_plugin_rpc_timeout", 20),
@@ -5114,35 +5112,35 @@ def test_alter_system_property_errors(cluster: Cluster):
 
     # check valid insertion (int)
     data = i1.sql(
-        """ select * from "_pico_db_config" where "key" = 'auto_offline_timeout' """
+        """ select * from "_pico_db_config" where "key" = 'governor_auto_offline_timeout' """
     )
-    assert data == [["auto_offline_timeout", 30]]
+    assert data == [["governor_auto_offline_timeout", 30]]
     dml = i1.sql(
         """
-        alter system set "auto_offline_timeout" to 3
+        alter system set "governor_auto_offline_timeout" to 3
         """
     )
     assert dml["row_count"] == 1
     data = i1.sql(
-        """ select * from "_pico_db_config" where "key" = 'auto_offline_timeout' """
+        """ select * from "_pico_db_config" where "key" = 'governor_auto_offline_timeout' """
     )
-    assert data == [["auto_offline_timeout", 3]]
+    assert data == [["governor_auto_offline_timeout", 3]]
 
     # check valid insertion (bool)
     data = i1.sql(
-        """ select * from "_pico_db_config" where "key" = 'password_enforce_digits' """
+        """ select * from "_pico_db_config" where "key" = 'auth_password_enforce_digits' """
     )
-    assert data == [["password_enforce_digits", True]]
+    assert data == [["auth_password_enforce_digits", True]]
     dml = i1.sql(
         """
-        alter system set "password_enforce_digits" to false
+        alter system set "auth_password_enforce_digits" to false
         """
     )
     assert dml["row_count"] == 1
     data = i1.sql(
-        """ select * from "_pico_db_config" where "key" = 'password_enforce_digits' """
+        """ select * from "_pico_db_config" where "key" = 'auth_password_enforce_digits' """
     )
-    assert data == [["password_enforce_digits", False]]
+    assert data == [["auth_password_enforce_digits", False]]
 
     # such property does not exist
     with pytest.raises(
@@ -5157,11 +5155,11 @@ def test_alter_system_property_errors(cluster: Cluster):
     # property expects different value type
     with pytest.raises(
         TarantoolError,
-        match="invalid value for 'password_enforce_digits' expected boolean, got unsigned.",
+        match="invalid value for 'auth_password_enforce_digits' expected boolean, got unsigned.",
     ):
         dml = i1.sql(
             """
-            alter system set "password_enforce_digits" to 3
+            alter system set "auth_password_enforce_digits" to 3
             """
         )
 
@@ -5188,7 +5186,7 @@ def test_alter_system_property_errors(cluster: Cluster):
         )
 
     # timeout values cannot be negative
-    for param in ["auto_offline_timeout", "governor_raft_op_timeout"]:
+    for param in ["governor_auto_offline_timeout", "governor_raft_op_timeout"]:
         with pytest.raises(TarantoolError) as e:
             dml = i1.sql(
                 f"""

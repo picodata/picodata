@@ -43,7 +43,7 @@ def test_statement_storage_config_limit(postgres: Postgres):
 
     max_pg_statements = 32
     postgres.instance.sql(
-        f"ALTER SYSTEM SET max_pg_statements = {max_pg_statements}",
+        f"ALTER SYSTEM SET pg_statement_max = {max_pg_statements}",
         sudo=True,
     )
 
@@ -59,7 +59,7 @@ def test_statement_storage_config_limit(postgres: Postgres):
         pg8000.Error,
         match=f'Statement storage is full. Current size limit: {max_pg_statements}. \
 Please, increase storage limit using: \
-ALTER SYSTEM SET "max_pg_statements" TO <new-limit>',
+ALTER SYSTEM SET "pg_statement_max" TO <new-limit>',
     ):
         statements.append(
             conn.prepare(""" insert into "t" values (cast (:p as int)) """)
@@ -67,7 +67,7 @@ ALTER SYSTEM SET "max_pg_statements" TO <new-limit>',
 
     # increase storage capacity
     postgres.instance.sql(
-        f"ALTER SYSTEM SET max_pg_statements={max_pg_statements + 1}",
+        f"ALTER SYSTEM SET pg_statement_max={max_pg_statements + 1}",
         sudo=True,
     )
 

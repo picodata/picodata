@@ -61,7 +61,7 @@ def test_snapshot_and_dynamic_parameters(cluster: Cluster):
     i1.sql("ALTER SYSTEM SET iproto_net_msg_max = 100")
 
     # Trigger raft log compaction
-    i1.sql("ALTER SYSTEM SET cluster_wal_max_count TO 1")
+    i1.sql("ALTER SYSTEM SET raft_wal_count_max TO 1")
 
     # Add a new instance and restart `i2`, which catches up by raft snapshot
     i2.start_and_wait()

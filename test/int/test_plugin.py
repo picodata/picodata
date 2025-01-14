@@ -938,7 +938,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", True, i1)
 
     # This is needed to check that raft log compaction respects plugin op finalizers
-    i1.sql(""" ALTER SYSTEM SET cluster_wal_max_count = 1 """)
+    i1.sql(""" ALTER SYSTEM SET raft_wal_count_max = 1 """)
     assert i1.call("box.space._raft_log:len") == 0
     index_before = i1.raft_get_index()
 
@@ -1266,9 +1266,9 @@ def test_migration_lock(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=False, replicaset_name="storage")
     cluster.wait_online()
 
-    # Decrease auto_offline_timeout so that sentinel notices that the instance
+    # Decrease governor_auto_offline_timeout so that sentinel notices that the instance
     # disappeared quicker
-    i1.sql(""" ALTER SYSTEM SET auto_offline_timeout = 1 """)
+    i1.sql(""" ALTER SYSTEM SET governor_auto_offline_timeout = 1 """)
 
     # successfully install v0.1.0
     i2.call(

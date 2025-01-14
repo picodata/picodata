@@ -2375,7 +2375,7 @@ impl NodeImpl {
         let max_size: u64 = self
             .storage
             .db_config
-            .get_or_default(system_parameter_name!(cluster_wal_max_size))?;
+            .get_or_default(system_parameter_name!(raft_wal_size_max))?;
         let current_size = self.raft_storage.raft_log_bsize()?;
         if current_size > max_size {
             #[rustfmt::skip]
@@ -2386,7 +2386,7 @@ impl NodeImpl {
         let max_count: u64 = self
             .storage
             .db_config
-            .get_or_default(system_parameter_name!(cluster_wal_max_count))?;
+            .get_or_default(system_parameter_name!(raft_wal_count_max))?;
         let current_count = self.raft_storage.raft_log_count()?;
         if current_count > max_count {
             #[rustfmt::skip]

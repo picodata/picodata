@@ -3130,43 +3130,43 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn password_min_length(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(password_min_length))
+    pub fn auth_password_length_min(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(auth_password_length_min))
     }
 
     #[inline]
-    pub fn password_enforce_uppercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(password_enforce_uppercase))
+    pub fn auth_password_enforce_uppercase(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(auth_password_enforce_uppercase))
     }
 
     #[inline]
-    pub fn password_enforce_lowercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(password_enforce_lowercase))
+    pub fn auth_password_enforce_lowercase(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(auth_password_enforce_lowercase))
     }
 
     #[inline]
-    pub fn password_enforce_digits(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(password_enforce_digits))
+    pub fn auth_password_enforce_digits(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(auth_password_enforce_digits))
     }
 
     #[inline]
-    pub fn password_enforce_specialchars(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(password_enforce_specialchars))
+    pub fn auth_password_enforce_specialchars(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(auth_password_enforce_specialchars))
     }
 
     #[inline]
-    pub fn max_login_attempts(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(max_login_attempts))
+    pub fn auth_login_attempt_max(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(auth_login_attempt_max))
     }
 
     #[inline]
-    pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
+    pub fn pg_statement_max(&self) -> tarantool::Result<usize> {
         let cached = config::MAX_PG_STATEMENTS.load(Ordering::Relaxed);
         if cached != 0 {
             return Ok(cached);
         }
 
-        let res = self.get_or_default(system_parameter_name!(max_pg_statements))?;
+        let res = self.get_or_default(system_parameter_name!(pg_statement_max))?;
 
         // Cache the value.
         config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
@@ -3174,13 +3174,13 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+    pub fn pg_portal_max(&self) -> tarantool::Result<usize> {
         let cached = config::MAX_PG_PORTALS.load(Ordering::Relaxed);
         if cached != 0 {
             return Ok(cached);
         }
 
-        let res = self.get_or_default(system_parameter_name!(max_pg_portals))?;
+        let res = self.get_or_default(system_parameter_name!(pg_portal_max))?;
 
         // Cache the value.
         config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
@@ -3188,28 +3188,21 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn snapshot_chunk_max_size(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(snapshot_chunk_max_size))
+    pub fn raft_snapshot_chunk_size_max(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(raft_snapshot_chunk_size_max))
     }
 
     #[inline]
-    pub fn snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
+    pub fn raft_snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
         #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(snapshot_read_view_close_timeout))?;
+        let res: f64 = self.get_or_default(system_parameter_name!(raft_snapshot_read_view_close_timeout))?;
         Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
-    pub fn auto_offline_timeout(&self) -> tarantool::Result<Duration> {
+    pub fn governor_auto_offline_timeout(&self) -> tarantool::Result<Duration> {
         #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(auto_offline_timeout))?;
-        Ok(Duration::from_secs_f64(res))
-    }
-
-    #[inline]
-    pub fn max_heartbeat_period(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(max_heartbeat_period))?;
+        let res: f64 = self.get_or_default(system_parameter_name!(governor_auto_offline_timeout))?;
         Ok(Duration::from_secs_f64(res))
     }
 

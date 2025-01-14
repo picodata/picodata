@@ -30,6 +30,8 @@ pub fn instance_reachability_manager(storage: Clusterwide) -> InstanceReachabili
 }
 
 impl InstanceReachabilityManager {
+    const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
+
     pub fn new(storage: Clusterwide) -> Self {
         Self {
             storage: Some(storage),
@@ -155,7 +157,7 @@ impl InstanceReachabilityManager {
         //
         let now = fiber::clock();
         let since_last_success = last_attempt.duration_since(last_success);
-        let delay = since_last_success.min(self.max_heartbeat_period());
+        let delay = since_last_success.min(Self::MAX_HEARTBEAT_PERIOD);
         if now > last_attempt + delay {
             return true;
         }
@@ -175,23 +177,7 @@ impl InstanceReachabilityManager {
             .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
         storage
             .db_config
-            .auto_offline_timeout()
-            .expect("storage aint gonna fail")
-    }
-
-    fn max_heartbeat_period(&self) -> Duration {
-        // TODO: it would be better for cache locality and overall performance
-        // if we don't look this value up in the storage every time. Instead we
-        // could store it in a field of this struct and only update it's value
-        // once per raft loop iteration by calling a method update_configuration
-        // or something like that.
-        let storage = self
-            .storage
-            .as_ref()
-            .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
-        storage
-            .db_config
-            .max_heartbeat_period()
+            .governor_auto_offline_timeout()
             .expect("storage aint gonna fail")
     }
 }

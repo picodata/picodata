@@ -46,12 +46,12 @@ struct StorageContext {
 impl StorageContext {
     fn portals() -> StorageContext {
         fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.db_config.max_pg_portals()?)
+            Ok(node::global()?.storage.db_config.pg_portal_max()?)
         }
 
         Self {
             value_kind: "Portal",
-            capacity_parameter: crate::system_parameter_name!(max_pg_portals),
+            capacity_parameter: crate::system_parameter_name!(pg_portal_max),
             get_capacity,
             dublicate_key_error_code: PgErrorCode::DuplicateCursor,
         }
@@ -59,12 +59,12 @@ impl StorageContext {
 
     fn statements() -> StorageContext {
         fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.db_config.max_pg_statements()?)
+            Ok(node::global()?.storage.db_config.pg_statement_max()?)
         }
 
         Self {
             value_kind: "Statement",
-            capacity_parameter: crate::system_parameter_name!(max_pg_statements),
+            capacity_parameter: crate::system_parameter_name!(pg_statement_max),
             get_capacity,
             dublicate_key_error_code: PgErrorCode::DuplicatePreparedStatement,
         }

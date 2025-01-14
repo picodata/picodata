@@ -1495,28 +1495,28 @@ pub struct AlterSystemParameters {
     /// Password should contain at least this many characters
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 8)]
-    pub password_min_length: u64,
+    pub auth_password_length_min: u64,
 
     /// Password should contain at least one uppercase letter
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
-    pub password_enforce_uppercase: bool,
+    pub auth_password_enforce_uppercase: bool,
 
     /// Password should contain at least one lowercase letter
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
-    pub password_enforce_lowercase: bool,
+    pub auth_password_enforce_lowercase: bool,
 
     /// Password should contain at least one digit
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
-    pub password_enforce_digits: bool,
+    pub auth_password_enforce_digits: bool,
 
     /// Password should contain at least one special symbol.
     /// Special symbols - &, |, ?, !, $, @
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = false)]
-    pub password_enforce_specialchars: bool,
+    pub auth_password_enforce_specialchars: bool,
 
     /// Maximum number of login attempts through `picodata connect`.
     /// Each failed login attempt increases a local per user counter of failed attempts.
@@ -1525,45 +1525,17 @@ pub struct AlterSystemParameters {
     /// Local counter for a user is reset on successful login.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 4)]
-    pub max_login_attempts: u64,
-
-    /// Number of seconds to wait before automatically changing an
-    /// unresponsive instance's state to Offline.
-    #[introspection(sbroad_type = SbroadType::Double)]
-    #[introspection(config_default = 30.0)]
-    pub auto_offline_timeout: f64,
-
-    /// Maximum number of seconds to wait before sending another heartbeat
-    /// to an unresponsive instance.
-    #[introspection(sbroad_type = SbroadType::Double)]
-    #[introspection(config_default = 5.0)]
-    pub max_heartbeat_period: f64,
+    pub auth_login_attempt_max: u64,
 
     /// PG statement storage size.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 1024)]
-    pub max_pg_statements: u64,
+    pub pg_statement_max: u64,
 
     /// PG portal storage size.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 1024)]
-    pub max_pg_portals: u64,
-
-    /// Maximum size in bytes `_raft_log` system space is allowed to grow to
-    /// before it gets automatically compacted.
-    ///
-    /// NOTE: The size is computed from the tuple storage only. Some memory will
-    /// also be allocated for the index, and there's no way to control this.
-    /// The option only controls the memory allocated for tuples.
-    #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 64 * 1024 * 1024)]
-    pub cluster_wal_max_size: u64,
-
-    /// Maximum number of tuples `_raft_log` system space is allowed to grow to
-    /// before it gets automatically compacted.
-    #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 64)]
-    pub cluster_wal_max_count: u64,
+    pub pg_portal_max: u64,
 
     /// Raft snapshot will be sent out in chunks not bigger than this threshold.
     /// Note: actual snapshot size may exceed this threshold. In most cases
@@ -1573,7 +1545,7 @@ pub struct AlterSystemParameters {
     /// greater than this.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 16 * 1024 * 1024)]
-    pub snapshot_chunk_max_size: u64,
+    pub raft_snapshot_chunk_size_max: u64,
 
     /// Snapshot read views with live reference counts will be forcefully
     /// closed after this number of seconds. This is necessary if followers
@@ -1584,7 +1556,29 @@ pub struct AlterSystemParameters {
     // need them anymore. Or maybe timeouts is the better way..
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = (24 * 3600))]
-    pub snapshot_read_view_close_timeout: f64,
+    pub raft_snapshot_read_view_close_timeout: f64,
+
+    /// Maximum size in bytes `_raft_log` system space is allowed to grow to
+    /// before it gets automatically compacted.
+    ///
+    /// NOTE: The size is computed from the tuple storage only. Some memory will
+    /// also be allocated for the index, and there's no way to control this.
+    /// The option only controls the memory allocated for tuples.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 64 * 1024 * 1024)]
+    pub raft_wal_size_max: u64,
+
+    /// Maximum number of tuples `_raft_log` system space is allowed to grow to
+    /// before it gets automatically compacted.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 64)]
+    pub raft_wal_count_max: u64,
+
+    /// Number of seconds to wait before automatically changing an
+    /// unresponsive instance's state to Offline.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 30.0)]
+    pub governor_auto_offline_timeout: f64,
 
     /// Governor proposes operations to raft log and waits for them to be
     /// applied to the local raft machine.
@@ -1820,14 +1814,14 @@ pub fn apply_parameter(tuple: Tuple) {
             .expect("type already checked");
 
         set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
-    } else if name == system_parameter_name!(max_pg_portals) {
+    } else if name == system_parameter_name!(pg_portal_max) {
         let value = tuple
             .field::<usize>(1)
             .expect("there is always 2 fields in _pico_db_config tuple")
             .expect("type already checked");
         // Cache the value.
         MAX_PG_PORTALS.store(value, Ordering::Relaxed);
-    } else if name == system_parameter_name!(max_pg_statements) {
+    } else if name == system_parameter_name!(pg_statement_max) {
         let value = tuple
             .field::<usize>(1)
             .expect("there is always 2 fields in _pico_db_config tuple")
