@@ -5542,6 +5542,11 @@ def test_like(instance: Instance):
     )
     assert data[0] == [True]
 
+    instance.sql("""create table str (n string primary key)""")
+    instance.sql("insert into str values ('PRODUCT'), ('Product'), ('prod_1')")
+    data = instance.sql("select n from str where n iLiKe 'prod%'")
+    assert data == [["PRODUCT"], ["Product"], ["prod_1"]]
+
 
 def test_select_without_scan(cluster: Cluster):
     cluster.deploy(instance_count=2)

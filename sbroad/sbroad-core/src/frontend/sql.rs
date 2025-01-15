@@ -2781,7 +2781,7 @@ where
                 Rule::And => ParseExpressionInfixOperator::InfixBool(Bool::And),
                 Rule::Or => ParseExpressionInfixOperator::InfixBool(Bool::Or),
                 Rule::Like => {
-                    let is_ilike = op.as_str().contains("ilike");
+                    let is_ilike = op.as_str().to_lowercase().contains("ilike");
                     return Ok(ParseExpression::Like {
                         left: Box::new(lhs),
                         right: Box::new(rhs),
