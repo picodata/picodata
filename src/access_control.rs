@@ -1270,7 +1270,7 @@ mod tests {
             .unwrap();
         }
 
-        // it is allowed to drop nonexistent users and roles if if_exists option is passed
+        // it is allowed to drop nonexistent users and roles if IF EXISTS option is passed
         {
             let drop_user_access = access_check_acl(
                 &storage,
@@ -1292,7 +1292,7 @@ mod tests {
                 },
                 actor_user_id,
             );
-            assert!(drop_user_access.is_ok());
+            assert!(drop_role_access.is_ok());
         }
 
         // rename user
