@@ -52,6 +52,7 @@ nav:
       - tutorial/access_control.md
       - tutorial/ldap.md
       - tutorial/audit_log.md
+      - tutorial/sizing.md
     - Разработка приложений:
       - tutorial/create_plugin.md
       - tutorial/plugins.md
