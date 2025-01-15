@@ -29,7 +29,7 @@ use crate::info::InstanceInfo;
 use crate::info::PICODATA_VERSION;
 use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
-use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
+use crate::plugin::PluginError::PluginNotFound;
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
@@ -89,8 +89,6 @@ pub enum PluginError {
     ServiceNotFound(String, PluginIdentifier),
     #[error("Remote call error: {0}")]
     RemoteError(String),
-    #[error("Remove of enabled plugin is forbidden")]
-    RemoveOfEnabledPlugin,
     #[error("Topology: {0}")]
     TopologyError(String),
     #[error("Found more than one service factory for `{0}` ver. `{1}`")]
@@ -1011,18 +1009,18 @@ pub fn drop_plugin(
         }
 
         let Some(plugin) = node.storage.plugins.get(ident)? else {
-            // TODO: support if_exists option
-            return if !if_exists {
-                Err(traft::error::Error::other(format!(
-                    "no such plugin `{ident}`"
-                )))
-            } else {
-                Ok(PreconditionCheckResult::AlreadyApplied)
-            };
+            if if_exists {
+                return Ok(PreconditionCheckResult::AlreadyApplied);
+            }
+
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::PluginError, format!("no such plugin `{ident}`")).into());
         };
+        let plugin_name = &plugin.name;
 
         if plugin.enabled {
-            return Err(RemoveOfEnabledPlugin.into());
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::PluginError, format!("attempt to drop an enabled plugin '{plugin_name}'")).into());
         }
 
         let migration_list = node
@@ -1045,9 +1043,9 @@ pub fn drop_plugin(
             // Fail if any plugin migration in process
             Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+            Range::new(ClusterwideTable::Plugin).eq([&plugin_name]),
             // Fail if someone updates any service record of this plugin
-            Range::new(ClusterwideTable::Service).eq([&ident.name]),
+            Range::new(ClusterwideTable::Service).eq([&plugin_name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };

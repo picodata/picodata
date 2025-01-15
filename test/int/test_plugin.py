@@ -108,8 +108,8 @@ class PluginReflection:
         self.data = data
         return self
 
-    # TODO: remove this function. Instead assert concrete things in each case
-    # where this function is called currently
+    # TODO: remove this function. Use `check_plugin_record`,
+    # `check_service_records`, etc. instead.
     def assert_synced(self):
         """Assert that plugin reflection and plugin state in cluster are synchronized.
         This means that system tables `_pico_plugin`, `_pico_service` and `_pico_service_route`
@@ -274,6 +274,76 @@ class PluginReflection:
     def assert_int_data_le(instance, key, expected):
         val = instance.eval(f"return _G['plugin_state']['data']['{key}']")
         assert int(val) <= expected
+
+
+def check_plugin_record(
+    instance: Instance,
+    plugin: str,
+    version="0.1.0",
+    enabled: bool | None = None,
+    dropped=False,
+):
+    assert not (
+        dropped and enabled
+    ), "plugin cannot be enabled and dropped at the same time"
+    rows = instance.sql(
+        """
+        SELECT enabled FROM _pico_plugin WHERE name = ? AND version = ?
+        """,
+        plugin,
+        version,
+    )
+    if dropped:
+        assert rows == []
+    else:
+        enabled = enabled or False
+        assert rows == [[enabled]]
+
+
+def check_migration_records(
+    instance: Instance,
+    plugin: str,
+    migrations: list[str],
+):
+    rows = instance.sql(
+        """
+        SELECT migration_file FROM _pico_plugin_migration WHERE plugin_name = ?
+        """,
+        plugin,
+    )
+    assert set(value for [value] in rows) == set(migrations)
+
+
+def check_service_records(
+    instance: Instance, plugin: str, services: list[str], version="0.1.0"
+):
+    rows = instance.sql(
+        """
+        SELECT name FROM _pico_service WHERE plugin_name = ? AND version = ?
+        """,
+        plugin,
+        version,
+    )
+    assert set(value for [value] in rows) == set(services)
+
+
+def check_service_route_records(
+    instance: Instance,
+    plugin: str,
+    service: str,
+    instance_names: list[str],
+    version="0.1.0",
+):
+    rows = instance.sql(
+        """
+        SELECT instance_name FROM _pico_service_route
+        WHERE plugin_name = ? AND service_name = ? AND plugin_version = ?
+        """,
+        plugin,
+        service,
+        version,
+    )
+    assert set(value for [value] in rows) == set(instance_names)
 
 
 # ---------------------------------- } Test helper classes ----------------------------------------
@@ -631,7 +701,7 @@ def test_plugin_disable_ok(cluster: Cluster):
         i1.call("pico.disable_plugin", _PLUGIN_SMALL, _PLUGIN_VERSION_1)
 
 
-def test_plugin_remove(cluster: Cluster):
+def test_drop_plugin_basics(cluster: Cluster):
     """
     plugin removing behaviour:
     removing of disabling plugin - default behavior
@@ -639,59 +709,127 @@ def test_plugin_remove(cluster: Cluster):
     removing of already enabled plugin - error occurred
     """
 
+    plugin = _PLUGIN
+    [service_1, service_2] = _PLUGIN_SERVICES
+
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection.default(i1, i2)
 
-    install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
-    plugin_ref = plugin_ref.install(True).enable(True)
-    plugin_ref.assert_synced()
+    #
+    # Create and enable the plugin
+    #
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE {service_1} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE {service_2} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ENABLE")
 
-    # check that removing non-disabled plugin return error
-    with pytest.raises(ReturnError, match="Remove of enabled plugin is forbidden"):
-        i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref.assert_synced()
+    #
+    # Check everything worked properly
+    #
+    check_plugin_record(i1, plugin, enabled=True)
+    check_service_records(i1, plugin, services=[service_1, service_2])
+    check_service_route_records(i1, plugin, service_1, [i1.name, i2.name])  # type: ignore
+    check_service_route_records(i1, plugin, service_2, [i1.name, i2.name])  # type: ignore
+
+    # Check that removing enabled plugin doesn't work
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"attempt to drop an enabled plugin '{plugin}'",
+    )
 
     # check default behaviour
-    i1.call("pico.disable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 DISABLE")
+    check_plugin_record(i1, plugin, enabled=False)
+    check_service_records(i1, plugin, services=[service_1, service_2])
+    # retries needed because route records are updated asynchronously
+    Retriable().call(lambda: check_service_route_records(i1, plugin, service_1, []))
+    Retriable().call(lambda: check_service_route_records(i1, plugin, service_2, []))
 
-    # retrying, cause routing table update asynchronously
-    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
+    # create one more plugin version
+    i1.sql(f"CREATE PLUGIN {plugin} 0.2.0")
+    check_plugin_record(i1, plugin, version="0.2.0", enabled=False)
+    check_service_records(i1, plugin, version="0.2.0", services=[service_1, service_2])
+    # services not running on any instances
+    check_service_route_records(i1, plugin, service_1, [], version="0.2.0")
+    check_service_route_records(i1, plugin, service_2, [], version="0.2.0")
 
-    # install one more plugin version
-    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_2)
-    plugin_ref_v2 = PluginReflection(
-        _PLUGIN, _PLUGIN_VERSION_2, _PLUGIN_SERVICES, [i1, i2]
-    ).install(True)
+    # drop old version
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    check_plugin_record(i1, plugin, version="0.1.0", dropped=True)
 
-    i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref = plugin_ref.install(False)
-    plugin_ref.assert_synced()
-    plugin_ref_v2.assert_synced()
+    # check dropping non existent plugin (previously existed)
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"no such plugin `{plugin}:0.1.0`",
+    )
 
-    # check removing non-installed plugin
-    with pytest.raises(ReturnError) as e:
-        i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    assert e.value.args[0] == f"no such plugin `{_PLUGIN}:{_PLUGIN_VERSION_1}`"
-    plugin_ref.assert_synced()
-    plugin_ref_v2.assert_synced()
+    # check dropping non existent plugin (never existed)
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"DROP PLUGIN {plugin} 0.69.0")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"no such plugin `{plugin}:0.69.0`",
+    )
 
-    # remove last version
-    i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_2)
-    plugin_ref = plugin_ref_v2.install(False)
-    plugin_ref.assert_synced()
-    plugin_ref_v2.assert_synced()
+    # drop last version of plugin
+    i1.sql(f"DROP PLUGIN {plugin} 0.2.0")
+    check_plugin_record(i1, plugin, version="0.2.0", dropped=True)
 
-    # check removing plugin with applied migrations
-    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
-    i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.1.0")
-    with pytest.raises(ReturnError) as e:
-        i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
-    assert e.value.args[0] == "attempt to remove plugin with applied `UP` migrations"
 
-    # now it's ok to remove the plugin
-    i1.call("pico.migration_down", _PLUGIN_WITH_MIGRATION, "0.1.0")
-    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
+def test_drop_plugin_with_or_without_data(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    plugin = _PLUGIN_WITH_MIGRATION
+
+    # Create a plugin
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    check_plugin_record(i1, plugin, enabled=False)
+    # Migrations not applied yet
+    check_migration_records(i1, plugin, [])
+
+    # Apply migrations
+    i1.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0")
+    check_migration_records(i1, plugin, ["author.db", "book.db"])
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
+
+    # Dropping plugin with applied migrations not allowed
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    assert e.value.args[:2] == (
+        ErrorCode.Other,
+        "attempt to remove plugin with applied `UP` migrations",
+    )
+
+    check_plugin_record(i1, plugin, enabled=False)
+    check_migration_records(i1, plugin, ["author.db", "book.db"])
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
+
+    # Must first drop the data
+    i1.call("pico.migration_down", plugin, "0.1.0")
+    # Now it's ok to drop the plugin
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+
+    # Re-create the plugin back
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    check_plugin_record(i1, plugin, enabled=False)
+
+    # Apply migrations
+    i1.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0")
+    check_migration_records(i1, plugin, ["author.db", "book.db"])
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
+
+    # Check dropping with data automatically
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0 WITH DATA")
+    check_plugin_record(i1, plugin, dropped=True)
+    check_migration_records(i1, plugin, [])
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") == []
+    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") == []
 
 
 def test_two_plugin_install_and_enable(cluster: Cluster):
