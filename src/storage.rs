@@ -2512,7 +2512,7 @@ impl Plugins {
     #[inline]
     pub fn get_all_versions(&self, plugin_name: &str) -> tarantool::Result<Vec<PluginDef>> {
         self.space
-            .select(IteratorType::All, &(plugin_name,))?
+            .select(IteratorType::Eq, &(plugin_name,))?
             .map(|tuple| tuple.decode())
             .collect()
     }

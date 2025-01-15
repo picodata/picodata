@@ -560,10 +560,10 @@ pub struct InheritOpts {
     pub topology: bool,
 }
 
-/// Install plugin:
+/// Create plugin:
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
-pub fn install_plugin(
+pub fn create_plugin(
     ident: PluginIdentifier,
     timeout: Duration,
     if_not_exists: bool,
@@ -589,17 +589,24 @@ pub fn install_plugin(
             };
         }
 
+        // find plugins with the same name
+        let mut existing_plugins = node.storage.plugins.get_all_versions(&ident.name)?;
+        debug_assert!(
+            existing_plugins.len() <= 2,
+            "Only two or less plugins with same name may be in the system in the same time"
+        );
+
+        if existing_plugins.len() >= 2 {
+            let plugin_name = ident.name;
+            return Err(BoxError::new(ErrorCode::PluginError,
+                format!("too many versions of plugin '{plugin_name}', only 2 versions of the same plugin may exist at the same time")).into());
+        }
+
         let mut inherit_topology = HashMap::new();
         let mut manifest = manifest.clone();
         if inherit_opts.topology || inherit_opts.config {
-            // find plugin with the same name
-            let mut existed_plugins = node.storage.plugins.get_all_versions(&ident.name)?;
-            debug_assert!(
-                existed_plugins.len() <= 2,
-                "Only two or less plugins with same name may be in the system in the same time"
-            );
-            if !existed_plugins.is_empty() {
-                let existed_plugin = existed_plugins.pop().expect("infallible");
+            if !existing_plugins.is_empty() {
+                let existed_plugin = existing_plugins.pop().expect("infallible");
                 let existed_identity = existed_plugin.into_identifier();
 
                 if inherit_opts.config {
@@ -981,7 +988,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
     Ok(())
 }
 
-/// Remove plugin: clear records from `_pico_plugin` and `_pico_service` system tables.
+/// Drop plugin: clear records from `_pico_plugin` and `_pico_service` system tables.
 ///
 /// # Arguments
 ///
@@ -989,7 +996,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 /// * `drop_data`: whether true if plugin should be removed with DOWN migration, false elsewhere
 /// * `if_exists`: if true then no errors acquired if plugin not exists
 /// * `timeout`: operation timeout
-pub fn remove_plugin(
+pub fn drop_plugin(
     ident: &PluginIdentifier,
     drop_data: bool,
     if_exists: bool,

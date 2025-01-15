@@ -2976,6 +2976,58 @@ def test_plugin_sql_permission_denied(cluster: Cluster):
     )
 
 
+def test_create_plugin_too_many_versions(cluster: Cluster):
+    init_dummy_plugin(cluster, "too_many_versions", "0.1.0")
+    init_dummy_plugin(cluster, "too_many_versions", "0.1.1")
+    init_dummy_plugin(cluster, "too_many_versions", "0.1.2")
+    init_dummy_plugin(cluster, "too_many_versions", "0.1.3")
+    init_dummy_plugin(cluster, "another_plugin", "0.1.0")
+    init_dummy_plugin(cluster, "another_plugin", "0.1.1")
+
+    instance = cluster.add_instance()
+
+    # We can create two versions of the same plugin
+    instance.sql("CREATE PLUGIN too_many_versions 0.1.0")
+    instance.sql("CREATE PLUGIN too_many_versions 0.1.1")
+
+    # But creating a 3rd version doesn't work
+    with pytest.raises(TarantoolError) as e:
+        instance.sql("CREATE PLUGIN too_many_versions 0.1.2")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        "too many versions of plugin 'too_many_versions', only 2 versions of the same plugin may exist at the same time",  # noqa: E501
+    )
+
+    # Just make sure we can have a couple of versions of another plugin
+    instance.sql("CREATE PLUGIN another_plugin 0.1.0")
+    instance.sql("CREATE PLUGIN another_plugin 0.1.1")
+
+    # To resolve the problem we must drop one of the old versions
+    instance.sql("DROP PLUGIN too_many_versions 0.1.0")
+
+    # Now it's ok to install another version
+    instance.sql("CREATE PLUGIN too_many_versions 0.1.2")
+
+    # Try to do the wrong thing again, make sure it still doesn't work
+    with pytest.raises(TarantoolError) as e:
+        instance.sql("CREATE PLUGIN too_many_versions 0.1.3")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        "too many versions of plugin 'too_many_versions', only 2 versions of the same plugin may exist at the same time",  # noqa: E501
+    )
+
+    # And the solution still works
+    instance.sql("DROP PLUGIN too_many_versions 0.1.1")
+    instance.sql("CREATE PLUGIN too_many_versions 0.1.3")
+
+    rows = instance.sql(
+        """
+        SELECT version FROM _pico_plugin WHERE name = 'too_many_versions' ORDER BY version
+        """,
+    )
+    assert rows == [["0.1.2"], ["0.1.3"]]
+
+
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
     init_dummy_plugin(
         cluster,

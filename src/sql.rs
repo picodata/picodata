@@ -291,7 +291,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 version,
                 if_not_exists,
                 timeout,
-            }) => plugin::install_plugin(
+            }) => plugin::create_plugin(
                 PluginIdentifier::new(name.to_string(), version.to_string()),
                 timeout_from_decimal(*timeout)?,
                 *if_not_exists,
@@ -325,7 +325,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 if_exists,
                 with_data,
                 timeout,
-            }) => plugin::remove_plugin(
+            }) => plugin::drop_plugin(
                 &PluginIdentifier::new(name.to_string(), version.to_string()),
                 *with_data,
                 *if_exists,

@@ -1424,7 +1424,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::install_plugin(PluginIdentifier::new(name, version), timeout, if_not_exists, inherit_opts)
+                plugin::create_plugin(PluginIdentifier::new(name, version), timeout, if_not_exists, inherit_opts)
             })
         },
     );
@@ -1660,7 +1660,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_plugin(&PluginIdentifier::new(name, version),  false, false, timeout)
+                plugin::drop_plugin(&PluginIdentifier::new(name, version),  false, false, timeout)
             })
         },
     );

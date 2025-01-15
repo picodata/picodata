@@ -74,6 +74,9 @@ to 2 and 3.
   Now it will block until the instance is completely expelled, or the timeout
   is exceeded.
 
+- Fixed a bug, where we would allow to create more than 2 versions of the same
+  plugin (and panic when compiled in debug mode).
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration
