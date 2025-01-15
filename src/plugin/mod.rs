@@ -602,30 +602,27 @@ pub fn create_plugin(
 
         let mut inherit_topology = HashMap::new();
         let mut manifest = manifest.clone();
-        if inherit_opts.topology || inherit_opts.config {
-            if !existing_plugins.is_empty() {
-                let existed_plugin = existing_plugins.pop().expect("infallible");
-                let existed_identity = existed_plugin.into_identifier();
+        if (inherit_opts.topology || inherit_opts.config) && !existing_plugins.is_empty() {
+            let existed_plugin = existing_plugins.pop().expect("infallible");
+            let existed_identity = existed_plugin.into_identifier();
 
-                if inherit_opts.config {
-                    let mut entities =
-                        node.storage.plugin_config.all_entities(&existed_identity)?;
+            if inherit_opts.config {
+                let mut entities = node.storage.plugin_config.all_entities(&existed_identity)?;
 
-                    manifest.services.iter_mut().for_each(|svc_manifest| {
-                        if let Some(cfg) = entities.remove(&svc_manifest.name) {
-                            svc_manifest.default_configuration = cfg;
-                        }
+                manifest.services.iter_mut().for_each(|svc_manifest| {
+                    if let Some(cfg) = entities.remove(&svc_manifest.name) {
+                        svc_manifest.default_configuration = cfg;
+                    }
+                });
+            }
+            if inherit_opts.topology {
+                node.storage
+                    .services
+                    .get_by_plugin(&existed_identity)?
+                    .into_iter()
+                    .for_each(|svc| {
+                        inherit_topology.insert(svc.name, svc.tiers);
                     });
-                }
-                if inherit_opts.topology {
-                    node.storage
-                        .services
-                        .get_by_plugin(&existed_identity)?
-                        .into_iter()
-                        .for_each(|svc| {
-                            inherit_topology.insert(svc.name, svc.tiers);
-                        });
-                }
             }
         }
 
