@@ -1030,10 +1030,26 @@ pub fn drop_plugin(
             .into_iter()
             .map(|rec| rec.migration_file)
             .collect::<Vec<_>>();
+        let have_data = !migration_list.is_empty();
 
-        if !migration_list.is_empty() {
+        if drop_data {
+            if !have_data {
+                tlog!(Info, "plugin has no data (`DOWN` migrations not needed)");
+            } else {
+                // XXX: inside this call we'll be reenterring reenterable_plugin_cas_request,
+                // which is kinda messy, but should work fine.
+                // We need to do this because otherwise there's a possibility of
+                // race condition when migrations are applied in the middle of
+                // DROP PLUGIN WITH DATA which would result in data not being dropped.
+                lock::try_acquire(deadline)?;
+                migration::apply_down_migrations(ident, &migration_list, deadline, &node.storage);
+                lock::release(deadline)?;
+            }
+        }
+
+        if !drop_data && have_data {
             #[rustfmt::skip]
-            return Err(traft::error::Error::other("attempt to remove plugin with applied `UP` migrations"));
+            tlog!(Warning, "removing plugin '{plugin_name}' with applied `UP` migrations");
         }
 
         let op = PluginRaftOp::DropPlugin {
@@ -1048,26 +1064,6 @@ pub fn drop_plugin(
             Range::new(ClusterwideTable::Service).eq([&plugin_name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
-    };
-
-    let migration_list = node
-        .storage
-        .plugin_migrations
-        .get_by_plugin(&ident.name)?
-        .into_iter()
-        .map(|rec| rec.migration_file)
-        .collect::<Vec<_>>();
-
-    #[rustfmt::skip]
-    if !migration_list.is_empty() {
-        if !drop_data {
-            return Err(Error::other("attempt to remove plugin with applied `UP` migrations"));
-        }
-        lock::try_acquire(deadline)?;
-        migration::apply_down_migrations(ident, &migration_list, deadline, &node.storage);
-        lock::release(deadline)?;
-    } else if /* migration_list.is_empty() && */ drop_data {
-        tlog!(Info, "`DOWN` migrations are up to date");
     };
 
     reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;

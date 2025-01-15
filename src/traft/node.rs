@@ -1342,8 +1342,8 @@ impl NodeImpl {
                     .expect("storage should not fail");
 
                 if let Some(plugin) = maybe_plugin {
-                    // FIXME: this should never be happening
                     if plugin.enabled {
+                        warn_or_panic!("Op::DropPlugin for an enabled plugin");
                         return EntryApplied;
                     }
 
@@ -1366,14 +1366,6 @@ impl NodeImpl {
                         .plugins
                         .delete(&ident)
                         .expect("storage should not fail");
-                    let applied_migrations = self
-                        .storage
-                        .plugin_migrations
-                        .get_by_plugin(&ident.name)
-                        .expect("say it with me");
-                    if !applied_migrations.is_empty() {
-                        warn_or_panic!("removing plugin with applied migrations");
-                    }
                 }
             }
 

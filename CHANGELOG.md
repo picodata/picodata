@@ -77,6 +77,9 @@ to 2 and 3.
 - Fixed a bug, where we would allow to create more than 2 versions of the same
   plugin (and panic when compiled in debug mode).
 
+- `DROP PLUGIN` now leaves the plugin's data in the database if `WITH DATA`
+  wasn't specified. Previously we would return an error instead.
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration

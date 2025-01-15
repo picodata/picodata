@@ -796,35 +796,22 @@ def test_drop_plugin_with_or_without_data(cluster: Cluster):
     assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
     assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
 
-    # Dropping plugin with applied migrations not allowed
-    with pytest.raises(TarantoolError) as e:
-        i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
-    assert e.value.args[:2] == (
-        ErrorCode.Other,
-        "attempt to remove plugin with applied `UP` migrations",
-    )
-
-    check_plugin_record(i1, plugin, enabled=False)
+    # Dropping plugin leaving the applied migrations to be
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    # NOTE: we now have references to a plugin in our global storage, but no
+    # record of that plugin ever existing, and there's not reference from the
+    # actual entities (tables, etc.) created by migrations that the entities are
+    # owned by this no-existent plugin. But it is what it is...
+    check_plugin_record(i1, plugin, dropped=True)
     check_migration_records(i1, plugin, ["author.db", "book.db"])
     assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
     assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
 
-    # Must first drop the data
-    i1.call("pico.migration_down", plugin, "0.1.0")
-    # Now it's ok to drop the plugin
-    i1.sql(f"DROP PLUGIN {plugin} 0.1.0")
+    # NOTE: there's no way to drop the plugin's data without dropping the plugin itself
 
-    # Re-create the plugin back
+    # Create the plugin back so that we can drop the data
     i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
     check_plugin_record(i1, plugin, enabled=False)
-
-    # Apply migrations
-    i1.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0")
-    check_migration_records(i1, plugin, ["author.db", "book.db"])
-    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'author'") != []
-    assert i1.sql("SELECT id FROM _pico_table WHERE name = 'book'") != []
-
-    # Check dropping with data automatically
     i1.sql(f"DROP PLUGIN {plugin} 0.1.0 WITH DATA")
     check_plugin_record(i1, plugin, dropped=True)
     check_migration_records(i1, plugin, [])
