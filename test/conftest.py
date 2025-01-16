@@ -595,7 +595,7 @@ class Instance:
         return self._instance_dir
 
     @property
-    def listen(self):
+    def iproto_listen(self):
         if self.host is None or self.port is None:
             return None
         return f"{self.host}:{self.port}"
@@ -647,7 +647,7 @@ class Instance:
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
             *([f"--instance-dir={self._instance_dir}"] if self._instance_dir else []),
             *([f"--share-dir={self.share_dir}"] if self.share_dir else []),
-            *([f"--listen={self.listen}"] if self.listen else []),
+            *([f"--iproto-listen={self.iproto_listen}"] if self.iproto_listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
             *([f"-c instance.pg.ssl={self.pg_ssl}"] if self.pg_ssl else []),
             *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
@@ -663,9 +663,9 @@ class Instance:
 
     def __repr__(self):
         if self.process:
-            return f"Instance({self.name}, listen={self.listen} cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
+            return f"Instance({self.name}, iproto_listen={self.iproto_listen} cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
         else:
-            return f"Instance({self.name}, listen={self.listen} cluster={self.cluster_name})"  # noqa: E501
+            return f"Instance({self.name}, iproto_listen={self.iproto_listen} cluster={self.cluster_name})"  # noqa: E501
 
     def __hash__(self):
         return hash((self.cluster_name, self.name))
@@ -938,7 +938,7 @@ class Instance:
         eprint(f"{self} starting...")
 
         if peers is not None:
-            self.peers = list(map(lambda i: i.listen, peers))
+            self.peers = list(map(lambda i: i.iproto_listen, peers))
 
         env = {**self.env}
 
@@ -1885,7 +1885,7 @@ class Cluster:
         # fmt: off
         command: list[str] = [
             self.binary_path, "expel",
-            "--peer", f"pico_service@{peer.listen}",
+            "--peer", f"pico_service@{peer.iproto_listen}",
             "--cluster-name", target.cluster_name or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",

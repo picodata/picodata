@@ -2,6 +2,7 @@ from conftest import Cluster, Instance, PortDistributor, log_crawler, ColorCode
 import os
 import subprocess
 import json
+import yaml
 
 
 def test_config_works(cluster: Cluster):
@@ -42,7 +43,7 @@ cluster:
         deluxe:
 instance:
     instance_dir: {instance_dir}
-    listen: {listen}
+    iproto_listen: {listen}
     peer:
         - {listen}
     cluster_name: my-cluster
@@ -98,7 +99,7 @@ instance:
                 value=f"{instance.config_path}", source="commandline_or_environment"
             ),
             instance_dir=dict(value=instance_dir, source="config_file"),
-            listen=dict(value=f"{host}:{port}", source="config_file"),
+            iproto_listen=dict(value=f"{host}:{port}", source="config_file"),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),
                 format=dict(value="plain", source="default"),
@@ -396,6 +397,9 @@ def test_picodata_default_config(cluster: Cluster):
     default_config = data.decode()
     assert len(default_config) != 0
 
+    default_config_dict = yaml.safe_load(default_config)
+    assert "listen" not in default_config_dict["instance"]
+
     # Explicit filename
     subprocess.call(
         [cluster.binary_path, "config", "default", "-o", "filename.yaml"],
@@ -416,11 +420,11 @@ def test_picodata_default_config(cluster: Cluster):
     cluster.set_config_file(yaml=default_config)
     i = cluster.add_instance(wait_online=False)
 
-    # Default config contains default values for `listen`, `advertise` & `peers`,
-    # but our testing harness overrides the `listen` & `peers` values so that
+    # Default config contains default values for `iproto_listen`, `advertise` & `peers`,
+    # but our testing harness overrides the `iproto_listen` & `peers` values so that
     # running tests in parallel doesn't result in binding to conflicting ports.
     # For this reason we must also specify `advertise` explictily.
-    i.env["PICODATA_ADVERTISE"] = i.listen  # type: ignore
+    i.env["PICODATA_ADVERTISE"] = i.iproto_listen  # type: ignore
 
     i.start()
     i.wait_online()
@@ -473,7 +477,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.tier': "default"
         'instance.failure_domain': {}
         'instance.peer':
-        'instance.listen':
+        'instance.iproto_listen':
         'instance.advertise_address':
         'instance.admin_socket':
         'instance.share_dir':

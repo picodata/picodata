@@ -82,24 +82,24 @@ def test_discovery(cluster3: Cluster):
 
     def req_discover(instance: Instance):
         request = dict(tmp_id="unused", peers=["test:3301"])
-        request_to = instance.listen
+        request_to = instance.iproto_listen
         return instance.call(".proc_discover", request, request_to)
 
     # Run discovery against `--instance i1`.
     # It used to be a bootstrap leader, but now it's just a follower.
-    assert req_discover(i1) == {"Done": {"NonLeader": {"leader": i2.listen}}}
+    assert req_discover(i1) == {"Done": {"NonLeader": {"leader": i2.iproto_listen}}}
 
     # add instance
-    i4 = cluster3.add_instance(peers=[i1.listen])
+    i4 = cluster3.add_instance(peers=[i1.iproto_listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
     # Run discovery against `--instance i3`.
     # It has performed a rebootstrap after discovery,
     # and now has the discovery module uninitialized.
-    assert req_discover(i3) == {"Done": {"NonLeader": {"leader": i2.listen}}}
+    assert req_discover(i3) == {"Done": {"NonLeader": {"leader": i2.iproto_listen}}}
 
     # add instance
-    i5 = cluster3.add_instance(peers=[i3.listen])
+    i5 = cluster3.add_instance(peers=[i3.iproto_listen])
     i5.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
@@ -119,7 +119,9 @@ def test_parallel(cluster3: Cluster):
     i3.assert_raft_status("Follower", leader_id=i2.raft_id)
 
     # Add instance with the first instance being i1
-    i4 = cluster3.add_instance(peers=[i1.listen, i2.listen, i3.listen])
+    i4 = cluster3.add_instance(
+        peers=[i1.iproto_listen, i2.iproto_listen, i3.iproto_listen]
+    )
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
@@ -134,7 +136,10 @@ def test_replication(cluster: Cluster):
     def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(
-            (f"pico_service:secret@{addr}" for addr in [i1.listen, i2.listen])
+            (
+                f"pico_service:secret@{addr}"
+                for addr in [i1.iproto_listen, i2.iproto_listen]
+            )
         ), instance
 
     for instance in cluster.instances:

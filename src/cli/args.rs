@@ -88,23 +88,38 @@ pub struct Run {
     /// cluster during the instance start. Later it's used by other
     /// instances for connecting to this one.
     ///
-    /// Defaults to `--listen` value which is enough in most cases. But,
-    /// for example, in case of `--listen 0.0.0.0` it should be
+    /// Defaults to `--iproto-listen` value which is enough in most cases. But,
+    /// for example, in case of `--iproto-listen 0.0.0.0` it should be
     /// specified explicitly:
     ///
-    /// picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
+    /// picodata run --iproto-listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
     pub advertise_address: Option<IprotoAddress>,
 
     #[clap(
         short = 'l',
         long = "listen",
         value_name = "[HOST][:PORT]",
-        env = "PICODATA_LISTEN"
+        env = "PICODATA_LISTEN",
+        hide = true,
+        group = "listen_arguments"
     )]
+    /// DEPRECATED option
+    ///
     /// Instance network address.
     ///
     /// By default "127.0.0.1:3301" is used.
     pub listen: Option<IprotoAddress>,
+
+    #[clap(
+        long = "iproto-listen",
+        value_name = "[HOST][:PORT]",
+        env = "PICODATA_IPROTO_LISTEN",
+        group = "listen_arguments"
+    )]
+    /// Instance network address.
+    ///
+    /// By default "127.0.0.1:3301" is used.
+    pub iproto_listen: Option<IprotoAddress>,
 
     /// Pgproto server address.
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_PG_LISTEN")]

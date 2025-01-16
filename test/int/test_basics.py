@@ -185,7 +185,7 @@ invalid configuration: instance restarted with a different `replicaset_name`, wh
     #
     # Change advertise address
     #
-    was = instance.listen  # type: ignore
+    was = instance.iproto_listen  # type: ignore
     instance.env["PICODATA_ADVERTISE"] = "example.com:1234"
     assert instance.env["PICODATA_ADVERTISE"] != was
     err = f"""\

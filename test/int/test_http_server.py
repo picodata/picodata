@@ -52,7 +52,7 @@ def test_webui_basic(instance: Instance):
                                 "name": "default_1_1",
                                 "version": instance_version,
                                 "httpAddress": http_listen,
-                                "binaryAddress": instance.listen,
+                                "binaryAddress": instance.iproto_listen,
                             }
                         ],
                         "instanceCount": 1,
@@ -152,19 +152,19 @@ def test_webui_with_plugin(cluster: Cluster):
     instance_1 = {
         **instance_template,
         "name": "red_1_1",
-        "binaryAddress": i1.listen,
+        "binaryAddress": i1.iproto_listen,
         "httpAddress": http_listen,
     }
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
-        "binaryAddress": i2.listen,
+        "binaryAddress": i2.iproto_listen,
         "httpAddress": "",
     }
     instance_3 = {
         **instance_template,
         "name": "green_1_1",
-        "binaryAddress": i3.listen,
+        "binaryAddress": i3.iproto_listen,
         "httpAddress": "",
     }
 

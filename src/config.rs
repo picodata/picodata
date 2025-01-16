@@ -289,6 +289,11 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.advertise_address = Some(address);
         }
 
+        if let Some(iproto_listen) = args.iproto_listen {
+            config_from_args.instance.iproto_listen = Some(iproto_listen);
+        }
+
+        #[allow(deprecated)]
         if let Some(listen) = args.listen {
             config_from_args.instance.listen = Some(listen);
         }
@@ -517,6 +522,10 @@ Using configuration file '{args_path}'.");
             (
                 config_parameter_path!(instance.plugin_dir),
                 config_parameter_path!(instance.share_dir),
+            ),
+            (
+                config_parameter_path!(instance.listen),
+                config_parameter_path!(instance.iproto_listen),
             ),
         ];
 
@@ -1102,12 +1111,14 @@ pub struct InstanceConfig {
     #[introspection(config_default = FailureDomain::default())]
     pub failure_domain: Option<FailureDomain>,
 
-    #[introspection(
-        config_default = IprotoAddress::default()
-    )]
+    #[deprecated = "use iproto_listen instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub listen: Option<IprotoAddress>,
 
-    #[introspection(config_default = self.listen())]
+    #[introspection(config_default = IprotoAddress::default())]
+    pub iproto_listen: Option<IprotoAddress>,
+
+    #[introspection(config_default = self.iproto_listen())]
     pub advertise_address: Option<IprotoAddress>,
 
     #[introspection(config_default = vec![self.advertise_address()])]
@@ -1211,8 +1222,8 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn listen(&self) -> IprotoAddress {
-        self.listen
+    pub fn iproto_listen(&self) -> IprotoAddress {
+        self.iproto_listen
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
@@ -2079,27 +2090,27 @@ cluster:
     fn spaces_in_addresses() {
         let yaml = r###"
 instance:
-    listen:  kevin:  <- spacey
+    iproto_listen:  kevin:  <- spacey
 "###;
         let err = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap_err();
         #[rustfmt::skip]
-        assert_eq!(err.to_string(), "invalid configuration: mapping values are not allowed in this context at line 2 column 19");
+        assert_eq!(err.to_string(), "invalid configuration: mapping values are not allowed in this context at line 2 column 26");
 
         let yaml = r###"
 instance:
-    listen:  kevin->  :spacey   # <- some more trailing space
+    iproto_listen:  kevin->  :spacey   # <- some more trailing space
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
-        let listen = config.instance.listen.unwrap();
+        let listen = config.instance.iproto_listen.unwrap();
         assert_eq!(listen.host, "kevin->  ");
         assert_eq!(listen.port, "spacey");
 
         let yaml = r###"
 instance:
-    listen:  kevin->  <-spacey
+    iproto_listen:  kevin->  <-spacey
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
-        let listen = config.instance.listen.unwrap();
+        let listen = config.instance.iproto_listen.unwrap();
         assert_eq!(listen.host, "kevin->  <-spacey");
         assert_eq!(listen.port, "3301");
     }
@@ -2127,6 +2138,7 @@ instance:
         let mut parameter_sources = Default::default();
         mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
         config.set_from_args_and_env(args, &mut parameter_sources)?;
+        config.handle_deprecated_parameters(&mut parameter_sources)?;
         config.set_defaults_explicitly(&parameter_sources);
         config.parameter_sources = parameter_sources;
         Ok(config)
@@ -2176,7 +2188,7 @@ instance:
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.name(), None);
-            assert_eq!(config.instance.listen().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.iproto_listen().to_host_port(), IprotoAddress::default_host_port());
             assert_eq!(config.instance.advertise_address().to_host_port(), IprotoAddress::default_host_port());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
@@ -2347,11 +2359,11 @@ instance:
         //
         // Advertise = listen unless specified explicitly
         //
-        {
+            {
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON");
             let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
-            assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "L-ENVIRON:3301");
 
             let yaml = r###"
@@ -2360,12 +2372,12 @@ instance:
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
 
             let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE"]).unwrap();
 
-            assert_eq!(config.instance.listen().to_host_port(), "L-COMMANDLINE:3301");
+            assert_eq!(config.instance.iproto_listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
         }
 
@@ -2584,5 +2596,39 @@ instance:
         assert_eq!(e("1 000"), "invalid digit found in string");
         assert_eq!(e("1 000 X"), "invalid digit found in string");
         assert_eq!(e("17000000T"), "Value is too large");
+    }
+
+    #[test]
+    fn test_iproto_listen_listen_interaction() {
+        let _guard = protect_env();
+
+        // iproto_listen should be equal to listen
+        let yaml = r###"
+instance:
+        listen: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert_eq!(
+            config.instance.iproto_listen().to_host_port(),
+            "localhost:3301"
+        );
+
+        // can't specify both
+        let yaml = r###"
+instance:
+        listen: localhost:3302
+        iproto_listen: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]);
+
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
+
+        let yaml = r###"
+instance:
+        iproto_listen: localhost:3302
+"###;
+        let config = setup_for_tests(Some(yaml), &["run", "--listen", "localhost:3303"]);
+
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
     }
 }

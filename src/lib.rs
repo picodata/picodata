@@ -735,7 +735,7 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
-    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())?;
+    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port())?;
 
     let role = discovery::wait_global();
     let next_entrypoint = match role {
@@ -1003,7 +1003,7 @@ fn postjoin(
         assert!(node.status().raft_state.is_leader());
     }
 
-    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())
+    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port())
         .expect("changing listen port shouldn't fail");
 
     // Start admin console

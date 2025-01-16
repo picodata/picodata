@@ -286,7 +286,7 @@ impl Cfg {
 
             // Needs to be set, because an applier will attempt to connect to
             // self and will block box.cfg() call until it succeeds.
-            listen: Some(config.instance.listen().to_host_port()),
+            listen: Some(config.instance.iproto_listen().to_host_port()),
 
             // If we're joining to an existing replicaset,
             // then we're the follower.
