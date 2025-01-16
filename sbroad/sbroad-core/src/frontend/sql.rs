@@ -1115,35 +1115,30 @@ where
     let node = ast.nodes.get_node(node_id)?;
     assert_eq!(node.rule, Rule::ScanCteOrTable);
     let scan_name = parse_normalized_identifier(ast, node_id)?;
-    // First we try to find a table with the given name.
-    let table = metadata.table(scan_name.as_str());
-    match table {
-        Ok(table) => {
-            // We should also check that CTE with the same name doesn't exist.
-            if ctes.contains_key(&scan_name) {
-                return Err(SbroadError::Invalid(
-                    Entity::Table,
-                    Some(format_smolstr!(
-                        "table with name {} is already defined as a CTE",
-                        to_user(scan_name)
-                    )),
-                ));
-            }
-            plan.add_rel(table);
-            let scan_id = plan.add_scan(scan_name.as_str(), None)?;
-            map.add(node_id, scan_id);
-        }
-        Err(SbroadError::NotFound(..)) => {
-            // If the table is not found, we try to find a CTE with the given name.
-            let cte_id = *ctes.get(&scan_name).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Table,
-                    format_smolstr!("with name {}", to_user(scan_name)),
-                )
-            })?;
+    // First we try to find CTE with the given name, cause CTE should have higher precedence
+    // over table with the same name
+    let cte = ctes.get(&scan_name).copied();
+    match cte {
+        Some(cte_id) => {
             map.add(node_id, cte_id);
         }
-        Err(e) => return Err(e),
+        None => {
+            let table = metadata.table(scan_name.as_str());
+            match table {
+                Ok(table) => {
+                    plan.add_rel(table);
+                    let scan_id = plan.add_scan(scan_name.as_str(), None)?;
+                    map.add(node_id, scan_id);
+                }
+                Err(SbroadError::NotFound(..)) => {
+                    return Err(SbroadError::NotFound(
+                        Entity::Table,
+                        format_smolstr!("with name {}", to_user(scan_name)),
+                    ))
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
     Ok(())
 }

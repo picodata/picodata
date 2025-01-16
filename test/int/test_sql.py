@@ -49,7 +49,7 @@ def test_pico_sql(cluster: Cluster):
             1,
         )
 
-    invalid_meta_msg = re.escape("sbroad: table")
+    invalid_meta_msg = re.escape('sbroad: table with name "absent_table" not found')
     with pytest.raises(ReturnError, match=invalid_meta_msg):
         i1.call(
             "pico.sql",

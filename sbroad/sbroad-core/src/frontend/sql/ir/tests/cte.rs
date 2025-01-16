@@ -375,15 +375,20 @@ fn table_name_conflict() {
         WITH "test_space" AS (SELECT "FIRST_NAME" FROM "test_space")
         SELECT * FROM "test_space"
     "#;
-    let metadata = &RouterConfigurationMock::new();
-    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, metadata);
-    assert_eq!(
-        plan_error,
-        Err(SbroadError::Invalid(
-            Entity::Table,
-            Some(r#"table with name "test_space" is already defined as a CTE"#.into())
-        ))
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let expected_explain = String::from(
+        r#"projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+    scan cte test_space($0)
+subquery $0:
+motion [policy: full]
+            projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                scan "test_space"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+"#,
     );
+    assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
 #[test]
