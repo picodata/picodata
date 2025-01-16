@@ -366,12 +366,6 @@ def test_index(instance_with_audit_file: Instance):
     assert drop_index["initiator"] == "pico_service"
 
 
-def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
-    info = instance.call(".proc_instance_info", expelled_instance.name)
-    states = (info["current_state"]["variant"], info["target_state"]["variant"])
-    assert states == ("Expelled", "Expelled")
-
-
 def test_join_expel_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
     audit = os.path.join(cluster.instance_dir, "i1", "audit.log")
@@ -401,7 +395,7 @@ def test_join_expel_instance(cluster: Cluster):
     assert create_db["initiator"] == "admin"
 
     cluster.expel(i2)
-    Retriable(timeout=30).call(lambda: assert_instance_expelled(i2, i1))
+    Retriable(timeout=30).call(lambda: cluster.assert_expelled(i2))
 
     expel_instance = take_until_title(events, "expel_instance")
     assert expel_instance is not None

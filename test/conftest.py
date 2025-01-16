@@ -588,6 +588,7 @@ class Instance:
     service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
+    expelled: bool = False
     raft_id: int = INVALID_RAFT_ID
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
@@ -1900,6 +1901,7 @@ class Cluster:
             )
         except subprocess.CalledProcessError as e:
             raise CommandFailed(e.stdout, e.stderr) from e
+        target.expelled = True
 
     def raft_wait_index(self, index: int, timeout: float = 10):
         """
@@ -1946,7 +1948,7 @@ class Cluster:
         password: str | None = None,
     ) -> int:
         if instance is None:
-            instance = self.instances[0]
+            instance = self.online_instances()[0]
 
         predicate_ranges = []
         if ranges is not None:
@@ -1969,6 +1971,41 @@ class Cluster:
         return instance.call(
             "pico.batch_cas", dict(ops=ops), predicate, user=user, password=password
         )
+
+    def assert_expelled(self, target: Instance):
+        leader = self.leader()
+        assert leader != target
+
+        info = leader.call(".proc_instance_info", target.name)
+        states = (info["current_state"]["variant"], info["target_state"]["variant"])
+        assert states == ("Expelled", "Expelled")
+
+    def online_instances(self) -> List[Instance]:
+        online = []
+        for i in self.instances:
+            if i.expelled:
+                continue
+            try:
+                i.check_process_alive()
+            except ProcessDead:
+                continue
+            info = i.call(".proc_instance_info", i.name)
+            cstate = info["current_state"]["variant"]
+            tstate = info["target_state"]["variant"]
+            if (cstate, tstate) == ("Online", "Online"):
+                online.append(i)
+        return online
+
+    def leader(self, instance: Instance | None = None) -> Instance:
+        if instance is None:
+            instance = self.online_instances()[0]
+        assert instance
+        raft_info = instance.call(".proc_raft_info")
+        leader_id = raft_info["leader_id"]
+        [[leader_address]] = instance.sql(
+            """ SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id
+        )
+        return self.get_instance_by_address(leader_address)
 
     def cas(
         self,
@@ -1993,15 +2030,9 @@ class Cluster:
 
         Calling this operation will route CaS request to a leader.
         """
+
         if instance is None:
-            instance = self.instances[0]
-
-        raft_info = instance.call(".proc_raft_info")
-        leader_id = raft_info["leader_id"]
-        [[leader_address]] = instance.sql(
-            """ SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id
-        )
-
+            instance = self.online_instances()[0]
         # ADMIN by default
         user_id = 1
         if user:
@@ -2010,8 +2041,7 @@ class Cluster:
             )
             user_id = int(user_id)
 
-        leader = self.get_instance_by_address(leader_address)
-        return leader.cas(
+        return self.leader(instance).cas(
             op_kind,
             table,
             tuple,
