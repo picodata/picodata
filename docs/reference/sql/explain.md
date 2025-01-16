@@ -166,20 +166,21 @@ except
 
 ### Локальная вставка {: #local_segment_motion }
 
-**Локальная вставка** характерна для `INSERT` с передачей строки
-значений:
+Для примера **локальной вставки** покажем `INSERT` со вставкой из читающего запроса другой таблицы, у
+которой отличается ключ шардирования:
 
 ```sql
-EXPLAIN INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
+EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
 ```
 
 Вывод в консоль:
 
 ```
-insert "WAREHOUSE" on conflict: fail
-    motion [policy: segment([ref("COLUMN_1")])]
-        values
-            value row (data=ROW(1::unsigned, 'bricks'::string, 'heavy'::string))
+insert "ORDERS" on conflict: fail
+    motion [policy: local segment([ref("ID")])]
+        projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+            selection ROW("ITEMS"."ID"::integer) = ROW(5::unsigned)
+                scan "ITEMS"
 ```
 
 ### Локальная материализация {: #local_motion }
@@ -232,21 +233,19 @@ update "WAREHOUSE"
 **Частичное перемещение** происходит, когда требуется отправить на узлы
 хранения недостающую часть таблицы.
 
-Пример `INSERT` со вставкой из читающего запроса другой таблицы, у
-которой отличается ключ шардирования:
+Пример `INSERT` с передачей строки значений:
 
 ```sql
-EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
+EXPLAIN INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
 ```
 
 Вывод в консоль:
 
 ```
-insert "ORDERS" on conflict: fail
-    motion [policy: local segment([ref("ID")])]
-        projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-            selection ROW("ITEMS"."ID"::integer) = ROW(5::unsigned)
-                scan "ITEMS"
+insert "WAREHOUSE" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")])]
+        values
+            value row (data=ROW(1::unsigned, 'bricks'::string, 'heavy'::string))
 ```
 
 Пример `JOIN` двух таблиц с разными ключами шардирования:
