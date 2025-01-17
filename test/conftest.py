@@ -1377,7 +1377,8 @@ class Instance:
 
                 # Check state
                 variant, incarnation = state
-                assert variant == "Online"
+                if variant != "Online":
+                    continue
                 if expected_incarnation is not None:
                     assert incarnation == expected_incarnation
 
