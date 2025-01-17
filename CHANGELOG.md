@@ -61,6 +61,8 @@ to 2 and 3.
 
 - PgProto is now enabled by default and listens at `127.0.0.1:4327`.
 
+- Prevented non-admin users with the DROP TABLE privilege from dropping system tables.
+
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.

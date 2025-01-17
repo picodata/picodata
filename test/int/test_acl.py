@@ -864,3 +864,26 @@ def test_revoke_role_public(cluster: Cluster):
         conn.sql(
             "CREATE TABLE warehouse (id INTEGER PRIMARY KEY);",
         )
+
+
+def test_acl_try_drop_system_table(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    user = "alex"
+    password = "Validpa55word"
+    sys_table = "_pico_plugin_config"
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING chap-sha1;")
+    i1.sql(f"GRANT DROP ON TABLE {sys_table} TO {user};", sudo=True)
+    i1.grant_privilege("alex", "drop", "table", sys_table)
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"Drop access to table '{sys_table}' is denied for all users",
+    ):
+        i1.sql(f"DROP TABLE {sys_table}", user=user, password=password)
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"Drop access to table '{sys_table}' is denied for all users",
+    ):
+        i1.sql(f"DROP TABLE {sys_table}", sudo=True)

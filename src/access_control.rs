@@ -179,6 +179,21 @@ pub fn validate_password(
     Ok(())
 }
 
+fn forbid_drop_if_system_space(space_id: u32) -> tarantool::Result<()> {
+    if space_id > SPACE_ID_INTERNAL_MAX {
+        return Ok(());
+    }
+
+    let table_name = ClusterwideTable::try_from(space_id)
+        .map_or(format!("id={}", space_id), |t| t.name().to_string());
+
+    return Err(BoxError::new(
+        TarantoolErrorCode::AccessDenied,
+        format!("Drop access to table '{table_name}' is denied for all users"),
+    )
+    .into());
+}
+
 /// There are no cases when box_access_check_ddl is called several times
 /// in a row so it is ok that we need to switch once to user who initiated the request
 /// This wrapper is needed because usually before checking permissions we need to
@@ -199,7 +214,6 @@ fn box_access_check_ddl_as_user(
     as_user: UserId,
 ) -> tarantool::Result<()> {
     let _su = session::su(as_user)?;
-
     box_access_check_ddl(object_name, object_id, owner_id, object_type, access)
 }
 
@@ -209,12 +223,14 @@ fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
         let table_name = ClusterwideTable::try_from(space_id)
             .map_or(format!("id={}", space_id), |table| table.name().to_string());
 
-        tarantool::set_error!(
-            tarantool::error::TarantoolErrorCode::AccessDenied,
-            "Write access to table '{}' is denied for all users",
-            table_name
-        );
-        return Err(tarantool::error::TarantoolError::last().into());
+        return Err(tarantool::error::BoxError::new(
+            TarantoolErrorCode::AccessDenied,
+            format!(
+                "Write access to table '{}' is denied for all users",
+                table_name
+            ),
+        )
+        .into());
     }
 
     let _su = session::su(as_user)?;
@@ -243,6 +259,8 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
             )
         }
         op::Ddl::DropTable { id, .. } => {
+            forbid_drop_if_system_space(*id)?;
+
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
 
@@ -269,6 +287,8 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
             )
         }
         op::Ddl::DropIndex { space_id, .. } => {
+            forbid_drop_if_system_space(*space_id)?;
+
             let space = space_by_id(*space_id)?;
             let meta = space.meta()?;
 
