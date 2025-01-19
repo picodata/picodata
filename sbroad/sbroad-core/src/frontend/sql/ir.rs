@@ -342,13 +342,13 @@ impl SubtreeCloner {
             | RelOwned::Insert(Insert {
                 relation: _,
                 columns: _,
-                children: _,
+                child: _,
                 output: _,
                 conflict_strategy: _,
             })
             | RelOwned::Update(Update {
                 relation: _,
-                children: _,
+                child: _,
                 update_columns_map: _,
                 strategy: _,
                 pk_positions: _,
@@ -356,7 +356,7 @@ impl SubtreeCloner {
             })
             | RelOwned::Delete(Delete {
                 relation: _,
-                children: _,
+                child: _,
                 output: _,
             })
             | RelOwned::ScanRelation(ScanRelation {
@@ -371,7 +371,7 @@ impl SubtreeCloner {
             })
             | RelOwned::ScanSubQuery(ScanSubQuery {
                 alias: _,
-                children: _,
+                child: _,
                 output: _,
             })
             | RelOwned::Except(Except {
@@ -419,7 +419,7 @@ impl SubtreeCloner {
             }
             RelOwned::Motion(Motion {
                 alias: _,
-                children: _,
+                child: _,
                 policy: _,
                 program,
                 output: _,

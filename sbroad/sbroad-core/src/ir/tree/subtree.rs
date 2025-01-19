@@ -429,18 +429,19 @@ fn subtree_next<'plan>(
                     None
                 }
                 Relational::Motion(Motion {
-                    children,
+                    child,
                     output,
                     policy,
                     ..
                 }) => {
                     if policy.is_local() || iter.need_motion_subtree() {
                         let step = *iter.get_child().borrow();
-                        if step < children.len() {
+                        let len = child.iter().len();
+                        if step < len {
                             *iter.get_child().borrow_mut() += 1;
-                            return children.get(step).copied();
+                            return *child;
                         }
-                        if iter.need_output() && step == children.len() {
+                        if iter.need_output() && step == len {
                             *iter.get_child().borrow_mut() += 1;
                             return Some(*output);
                         }
@@ -454,9 +455,6 @@ fn subtree_next<'plan>(
                     None
                 }
                 Relational::Values(Values {
-                    output, children, ..
-                })
-                | Relational::Update(Update {
                     output, children, ..
                 })
                 | Relational::SelectWithoutScan(SelectWithoutScan {
@@ -483,6 +481,19 @@ fn subtree_next<'plan>(
                     if step <= children.len() {
                         return children.get(step - 1).copied();
                     }
+                    None
+                }
+                Relational::Update(Update { output, child, .. }) => {
+                    let step = *iter.get_child().borrow();
+                    *iter.get_child().borrow_mut() += 1;
+                    if step == 0 {
+                        return Some(*output);
+                    }
+
+                    if step <= 1 {
+                        return Some(*child);
+                    }
+
                     None
                 }
                 Relational::Selection(Selection {

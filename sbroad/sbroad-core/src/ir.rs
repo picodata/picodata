@@ -2159,15 +2159,12 @@ impl ShardColumnsMap {
         plan: &Plan,
     ) -> Result<(), SbroadError> {
         let node = plan.get_relation_node(node_id)?;
-        if let Relational::Motion(Motion {
-            policy, children, ..
-        }) = node
-        {
+        if let Relational::Motion(Motion { policy, child, .. }) = node {
             if matches!(policy, MotionPolicy::Local | MotionPolicy::LocalSegment(_)) {
                 return Ok(());
             }
-            let child_id = children.first().expect("invalid plan");
-            if let Some(positions) = self.memo.get(child_id) {
+            let child_id = child.expect("invalid plan");
+            if let Some(positions) = self.memo.get(&child_id) {
                 if positions[0].is_some() || positions[1].is_some() {
                     self.invalid_ids.insert(node_id);
                 }

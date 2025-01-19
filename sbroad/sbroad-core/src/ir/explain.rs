@@ -1592,7 +1592,9 @@ impl FullExplain {
                     Some(ExplainNode::SubQuery(s))
                 }
                 Relational::Motion(MotionRel {
-                    children, policy, ..
+                    child: child_id,
+                    policy,
+                    ..
                 }) => {
                     let child = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
@@ -1602,13 +1604,13 @@ impl FullExplain {
                     current_node.children.push(child);
 
                     let collect_targets = |s: &IrMotionKey| -> Result<Vec<Target>, SbroadError> {
-                        let child_id = children.first().ok_or_else(|| {
+                        let child_id = child_id.ok_or_else(|| {
                             SbroadError::UnexpectedNumberOfValues(
                                 "current node should have exactly one child".to_smolstr(),
                             )
                         })?;
 
-                        let child_output_id = ir.get_relation_node(*child_id)?.output();
+                        let child_output_id = ir.get_relation_node(child_id)?.output();
                         let col_list = ir.get_row_list(child_output_id)?;
 
                         let targets = (s.targets)

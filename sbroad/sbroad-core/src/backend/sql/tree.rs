@@ -724,8 +724,8 @@ impl<'p> SyntaxPlan<'p> {
             let plan = self.plan.get_ir_plan();
             let node = plan.get_node(plan_id).expect("node in the plan must exist");
             match node {
-                Node::Relational(Relational::Motion(Motion { children, .. })) => {
-                    let child_id = *children.first().expect("MOTION child must exist");
+                Node::Relational(Relational::Motion(Motion { child, .. })) => {
+                    let child_id = child.expect("MOTION child must exist");
                     if *id == child_id {
                         return;
                     }
@@ -761,8 +761,8 @@ impl<'p> SyntaxPlan<'p> {
             .get_node(plan_id)
             .expect("Plan node expected for popping.");
 
-        if let Node::Relational(Relational::Motion(Motion { children, .. })) = requested_plan_node {
-            let motion_child_id = children.first();
+        if let Node::Relational(Relational::Motion(Motion { child, .. })) = requested_plan_node {
+            let motion_child_id = child;
             let motion_to_fix_id = if let Some(motion_child_id) = motion_child_id {
                 let motion_child_node = self
                     .plan
@@ -1211,7 +1211,7 @@ impl<'p> SyntaxPlan<'p> {
         let (plan, motion) = self.prologue_rel(id);
         let Relational::Motion(Motion {
             policy,
-            children,
+            child,
             program,
             output,
             ..
@@ -1220,7 +1220,7 @@ impl<'p> SyntaxPlan<'p> {
             panic!("Expected MOTION node");
         };
 
-        let first_child = children.first().copied();
+        let first_child = *child;
         if let MotionPolicy::LocalSegment { .. } = policy {
             #[cfg(feature = "mock")]
             {
@@ -1489,15 +1489,11 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_sq(&mut self, id: NodeId) {
         let (_, sq) = self.prologue_rel(id);
-        let Relational::ScanSubQuery(ScanSubQuery {
-            children, alias, ..
-        }) = sq
-        else {
+        let Relational::ScanSubQuery(ScanSubQuery { child, alias, .. }) = sq else {
             panic!("Expected SUBQUERY node");
         };
-        let child_plan_id = *children.first().expect("SUBQUERY child");
         let sq_alias = alias.clone();
-        let child_sn_id = self.pop_from_stack(child_plan_id, id);
+        let child_sn_id = self.pop_from_stack(*child, id);
 
         let arena = &mut self.nodes;
         let mut children: Vec<usize> = vec![

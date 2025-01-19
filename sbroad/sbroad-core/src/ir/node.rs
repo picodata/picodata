@@ -413,7 +413,6 @@ impl From<LocalTimestamp> for NodeAligned {
 pub struct ScanCte {
     /// CTE's name.
     pub alias: SmolStr,
-    /// Contains exactly one single element (projection node index).
     pub child: NodeId,
     /// An output tuple with aliases.
     pub output: NodeId,
@@ -445,8 +444,9 @@ impl From<Except> for NodeAligned {
 pub struct Delete {
     /// Relation name.
     pub relation: SmolStr,
-    /// Contains exactly one single element.
-    pub children: Vec<NodeId>,
+    /// Contains child id in plan node arena or
+    /// None if child was substituted with virtual table.
+    pub child: Option<NodeId>,
     /// The output tuple (reserved for `delete returning`).
     pub output: Option<NodeId>,
 }
@@ -464,8 +464,7 @@ pub struct Insert {
     /// Target column positions for data insertion from
     /// the child's tuple.
     pub columns: Vec<usize>,
-    /// Contains exactly one single element.
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
     /// The output tuple (reserved for `insert returning`).
     pub output: NodeId,
     /// What to do in case there is a conflict during insert on storage
@@ -497,7 +496,7 @@ pub struct Update {
     /// Relation name.
     pub relation: SmolStr,
     /// Children ids. Update has exactly one child.
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
     /// Maps position of column being updated in table to corresponding position
     /// in `Projection` below `Update`.
     ///
@@ -562,9 +561,9 @@ impl From<Limit> for NodeAligned {
 pub struct Motion {
     // Scan name.
     pub alias: Option<SmolStr>,
-    /// Contains exactly one single element: child node index
-    /// from the plan node arena.
-    pub children: Vec<NodeId>,
+    /// Contains child id in plan node arena or
+    /// None if child was substituted with virtual table.
+    pub child: Option<NodeId>,
     /// Motion policy - the amount of data to be moved.
     pub policy: MotionPolicy,
     /// A sequence of opcodes that transform the data.
@@ -633,9 +632,7 @@ impl From<ScanRelation> for NodeAligned {
 pub struct ScanSubQuery {
     /// SubQuery name.
     pub alias: Option<SmolStr>,
-    /// Contains exactly one single element: child node index
-    /// from the plan node arena.
-    pub children: Vec<NodeId>,
+    pub child: NodeId,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
 }

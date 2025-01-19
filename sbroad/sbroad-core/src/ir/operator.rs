@@ -343,15 +343,15 @@ impl Plan {
         table: SmolStr,
         child_id: Option<NodeId>,
     ) -> Result<NodeId, SbroadError> {
-        let (output, children) = if let Some(child_id) = child_id {
+        let (output, child) = if let Some(child_id) = child_id {
             let output = self.add_row_for_output(child_id, &[], true, None)?;
-            (Some(output), vec![child_id])
+            (Some(output), Some(child_id))
         } else {
-            (None, vec![])
+            (None, None)
         };
         let delete = Delete {
             relation: table,
-            children,
+            child,
             output,
         };
         let delete_id = self.add_relational(delete.into())?;
@@ -657,7 +657,7 @@ impl Plan {
         let update_node = Update {
             relation: relation.to_smolstr(),
             pk_positions: primary_key_positions,
-            children: vec![proj_id],
+            child: proj_id,
             update_columns_map,
             output: upd_output,
             strategy: update_kind,
@@ -754,7 +754,7 @@ impl Plan {
         let insert = Insert {
             relation: relation.into(),
             columns,
-            children: vec![child],
+            child,
             output,
             conflict_strategy,
         };
@@ -978,7 +978,7 @@ impl Plan {
 
         let motion = Motion {
             alias,
-            children: vec![child_id],
+            child: Some(child_id),
             policy: policy.clone(),
             program,
             output,
@@ -1223,7 +1223,7 @@ impl Plan {
         let output = self.add_row_for_output(child, &[], true, None)?;
         let sq = ScanSubQuery {
             alias: name,
-            children: vec![child],
+            child,
             output,
         };
 
@@ -1906,26 +1906,32 @@ impl Plan {
         match node {
             Relational::Limit(Limit { child, .. })
             | Relational::ScanCte(ScanCte { child, .. })
-            | Relational::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
+            | Relational::Update(Update { child, .. })
+            | Relational::Delete(Delete {
+                child: Some(child), ..
+            })
+            | Relational::Motion(Motion {
+                child: Some(child), ..
+            })
+            | Relational::Insert(Insert { child, .. })
+            | Relational::NamedWindows(NamedWindows { child, .. })
+            | Relational::ScanSubQuery(ScanSubQuery { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. }) => Children::Couple(left, right),
             Relational::GroupBy(GroupBy { children, .. })
-            | Relational::Update(Update { children, .. })
             | Relational::Join(Join { children, .. })
             | Relational::Having(Having { children, .. })
             | Relational::OrderBy(OrderBy { children, .. })
-            | Relational::Delete(Delete { children, .. })
-            | Relational::Insert(Insert { children, .. })
-            | Relational::Motion(Motion { children, .. })
             | Relational::Projection(Projection { children, .. })
-            | Relational::ScanSubQuery(ScanSubQuery { children, .. })
             | Relational::Selection(Selection { children, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { children, .. })
             | Relational::ValuesRow(ValuesRow { children, .. })
             | Relational::Values(Values { children, .. }) => Children::Many(children),
-            Relational::ScanRelation(_) => Children::None,
+            Relational::Motion(Motion { child: None, .. })
+            | Relational::Delete(Delete { child: None, .. })
+            | Relational::ScanRelation(_) => Children::None,
         }
     }
 }

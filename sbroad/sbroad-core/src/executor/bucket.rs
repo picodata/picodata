@@ -333,7 +333,7 @@ where
                     }
                 }
                 Relational::Motion(Motion {
-                    children,
+                    child,
                     policy,
                     output,
                     ..
@@ -385,13 +385,14 @@ where
                             // We'll create and populate a local segmented virtual table on the
                             // storage later. At the moment the best thing we can do is to copy
                             // child's buckets.
-                            let child_id = children.first().ok_or_else(|| {
+                            let child_id = child.ok_or_else(|| {
                                 SbroadError::UnexpectedNumberOfValues(
                                     "Motion node should have exactly one child".to_smolstr(),
                                 )
                             })?;
+
                             let child_rel =
-                                self.exec_plan.get_ir_plan().get_relation_node(*child_id)?;
+                                self.exec_plan.get_ir_plan().get_relation_node(child_id)?;
                             let child_buckets = self
                                 .bucket_map
                                 .get(&child_rel.output())

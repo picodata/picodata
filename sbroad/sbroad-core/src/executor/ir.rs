@@ -351,11 +351,8 @@ impl ExecutionPlan {
     /// - not a motion node
     pub fn unlink_motion_subtree(&mut self, motion_id: NodeId) -> Result<(), SbroadError> {
         let motion = self.get_mut_ir_plan().get_mut_relation_node(motion_id)?;
-        if let MutRelational::Motion(Motion {
-            ref mut children, ..
-        }) = motion
-        {
-            *children = vec![];
+        if let MutRelational::Motion(Motion { child, .. }) = motion {
+            *child = None;
         } else {
             return Err(SbroadError::Invalid(
                 Entity::Relational,
@@ -540,7 +537,7 @@ impl ExecutionPlan {
                             new_plan.add_rel(table);
                         }
                         RelOwned::Motion(Motion {
-                            children,
+                            child,
                             policy,
                             output,
                             ..
@@ -583,7 +580,7 @@ impl ExecutionPlan {
                             // We should not remove the child of a local motion node.
                             // The subtree is needed to compile the SQL on the storage.
                             if !policy.is_local() {
-                                *children = Vec::new();
+                                *child = None;
                             }
                         }
                         RelOwned::GroupBy(GroupBy { gr_cols, .. }) => {

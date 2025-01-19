@@ -109,27 +109,7 @@ impl RelOwned {
                 children: ref mut old,
                 ..
             })
-            | RelOwned::Delete(Delete {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Update(Update {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Insert(Insert {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::Motion(Motion {
-                children: ref mut old,
-                ..
-            })
             | RelOwned::Projection(Projection {
-                children: ref mut old,
-                ..
-            })
-            | RelOwned::ScanSubQuery(ScanSubQuery {
                 children: ref mut old,
                 ..
             })
@@ -173,16 +153,21 @@ impl RelOwned {
                 *left = children[0];
                 *right = children[1];
             }
-            RelOwned::ScanCte(ScanCte { ref mut child, .. }) => {
+            RelOwned::Delete(Delete { ref mut child, .. })
+            | RelOwned::Motion(Motion { ref mut child, .. }) => {
                 if children.len() != 1 {
-                    unreachable!("CTE may have only a single relational child");
+                    unreachable!("{self:?} may have only a single relational child");
                 }
                 // It is safe to unwrap here, because the length is already checked above.
-                *child = children[0];
+                *child = Some(children[0]);
             }
-            RelOwned::Limit(Limit { ref mut child, .. }) => {
+            RelOwned::Update(Update { ref mut child, .. })
+            | RelOwned::Insert(Insert { ref mut child, .. })
+            | RelOwned::ScanSubQuery(ScanSubQuery { ref mut child, .. })
+            | RelOwned::ScanCte(ScanCte { ref mut child, .. })
+            | RelOwned::Limit(Limit { ref mut child, .. }) => {
                 if children.len() != 1 {
-                    unreachable!("LIMIT may have only a single relational child");
+                    unreachable!("{self:?} may have only a single relational child");
                 }
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = children[0];
@@ -205,27 +190,33 @@ impl RelOwned {
     pub fn children(&self) -> Children<'_> {
         match self {
             RelOwned::Limit(Limit { child, .. })
-            | RelOwned::ScanCte(ScanCte { child, .. })
-            | RelOwned::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
+            | RelOwned::Delete(Delete {
+                child: Some(child), ..
+            })
+            | RelOwned::Update(Update { child, .. })
+            | RelOwned::Insert(Insert { child, .. })
+            | RelOwned::Motion(Motion {
+                child: Some(child), ..
+            })
+            | RelOwned::ScanSubQuery(ScanSubQuery { child, .. })
+            | RelOwned::NamedWindows(NamedWindows { child, .. })
+            | RelOwned::ScanCte(ScanCte { child, .. }) => Children::Single(child),
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Union(Union { left, right, .. }) => Children::Couple(left, right),
             RelOwned::GroupBy(GroupBy { children, .. })
-            | RelOwned::Update(Update { children, .. })
             | RelOwned::Join(Join { children, .. })
             | RelOwned::Having(Having { children, .. })
             | RelOwned::OrderBy(OrderBy { children, .. })
-            | RelOwned::Delete(Delete { children, .. })
-            | RelOwned::Insert(Insert { children, .. })
-            | RelOwned::Motion(Motion { children, .. })
             | RelOwned::Projection(Projection { children, .. })
-            | RelOwned::ScanSubQuery(ScanSubQuery { children, .. })
             | RelOwned::Selection(Selection { children, .. })
             | RelOwned::SelectWithoutScan(SelectWithoutScan { children, .. })
             | RelOwned::ValuesRow(ValuesRow { children, .. })
             | RelOwned::Values(Values { children, .. }) => Children::Many(children),
-            RelOwned::ScanRelation(_) => Children::None,
+            RelOwned::Delete(Delete { child: None, .. })
+            | RelOwned::Motion(Motion { child: None, .. })
+            | RelOwned::ScanRelation(_) => Children::None,
         }
     }
 
@@ -233,8 +224,21 @@ impl RelOwned {
     pub fn mut_children(&mut self) -> MutChildren<'_> {
         match self {
             RelOwned::Limit(Limit { ref mut child, .. })
+            | RelOwned::ScanCte(ScanCte { ref mut child, .. })
+            | RelOwned::Update(Update { ref mut child, .. })
             | RelOwned::NamedWindows(NamedWindows { ref mut child, .. })
-            | RelOwned::ScanCte(ScanCte { ref mut child, .. }) => MutChildren::Single(child),
+            | RelOwned::Delete(Delete {
+                child: Some(ref mut child),
+                ..
+            })
+            | RelOwned::Motion(Motion {
+                child: Some(ref mut child),
+                ..
+            })
+            | RelOwned::Insert(Insert { ref mut child, .. })
+            | RelOwned::ScanSubQuery(ScanSubQuery { ref mut child, .. }) => {
+                MutChildren::Single(child)
+            }
             RelOwned::Except(Except {
                 ref mut left,
                 ref mut right,
@@ -258,9 +262,6 @@ impl RelOwned {
             RelOwned::GroupBy(GroupBy {
                 ref mut children, ..
             })
-            | RelOwned::Update(Update {
-                ref mut children, ..
-            })
             | RelOwned::Join(Join {
                 ref mut children, ..
             })
@@ -270,19 +271,7 @@ impl RelOwned {
             | RelOwned::Having(Having {
                 ref mut children, ..
             })
-            | RelOwned::Delete(Delete {
-                ref mut children, ..
-            })
-            | RelOwned::Insert(Insert {
-                ref mut children, ..
-            })
-            | RelOwned::Motion(Motion {
-                ref mut children, ..
-            })
             | RelOwned::Projection(Projection {
-                ref mut children, ..
-            })
-            | RelOwned::ScanSubQuery(ScanSubQuery {
                 ref mut children, ..
             })
             | RelOwned::Selection(Selection {
@@ -297,7 +286,9 @@ impl RelOwned {
             | RelOwned::Values(Values {
                 ref mut children, ..
             }) => MutChildren::Many(children),
-            RelOwned::ScanRelation(_) => MutChildren::None,
+            RelOwned::Delete(Delete { child: None, .. })
+            | RelOwned::Motion(Motion { child: None, .. })
+            | RelOwned::ScanRelation(_) => MutChildren::None,
         }
     }
 
@@ -429,16 +420,22 @@ impl MutRelational<'_> {
         // return MutChildren { node: self };
         match self {
             MutRelational::Limit(Limit { child, .. })
+            | MutRelational::ScanCte(ScanCte { child, .. })
+            | MutRelational::Update(Update { child, .. })
             | MutRelational::NamedWindows(NamedWindows { child, .. })
-            | MutRelational::ScanCte(ScanCte { child, .. }) => MutChildren::Single(child),
+            | MutRelational::Delete(Delete {
+                child: Some(child), ..
+            })
+            | MutRelational::Motion(Motion {
+                child: Some(child), ..
+            })
+            | MutRelational::Insert(Insert { child, .. })
+            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. }) => MutChildren::Single(child),
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Union(Union { left, right, .. }) => MutChildren::Couple(left, right),
             MutRelational::GroupBy(GroupBy {
-                ref mut children, ..
-            })
-            | MutRelational::Update(Update {
                 ref mut children, ..
             })
             | MutRelational::OrderBy(OrderBy {
@@ -450,19 +447,7 @@ impl MutRelational<'_> {
             | MutRelational::Join(Join {
                 ref mut children, ..
             })
-            | MutRelational::Delete(Delete {
-                ref mut children, ..
-            })
-            | MutRelational::Insert(Insert {
-                ref mut children, ..
-            })
-            | MutRelational::Motion(Motion {
-                ref mut children, ..
-            })
             | MutRelational::Projection(Projection {
-                ref mut children, ..
-            })
-            | MutRelational::ScanSubQuery(ScanSubQuery {
                 ref mut children, ..
             })
             | MutRelational::Selection(Selection {
@@ -477,7 +462,9 @@ impl MutRelational<'_> {
             | MutRelational::Values(Values {
                 ref mut children, ..
             }) => MutChildren::Many(children),
-            MutRelational::ScanRelation(_) => MutChildren::None,
+            MutRelational::Delete(Delete { child: None, .. })
+            | MutRelational::Motion(Motion { child: None, .. })
+            | MutRelational::ScanRelation(_) => MutChildren::None,
         }
     }
 
@@ -491,27 +478,7 @@ impl MutRelational<'_> {
                 children: ref mut old,
                 ..
             })
-            | MutRelational::Delete(Delete {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Update(Update {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Insert(Insert {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::Motion(Motion {
-                children: ref mut old,
-                ..
-            })
             | MutRelational::Projection(Projection {
-                children: ref mut old,
-                ..
-            })
-            | MutRelational::ScanSubQuery(ScanSubQuery {
                 children: ref mut old,
                 ..
             })
@@ -555,19 +522,16 @@ impl MutRelational<'_> {
                 *left = children[0];
                 *right = children[1];
             }
-            MutRelational::ScanCte(ScanCte { ref mut child, .. }) => {
-                if children.len() != 1 {
-                    unreachable!("CTE may have only a single relational child");
-                }
-                // It is safe to unwrap here, because the length is already checked above.
+            MutRelational::ScanCte(ScanCte { child, .. })
+            | MutRelational::Limit(Limit { child, .. })
+            | MutRelational::Update(Update { child, .. })
+            | MutRelational::Insert(Insert { child, .. })
+            | MutRelational::ScanSubQuery(ScanSubQuery { child, .. }) => {
                 *child = children[0];
             }
-            MutRelational::Limit(Limit { ref mut child, .. }) => {
-                if children.len() != 1 {
-                    unreachable!("LIMIT may have only a single relational child");
-                }
-                // It is safe to unwrap here, because the length is already checked above.
-                *child = children[0];
+            MutRelational::Delete(Delete { child, .. })
+            | MutRelational::Motion(Motion { child, .. }) => {
+                *child = Some(children[0]);
             }
             MutRelational::NamedWindows(NamedWindows { child, .. }) => {
                 if children.len() != 1 {
@@ -594,7 +558,6 @@ impl MutRelational<'_> {
             | MutRelational::GroupBy(GroupBy { children, .. })
             | MutRelational::Having(Having { children, .. })
             | MutRelational::OrderBy(OrderBy { children, .. })
-            | MutRelational::Update(Update { children, .. })
             | MutRelational::SelectWithoutScan(SelectWithoutScan { children, .. })
             | MutRelational::ValuesRow(ValuesRow { children, .. }) => children.push(sq_id),
             _ => panic!("Unable to add SubQuery child to {self:?}."),
@@ -670,27 +633,33 @@ impl Relational<'_> {
     pub fn children(&self) -> Children<'_> {
         match self {
             Relational::Limit(Limit { child, .. })
-            | Relational::ScanCte(ScanCte { child, .. })
-            | Relational::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
+            | Relational::ScanSubQuery(ScanSubQuery { child, .. })
+            | Relational::Update(Update { child, .. })
+            | Relational::Delete(Delete {
+                child: Some(child), ..
+            })
+            | Relational::Motion(Motion {
+                child: Some(child), ..
+            })
+            | Relational::Insert(Insert { child, .. })
+            | Relational::NamedWindows(NamedWindows { child, .. })
+            | Relational::ScanCte(ScanCte { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. }) => Children::Couple(left, right),
             Relational::GroupBy(GroupBy { children, .. })
-            | Relational::Update(Update { children, .. })
             | Relational::Join(Join { children, .. })
             | Relational::OrderBy(OrderBy { children, .. })
             | Relational::Having(Having { children, .. })
-            | Relational::Delete(Delete { children, .. })
-            | Relational::Insert(Insert { children, .. })
-            | Relational::Motion(Motion { children, .. })
             | Relational::Projection(Projection { children, .. })
-            | Relational::ScanSubQuery(ScanSubQuery { children, .. })
             | Relational::Selection(Selection { children, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { children, .. })
             | Relational::ValuesRow(ValuesRow { children, .. })
             | Relational::Values(Values { children, .. }) => Children::Many(children),
-            Relational::ScanRelation(_) => Children::None,
+            Relational::Delete(Delete { child: None, .. })
+            | Relational::Motion(Motion { child: None, .. })
+            | Relational::ScanRelation(_) => Children::None,
         }
     }
 

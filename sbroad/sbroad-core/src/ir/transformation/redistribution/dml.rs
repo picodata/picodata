@@ -14,14 +14,13 @@ impl Plan {
     /// Return first child of `Insert` node
     pub fn dml_child_id(&self, dml_node_id: NodeId) -> Result<NodeId, SbroadError> {
         let dml_node = self.get_relation_node(dml_node_id)?;
-        if let Relational::Insert(Insert { children, .. })
-        | Relational::Update(Update { children, .. })
-        | Relational::Delete(Delete { children, .. }) = dml_node
+        if let Relational::Insert(Insert { child, .. })
+        | Relational::Update(Update { child, .. })
+        | Relational::Delete(Delete {
+            child: Some(child), ..
+        }) = dml_node
         {
-            if let (Some(child), None) = (children.first(), children.get(1)) {
-                return Ok(*child);
-            }
-            panic!("DML node must have exactly a single child node.");
+            return Ok(*child);
         }
         panic!("Expected DML node to get child from. Got {dml_node:?}.");
     }
