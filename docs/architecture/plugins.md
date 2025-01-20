@@ -282,10 +282,10 @@ fn my_registrar(registry: &mut ServiceRegistry) {
 
 1.&nbsp;С помощью SQL-запроса. Пример:
 
-```
-ALTER SERVICE <service_name>
-WITH PLUGIN <plugin_name> <version>
-ADD TIER ‘red’
+```sql
+ALTER PLUGIN <plugin_name> <version>
+ADD SERVICE <service_name>
+TO TIER ‘red’
 OPTION(timeout=...);
 ```
 
