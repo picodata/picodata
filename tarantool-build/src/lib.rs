@@ -153,7 +153,6 @@ impl TarantoolBuildRoot {
                     .args(common_args)
                     .args([
                         "-DENABLE_BUNDLED_LDAP=OFF",
-                        "-DENABLE_BUNDLED_LIBCURL=OFF",
                         "-DENABLE_BUNDLED_LIBUNWIND=OFF",
                         "-DENABLE_BUNDLED_LIBYAML=OFF",
                         "-DENABLE_BUNDLED_OPENSSL=OFF",
@@ -333,14 +332,6 @@ impl TarantoolBuildRoot {
             rustc::link_lib_dynamic("zstd");
         }
 
-        // libz
-        if use_static_build {
-            rustc::link_search(tarantool_root.join("zlib-prefix/lib"));
-            rustc::link_lib_static_whole_archive("z");
-        } else {
-            rustc::link_lib_dynamic("z");
-        }
-
         // libyaml
         if use_static_build {
             rustc::link_search(tarantool_build.join("build/libyaml/lib"));
@@ -389,17 +380,23 @@ impl TarantoolBuildRoot {
         }
 
         // libcurl
-        if use_static_build {
-            rustc::link_search(tarantool_build.join("build/curl/dest/lib"));
-            rustc::link_lib_static_whole_archive("curl");
+        // Note: curl is always linked statically even in dynamic build.
+        // for details see https://git.picodata.io/core/picodata/-/issues/1299
+        rustc::link_search(tarantool_build.join("build/curl/dest/lib"));
+        rustc::link_lib_static_whole_archive("curl");
 
-            // Static curl depends on nghttp2 & cares.
-            rustc::link_search(tarantool_build.join("build/nghttp2/dest/lib"));
-            rustc::link_lib_static_whole_archive("nghttp2");
-            rustc::link_search(tarantool_build.join("build/ares/dest/lib"));
-            rustc::link_lib_dynamic("cares");
+        // Static curl depends on nghttp2 & cares.
+        rustc::link_search(tarantool_build.join("build/nghttp2/dest/lib"));
+        rustc::link_lib_static_whole_archive("nghttp2");
+        rustc::link_search(tarantool_build.join("build/ares/dest/lib"));
+        rustc::link_lib_dynamic("cares");
+
+        // libz
+        if use_static_build {
+            rustc::link_search(tarantool_root.join("zlib-prefix/lib"));
+            rustc::link_lib_static_whole_archive("z");
         } else {
-            rustc::link_lib_dynamic("curl");
+            rustc::link_lib_dynamic("z");
         }
 
         // Add LDAP authentication support libraries.

@@ -13,7 +13,6 @@ REPO_DIR = Path(__file__).parent.parent
 PATCHES_DIR = REPO_DIR / "certification_patches"
 SVACE_PATCHES = PATCHES_DIR / "svace_patches"
 GAMAYUN_PATCHES = PATCHES_DIR / "gamayun_patches"
-INFRA_PATCHES = PATCHES_DIR / "infra_patches"
 TARANTOOL_SYS = REPO_DIR / "tarantool-sys"
 THIRD_PARTY = TARANTOOL_SYS / "third_party"
 
@@ -27,8 +26,6 @@ DEBUG = os.getenv("DEBUG")
 DEAD_LIST = [
     # from 6b2a88b551e6940089cf248d88b050b65ab67262
     "tarantool-sys/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py",
-    # static build doesn't work without this file. We build dynamically, so it's fine
-    "tarantool-sys/third_party/nghttp2/script/fetch-ocsp-response",
     "tarantool-sys/vendor/openssl-1.1.1q/fuzz/helper.py",
     "tarantool-sys/third_party/zstd/.circleci/images/primary/Dockerfile",
     # from 2be2aab5096b202de8bab72bafe41470c479895d
@@ -100,9 +97,6 @@ def apply_patches():
             (REPO_DIR / fname).unlink()
 
     apply_from_dir(GAMAYUN_PATCHES)
-
-    print("Misc:")
-    apply_from_dir(INFRA_PATCHES)
 
 
 def restore():
