@@ -677,7 +677,7 @@ impl raft::Storage for RaftSpaceAccess {
         Ok(1 + compacted_index)
     }
 
-    /// Returns the last index which term is available.
+    /// Returns the last index for which the term is available.
     ///
     /// And again, the naming is actually misleading. The entry itself
     /// might not exist if the whole log was compacted or is actually

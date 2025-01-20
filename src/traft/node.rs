@@ -2383,6 +2383,9 @@ impl NodeImpl {
         (lc, rx)
     }
 
+    /// `old_last_index` is the value of `RaftSpaceAccess::last_index` at the
+    /// start of the raft_main_loop iteration (i.e. before any new entries are
+    /// applied).
     fn do_raft_log_auto_compaction(&self, old_last_index: RaftIndex) -> traft::Result<()> {
         let mut compaction_needed = false;
 
@@ -2412,13 +2415,39 @@ impl NodeImpl {
             return Ok(());
         }
 
-        let mut last_ddl_finalizer = None;
-        let mut last_plugin_op_finalizer = None;
+        let compact_until = self.get_adjusted_compaction_index(old_last_index)?;
 
+        transaction(|| -> traft::Result<()> {
+            self.main_loop_status("log auto compaction");
+            self.raft_storage.compact_log(compact_until)?;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// Determines the point until which we should compact the raft log.
+    /// Ideally this is the whole log, but there might be some entries we want to preserve.
+    ///
+    /// This function is called when we have determined that raft log needs to
+    /// be compacted. It returns the value to be passed to [`RaftSpaceAccess::compact_log`]
+    /// (i.e. the exclusive limit of compaction).
+    fn get_adjusted_compaction_index(&self, old_last_index: RaftIndex) -> traft::Result<RaftIndex> {
         let last_applied = self.applied.get();
+        if old_last_index >= last_applied {
+            // Still have unapplied entries since last check, don't need to
+            // check the newly added ones, as they haven't been applied yet.
+            let compact_until = last_applied + 1;
+            return Ok(compact_until);
+        }
+
         let newly_added_entries =
             self.raft_storage
                 .entries(old_last_index + 1, last_applied + 1, None)?;
+
+        let mut last_ddl_finalizer = None;
+        let mut last_plugin_op_finalizer = None;
 
         // Check if there's a finalizer (e.g. DdlCommit, Plugin::Abort, etc.)
         // operation among the newly added entries. The finalizers a relied upon
@@ -2466,14 +2495,7 @@ impl NodeImpl {
             }
         }
 
-        transaction(|| -> traft::Result<()> {
-            self.main_loop_status("log auto compaction");
-            self.raft_storage.compact_log(compact_until)?;
-
-            Ok(())
-        })?;
-
-        Ok(())
+        Ok(compact_until)
     }
 }
 
