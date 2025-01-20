@@ -1,6 +1,7 @@
 local cartridge = require('cartridge')
 local yaml = require("yaml")
 local checks = require('checks')
+local vshard = require('vshard')
 
 _G.set_schema = nil
 
@@ -28,6 +29,9 @@ end
 return {
     role_name = 'app.roles.api',
     init = init,
+    apply_config = function(conf, opts) -- luacheck: no unused args
+        vshard.consts.CALL_TIMEOUT_MIN = 5
+    end,
     dependencies = {
         'cartridge.roles.sbroad-router',
         'cartridge.roles.crud-router',

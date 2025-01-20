@@ -1,4 +1,5 @@
 local ddl = require('ddl')
+local vshard = require('vshard')
 
 _G.get_current_schema = nil
 
@@ -14,6 +15,9 @@ end
 return {
     role_name = 'app.roles.storage',
     init = init,
+    apply_config = function(conf, opts) -- luacheck: no unused args
+        vshard.consts.CALL_TIMEOUT_MIN = 5
+    end,
     dependencies = {
         'cartridge.roles.sbroad-storage',
         'cartridge.roles.crud-storage',
