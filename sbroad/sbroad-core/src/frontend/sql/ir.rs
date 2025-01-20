@@ -23,6 +23,8 @@ use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
+use super::escape_single_quotes;
+
 impl Value {
     /// Creates `Value` from pest pair.
     ///
@@ -74,7 +76,8 @@ impl Value {
                 .into()),
             Rule::SingleQuotedString => {
                 let pair_str = pair.as_str();
-                Ok(pair_str[1..pair_str.len() - 1].into())
+                let inner = &pair_str[1..pair_str.len() - 1];
+                Ok(escape_single_quotes(inner).into())
             }
             _ => Err(SbroadError::Unsupported(
                 Entity::Type,

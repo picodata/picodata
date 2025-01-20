@@ -127,8 +127,18 @@ fn get_timeout(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Decimal, Sbro
     ))
 }
 
-fn parse_string_literal(ast: &AbstractSyntaxTree, node_id: usize) -> Result<SmolStr, SbroadError> {
-    let node = ast.nodes.get_node(node_id)?;
+/// Parse single quote string handling escaping.
+/// For input string of "a''b''c" we should get "a'b'c" result.
+/// Each two subsequent single quotes are treated as one.
+fn escape_single_quotes(raw: &str) -> SmolStr {
+    raw.replace("''", "'").to_smolstr()
+}
+
+fn retrieve_string_literal(
+    ast: &AbstractSyntaxTree,
+    node_id: usize,
+) -> Result<SmolStr, SbroadError> {
+    let node: &ParseNode = ast.nodes.get_node(node_id)?;
     let str_ref = node
         .value
         .as_ref()
@@ -139,7 +149,7 @@ fn parse_string_literal(ast: &AbstractSyntaxTree, node_id: usize) -> Result<Smol
         node.rule
     );
 
-    Ok(str_ref[1..str_ref.len() - 1].to_smolstr())
+    Ok(str_ref[1..str_ref.len() - 1].into())
 }
 
 /// Parse node from which we want to get String value.
@@ -3202,7 +3212,7 @@ fn parse_alter_plugin(
                     let key_idx = next_node.child_n(1);
                     let key = parse_identifier(ast, key_idx)?;
                     let value_idx = next_node.child_n(2);
-                    let value = parse_string_literal(ast, value_idx)?;
+                    let value = retrieve_string_literal(ast, value_idx)?;
                     let entry = key_value_grouped.entry(svc).or_default();
                     entry.push(SettingsPair { key, value });
                 } else {
@@ -4432,7 +4442,8 @@ impl AbstractSyntaxTree {
                                 .children
                                 .first()
                                 .expect("Password expected as a first child");
-                            let password = parse_string_literal(self, *pwd_node_id)?;
+                            let password_literal = retrieve_string_literal(self, *pwd_node_id)?;
+                            let password = escape_single_quotes(&password_literal);
 
                             let mut auth_method = get_default_auth_method();
                             if let Some(auth_method_node_id) = alter_option_node.children.get(1) {
@@ -4494,7 +4505,9 @@ impl AbstractSyntaxTree {
                         match child_node.rule {
                             Rule::Identifier => name = Some(parse_identifier(self, *child_id)?),
                             Rule::SingleQuotedString => {
-                                password = Some(parse_string_literal(self, *child_id)?);
+                                let password_literal: SmolStr =
+                                    retrieve_string_literal(self, *child_id)?;
+                                password = Some(escape_single_quotes(&password_literal));
                             }
                             Rule::IfNotExists => if_not_exists = true,
                             Rule::Timeout => {

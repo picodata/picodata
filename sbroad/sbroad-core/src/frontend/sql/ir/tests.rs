@@ -674,6 +674,22 @@ execution options:
 }
 
 #[test]
+fn front_sql_check_single_quotes_are_escaped() {
+    let input = "select '', '''', 'left''right', '''center'''";
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    let expected_explain = String::from(
+        r#"projection (''::string -> "col_1", '''::string -> "col_2", 'left'right'::string -> "col_3", ''center''::string -> "col_4")
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+"#,
+    );
+
+    assert_eq!(expected_explain, plan.as_explain().unwrap());
+}
+
+#[test]
 fn front_sql_check_arbitraty_utf_in_identifiers() {
     let input = r#"SELECT "id" "from", "id" as "select", "id"
                                "123»&%ښ۞@Ƶǖselect.""''\\"
