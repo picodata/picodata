@@ -285,6 +285,11 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.failure_domain = Some(FailureDomain::from(map));
         }
 
+        if let Some(address) = args.iproto_advertise {
+            config_from_args.instance.iproto_advertise = Some(address);
+        }
+
+        #[allow(deprecated)]
         if let Some(address) = args.advertise_address {
             config_from_args.instance.advertise_address = Some(address);
         }
@@ -527,6 +532,10 @@ Using configuration file '{args_path}'.");
                 config_parameter_path!(instance.listen),
                 config_parameter_path!(instance.iproto_listen),
             ),
+            (
+                config_parameter_path!(instance.advertise_address),
+                config_parameter_path!(instance.iproto_advertise),
+            ),
         ];
 
         // Handle renamed parameters
@@ -675,13 +684,13 @@ Using configuration file '{args_path}'.");
         if let Some(raft_id) = raft_storage.raft_id()? {
             match (
                 storage.peer_addresses.get(raft_id)?,
-                &self.instance.advertise_address,
+                &self.instance.iproto_advertise,
             ) {
                 (Some(from_storage), Some(from_config))
                     if from_storage != from_config.to_host_port() =>
                 {
                     return Err(Error::InvalidConfiguration(format!(
-                        "instance restarted with a different `advertise_address`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                        "instance restarted with a different `iproto_advertise`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
@@ -1118,10 +1127,14 @@ pub struct InstanceConfig {
     #[introspection(config_default = IprotoAddress::default())]
     pub iproto_listen: Option<IprotoAddress>,
 
-    #[introspection(config_default = self.iproto_listen())]
+    #[deprecated = "use iproto_advertise instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub advertise_address: Option<IprotoAddress>,
 
-    #[introspection(config_default = vec![self.advertise_address()])]
+    #[introspection(config_default = self.iproto_listen())]
+    pub iproto_advertise: Option<IprotoAddress>,
+
+    #[introspection(config_default = vec![self.iproto_advertise()])]
     pub peer: Option<Vec<IprotoAddress>>,
 
     pub http_listen: Option<HttpAddress>,
@@ -1215,8 +1228,8 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn advertise_address(&self) -> IprotoAddress {
-        self.advertise_address
+    pub fn iproto_advertise(&self) -> IprotoAddress {
+        self.iproto_advertise
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
@@ -2189,7 +2202,7 @@ instance:
             );
             assert_eq!(config.instance.name(), None);
             assert_eq!(config.instance.iproto_listen().to_host_port(), IprotoAddress::default_host_port());
-            assert_eq!(config.instance.advertise_address().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.iproto_advertise().to_host_port(), IprotoAddress::default_host_port());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -2364,21 +2377,21 @@ instance:
             let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.advertise_address().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.iproto_advertise().to_host_port(), "L-ENVIRON:3301");
 
             let yaml = r###"
 instance:
-    advertise_address: A-CONFIG
+    iproto_advertise: A-CONFIG
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
-            assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
 
             let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-COMMANDLINE:3301");
-            assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
+            assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
         }
 
         //
@@ -2630,5 +2643,38 @@ instance:
         let config = setup_for_tests(Some(yaml), &["run", "--listen", "localhost:3303"]);
 
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.listen is deprecated, use instance.iproto_listen instead (cannot use both at the same time)");
+    }
+
+    #[test]
+    fn test_iproto_advertise_advertise_interaction() {
+        let _guard = protect_env();
+
+        // iproto_advertise should be equal to listen
+        let yaml = r###"
+instance:
+        advertise_address: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        assert_eq!(
+            config.instance.iproto_advertise().to_host_port(),
+            "localhost:3301"
+        );
+
+        // can't use both options
+        let yaml = r###"
+instance:
+        advertise_address: localhost:3302
+        iproto_advertise: localhost:3301
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]);
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
+
+        // can't use both options
+        let yaml = r###"
+instance:
+        iproto_advertise: localhost:3302
+"###;
+        let config = setup_for_tests(Some(yaml), &["run", "--advertise", "localhost:3303"]);
+        assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
     }
 }

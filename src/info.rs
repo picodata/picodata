@@ -94,7 +94,7 @@ pub fn proc_version_info() -> VersionInfo<'static> {
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct InstanceInfo {
     pub raft_id: RaftId,
-    pub advertise_address: String,
+    pub iproto_advertise: String,
     pub name: InstanceName,
     pub uuid: String,
     pub replicaset_name: ReplicasetName,
@@ -132,7 +132,7 @@ impl InstanceInfo {
 
         Ok(InstanceInfo {
             raft_id: instance.raft_id,
-            advertise_address: peer_address,
+            iproto_advertise: peer_address,
             name: instance.name,
             uuid: instance.uuid,
             replicaset_name: instance.replicaset_name,

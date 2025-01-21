@@ -854,7 +854,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         cluster_name: config.cluster_name().into(),
         instance_name: config.instance.name().map(From::from),
         replicaset_name: config.instance.replicaset_name().map(From::from),
-        advertise_address: config.instance.advertise_address().to_host_port(),
+        advertise_address: config.instance.iproto_advertise().to_host_port(),
         failure_domain: config.instance.failure_domain(),
         tier: config.instance.tier().into(),
         picodata_version: version,

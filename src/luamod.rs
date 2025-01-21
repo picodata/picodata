@@ -265,7 +265,7 @@ pub(crate) fn setup() {
 
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
-                ("advertise_address", info.advertise_address),
+                ("iproto_advertise", info.iproto_advertise),
                 ("name", info.name.0),
                 ("uuid", info.uuid),
                 ("replicaset_name", info.replicaset_name),

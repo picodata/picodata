@@ -57,7 +57,7 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
     };
     ROk(types::InstanceInfo::new(
         info.raft_id,
-        info.advertise_address,
+        info.iproto_advertise,
         info.name.0,
         info.uuid,
         info.replicaset_name.0,

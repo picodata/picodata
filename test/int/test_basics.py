@@ -186,15 +186,15 @@ invalid configuration: instance restarted with a different `replicaset_name`, wh
     # Change advertise address
     #
     was = instance.iproto_listen  # type: ignore
-    instance.env["PICODATA_ADVERTISE"] = "example.com:1234"
-    assert instance.env["PICODATA_ADVERTISE"] != was
+    instance.env["PICODATA_IPROTO_ADVERTISE"] = "example.com:1234"
+    assert instance.env["PICODATA_IPROTO_ADVERTISE"] != was
     err = f"""\
-invalid configuration: instance restarted with a different `advertise_address`, which is not allowed, was: '{was}' became: 'example.com:1234'
+invalid configuration: instance restarted with a different `iproto_advertise`, which is not allowed, was: '{was}' became: 'example.com:1234'
 """  # noqa: E501
     crawler = log_crawler(instance, err)
     instance.fail_to_start()
     assert crawler.matched
-    del instance.env["PICODATA_ADVERTISE"]
+    del instance.env["PICODATA_IPROTO_ADVERTISE"]
 
 
 def test_whoami(instance: Instance):
@@ -539,8 +539,8 @@ cluster:
     i1_info = i1.call(".proc_instance_info")
     assert i1_info == dict(
         raft_id=1,
-        advertise_address=f"{i1.host}:{i1.port}",
         name="storage_1_1",
+        iproto_advertise=f"{i1.host}:{i1.port}",
         uuid=i1.uuid(),
         replicaset_name="storage_1",
         replicaset_uuid=i1.replicaset_uuid(),
@@ -553,8 +553,8 @@ cluster:
     i2_info = i2.call(".proc_instance_info")
     assert i2_info == dict(
         raft_id=2,
-        advertise_address=f"{i2.host}:{i2.port}",
         name="router_1_1",
+        iproto_advertise=f"{i2.host}:{i2.port}",
         uuid=i2.uuid(),
         replicaset_name="router_1",
         replicaset_uuid=i2.replicaset_uuid(),

@@ -84,7 +84,7 @@ instance:
         ),
         instance=dict(
             admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
-            advertise_address=dict(value=f"{host}:{port}", source="default"),
+            iproto_advertise=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
             shredding=dict(value=False, source="default"),
             cluster_name=dict(value="my-cluster", source="config_file"),
@@ -399,6 +399,7 @@ def test_picodata_default_config(cluster: Cluster):
 
     default_config_dict = yaml.safe_load(default_config)
     assert "listen" not in default_config_dict["instance"]
+    assert "advertise" not in default_config_dict["instance"]
 
     # Explicit filename
     subprocess.call(
@@ -424,7 +425,7 @@ def test_picodata_default_config(cluster: Cluster):
     # but our testing harness overrides the `iproto_listen` & `peers` values so that
     # running tests in parallel doesn't result in binding to conflicting ports.
     # For this reason we must also specify `advertise` explictily.
-    i.env["PICODATA_ADVERTISE"] = i.iproto_listen  # type: ignore
+    i.env["PICODATA_IPROTO_ADVERTISE"] = i.iproto_listen  # type: ignore
 
     i.start()
     i.wait_online()
@@ -478,7 +479,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.failure_domain': {}
         'instance.peer':
         'instance.iproto_listen':
-        'instance.advertise_address':
+        'instance.iproto_advertise':
         'instance.admin_socket':
         'instance.share_dir':
         'instance.audit':

@@ -38,7 +38,7 @@ pub(super) fn prepare(
             ClusterwideTable::Address,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
-                address: config.instance.advertise_address().to_host_port(),
+                address: config.instance.iproto_advertise().to_host_port(),
             },
             ADMIN_ID,
         )
