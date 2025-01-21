@@ -48,7 +48,7 @@ expression  ::= ('NOT'* (
                 )
                 expression
 aggregate   ::= ('AVG' | 'COUNT' | 'MAX' | 'MIN' | 'SUM' | 'TOTAL') '(' ('DISTINCT'? expression) ')'
-               | 'GROUP_CONCAT' '(' expression ',' "'" string "'" ')'
+               | ('GROUP_CONCAT' | 'STRING_AGG') '(' expression ',' "'" string "'" ')'
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
