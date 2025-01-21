@@ -28,7 +28,9 @@
 * **SUM** — сумма значений (если строк нет, возвращает `NULL`);
 * **TOTAL** — сумма значений (если строк нет, возвращает `0`);
 * **GROUP_CONCAT** — соединяет строковые значения выражений с помощью
-  разделителя.
+  разделителя;
+* **STRING_AGG** — то же, что и `GROUP_CONCAT`. Данный алиас
+  используется для совместимости с PostgreSQL.
 
 ## Параметры {: #params }
 
@@ -51,6 +53,13 @@ SELECT SUM(stock) FROM items;
 ```sql
 SELECT GROUP_CONCAT(name, ', ') FROM items;
 ```
+
+или:
+
+```sql
+SELECT STRING_AGG(name, ', ') FROM items;
+```
+
 
 Вывод в консоль:
 
