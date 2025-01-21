@@ -962,7 +962,7 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     ), f"Process failed with exit code {process.returncode}\n"
 
 
-def test_picodata_status(cluster: Cluster):
+def test_picodata_status_basic(cluster: Cluster):
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
 

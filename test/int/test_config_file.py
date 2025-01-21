@@ -1,4 +1,4 @@
-from conftest import Cluster, Instance, PortDistributor, log_crawler, color
+from conftest import Cluster, Instance, PortDistributor, log_crawler, ColorCode
 import os
 import subprocess
 import json
@@ -56,7 +56,7 @@ instance:
     instance = Instance(
         binary_path=cluster.binary_path,
         cwd=cluster.instance_dir,
-        color=color.cyan,
+        color_code=ColorCode.Cyan,
         config_path=cluster.config_path,
         audit=f"{instance_dir}/audit.log",
     )

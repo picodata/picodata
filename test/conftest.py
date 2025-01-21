@@ -9,7 +9,6 @@ import sys
 import time
 import threading
 from packaging.version import Version
-from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import yaml as yaml_lib  # type: ignore
@@ -386,28 +385,24 @@ class CasRange:
             self.repr_max = f'le="{eq}"'
 
 
-color = SimpleNamespace(
-    **{
-        f"{prefix}{color}": f"\033[{ansi_color_code}{ansi_effect_code}m{{0}}\033[0m".format
-        for color, ansi_color_code in {
-            "grey": 30,
-            "red": 31,
-            "green": 32,
-            "yellow": 33,
-            "blue": 34,
-            "magenta": 35,
-            "cyan": 36,
-            "white": 37,
-        }.items()
-        for prefix, ansi_effect_code in {
-            "": "",
-            "intense_": ";1",
-        }.items()
-    }
-)
-# Usage:
-assert color.green("text") == "\x1b[32mtext\x1b[0m"
-assert color.intense_red("text") == "\x1b[31;1mtext\x1b[0m"
+class ColorCode:
+    Grey = "\x1b[30m"
+    Red = "\x1b[31m"
+    Green = "\x1b[32m"
+    Yellow = "\x1b[33m"
+    Blue = "\x1b[34m"
+    Magenta = "\x1b[35m"
+    Cyan = "\x1b[36m"
+    White = "\x1b[37m"
+    IntenseGrey = "\x1b[30;1m"
+    IntenseRed = "\x1b[31;1m"
+    IntenseGreen = "\x1b[32;1m"
+    IntenseYellow = "\x1b[33;1m"
+    IntenseBlue = "\x1b[34;1m"
+    IntenseMagenta = "\x1b[35;1m"
+    IntenseCyan = "\x1b[36;1m"
+    IntenseWhite = "\x1b[37;1m"
+    Reset = "\x1b[0m"
 
 
 class ProcessDead(Exception):
@@ -566,7 +561,7 @@ class Connection(tarantool.Connection):  # type: ignore
 class Instance:
     binary_path: str
     cwd: str
-    color: Callable[[str], str]
+    color_code: str
 
     plugin_dir: str | None = None
     cluster_name: str | None = None
@@ -892,18 +887,32 @@ class Instance:
             self.kill()
 
     def _process_output(self, src, out: io.TextIOWrapper):
-        id = self.name or f":{self.port}"
-        prefix = f"{id:<3} | "
+        is_a_tty = sys.stdout.isatty()
 
-        if sys.stdout.isatty():
-            prefix = self.color(prefix)
+        def make_prefix():
+            id = self.name or f":{self.port}"
+            prefix = f"{id:<3} | "
 
-        prefix_bytes = prefix.encode("utf-8")
+            if is_a_tty:
+                prefix = self.color_code + prefix + ColorCode.Reset
 
+            return prefix.encode("utf-8")
+
+        prefix = make_prefix()
+        name_was = self.name
         # `iter(callable, sentinel)` form: calls callable until it returns sentinel
         for line in iter(src.readline, b""):
+            # Update the log prefix if the name changed. This is needed because
+            # when an instance starts up without an explicit --instance-name we
+            # only find out it's name after it has initialized.
+            # Do this here, because this is where the thread wakes up after
+            # blocking on the input stream.
+            if name_was != self.name:
+                name_was = self.name
+                prefix = make_prefix()
+
             with OUT_LOCK:
-                out.buffer.write(prefix_bytes)
+                out.buffer.write(prefix)
                 out.buffer.write(line)
                 out.flush()
                 for cb in self._on_output_callbacks:
@@ -1654,16 +1663,16 @@ class Instance:
 
 
 CLUSTER_COLORS = (
-    color.cyan,
-    color.yellow,
-    color.green,
-    color.magenta,
-    color.blue,
-    color.intense_cyan,
-    color.intense_yellow,
-    color.intense_green,
-    color.intense_magenta,
-    color.intense_blue,
+    ColorCode.Cyan,
+    ColorCode.Yellow,
+    ColorCode.Green,
+    ColorCode.Magenta,
+    ColorCode.Blue,
+    ColorCode.IntenseCyan,
+    ColorCode.IntenseYellow,
+    ColorCode.IntenseGreen,
+    ColorCode.IntenseMagenta,
+    ColorCode.IntenseBlue,
 )
 
 
@@ -1802,7 +1811,7 @@ class Cluster:
             pg_host=self.base_host,
             pg_port=pg_port,
             peers=peers or [f"{self.base_host}:{bootstrap_port}"],
-            color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
+            color_code=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
             tier=tier,
