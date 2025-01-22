@@ -41,6 +41,7 @@ nav:
       - tutorial/node_add.md
       - tutorial/node_expel.md
       - tutorial/deploy_ansible.md
+      - tutorial/deploy_kubernetes.md
     - Начало работы:
       - tutorial/connecting.md
       - tutorial/sql_examples.md

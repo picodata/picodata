@@ -34,6 +34,7 @@ Picodata — это распределенная система промышле
 * [Добавление узлов](tutorial/node_add.md)
 * [Удаление узлов](tutorial/node_expel.md)
 * [Развертывание кластера через Ansible](tutorial/deploy_ansible.md)
+* [Picodata в Kubernetes](tutorial/deploy_kubernetes.md)
 
 #### Начало работы {: #getting_started }
 
