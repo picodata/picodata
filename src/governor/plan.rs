@@ -258,7 +258,6 @@ pub(super) fn action_plan<'i>(
             let demote_rpc = rpc::replication::DemoteRequest { term };
             let sync_rpc = rpc::replication::ReplicationSyncRequest {
                 term,
-                applied,
                 vclock: promotion_vclock.clone(),
                 timeout: sync_timeout,
             };

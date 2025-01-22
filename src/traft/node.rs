@@ -2036,6 +2036,9 @@ impl NodeImpl {
             if v_local == v_snapshot {
                 // Replicaset follower has synced schema with the leader,
                 // now global space dumps should be handled.
+                // NOTE: we would block here indefinitely in case
+                // `proc_replication` RPC fails, see doc-comments in the
+                // `rpc::replication` modules.
                 break;
             }
 

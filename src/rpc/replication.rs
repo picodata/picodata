@@ -1,10 +1,54 @@
+//! # The wait_index policy
+//!
+//! Note that stored procedures in this module do not do [`Node::wait_index`].
+//! This is different from all other stored procedures called by governor in
+//! [`governor::Loop::iter_fn`]
+//! (for example [`rpc::sharding::proc_sharding`] calls wait_index at the
+//! start and so do most others procs).
+//!
+//! The surface-level reason for this difference is that raft_main_loop
+//! ([`NodeImpl::advance`]) in some cases needs the tarantool replication
+//! to be configured before it can advance the raft replication (which advances
+//! the applied index which `wait_index` is waiting for). The specific place
+//! where we the deadlock will happen is [`NodeImpl::prepare_for_snapshot`]
+//! (see the "awaiting replication" status).
+//!
+//! The deeper reason is how our DDL is implemented. We have a
+//! [`Op::DdlPrepare`] raft operation, which when applied in
+//! [`NodeImpl::handle_committed_normal_entry`] is handled differently on
+//! replicaset master vs read-only replica. Masters apply the changes (create
+//! table, etc.) directly to the storage engine, while the read-only replicas
+//! are simply waiting for the master to transfer to them the storage state via
+//! tarantool replication. This means that raft_main_loop in some cases depends
+//! on the tarantool replication being configured and hence tarantool
+//! replication configuring ([`proc_replication`] is responsible for this) must
+//! not depend on raft_main_loop ([`Node::wait_index`]).
+//!
+//! As for [`proc_replication_sync`] and [`proc_replication_demote`], they also
+//! must not depend on `wait_index`, for a related reason. These procs are part
+//! of replicaset master switchover step of the governor loop
+//! (see [`plan::stage::Plan::ReplicasetMasterConsistentSwitchover`]).
+//! And this step must also be done before we can advance the raft_main_loop,
+//! because otherwise the instance would not know if it should apply the DDL
+//! itself or wait for the tarantool replication.
+//!
+#[allow(unused_imports)]
+use crate::governor;
+#[allow(unused_imports)]
+use crate::governor::plan;
 use crate::pico_service::pico_service_password;
 use crate::plugin::PluginEvent;
+#[allow(unused_imports)]
+use crate::rpc;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::{node, RaftIndex, RaftTerm, Result};
+#[allow(unused_imports)]
+use crate::traft::node::{Node, NodeImpl};
+#[allow(unused_imports)]
+use crate::traft::op::Op;
+use crate::traft::{node, RaftTerm, Result};
 use std::time::Duration;
 use tarantool::tlua;
 use tarantool::vclock::Vclock;
@@ -19,6 +63,8 @@ crate::define_rpc_request! {
     /// 2. Storage failure
     fn proc_replication(req: ConfigureReplicationRequest) -> Result<Response> {
         let node = node::global()?;
+        // Must not call node.wait_index(...) here. See doc-comments at the top
+        // of the file for explanation.
         node.status().check_term(req.term)?;
 
         // TODO: check this configuration is newer then the one currently
@@ -68,7 +114,8 @@ crate::define_rpc_request! {
     /// Waits until instance synchronizes tarantool replication.
     fn proc_replication_sync(req: ReplicationSyncRequest) -> Result<ReplicationSyncResponse> {
         let node = node::global()?;
-        node.wait_index(req.applied, req.timeout)?;
+        // Must not call node.wait_index(...) here. See doc-comments at the top
+        // of the file for explanation.
         node.status().check_term(req.term)?;
 
         debug_assert!(is_read_only()?);
@@ -85,9 +132,6 @@ crate::define_rpc_request! {
     pub struct ReplicationSyncRequest {
         /// Current term of the sender.
         pub term: RaftTerm,
-
-        /// Current applied index of the sender.
-        pub applied: RaftIndex,
 
         /// Wait until instance progresses replication past this vclock value.
         pub vclock: Vclock,
@@ -148,6 +192,8 @@ crate::define_rpc_request! {
         let _ = req;
 
         let node = node::global()?;
+        // Must not call node.wait_index(...) here. See doc-comments at the top
+        // of the file for explanation.
         node.status().check_term(req.term)?;
 
         let was_read_only = is_read_only()?;
