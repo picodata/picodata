@@ -27,6 +27,42 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     assert i2.call("box.space._pico_property:get", "animal") == ["animal", "horse"]
 
 
+def test_revoke_default_privileges_then_bootstrap_from_raft_snapshot(cluster: Cluster):
+    user_name = "leeroy"
+    impossible_error_on_select = "_pico_privilege cannot be empty"
+    select_user_privileges = f"""
+    SELECT
+        p.*
+    FROM
+        _pico_privilege p
+    JOIN
+        _pico_user gr ON p.grantee_id = gr.id
+    WHERE
+        gr.name = '{user_name}';
+    """
+
+    i1, i2 = cluster.deploy(instance_count=2)
+    i1.promote_or_fail()
+    i1.assert_raft_status("Leader")
+
+    i1.sql(f"CREATE USER {user_name} WITH PASSWORD 'J333333nkins'")
+    i1.sql(f"REVOKE ALTER ON USER {user_name} FROM {user_name}")
+
+    before = i1.sql(select_user_privileges)
+    assert before, impossible_error_on_select
+
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    i3 = cluster.add_instance(wait_online=True)
+
+    after = i3.sql(select_user_privileges)
+    assert after, impossible_error_on_select
+
+    error = "reset to default privileges occurred which should not have happened"
+    assert before == after, error
+
+
 def test_catchup_by_snapshot(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
     i1.assert_raft_status("Leader")
