@@ -39,12 +39,12 @@ picodata run --config <PATH>
 
 ``` yaml title="picodata.yaml"
 cluster:
-  name: demo # (1)!
+  name: demo # (2)!
   tier:
     default:
       replication_factor: 1 # (4)!
       can_vote: true # (3)!
-  default_replication_factor: 1 # (2)!
+  default_replication_factor: 1 # (1)!
 instance:
   instance_dir: . # (8)!
   service_password_file: null # (25)!
