@@ -60,7 +60,7 @@ option_queries.test_basic = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[select * from "testing_space"]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vdbe_max_steps = 5) ]]
+        query_str .. [[ option(sql_vdbe_opcode_max = 5) ]]
     })
     t.assert_str_contains(err, [[Reached a limit on max executed vdbe opcodes. Limit: 5]])
 
@@ -77,7 +77,7 @@ option_queries.test_basic = function()
     local no_limit_rows = r.rows
 
     -- check query executes with an appropriate limit
-    r, err = api:call("sbroad.execute", { query_str .. [[ option(vdbe_max_steps = 30) ]] })
+    r, err = api:call("sbroad.execute", { query_str .. [[ option(sql_vdbe_opcode_max = 30) ]] })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         { name = "id", type = "integer" },
@@ -91,13 +91,13 @@ option_queries.test_dml = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space"]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vdbe_max_steps = 10) ]]
+        query_str .. [[ option(sql_vdbe_opcode_max = 10) ]]
     })
     t.assert_str_contains(err, [[Reached a limit on max executed vdbe opcodes. Limit: 10]])
 
     -- check query works without limit
     local r
-    r, err = api:call("sbroad.execute", { query_str .. [[ option(vdbe_max_steps = 0) ]] })
+    r, err = api:call("sbroad.execute", { query_str .. [[ option(sql_vdbe_opcode_max = 0) ]] })
     t.assert_equals(err, nil)
     t.assert_equals(r, { row_count = 6 })
 end
@@ -106,14 +106,14 @@ option_queries.test_invalid = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[select * from "testing_space"]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vdbe_max_steps = 10, vdbe_max_steps = 11) ]]
+        query_str .. [[ option(sql_vdbe_opcode_max = 10, sql_vdbe_opcode_max = 11) ]]
     })
-    t.assert_str_contains(err, [[option vdbe_max_steps specified more than once!]])
+    t.assert_str_contains(err, [[option sql_vdbe_opcode_max specified more than once!]])
 
     _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vdbe_max_steps = ?) ]], { -1 }
+        query_str .. [[ option(sql_vdbe_opcode_max = ?) ]], { -1 }
     })
-    t.assert_str_contains(err, [[expected option vdbe_max_steps to be unsigned got: Integer(-1)]])
+    t.assert_str_contains(err, [[expected option sql_vdbe_opcode_max to be unsigned got: Integer(-1)]])
     _, err = api:call("sbroad.execute", {
         query_str .. [[ option(vtable_max_rows = ?) ]], { -1 }
     })

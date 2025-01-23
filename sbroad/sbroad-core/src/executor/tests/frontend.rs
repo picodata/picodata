@@ -74,7 +74,7 @@ fn front_explain_select_sql1() {
         r#"projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
     scan "hash_testing" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-10000]
 "#,
@@ -104,7 +104,7 @@ fn front_explain_select_sql2() {
         r#"    projection ("t2"."identification_number"::integer -> "identification_number", "t2"."product_code"::string -> "product_code")"#,
         r#"        scan "hash_testing_hist" -> "t2""#,
         r#"execution options:"#,
-        r#"    vdbe_max_steps = 45000"#,
+        r#"    sql_vdbe_opcode_max = 45000"#,
         r#"    vtable_max_rows = 5000"#,
         r#"buckets = [1-10000]"#,
     );
@@ -136,7 +136,7 @@ fn front_explain_select_sql3() {
         r#"            projection ("t3"."a"::string -> "a2", "t3"."b"::integer -> "b2")"#,
         r#"                scan "t3""#,
         r#"execution options:"#,
-        r#"    vdbe_max_steps = 45000"#,
+        r#"    sql_vdbe_opcode_max = 45000"#,
         r#"    vtable_max_rows = 5000"#,
         r#"buckets = [1-10000]"#,
     );
@@ -168,7 +168,7 @@ fn front_explain_select_sql4() {
         r#"            projection ("q2"."a"::string -> "a", "q2"."b"::integer -> "b")"#,
         r#"                scan "t3" -> "q2""#,
         r#"execution options:"#,
-        r#"    vdbe_max_steps = 45000"#,
+        r#"    sql_vdbe_opcode_max = 45000"#,
         r#"    vtable_max_rows = 5000"#,
         r#"buckets = [1-10000]"#,
     );

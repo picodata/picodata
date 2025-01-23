@@ -11,7 +11,7 @@ fn test_query_explain_1() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     let expected = r#"projection (1::unsigned -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any
 "#;
@@ -28,7 +28,7 @@ fn test_query_explain_2() {
     let expected = r#"projection ("t2"."e"::unsigned -> "e")
     scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-10000]
 "#;
@@ -46,7 +46,7 @@ fn test_query_explain_3() {
     selection ROW("t2"."e"::unsigned) = ROW(1::unsigned) and ROW("t2"."f"::unsigned) = ROW(13::unsigned)
         scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [111]
 "#;
@@ -65,7 +65,7 @@ fn test_query_explain_4() {
         projection (count((*::integer))::integer -> "count_596")
             scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-10000]
 "#;
@@ -82,7 +82,7 @@ fn test_query_explain_5() {
     let expected = r#"projection ("global_t"."a"::integer -> "a")
     scan "global_t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any
 "#;
@@ -101,7 +101,7 @@ fn test_query_explain_6() {
         values
             value row (data=ROW(1::unsigned, 1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown
 "#;
@@ -120,7 +120,7 @@ fn test_query_explain_7() {
         projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
             scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-10000]
 "#;
@@ -139,7 +139,7 @@ fn test_query_explain_8() {
         values
             value row (data=ROW(1::unsigned, 1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any
 "#;
@@ -155,7 +155,7 @@ fn test_query_explain_9() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     let expected = r#"delete "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-10000]
 "#;
@@ -179,7 +179,7 @@ fn test_query_explain_10() {
             selection ROW("t2"."e"::unsigned, "t2"."f"::unsigned) = ROW(10::unsigned, 10::unsigned)
                 scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown
 "#;
@@ -218,7 +218,7 @@ fn test_query_explain_11() {
                                     selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(20::unsigned, 20::unsigned)
                                         scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown
 "#;
@@ -252,7 +252,7 @@ fn test_query_explain_12() {
                     selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(20::unsigned, 20::unsigned)
                         scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets <= [62,2132]
 "#;
@@ -272,7 +272,7 @@ fn test_query_explain_13() {
             selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned)
                 scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets <= [6691]
 "#;
@@ -290,7 +290,7 @@ fn test_query_explain_14() {
     selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned) and ROW("t1"."a"::string, "t1"."b"::integer) = ROW(2::unsigned, 2::unsigned)
         scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = []
 "#;

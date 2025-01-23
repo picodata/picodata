@@ -13,7 +13,7 @@ use std::io::{Read, Write};
 pub struct ClientParams {
     pub username: String,
     pub vtable_max_rows: Option<u64>,
-    pub vdbe_max_steps: Option<u64>,
+    pub sql_vdbe_opcode_max: Option<u64>,
     pub _rest: BTreeMap<String, String>,
     // NB: add more params as needed.
     // Keep in mind that a client is required to send only "user".
@@ -27,7 +27,7 @@ impl ClientParams {
             ));
         };
 
-        let (mut vtable_max_rows, mut vdbe_max_steps) = (None, None);
+        let (mut vtable_max_rows, mut sql_vdbe_opcode_max) = (None, None);
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
                 let mut pair = pair.split('=');
@@ -37,7 +37,9 @@ impl ClientParams {
                     "vtable_max_rows" => {
                         vtable_max_rows = Some(val.parse().map_err(PgError::other)?)
                     }
-                    "vdbe_max_steps" => vdbe_max_steps = Some(val.parse().map_err(PgError::other)?),
+                    "sql_vdbe_opcode_max" => {
+                        sql_vdbe_opcode_max = Some(val.parse().map_err(PgError::other)?)
+                    }
                     _ => {
                         // We prefer using warnings instead of errors for these reasons:
                         // 1) This is similar to how we handle unknown PostgreSQL parameters:
@@ -54,7 +56,7 @@ impl ClientParams {
         Ok(Self {
             username,
             vtable_max_rows,
-            vdbe_max_steps,
+            sql_vdbe_opcode_max,
             _rest: parameters,
         })
     }
@@ -62,13 +64,13 @@ impl ClientParams {
     pub fn execution_options(&self) -> Vec<OptionSpec> {
         let mut opts = vec![];
 
-        if let Some(vdbe_max_steps) = self.vdbe_max_steps {
-            let vdbe_max_steps = OptionParamValue::Value {
-                val: SbroadValue::Unsigned(vdbe_max_steps),
+        if let Some(sql_vdbe_opcode_max) = self.sql_vdbe_opcode_max {
+            let sql_vdbe_opcode_max = OptionParamValue::Value {
+                val: SbroadValue::Unsigned(sql_vdbe_opcode_max),
             };
             opts.push(OptionSpec {
-                kind: OptionKind::VdbeMaxSteps,
-                val: vdbe_max_steps,
+                kind: OptionKind::VdbeOpcodeMax,
+                val: sql_vdbe_opcode_max,
             })
         }
 

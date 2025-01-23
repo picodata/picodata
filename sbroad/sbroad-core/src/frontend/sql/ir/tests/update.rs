@@ -14,7 +14,7 @@ fn update1() {
         projection ('test'::string -> "col_0", "test_space"."id"::unsigned -> "col_1")
             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -34,7 +34,7 @@ fn update2() {
         projection ('test'::string -> "col_0", "test_space"."id"::unsigned -> "col_1")
             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

@@ -10,7 +10,7 @@ fn coalesce_in_projection() {
         r#"projection (coalesce((NULL::scalar, "test_space"."FIRST_NAME"::string))::scalar -> "col_1")
     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -28,7 +28,7 @@ fn coalesce_in_selection() {
     selection ROW(coalesce(("test_space"."FIRST_NAME"::string, '(none)'::string))::scalar) = ROW('(none)'::string)
         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

@@ -1236,7 +1236,7 @@ pub trait RequiredPlanInfo {
     fn id(&self) -> &SmolStr;
     fn params(&self) -> &Vec<Value>;
     fn schema_info(&self) -> &SchemaInfo;
-    fn vdbe_max_steps(&self) -> u64;
+    fn sql_vdbe_opcode_max(&self) -> u64;
     fn vtable_max_rows(&self) -> u64;
     fn extract_data(&mut self) -> EncodedTables;
 }
@@ -1277,8 +1277,8 @@ impl RequiredPlanInfo for QueryInfo<'_> {
         &self.required.schema_info
     }
 
-    fn vdbe_max_steps(&self) -> u64 {
-        self.required.options.vdbe_max_steps
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.required.options.sql_vdbe_opcode_max
     }
 
     fn vtable_max_rows(&self) -> u64 {
@@ -1325,8 +1325,8 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
         &self.required.schema_info
     }
 
-    fn vdbe_max_steps(&self) -> u64 {
-        self.required.options.vdbe_max_steps
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.required.options.sql_vdbe_opcode_max
     }
 
     fn vtable_max_rows(&self) -> u64 {
@@ -1366,7 +1366,7 @@ pub fn read_from_cache<R: QueryCache, M: MutexLike<R::Cache>>(
     params: &[Value],
     tables: &mut EncodedTables,
     plan_id: &SmolStr,
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError>
@@ -1384,7 +1384,7 @@ where
                     break 'dql Err(e);
                 }
             }
-            execute_prepared(stmt, params, vdbe_max_steps, max_rows, return_format)
+            execute_prepared(stmt, params, sql_vdbe_opcode_max, max_rows, return_format)
         };
         truncate_tables(table_ids, plan_id);
 
@@ -1408,7 +1408,7 @@ fn read_bypassing_cache(
     params: &[Value],
     plan_id: &SmolStr,
     tables: &mut EncodedTables,
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError> {
@@ -1422,7 +1422,13 @@ fn read_bypassing_cache(
                 break 'dql Err(e);
             }
         }
-        execute_unprepared(pattern, params, vdbe_max_steps, max_rows, return_format)
+        execute_unprepared(
+            pattern,
+            params,
+            sql_vdbe_opcode_max,
+            max_rows,
+            return_format,
+        )
     };
     // No need to truncate temporary tables as they would be truncated in the parent function.
     result
@@ -1439,7 +1445,7 @@ where
     R::Cache: StorageCache,
 {
     let mut tmp_tables = info.extract_data();
-    let vdbe_max_steps = info.vdbe_max_steps();
+    let sql_vdbe_opcode_max = info.sql_vdbe_opcode_max();
     let max_rows = info.vtable_max_rows();
 
     // The statement was not found in the cache, so we need to prepare it.
@@ -1458,7 +1464,7 @@ where
                 &params,
                 &mut tmp_tables,
                 plan_id,
-                vdbe_max_steps,
+                sql_vdbe_opcode_max,
                 max_rows,
                 return_format,
             )?;
@@ -1485,7 +1491,7 @@ where
         &params,
         plan_id,
         &mut tmp_tables,
-        vdbe_max_steps,
+        sql_vdbe_opcode_max,
         max_rows,
         return_format,
     )
@@ -2136,7 +2142,7 @@ where
                 info.params(),
                 &mut tmp_tables,
                 info.id(),
-                info.vdbe_max_steps(),
+                info.sql_vdbe_opcode_max(),
                 info.vtable_max_rows(),
                 return_format,
             )
@@ -2146,7 +2152,7 @@ where
                 info.params(),
                 &mut tmp_tables,
                 info.id(),
-                info.vdbe_max_steps(),
+                info.sql_vdbe_opcode_max(),
                 info.vtable_max_rows(),
                 return_format,
             )
@@ -2389,7 +2395,7 @@ fn cache_hit<R: QueryCache, M: MutexLike<R::Cache>>(
     params: &[Value],
     tables: &mut EncodedTables,
     plan_id: &SmolStr,
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError>
@@ -2401,7 +2407,7 @@ where
         params,
         tables,
         plan_id,
-        vdbe_max_steps,
+        sql_vdbe_opcode_max,
         max_rows,
         return_format,
     )
@@ -2412,7 +2418,7 @@ fn cache_miss<R: QueryCache, M: MutexLike<R::Cache>>(
     params: &[Value],
     tables: &mut EncodedTables,
     plan_id: &SmolStr,
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError>
@@ -2424,7 +2430,7 @@ where
         params,
         tables,
         plan_id,
-        vdbe_max_steps,
+        sql_vdbe_opcode_max,
         max_rows,
         return_format,
     )

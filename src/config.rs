@@ -1668,7 +1668,7 @@ pub struct AlterSystemParameters {
 
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 45000)]
-    pub vdbe_max_steps: u64,
+    pub sql_vdbe_opcode_max: u64,
 
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5000)]

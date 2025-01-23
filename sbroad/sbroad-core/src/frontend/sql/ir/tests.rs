@@ -41,7 +41,7 @@ fn front_sql1() {
     selection ROW("hash_testing"."identification_number"::integer) = ROW(1::unsigned)
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -62,7 +62,7 @@ fn front_sql2() {
     selection ROW("hash_testing"."identification_number"::integer) = ROW(1::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('1'::string) or ROW("hash_testing"."identification_number"::integer) = ROW(2::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('2'::string)
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -96,7 +96,7 @@ fn front_sql3() {
                     selection ROW("hash_testing_hist"."sys_op"::unsigned) > ROW(1::unsigned)
                         scan "hash_testing_hist"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -134,7 +134,7 @@ fn front_sql4() {
                     selection ROW("hash_testing_hist"."sys_op"::unsigned) > ROW(1::unsigned)
                         scan "hash_testing_hist"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -161,7 +161,7 @@ motion [policy: full]
                     selection ROW("hash_testing_hist"."product_code"::string) = ROW('a'::string)
                         scan "hash_testing_hist"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -190,7 +190,7 @@ fn front_sql6() {
                     projection ("test_space"."id"::unsigned -> "id")
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -210,7 +210,7 @@ fn front_sql8() {
     selection ROW("t"."identification_number"::integer) = ROW(1::unsigned)
         scan "hash_testing" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -265,7 +265,7 @@ fn front_sql9() {
                             selection ROW("hash_single_testing_hist"."sys_op"::unsigned) <= ROW(0::unsigned)
                                 scan "hash_single_testing_hist"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -285,7 +285,7 @@ fn front_sql10() {
         values
             value row (data=ROW(1::unsigned, 2::unsigned, 3::unsigned, 4::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -305,7 +305,7 @@ fn front_sql11() {
         values
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -325,7 +325,7 @@ fn front_sql14() {
         projection ("t"."b"::unsigned -> "b", "t"."d"::unsigned -> "d")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -346,7 +346,7 @@ fn front_sql16() {
     selection ROW("hash_testing"."product_code"::string) = ROW('кириллица'::string)
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -366,7 +366,7 @@ fn front_sql17() {
     selection ROW("hash_testing"."product_code"::string) is null
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -386,7 +386,7 @@ fn front_sql18() {
     selection ROW("hash_testing"."product_code"::string) >= ROW(1::unsigned) and ROW("hash_testing"."product_code"::string) <= ROW(2::unsigned)
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -406,7 +406,7 @@ fn front_sql19() {
     selection not ROW("hash_testing"."product_code"::string) is null
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -421,7 +421,7 @@ fn front_sql_is_true() {
         vec![],
         r#"projection (ROW(true::boolean) = true::boolean -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -431,7 +431,7 @@ execution options:
         vec![],
         r#"projection (not ROW(true::boolean) = true::boolean -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -444,7 +444,7 @@ fn front_sql_is_false() {
         vec![],
         r#"projection (ROW(true::boolean) = false::boolean -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -454,7 +454,7 @@ execution options:
         vec![],
         r#"projection (not ROW(true::boolean) = false::boolean -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -467,7 +467,7 @@ fn front_sql_is_null_unknown() {
         vec![],
         r#"projection (ROW(true::boolean) is null -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -477,7 +477,7 @@ execution options:
         vec![],
         r#"projection (ROW(true::boolean) is null -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -487,7 +487,7 @@ execution options:
         vec![],
         r#"projection (not ROW(true::boolean) is null -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -497,7 +497,7 @@ execution options:
         vec![],
         r#"projection (not ROW(true::boolean) is null -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -529,7 +529,7 @@ fn front_sql_between_with_additional_and_from_left() {
     selection ROW("t"."id"::unsigned) > ROW(1::unsigned) and ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned)
         scan "test_space" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -550,7 +550,7 @@ fn front_sql_between_with_additional_not_from_left() {
     selection not (ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned)) and ROW(true::boolean)
         scan "test_space" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -571,7 +571,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
     selection ROW("t"."id"::unsigned) > ROW(1::unsigned) and ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned) and ROW(true::boolean)
         scan "test_space" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -593,7 +593,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
     selection not not (ROW(false::boolean) >= ROW(false::boolean) and ROW(false::boolean) <= ROW(true::boolean))
         scan "test_space" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -614,7 +614,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
     selection ROW(false::boolean) and ROW(true::boolean) and ROW(false::boolean) >= ROW(false::boolean) and ROW(false::boolean) <= ROW(true::boolean)
         scan "test_space" -> "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -665,7 +665,7 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
     selection ROW("hash_testing"."product_code"::string) = ROW('«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string)
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -681,7 +681,7 @@ fn front_sql_check_single_quotes_are_escaped() {
     let expected_explain = String::from(
         r#"projection (''::string -> "col_1", '''::string -> "col_2", 'left'right'::string -> "col_3", ''center''::string -> "col_4")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -701,7 +701,7 @@ fn front_sql_check_arbitraty_utf_in_identifiers() {
         r#"projection ("&%ښ۞@ƶǖ"."id"::unsigned -> "from", "&%ښ۞@ƶǖ"."id"::unsigned -> "select", "&%ښ۞@ƶǖ"."id"::unsigned -> "123»&%ښ۞@Ƶǖselect.""''\\", "&%ښ۞@ƶǖ"."id"::unsigned -> "aц1&@$ƶǖ%^&«»§&%ښ۞@ƶǖ")
     scan "test_space" -> "&%ښ۞@ƶǖ"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -722,7 +722,7 @@ fn front_sql_check_inapplicatable_symbols() {
         r#"projection (ROW("TBL"."A"::unsigned) * ROW("TBL"."A"::unsigned) -> "col_1", ROW("TBL"."B"::unsigned) + ROW("TBL"."B"::unsigned) -> "col_2", ROW("TBL"."A"::unsigned) - ROW("TBL"."A"::unsigned) -> "col_3")
     scan "TBL"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -740,7 +740,7 @@ fn front_projection_with_scan_specification_under_scan() {
         r#"projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op")
     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -765,7 +765,7 @@ fn front_projection_with_scan_specification_under_join() {
                 projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -791,7 +791,7 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
                 projection ("ts"."id"::unsigned -> "id", "ts"."sysFrom"::unsigned -> "sysFrom", "ts"."FIRST_NAME"::string -> "FIRST_NAME", "ts"."sys_op"::unsigned -> "sys_op")
                     scan "test_space" -> "ts"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -813,7 +813,7 @@ fn front_order_by_with_simple_select() {
                 projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -866,7 +866,7 @@ fn front_order_by_with_order_type_specification() {
                 projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -888,7 +888,7 @@ fn front_order_by_with_indices() {
                 projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -911,7 +911,7 @@ fn front_order_by_ordering_by_expressions_from_projection() {
                 projection ("test_space"."id"::unsigned -> "my_col", "test_space"."id"::unsigned -> "id")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -953,7 +953,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
                             projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
                                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -978,7 +978,7 @@ fn front_join_with_identical_columns() {
                 projection ("test_space"."sysFrom"::unsigned -> "sysFrom")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1016,7 +1016,7 @@ fn front_join_with_vtable_ambiguous_column_name() {
                                 projection ("test_space"."id"::unsigned -> "id")
                                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1037,7 +1037,7 @@ fn front_case_search() {
         r#"projection (case "test_space"."id"::unsigned when 1::unsigned then true::boolean end -> "col_1")
     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1062,7 +1062,7 @@ fn front_case_simple() {
         r#"projection (case when ROW(true::boolean) = ROW(true::boolean) then 'Moscow'::string when ROW(1::unsigned) <> ROW(2::unsigned) and ROW(4::unsigned) < ROW(5::unsigned) then 42::unsigned else false::boolean end -> "case_result")
     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1091,7 +1091,7 @@ fn front_case_nested() {
         r#"projection (case "test_space"."id"::unsigned when 1::unsigned then case "test_space"."sysFrom"::unsigned when 69::unsigned then true::boolean when 42::unsigned then false::boolean end when 2::unsigned then 42::unsigned else false::boolean end -> "case_result")
     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1115,7 +1115,7 @@ scan
             projection ("test_space"."id"::unsigned -> "id", "test_space"."id"::unsigned -> "id")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1251,7 +1251,7 @@ fn front_sql_join_on_bucket_id1() {
                 selection ROW("test_space"."id"::unsigned) = ROW(1::unsigned)
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1281,7 +1281,7 @@ fn front_sql_join_on_bucket_id2() {
                     selection ROW("test_space"."id"::unsigned) = ROW(1::unsigned)
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1305,7 +1305,7 @@ fn front_sql_groupby_on_bucket_id() {
             projection ("t2"."bucket_id"::unsigned -> "b")
                 scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1333,7 +1333,7 @@ scan
             projection ("test_space"."bucket_id"::unsigned -> "bucket_id", "test_space"."id"::unsigned -> "id")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1358,7 +1358,7 @@ fn front_sql_except_on_bucket_id() {
     projection ("test_space"."id"::unsigned -> "id", "test_space"."bucket_id"::unsigned -> "bucket_id")
         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1382,7 +1382,7 @@ motion [policy: full]
                 projection (0::unsigned -> "col_1")
                     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1406,7 +1406,7 @@ motion [policy: full]
                 projection (0::unsigned -> "col_1")
                     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1431,7 +1431,7 @@ motion [policy: full]
                     selection ROW("hash_testing"."identification_number"::integer) <> ROW(42::unsigned)
                         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1452,7 +1452,7 @@ fn front_sql_groupby() {
                 group by ("hash_testing"."identification_number"::integer, "hash_testing"."product_code"::string) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
                     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1478,7 +1478,7 @@ fn front_sql_groupby_less_cols_in_proj() {
                 group by ("hash_testing"."identification_number"::integer, "hash_testing"."product_units"::boolean) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
                     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1507,7 +1507,7 @@ fn front_sql_groupby_union_1() {
     projection ("hash_testing"."identification_number"::integer -> "identification_number")
         scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1541,7 +1541,7 @@ fn front_sql_groupby_union_2() {
                 projection ("hash_testing"."identification_number"::integer -> "identification_number")
                     scan "hash_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1575,7 +1575,7 @@ fn front_sql_groupby_join_1() {
                                 projection ("test_space"."id"::unsigned -> "id")
                                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1604,7 +1604,7 @@ fn front_sql_join() {
                 projection ("test_space"."id"::unsigned -> "id")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1628,7 +1628,7 @@ execution options:
             projection ("test_space"."id"::unsigned -> "id")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1657,7 +1657,7 @@ execution options:
                         projection (sum(("test_space"."id"::unsigned))::decimal -> "sum_1796")
                             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1681,7 +1681,7 @@ fn front_sql_groupby_insert() {
                         group by ("t"."b"::unsigned, "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1731,7 +1731,7 @@ fn front_sql_aggregates() {
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1759,7 +1759,7 @@ fn front_sql_distinct_asterisk() {
                                 projection ("test_space"."id"::unsigned -> "id")
                                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -1778,7 +1778,7 @@ fn front_sql_avg_aggregate() {
             group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1799,7 +1799,7 @@ fn front_sql_total_aggregate() {
             group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1821,7 +1821,7 @@ fn front_sql_min_aggregate() {
             group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1843,7 +1843,7 @@ fn front_sql_max_aggregate() {
             group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1865,7 +1865,7 @@ fn front_sql_group_concat_aggregate() {
             group by ("test_space"."FIRST_NAME"::string) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1887,7 +1887,7 @@ fn front_sql_group_concat_aggregate2() {
             group by ("test_space"."FIRST_NAME"::string) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1907,7 +1907,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
         projection (group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_696")
             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1923,7 +1923,7 @@ execution options:
                 group by ("test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1941,7 +1941,7 @@ fn front_sql_count_asterisk1() {
         projection (count((*::integer))::integer -> "count_596")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -1964,7 +1964,7 @@ fn front_sql_count_asterisk2() {
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2003,7 +2003,7 @@ fn front_sql_aggregates_with_subexpressions() {
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2025,7 +2025,7 @@ fn front_sql_aggregates_with_distinct1() {
                 group by ("t"."b"::unsigned, "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2049,7 +2049,7 @@ fn front_sql_aggregates_with_distinct2() {
                 group by ("t"."b"::unsigned, ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2071,7 +2071,7 @@ fn front_sql_aggregates_with_distinct3() {
             group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2114,14 +2114,14 @@ fn front_sql_column_outside_aggregate_no_groupby() {
 
 #[test]
 fn front_sql_option_basic() {
-    let input = r#"select * from "t" option(vdbe_max_steps = 1000, vtable_max_rows = 10)"#;
+    let input = r#"select * from "t" option(sql_vdbe_opcode_max = 1000, vtable_max_rows = 10)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = String::from(
         r#"projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
     scan "t"
 execution options:
-    vdbe_max_steps = 1000
+    sql_vdbe_opcode_max = 1000
     vtable_max_rows = 10
 "#,
     );
@@ -2130,14 +2130,14 @@ execution options:
 
 #[test]
 fn front_sql_option_with_param() {
-    let input = r#"select * from "t" option(vdbe_max_steps = ?, vtable_max_rows = ?)"#;
+    let input = r#"select * from "t" option(sql_vdbe_opcode_max = ?, vtable_max_rows = ?)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1000), Value::Unsigned(10)]);
     let expected_explain = String::from(
         r#"projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
     scan "t"
 execution options:
-    vdbe_max_steps = 1000
+    sql_vdbe_opcode_max = 1000
     vtable_max_rows = 10
 "#,
     );
@@ -2156,7 +2156,7 @@ fn front_sql_pg_style_params1() {
         r#"projection (1000::unsigned -> "col_1", 'hi'::string -> "col_2", 1000::unsigned -> "col_3")
     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2165,7 +2165,8 @@ execution options:
 
 #[test]
 fn front_sql_pg_style_params2() {
-    let input = r#"select $1, $2, $1 from "t" option(vdbe_max_steps = $1, vtable_max_rows = $1)"#;
+    let input =
+        r#"select $1, $2, $1 from "t" option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#;
 
     let plan = sql_to_optimized_ir(
         input,
@@ -2175,7 +2176,7 @@ fn front_sql_pg_style_params2() {
         r#"projection (1000::unsigned -> "col_1", 'hi'::string -> "col_2", 1000::unsigned -> "col_3")
     scan "t"
 execution options:
-    vdbe_max_steps = 1000
+    sql_vdbe_opcode_max = 1000
     vtable_max_rows = 1000
 "#,
     );
@@ -2188,7 +2189,7 @@ fn front_sql_pg_style_params3() {
         where "a" = $1
         group by "a" + $1
         having count("b") > $1
-        option(vdbe_max_steps = $1, vtable_max_rows = $1)"#;
+        option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(42)]);
     let expected_explain = String::from(
@@ -2201,7 +2202,7 @@ fn front_sql_pg_style_params3() {
                         selection ROW("t"."a"::unsigned) = ROW(42::unsigned)
                             scan "t"
 execution options:
-    vdbe_max_steps = 42
+    sql_vdbe_opcode_max = 42
     vtable_max_rows = 42
 "#,
     );
@@ -2245,7 +2246,7 @@ fn front_sql_option_defaults() {
     selection ROW("t"."a"::unsigned) = ROW(1000::unsigned) and ROW("t"."b"::unsigned) = ROW(10::unsigned)
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2280,7 +2281,7 @@ fn front_sql_aggregate_without_groupby() {
         projection (sum((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned) + ROW(1::unsigned)))::decimal -> "sum_796")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2302,7 +2303,7 @@ fn front_sql_aggregate_without_groupby2() {
                 projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2324,7 +2325,7 @@ fn front_sql_aggregate_on_aggregate() {
                 projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2352,7 +2353,7 @@ fn front_sql_union_single_left() {
                 projection (sum(("t"."a"::unsigned))::decimal -> "sum_1296")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2381,7 +2382,7 @@ fn front_sql_union_single_right() {
     projection ("t"."a"::unsigned -> "a")
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2413,7 +2414,7 @@ fn front_sql_union_single_both() {
                 projection (sum(("t"."a"::unsigned))::decimal -> "sum_1396")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2436,7 +2437,7 @@ fn front_sql_insert_single() {
                 projection (count(("t"."d"::unsigned))::integer -> "count_896", sum(("t"."b"::unsigned))::decimal -> "sum_696")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2463,7 +2464,7 @@ fn front_sql_except_single_right() {
                 projection (sum(("t"."a"::unsigned))::decimal -> "sum_1396", count(("t"."b"::unsigned))::integer -> "count_1596")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2488,7 +2489,7 @@ execution options:
                 projection (sum(("t"."a"::unsigned))::decimal -> "sum_1396", count(("t"."b"::unsigned))::integer -> "count_1596")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2515,7 +2516,7 @@ fn front_sql_except_single_left() {
     projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2545,7 +2546,7 @@ fn front_sql_except_single_both() {
                 projection (sum(("t"."a"::unsigned))::decimal -> "sum_1596", sum(("t"."b"::unsigned))::decimal -> "sum_1796")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2568,7 +2569,7 @@ fn front_sql_groupby_expression() {
                 group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2592,7 +2593,7 @@ fn front_sql_groupby_expression2() {
                 group by ((ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned))) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2615,7 +2616,7 @@ fn front_sql_groupby_expression3() {
                 group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned), (ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned))) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2638,7 +2639,7 @@ fn front_sql_groupby_expression4() {
                 group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned), "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2674,7 +2675,7 @@ fn front_sql_groupby_with_aggregates() {
                                 group by ("t2"."g"::unsigned, "t2"."e"::unsigned) output: ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t2"."bucket_id"::unsigned -> "bucket_id")
                                     scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2702,7 +2703,7 @@ fn front_sql_left_join() {
                 projection ("t"."b"::unsigned -> "c", "t"."d"::unsigned -> "d")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2734,7 +2735,7 @@ fn front_sql_left_join_single_left() {
                 projection ("test_space"."id"::unsigned -> "b")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2768,7 +2769,7 @@ fn front_sql_left_join_single_left2() {
                 projection ("test_space"."id"::unsigned -> "b")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2802,7 +2803,7 @@ fn front_sql_left_join_single_both() {
                     projection (count(("test_space"."id"::unsigned))::integer -> "count_1496")
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2834,7 +2835,7 @@ motion [policy: full]
                     selection ROW("t1"."a"::string) in ROW($0)
                         scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2859,7 +2860,7 @@ fn front_sql_having1() {
                     group by ("t"."a"::unsigned, "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2883,7 +2884,7 @@ fn front_sql_having2() {
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2906,7 +2907,7 @@ fn front_sql_having3() {
             projection (sum(("t"."a"::unsigned))::decimal -> "sum_1396")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -2955,7 +2956,7 @@ motion [policy: full]
                     selection ROW("test_space"."sysFrom"::unsigned) = ROW(2::unsigned)
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3005,7 +3006,7 @@ motion [policy: segment([ref("a"), ref("d")])]
                 projection ("t"."a"::unsigned -> "a", "t"."d"::unsigned -> "d")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3039,7 +3040,7 @@ scan
             projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3061,7 +3062,7 @@ fn front_sql_unique_local_aggregates() {
         projection (count(("t"."a"::unsigned))::integer -> "count_896", sum(("t"."a"::unsigned))::decimal -> "sum_696")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3087,7 +3088,7 @@ fn front_sql_unique_local_groupings() {
                 group by ("t"."b"::unsigned, "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3128,7 +3129,7 @@ ON "t3"."a" = "ij"."id"
                         projection ("test_space"."id"::unsigned -> "id")
                             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3151,7 +3152,7 @@ fn front_sql_select_distinct() {
                 group by ("t"."a"::unsigned, ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3173,7 +3174,7 @@ fn front_sql_select_distinct_asterisk() {
                 group by ("t"."a"::unsigned, "t"."b"::unsigned, "t"."c"::unsigned, "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3212,7 +3213,7 @@ fn front_sql_select_distinct_with_aggr() {
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3232,7 +3233,7 @@ fn front_sql_select_distinct_with_aggr2() {
         projection (sum(("t"."a"::unsigned))::decimal -> "sum_696")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3252,7 +3253,7 @@ fn front_sql_insert_on_conflict() {
         values
             value row (data=ROW(1::unsigned, 1::unsigned, 1::unsigned, 1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3266,7 +3267,7 @@ execution options:
         values
             value row (data=ROW(1::unsigned, 1::unsigned, 1::unsigned, 1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3287,7 +3288,7 @@ fn front_sql_insert_1() {
             selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned) or ROW("t"."a"::unsigned) = ROW(2::unsigned) and ROW("t"."b"::unsigned) = ROW(3::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3307,7 +3308,7 @@ fn front_sql_insert_2() {
             selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3328,7 +3329,7 @@ fn front_sql_insert_3() {
             selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned) or ROW("t"."a"::unsigned) = ROW(3::unsigned) and ROW("t"."b"::unsigned) = ROW(4::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3348,7 +3349,7 @@ fn front_sql_insert_4() {
             selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3368,7 +3369,7 @@ fn front_sql_insert_5() {
             selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3390,7 +3391,7 @@ fn front_sql_insert_6() {
             value row (data=ROW(1::unsigned, 2::unsigned))
             value row (data=ROW(3::unsigned, 4::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3424,7 +3425,7 @@ fn front_sql_insert_8() {
         projection ("hash_single_testing"."identification_number"::integer -> "identification_number", "hash_single_testing"."product_code"::string -> "product_code", "hash_single_testing"."product_units"::boolean -> "product_units", "hash_single_testing"."sys_op"::unsigned -> "sys_op")
             scan "hash_single_testing"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3442,7 +3443,7 @@ fn front_sql_insert_9() {
         values
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3464,7 +3465,7 @@ fn front_sql_update1() {
         projection (1::unsigned -> "col_0", "t"."b"::unsigned -> "col_1", "t"."c"::unsigned -> "col_2", "t"."d"::unsigned -> "col_3", "t"."a"::unsigned -> "col_4", "t"."b"::unsigned -> "col_5")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3483,7 +3484,7 @@ fn front_sql_update2() {
         projection (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) -> "col_0", "t"."b"::unsigned -> "col_1")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3503,7 +3504,7 @@ fn front_sql_update3() {
             selection ROW("t"."c"::unsigned) = ROW(1::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3534,7 +3535,7 @@ fn front_sql_update4() {
                         projection ("t1"."a"::string -> "a1", "t1"."b"::integer -> "b1")
                             scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3562,7 +3563,7 @@ fn front_sql_update5() {
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op")
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3591,7 +3592,7 @@ motion [policy: full]
                                 projection (sum(("t3"."b"::integer))::decimal -> "sum_796")
                                     scan "t3"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -3610,7 +3611,7 @@ fn front_sql_not_true() {
     selection not ROW(true::boolean)
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3629,7 +3630,7 @@ fn front_sql_not_equal() {
             values
                 value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3648,7 +3649,7 @@ fn front_sql_not_cast() {
             values
                 value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3667,7 +3668,7 @@ fn from_sql_not_column() {
             values
                 value row (data=ROW(true::boolean))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3686,7 +3687,7 @@ fn front_sql_not_or() {
             values
                 value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3704,7 +3705,7 @@ fn front_sql_not_and_with_parentheses() {
         values
             value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3723,7 +3724,7 @@ fn front_sql_not_or_with_parentheses() {
             values
                 value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3748,7 +3749,7 @@ scan
                     values
                         value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3774,7 +3775,7 @@ motion [policy: full]
                         values
                             value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3811,7 +3812,7 @@ scan
                         values
                             value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3829,7 +3830,7 @@ fn front_sql_arithmetic_with_parentheses() {
         values
             value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3847,7 +3848,7 @@ fn front_sql_to_date() {
         values
             value row (data=ROW('2010/10/10'::string))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     )
@@ -3869,7 +3870,7 @@ fn front_sql_current_date() {
             values
                 value row (data=ROW('2010/10/10'::string))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
         today = today.format(&format).unwrap()
@@ -4073,7 +4074,7 @@ scan
         values
             value row (data=ROW(2::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4095,7 +4096,7 @@ scan
                 values
                     value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4119,7 +4120,7 @@ scan
         values
             value row (data=ROW(ROW($0)))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4147,7 +4148,7 @@ scan
                     values
                         value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4163,7 +4164,7 @@ fn front_select_without_scan() {
     let expected_explain = String::from(
         r#"projection (1::unsigned -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4189,7 +4190,7 @@ scan
         values
             value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4235,7 +4236,7 @@ motion [policy: full]
             projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
                 scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4258,7 +4259,7 @@ subquery $1:
 scan
         projection (1::unsigned -> "col_1")
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -4275,7 +4276,7 @@ fn front_sql_check_concat_with_parameters() {
         r#"values
     value row (data=ROW(ROW('a'::string) || ROW('b'::string)))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

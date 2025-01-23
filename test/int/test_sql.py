@@ -291,7 +291,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "password_min_length",
         "snapshot_chunk_max_size",
         "snapshot_read_view_close_timeout",
-        "vdbe_max_steps",
+        "sql_vdbe_opcode_max",
         "vtable_max_rows",
     ]
 
@@ -477,7 +477,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
         projection ("t"."x"::integer -> "x", "t"."y"::integer -> "y")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -2005,13 +2005,13 @@ def test_sql_limits(cluster: Cluster):
     ):
         i1.sql(
             """
-        select * from "t" where "a" = 1 option(vdbe_max_steps=5)
+        select * from "t" where "a" = 1 option(sql_vdbe_opcode_max=5)
     """
         )
 
     dql = i1.sql(
         """
-        select * from "t" where "a" = 1 option(vdbe_max_steps=50)
+        select * from "t" where "a" = 1 option(sql_vdbe_opcode_max=50)
     """
     )
     assert dql == [[1, 1]]
@@ -2022,7 +2022,7 @@ def test_sql_limits(cluster: Cluster):
     ):
         i1.sql(
             """
-        select * from "t" option(vtable_max_rows=1, vdbe_max_steps=50)
+        select * from "t" option(vtable_max_rows=1, sql_vdbe_opcode_max=50)
     """
         )
 
@@ -3341,7 +3341,7 @@ def test_call_procedure(cluster: Cluster):
     )
     assert data["row_count"] == 1
     data = i1.retriable_sql(
-        """ call "proc2"($1) option(vdbe_max_steps = $1, vtable_max_rows = $1)""",
+        """ call "proc2"($1) option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)""",
         5,
         fatal_predicate=r"Duplicate key exists in unique index",
     )
@@ -4604,7 +4604,7 @@ def test_metadata(instance: Instance):
     # - - projection (1::unsigned -> "col_1")
     #   - '    scan "G"'
     #   - 'execution options:'
-    #   -     vdbe_max_steps = 45000
+    #   -     sql_vdbe_opcode_max = 45000
     #   -     vtable_max_rows = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
@@ -5644,7 +5644,7 @@ def test_explain(cluster: Cluster):
     expected_explain = """projection ("t"."a"::integer -> "a")
     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5655,7 +5655,7 @@ buckets = [1-3000]"""
     selection ROW("t"."a"::integer) = ROW(1::unsigned)
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1934]"""
     assert "\n".join(lines) == expected_explain
@@ -5665,7 +5665,7 @@ buckets = [1934]"""
     selection ROW("t"."a"::integer) = ROW(1::unsigned) and ROW("t"."a"::integer) = ROW(2::unsigned)
         scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = []"""
     assert "\n".join(lines) == expected_explain
@@ -5683,7 +5683,7 @@ buckets = []"""
                 projection ("t2"."a"::integer -> "a", "t2"."b"::integer -> "b")
                     scan "t" -> "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown"""
     assert "\n".join(lines) == expected_explain
@@ -5693,7 +5693,7 @@ buckets = unknown"""
     expected_explain = """projection ("_pico_table"."id"::unsigned -> "id")
     scan "_pico_table"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any"""
     assert "\n".join(lines) == expected_explain
@@ -5708,7 +5708,7 @@ buckets = any"""
         projection ("t"."a"::integer -> "a")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5722,7 +5722,7 @@ buckets = [1-3000]"""
         values
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown"""
     assert "\n".join(lines) == expected_explain
@@ -5734,7 +5734,7 @@ buckets = unknown"""
         projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5748,7 +5748,7 @@ buckets = [1-3000]"""
             selection ROW("t"."b"::integer) = ROW(3::unsigned)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5766,7 +5766,7 @@ buckets = [1-3000]"""
             selection ROW("t2"."d"::integer) = ROW(2::unsigned) or ROW("t2"."d"::integer) = ROW(2002::unsigned)
                 scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown"""  # noqa: E501
     assert "\n".join(lines) == expected_explain
@@ -5775,7 +5775,7 @@ buckets = unknown"""  # noqa: E501
     lines = i1.sql("explain delete from t")
     expected_explain = """delete "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5789,7 +5789,7 @@ buckets = [1-3000]"""
         projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
             scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5800,7 +5800,7 @@ buckets = [1-3000]"""
         projection ("g"."u"::integer -> "u", "g"."v"::integer -> "v")
             scan "g"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any"""
     assert "\n".join(lines) == expected_explain
@@ -5893,21 +5893,21 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
     expected_explain = """projection ("t"."a"::integer -> "a")
     scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
-    new_vdbe_max_steps = 50000
-    ddl = i1.sql(f"ALTER SYSTEM SET vdbe_max_steps = {new_vdbe_max_steps}")
+    new_sql_vdbe_opcode_max = 50000
+    ddl = i1.sql(f"ALTER SYSTEM SET sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}")
     assert ddl["row_count"] == 1
 
-    # Default value for vdbe_max_steps changed
+    # Default value for sql_vdbe_opcode_max changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     expected_explain = f"""projection ("t"."a"::integer -> "a")
     scan "t"
 execution options:
-    vdbe_max_steps = {new_vdbe_max_steps}
+    sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
     vtable_max_rows = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
@@ -5917,12 +5917,12 @@ buckets = [1-3000]"""
     assert ddl["row_count"] == 1
 
     # Default value for new_vtable_max_rows changed and
-    # value for new_vdbe_max_steps hasn't changed
+    # value for new_sql_vdbe_opcode_max hasn't changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     expected_explain = f"""projection ("t"."a"::integer -> "a")
     scan "t"
 execution options:
-    vdbe_max_steps = {new_vdbe_max_steps}
+    sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
     vtable_max_rows = {new_vtable_max_rows}
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain

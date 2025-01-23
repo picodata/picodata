@@ -3243,9 +3243,9 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn vdbe_max_steps(&self) -> tarantool::Result<u64> {
+    pub fn sql_vdbe_opcode_max(&self) -> tarantool::Result<u64> {
         #[rustfmt::skip]
-        let res: u64 = self.get_or_default(system_parameter_name!(vdbe_max_steps))?;
+        let res: u64 = self.get_or_default(system_parameter_name!(sql_vdbe_opcode_max))?;
         Ok(res)
     }
 }

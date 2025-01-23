@@ -64,7 +64,7 @@ pub mod undo;
 pub mod value;
 
 pub const DEFAULT_VTABLE_MAX_ROWS: u64 = 5000;
-pub const DEFAULT_VDBE_MAX_STEPS: u64 = 45000;
+pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
 
 /// Plan nodes storage.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -611,14 +611,14 @@ pub struct OptionSpec {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 pub enum OptionKind {
-    VdbeMaxSteps,
+    VdbeOpcodeMax,
     VTableMaxRows,
 }
 
 impl Display for OptionKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            OptionKind::VdbeMaxSteps => "vdbe_max_steps",
+            OptionKind::VdbeOpcodeMax => "sql_vdbe_opcode_max",
             OptionKind::VTableMaxRows => "vtable_max_rows",
         };
         write!(f, "{s}")
@@ -640,22 +640,22 @@ pub struct Options {
     /// if one of the storages returns `a` or more rows, the OOM will occur.
     pub vtable_max_rows: u64,
     /// Options passed to `box.execute` function on storages. Currently there is only one option
-    /// `vdbe_max_steps`.
-    pub vdbe_max_steps: u64,
+    /// `sql_vdbe_opcode_max`.
+    pub sql_vdbe_opcode_max: u64,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options::new(DEFAULT_VTABLE_MAX_ROWS, DEFAULT_VDBE_MAX_STEPS)
+        Options::new(DEFAULT_VTABLE_MAX_ROWS, DEFAULT_SQL_VDBE_OPCODE_MAX)
     }
 }
 
 impl Options {
     #[must_use]
-    pub fn new(vtable_max_rows: u64, vdbe_max_steps: u64) -> Self {
+    pub fn new(vtable_max_rows: u64, sql_vdbe_opcode_max: u64) -> Self {
         Options {
             vtable_max_rows,
-            vdbe_max_steps,
+            sql_vdbe_opcode_max,
         }
     }
 }
@@ -900,7 +900,7 @@ impl Plan {
                 return Err(SbroadError::Invalid(Entity::OptionSpec, None));
             };
             match opt.kind {
-                OptionKind::VdbeMaxSteps => {
+                OptionKind::VdbeOpcodeMax => {
                     if values_count.is_some() {
                         warn!(
                             Option::from("apply_options"),
@@ -908,7 +908,7 @@ impl Plan {
                         );
                     }
                     if let Value::Unsigned(num) = val {
-                        self.options.vdbe_max_steps = num;
+                        self.options.sql_vdbe_opcode_max = num;
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::OptionSpec,

@@ -12,7 +12,7 @@ fn lower_upper() {
         r#"projection (upper((lower((ROW('a'::string) || ROW('B'::string)))::string))::string -> "col_1", upper(("t1"."a"::string))::string -> "col_2")
     scan "t1"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

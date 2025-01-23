@@ -190,8 +190,8 @@ impl<'sn> RequiredPlanInfo for LocalExecutionQueryInfo<'sn> {
         self.exec_plan.encode_vtables()
     }
 
-    fn vdbe_max_steps(&self) -> u64 {
-        self.exec_plan.get_ir_plan().options.vdbe_max_steps
+    fn sql_vdbe_opcode_max(&self) -> u64 {
+        self.exec_plan.get_ir_plan().options.sql_vdbe_opcode_max
     }
 
     fn vtable_max_rows(&self) -> u64 {

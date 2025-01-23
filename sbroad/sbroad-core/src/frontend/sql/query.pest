@@ -276,11 +276,11 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
 
     DqlOption = !{ ^"option" ~ "(" ~ OprionParams ~ ")" }
         OprionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
-    OptionParam = _{ VdbeMaxSteps | VTableMaxRows }
+    OptionParam = _{ VdbeOpcodeMax | VTableMaxRows }
     Timeout = !{ ^"timeout" ~ "=" ~ Duration }
        Duration = @{ Unsigned ~ ("." ~ Unsigned)? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
-    VdbeMaxSteps = { ^"vdbe_max_steps" ~ "=" ~ (Unsigned | Parameter) }
+    VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ "=" ~ (Unsigned | Parameter) }
     VTableMaxRows = { ^"vtable_max_rows" ~ "=" ~ (Unsigned | Parameter) }
     Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
@@ -318,7 +318,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
 Deallocate = ${ ^"deallocate" ~ (WithPrepare | WithoutPrepare) }
     WithPrepare = _{ W ~ ^"prepare" ~ W ~ (^"all" | Identifier) }
     WithoutPrepare = _{ W ~ (^"all" | Identifier) }
-    
+
 TCL = _{ Begin | Commit | Rollback }
     Begin = { ^"begin" }
     Commit = { ^"commit" }

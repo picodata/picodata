@@ -3,7 +3,7 @@ import pytest
 from conftest import Postgres
 
 
-def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
+def test_sql_vdbe_opcode_max_and_vtable_max_rows_options(postgres: Postgres):
     user = "postgres"
     password = "Passw0rd"
     admin_password = "T0psecret"
@@ -26,19 +26,19 @@ def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
     ):
         conn.execute("SELECT * FROM (VALUES (1), (2))")
 
-    # Check if it still fails with "vdbe_max_steps" provided.
+    # Check if it still fails with "sql_vdbe_opcode_max" provided.
     with pytest.raises(
         psycopg.InternalError,
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
-        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (VDBE_MAX_STEPS = 1000)")
+        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
 
     # Specify "vtable_max_rows" in a query so the default is not used.
     conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (VTABLE_MAX_ROWS = 2)")
 
-    # Set the default for "vdbe_max_steps" to 1.
+    # Set the default for "sql_vdbe_opcode_max" to 1.
     conn = psycopg.connect(
-        f"postgres://{user}:{password}@{host}:{port}?options=vdbe_max_steps%3D1",
+        f"postgres://{user}:{password}@{host}:{port}?options=sql_vdbe_opcode_max%3D1",
         autocommit=True,
     )
     with pytest.raises(
@@ -54,13 +54,13 @@ def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
     ):
         conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (VTABLE_MAX_ROWS = 1000)")
 
-    # Specify "vdbe_max_steps" in a query so the default is not used.
-    conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (VDBE_MAX_STEPS = 1000)")
+    # Specify "sql_vdbe_opcode_max" in a query so the default is not used.
+    conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
 
-    # Set both options and reach "vdbe_max_steps" limit.
+    # Set both options and reach "sql_vdbe_opcode_max" limit.
     conn = psycopg.connect(
         f"postgres://{user}:{password}@{host}:{port}?"
-        "options=vtable_max_rows%3D1,vdbe_max_steps%3D1",
+        "options=vtable_max_rows%3D1,sql_vdbe_opcode_max%3D1",
         autocommit=True,
     )
     with pytest.raises(
@@ -72,7 +72,7 @@ def test_vdbe_max_steps_and_vtable_max_rows_options(postgres: Postgres):
     # Set both options and reach "vtable_max_rows" limit.
     conn = psycopg.connect(
         f"postgres://{user}:{password}@{host}:{port}?"
-        "options=vtable_max_rows%3D1,vdbe_max_steps%3D1000",
+        "options=vtable_max_rows%3D1,sql_vdbe_opcode_max%3D1000",
         autocommit=True,
     )
     with pytest.raises(

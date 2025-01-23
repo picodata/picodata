@@ -8,7 +8,7 @@ fn delete1_test() {
             "{}\n{}\n{}\n{}\n",
             r#"delete "t1""#,
             r#"execution options:"#,
-            r#"    vdbe_max_steps = 45000"#,
+            r#"    sql_vdbe_opcode_max = 45000"#,
             r#"    vtable_max_rows = 5000"#,
         ),
     );
@@ -26,7 +26,7 @@ fn delete2_test() {
             r#"            selection ROW("t1"."a"::string) > ROW(3::unsigned)"#,
             r#"                scan "t1""#,
             r#"execution options:"#,
-            r#"    vdbe_max_steps = 45000"#,
+            r#"    sql_vdbe_opcode_max = 45000"#,
             r#"    vtable_max_rows = 5000"#,
         ),
     );
@@ -49,7 +49,7 @@ fn delete3_test() {
             r#"                        projection ("t1"."b"::integer -> "b")"#,
             r#"                            scan "t1""#,
             r#"execution options:"#,
-            r#"    vdbe_max_steps = 45000"#,
+            r#"    sql_vdbe_opcode_max = 45000"#,
             r#"    vtable_max_rows = 5000"#,
         ),
     );

@@ -210,7 +210,7 @@ left_join.test_left_join_local_execution = function()
         "            projection (\"arithmetic_space2\".\"id\"::integer -> \"B\")",
         "                scan \"arithmetic_space2\"",
         "execution options:",
-        "    vdbe_max_steps = 45000",
+        "    sql_vdbe_opcode_max = 45000",
         "    vtable_max_rows = 5000",
         "buckets = [1-30000]"
     })
@@ -253,7 +253,7 @@ left_join.test_inner_segment_motion = function()
         "                projection (\"arithmetic_space2\".\"a\"::integer -> \"B\")",
         "                    scan \"arithmetic_space2\"",
         "execution options:",
-        "    vdbe_max_steps = 45000",
+        "    sql_vdbe_opcode_max = 45000",
         "    vtable_max_rows = 5000",
         "buckets = unknown"
     })
@@ -295,7 +295,7 @@ left_join.test_inner_full_motion = function()
         "                projection (\"arithmetic_space2\".\"a\"::integer -> \"B\")",
         "                    scan \"arithmetic_space2\"",
         "execution options:",
-        "    vdbe_max_steps = 45000",
+        "    sql_vdbe_opcode_max = 45000",
         "    vtable_max_rows = 5000",
         "buckets = [1-30000]"
     })
@@ -420,7 +420,7 @@ left_join.test_sq_with_full_motion = function()
         "                projection (ROW(\"arithmetic_space\".\"a\"::integer) + ROW(1::unsigned) -> \"col_1\")",
         "                    scan \"arithmetic_space\"",
         "execution options:",
-        "    vdbe_max_steps = 45000",
+        "    sql_vdbe_opcode_max = 45000",
         "    vtable_max_rows = 5000",
         "buckets = [1-30000]"
     })
@@ -469,7 +469,7 @@ left_join.test_sq_with_segment_motion = function()
         "                projection (\"arithmetic_space\".\"c\"::integer -> \"c\")",
         "                    scan \"arithmetic_space\"",
         "execution options:",
-        "    vdbe_max_steps = 45000",
+        "    sql_vdbe_opcode_max = 45000",
         "    vtable_max_rows = 5000",
         "buckets = unknown"
     })

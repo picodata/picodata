@@ -89,7 +89,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact('projection ("ids"."id"::integer -> "id")')
     cli.expect_exact('scan "ids"')
     cli.expect_exact("execution options:")
-    cli.expect_exact("vdbe_max_steps = 45000")
+    cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
     cli.expect_exact("buckets = [1-3000]")
 
@@ -368,7 +368,7 @@ def test_sql_explain_ok(cluster: Cluster):
         "value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))"
     )
     cli.expect_exact("execution options:")
-    cli.expect_exact("vdbe_max_steps = 45000")
+    cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
     cli.expect_exact("buckets = unknown")
 
@@ -382,7 +382,7 @@ def test_sql_explain_ok(cluster: Cluster):
     )
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
-    cli.expect_exact("vdbe_max_steps = 45000")
+    cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
     cli.expect_exact("buckets = [1-3000]")
 
@@ -401,7 +401,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
-    cli.expect_exact("vdbe_max_steps = 45000")
+    cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
     cli.expect_exact("buckets = [1410]")
 

@@ -1400,7 +1400,7 @@ fn subtree_hash1() {
 fn subtree_hash2() {
     check_subtree_hashes_are_equal(
         r#"select ?, ? from "t"
-        option(vdbe_max_steps = ?, vtable_max_rows = ?)"#,
+        option(sql_vdbe_opcode_max = ?, vtable_max_rows = ?)"#,
         vec![
             Value::Unsigned(1),
             Value::Unsigned(11),
@@ -1408,7 +1408,7 @@ fn subtree_hash2() {
             Value::Unsigned(10),
         ],
         r#"select $1, $1 from "t"
-        option(vdbe_max_steps = $1, vtable_max_rows = $1)"#,
+        option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#,
         vec![Value::Unsigned(1)],
     );
 }
@@ -1443,7 +1443,7 @@ fn check_parentheses() {
 fn subtree_hash3() {
     check_subtree_hashes_are_equal(
         r#"select ?, ? from "t"
-        option(vdbe_max_steps = ?)"#,
+        option(sql_vdbe_opcode_max = ?)"#,
         vec![Value::Unsigned(1), Value::Unsigned(11), Value::Unsigned(10)],
         r#"select ?, ? from "t""#,
         vec![Value::Unsigned(1), Value::Unsigned(1)],

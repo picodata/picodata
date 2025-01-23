@@ -30,7 +30,7 @@ fn milti_join1() {
                     projection ("test_space"."id"::unsigned -> "id")
                         scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -61,7 +61,7 @@ fn milti_join2() {
                 projection ("t4"."c"::string -> "c", "t4"."d"::integer -> "d")
                     scan "t4"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -97,7 +97,7 @@ fn milti_join3() {
                 projection ("t4"."c"::string -> "c", "t4"."d"::integer -> "d")
                     scan "t4"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -128,7 +128,7 @@ fn milti_join4() {
                 projection ("t3"."a"::string -> "a", "t3"."b"::integer -> "b")
                     scan "t3"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

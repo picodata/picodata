@@ -18,7 +18,7 @@ motion [policy: full]
             projection ("test_space"."FIRST_NAME"::string -> "a")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -37,7 +37,7 @@ subquery $0:
 projection ("global_t"."a"::integer -> "a")
             scan "global_t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -64,7 +64,7 @@ subquery $1:
 projection ("cte1"."a"::string -> "a")
             scan cte cte1($0)
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -92,7 +92,7 @@ motion [policy: full]
                 projection ("test_space"."FIRST_NAME"::string -> "a")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -130,7 +130,7 @@ projection ("cte"."FIRST_NAME"::string -> "a")
                                 projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
                                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -162,7 +162,7 @@ motion [policy: full]
                                     values
                                         value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -190,7 +190,7 @@ motion [policy: full]
                 projection ("test_space"."FIRST_NAME"::string -> "a")
                     scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -213,7 +213,7 @@ motion [policy: full]
             projection ("test_space"."FIRST_NAME"::string -> "a")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -242,7 +242,7 @@ scan
             projection ("cte"."a"::string -> "a")
                 scan cte cte($0)
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -267,7 +267,7 @@ motion [policy: full]
                     values
                         value row (data=ROW('a'::string))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -300,7 +300,7 @@ motion [policy: full]
                 projection ("cte1"."a"::string -> "a")
                     scan cte cte1($0)
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -333,7 +333,7 @@ motion [policy: full]
                             projection ("t2"."id"::unsigned -> "id", "t2"."sysFrom"::unsigned -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::unsigned -> "sys_op")
                                 scan "test_space" -> "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -362,7 +362,7 @@ projection ("FIRST_NAME"::string -> "FIRST_NAME")
                         projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
                             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -384,7 +384,7 @@ motion [policy: full]
             projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
                 scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );
@@ -449,7 +449,7 @@ motion [policy: full]
                         projection ("t2"."e"::unsigned -> "E")
                             scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

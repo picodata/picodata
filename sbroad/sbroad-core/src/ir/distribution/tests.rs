@@ -69,7 +69,7 @@ fn projection_any_dist_for_expr() {
         projection (count(("test_space"."id"::unsigned))::integer -> "count_696")
             scan "test_space"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

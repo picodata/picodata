@@ -116,7 +116,7 @@ fn except_transform_with_dag_plan() {
                     values
                         value row (data=ROW(1::unsigned))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 "#,
     );

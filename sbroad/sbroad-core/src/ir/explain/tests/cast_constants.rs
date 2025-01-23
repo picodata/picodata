@@ -17,7 +17,7 @@ fn select_values_rows() {
         values
             value row (data=ROW(1::integer, 2::unsigned, 'txt'::string))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = any
 "#,
@@ -33,7 +33,7 @@ fn insert_values_rows() {
         values
             value row (data=ROW('txt'::string, 2::integer))
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = unknown
 "#,
@@ -48,7 +48,7 @@ fn select_selection() {
     selection ROW("t3"."a"::string) = ROW('kek'::string)
         scan "t3"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [1610]
 "#,
@@ -66,7 +66,7 @@ fn update_selection() {
             selection ROW("t"."a"::unsigned) = ROW(1::integer) and ROW("t"."b"::unsigned) = ROW(2::decimal)
                 scan "t"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [550]
 "#,
@@ -83,7 +83,7 @@ fn delete_selection() {
             selection ROW("t2"."e"::unsigned) = ROW(3::unsigned) and ROW("t2"."f"::unsigned) = ROW(2::decimal)
                 scan "t2"
 execution options:
-    vdbe_max_steps = 45000
+    sql_vdbe_opcode_max = 45000
     vtable_max_rows = 5000
 buckets = [9374]
 "#,

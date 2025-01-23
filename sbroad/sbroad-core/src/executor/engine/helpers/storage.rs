@@ -304,13 +304,13 @@ fn encoded_params(params: &[Value]) -> Vec<EncodedValue> {
 pub fn execute_prepared(
     stmt: &Statement,
     params: &[Value],
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError> {
     let encoded_params = encoded_params(params);
     let mut stream = with_su(ADMIN_ID, || {
-        stmt.execute_raw(&encoded_params, vdbe_max_steps)
+        stmt.execute_raw(&encoded_params, sql_vdbe_opcode_max)
     })??;
     result_to_tuple(&mut stream, max_rows, format)
 }
@@ -318,13 +318,13 @@ pub fn execute_prepared(
 pub fn execute_unprepared(
     query: &str,
     params: &[Value],
-    vdbe_max_steps: u64,
+    sql_vdbe_opcode_max: u64,
     max_rows: u64,
     format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError> {
     let encoded_params = encoded_params(params);
     let mut stream = with_su(ADMIN_ID, || {
-        prepare_and_execute_raw(query, &encoded_params, vdbe_max_steps)
+        prepare_and_execute_raw(query, &encoded_params, sql_vdbe_opcode_max)
     })??;
     result_to_tuple(&mut stream, max_rows, format)
 }

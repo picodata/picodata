@@ -220,6 +220,6 @@ pg_params_map: {}
 options:
   vtable_max_rows: 5000
   execute_options:
-    VdbeMaxSteps:
+    VdbeOpcodeMax:
       Unsigned: 45000
 version_map: {}

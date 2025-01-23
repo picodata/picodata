@@ -1130,8 +1130,8 @@ impl FullExplain {
         let mut stack: Vec<ExplainTreePart> = Vec::new();
         let mut result = FullExplain::default();
         result.exec_options.push((
-            OptionKind::VdbeMaxSteps,
-            Value::Unsigned(ir.options.vdbe_max_steps),
+            OptionKind::VdbeOpcodeMax,
+            Value::Unsigned(ir.options.sql_vdbe_opcode_max),
         ));
         result.exec_options.push((
             OptionKind::VTableMaxRows,
