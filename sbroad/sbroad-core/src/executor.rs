@@ -64,6 +64,7 @@ impl Plan {
         self.derive_equalities()?;
         self.merge_tuples()?;
         self.add_motions()?;
+        self.update_substring()?;
         Ok(())
     }
 }

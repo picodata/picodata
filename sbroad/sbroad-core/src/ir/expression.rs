@@ -38,8 +38,18 @@ pub(crate) type ExpressionId = NodeId;
 pub enum FunctionFeature {
     /// Current function is an aggregate function and is marked as DISTINCT.
     Distinct,
+    /// Current function is a substring function and has one of 5 substring variants.
+    Substring(Substring),
 }
 
+#[derive(Clone, Debug, Hash, Deserialize, PartialEq, Eq, Serialize)]
+pub enum Substring {
+    FromFor,
+    Regular,
+    For,
+    From,
+    Similar,
+}
 /// This is the kind of `trim` function that can be set
 /// by using keywords LEADING, TRAILING or BOTH.
 #[derive(Default, Clone, Debug, Hash, Deserialize, PartialEq, Eq, Serialize)]

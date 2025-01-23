@@ -127,6 +127,10 @@ to 2 and 3.
 - `DROP PLUGIN` now leaves the plugin's data in the database if `WITH DATA`
   wasn't specified. Previously we would return an error instead.
 
+### SQL
+
+- SQL support `SUBSTRING` function
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration

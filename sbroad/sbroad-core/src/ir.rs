@@ -1,5 +1,4 @@
 //! Contains the logical plan tree and helpers.
-
 use base64ct::{Base64, Encoding};
 use expression::Position;
 use node::acl::{Acl, MutAcl};
@@ -1429,6 +1428,18 @@ impl Plan {
                 Some("node is not Expression type".into()),
             )),
         }
+    }
+
+    /// Calculate type of expression
+    ///
+    /// # Errors
+    /// - node doesn't exist in the plan
+    /// - node is not expression type
+    pub fn calculate_expression_type(&self, node_id: NodeId) -> Result<Option<Type>, SbroadError> {
+        Ok(*self
+            .get_expression_node(node_id)?
+            .calculate_type(self)?
+            .get())
     }
 
     /// Return Reference if this `node_id` refers to it,

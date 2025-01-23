@@ -2708,6 +2708,7 @@ dependencies = [
  "quote 1.0.37",
  "raft",
  "rand",
+ "regex",
  "rmp",
  "rmp-serde",
  "rmpv",

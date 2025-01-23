@@ -57,6 +57,7 @@ pico_proc_macro = { path = "pico_proc_macro" }
 picodata-plugin = { path = "picodata-plugin", features = ["internal_test"] }
 sbroad-core = { path = "sbroad/sbroad-core" }
 tarantool = { path = "tarantool/tarantool", features = ["picodata", "test", "stored_procs_slice"] }
+regex = "1.11"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

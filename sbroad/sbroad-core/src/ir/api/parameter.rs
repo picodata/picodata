@@ -1,18 +1,20 @@
 use crate::errors::{Entity, SbroadError};
+use crate::frontend::sql::is_negative_number;
+use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::block::{Block, MutBlock};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, ExprInParentheses, Having, Join,
-    Like, LocalTimestamp, MutNode, Node64, NodeId, Parameter, Procedure, Row, Selection,
+    Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Parameter, Procedure, Row, Selection,
     StableFunction, Trim, UnaryExpr, ValuesRow,
 };
-use crate::ir::relation::DerivedType;
+use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan, ValueIdx};
 use chrono::Local;
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
@@ -774,6 +776,241 @@ impl Plan {
                 .replace(node_id, Node64::Constant(Constant { value }))?;
         }
 
+        Ok(())
+    }
+
+    pub fn update_substring(&mut self) -> Result<(), SbroadError> {
+        self.try_transform_to_substr()?;
+        self.check_parameter_types()?;
+        Ok(())
+    }
+
+    fn try_transform_to_substr(&mut self) -> Result<(), SbroadError> {
+        // Change new_names to store an owned SmolStr instead of a reference.
+        let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
+
+        for (id, node) in self.nodes.arena96.iter().enumerate() {
+            let Node96::StableFunction(_) = node else {
+                continue;
+            };
+            let node_id = NodeId {
+                offset: u32::try_from(id).unwrap(),
+                arena_type: ArenaType::Arena96,
+            };
+
+            if let Node::Expression(Expression::StableFunction(StableFunction {
+                children,
+                feature,
+                ..
+            })) = self.get_node(node_id)?
+            {
+                if let Some(FunctionFeature::Substring(Substring::From)) = feature {
+                    let is_second_parameter_number = matches!(
+                        self.calculate_expression_type(children[1])?
+                            .unwrap_or(Type::Any),
+                        Type::Integer | Type::Unsigned
+                    );
+                    if is_second_parameter_number {
+                        // Create a new owned SmolStr.
+                        let new_name = SmolStr::from("substr");
+                        new_names.push((node_id, new_name));
+                    }
+                }
+                if let Some(FunctionFeature::Substring(Substring::FromFor | Substring::Regular)) =
+                    feature
+                {
+                    let is_second_parameter_number = matches!(
+                        self.calculate_expression_type(children[1])?
+                            .unwrap_or(Type::Any),
+                        Type::Integer | Type::Unsigned
+                    );
+                    let is_third_parameter_number = matches!(
+                        self.calculate_expression_type(children[2])?
+                            .unwrap_or(Type::Any),
+                        Type::Integer | Type::Unsigned
+                    );
+                    if is_second_parameter_number && is_third_parameter_number {
+                        // Create a new owned SmolStr.
+                        let new_name = SmolStr::from("substr");
+                        new_names.push((node_id, new_name));
+                    }
+                }
+            }
+        }
+
+        for (node_id, new_name) in new_names {
+            if let MutNode::Expression(MutExpression::StableFunction(StableFunction {
+                name,
+                is_system,
+                ..
+            })) = self.get_mut_node(node_id)?
+            {
+                *name = new_name;
+                *is_system = true;
+            }
+        }
+        Ok(())
+    }
+
+    fn check_parameter_types(&mut self) -> Result<(), SbroadError> {
+        //let val = SmolStr::from("substring_to_regexp");
+        let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
+
+        for (id, node) in self.nodes.arena96.iter().enumerate() {
+            let Node96::StableFunction(_) = node else {
+                continue;
+            };
+            let node_id = NodeId {
+                offset: u32::try_from(id).unwrap(),
+                arena_type: ArenaType::Arena96,
+            };
+
+            if let Node::Expression(Expression::StableFunction(StableFunction {
+                name,
+                children,
+                feature: Some(FunctionFeature::Substring(substr)),
+                ..
+            })) = self.get_node(node_id)?
+            {
+                let is_first_parameter_string = matches!(
+                    self.calculate_expression_type(children[0])?
+                        .unwrap_or(Type::String),
+                    Type::String,
+                );
+                let is_second_parameter_number = matches!(
+                    self.calculate_expression_type(children[1])?
+                        .unwrap_or(Type::Integer),
+                    Type::Integer | Type::Unsigned
+                );
+                let is_second_parameter_string = matches!(
+                    self.calculate_expression_type(children[1])?
+                        .unwrap_or(Type::String),
+                    Type::String,
+                );
+
+                match substr {
+                    Substring::FromFor | Substring::Regular => {
+                        let is_third_parameter_number = matches!(
+                            self.calculate_expression_type(children[2])?
+                                .unwrap_or(Type::Integer),
+                            Type::Integer | Type::Unsigned
+                        );
+                        let is_third_parameter_string = matches!(
+                            self.calculate_expression_type(children[2])?
+                                .unwrap_or(Type::String),
+                            Type::String,
+                        );
+
+                        if !is_first_parameter_string
+                            || (!is_second_parameter_number && !is_second_parameter_string)
+                            || (!is_third_parameter_number && !is_third_parameter_string)
+                        {
+                            return Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(
+                                    "explicit types are required for parameters of substring."
+                                        .into(),
+                                ),
+                            ));
+                        }
+
+                        if (is_second_parameter_number && is_third_parameter_string)
+                            || (is_second_parameter_string && is_third_parameter_number)
+                        {
+                            return Err(SbroadError::Invalid(
+                                    Entity::Expression,
+                                    Some("incorrect SUBSTRING parameters type. Second and third parameters should have the same type".into()),
+
+                                ));
+                        }
+
+                        // if parameters with numbers
+                        if name == "substr" {
+                            // Check if length is negative
+                            if is_negative_number(self, children[2])? {
+                                return Err(SbroadError::Invalid(
+                                    Entity::Expression,
+                                    Some(
+                                        "Length parameter in substring cannot be negative.".into(),
+                                    ),
+                                ));
+                            }
+                        }
+
+                        if name == "substring" {
+                            let new_name = SmolStr::from("substring_to_regexp");
+                            new_names.push((node_id, new_name));
+                        }
+                    }
+                    Substring::For => {
+                        let is_third_parameter_number = matches!(
+                            self.calculate_expression_type(children[2])?
+                                .unwrap_or(Type::Integer),
+                            Type::Integer | Type::Unsigned
+                        );
+
+                        if !is_first_parameter_string || !is_third_parameter_number {
+                            return Err(SbroadError::Invalid(
+                                        Entity::Expression,
+                                        Some("explicit types are required. Expected a string, and a numeric length.".into()),
+                                    ));
+                        }
+
+                        // Check if length is negative
+                        if is_negative_number(self, children[2])? {
+                            return Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some("Length parameter in substring cannot be negative.".into()),
+                            ));
+                        }
+                    }
+                    Substring::From => {
+                        if !is_first_parameter_string
+                            || (!is_second_parameter_number && !is_second_parameter_string)
+                        {
+                            return Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(
+                                    "explicit types are required for parameters of substring."
+                                        .into(),
+                                ),
+                            ));
+                        }
+                    }
+                    Substring::Similar => {
+                        let is_third_parameter_string = matches!(
+                            self.calculate_expression_type(children[2])?
+                                .unwrap_or(Type::String),
+                            Type::String,
+                        );
+
+                        if !is_first_parameter_string
+                            || !is_second_parameter_string
+                            || !is_third_parameter_string
+                        {
+                            return Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(r#"explicit types are required. Expected three string arguments."#.into()),
+                            ));
+                        }
+
+                        if name == "substring" {
+                            let new_name = SmolStr::from("substring_to_regexp");
+                            new_names.push((node_id, new_name));
+                        }
+                    }
+                }
+            }
+        }
+
+        for (node_id, new_name) in new_names {
+            if let MutNode::Expression(MutExpression::StableFunction(StableFunction {
+                name, ..
+            })) = self.get_mut_node(node_id)?
+            {
+                *name = new_name;
+            }
+        }
         Ok(())
     }
 

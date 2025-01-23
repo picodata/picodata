@@ -79,6 +79,7 @@ pub fn get_builtin_functions() -> &'static [Function] {
         vec![
             Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
             Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
+            Function::new_stable("substring".into(), DerivedType::new(Type::String), false),
             Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
             Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
             Function::new_stable("upper".into(), DerivedType::new(Type::String), true),

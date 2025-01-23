@@ -1395,6 +1395,276 @@ def test_substr(instance: Instance):
     assert data[0] == [""]
 
 
+def test_substring(instance: Instance):
+    # negative length
+    with pytest.raises(TarantoolError, match="Length parameter in substring cannot be negative"):
+        instance.sql("SELECT SUBSTRING('string' FROM 2 FOR -1)")
+
+    with pytest.raises(TarantoolError, match="Length parameter in substring cannot be negative"):
+        instance.sql("SELECT SUBSTRING('string' FOR -5)")
+
+    with pytest.raises(TarantoolError, match="Length parameter in substring cannot be negative"):
+        instance.sql("SELECT SUBSTRING('string', 2 , -10)")
+
+    # invalid types of parameters
+    with pytest.raises(TarantoolError, match="Second and third parameters should have the same type"):
+        instance.sql(r"""SELECT SUBSTRING ('abc' FROM '1' FOR 1)""")
+
+    # substring expression examples
+    data = instance.sql("SELECT SUBSTRING('1234567890' FROM 3)")
+    assert data[0] == ["34567890"]
+
+    data = instance.sql("SELECT SUBSTRING('(select 1)', 3)")
+    assert data[0] == ["elect 1)"]
+
+    data = instance.sql("SELECT SUBSTRING('1234567890' FROM 4 FOR 3)")
+    assert data[0] == ["456"]
+
+    # check for caching similar queries #1
+    with pytest.raises(TarantoolError, match="explicit types are required. Expected a string, and a numeric length."):
+        instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
+
+    data = instance.sql("SELECT SUBSTRING('12' for 12)")
+    assert data[0] == ["12"]
+
+    # check for caching similar queries #2
+    with pytest.raises(TarantoolError, match="explicit types are required. Expected a string, and a numeric length."):
+        instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
+
+    # overflow cases
+    data = instance.sql("SELECT SUBSTRING('string' FROM 2 FOR 2147483646)")
+    assert data[0] == ["tring"]
+
+    with pytest.raises(TarantoolError, match="u64 parsing error number too large to fit in target"):
+        instance.sql("SELECT SUBSTRING('string' FROM 2 FOR 99999999999999999999)")
+
+    # regular expression substring (with SQL's regex syntax)
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"(b_d)#"%' ESCAPE '#')""")
+    assert data[0] == ["bcd"]
+
+    # double quotes in pattern
+    data = instance.sql("""SELECT SUBSTRING('Thomas' SIMILAR '%""o_a""_' ESCAPE '"')""")
+    assert data[0] == ["oma"]
+
+    # obsolete SQL99 syntax
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' FROM 'a#"(b_d)#"%' FOR '#')""")
+    assert data[0] == ["bcd"]
+
+    # NULL as pattern
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR NULL ESCAPE '#')""")
+    assert data[0] == [None]
+
+    # NULL as escape
+    instance.sql("SELECT SUBSTRING('abcdefg' SIMILAR '%' ESCAPE NULL)")
+    assert data[0] == [None]
+
+    # NULL as string
+    instance.sql("SELECT SUBSTRING(NULL SIMILAR '%' ESCAPE '#')")
+    assert data[0] == [None]
+
+    # NULL as all parameters
+    instance.sql("SELECT SUBSTRING(NULL SIMILAR NULL ESCAPE NULL)")
+    assert data[0] == [None]
+
+    # the first and last parts should act non-greedy
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%#"g' ESCAPE '#')""")
+    assert data[0] == ["bcdef"]
+
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a*#"%#"g*' ESCAPE '#')""")
+    assert data[0] == ["bcdefg"]
+
+    # vertical bar in any part affects only that part
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a|b#"%#"g' ESCAPE '#')""")
+    assert data[0] == ["bcdef"]
+
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%#"x|g' ESCAPE '#')""")
+    assert data[0] == ["bcdef"]
+
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%|ab#"g' ESCAPE '#')""")
+    assert data[0] == ["bcdef"]
+
+    # postgres extension cases
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%g' ESCAPE '#')""")
+    assert data[0] == ["bcdefg"]
+
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a%g' ESCAPE '#')""")
+    assert data[0] == ["abcdefg"]
+
+    # with two arguments as POSIX regex
+    data = instance.sql("SELECT SUBSTRING('abcdefg' FROM 'c.e')")
+    assert data[0] == ["cde"]
+
+    # with parenthesized subexpression
+    data = instance.sql("SELECT SUBSTRING('abcdefg' FROM 'b(.*)f')")
+    assert data[0] == ["cde"]
+
+    # check case where there's a match but no subexpression
+    data = instance.sql("SELECT SUBSTRING('foo' FROM 'foo(bar)?')")
+    assert data[0] == [None]
+
+    # invalid escape string (should error)
+    with pytest.raises(TarantoolError, match="invalid escape string"):
+        instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'abc' ESCAPE 'xy')""")
+
+    # invalid pattern (should error)
+    with pytest.raises(TarantoolError, match="Invalid pattern: regex parse error"):
+        instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR '(%' ESCAPE '`')""")
+
+    # invalid pattern (should error)
+    with pytest.raises(TarantoolError, match="more than two escape-double-quote separators"):
+        instance.sql(r"""SELECT SUBSTRING('abcdefg' SIMILAR '%\"\"\"%' ESCAPE '\')""")
+
+    # invalid parameters number
+    with pytest.raises(TarantoolError, match="There is no such overload that takes only 1 argument"):
+        instance.sql("SELECT SUBSTRING('abc')")
+
+    # character class handling
+    data = instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a[bcd]%g' ESCAPE '#')""")
+    assert data[0] == ["abcdefg"]
+
+    data = instance.sql(r"SELECT SUBSTRING('abcdefg' SIMILAR 'a[b\]c]%g' ESCAPE '\')")
+    assert data[0] == ["abcdefg"]
+
+    # escaping special characters
+    data = instance.sql("""SELECT SUBSTRING('a.c' SIMILAR '%#.%' ESCAPE '#')""")
+    assert data[0] == ["a.c"]
+
+    data = instance.sql("""SELECT SUBSTRING('a^c' SIMILAR '%#^%' ESCAPE '#')""")
+    assert data[0] == ["a^c"]
+
+    data = instance.sql("""SELECT SUBSTRING('a$c' SIMILAR '%#$%' ESCAPE '#')""")
+    assert data[0] == ["a$c"]
+
+    # error on too many escape-double-quote separators
+    with pytest.raises(
+        TarantoolError,
+        match="may not contain more than two escape-double-quote separators",
+    ):
+        instance.sql("""SELECT SUBSTRING('abcdefg' SIMILAR 'a#"b#"c#"d' ESCAPE '#')""")
+
+    # backslash outside char class
+    data = instance.sql("SELECT SUBSTRING('abc\\def' SIMILAR '%\\%' ESCAPE '#')")
+    assert data[0] == ["abc\\def"]
+
+    # backslash inside char class
+    data = instance.sql("SELECT SUBSTRING('abc\\def' SIMILAR '%[\\\\]d%' ESCAPE '#')")
+    assert data[0] == ["abc\\def"]
+
+    # casted to string expressions as parameters
+    data = instance.sql("SELECT SUBSTRING(TRUE::STRING SIMILAR '%%' ESCAPE '#')")
+    assert data[0] == ["TRUE"]
+
+    data = instance.sql(r"""SELECT SUBSTRING(TRUE::string SIMILAR 'T3"%|R3"E' ESCAPE (2+1)::string)""")
+    assert data[0] == ["RU"]
+
+    data = instance.sql("SELECT SUBSTRING(1234::STRING for 2)")
+    assert data[0] == ["12"]
+
+    # casted to integer expressions as parameters
+    data = instance.sql("SELECT SUBSTRING('1234567890' FOR 5::integer)")
+    assert data[0] == ["12345"]
+
+    # casted arithmetic expression
+    data = instance.sql("SELECT SUBSTRING('1234567890',(3 * 1)::int, (3 - 1)::int)")
+    assert data[0] == ["34"]
+
+    # with parameters
+    data = instance.sql(
+        """SELECT SUBSTRING((? || 'ccc') similar ? escape ?), SUBSTRING(? similar ? escape ?)""",
+        "abcdefg",
+        'a#"(b_d)#"%',
+        "#",
+        "abcdefg",
+        'a#"%|ab#"g',
+        "#",
+    )
+    assert data[0] == ["bcd", "bcdef"]
+
+    data = instance.sql(
+        """SELECT SUBSTRING( (select $1 || 'z')::string for  ($2 + 1)::int)""",
+        "a234567890",
+        2,
+    )
+    assert data[0] == ["a23"]
+
+    data = instance.sql(
+        """SELECT SUBSTRING( (select '1' ||  $1 ) for  ($2 + 1 )::int)""",
+        "234567890",
+        5,
+    )
+    assert data[0] == ["123456"]
+
+    data = instance.sql(
+        """SELECT SUBSTRING( $1 from  $2)""",
+        "a234567890",
+        "3.5",
+    )
+    assert data[0] == ["345"]
+
+    instance.sql(
+        """SELECT SUBSTRING( (select $1 ) from  $2::string)""",
+        "a234567890",
+        "3.5",
+    )
+    assert data[0] == ["345"]
+
+    data = instance.sql(
+        """SELECT SUBSTRING( (select $1 )::string from  $2)""",
+        "a234567890",
+        3,
+    )
+    assert data[0] == ["34567890"]
+
+    data = instance.sql(
+        """SELECT SUBSTRING( (select $1 )::string from  $2)""",
+        "a234567890",
+        "3.5",
+    )
+    assert data[0] == ["345"]
+
+    # empty ESCAPE
+    data = instance.sql("""SELECT SUBSTRING('Thomas' SIMILAR '%o_a_' ESCAPE '')""")
+    assert data[0] == ["Thomas"]
+
+    # CTE
+    data = instance.sql(
+        """with cte(pattern) as (select 'a#"(b_d)#"%') SELECT SUBSTRING('abcdefg' SIMILAR pattern::text ESCAPE '#') from cte"""
+    )
+    assert data[0] == ["bcd"]
+
+    data = instance.sql(
+        """with cte(escape) as (select '#') SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%#"g' ESCAPE escape) from cte"""
+    )
+    assert data[0] == ["bcdef"]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s from 'a.c') from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], [None]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s similar '1' escape '$') from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s from '1' for '$') from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s from 1 for 2) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s, 1, 2) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s for 1) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s from 1) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s, 1) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+    data = instance.sql("""with cte(s) as (values ('1'), (NULL)) select substring(s from s) from cte""")
+    assert sorted(data, key=lambda x: (x[0] is not None, x[0])) == [[None], ["1"]]
+
+
 def test_coalesce(instance: Instance):
     instance.sql("create table foo (id int primary key, bar unsigned null);")
     instance.sql("insert into foo values (1, null), (2, 1);")

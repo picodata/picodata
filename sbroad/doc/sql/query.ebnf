@@ -29,6 +29,7 @@ expression  ::= ('NOT'* (
                     | localtimestamp
                     | ilike
                     | substr
+                    | substring
                     | to_char
                     | to_date
                     | trim
@@ -64,6 +65,13 @@ trim        ::= 'TRIM' '('
                 ((('LEADING' | 'TRAILING' | 'BOTH')? removal_chars
                 | ('LEADING' | 'TRAILING' | 'BOTH')) 'FROM')? string ')'
 substr      ::= 'SUBSTR' '(' string ',' from (',' count)? ')'
+substring   ::= 'SUBSTRING' '(' substringVariant ')'
+substringVariant ::= substringFromFor | substringRegular | substringFor | substringFrom | substringSimilar
+substringFromFor ::= expression 'FROM' expression 'FOR' expression
+substringRegular ::= expression ',' expression ',' expression
+substringFor ::= expression 'FOR' expression
+substringFrom ::= expression ('FROM' | ',') expression
+substringSimilar ::= expression 'SIMILAR' expression 'ESCAPE' expression
 lower       ::= 'LOWER' '(' string ')'
 upper       ::= 'UPPER' '(' string ')'
 values      ::= 'VALUES'

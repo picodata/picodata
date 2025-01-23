@@ -15,6 +15,8 @@
 #![allow(clippy::field_reassign_with_default)]
 use config::apply_parameter;
 use info::PICODATA_VERSION;
+use regex::Regex;
+use sbroad::frontend::sql::transform_to_regex_pattern;
 use serde::{Deserialize, Serialize};
 use storage::ToEntryIter;
 
@@ -177,6 +179,68 @@ fn init_sbroad() {
     "#,
     )
     .unwrap();
+
+    //add SUBSTRING func to lua
+    let _ = lua.exec_with(
+        r#"
+    if rawget(_G, 'pico') == nil then
+           error('pico module must be initialized before regexp_extract')
+       end
+       if pico.builtins == nil then
+           pico.builtins = {}
+       end
+    pico.builtins.SUBSTRING = ...
+    "#,
+        tlua::function3(
+            |input: Option<String>,
+             pattern: Option<String>,
+             lua: tlua::LuaState|
+             -> Option<String> {
+                //input and pattern can be NULL
+                let input = input?;
+                let pattern = pattern?;
+                match Regex::new(&pattern) {
+                    Ok(re) => {
+                        let caps = re.captures(&input)?;
+                        // If there is a capturing group (i.e. len() > 1), return the first group
+                        if caps.len() > 1 {
+                            let matched = caps.get(1)?;
+                            return Some(matched.as_str().to_string());
+                        }
+                        // Otherwise, return the full match
+                        let matched = caps.get(0)?;
+                        return Some(matched.as_str().to_string());
+                    }
+                    Err(err) => {
+                        tlua::error!(lua, "Invalid pattern: {}", err);
+                    }
+                }
+            },
+        ),
+    );
+
+    //add TO_REGEXP func to lua
+    let _ = lua.exec_with(
+        r#"
+    if rawget(_G, 'pico') == nil then
+           error('pico module must be initialized before regexp_extract')
+       end
+       if pico.builtins == nil then
+           pico.builtins = {}
+       end
+    pico.builtins.TO_REGEXP = ...
+    "#,
+        tlua::function3(
+            |pattern: String, escape: String, lua: tlua::LuaState| -> String {
+                match transform_to_regex_pattern(&pattern, &escape) {
+                    Ok(new_pattern) => return new_pattern,
+                    Err(err) => {
+                        tlua::error!(lua, "Transformation to REGEX pattern failed: {}", err)
+                    }
+                };
+            },
+        ),
+    );
 }
 
 extern "C-unwind" {

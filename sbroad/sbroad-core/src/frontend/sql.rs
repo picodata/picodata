@@ -40,11 +40,11 @@ use crate::ir::aggregates::AggregateKind;
 use crate::ir::ddl::{AlterSystemType, ColumnDef, SetParamScopeType, SetParamValue};
 use crate::ir::ddl::{Language, ParamDef};
 use crate::ir::expression::cast::Type as CastType;
-use crate::ir::expression::NewColumnsSource;
 use crate::ir::expression::{
     ColumnPositionMap, ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, FunctionFeature,
     Position, TrimKind,
 };
+use crate::ir::expression::{NewColumnsSource, Substring};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::plugin::{
@@ -1565,7 +1565,7 @@ fn parse_param<M: Metadata>(
 lazy_static::lazy_static! {
     static ref PRATT_PARSER: PrattParser<Rule> = {
         use pest::pratt_parser::{Assoc::{Left, Right}, Op};
-        use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq, In, IsPostfix, CastPostfix, Like, Lt, LtEq, Multiply, NotEq, Or, Subtract, UnaryNot};
+        use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq, In, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Multiply, NotEq, Or, Subtract, UnaryNot};
 
         // Precedence is defined lowest to highest.
         PrattParser::new()
@@ -1575,6 +1575,7 @@ lazy_static::lazy_static! {
             // ESCAPE must be followed by LIKE
             .op(Op::infix(Escape, Left))
             .op(Op::infix(Like, Left))
+            .op(Op::infix(Similar, Left))
             .op(Op::infix(Between, Left))
             .op(
                 Op::infix(Eq, Right) | Op::infix(NotEq, Right) | Op::infix(NotEq, Right)
@@ -1796,6 +1797,11 @@ enum ParseExpression {
         right: Box<ParseExpression>,
         escape: Option<Box<ParseExpression>>,
         is_ilike: bool,
+    },
+    Similar {
+        left: Box<ParseExpression>,
+        right: Box<ParseExpression>,
+        escape: Option<Box<ParseExpression>>,
     },
     Row {
         children: Vec<ParseExpression>,
@@ -2039,6 +2045,29 @@ impl ParseExpression {
                         plan.add_stable_function(lower_func, vec![plan_right_id], None)?;
                     right_covered_with_row = plan.row(plan_right_id)?;
                 }
+                plan.add_like(
+                    left_covered_with_row,
+                    right_covered_with_row,
+                    escape_covered_with_row,
+                )?
+            }
+            ParseExpression::Similar {
+                left,
+                right,
+                escape,
+            } => {
+                let plan_left_id = left.populate_plan(plan, worker)?;
+                let left_covered_with_row = plan.row(plan_left_id)?;
+
+                let plan_right_id = right.populate_plan(plan, worker)?;
+                let right_covered_with_row = plan.row(plan_right_id)?;
+
+                let escape_covered_with_row = if let Some(escape) = escape {
+                    let plan_escape_id = escape.populate_plan(plan, worker)?;
+                    Some(plan.row(plan_escape_id)?)
+                } else {
+                    None
+                };
                 plan.add_like(
                     left_covered_with_row,
                     right_covered_with_row,
@@ -2362,11 +2391,12 @@ fn connect_escape_to_like_node(
     mut lhs: ParseExpression,
     rhs: ParseExpression,
 ) -> Result<ParseExpression, SbroadError> {
-    let ParseExpression::Like { escape, .. } = &mut lhs else {
+    let (ParseExpression::Like { escape, .. } | ParseExpression::Similar { escape, .. }) = &mut lhs
+    else {
         return Err(SbroadError::Invalid(
             Entity::Expression,
             Some(format_smolstr!(
-                "ESCAPE can go only after LIKE expression, got: {:?}",
+                "ESCAPE can go only after LIKE or SIMILAR expressions, got: {:?}",
                 lhs
             )),
         ));
@@ -2374,7 +2404,10 @@ fn connect_escape_to_like_node(
     if escape.is_some() {
         return Err(SbroadError::Invalid(
             Entity::Expression,
-            Some("escape specified twice: expr1 LIKE expr2 ESCAPE expr 3 ESCAPE expr4".into()),
+            Some(
+                "escape specified twice: expr1 LIKE/SIMILAR expr2 ESCAPE expr 3 ESCAPE expr4"
+                    .into(),
+            ),
         ));
     }
     *escape = Some(Box::new(rhs));
@@ -2412,6 +2445,279 @@ fn cast_type_from_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
         },
     )?;
     Ok(type_cast)
+}
+
+///This function converts an SQL pattern into a regex string, validating escape characters.
+///
+///Taken from PG source. Function similar_escape_internal <https://github.com/postgres/postgres/blob/c623e8593ec4ee6987f3cd9350ced7caf8526ed2/src/backend/utils/adt/regexp.c#L767>
+pub fn transform_to_regex_pattern(pat_text: &str, esc_text: &str) -> Result<String, String> {
+    let escape = match esc_text {
+        e if e.len() == 1 => e,
+        "" => "",
+        _ => {
+            return Err(
+                "invalid escape string. Escape string must be empty or one character.".into(),
+            )
+        }
+    };
+
+    let mut result = String::from("^(?:");
+    let mut after_escape = false;
+    let mut in_char_class = false;
+    let mut nquotes = 0;
+
+    let chars = pat_text.chars().peekable();
+
+    for c in chars {
+        if after_escape {
+            if c == '"' && !in_char_class {
+                // escape-double-quote?
+                if nquotes == 0 {
+                    // First quote: end first part, make it non-greedy
+                    result.push_str("){1,1}?");
+                    result.push('(');
+                } else if nquotes == 1 {
+                    // Second quote: end second part, make it greedy
+                    result.push_str("){1,1}(");
+                    result.push_str("?:");
+                } else {
+                    return Err("SQL regular expression may not contain more than two escape-double-quote separators".into());
+                }
+                nquotes += 1;
+            } else {
+                // Escape any character
+                result.push('\\');
+                result.push(c);
+            }
+            after_escape = false;
+        } else if c.to_string() == escape {
+            // SQL escape character; do not send to output
+            after_escape = true;
+        } else if in_char_class {
+            if c == '\\' {
+                result.push('\\');
+            }
+            result.push(c);
+            if c == ']' {
+                in_char_class = false;
+            }
+        } else {
+            match c {
+                '[' => {
+                    result.push(c);
+                    in_char_class = true;
+                }
+                '%' => {
+                    result.push_str(".*");
+                }
+                '_' => {
+                    result.push('.');
+                }
+                '(' => {
+                    result.push_str("(?:");
+                }
+                '\\' | '.' | '^' | '$' => {
+                    result.push('\\');
+                    result.push(c);
+                }
+                _ => {
+                    result.push(c);
+                }
+            }
+        }
+    }
+
+    result.push_str(")$");
+    Ok(result)
+}
+
+fn parse_substring<M: Metadata>(
+    pair: Pair<Rule>,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<ParseExpression, SbroadError> {
+    assert_eq!(pair.as_rule(), Rule::Substring);
+
+    let mut inner = pair.into_inner();
+    let variant = inner.next().ok_or_else(|| {
+        SbroadError::ParsingError(Entity::Expression, "no substring variant".into())
+    })?;
+
+    match variant.as_rule() {
+        Rule::SubstringFromFor => {
+            // Handle: substring(expr FROM expr FOR expr)
+            let mut pieces = variant.into_inner();
+            let string_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let from_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let for_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            Ok(ParseExpression::Function {
+                name: "substring".to_string(),
+                args: vec![string_expr, from_expr, for_expr],
+                feature: Some(FunctionFeature::Substring(Substring::FromFor)),
+            })
+        }
+        Rule::SubstringRegular => {
+            // Handle: substring(expr, expr, expr)
+            let mut pieces = variant.into_inner();
+            let string_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let from_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let for_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            Ok(ParseExpression::Function {
+                name: "substring".to_string(),
+                args: vec![string_expr, from_expr, for_expr],
+                feature: Some(FunctionFeature::Substring(Substring::Regular)),
+            })
+        }
+        Rule::SubstringFor => {
+            // Handle: substring(expr FOR expr)
+            let mut pieces = variant.into_inner();
+            let string_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let for_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            let string_id = string_expr.populate_plan(plan, worker)?;
+            let one_literal = plan.add_const(Value::Unsigned(1));
+            let for_id = for_expr.populate_plan(plan, worker)?;
+
+            Ok(ParseExpression::Function {
+                name: "substr".to_string(),
+                args: vec![
+                    ParseExpression::PlanId { plan_id: string_id },
+                    ParseExpression::PlanId {
+                        plan_id: one_literal,
+                    },
+                    ParseExpression::PlanId { plan_id: for_id },
+                ],
+                feature: Some(FunctionFeature::Substring(Substring::For)),
+            })
+        }
+        Rule::SubstringFrom => {
+            // Handle: substring(expr FROM expr) - both numeric and regexp variants
+            let mut pieces = variant.into_inner();
+            let string_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+            let from_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            Ok(ParseExpression::Function {
+                name: "substring".to_string(),
+                args: vec![string_expr, from_expr],
+                feature: Some(FunctionFeature::Substring(Substring::From)),
+            })
+        }
+        Rule::SubstringSimilar => {
+            // Handle: substring(expr SIMILAR expr ESCAPE expr)
+            let mut pieces = variant.into_inner();
+            let similar_expr = parse_expr_pratt(
+                pieces.next().expect("Expected expression").into_inner(),
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            let mut args = vec![];
+
+            if let ParseExpression::Similar {
+                left,
+                right,
+                escape,
+            } = similar_expr
+            {
+                // Provide a better error message when the escape symbol is missing.
+                let escape_box = match escape {
+                    Some(esc) => esc,
+                    None => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some("missing escape symbol for SIMILAR substring operator".into()),
+                        ))
+                    }
+                };
+
+                // Bind the expressions from the Similar variant.
+                let string_expr = *left;
+                let pattern_expr = *right;
+                let escape_expr = *escape_box;
+
+                args.push(string_expr);
+                args.push(pattern_expr);
+                args.push(escape_expr);
+            } else {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some("incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument".into()),
+                ));
+            }
+
+            Ok(ParseExpression::Function {
+                name: "substring".to_string(),
+                args,
+                feature: Some(FunctionFeature::Substring(Substring::Similar)),
+            })
+        }
+        _ => Err(SbroadError::ParsingError(
+            Entity::Expression,
+            "Unrecognized SubstringVariant".into(),
+        )),
+    }
+}
+
+pub fn is_negative_number(plan: &Plan, expr_id: NodeId) -> Result<bool, SbroadError> {
+    if let Expression::Constant(Constant { value }) = plan.get_expression_node(expr_id)? {
+        return Ok(matches!(value, Value::Integer(n) if *n < 0));
+    }
+
+    Ok(false)
 }
 
 /// Function responsible for parsing expressions using Pratt parser.
@@ -2672,6 +2978,7 @@ where
                     ParseExpression::Exists { is_not: first_is_not, child: Box::new(child_parse_expr)}
                 }
                 Rule::Trim => parse_trim(primary, referred_relation_ids, worker, plan)?,
+                Rule::Substring => parse_substring(primary, referred_relation_ids, worker, plan)?,
                 Rule::CastOp => {
                     let mut inner_pairs = primary.into_inner();
                     let expr_pair = inner_pairs.next().expect("Cast has no expr child.");
@@ -2789,6 +3096,13 @@ where
                         right: Box::new(rhs),
                         escape: None,
                         is_ilike
+                    })
+                },
+                Rule::Similar => {
+                    return Ok(ParseExpression::Similar {
+                        left: Box::new(lhs),
+                        right: Box::new(rhs),
+                        escape: None,
                     })
                 },
                 Rule::Between => {

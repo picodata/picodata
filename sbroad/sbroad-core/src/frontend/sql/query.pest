@@ -309,7 +309,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                         | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
                         | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null" | ^"numeric"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
-                        | ^"select" | ^"set" | ^"smallint" |^"string"
+                        | ^"select" | ^"set" | ^"similar" | ^"smallint" | ^"string" | ^"substring"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
                         | ^"union" | ^"unsigned" | ^"using" | ^"uuid"
                         | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with"
@@ -331,9 +331,10 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
     // TODO: Should add smth like &(")" ~ WO next to W
     //       to support queries like `select (true)and(false)`
     ExprInfixOpo = _{ (W ~ ExprInfixOpSep ~ W) | (WO ~ ExprInfixOpNoSep ~ WO) }
-    ExprInfixOpSep = _{ Like | Escape | Between | And | Or | In }
+    ExprInfixOpSep = _{ Like | Similar | Escape | Between | And | Or | In }
         In    = { (NotFlag ~ W)? ~ ^"in" }
         Like = { ^"like" | ^"ilike" }
+        Similar = { ^"similar" }
         Escape = { ^"escape" }
         Between       = ${ (NotFlag ~ W)? ~ ^"between" }
         And           = { ^"and" }
@@ -357,7 +358,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
         CastPostfix = { "::" ~ ColumnDefType }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
-        AtomicExpr = _{ Literal | Parameter | CastOp | Trim | CurrentDate | LocalTimestamp | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
+        AtomicExpr = _{ Literal | Parameter | CastOp | Trim | Substring | CurrentDate | LocalTimestamp | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
                 False    = { ^"false" }
@@ -378,6 +379,13 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                         FunctionArgsExprs = _{ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
                     CountAsterisk = { "*" }
             ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
+            Substring = ${ ^"substring" ~ WO ~ "(" ~ WO ~ SubstringVariant ~ WO ~ ")" }
+                SubstringVariant = _{ SubstringFromFor | SubstringRegular | SubstringFor | SubstringFrom | SubstringSimilar }
+                    SubstringFromFor = ${ Expr ~ W ~ ^"from" ~ W ~ Expr ~ W ~ ^"for" ~ W ~ Expr }
+                    SubstringRegular = ${ Expr ~ (WO ~ "," ~ WO ~ Expr) ~ (WO ~ "," ~ WO ~ Expr) }
+                    SubstringFor = ${ Expr ~ W ~ ^"for" ~ W ~ Expr }
+                    SubstringFrom = ${ (Expr ~ W ~ ^"from" ~ W ~ Expr) | (Expr ~ (WO ~ "," ~ WO ~ Expr)) }
+                    SubstringSimilar = ${ Expr }
             CurrentDate = { ^"current_date" }
             LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             Trim = ${
@@ -390,6 +398,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                     TrimKindBoth = { ^"both" }
                 TrimPattern = { Expr }
                 TrimTarget = { Expr }
+
             Case = ${
                 ^"case" ~ W ~
                 (Expr ~ W)? ~

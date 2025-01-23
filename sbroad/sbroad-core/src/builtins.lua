@@ -1,7 +1,7 @@
 local dt = require('datetime')
 local helper = require('sbroad.helper')
 
--- Builtin sbroad funcs inplemented in LUA
+-- Builtin sbroad funcs implemented in LUA
 local builtins = {}
 
 builtins.TO_DATE = function (s, fmt)
@@ -25,6 +25,21 @@ builtins.TO_CHAR = function (date, fmt)
   end
   return res
 end
+
+builtins.SUBSTRING_TO_REGEXP = function(string, pattern, expr)
+  -- Check for NULL parameters
+  if string == nil or pattern == nil or expr == nil then
+    return nil
+  end
+
+  -- Call TO_REGEXP and handle its return values
+  local new_pattern = builtins.TO_REGEXP(pattern, expr)
+
+  -- Call SUBSTRING with the new pattern
+  return builtins.SUBSTRING(string, new_pattern)
+end
+
+
 
 local function init()
   -- cartridge
@@ -63,6 +78,30 @@ local function init()
       returns = 'string',
       body = body,
       param_list = {'datetime', 'string'},
+      exports = {'SQL'},
+      is_deterministic = true,
+      if_not_exists=true
+  })
+
+  body = string.format("function(...) return %s.builtins.SUBSTRING(...) end",
+  module)
+  box.schema.func.create("substring", {
+      language = 'LUA',
+      returns = 'string',
+      body = body,
+      param_list = {'string', 'string'},
+      exports = {'SQL'},
+      is_deterministic = true,
+      if_not_exists=true
+  })
+
+  body = string.format("function(...) return %s.builtins.SUBSTRING_TO_REGEXP(...) end",
+  module)
+  box.schema.func.create("substring_to_regexp", {
+      language = 'LUA',
+      returns = 'string',
+      body = body,
+      param_list = {'string', 'string', 'string'},
       exports = {'SQL'},
       is_deterministic = true,
       if_not_exists=true

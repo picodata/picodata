@@ -1,8 +1,3 @@
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr};
-use std::collections::HashSet;
-use std::mem::take;
-
 use crate::errors::{Entity, SbroadError};
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::expression::{FunctionFeature, TrimKind};
@@ -19,6 +14,10 @@ use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::traversal::{LevelNode, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
+use serde::{Deserialize, Serialize};
+use smol_str::{format_smolstr, SmolStr};
+use std::collections::HashSet;
+use std::mem::take;
 
 /// Payload of the syntax tree node.
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
