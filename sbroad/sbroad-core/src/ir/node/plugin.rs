@@ -7,7 +7,7 @@ use tarantool::decimal::Decimal;
 
 #[must_use]
 pub fn get_default_timeout() -> Decimal {
-    Decimal::from(10)
+    Decimal::from(600)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -328,7 +328,7 @@ mod test {
                 expected: PluginOwned::Enable(EnablePlugin {
                     name: SmolStr::from("abc"),
                     version: SmolStr::from("1.1.1"),
-                    timeout: Decimal::from(10),
+                    timeout: get_default_timeout(),
                 }),
             },
             TestCase {
@@ -357,7 +357,7 @@ mod test {
                     version: SmolStr::from("1.1.1"),
                     if_exists: false,
                     with_data: false,
-                    timeout: Decimal::from(10),
+                    timeout: get_default_timeout(),
                 }),
             },
             TestCase {
@@ -390,7 +390,7 @@ mod test {
                     version: SmolStr::from("1.1.1"),
                     if_exists: true,
                     with_data: true,
-                    timeout: Decimal::from(10),
+                    timeout: get_default_timeout(),
                 }),
             },
             TestCase {
@@ -506,7 +506,7 @@ mod test {
                             },
                         ],
                     }],
-                    timeout: Decimal::from(10),
+                    timeout: get_default_timeout(),
                 }),
             },
         ];
