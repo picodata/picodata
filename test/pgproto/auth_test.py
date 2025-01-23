@@ -70,11 +70,13 @@ def test_admin_auth(cluster: Cluster):
     conn.close()
 
 
-def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(cluster: Cluster):
+def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(
+    cluster: Cluster, port_distributor: PortDistributor
+):
     user = "user"
     password = "P@ssw0rd"
     host = "127.0.0.1"
-    port = "5433"
+    port = port_distributor.get()
 
     cluster.set_config_file(
         yaml=f"""
