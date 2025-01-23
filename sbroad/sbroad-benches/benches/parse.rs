@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use sbroad::executor::engine::mock::{RouterConfigurationMock, RouterRuntimeMock};
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::frontend::Ast;
@@ -300,18 +300,27 @@ AND ("t8"."sys_op" = ? AND ("t8"."identification_number" = 2 AND "t3"."sys_op" >
     ]
 }
 
-fn bench_pure_pest_parsing(c: &mut Criterion) {
-    let many_references_query = get_query_with_many_references();
-    c.bench_function("pure_pest_parsing_many_references", |b| {
-        b.iter(|| black_box(ParseTree::parse(Rule::Command, many_references_query)));
-    });
+fn bench_pure_pest_parsing(crit: &mut Criterion) {
+    let mut group = crit.benchmark_group("pure_pest_parsing");
 
-    let target_qureies = get_target_queries();
-    for (index, query) in target_qureies.iter().enumerate() {
-        let bench_name = format!("pure_pest_parsing_target_query{index}");
-        c.bench_function(bench_name.as_str(), |b| {
-            b.iter(|| black_box(ParseTree::parse(Rule::Command, query)));
+    let many_references_query = get_query_with_many_references();
+    group
+        .throughput(Throughput::Bytes(many_references_query.len() as _))
+        .bench_with_input("many_references", many_references_query, |b, query| {
+            b.iter_with_large_drop(|| ParseTree::parse(Rule::Command, query).unwrap());
         });
+
+    let target_queries = get_target_queries();
+    for (index, target_query) in target_queries.iter().enumerate() {
+        group
+            .throughput(Throughput::Bytes(target_query.len() as _))
+            .bench_with_input(
+                BenchmarkId::new("target_query", index),
+                target_query,
+                |b, query| {
+                    b.iter_with_large_drop(|| ParseTree::parse(Rule::Command, query).unwrap());
+                },
+            );
     }
 }
 
@@ -320,23 +329,32 @@ fn parse(pattern: &str) -> Plan {
     AbstractSyntaxTree::transform_into_plan(pattern, metadata).unwrap()
 }
 
-fn bench_full_parsing(c: &mut Criterion) {
+fn bench_full_parsing(crit: &mut Criterion) {
+    let mut group = crit.benchmark_group("full_parsing");
+
     let many_references_query = get_query_with_many_references();
-    c.bench_function("full_parsing_many_references", |b| {
-        b.iter(|| black_box(parse(many_references_query)));
-    });
+    group
+        .throughput(Throughput::Bytes(many_references_query.len() as _))
+        .bench_with_input("many_references", many_references_query, |b, query| {
+            b.iter_with_large_drop(|| parse(query));
+        });
 
     let target_queries = get_target_queries();
     for (index, target_query) in target_queries.iter().enumerate() {
-        let bench_name = format!("full_parsing_target_query{index}");
-        c.bench_function(bench_name.as_str(), |b| {
-            b.iter(|| black_box(parse(target_query)))
-        });
+        group
+            .throughput(Throughput::Bytes(target_query.len() as _))
+            .bench_with_input(
+                BenchmarkId::new("target_query", index),
+                target_query,
+                |b, query| {
+                    b.iter_with_large_drop(|| parse(query));
+                },
+            );
     }
 }
 
-fn bench_take_subtree(c: &mut Criterion) {
-    let mut engine = RouterRuntimeMock::new();
+fn bench_take_subtree(crit: &mut Criterion) {
+    let engine = RouterRuntimeMock::new();
     let param: u64 = 42;
     let params = vec![Value::from(param)];
 
@@ -346,16 +364,18 @@ fn bench_take_subtree(c: &mut Criterion) {
     let plan = query.get_exec_plan().get_ir_plan();
     let top_id = plan.get_top().unwrap();
 
-    let bench_name = "getting_subtree".to_string();
-    c.bench_function(bench_name.as_str(), |b| {
-        b.iter(|| {
-            let _subtree = query.get_mut_exec_plan().take_subtree(top_id).unwrap();
+    crit.bench_function("getting_subtree", |b| {
+        b.iter_with_large_drop(|| {
+            black_box(&mut query)
+                .get_mut_exec_plan()
+                .take_subtree(black_box(top_id))
+                .unwrap()
         })
     });
 }
 
-fn bench_serde_clone(c: &mut Criterion) {
-    let mut engine = RouterRuntimeMock::new();
+fn bench_serde_clone(crit: &mut Criterion) {
+    let engine = RouterRuntimeMock::new();
     let param: u64 = 42;
     let params = vec![Value::from(param)];
 
@@ -364,26 +384,17 @@ fn bench_serde_clone(c: &mut Criterion) {
 
     let plan = query.get_exec_plan().get_ir_plan();
 
-    let bench_name = "serializing_plan_many_references".to_string();
-    c.bench_function(bench_name.as_str(), |b| {
-        b.iter(|| {
-            let _ser_bytes = bincode::serialize(plan).unwrap();
-        })
+    crit.bench_function("serializing_plan_many_references", |b| {
+        b.iter_with_large_drop(|| bincode::serialize(black_box(plan)).unwrap())
     });
 
-    let bench_name = "deserializing_plan_many_references".to_string();
     let ser_bytes: &[u8] = &bincode::serialize(plan).unwrap();
-    c.bench_function(bench_name.as_str(), |b| {
-        b.iter(|| {
-            let _deser_plan: Plan = bincode::deserialize(ser_bytes).unwrap();
-        })
+    crit.bench_function("deserializing_plan_many_references", |b| {
+        b.iter_with_large_drop(|| bincode::deserialize::<Plan>(black_box(ser_bytes)).unwrap())
     });
 
-    let bench_name = "cloning_plan_many_references".to_string();
-    c.bench_function(bench_name.as_str(), |b| {
-        b.iter(|| {
-            let _new_plan = plan.clone();
-        })
+    crit.bench_function("cloning_plan_many_references", |b| {
+        b.iter_with_large_drop(|| black_box(plan).clone())
     });
 }
 
@@ -398,20 +409,22 @@ fn build_ir(pattern: &str, params: Vec<Value>, engine: &mut RouterRuntimeMock) {
 }
 
 /// Note: it's disabled, because currently one of target queries fails on execution.
-fn bench_ir_build(c: &mut Criterion) {
+fn bench_ir_build(crit: &mut Criterion) {
     let mut engine = RouterRuntimeMock::new();
     let mut param: u64 = 42;
 
     let target_queries = get_target_queries();
+    let mut group = crit.benchmark_group("build_ir");
     for (index, target_query) in target_queries.iter().enumerate() {
-        let bench_name = format!("building_ir_target_query{index}");
-        c.bench_function(bench_name.as_str(), |b| {
-            b.iter(|| {
-                let params = vec![Value::from(param)];
-                param += 1;
-                build_ir(target_query, params, &mut engine);
-            })
-        });
+        group
+            .throughput(Throughput::Bytes(target_query.len() as _))
+            .bench_with_input(BenchmarkId::new("query", index), *target_query, |b, i| {
+                b.iter(|| {
+                    let params = vec![Value::from(param)];
+                    param += 1;
+                    build_ir(i, params, &mut engine);
+                })
+            });
     }
 }
 

@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rand::Rng;
 use sbroad::cbo::histogram::normalization::DEFAULT_HISTOGRAM_BUCKETS_NUMBER;
 use sbroad::cbo::histogram::{Histogram, Mcv, McvSet};
@@ -52,7 +52,7 @@ fn get_numerical_column_stats(
     vec_of_stats
 }
 
-fn bench_merge_several_column_statistics(c: &mut Criterion) {
+fn bench_merge_several_column_statistics(crit: &mut Criterion) {
     let replicasets_mock_number = 8;
 
     let table_rows_number = 10000;
@@ -63,9 +63,13 @@ fn bench_merge_several_column_statistics(c: &mut Criterion) {
         .iter()
         .map(|stats| TableColumnStatsPair(table_stats.clone(), stats.clone()))
         .collect();
-    c.bench_function("merge_several_column_statistics", |b| {
-        b.iter(|| merge_stats(black_box(&vec_of_pairs)));
-    });
+    crit.benchmark_group("merge_statistics")
+        .throughput(Throughput::Elements(
+            table_rows_number * (vec_of_pairs.len() as u64),
+        ))
+        .bench_function("several_column", |b| {
+            b.iter(|| merge_stats(black_box(&vec_of_pairs)));
+        });
 }
 
 criterion_group!(histogram, bench_merge_several_column_statistics);
