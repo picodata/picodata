@@ -11,7 +11,7 @@ fn trim() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -28,7 +28,7 @@ fn trim_leading_from() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -45,7 +45,7 @@ fn trim_both_space_from() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

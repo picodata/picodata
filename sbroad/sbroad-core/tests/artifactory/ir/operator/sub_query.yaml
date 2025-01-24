@@ -30,7 +30,7 @@ nodes:
             Segment:
               keys:
                 - positions:
-                  - 0
+                    - 0
     - Relational:
         ScanRelation:
           output: 4
@@ -64,7 +64,7 @@ nodes:
             Segment:
               keys:
                 - positions:
-                  - 0
+                    - 0
     - Relational:
         ScanSubQuery:
           alias: sq
@@ -103,7 +103,7 @@ constants: {}
 raw_options: []
 pg_params_map: {}
 options:
-  vtable_max_rows: 5000
+  sql_motion_row_max: 5000
   execute_options:
     VdbeOpcodeMax:
       Unsigned: 45000

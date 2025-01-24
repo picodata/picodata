@@ -563,8 +563,8 @@ pub fn sql_dispatch(pattern: &str, params: Vec<LuaValue>) -> traft::Result<Tuple
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
         let sql_vdbe_opcode_max = node.storage.db_config.sql_vdbe_opcode_max()?;
-        let vtable_max_rows = node.storage.db_config.vtable_max_rows()?;
-        let default_options = Some(Options::new(vtable_max_rows, sql_vdbe_opcode_max));
+        let sql_motion_row_max = node.storage.db_config.sql_motion_row_max()?;
+        let default_options = Some(Options::new(sql_motion_row_max, sql_vdbe_opcode_max));
         Query::with_options(
             &runtime,
             pattern,

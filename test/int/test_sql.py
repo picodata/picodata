@@ -292,7 +292,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "snapshot_chunk_max_size",
         "snapshot_read_view_close_timeout",
         "sql_vdbe_opcode_max",
-        "vtable_max_rows",
+        "sql_motion_row_max",
     ]
 
     data = i1.sql(
@@ -478,7 +478,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -2022,7 +2022,7 @@ def test_sql_limits(cluster: Cluster):
     ):
         i1.sql(
             """
-        select * from "t" option(vtable_max_rows=1, sql_vdbe_opcode_max=50)
+        select * from "t" option(sql_motion_row_max=1, sql_vdbe_opcode_max=50)
     """
         )
 
@@ -3341,7 +3341,7 @@ def test_call_procedure(cluster: Cluster):
     )
     assert data["row_count"] == 1
     data = i1.retriable_sql(
-        """ call "proc2"($1) option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)""",
+        """ call "proc2"($1) option(sql_vdbe_opcode_max = $1, sql_motion_row_max = $1)""",
         5,
         fatal_predicate=r"Duplicate key exists in unique index",
     )
@@ -4605,7 +4605,7 @@ def test_metadata(instance: Instance):
     #   - '    scan "G"'
     #   - 'execution options:'
     #   -     sql_vdbe_opcode_max = 45000
-    #   -     vtable_max_rows = 5000
+    #   -     sql_motion_row_max = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
@@ -5645,7 +5645,7 @@ def test_explain(cluster: Cluster):
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5656,7 +5656,7 @@ buckets = [1-3000]"""
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1934]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5666,7 +5666,7 @@ buckets = [1934]"""
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = []"""
     assert "\n".join(lines) == expected_explain
 
@@ -5684,7 +5684,7 @@ buckets = []"""
                     scan "t" -> "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown"""
     assert "\n".join(lines) == expected_explain
 
@@ -5694,7 +5694,7 @@ buckets = unknown"""
     scan "_pico_table"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any"""
     assert "\n".join(lines) == expected_explain
 
@@ -5709,7 +5709,7 @@ buckets = any"""
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5723,7 +5723,7 @@ buckets = [1-3000]"""
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown"""
     assert "\n".join(lines) == expected_explain
 
@@ -5735,7 +5735,7 @@ buckets = unknown"""
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5749,7 +5749,7 @@ buckets = [1-3000]"""
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5767,7 +5767,7 @@ buckets = [1-3000]"""
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown"""  # noqa: E501
     assert "\n".join(lines) == expected_explain
 
@@ -5776,7 +5776,7 @@ buckets = unknown"""  # noqa: E501
     expected_explain = """delete "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5790,7 +5790,7 @@ buckets = [1-3000]"""
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5801,7 +5801,7 @@ buckets = [1-3000]"""
             scan "g"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any"""
     assert "\n".join(lines) == expected_explain
 
@@ -5894,7 +5894,7 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5908,22 +5908,22 @@ buckets = [1-3000]"""
     scan "t"
 execution options:
     sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
-    new_vtable_max_rows = 6000
-    ddl = i1.sql(f"ALTER SYSTEM SET vtable_max_rows = {new_vtable_max_rows}")
+    new_sql_motion_row_max = 6000
+    ddl = i1.sql(f"ALTER SYSTEM SET sql_motion_row_max = {new_sql_motion_row_max}")
     assert ddl["row_count"] == 1
 
-    # Default value for new_vtable_max_rows changed and
+    # Default value for new_sql_motion_row_max changed and
     # value for new_sql_vdbe_opcode_max hasn't changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
     expected_explain = f"""projection ("t"."a"::integer -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
-    vtable_max_rows = {new_vtable_max_rows}
+    sql_motion_row_max = {new_sql_motion_row_max}
 buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
@@ -5931,7 +5931,7 @@ buckets = [1-3000]"""
     # also old value set with `ALTER SYSTEM`
     # still used
     # TODO: rewrite with explain like above
-    new_vtable_max_rows = 1
+    new_sql_motion_row_max = 1
     error_message = """sbroad: unexpected number of values: \
 Exceeded maximum number of rows (1) in virtual table: 2"""
 
@@ -5942,7 +5942,7 @@ Exceeded maximum number of rows (1) in virtual table: 2"""
         match=error_message,
     ):
         i1.sql(
-            f"SELECT * FROM (VALUES (1), (2)) OPTION (VTABLE_MAX_ROWS = {new_vtable_max_rows})"
+            f"SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = {new_sql_motion_row_max})"
         )
 
 

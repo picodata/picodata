@@ -97,7 +97,7 @@ motion [policy: full]
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -132,7 +132,7 @@ scan
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -170,7 +170,7 @@ motion [policy: full]
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -196,7 +196,7 @@ scan
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -229,7 +229,7 @@ motion [policy: full]
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -262,7 +262,7 @@ scan
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -293,7 +293,7 @@ scan
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -343,7 +343,7 @@ scan
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -380,7 +380,7 @@ scan
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -415,7 +415,7 @@ fn front_sql_global_join1() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -444,7 +444,7 @@ fn front_sql_global_join2() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -472,7 +472,7 @@ fn front_sql_global_join3() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -502,7 +502,7 @@ fn front_sql_global_join4() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -532,7 +532,7 @@ fn front_sql_global_join5() {
                         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -560,7 +560,7 @@ fn front_sql_global_join6() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -588,7 +588,7 @@ fn front_sql_global_join7() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -616,7 +616,7 @@ fn front_sql_global_join8() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -644,7 +644,7 @@ fn front_sql_global_join9() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -677,7 +677,7 @@ motion [policy: full]
                     scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -709,7 +709,7 @@ scan
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -728,7 +728,7 @@ fn front_sql_global_aggregate1() {
     scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -747,7 +747,7 @@ fn front_sql_global_aggregate2() {
     scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -768,7 +768,7 @@ fn front_sql_global_aggregate3() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -791,7 +791,7 @@ fn front_sql_global_aggregate4() {
             scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -823,7 +823,7 @@ scan
                                     scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -852,7 +852,7 @@ fn front_sql_global_left_join1() {
                         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -883,7 +883,7 @@ fn front_sql_global_left_join2() {
                             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -913,7 +913,7 @@ fn front_sql_global_left_join3() {
                         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -945,7 +945,7 @@ fn front_sql_global_left_join4() {
                         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -965,7 +965,7 @@ fn front_order_by_from_global_node_must_not_add_motion() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1002,7 +1002,7 @@ fn front_sql_global_union_all1() {
         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1029,7 +1029,7 @@ fn front_sql_global_union_all2() {
         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1066,7 +1066,7 @@ fn front_sql_global_union_all3() {
             scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1092,7 +1092,7 @@ fn front_sql_global_union_all5() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1119,7 +1119,7 @@ fn front_sql_global_union() {
             scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1145,7 +1145,7 @@ fn front_sql_global_union1() {
             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1172,7 +1172,7 @@ fn front_sql_global_union2() {
                         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1208,7 +1208,7 @@ fn front_sql_union() {
             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1241,7 +1241,7 @@ fn check_plan_except_global_vs_segment() {
                     scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1271,7 +1271,7 @@ fn check_plan_except_global_vs_any() {
                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1295,7 +1295,7 @@ fn check_plan_except_global_vs_global() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1321,7 +1321,7 @@ fn check_plan_except_global_vs_single() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1347,7 +1347,7 @@ fn check_plan_except_single_vs_global() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1372,7 +1372,7 @@ fn check_plan_except_segment_vs_global() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1397,7 +1397,7 @@ fn check_plan_except_any_vs_global() {
         scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1446,7 +1446,7 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                                 scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

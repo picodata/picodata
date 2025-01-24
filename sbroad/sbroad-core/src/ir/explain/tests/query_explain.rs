@@ -12,7 +12,7 @@ fn test_query_explain_1() {
     let expected = r#"projection (1::unsigned -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any
 "#;
     let actual = query.to_explain().unwrap();
@@ -29,7 +29,7 @@ fn test_query_explain_2() {
     scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-10000]
 "#;
     let actual = query.to_explain().unwrap();
@@ -47,7 +47,7 @@ fn test_query_explain_3() {
         scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [111]
 "#;
     let actual = query.to_explain().unwrap();
@@ -66,7 +66,7 @@ fn test_query_explain_4() {
             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-10000]
 "#;
     let actual = query.to_explain().unwrap();
@@ -83,7 +83,7 @@ fn test_query_explain_5() {
     scan "global_t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any
 "#;
     let actual = query.to_explain().unwrap();
@@ -102,7 +102,7 @@ fn test_query_explain_6() {
             value row (data=ROW(1::unsigned, 1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown
 "#;
     let actual = query.to_explain().unwrap();
@@ -121,7 +121,7 @@ fn test_query_explain_7() {
             scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-10000]
 "#;
     let actual = query.to_explain().unwrap();
@@ -140,7 +140,7 @@ fn test_query_explain_8() {
             value row (data=ROW(1::unsigned, 1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any
 "#;
     let actual = query.to_explain().unwrap();
@@ -156,7 +156,7 @@ fn test_query_explain_9() {
     let expected = r#"delete "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-10000]
 "#;
     let actual = query.to_explain().unwrap();
@@ -180,7 +180,7 @@ fn test_query_explain_10() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown
 "#;
     let actual = query.to_explain().unwrap();
@@ -219,7 +219,7 @@ fn test_query_explain_11() {
                                         scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown
 "#;
     let actual = query.to_explain().unwrap();
@@ -253,7 +253,7 @@ fn test_query_explain_12() {
                         scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets <= [62,2132]
 "#;
     let actual = query.to_explain().unwrap();
@@ -273,7 +273,7 @@ fn test_query_explain_13() {
                 scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets <= [6691]
 "#;
     let actual = query.to_explain().unwrap();
@@ -291,7 +291,7 @@ fn test_query_explain_14() {
         scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = []
 "#;
     let actual = query.to_explain().unwrap();

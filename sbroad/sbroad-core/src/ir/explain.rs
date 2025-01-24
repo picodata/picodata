@@ -1134,8 +1134,8 @@ impl FullExplain {
             Value::Unsigned(ir.options.sql_vdbe_opcode_max),
         ));
         result.exec_options.push((
-            OptionKind::VTableMaxRows,
-            Value::Unsigned(ir.options.vtable_max_rows),
+            OptionKind::MotionRowMax,
+            Value::Unsigned(ir.options.sql_motion_row_max),
         ));
 
         let mut dft_post = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);

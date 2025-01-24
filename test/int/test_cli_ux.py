@@ -90,7 +90,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact('scan "ids"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("sql_motion_row_max = 5000")
     cli.expect_exact("buckets = [1-3000]")
 
     # hitting enter sends query to the server
@@ -369,7 +369,7 @@ def test_sql_explain_ok(cluster: Cluster):
     )
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("sql_motion_row_max = 5000")
     cli.expect_exact("buckets = unknown")
 
     cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010;""")
@@ -383,7 +383,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("sql_motion_row_max = 5000")
     cli.expect_exact("buckets = [1-3000]")
 
     cli.sendline(
@@ -402,7 +402,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
-    cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("sql_motion_row_max = 5000")
     cli.expect_exact("buckets = [1410]")
 
 

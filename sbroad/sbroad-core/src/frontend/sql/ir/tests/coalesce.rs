@@ -11,7 +11,7 @@ fn coalesce_in_projection() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -29,7 +29,7 @@ fn coalesce_in_selection() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

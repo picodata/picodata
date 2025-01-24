@@ -119,7 +119,7 @@ g.test_motion_explain = function()
             "                        scan \"space_simple_shard_key_hist\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -160,7 +160,7 @@ WHERE "t3"."name" = '123']], {} })
             "                            scan \"testing_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = unknown"
         }
     )
@@ -193,7 +193,7 @@ g.test_valid_explain = function()
             "                        scan \"space_simple_shard_key_hist\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [3940]"
         }
     )
@@ -216,7 +216,7 @@ g.test_explain_arithmetic_selection = function()
             "        scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -233,7 +233,7 @@ g.test_explain_arithmetic_selection = function()
             "        scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -273,7 +273,7 @@ WHERE "t3"."id" = 2
             "                            scan \"arithmetic_space2\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -313,7 +313,7 @@ WHERE "t3"."id" = 2
             "                            scan \"arithmetic_space2\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -335,7 +335,7 @@ g.test_explain_arithmetic_projection = function()
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -352,7 +352,7 @@ g.test_explain_arithmetic_projection = function()
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -369,7 +369,7 @@ g.test_explain_arithmetic_projection = function()
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -386,7 +386,7 @@ g.test_explain_arithmetic_projection = function()
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )
@@ -402,7 +402,7 @@ g.test_explain_arithmetic_projection = function()
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
-            "    vtable_max_rows = 5000",
+            "    sql_motion_row_max = 5000",
             "buckets = [1-30000]"
         }
     )

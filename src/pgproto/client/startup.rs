@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 #[derive(Clone, Debug)]
 pub struct ClientParams {
     pub username: String,
-    pub vtable_max_rows: Option<u64>,
+    pub sql_motion_row_max: Option<u64>,
     pub sql_vdbe_opcode_max: Option<u64>,
     pub _rest: BTreeMap<String, String>,
     // NB: add more params as needed.
@@ -27,15 +27,15 @@ impl ClientParams {
             ));
         };
 
-        let (mut vtable_max_rows, mut sql_vdbe_opcode_max) = (None, None);
+        let (mut sql_motion_row_max, mut sql_vdbe_opcode_max) = (None, None);
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
                 let mut pair = pair.split('=');
                 let name = pair.next().ok_or(PgError::other("option with no name"))?;
                 let val = pair.next().ok_or(PgError::other("option with no value"))?;
                 match name {
-                    "vtable_max_rows" => {
-                        vtable_max_rows = Some(val.parse().map_err(PgError::other)?)
+                    "sql_motion_row_max" => {
+                        sql_motion_row_max = Some(val.parse().map_err(PgError::other)?)
                     }
                     "sql_vdbe_opcode_max" => {
                         sql_vdbe_opcode_max = Some(val.parse().map_err(PgError::other)?)
@@ -55,7 +55,7 @@ impl ClientParams {
 
         Ok(Self {
             username,
-            vtable_max_rows,
+            sql_motion_row_max,
             sql_vdbe_opcode_max,
             _rest: parameters,
         })
@@ -74,13 +74,13 @@ impl ClientParams {
             })
         }
 
-        if let Some(vtable_max_rows) = self.vtable_max_rows {
-            let vtable_max_rows = OptionParamValue::Value {
-                val: SbroadValue::Unsigned(vtable_max_rows),
+        if let Some(sql_motion_row_max) = self.sql_motion_row_max {
+            let sql_motion_row_max = OptionParamValue::Value {
+                val: SbroadValue::Unsigned(sql_motion_row_max),
             };
             opts.push(OptionSpec {
-                kind: OptionKind::VTableMaxRows,
-                val: vtable_max_rows,
+                kind: OptionKind::MotionRowMax,
+                val: sql_motion_row_max,
             })
         }
 

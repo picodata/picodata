@@ -1400,7 +1400,7 @@ fn subtree_hash1() {
 fn subtree_hash2() {
     check_subtree_hashes_are_equal(
         r#"select ?, ? from "t"
-        option(sql_vdbe_opcode_max = ?, vtable_max_rows = ?)"#,
+        option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#,
         vec![
             Value::Unsigned(1),
             Value::Unsigned(11),
@@ -1408,7 +1408,7 @@ fn subtree_hash2() {
             Value::Unsigned(10),
         ],
         r#"select $1, $1 from "t"
-        option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#,
+        option(sql_vdbe_opcode_max = $1, sql_motion_row_max = $1)"#,
         vec![Value::Unsigned(1)],
     );
 }

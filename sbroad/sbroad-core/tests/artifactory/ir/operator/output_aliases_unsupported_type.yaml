@@ -24,7 +24,7 @@ nodes:
             Segment:
               keys:
                 - positions:
-                  - 0
+                    - 0
     - Relational:
         ScanRelation:
           output: 3
@@ -48,7 +48,7 @@ slices: ~
 top: 4
 undo: {}
 options:
-  vtable_max_rows: 5000
+  sql_motion_row_max: 5000
   execute_options:
     VdbeOpcodeMax:
       Unsigned: 45000

@@ -70,7 +70,7 @@ fn projection_any_dist_for_expr() {
             scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

@@ -52,8 +52,8 @@ nodes:
             Segment:
               keys:
                 - positions:
-                  - 1
-                  - 0
+                    - 1
+                    - 0
     - Relational:
         ScanRelation:
           output: 8
@@ -132,8 +132,8 @@ nodes:
             Segment:
               keys:
                 - positions:
-                  - 1
-                  - 0
+                    - 1
+                    - 0
     - Relational:
         Selection:
           children:
@@ -174,7 +174,7 @@ constants: {}
 raw_options: []
 pg_params_map: {}
 options:
-  vtable_max_rows: 5000
+  sql_motion_row_max: 5000
   execute_options:
     VdbeOpcodeMax:
       Unsigned: 45000

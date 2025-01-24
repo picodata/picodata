@@ -63,7 +63,7 @@ pub mod tree;
 pub mod undo;
 pub mod value;
 
-pub const DEFAULT_VTABLE_MAX_ROWS: u64 = 5000;
+pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
 
 /// Plan nodes storage.
@@ -612,14 +612,14 @@ pub struct OptionSpec {
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 pub enum OptionKind {
     VdbeOpcodeMax,
-    VTableMaxRows,
+    MotionRowMax,
 }
 
 impl Display for OptionKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             OptionKind::VdbeOpcodeMax => "sql_vdbe_opcode_max",
-            OptionKind::VTableMaxRows => "vtable_max_rows",
+            OptionKind::MotionRowMax => "sql_motion_row_max",
         };
         write!(f, "{s}")
     }
@@ -638,7 +638,7 @@ pub struct Options {
     /// Note: this limit allows the out of memory error for query execution in the following
     /// scenario: if already received vtable has `X` rows and `X + a` causes the OOM, then
     /// if one of the storages returns `a` or more rows, the OOM will occur.
-    pub vtable_max_rows: u64,
+    pub sql_motion_row_max: u64,
     /// Options passed to `box.execute` function on storages. Currently there is only one option
     /// `sql_vdbe_opcode_max`.
     pub sql_vdbe_opcode_max: u64,
@@ -646,15 +646,15 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Options::new(DEFAULT_VTABLE_MAX_ROWS, DEFAULT_SQL_VDBE_OPCODE_MAX)
+        Options::new(DEFAULT_SQL_MOTION_ROW_MAX, DEFAULT_SQL_VDBE_OPCODE_MAX)
     }
 }
 
 impl Options {
     #[must_use]
-    pub fn new(vtable_max_rows: u64, sql_vdbe_opcode_max: u64) -> Self {
+    pub fn new(sql_motion_row_max: u64, sql_vdbe_opcode_max: u64) -> Self {
         Options {
-            vtable_max_rows,
+            sql_motion_row_max,
             sql_vdbe_opcode_max,
         }
     }
@@ -919,7 +919,7 @@ impl Plan {
                         ));
                     }
                 }
-                OptionKind::VTableMaxRows => {
+                OptionKind::MotionRowMax => {
                     if let Value::Unsigned(limit) = val {
                         if let Some(vtable_rows_count) = values_count {
                             if limit < vtable_rows_count as u64 {
@@ -929,7 +929,7 @@ impl Plan {
                                 )));
                             }
                         }
-                        self.options.vtable_max_rows = limit;
+                        self.options.sql_motion_row_max = limit;
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::OptionSpec,

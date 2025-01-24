@@ -19,7 +19,7 @@ fn simple_query_without_cond_plan() {
     scan "hash_testing" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -42,7 +42,7 @@ fn simple_query_with_cond_plan() {
         scan "hash_testing" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -69,7 +69,7 @@ fn union_query_plan() {
         r#"        scan "hash_testing_hist" -> "t2""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    vtable_max_rows = 5000"#,
+        r#"    sql_motion_row_max = 5000"#,
     );
     assert_eq!(expected, explain_tree.to_string());
 }
@@ -101,7 +101,7 @@ WHERE "id" = 1"#;
                         scan "test_space_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#);
 
     assert_eq!(actual_explain, explain_tree.to_string());
@@ -153,7 +153,7 @@ scan
                                     scan "test_space_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#);
 
     assert_eq!(actual_explain, explain_tree.to_string());
@@ -179,7 +179,7 @@ fn explain_except1() {
         r#"            scan "hash_testing_hist""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    vtable_max_rows = 5000"#,
+        r#"    sql_motion_row_max = 5000"#,
     );
     assert_eq!(expected, explain_tree.to_string());
 }
@@ -242,7 +242,7 @@ scan
                                     scan "test_space_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#);
 
     assert_eq!(actual_explain, explain_tree.to_string());
@@ -274,7 +274,7 @@ WHERE "t2"."product_code" = '123'"#;
                         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#);
 
     assert_eq!(actual_explain, explain_tree.to_string());
@@ -309,7 +309,7 @@ motion [policy: segment([ref("identification_number")])]
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#);
 
     assert_eq!(actual_explain, explain_tree.to_string());
@@ -331,7 +331,7 @@ fn unary_condition_plan() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -355,7 +355,7 @@ fn insert_plan() {
             value row (data=ROW(1::unsigned, '123'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -381,7 +381,7 @@ fn multiply_insert_plan() {
             value row (data=ROW(3::unsigned, '789'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -406,7 +406,7 @@ SELECT "identification_number", "product_code" FROM "hash_testing""#;
             scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -430,7 +430,7 @@ fn select_value_plan() {
             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -452,7 +452,7 @@ fn select_cast_plan1() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -475,7 +475,7 @@ fn select_cast_plan2() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -497,7 +497,7 @@ fn select_cast_plan_nested() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -520,7 +520,7 @@ fn select_cast_plan_nested_where() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -543,7 +543,7 @@ fn select_cast_plan_nested_where2() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

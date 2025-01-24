@@ -14,7 +14,7 @@ fn select() {
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -41,7 +41,7 @@ fn union_all() {
                     scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -62,7 +62,7 @@ fn aggregate() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -87,7 +87,7 @@ fn group_by() {
                                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -110,7 +110,7 @@ fn single_limit() {
                             scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -149,7 +149,7 @@ fn join() {
                                 scan "t4"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -166,7 +166,7 @@ fn limit_all() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -182,7 +182,7 @@ fn limit_null() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());

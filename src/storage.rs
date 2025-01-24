@@ -3236,9 +3236,9 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn vtable_max_rows(&self) -> tarantool::Result<u64> {
+    pub fn sql_motion_row_max(&self) -> tarantool::Result<u64> {
         #[rustfmt::skip]
-        let res: u64 = self.get_or_default(system_parameter_name!(vtable_max_rows))?;
+        let res: u64 = self.get_or_default(system_parameter_name!(sql_motion_row_max))?;
         Ok(res)
     }
 

@@ -25,7 +25,7 @@ fn front_select_chaning_1() {
         scan "t3"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -72,7 +72,7 @@ fn front_select_chaining_2() {
                         scan "t3"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -109,7 +109,7 @@ fn front_select_chaining_3() {
                             scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -137,7 +137,7 @@ fn union_under_insert() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -169,7 +169,7 @@ fn union_under_insert1() {
                         value row (data=ROW(2::unsigned, 2::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

@@ -64,11 +64,11 @@ nodes:
     - Expression:
         Row:
           list:
-          - 1
-          - 3
-          - 5
-          - 7
-          - 9
+            - 1
+            - 3
+            - 5
+            - 7
+            - 9
           distribution: ~
     # 11
     - Relational:
@@ -218,7 +218,7 @@ constants: {}
 raw_options: []
 pg_params_map: {}
 options:
-  vtable_max_rows: 5000
+  sql_motion_row_max: 5000
   execute_options:
     VdbeOpcodeMax:
       Unsigned: 45000

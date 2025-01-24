@@ -211,7 +211,7 @@ left_join.test_left_join_local_execution = function()
         "                scan \"arithmetic_space2\"",
         "execution options:",
         "    sql_vdbe_opcode_max = 45000",
-        "    vtable_max_rows = 5000",
+        "    sql_motion_row_max = 5000",
         "buckets = [1-30000]"
     })
 end
@@ -254,7 +254,7 @@ left_join.test_inner_segment_motion = function()
         "                    scan \"arithmetic_space2\"",
         "execution options:",
         "    sql_vdbe_opcode_max = 45000",
-        "    vtable_max_rows = 5000",
+        "    sql_motion_row_max = 5000",
         "buckets = unknown"
     })
 end
@@ -296,7 +296,7 @@ left_join.test_inner_full_motion = function()
         "                    scan \"arithmetic_space2\"",
         "execution options:",
         "    sql_vdbe_opcode_max = 45000",
-        "    vtable_max_rows = 5000",
+        "    sql_motion_row_max = 5000",
         "buckets = [1-30000]"
     })
 end
@@ -421,7 +421,7 @@ left_join.test_sq_with_full_motion = function()
         "                    scan \"arithmetic_space\"",
         "execution options:",
         "    sql_vdbe_opcode_max = 45000",
-        "    vtable_max_rows = 5000",
+        "    sql_motion_row_max = 5000",
         "buckets = [1-30000]"
     })
 end
@@ -470,7 +470,7 @@ left_join.test_sq_with_segment_motion = function()
         "                    scan \"arithmetic_space\"",
         "execution options:",
         "    sql_vdbe_opcode_max = 45000",
-        "    vtable_max_rows = 5000",
+        "    sql_motion_row_max = 5000",
         "buckets = unknown"
     })
 end

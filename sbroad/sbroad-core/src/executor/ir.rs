@@ -102,8 +102,8 @@ impl ExecutionPlan {
     }
 
     #[must_use]
-    pub fn get_vtable_max_rows(&self) -> u64 {
-        self.plan.options.vtable_max_rows
+    pub fn get_sql_motion_row_max(&self) -> u64 {
+        self.plan.options.sql_motion_row_max
     }
 
     #[allow(dead_code)]

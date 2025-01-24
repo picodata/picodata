@@ -82,7 +82,7 @@ end
 
 local ResultHandler = {
     vtable_row_count = 0,
-    vtable_max_rows = 0,
+    sql_motion_row_max = 0,
 }
 
 function ResultHandler:new(o)
@@ -143,8 +143,8 @@ function ResultHandler:process_res(res, map_format)
     rows_cnt, _ = msgpack.decode_unchecked(data)
 
     self.vtable_row_count = self.vtable_row_count + rows_cnt
-    if self.vtable_max_rows ~= 0 and self.vtable_max_rows < self.vtable_row_count then
-        return lerror.make(helper.vtable_limit_exceeded(self.vtable_max_rows, self.vtable_row_count))
+    if self.sql_motion_row_max ~= 0 and self.sql_motion_row_max < self.vtable_row_count then
+        return lerror.make(helper.vtable_limit_exceeded(self.sql_motion_row_max, self.vtable_row_count))
     end
     return nil
 end
@@ -172,7 +172,7 @@ end
 -- @param uuid_to_args Mapping between replicaset uuid and function arguments
 -- for that replicaset.
 -- @param func Name of the function to call.
--- @param vtable_max_rows Maximum number of rows to receive from storages.
+-- @param sql_motion_row_max Maximum number of rows to receive from storages.
 -- If the number is exceeded, the results are discarded and error is returned.
 -- @param opts Table which may have the following options:
 --  1. timeout - timeout for the whole function execution.
@@ -438,15 +438,15 @@ end
 -- @param waiting_timeout timeout in seconds for whole
 -- function.
 -- @param row_count initial value for the number of rows
--- @param vtable_max_rows maximum number of rows
+-- @param sql_motion_row_max maximum number of rows
 --
 -- @return mapping between replicaset uuid and ibuf containing
 -- result
 --
-_G.dispatch_dql = function(uuid_to_args, waiting_timeout, row_count, vtable_max_rows, check_bucket_count, tier_name)
+_G.dispatch_dql = function(uuid_to_args, waiting_timeout, row_count, sql_motion_row_max, check_bucket_count, tier_name)
     local result
 
-    local result_handler = ResultHandler:new { vtable_row_count = row_count, vtable_max_rows = vtable_max_rows }
+    local result_handler = ResultHandler:new { vtable_row_count = row_count, sql_motion_row_max = sql_motion_row_max }
     local exec_fn = helper.proc_fn_name("proc_sql_execute")
     local router = get_router_for_tier(tier_name)
 
@@ -504,9 +504,9 @@ end
 -- @param waiting_timeout timeout in seconds for whole
 -- function.
 -- @param row_count initial value for the number of rows
--- @param vtable_max_rows maximum number of rows
+-- @param sql_motion_row_max maximum number of rows
 --
-_G.dispatch_dql_single_plan = function(args, uuids, waiting_timeout, row_count, vtable_max_rows, tier_name)
+_G.dispatch_dql_single_plan = function(args, uuids, waiting_timeout, row_count, sql_motion_row_max, tier_name)
     local check_bucket_count = false
     if not next(uuids) then
         -- empty list of uuids means execute on all replicasets
@@ -521,5 +521,5 @@ _G.dispatch_dql_single_plan = function(args, uuids, waiting_timeout, row_count, 
     for _, uuid in pairs(uuids) do
         uuid_to_args[uuid] = args
     end
-    return _G.dispatch_dql(uuid_to_args, waiting_timeout, row_count, vtable_max_rows, check_bucket_count, tier_name)
+    return _G.dispatch_dql(uuid_to_args, waiting_timeout, row_count, sql_motion_row_max, check_bucket_count, tier_name)
 end

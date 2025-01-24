@@ -9,7 +9,7 @@ fn delete1_test() {
             r#"delete "t1""#,
             r#"execution options:"#,
             r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    vtable_max_rows = 5000"#,
+            r#"    sql_motion_row_max = 5000"#,
         ),
     );
 }
@@ -27,7 +27,7 @@ fn delete2_test() {
             r#"                scan "t1""#,
             r#"execution options:"#,
             r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    vtable_max_rows = 5000"#,
+            r#"    sql_motion_row_max = 5000"#,
         ),
     );
 }
@@ -50,7 +50,7 @@ fn delete3_test() {
             r#"                            scan "t1""#,
             r#"execution options:"#,
             r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    vtable_max_rows = 5000"#,
+            r#"    sql_motion_row_max = 5000"#,
         ),
     );
 }

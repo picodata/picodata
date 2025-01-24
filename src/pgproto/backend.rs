@@ -96,7 +96,7 @@ fn apply_default_options(
     for opt in query_options {
         match opt.kind {
             OptionKind::VdbeOpcodeMax => max_steps = Some(opt),
-            OptionKind::VTableMaxRows => max_rows = Some(opt),
+            OptionKind::MotionRowMax => max_rows = Some(opt),
         }
     }
 
@@ -104,7 +104,7 @@ fn apply_default_options(
     for opt in default_options {
         match opt.kind {
             OptionKind::VdbeOpcodeMax if max_steps.is_none() => max_steps = Some(opt),
-            OptionKind::VTableMaxRows if max_rows.is_none() => max_rows = Some(opt),
+            OptionKind::MotionRowMax if max_rows.is_none() => max_rows = Some(opt),
             _ => {}
         }
     }

@@ -276,12 +276,12 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
 
     DqlOption = !{ ^"option" ~ "(" ~ OprionParams ~ ")" }
         OprionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
-    OptionParam = _{ VdbeOpcodeMax | VTableMaxRows }
+    OptionParam = _{ VdbeOpcodeMax | MotionRowMax }
     Timeout = !{ ^"timeout" ~ "=" ~ Duration }
        Duration = @{ Unsigned ~ ("." ~ Unsigned)? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
     VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ "=" ~ (Unsigned | Parameter) }
-    VTableMaxRows = { ^"vtable_max_rows" ~ "=" ~ (Unsigned | Parameter) }
+    MotionRowMax = { ^"sql_motion_row_max" ~ "=" ~ (Unsigned | Parameter) }
     Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 

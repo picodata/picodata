@@ -2,8 +2,8 @@ statement   ::= explain | ddl | dml | dql | acl | call
 explain     ::= 'EXPLAIN' (dml | dql)
 dql         ::= (with? select | values)
                 ('OPTION' '('
-                    (('VTABLE_MAX_ROWS' | 'sql_vdbe_opcode_max') '=' unsigned)
-                    (',' (('VTABLE_MAX_ROWS' | 'sql_vdbe_opcode_max') '=' unsigned))*
+                    (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
+                    (',' (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned))*
                 ')')?
 with        ::= 'WITH'
                 cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')'
@@ -81,8 +81,8 @@ literal     ::= 'TRUE'
                 | '?'
 dml         ::= (call | delete | insert | update)
                 ('OPTION' '('
-                    (('VTABLE_MAX_ROWS' | 'sql_vdbe_opcode_max') '=' unsigned)
-                    (',' (('VTABLE_MAX_ROWS' | 'sql_vdbe_opcode_max') '=' unsigned))*
+                    (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
+                    (',' (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned))*
                 ')')?
 call        ::= 'CALL' procedure '(' (literal (',' literal)*)? ')'
 delete      ::= 'DELETE' 'FROM' table ('WHERE' expression)?

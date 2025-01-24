@@ -194,8 +194,8 @@ impl<'sn> RequiredPlanInfo for LocalExecutionQueryInfo<'sn> {
         self.exec_plan.get_ir_plan().options.sql_vdbe_opcode_max
     }
 
-    fn vtable_max_rows(&self) -> u64 {
-        self.exec_plan.get_vtable_max_rows()
+    fn sql_motion_row_max(&self) -> u64 {
+        self.exec_plan.get_sql_motion_row_max()
     }
 }
 

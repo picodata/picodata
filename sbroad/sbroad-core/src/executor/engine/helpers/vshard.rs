@@ -101,7 +101,7 @@ fn lua_dql_single_plan<'lua, T>(
     args: T,
     replicasets: &[RSName],
     row_count: u64,
-    vtable_max_rows: u64,
+    sql_motion_row_max: u64,
     waiting_timeout: u64,
     tier_name: Option<&SmolStr>,
 ) -> Result<Rc<LuaTable<LuaStackGuard<'lua>>>, SbroadError>
@@ -122,7 +122,7 @@ where
         replicasets,
         waiting_timeout,
         row_count,
-        vtable_max_rows,
+        sql_motion_row_max,
         tier_name,
     ));
     match call_res {
@@ -254,7 +254,7 @@ macro_rules! unwrap_or_error {
 pub fn exec_cacheable_dql_with_custom_plans<'a>(
     lua: &'a tarantool::tlua::LuaThread,
     mut rs_to_plan: RSMap,
-    vtable_max_rows: u64,
+    sql_motion_row_max: u64,
     waiting_timeout: u64,
     tier_name: Option<&SmolStr>,
 ) -> Result<DqlResult<'a>, SbroadError> {
@@ -272,7 +272,7 @@ pub fn exec_cacheable_dql_with_custom_plans<'a>(
             lua,
             &cache_required_args,
             row_count,
-            vtable_max_rows,
+            sql_motion_row_max,
             waiting_timeout,
             tier_name,
         ),
@@ -304,7 +304,7 @@ pub fn exec_cacheable_dql_with_custom_plans<'a>(
             lua,
             missed_cache_rs_to_full_args,
             row_count,
-            vtable_max_rows,
+            sql_motion_row_max,
             timeout,
             tier_name,
         ),
@@ -500,7 +500,7 @@ fn lua_dispatch_dql<'a, T>(
     lua: &'a tarantool::tlua::LuaThread,
     rs_to_plan: T,
     row_count: u64,
-    vtable_max_rows: u64,
+    sql_motion_row_max: u64,
     waiting_timeout: u64,
     tier_name: Option<&SmolStr>,
 ) -> Result<Rc<LuaTable<LuaStackGuard<'a>>>, SbroadError>
@@ -519,7 +519,7 @@ where
         rs_to_plan,
         waiting_timeout,
         row_count,
-        vtable_max_rows,
+        sql_motion_row_max,
         check_bucket_count,
         tier_name,
     ));
@@ -540,7 +540,7 @@ pub fn exec_cacheable_dql_with_single_plan<'lua>(
     lua: &'lua tarantool::tlua::LuaThread,
     mut exec_plan: ExecutionPlan,
     replicasets: &[RSName],
-    vtable_max_rows: u64,
+    sql_motion_row_max: u64,
     waiting_timeout: u64,
     tier_name: Option<&SmolStr>,
 ) -> Result<DqlResult<'lua>, SbroadError> {
@@ -557,7 +557,7 @@ pub fn exec_cacheable_dql_with_single_plan<'lua>(
             &required_message,
             replicasets,
             row_count,
-            vtable_max_rows,
+            sql_motion_row_max,
             waiting_timeout,
             tier_name,
         ),
@@ -589,7 +589,7 @@ pub fn exec_cacheable_dql_with_single_plan<'lua>(
             full_message,
             replicasets,
             row_count,
-            vtable_max_rows,
+            sql_motion_row_max,
             timeout,
             tier_name,
         ),
@@ -611,7 +611,7 @@ fn exec_with_single_plan(
     tier_name: Option<&SmolStr>,
 ) -> Result<Box<dyn Any>, SbroadError> {
     let query_type = exec_plan.query_type()?;
-    let vtable_max_rows = exec_plan.get_vtable_max_rows();
+    let sql_motion_row_max = exec_plan.get_sql_motion_row_max();
     let replicasets = lua_get_replicasets_from_buckets(buckets, tier_name)?;
     match &query_type {
         QueryType::DQL => {
@@ -620,7 +620,7 @@ fn exec_with_single_plan(
                 &lua,
                 exec_plan,
                 &replicasets,
-                vtable_max_rows,
+                sql_motion_row_max,
                 waiting_timeout,
                 tier_name,
             )?;
@@ -665,7 +665,7 @@ fn exec_with_custom_plan(
     }
 
     let query_type = sub_plan.query_type()?;
-    let vtable_max_rows = sub_plan.get_vtable_max_rows();
+    let sql_motion_row_max = sub_plan.get_sql_motion_row_max();
     let rs_ir = prepare_rs_to_ir_map(&rs_bucket_vec, sub_plan)?;
     match &query_type {
         QueryType::DQL => {
@@ -673,7 +673,7 @@ fn exec_with_custom_plan(
             let rs_to_res = exec_cacheable_dql_with_custom_plans(
                 &lua,
                 rs_ir,
-                vtable_max_rows,
+                sql_motion_row_max,
                 waiting_timeout,
                 tier_name,
             )?;

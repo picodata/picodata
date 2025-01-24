@@ -1417,7 +1417,8 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
     }
 }
 
-/// Common logic for [`sbroad::ir::OptionKind::VdbeOpcodeMax`] and `VTableMaxRows` parsing.
+/// Common logic for [`sbroad::ir::OptionKind::VdbeOpcodeMax`]
+/// and [`sbroad::ir::OptionKind::MotionRowMax`] parsing.
 fn parse_option<M: Metadata>(
     ast: &AbstractSyntaxTree,
     option_node_id: usize,
@@ -3805,14 +3806,14 @@ impl AbstractSyntaxTree {
                     worker.sq_ast_to_plan_id.add(id, plan_sq_id);
                     map.add(id, plan_sq_id);
                 }
-                Rule::VTableMaxRows => {
+                Rule::MotionRowMax => {
                     let ast_child_id = node
                         .children
                         .first()
                         .expect("no children for sql_vdbe_opcode_max option");
                     let val = parse_option(self, *ast_child_id, &mut worker, &mut plan)?;
                     plan.raw_options.push(OptionSpec {
-                        kind: OptionKind::VTableMaxRows,
+                        kind: OptionKind::MotionRowMax,
                         val,
                     });
                 }

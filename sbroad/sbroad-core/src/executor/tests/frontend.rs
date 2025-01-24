@@ -75,7 +75,7 @@ fn front_explain_select_sql1() {
     scan "hash_testing" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1-10000]
 "#,
     );
@@ -105,7 +105,7 @@ fn front_explain_select_sql2() {
         r#"        scan "hash_testing_hist" -> "t2""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    vtable_max_rows = 5000"#,
+        r#"    sql_motion_row_max = 5000"#,
         r#"buckets = [1-10000]"#,
     );
 
@@ -137,7 +137,7 @@ fn front_explain_select_sql3() {
         r#"                scan "t3""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    vtable_max_rows = 5000"#,
+        r#"    sql_motion_row_max = 5000"#,
         r#"buckets = [1-10000]"#,
     );
 
@@ -169,7 +169,7 @@ fn front_explain_select_sql4() {
         r#"                scan "t3" -> "q2""#,
         r#"execution options:"#,
         r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    vtable_max_rows = 5000"#,
+        r#"    sql_motion_row_max = 5000"#,
         r#"buckets = [1-10000]"#,
     );
 

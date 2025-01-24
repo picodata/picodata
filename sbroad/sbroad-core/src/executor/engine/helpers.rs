@@ -1237,7 +1237,7 @@ pub trait RequiredPlanInfo {
     fn params(&self) -> &Vec<Value>;
     fn schema_info(&self) -> &SchemaInfo;
     fn sql_vdbe_opcode_max(&self) -> u64;
-    fn vtable_max_rows(&self) -> u64;
+    fn sql_motion_row_max(&self) -> u64;
     fn extract_data(&mut self) -> EncodedTables;
 }
 
@@ -1281,8 +1281,8 @@ impl RequiredPlanInfo for QueryInfo<'_> {
         self.required.options.sql_vdbe_opcode_max
     }
 
-    fn vtable_max_rows(&self) -> u64 {
-        self.required.options.vtable_max_rows
+    fn sql_motion_row_max(&self) -> u64 {
+        self.required.options.sql_motion_row_max
     }
 
     fn extract_data(&mut self) -> EncodedTables {
@@ -1329,8 +1329,8 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
         self.required.options.sql_vdbe_opcode_max
     }
 
-    fn vtable_max_rows(&self) -> u64 {
-        self.required.options.vtable_max_rows
+    fn sql_motion_row_max(&self) -> u64 {
+        self.required.options.sql_motion_row_max
     }
 
     fn extract_data(&mut self) -> EncodedTables {
@@ -1446,7 +1446,7 @@ where
 {
     let mut tmp_tables = info.extract_data();
     let sql_vdbe_opcode_max = info.sql_vdbe_opcode_max();
-    let max_rows = info.vtable_max_rows();
+    let max_rows = info.sql_motion_row_max();
 
     // The statement was not found in the cache, so we need to prepare it.
     let (pattern_with_params, mut guards) = info.extract_query_and_table_guard()?;
@@ -2143,7 +2143,7 @@ where
                 &mut tmp_tables,
                 info.id(),
                 info.sql_vdbe_opcode_max(),
-                info.vtable_max_rows(),
+                info.sql_motion_row_max(),
                 return_format,
             )
         } else {
@@ -2153,7 +2153,7 @@ where
                 &mut tmp_tables,
                 info.id(),
                 info.sql_vdbe_opcode_max(),
-                info.vtable_max_rows(),
+                info.sql_motion_row_max(),
                 return_format,
             )
         };

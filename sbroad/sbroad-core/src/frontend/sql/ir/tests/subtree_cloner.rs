@@ -117,7 +117,7 @@ fn except_transform_with_dag_plan() {
                         value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());

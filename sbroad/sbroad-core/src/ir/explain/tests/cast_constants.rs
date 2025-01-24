@@ -18,7 +18,7 @@ fn select_values_rows() {
             value row (data=ROW(1::integer, 2::unsigned, 'txt'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = any
 "#,
     );
@@ -34,7 +34,7 @@ fn insert_values_rows() {
             value row (data=ROW('txt'::string, 2::integer))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = unknown
 "#,
     );
@@ -49,7 +49,7 @@ fn select_selection() {
         scan "t3"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [1610]
 "#,
     );
@@ -67,7 +67,7 @@ fn update_selection() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [550]
 "#,
     );
@@ -84,7 +84,7 @@ fn delete_selection() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 buckets = [9374]
 "#,
     );

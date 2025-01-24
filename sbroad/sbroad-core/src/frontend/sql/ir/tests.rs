@@ -42,7 +42,7 @@ fn front_sql1() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -63,7 +63,7 @@ fn front_sql2() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -97,7 +97,7 @@ fn front_sql3() {
                         scan "hash_testing_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -135,7 +135,7 @@ fn front_sql4() {
                         scan "hash_testing_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -162,7 +162,7 @@ motion [policy: full]
                         scan "hash_testing_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -191,7 +191,7 @@ fn front_sql6() {
                         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -211,7 +211,7 @@ fn front_sql8() {
         scan "hash_testing" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -266,7 +266,7 @@ fn front_sql9() {
                                 scan "hash_single_testing_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -286,7 +286,7 @@ fn front_sql10() {
             value row (data=ROW(1::unsigned, 2::unsigned, 3::unsigned, 4::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -306,7 +306,7 @@ fn front_sql11() {
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -326,7 +326,7 @@ fn front_sql14() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -347,7 +347,7 @@ fn front_sql16() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -367,7 +367,7 @@ fn front_sql17() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -387,7 +387,7 @@ fn front_sql18() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -407,7 +407,7 @@ fn front_sql19() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -422,7 +422,7 @@ fn front_sql_is_true() {
         r#"projection (ROW(true::boolean) = true::boolean -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -432,7 +432,7 @@ execution options:
         r#"projection (not ROW(true::boolean) = true::boolean -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 }
@@ -445,7 +445,7 @@ fn front_sql_is_false() {
         r#"projection (ROW(true::boolean) = false::boolean -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -455,7 +455,7 @@ execution options:
         r#"projection (not ROW(true::boolean) = false::boolean -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 }
@@ -468,7 +468,7 @@ fn front_sql_is_null_unknown() {
         r#"projection (ROW(true::boolean) is null -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -478,7 +478,7 @@ execution options:
         r#"projection (ROW(true::boolean) is null -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -488,7 +488,7 @@ execution options:
         r#"projection (not ROW(true::boolean) is null -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -498,7 +498,7 @@ execution options:
         r#"projection (not ROW(true::boolean) is null -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 }
@@ -530,7 +530,7 @@ fn front_sql_between_with_additional_and_from_left() {
         scan "test_space" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -551,7 +551,7 @@ fn front_sql_between_with_additional_not_from_left() {
         scan "test_space" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -572,7 +572,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
         scan "test_space" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -594,7 +594,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
         scan "test_space" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -615,7 +615,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
         scan "test_space" -> "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -666,7 +666,7 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -682,7 +682,7 @@ fn front_sql_check_single_quotes_are_escaped() {
         r#"projection (''::string -> "col_1", '''::string -> "col_2", 'left'right'::string -> "col_3", ''center''::string -> "col_4")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -702,7 +702,7 @@ fn front_sql_check_arbitraty_utf_in_identifiers() {
     scan "test_space" -> "&%ښ۞@ƶǖ"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -723,7 +723,7 @@ fn front_sql_check_inapplicatable_symbols() {
     scan "TBL"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -741,7 +741,7 @@ fn front_projection_with_scan_specification_under_scan() {
     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -766,7 +766,7 @@ fn front_projection_with_scan_specification_under_join() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -792,7 +792,7 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
                     scan "test_space" -> "ts"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -814,7 +814,7 @@ fn front_order_by_with_simple_select() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -867,7 +867,7 @@ fn front_order_by_with_order_type_specification() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -889,7 +889,7 @@ fn front_order_by_with_indices() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -912,7 +912,7 @@ fn front_order_by_ordering_by_expressions_from_projection() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -954,7 +954,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
                                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -979,7 +979,7 @@ fn front_join_with_identical_columns() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1017,7 +1017,7 @@ fn front_join_with_vtable_ambiguous_column_name() {
                                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1038,7 +1038,7 @@ fn front_case_search() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1063,7 +1063,7 @@ fn front_case_simple() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1092,7 +1092,7 @@ fn front_case_nested() {
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1116,7 +1116,7 @@ scan
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1252,7 +1252,7 @@ fn front_sql_join_on_bucket_id1() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1282,7 +1282,7 @@ fn front_sql_join_on_bucket_id2() {
                         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1306,7 +1306,7 @@ fn front_sql_groupby_on_bucket_id() {
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1334,7 +1334,7 @@ scan
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1359,7 +1359,7 @@ fn front_sql_except_on_bucket_id() {
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1383,7 +1383,7 @@ motion [policy: full]
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1407,7 +1407,7 @@ motion [policy: full]
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1432,7 +1432,7 @@ motion [policy: full]
                         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1453,7 +1453,7 @@ fn front_sql_groupby() {
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1479,7 +1479,7 @@ fn front_sql_groupby_less_cols_in_proj() {
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1508,7 +1508,7 @@ fn front_sql_groupby_union_1() {
         scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1542,7 +1542,7 @@ fn front_sql_groupby_union_2() {
                     scan "hash_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1576,7 +1576,7 @@ fn front_sql_groupby_join_1() {
                                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1605,7 +1605,7 @@ fn front_sql_join() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1629,7 +1629,7 @@ execution options:
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1658,7 +1658,7 @@ execution options:
                             scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -1682,7 +1682,7 @@ fn front_sql_groupby_insert() {
                             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1732,7 +1732,7 @@ fn front_sql_aggregates() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1760,7 +1760,7 @@ fn front_sql_distinct_asterisk() {
                                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -1779,7 +1779,7 @@ fn front_sql_avg_aggregate() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1800,7 +1800,7 @@ fn front_sql_total_aggregate() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1822,7 +1822,7 @@ fn front_sql_min_aggregate() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1844,7 +1844,7 @@ fn front_sql_max_aggregate() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1866,7 +1866,7 @@ fn front_sql_group_concat_aggregate() {
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1888,7 +1888,7 @@ fn front_sql_group_concat_aggregate2() {
                 scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1908,7 +1908,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
             scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1924,7 +1924,7 @@ execution options:
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 }
@@ -1942,7 +1942,7 @@ fn front_sql_count_asterisk1() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -1965,7 +1965,7 @@ fn front_sql_count_asterisk2() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2004,7 +2004,7 @@ fn front_sql_aggregates_with_subexpressions() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2026,7 +2026,7 @@ fn front_sql_aggregates_with_distinct1() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2050,7 +2050,7 @@ fn front_sql_aggregates_with_distinct2() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2072,7 +2072,7 @@ fn front_sql_aggregates_with_distinct3() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2114,7 +2114,7 @@ fn front_sql_column_outside_aggregate_no_groupby() {
 
 #[test]
 fn front_sql_option_basic() {
-    let input = r#"select * from "t" option(sql_vdbe_opcode_max = 1000, vtable_max_rows = 10)"#;
+    let input = r#"select * from "t" option(sql_vdbe_opcode_max = 1000, sql_motion_row_max = 10)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = String::from(
@@ -2122,7 +2122,7 @@ fn front_sql_option_basic() {
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 1000
-    vtable_max_rows = 10
+    sql_motion_row_max = 10
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -2130,7 +2130,7 @@ execution options:
 
 #[test]
 fn front_sql_option_with_param() {
-    let input = r#"select * from "t" option(sql_vdbe_opcode_max = ?, vtable_max_rows = ?)"#;
+    let input = r#"select * from "t" option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1000), Value::Unsigned(10)]);
     let expected_explain = String::from(
@@ -2138,7 +2138,7 @@ fn front_sql_option_with_param() {
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 1000
-    vtable_max_rows = 10
+    sql_motion_row_max = 10
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -2157,7 +2157,7 @@ fn front_sql_pg_style_params1() {
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -2166,7 +2166,7 @@ execution options:
 #[test]
 fn front_sql_pg_style_params2() {
     let input =
-        r#"select $1, $2, $1 from "t" option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#;
+        r#"select $1, $2, $1 from "t" option(sql_vdbe_opcode_max = $1, sql_motion_row_max = $1)"#;
 
     let plan = sql_to_optimized_ir(
         input,
@@ -2177,7 +2177,7 @@ fn front_sql_pg_style_params2() {
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 1000
-    vtable_max_rows = 1000
+    sql_motion_row_max = 1000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -2189,7 +2189,7 @@ fn front_sql_pg_style_params3() {
         where "a" = $1
         group by "a" + $1
         having count("b") > $1
-        option(sql_vdbe_opcode_max = $1, vtable_max_rows = $1)"#;
+        option(sql_vdbe_opcode_max = $1, sql_motion_row_max = $1)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(42)]);
     let expected_explain = String::from(
@@ -2203,7 +2203,7 @@ fn front_sql_pg_style_params3() {
                             scan "t"
 execution options:
     sql_vdbe_opcode_max = 42
-    vtable_max_rows = 42
+    sql_motion_row_max = 42
 "#,
     );
     println!("{}", plan.as_explain().unwrap());
@@ -2247,7 +2247,7 @@ fn front_sql_option_defaults() {
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -2282,7 +2282,7 @@ fn front_sql_aggregate_without_groupby() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2304,7 +2304,7 @@ fn front_sql_aggregate_without_groupby2() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2326,7 +2326,7 @@ fn front_sql_aggregate_on_aggregate() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2354,7 +2354,7 @@ fn front_sql_union_single_left() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2383,7 +2383,7 @@ fn front_sql_union_single_right() {
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2415,7 +2415,7 @@ fn front_sql_union_single_both() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2438,7 +2438,7 @@ fn front_sql_insert_single() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2465,7 +2465,7 @@ fn front_sql_except_single_right() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2490,7 +2490,7 @@ execution options:
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2517,7 +2517,7 @@ fn front_sql_except_single_left() {
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2547,7 +2547,7 @@ fn front_sql_except_single_both() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2570,7 +2570,7 @@ fn front_sql_groupby_expression() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2594,7 +2594,7 @@ fn front_sql_groupby_expression2() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2617,7 +2617,7 @@ fn front_sql_groupby_expression3() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2640,7 +2640,7 @@ fn front_sql_groupby_expression4() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2676,7 +2676,7 @@ fn front_sql_groupby_with_aggregates() {
                                     scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2704,7 +2704,7 @@ fn front_sql_left_join() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2736,7 +2736,7 @@ fn front_sql_left_join_single_left() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2770,7 +2770,7 @@ fn front_sql_left_join_single_left2() {
                     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2804,7 +2804,7 @@ fn front_sql_left_join_single_both() {
                         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2836,7 +2836,7 @@ motion [policy: full]
                         scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2861,7 +2861,7 @@ fn front_sql_having1() {
                         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2885,7 +2885,7 @@ fn front_sql_having2() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2908,7 +2908,7 @@ fn front_sql_having3() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -2957,7 +2957,7 @@ motion [policy: full]
                         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3007,7 +3007,7 @@ motion [policy: segment([ref("a"), ref("d")])]
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3041,7 +3041,7 @@ scan
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3063,7 +3063,7 @@ fn front_sql_unique_local_aggregates() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3089,7 +3089,7 @@ fn front_sql_unique_local_groupings() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3130,7 +3130,7 @@ ON "t3"."a" = "ij"."id"
                             scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3153,7 +3153,7 @@ fn front_sql_select_distinct() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3175,7 +3175,7 @@ fn front_sql_select_distinct_asterisk() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3214,7 +3214,7 @@ fn front_sql_select_distinct_with_aggr() {
                     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3234,7 +3234,7 @@ fn front_sql_select_distinct_with_aggr2() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3254,7 +3254,7 @@ fn front_sql_insert_on_conflict() {
             value row (data=ROW(1::unsigned, 1::unsigned, 1::unsigned, 1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3268,7 +3268,7 @@ execution options:
             value row (data=ROW(1::unsigned, 1::unsigned, 1::unsigned, 1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 
@@ -3289,7 +3289,7 @@ fn front_sql_insert_1() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3309,7 +3309,7 @@ fn front_sql_insert_2() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3330,7 +3330,7 @@ fn front_sql_insert_3() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3350,7 +3350,7 @@ fn front_sql_insert_4() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3370,7 +3370,7 @@ fn front_sql_insert_5() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3392,7 +3392,7 @@ fn front_sql_insert_6() {
             value row (data=ROW(3::unsigned, 4::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3426,7 +3426,7 @@ fn front_sql_insert_8() {
             scan "hash_single_testing"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3444,7 +3444,7 @@ fn front_sql_insert_9() {
             value row (data=ROW(1::unsigned, 2::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3466,7 +3466,7 @@ fn front_sql_update1() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3485,7 +3485,7 @@ fn front_sql_update2() {
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3505,7 +3505,7 @@ fn front_sql_update3() {
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3536,7 +3536,7 @@ fn front_sql_update4() {
                             scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3564,7 +3564,7 @@ fn front_sql_update5() {
                         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -3593,7 +3593,7 @@ motion [policy: full]
                                     scan "t3"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     println!("{}", plan.as_explain().unwrap());
@@ -3612,7 +3612,7 @@ fn front_sql_not_true() {
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3631,7 +3631,7 @@ fn front_sql_not_equal() {
                 value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3650,7 +3650,7 @@ fn front_sql_not_cast() {
                 value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3669,7 +3669,7 @@ fn from_sql_not_column() {
                 value row (data=ROW(true::boolean))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3688,7 +3688,7 @@ fn front_sql_not_or() {
                 value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3706,7 +3706,7 @@ fn front_sql_not_and_with_parentheses() {
             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3725,7 +3725,7 @@ fn front_sql_not_or_with_parentheses() {
                 value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3750,7 +3750,7 @@ scan
                         value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3776,7 +3776,7 @@ motion [policy: full]
                             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3813,7 +3813,7 @@ scan
                             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3831,7 +3831,7 @@ fn front_sql_arithmetic_with_parentheses() {
             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3849,7 +3849,7 @@ fn front_sql_to_date() {
             value row (data=ROW('2010/10/10'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     )
 }
@@ -3871,7 +3871,7 @@ fn front_sql_current_date() {
                 value row (data=ROW('2010/10/10'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
         today = today.format(&format).unwrap()
     );
@@ -4075,7 +4075,7 @@ scan
             value row (data=ROW(2::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4097,7 +4097,7 @@ scan
                     value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4121,7 +4121,7 @@ scan
             value row (data=ROW(ROW($0)))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4149,7 +4149,7 @@ scan
                         value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     println!("{}", plan.as_explain().unwrap());
@@ -4165,7 +4165,7 @@ fn front_select_without_scan() {
         r#"projection (1::unsigned -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4191,7 +4191,7 @@ scan
             value row (data=ROW(1::unsigned))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4237,7 +4237,7 @@ motion [policy: full]
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4260,7 +4260,7 @@ scan
         projection (1::unsigned -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
@@ -4277,7 +4277,7 @@ fn front_sql_check_concat_with_parameters() {
     value row (data=ROW(ROW('a'::string) || ROW('b'::string)))
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

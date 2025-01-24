@@ -1672,7 +1672,7 @@ pub struct AlterSystemParameters {
 
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5000)]
-    pub vtable_max_rows: u64,
+    pub sql_motion_row_max: u64,
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout

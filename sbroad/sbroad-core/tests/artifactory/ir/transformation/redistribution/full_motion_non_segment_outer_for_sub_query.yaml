@@ -240,7 +240,7 @@ relations:
 slices:
   slices:
     - slice:
-      - 32
+        - 32
 top: 28
 is_explain: false
 undo:
@@ -249,7 +249,7 @@ constants: {}
 raw_options: []
 pg_params_map: {}
 options:
-  vtable_max_rows: 5000
+  sql_motion_row_max: 5000
   execute_options:
     VdbeOpcodeMax:
       Unsigned: 45000

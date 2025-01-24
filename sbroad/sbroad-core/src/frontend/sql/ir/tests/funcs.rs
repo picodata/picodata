@@ -13,7 +13,7 @@ fn lower_upper() {
     scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
-    vtable_max_rows = 5000
+    sql_motion_row_max = 5000
 "#,
     );
 

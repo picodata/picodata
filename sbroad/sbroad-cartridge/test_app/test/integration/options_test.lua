@@ -115,9 +115,9 @@ option_queries.test_invalid = function()
     })
     t.assert_str_contains(err, [[expected option sql_vdbe_opcode_max to be unsigned got: Integer(-1)]])
     _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vtable_max_rows = ?) ]], { -1 }
+        query_str .. [[ option(sql_motion_row_max = ?) ]], { -1 }
     })
-    t.assert_str_contains(err, [[expected option vtable_max_rows to be unsigned got: Integer(-1)]])
+    t.assert_str_contains(err, [[expected option sql_motion_row_max to be unsigned got: Integer(-1)]])
 
     _, err = api:call("sbroad.execute", {
         query_str .. [[ option(bad_option = 1) ]]
@@ -125,34 +125,34 @@ option_queries.test_invalid = function()
     t.assert_str_contains(err, [[Sbroad Error: build query: rule parsing error]])
 end
 
-option_queries.test_vtable_max_rows_on_storage = function()
+option_queries.test_sql_motion_row_max_on_storage = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space"]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vtable_max_rows = 1) ]]
+        query_str .. [[ option(sql_motion_row_max = 1) ]]
     })
     t.assert_str_contains(err, [[Exceeded maximum number of rows (1) in virtual table: 2]])
 
     local r
-    r, err = api:call("sbroad.execute", { query_str .. [[ option(vtable_max_rows = 6) ]] })
+    r, err = api:call("sbroad.execute", { query_str .. [[ option(sql_motion_row_max = 6) ]] })
     t.assert_equals(err, nil)
     t.assert_equals(r, { row_count = 6 })
 end
 
-option_queries.test_vtable_max_rows_insert_values = function()
+option_queries.test_sql_motion_row_max_insert_values = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[insert into "cola_accounts_history" values (2, 2, 2, 1, 1), (3, 2, 2, 1, 1), (4, 2, 2, 1, 1)]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vtable_max_rows = 1) ]]
+        query_str .. [[ option(sql_motion_row_max = 1) ]]
     })
     t.assert_str_contains(err, [[Exceeded maximum number of rows (1) in virtual table: 3]])
 end
 
-option_queries.test_vtable_max_rows_on_router = function()
+option_queries.test_sql_motion_row_max_on_router = function()
     local api = cluster:server("api-1").net_box
     local query_str = [[select "id" from "testing_space" group by "id"]]
     local _, err = api:call("sbroad.execute", {
-        query_str .. [[ option(vtable_max_rows = 5) ]]
+        query_str .. [[ option(sql_motion_row_max = 5) ]]
     })
     -- on storages the result table <= 5 (assuming each storage
     -- has at least one row). On router the VTable will have
@@ -160,7 +160,7 @@ option_queries.test_vtable_max_rows_on_router = function()
     t.assert_str_contains(err, [[Exceeded maximum number of rows (5) in virtual table: 6]])
 
     local r
-    r, err = api:call("sbroad.execute", { query_str .. [[ option(vtable_max_rows = 7) ]] })
+    r, err = api:call("sbroad.execute", { query_str .. [[ option(sql_motion_row_max = 7) ]] })
     t.assert_equals(err, nil)
     t.assert(r.rows ~= nil)
 end
