@@ -291,8 +291,8 @@ def test_read_from_system_tables(cluster: Cluster):
         "password_min_length",
         "snapshot_chunk_max_size",
         "snapshot_read_view_close_timeout",
-        "sql_vdbe_opcode_max",
         "sql_motion_row_max",
+        "sql_vdbe_opcode_max",
     ]
 
     data = i1.sql(
@@ -5942,7 +5942,8 @@ Exceeded maximum number of rows (1) in virtual table: 2"""
         match=error_message,
     ):
         i1.sql(
-            f"SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = {new_sql_motion_row_max})"
+            f"SELECT * FROM (VALUES (1), (2)) \
+OPTION (sql_motion_row_max = {new_sql_motion_row_max})"
         )
 
 

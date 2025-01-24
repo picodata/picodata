@@ -12,7 +12,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Configuration
 
-- New alter system parameters - `vdbe_max_steps` and `vtable_max_rows`.
+- New alter system parameters - `sql_vdbe_opcode_max` and `sql_motion_row_max`.
 
 - Default config name is `picodata.yaml`.
 
@@ -66,6 +66,10 @@ to 2 and 3.
 - PgProto is now enabled by default and listens at `127.0.0.1:4327`.
 
 - Prevented non-admin users with the DROP TABLE privilege from dropping system tables.
+
+- SQL query parameters renamed:
+  - `vdbe_max_steps` to `sql_vdbe_opcode_max`
+  - `vtable_max_rows` to `sql_motion_row_max`
 
 ### RPC API
 

@@ -31,7 +31,9 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
         psycopg.InternalError,
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
-        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
+        conn.execute(
+            "SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)"
+        )
 
     # Specify "sql_motion_row_max" in a query so the default is not used.
     conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 2)")
@@ -52,7 +54,9 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
         psycopg.InternalError,
         match="Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
-        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 1000)")
+        conn.execute(
+            "SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 1000)"
+        )
 
     # Specify "sql_vdbe_opcode_max" in a query so the default is not used.
     conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
