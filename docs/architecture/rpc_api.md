@@ -193,6 +193,27 @@ fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 - `index`: (MP_INT) raft-индекс
 - `term`: (MP_INT) raft-терм
 
+### .proc_disable_service {: #proc_disable_service }
+
+```rust
+fn proc_disable_service(term, applied, timeout)
+```
+
+Отключает сервис плагина на текущем инстансе, вызывая коллбэк [`on_stop`].
+
+[Губернатор][g] вызывает данную хранимую процедуру при изменении
+[конфигурации плагина][p_c].
+
+[g]: ../overview/glossary.md#governor
+[p_c]: plugins.md#plugin_config
+[`on_stop`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_stop
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
 ### .proc_discover {: #proc_discover }
 
 ```rust
@@ -217,6 +238,80 @@ fn proc_discover(request, request_to) -> Result
     - `peers`: (MP_ARRAY of MP_STR)
 - *Done*: (MP_MAP `Role`) — если результат уже известен:
     - `leader_address`: (MP_STR) адрес лидера
+
+### .proc_enable_all_plugins {: #proc_enable_all_plugins }
+
+```rust
+fn proc_enable_all_plugins(term, applied, timeout)
+```
+
+Включает на текущем инстансе все плагины со статусом `enable = true`.
+Вызывает коллбэки [`on_start`] для всех сервисов всех плагинов.
+
+[Губернатор][g] вызывает данную хранимую процедуру при повторной
+инициализации инстансов после их временного выключения или выхода из строя.
+
+[`on_start`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_start
+
+См. также:
+
+* [Инструкции и руководства — Добавление узлов](../tutorial/node_add.md)
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+### .proc_enable_plugin {: #proc_enable_plugin }
+
+```rust
+fn proc_enable_plugin(term, applied, timeout) -> Result
+```
+
+Включает плагин на текущем инстансе. Вызывает коллбэки [`on_start`]
+для всех сервисов плагина.
+
+[Губернатор][g] вызывает данную хранимую процедуру при включении плагина
+на выбранных инстансах.
+
+В случае возвращения ошибки включение плагина будет прервано на каждом
+из выбранных инстансов.
+
+См. также:
+
+* [Механизм плагинов ~ Включение](plugins.md#plugin_enable)
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+Возвращаемое значение:
+
+- *Ok*: отсутствует
+- *Abort*: `cause` (MP_MAP `ErrorInfo`):
+    - `error_code`: (MP_INT)
+    - `message`: (MP_STR)
+    - `instance_name`: (MP_STR)
+
+### .proc_enable_service {: #proc_enable_service }
+
+```rust
+fn proc_enable_service(term, applied, timeout)
+```
+
+Включает сервис плагина на текущем инстансе, вызывая коллбэк [`on_start`].
+
+[Губернатор][g] вызывает данную хранимую процедуру при изменении
+[конфигурации плагина][p_c].
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
 
 ### .proc_expel {: #proc_expel }
 
@@ -359,6 +454,28 @@ fn proc_instance_info(instance_name) -> InstanceInfo
     - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)) — целевое состояние инстанса
     - `tier`: (MP_STR)
     - `picodata_version`: (MP_STR) версия инстанса
+
+### .proc_load_plugin_dry_run {: #proc_load_plugin_dry_run }
+
+```rust
+fn proc_load_plugin_dry_run(term, applied, timeout) -> Result
+```
+
+Проверяет возможность включения плагина на текущем инстансе.
+
+[Губернатор][g] вызывает данную хранимую процедуру при [установке
+плагина][p_i].
+
+[p_i]: plugins.md#plugin_install
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+Возвращаемое значение:
+- *Ok*: отсутствует
 
 ### .proc_raft_info {: #proc_raft_info }
 
@@ -595,6 +712,35 @@ fn proc_replication_sync(vclock, timeout)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
 [Vclock]: ../overview/glossary.md#vclock
+
+### .proc_rpc_dispatch {: #proc_rpc_dispatch }
+
+```rust
+fn proc_rpc_dispatch(..) -> Result
+```
+
+Точка входа для [RPC-системы] плагинов.
+
+Эту хранимую процедуру вызывают плагины, использующие RPC-систему
+для взаимодействия между инстансами кластера.
+
+Аргументы:
+
+- `path`: (MP_STR) имя RPC-эндпоинта
+- `input`: (MP_BIN) аргументы запроса
+- `context`: (MP_MAP [`Context`]) — метаинформация о запросе:
+  <br>Обязательные поля:
+    - `request_id`: (MP_EXT MP_UUID)
+    - `plugin_name`: (MP_STR)
+    - `service_name`: (MP_STR)
+    - `plugin_version`: (MP_STR)
+
+Возвращаемое значение:
+
+- `output`: (MP_BIN) определяется автором плагина
+
+[`Context`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/transport/context/struct.Context.html
+[RPC-системы]: https://docs.rs/picodata-plugin/latest/picodata_plugin/transport/rpc/index.html
 
 ### .proc_runtime_info {: #proc_runtime_info }
 
