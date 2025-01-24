@@ -962,6 +962,22 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     ), f"Process failed with exit code {process.returncode}\n"
 
 
+def strip(s: str) -> str:
+    """
+    Remove table decorations so variable length data wont be affected
+    by the table width calculations. An example would be port number
+    which is sometimes 4 symbols long and sometimes 5.
+    Additionaly replace | delimiter of columns with a space so even this
+    stripped down form is readable.
+    """
+    to_remove = [" ", "+", "=", "-"]
+
+    for c in to_remove:
+        s = s.replace(c, "")
+
+    return s.replace("|", " ")
+
+
 def test_picodata_status_basic(cluster: Cluster):
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
@@ -996,9 +1012,8 @@ def test_picodata_status_basic(cluster: Cluster):
         ],
     )
 
-    assert (
-        data.decode()
-        == f"""\
+    assert strip(data.decode()) == strip(
+        f"""\
 
 
 CLUSTER NAME: {i1.cluster_name}
@@ -1025,15 +1040,14 @@ CLUSTER NAME: {i1.cluster_name}
             cluster.binary_path,
             "status",
             "--peer",
-            f"{i1_address}",
+            i1_address,
             "--service-password-file",
             password_file,
         ],
     )
 
-    assert (
-        data.decode()
-        == f"""\
+    assert strip(data.decode()) == strip(
+        f"""\
 
 
 CLUSTER NAME: {i1.cluster_name}
@@ -1060,15 +1074,14 @@ CLUSTER NAME: {i1.cluster_name}
             cluster.binary_path,
             "status",
             "--peer",
-            f"{i1_address}",
+            i1_address,
             "--service-password-file",
             password_file,
         ],
     )
 
-    assert (
-        data.decode()
-        == f"""\
+    assert strip(data.decode()) == strip(
+        f"""\
 
 
 CLUSTER NAME: {i1.cluster_name}
