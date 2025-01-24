@@ -2371,9 +2371,14 @@ def cluster_names(xdist_worker_number) -> Iterator[str]:
     return (f"cluster-{xdist_worker_number}-{i}" for i in count())
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
+def class_tmp_dir(tmpdir_factory):
+    return tmpdir_factory.mktemp("tmp")
+
+
+@pytest.fixture(scope="class")
 def cluster(
-    binary_path_fixt, tmpdir, cluster_names, port_distributor
+    binary_path_fixt, class_tmp_dir, cluster_names, port_distributor
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
@@ -2382,7 +2387,7 @@ def cluster(
     cluster = Cluster(
         binary_path=binary_path_fixt,
         id=next(cluster_names),
-        instance_dir=tmpdir,
+        instance_dir=class_tmp_dir,
         share_dir=share_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
