@@ -16,9 +16,9 @@ use crate::ir::node::relational::{RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
 use crate::ir::node::{
-    BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, NodeId, OrderBy, Projection,
-    Reference, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, UnaryExpr, Union,
-    UnionAll, Update, Values, ValuesRow,
+    BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId, OrderBy,
+    Projection, Reference, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
 use crate::ir::tree::traversal::{
@@ -227,6 +227,10 @@ impl Strategy {
     /// Update policy in case `child_id` key is already in the `children_policy` map.
     fn add_child(&mut self, child_id: NodeId, policy: MotionPolicy, program: Program) {
         self.children_policy.insert(child_id, (policy, program));
+    }
+
+    fn remove_child(&mut self, child_id: NodeId) {
+        self.children_policy.remove(&child_id);
     }
 
     fn get_rel_ids(&self) -> AHashSet<NodeId> {
@@ -742,6 +746,159 @@ impl Plan {
         }
 
         Ok(None)
+    }
+
+    fn resolve_window_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
+        let rel = self.get_relation_node(rel_id)?;
+        let Relational::Projection(Projection { windows, .. }) = rel else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("Expected Projection node, got {rel:?}")),
+            ));
+        };
+
+        // If projection's child is a NamedWindows node, we have to
+        // put the motions under it instead.
+        let mut parent_id = rel_id;
+        let mut first_child_id = self.get_relational_child(rel_id, 0)?;
+        let child_rel = self.get_relation_node(first_child_id)?;
+        if let Relational::NamedWindows(NamedWindows { child, .. }) = child_rel {
+            parent_id = first_child_id;
+            first_child_id = *child;
+        }
+
+        // Collect the distribution of the windows (if any).
+        let mut window_dist = None;
+        for window_id in windows {
+            let window_expr = self.get_expression_node(*window_id)?;
+            if let Expression::Window(Window { partition, .. }) = window_expr {
+                let Some(partition) = partition else {
+                    window_dist = Some(Distribution::Single);
+                    break;
+                };
+                let mut positions: Vec<usize> = Vec::with_capacity(partition.len());
+                for part_id in partition {
+                    let part_expr = self.get_expression_node(*part_id)?;
+                    if let Expression::Reference(Reference { position, .. }) = part_expr {
+                        positions.push(*position);
+                    }
+                }
+                if positions.is_empty() {
+                    // It should never happen, but let's treat is as non-defined partition
+                    // rather than trow an error.
+                    continue;
+                }
+                let key = Key::new(positions);
+                let mut keys = KeySet::empty();
+                keys.insert(key);
+                match &mut window_dist {
+                    None => {
+                        window_dist = Some(Distribution::Segment { keys });
+                    }
+                    Some(Distribution::Segment {
+                        keys: ref window_keys,
+                    }) => {
+                        if *window_keys != keys {
+                            window_dist = Some(Distribution::Single);
+                            break;
+                        }
+                    }
+                    _ => {
+                        window_dist = Some(Distribution::Single);
+                        break;
+                    }
+                }
+            }
+        }
+        let mut strategy = Strategy::new(parent_id);
+        let Some(window_dist) = window_dist else {
+            // If there are no windows, we don't need to do anything.
+            strategy.add_child(first_child_id, MotionPolicy::None, Program::default());
+            return Ok(strategy);
+        };
+
+        // Collect the distribution of the child.
+        let child_dist = self
+            .get_distribution(self.get_relational_output(first_child_id)?)?
+            .to_owned();
+        match (&window_dist, &child_dist) {
+            (
+                Distribution::Segment {
+                    keys: ref window_keys,
+                },
+                Distribution::Segment { keys: child_keys },
+            ) => {
+                if window_keys == child_keys {
+                    strategy.add_child(first_child_id, MotionPolicy::None, Program::default());
+                } else {
+                    let key = window_keys
+                        .iter()
+                        .next()
+                        .expect("Failed to get the first key from the window distribution.");
+                    strategy.add_child(
+                        first_child_id,
+                        MotionPolicy::Segment(key.into()),
+                        Program::default(),
+                    );
+                }
+            }
+            (_, Distribution::Global | Distribution::Single) => {
+                strategy.add_child(first_child_id, MotionPolicy::None, Program::default());
+            }
+            (Distribution::Segment { keys }, Distribution::Any) => {
+                let key = keys
+                    .iter()
+                    .next()
+                    .expect("Failed to get the first key from the window distribution.");
+                strategy.add_child(
+                    first_child_id,
+                    MotionPolicy::Segment(key.into()),
+                    Program::default(),
+                );
+            }
+            _ => {
+                strategy.add_child(first_child_id, MotionPolicy::Full, Program::default());
+            }
+        }
+
+        self.add_proj_for_strategy(&mut strategy, parent_id, first_child_id)?;
+        Ok(strategy)
+    }
+
+    // If we add some motion over the child, we have to check that the child
+    // is a projection. If it is not, we have to wrap to add projection (or
+    // we'll generate invalid SQL).
+    fn add_proj_for_strategy(
+        &mut self,
+        strategy: &mut Strategy,
+        parent_id: NodeId,
+        child_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let child_rel = self.get_relation_node(child_id)?;
+        if !matches!(child_rel, Relational::Projection(_)) {
+            let (policy, program) = strategy
+                .children_policy
+                .get(&child_id)
+                .expect("Entry in strategy map is missing.");
+            match policy {
+                MotionPolicy::Full | MotionPolicy::Segment(_) => {
+                    // We need a bucket_id column in the projection when a child node is a table
+                    // scan. Otherwise we'll break the references in the parent_id node.
+                    // TODO: it would be nice to replace columns with an asterisk in the projection.
+                    let proj_id = self.add_proj(child_id, vec![], &[], false, true)?;
+                    strategy.add_child(proj_id, policy.to_owned(), program.to_owned());
+                    strategy.remove_child(child_id);
+                    let old_parent_children = self.get_relational_children(parent_id)?;
+                    let children: Vec<NodeId> = old_parent_children
+                        .iter()
+                        .map(|child| if *child == child_id { proj_id } else { *child })
+                        .collect();
+                    self.set_relational_children(parent_id, children);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Calculate Motion strategies for `SubQueries`.
@@ -2269,6 +2426,13 @@ impl Plan {
             }
 
             match node {
+                RelOwned::NamedWindows(NamedWindows { output, child, .. }) => {
+                    // Named windows are not used in the plan, so they don't produce any motions.
+                    // The actual window functions are used in the projection nodes.
+                    let child_output = self.get_relational_output(child)?;
+                    let child_dist = self.get_distribution(child_output)?;
+                    self.set_dist(output, child_dist.clone())?;
+                }
                 RelOwned::Motion { .. } => {
                     // We can apply this transformation only once,
                     // i.e. to the plan without any motion nodes.
@@ -2375,33 +2539,73 @@ impl Plan {
                     }
                     self.set_dist(output, Distribution::Single)?;
                 }
-                RelOwned::Projection(Projection { output, .. }) => {
+                RelOwned::Projection(Projection {
+                    output, windows, ..
+                }) => {
                     let strategy = self.resolve_sub_query_conflicts(id, output)?;
                     let fixed_subquery_ids = strategy.get_rel_ids();
                     self.create_motion_nodes(strategy)?;
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
 
-                    let child_dist = self.get_distribution(
-                        self.get_relational_output(self.get_relational_child(id, 0)?)?,
-                    )?;
+                    let first_child_id = self.get_relational_child(id, 0)?;
+                    let child_dist =
+                        self.get_distribution(self.get_relational_output(first_child_id)?)?;
                     if matches!(child_dist, Distribution::Single | Distribution::Global) {
-                        // Note on why we skip `add_two_stage_aggregation` call below in case of
-                        // Single or Global distribution:
-                        // If child has Single or Global distribution and this Projection
-                        // contains aggregates or there is GroupBy,
-                        // then we don't need two stage transformation,
-                        // we can calculate aggregates / GroupBy in one
-                        // stage, because all data will reside on a single node.
+                        // The data is already on the current node, let's just set the
+                        // distribution.
                         if let Some(dist) = self.dist_from_subqueries(id)? {
                             self.set_dist(output, dist)?;
                         } else {
                             self.set_dist(output, child_dist.clone())?;
                         }
-                    } else if !self.add_two_stage_aggregation(id)? {
-                        // if there are no aggregates or GroupBy, just take distribution
-                        // from child.
-                        self.set_projection_distribution(id)?;
+                        // Nothing else to do here.
+                        continue;
                     }
+
+                    let (others, group_by_id) = self.split_group_by(id)?;
+                    let has_group_by =
+                        matches!(self.get_relation_node(group_by_id)?, Relational::GroupBy(_));
+                    if has_group_by && !windows.is_empty() {
+                        // It is a complicated case. We should add a full motion under the
+                        // group by node and do not mess with two stage aggregation logic.
+                        let mut gb_strategy = Strategy::new(group_by_id);
+                        let group_by_child_id = self.get_relational_child(group_by_id, 0)?;
+                        gb_strategy.add_child(
+                            group_by_child_id,
+                            MotionPolicy::Full,
+                            Program::default(),
+                        );
+                        self.add_proj_for_strategy(
+                            &mut gb_strategy,
+                            group_by_id,
+                            group_by_child_id,
+                        )?;
+                        self.create_motion_nodes(gb_strategy)?;
+                        self.set_dist(
+                            self.get_relational_output(group_by_id)?,
+                            Distribution::Single,
+                        )?;
+                        for node_id in others.into_iter() {
+                            let rel = self.get_relation_node(node_id)?;
+                            self.set_dist(rel.output(), Distribution::Single)?;
+                        }
+                        // Nothing else to do here.
+                        continue;
+                    }
+
+                    if windows.is_empty() && self.add_two_stage_aggregation(id)? {
+                        // We have successfully added two stage aggregation.
+                        continue;
+                    }
+
+                    if !windows.is_empty() {
+                        // If we have window functions without aggregates, lets deal with them.
+                        let strategy = self.resolve_window_conflicts(id)?;
+                        self.create_motion_nodes(strategy)?;
+                    }
+
+                    // Just take distribution from projection's child.
+                    self.set_projection_distribution(id)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
                     let strategy = self.resolve_sub_query_conflicts(id, output)?;

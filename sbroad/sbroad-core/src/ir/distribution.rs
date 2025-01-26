@@ -118,6 +118,14 @@ impl TryFrom<&MotionKey> for KeySet {
 }
 
 impl KeySet {
+    pub(crate) fn empty() -> Self {
+        KeySet(HashSet::with_hasher(RepeatableState))
+    }
+
+    pub(crate) fn insert(&mut self, key: Key) {
+        self.0.insert(key);
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Key> {
         self.0.iter()
     }

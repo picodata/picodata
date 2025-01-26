@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::TreeIterator;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{ArenaType, Limit, NodeId, ScanCte};
+use crate::ir::node::{ArenaType, Limit, NamedWindows, NodeId, Projection, ScanCte};
 use crate::ir::{Node, Nodes};
 
 trait RelationalTreeIterator<'nodes>: TreeIterator<'nodes> {}
@@ -72,7 +72,6 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 | Relational::Intersect { .. }
                 | Relational::Delete { .. }
                 | Relational::Motion { .. }
-                | Relational::Projection { .. }
                 | Relational::ScanSubQuery { .. }
                 | Relational::Selection { .. }
                 | Relational::SelectWithoutScan { .. }
@@ -92,7 +91,16 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                     }
                     None
                 }
+                Relational::Projection(Projection { children, .. }) => {
+                    let step = *iter.get_child().borrow();
+                    if step < children.len() {
+                        *iter.get_child().borrow_mut() += 1;
+                        return children.get(step).copied();
+                    }
+                    None
+                }
                 Relational::ScanCte(ScanCte { child, .. })
+                | Relational::NamedWindows(NamedWindows { child, .. })
                 | Relational::Limit(Limit { child, .. }) => {
                     let step = *iter.get_child().borrow();
                     if step == 0 {

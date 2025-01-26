@@ -7,7 +7,8 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterSystemTierPart, LocalTimestamp, Reference, ReferenceAsteriskSource,
+    Alias, AlterSystemTierPart, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows, Over, Reference,
+    ReferenceAsteriskSource, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
@@ -2928,7 +2929,7 @@ where
                     ParseExpression::PlanId { plan_id: ref_id }
                 }
                 Rule::SubQuery => {
-                    let sq_ast_id = worker
+                    let sq_ast_id: &usize = worker
                         .sq_pair_to_ast_ids
                         .get(&primary).expect("SQ ast_id must exist for pest pair");
                     let plan_id = worker
@@ -3721,33 +3722,156 @@ impl AbstractSyntaxTree {
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<(), SbroadError> {
         let node = self.nodes.get_node(node_id)?;
-        let (rel_child_id, other_children) = node
+        let (rel_child_id, mut other_children_ids) = node
             .children
             .split_first()
             .expect("More than one child expected under Projection");
         let mut is_distinct: bool = false;
-        let mut ast_columns_ids = other_children;
-        let first_col_ast_id = other_children
+        let first_col_ast_id = other_children_ids
             .first()
             .expect("At least one child expected under Projection");
         if let Rule::Distinct = self.nodes.get_node(*first_col_ast_id)?.rule {
             is_distinct = true;
-            (_, ast_columns_ids) = other_children
+            (_, other_children_ids) = other_children_ids
                 .split_first()
                 .expect("Projection must have some columns children");
         }
 
         let plan_rel_child_id = map.get(*rel_child_id)?;
-        let mut proj_columns: Vec<NodeId> = Vec::with_capacity(ast_columns_ids.len());
+        let mut proj_columns: Vec<NodeId> = Vec::with_capacity(other_children_ids.len());
 
         let mut unnamed_col_pos = 0;
         // Unique identifier for each "*" met under projection. Uniqueness is local
         // for each projection. Used to distinguish the source of asterisk projections
         // like `select *, * from t`, where there are several of them.
         let mut asterisk_id = 0;
-        for ast_column_id in ast_columns_ids {
+
+        let mut named_windows = HashMap::new();
+        let mut windows = Vec::new();
+        let rel_child = plan.get_relation_node(plan_rel_child_id)?;
+        if let Relational::NamedWindows(NamedWindows {
+            windows: window_ids,
+            ..
+        }) = rel_child
+        {
+            named_windows.reserve(window_ids.len());
+            for window_id in window_ids {
+                let window = plan.get_expression_node(*window_id)?;
+                let Expression::Window(Window { name, .. }) = window else {
+                    panic!("Expected Window node, got {:?}", window);
+                };
+                let name = name.as_ref().expect("Window name must be set").clone();
+                named_windows.insert(name, *window_id);
+            }
+        }
+
+        for ast_column_id in other_children_ids {
             let ast_column = self.nodes.get_node(*ast_column_id)?;
             match ast_column.rule {
+                Rule::Over => {
+                    let over_children = &ast_column.children;
+                    let func_name_id = over_children
+                        .first()
+                        .expect("Function name expected under Over");
+                    let func_name = parse_identifier(self, *func_name_id)?;
+                    let func_args_node_id = over_children
+                        .get(1)
+                        .expect("Function args expected under Over");
+                    let func_args_node = self.nodes.get_node(*func_args_node_id)?;
+                    let mut func_args = Vec::new();
+                    if let Some(func_args_child_id) = func_args_node.children.first() {
+                        let func_args_child_node = self.nodes.get_node(*func_args_child_id)?;
+                        match func_args_child_node.rule {
+                            Rule::CountAsterisk => {
+                                let normalized_name = func_name.to_lowercase();
+                                if "count" != normalized_name.as_str() {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Query,
+                                        Some(format_smolstr!(
+                                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {normalized_name}",
+                                        ))
+                                    ));
+                                }
+                                let count_asterisk_plan_id = plan.nodes.push(CountAsterisk{}.into());
+                                func_args.push(count_asterisk_plan_id)
+                            }
+                            Rule::WindowFunctionArgsInner => {
+                                for arg_id in &func_args_child_node.children {
+                                    let expr_pair = pairs_map.remove_pair(*arg_id);
+                                    let expr_plan_node_id = parse_expr(
+                                        Pairs::single(expr_pair),
+                                        &[plan_rel_child_id],
+                                        worker,
+                                        plan
+                                    )?;
+                                    func_args.push(expr_plan_node_id);
+                                }
+                            }
+                            _ => panic!("Unexpected rule met under WindowFunction: {func_args_child_node:?}")
+                        }
+                    }
+
+                    let filter_node_id = over_children
+                        .get(2)
+                        .expect("Over should contain Filter child");
+                    let filter_node = self.nodes.get_node(*filter_node_id)?;
+                    let filter = if let Some(f_id) = filter_node.children.first() {
+                        let expr_pair = pairs_map.remove_pair(*f_id);
+                        let expr = parse_expr(
+                            Pairs::single(expr_pair),
+                            &[plan_rel_child_id],
+                            worker,
+                            plan,
+                        )?;
+                        Some(expr)
+                    } else {
+                        None
+                    };
+
+                    let window_node_id = over_children
+                        .get(3)
+                        .expect("Window should be found under Over node");
+                    let window_node = self.nodes.get_node(*window_node_id)?;
+                    let mut ref_by_name = false;
+                    let window = match window_node.rule {
+                        Rule::Identifier => {
+                            let window_name = parse_identifier(self, *window_node_id)?;
+
+                            let err = Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(format_smolstr!("Window with name {window_name} not found")),
+                            ));
+
+                            ref_by_name = true;
+                            *named_windows.get(&window_name).map_or(err, Ok)?
+                        }
+                        Rule::WindowBody => self.parse_window_body(
+                            None,
+                            plan_rel_child_id,
+                            plan,
+                            *window_node_id,
+                            map,
+                            pairs_map,
+                            worker,
+                        )?,
+                        _ => panic!("Unexpected rule met under Window: {window_node:?}"),
+                    };
+                    windows.push(window);
+
+                    let over = Over {
+                        func_name,
+                        func_args,
+                        filter,
+                        window,
+                        ref_by_name,
+                    };
+                    let over_plan_id = plan.nodes.push(over.into());
+
+                    unnamed_col_pos += 1;
+                    let alias_name = get_unnamed_column_alias(unnamed_col_pos);
+                    let plan_alias_id = plan.nodes.add_alias(&alias_name, over_plan_id)?;
+                    proj_columns.push(plan_alias_id);
+                }
                 Rule::Column => {
                     let expr_ast_id = ast_column
                         .children
@@ -3757,23 +3881,24 @@ impl AbstractSyntaxTree {
                     let expr_plan_node_id =
                         parse_expr(Pairs::single(expr_pair), &[plan_rel_child_id], worker, plan)?;
 
-                    let alias_name = if let Some(alias_ast_node_id) = ast_column.children.get(1) {
-                        parse_normalized_identifier(self, *alias_ast_node_id)?
-                    } else {
-                        // We don't use `get_expression_node` here, because we may encounter a `Parameter`.
-                        if let Node::Expression(Expression::Reference(_)) =
-                            plan.get_node(expr_plan_node_id)?
-                        {
-                            let (col_name, _) = worker
-                                .reference_to_name_map
-                                .get(&expr_plan_node_id)
-                                .expect("reference must be in a map");
-                            col_name.clone()
+                    let alias_name: SmolStr =
+                        if let Some(alias_ast_node_id) = ast_column.children.get(1) {
+                            parse_normalized_identifier(self, *alias_ast_node_id)?
                         } else {
-                            unnamed_col_pos += 1;
-                            get_unnamed_column_alias(unnamed_col_pos)
-                        }
-                    };
+                            // We don't use `get_expression_node` here, because we may encounter a `Parameter`.
+                            if let Node::Expression(Expression::Reference(_)) =
+                                plan.get_node(expr_plan_node_id)?
+                            {
+                                let (col_name, _) = worker
+                                    .reference_to_name_map
+                                    .get(&expr_plan_node_id)
+                                    .expect("reference must be in a map");
+                                col_name.clone()
+                            } else {
+                                unnamed_col_pos += 1;
+                                get_unnamed_column_alias(unnamed_col_pos)
+                            }
+                        };
 
                     let plan_alias_id = plan.nodes.add_alias(&alias_name, expr_plan_node_id)?;
                     proj_columns.push(plan_alias_id);
@@ -3808,20 +3933,64 @@ impl AbstractSyntaxTree {
                 }
                 _ => {
                     return Err(SbroadError::Invalid(
-                                    Entity::Type,
-                                    Some(format_smolstr!(
-                                        "expected a Column, Asterisk, ArithmeticExprAlias in projection, got {:?}.",
-                                        ast_column.rule
-                                    )),
-                                ));
+                        Entity::Type,
+                        Some(format_smolstr!(
+                            "expected a Column, Asterisk, WindowDef under Projection, got {:?}.",
+                            ast_column.rule
+                        )),
+                    ));
                 }
             }
         }
 
         let projection_id =
-            plan.add_proj_internal(plan_rel_child_id, &proj_columns, is_distinct)?;
+            plan.add_proj_internal(vec![plan_rel_child_id], &proj_columns, is_distinct, windows)?;
+
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
+        Ok(())
+    }
+
+    fn parse_named_windows<M: Metadata>(
+        &self,
+        plan: &mut Plan,
+        node_id: usize,
+        map: &mut Translation,
+        pairs_map: &mut ParsingPairsMap,
+        worker: &mut ExpressionsWorker<M>,
+    ) -> Result<(), SbroadError> {
+        let node = self.nodes.get_node(node_id)?;
+        let Some((child_id, window_def_ids)) = node.children.split_first() else {
+            panic!("NamedWindow must have at least 1 child and 1 WindowDef");
+        };
+        let plan_rel_child_id = map.get(*child_id)?;
+        let mut windows = Vec::with_capacity(window_def_ids.len());
+        for def_id in window_def_ids {
+            let def_node = self.nodes.get_node(*def_id)?;
+            assert_eq!(def_node.rule, Rule::WindowDef);
+            let window_name_id = def_node
+                .children
+                .first()
+                .expect("Window name should be met under WindowDef");
+            let window_name = parse_identifier(self, *window_name_id)?;
+            let window_body_id = def_node
+                .children
+                .get(1)
+                .expect("Window body should be met under WindowDef");
+            let window = self.parse_window_body(
+                Some(window_name),
+                plan_rel_child_id,
+                plan,
+                *window_body_id,
+                map,
+                pairs_map,
+                worker,
+            )?;
+            windows.push(window);
+        }
+        let named_windows_id = plan.add_named_windows(plan_rel_child_id, windows)?;
+        plan.fix_subquery_rows(worker, named_windows_id)?;
+        map.add(node_id, named_windows_id);
         Ok(())
     }
 
@@ -3888,37 +4057,27 @@ impl AbstractSyntaxTree {
         Ok(())
     }
 
-    fn parse_order_by<M: Metadata>(
+    fn parse_order_by_elements<M: Metadata>(
         &self,
         plan: &mut Plan,
-        node_id: usize,
-        map: &mut Translation,
+        referred_rel_id: NodeId,
+        node_ids: &Vec<usize>,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
-    ) -> Result<(), SbroadError> {
-        let node = self.nodes.get_node(node_id)?;
-        let projection_ast_id = node.children.first().expect("OrderBy has no children.");
-        let projection_plan_id = map.get(*projection_ast_id)?;
+    ) -> Result<Vec<OrderByElement>, SbroadError> {
+        let rel_node = plan.get_relation_node(referred_rel_id)?;
+        let output_id = rel_node.output();
 
-        let sq_plan_id = plan.add_sub_query(projection_plan_id, None)?;
-
-        let sq_output_id = plan.get_relational_output(sq_plan_id)?;
-        let sq_output_len = plan.get_row_list(sq_output_id)?.len();
-
-        let mut order_by_elements: Vec<OrderByElement> = Vec::with_capacity(node.children.len());
-        for node_child_index in node.children.iter().skip(1) {
+        let mut order_by_elements: Vec<OrderByElement> = Vec::new();
+        for node_child_index in node_ids {
             let order_by_element_node = self.nodes.get_node(*node_child_index)?;
             let order_by_element_expr_id = order_by_element_node
                 .children
                 .first()
                 .expect("OrderByElement must have at least one child");
             let expr_pair = pairs_map.remove_pair(*order_by_element_expr_id);
-            let expr_plan_node_id = parse_expr(
-                Pairs::single(expr_pair),
-                &[projection_plan_id],
-                worker,
-                plan,
-            )?;
+            let expr_plan_node_id =
+                parse_expr(Pairs::single(expr_pair), &[referred_rel_id], worker, plan)?;
 
             // In case index is specified as ordering element, we have to check that
             // the index (starting from 1) is not bigger than the number of columns in
@@ -3946,8 +4105,9 @@ impl AbstractSyntaxTree {
                             )
                         })?;
 
-                        let sq_output = plan.get_row_list(sq_output_id)?;
-                        if let Some(alias_node_id) = sq_output.get(index_usize - 1) {
+                        let output = plan.get_row_list(output_id)?;
+                        let output_len = output.len();
+                        if let Some(alias_node_id) = output.get(index_usize - 1) {
                             let alias_node = plan.get_expression_node(*alias_node_id)?;
                             if let Expression::Alias(Alias { child, .. }) = alias_node {
                                 if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
@@ -3962,7 +4122,7 @@ impl AbstractSyntaxTree {
                         } else {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
-                                Some(format_smolstr!("Ordering index ({index}) is bigger than child projection output length ({sq_output_len})."))
+                                Some(format_smolstr!("Ordering index ({index}) is bigger than child projection output length ({output_len})."))
                             ));
                         }
                         OrderByEntity::Index { value: index_usize }
@@ -4019,10 +4179,195 @@ impl AbstractSyntaxTree {
 
             order_by_elements.push(OrderByElement { entity, order_type });
         }
+        Ok(order_by_elements)
+    }
+
+    fn parse_order_by<M: Metadata>(
+        &self,
+        plan: &mut Plan,
+        node_id: usize,
+        map: &mut Translation,
+        pairs_map: &mut ParsingPairsMap,
+        worker: &mut ExpressionsWorker<M>,
+    ) -> Result<(), SbroadError> {
+        let node = self.nodes.get_node(node_id)?;
+        let projection_ast_id = node.children.first().expect("OrderBy has no children.");
+        let projection_plan_id = map.get(*projection_ast_id)?;
+
+        let sq_plan_id = plan.add_sub_query(projection_plan_id, None)?;
+
+        let order_by_elements_ids: Vec<usize> = node.children.clone().into_iter().skip(1).collect();
+        let order_by_elements = self.parse_order_by_elements(
+            plan,
+            projection_plan_id,
+            &order_by_elements_ids,
+            pairs_map,
+            worker,
+        )?;
         let (order_by_id, plan_node_id) = plan.add_order_by(sq_plan_id, order_by_elements)?;
         plan.fix_subquery_rows(worker, order_by_id)?;
         map.add(node_id, plan_node_id);
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn parse_window_body<M: Metadata>(
+        &self,
+        window_name: Option<SmolStr>,
+        proj_child_id: NodeId,
+        plan: &mut Plan,
+        node_id: usize,
+        map: &mut Translation,
+        pairs_map: &mut ParsingPairsMap,
+        worker: &mut ExpressionsWorker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let node = self.nodes.get_node(node_id)?;
+
+        let mut partition: Option<Vec<NodeId>> = None;
+        let mut ordering = None;
+        let mut frame = None;
+
+        let err = Err(SbroadError::Invalid(
+            Entity::Expression,
+            Some(SmolStr::from("Invalid WINDOW body definition. Expected view of [BASE_WINDOW] [PARTITION BY] [ORDER BY] [FRAME]"))
+        ));
+
+        for node_child_index in &node.children {
+            let body_info_node = self.nodes.get_node(*node_child_index)?;
+            match body_info_node.rule {
+                Rule::WindowPartition => {
+                    if partition.is_some() || ordering.is_some() || frame.is_some() {
+                        return err;
+                    }
+
+                    for part_expr_node_id in &body_info_node.children {
+                        let part_expr_pair = pairs_map.remove_pair(*part_expr_node_id);
+                        let part_expr_plan_node_id = parse_expr(
+                            Pairs::single(part_expr_pair),
+                            &[proj_child_id],
+                            worker,
+                            plan,
+                        )?;
+                        if let Some(ref mut partition) = partition {
+                            partition.push(part_expr_plan_node_id)
+                        } else {
+                            partition = Some(vec![part_expr_plan_node_id])
+                        }
+                    }
+                }
+                Rule::WindowOrderBy => {
+                    if ordering.is_some() || frame.is_some() {
+                        return err;
+                    }
+                    let order_by_elements = self.parse_order_by_elements(
+                        plan,
+                        proj_child_id,
+                        &body_info_node.children,
+                        pairs_map,
+                        worker,
+                    )?;
+                    ordering = Some(order_by_elements)
+                }
+                Rule::WindowFrame => {
+                    if frame.is_some() {
+                        return err;
+                    }
+                    let frame_type_node_id = body_info_node
+                        .children
+                        .first()
+                        .expect("WindowFrame should have WindowFrameType child");
+                    let frame_type_node = self.nodes.get_node(*frame_type_node_id)?;
+                    let ty = match frame_type_node.rule {
+                        Rule::WindowFrameTypeRange => FrameType::Range,
+                        Rule::WindowFrameTypeRows => FrameType::Rows,
+                        _ => panic!(
+                            "Expected FrameTypeRange or FrameTypeRows, got: {frame_type_node:?}"
+                        ),
+                    };
+
+                    let bound_node_id = body_info_node
+                        .children
+                        .get(1)
+                        .expect("WindowFrame should have WindowFrameBound children");
+                    let bound_node = self.nodes.get_node(*bound_node_id)?;
+
+                    let mut parse_frame_bound = |node_id: usize| -> Result<BoundType, SbroadError> {
+                        let frame_bound_node = self.nodes.get_node(node_id)?;
+                        let bound = match frame_bound_node.rule {
+                            Rule::PrecedingUnbounded => BoundType::PrecedingUnbounded,
+                            Rule::CurrentRow => BoundType::CurrentRow,
+                            Rule::FollowingUnbounded => BoundType::FollowingUnbounded,
+                            Rule::PrecedingOffset | Rule::FollowingOffset => {
+                                let offset_expr_node_id = frame_bound_node
+                                    .children
+                                    .first()
+                                    .expect("Expr node expected under Offset window bound");
+                                let offset_expr_pair = pairs_map.remove_pair(*offset_expr_node_id);
+                                let offset_expr_plan_node_id = parse_expr(
+                                    Pairs::single(offset_expr_pair),
+                                    &[proj_child_id],
+                                    worker,
+                                    plan,
+                                )?;
+
+                                match frame_bound_node.rule {
+                                    Rule::PrecedingOffset => {
+                                        BoundType::PrecedingOffset(offset_expr_plan_node_id)
+                                    }
+                                    Rule::FollowingOffset => {
+                                        BoundType::FollowingOffset(offset_expr_plan_node_id)
+                                    }
+                                    _ => unreachable!("Offset bound expected"),
+                                }
+                            }
+                            _ => panic!(
+                                "Unexpected rule met under WindowFrameBound: {frame_bound_node:?}"
+                            ),
+                        };
+                        Ok(bound)
+                    };
+
+                    let bounds: Bound = match bound_node.rule {
+                        Rule::WindowFrameSingle => {
+                            let bound_id = bound_node.children.first().expect(
+                                "WindowFrameSingle should contain WindowFrameBound as a child",
+                            );
+                            let bound: BoundType = parse_frame_bound(*bound_id)?;
+                            Bound::Single(bound)
+                        }
+                        Rule::WindowFrameBetween => {
+                            let bound_first_id = bound_node.children.first().expect(
+                                "WindowFrameBetween should contain an opening bound as a child",
+                            );
+                            let bound_first = parse_frame_bound(*bound_first_id)?;
+
+                            let bound_second_id = bound_node.children.get(1).expect(
+                                "WindowFrameBetween should contain a closing bound as a child",
+                            );
+                            let bound_second = parse_frame_bound(*bound_second_id)?;
+
+                            Bound::Between(bound_first, bound_second)
+                        }
+                        _ => panic!("Unexpected rule met under WindowFrame: {bound_node:?}"),
+                    };
+
+                    frame = Some(Frame { ty, bound: bounds })
+                }
+                _ => panic!("Unexpected rule met under WindowBody: {body_info_node:?}"),
+            }
+        }
+
+        let window: Window = Window {
+            name: window_name,
+            partition,
+            ordering,
+            frame,
+        };
+
+        let plan_window_by_id = plan.nodes.push(window.into());
+        map.add(node_id, plan_window_by_id);
+
+        Ok(plan_window_by_id)
     }
 
     /// Function that transforms `AbstractSyntaxTree` into `Plan`.
@@ -4118,6 +4463,9 @@ impl AbstractSyntaxTree {
                     let plan_sq_id = plan.add_sub_query(plan_child_id, None)?;
                     worker.sq_ast_to_plan_id.add(id, plan_sq_id);
                     map.add(id, plan_sq_id);
+                }
+                Rule::WindowBody => {
+                    // WindowBody will be parsed under Projection.
                 }
                 Rule::MotionRowMax => {
                     let ast_child_id = node
@@ -4282,6 +4630,9 @@ impl AbstractSyntaxTree {
                     } else {
                         self.parse_projection(&mut plan, id, &mut map, pairs_map, &mut worker)?;
                     }
+                }
+                Rule::NamedWindows => {
+                    self.parse_named_windows(&mut plan, id, &mut map, pairs_map, &mut worker)?;
                 }
                 Rule::Values => {
                     let mut plan_value_row_ids: Vec<NodeId> =
@@ -4538,7 +4889,12 @@ impl AbstractSyntaxTree {
                                 .add_alias(&format!("pk_col_{pk_pos}"), *pk_column_id)?;
                             alias_ids.push(pk_alias_id);
                         }
-                        Some(plan.add_proj_internal(proj_child_id, &alias_ids, false)?)
+                        Some(plan.add_proj_internal(
+                            vec![proj_child_id],
+                            &alias_ids,
+                            false,
+                            vec![],
+                        )?)
                     } else {
                         None
                     };

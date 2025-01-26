@@ -32,7 +32,7 @@ use crate::ir::node::{
     Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, Row, ScanRelation, Selection,
     StableFunction, Trim, UnaryExpr, Values,
 };
-use crate::ir::operator::Bool;
+use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::{Column, DerivedType};
 use crate::ir::tree::traversal::{
     BreadthFirst, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
@@ -41,7 +41,7 @@ use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
 use crate::warn;
 
-use self::node::Like;
+use self::node::{Bound, BoundType, Like, Over, Window};
 
 // TODO: remove when rust version in bumped in module
 #[allow(elided_lifetimes_in_associated_constant)]
@@ -113,6 +113,7 @@ impl Nodes {
                 Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
+                Node64::Over(over) => Node::Expression(Expression::Over(over)),
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
                 Node64::Invalid(invalid) => Node::Invalid(invalid),
                 Node64::Constant(constant) => Node::Expression(Expression::Constant(constant)),
@@ -144,6 +145,7 @@ impl Nodes {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
                 Node64::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
+                Node64::NamedWindows(window) => Node::Relational(Relational::NamedWindows(window)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
@@ -182,6 +184,7 @@ impl Nodes {
                     Node136::ChangeConfig(change_config) => {
                         Node::Plugin(Plugin::ChangeConfig(change_config))
                     }
+                    Node136::Window(window) => Node::Expression(Expression::Window(window)),
                 }),
             ArenaType::Arena232 => self
                 .arena224
@@ -250,6 +253,7 @@ impl Nodes {
                 .arena64
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
+                    Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
                     Node64::Constant(constant) => {
@@ -296,6 +300,9 @@ impl Nodes {
                     }
                     Node64::LocalTimestamp(lt) => {
                         MutNode::Expression(MutExpression::LocalTimestamp(lt))
+                    }
+                    Node64::NamedWindows(window) => {
+                        MutNode::Relational(MutRelational::NamedWindows(window))
                     }
                 }),
             ArenaType::Arena96 => self
@@ -353,6 +360,9 @@ impl Nodes {
                         }
                         Node136::ChangeConfig(change_config) => {
                             MutNode::Plugin(MutPlugin::ChangeConfig(change_config))
+                        }
+                        Node136::Window(window) => {
+                            MutNode::Expression(MutExpression::Window(window))
                         }
                     })
             }
@@ -1027,6 +1037,7 @@ impl Plan {
                 self.get_reference_source_relation(source_ref_id)
             }
             Relational::ScanRelation { .. }
+            | Relational::NamedWindows { .. }
             | Relational::Projection { .. }
             | Relational::SelectWithoutScan { .. }
             | Relational::ScanCte { .. }
@@ -1545,6 +1556,76 @@ impl Plan {
         new_id: NodeId,
     ) -> Result<(), SbroadError> {
         match self.get_mut_expression_node(parent_id)? {
+            MutExpression::Window(Window {
+                partition,
+                ordering,
+                frame,
+                ..
+            }) => {
+                if let Some(partition) = partition {
+                    for id in partition.iter_mut() {
+                        if *id == old_id {
+                            *id = new_id;
+                            return Ok(());
+                        }
+                    }
+                }
+                if let Some(ordering) = ordering {
+                    for o_elem in ordering.iter_mut() {
+                        if let OrderByEntity::Expression { ref mut expr_id } = &mut o_elem.entity {
+                            if *expr_id == old_id {
+                                *expr_id = new_id;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+                if let Some(frame) = frame {
+                    match &mut frame.bound {
+                        Bound::Single(ref mut start) => {
+                            if let BoundType::PrecedingOffset(ref mut offset) = start {
+                                if *offset == old_id {
+                                    *offset = new_id;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        Bound::Between(ref mut start, ref mut end) => {
+                            for b_type in [start, end] {
+                                if let BoundType::PrecedingOffset(ref mut offset) = b_type {
+                                    if *offset == old_id {
+                                        *offset = new_id;
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+            }
+            MutExpression::Over(Over {
+                func_args,
+                filter,
+                window,
+                ..
+            }) => {
+                if let Some(filter_id) = filter {
+                    if *filter_id == old_id {
+                        *filter_id = new_id;
+                        return Ok(());
+                    }
+                }
+                if *window == old_id {
+                    *window = new_id;
+                    return Ok(());
+                }
+                for arg in func_args {
+                    if *arg == old_id {
+                        *arg = new_id;
+                        return Ok(());
+                    }
+                }
+            }
             MutExpression::Unary(UnaryExpr { child, .. })
             | MutExpression::ExprInParentheses(ExprInParentheses { child })
             | MutExpression::Alias(Alias { child, .. })

@@ -79,6 +79,12 @@ impl ReferredMap {
         for LevelNode(_, node_id) in expr_tree.iter(condition_id) {
             let expr = plan.get_expression_node(node_id)?;
             let res = match expr {
+                Expression::Window(_) => {
+                    unreachable!("Window should not be met under JOIN condition expression")
+                }
+                Expression::Over(_) => {
+                    unreachable!("OVER should not be met under JOIN condition expression")
+                }
                 Expression::Bool(BoolExpr { left, right, .. })
                 | Expression::Arithmetic(ArithmeticExpr { left, right, .. })
                 | Expression::Concat(Concat { left, right, .. }) => referred

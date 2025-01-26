@@ -18,7 +18,7 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{ArithmeticExpr, Like, Limit, LocalTimestamp};
+use super::node::{ArithmeticExpr, Like, Limit, LocalTimestamp, NamedWindows, Over, Window};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.
@@ -89,6 +89,70 @@ impl Plan {
         if let Ok(expr) = expr_try {
             write!(buf, "expression: ")?;
             match expr {
+                Expression::Window(Window {
+                    name,
+                    partition,
+                    ordering,
+                    frame,
+                }) => {
+                    if let Some(name) = name {
+                        writeln!(buf, "Window [name = {name}]")?;
+                    } else {
+                        writeln!(buf, "Window")?;
+                    }
+                    if let Some(partition) = partition {
+                        writeln_with_tabulation(buf, tabulation_number + 1, "Partition")?;
+                        for part in partition {
+                            self.formatted_arena_node(buf, tabulation_number + 2, *part)?;
+                        }
+                    }
+                    if let Some(ordering) = ordering {
+                        writeln_with_tabulation(buf, tabulation_number + 1, "Ordering")?;
+                        for order in ordering {
+                            writeln_with_tabulation(
+                                buf,
+                                tabulation_number + 2,
+                                &format!("{order:?}"),
+                            )?;
+                        }
+                    }
+                    if let Some(frame) = frame {
+                        writeln_with_tabulation(
+                            buf,
+                            tabulation_number + 2,
+                            &format!("Frame: {frame:?}"),
+                        )?;
+                    }
+                }
+                Expression::Over(Over {
+                    func_name,
+                    func_args,
+                    filter,
+                    window,
+                    ref_by_name,
+                }) => {
+                    writeln!(buf, "Over")?;
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        &format!("Function [name = {func_name}]"),
+                    )?;
+                    for arg in func_args {
+                        writeln_with_tabulation(buf, tabulation_number + 2, "Argument")?;
+                        self.formatted_arena_node(buf, tabulation_number + 2, *arg)?;
+                    }
+                    if let Some(filter) = filter {
+                        writeln_with_tabulation(buf, tabulation_number + 1, "Filter")?;
+                        self.formatted_arena_node(buf, tabulation_number + 1, *filter)?;
+                    }
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Window")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *window)?;
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        &format!("Ref by name: {ref_by_name}"),
+                    )?;
+                }
                 Expression::Alias(Alias { name, child }) => {
                     let child_node = self.get_node(*child).expect("Alias must have a child node");
                     let child = match child_node {
@@ -256,6 +320,12 @@ impl Plan {
                 write!(buf, "relation: ")?;
                 // Print relation name and specific info.
                 match relation {
+                    Relational::NamedWindows(NamedWindows { windows, .. }) => {
+                        writeln!(buf, "NamedWindows")?;
+                        for window_id in windows {
+                            self.write_expr(buf, tabulation_number + 1, *window_id)?;
+                        }
+                    }
                     Relational::ScanRelation(ScanRelation {
                         alias, relation, ..
                     }) => {
@@ -393,6 +463,7 @@ impl Plan {
                 // Print children.
                 match relation {
                     Relational::Join(_)
+                    | Relational::NamedWindows(_)
                     | Relational::Projection(_)
                     | Relational::Except(_)
                     | Relational::Delete(_)

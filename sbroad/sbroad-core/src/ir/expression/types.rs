@@ -63,6 +63,10 @@ impl Expression<'_> {
     /// Calculate the type of the expression.
     pub fn calculate_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
         let ty = match self {
+            Expression::Window(_) | Expression::Over(_) => {
+                // TODO: Fix this later.
+                DerivedType::new(Type::Any)
+            }
             Expression::Case(Case {
                 when_blocks,
                 else_expr,

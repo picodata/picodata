@@ -10,11 +10,11 @@ use crate::frontend::sql::ast::Rule;
 use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, Delete, Except,
-    ExprInParentheses, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, Node,
-    NodeAligned, NodeId, OrderBy, Projection, Reference, Row, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr, Union, UnionAll, Update, Values,
-    ValuesRow,
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
+    Except, ExprInParentheses, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion,
+    NamedWindows, Node, NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScanCte,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr,
+    Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -156,6 +156,57 @@ impl SubtreeCloner {
         // when a new field is added to a struct, this match must
         // be updated, or compilation will fail.
         match &mut copied {
+            ExprOwned::Window(Window {
+                name: _,
+                ref mut partition,
+                ref mut ordering,
+                ref mut frame,
+            }) => {
+                if let Some(partition) = partition {
+                    *partition = self.copy_list(partition)?;
+                }
+                if let Some(ordering) = ordering {
+                    for elem in ordering {
+                        if let OrderByEntity::Expression { expr_id } = &mut elem.entity {
+                            *expr_id = self.get_new_id(*expr_id)?;
+                        }
+                    }
+                }
+                if let Some(frame) = frame {
+                    let mut bound_types = [None, None];
+                    match &mut frame.bound {
+                        Bound::Single(b_type) => {
+                            bound_types[0] = Some(b_type);
+                        }
+                        Bound::Between(l_b_type, r_b_type) => {
+                            bound_types[0] = Some(l_b_type);
+                            bound_types[1] = Some(r_b_type);
+                        }
+                    }
+                    for b_type in bound_types.iter_mut() {
+                        match b_type {
+                            Some(BoundType::PrecedingOffset(expr_id))
+                            | Some(BoundType::FollowingOffset(expr_id)) => {
+                                *expr_id = self.get_new_id(*expr_id)?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            ExprOwned::Over(Over {
+                func_name: _,
+                ref mut func_args,
+                ref mut filter,
+                ref mut window,
+                ref_by_name: _,
+            }) => {
+                *func_args = self.copy_list(func_args)?;
+                if let Some(filter) = filter {
+                    *filter = self.get_new_id(*filter)?;
+                }
+                *window = self.get_new_id(*window)?;
+            }
             ExprOwned::Constant(Constant { value: _ })
             | ExprOwned::LocalTimestamp(_)
             | ExprOwned::Reference(Reference {
@@ -269,7 +320,12 @@ impl SubtreeCloner {
         // when a new field is added to a struct, this match must
         // be updated, or compilation will fail.
         match &mut copied {
-            RelOwned::Values(Values {
+            RelOwned::NamedWindows(NamedWindows {
+                child: _,
+                output: _,
+                windows: _,
+            })
+            | RelOwned::Values(Values {
                 output: _,
                 children: _,
             })
@@ -279,6 +335,7 @@ impl SubtreeCloner {
             })
             | RelOwned::Projection(Projection {
                 children: _,
+                windows: _,
                 output: _,
                 is_distinct: _,
             })

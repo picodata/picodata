@@ -1,7 +1,8 @@
 //! IR tree traversal module.
 
 use super::{
-    node::{expression::Expression, Like},
+    node::{expression::Expression, Bound, BoundType, Like, Over, Window},
+    operator::{OrderByElement, OrderByEntity},
     Nodes, Plan,
 };
 use crate::ir::node::{
@@ -126,6 +127,116 @@ trait TreeIterator<'nodes> {
         } else {
             None
         };
+    }
+
+    fn handle_window_iter(&mut self, expr: Expression) -> Option<NodeId> {
+        let Expression::Window(Window {
+            partition,
+            ordering,
+            frame,
+            ..
+        }) = expr
+        else {
+            panic!("Expected WINDOW rel node for iteration.")
+        };
+
+        let mut step = *self.get_child().borrow();
+        *self.get_child().borrow_mut() += 1;
+
+        if let Some(partition) = partition {
+            if step < partition.len() {
+                return Some(partition[step]);
+            }
+            step -= partition.len();
+        }
+
+        if let Some(ordering) = ordering {
+            if step < ordering.len() {
+                if let OrderByElement {
+                    entity: OrderByEntity::Expression { expr_id },
+                    ..
+                } = ordering[step]
+                {
+                    return Some(expr_id);
+                }
+            }
+            step -= ordering.len();
+        }
+
+        if let Some(frame) = frame {
+            let b_type_expr_id = |bound: &BoundType| match bound {
+                BoundType::PrecedingOffset(node_id) | BoundType::FollowingOffset(node_id) => {
+                    Some(*node_id)
+                }
+                _ => None,
+            };
+            match &frame.bound {
+                Bound::Single(bound) => {
+                    if step == 0 {
+                        if let Some(node_id) = b_type_expr_id(bound) {
+                            return Some(node_id);
+                        }
+                    }
+                }
+                Bound::Between(bound_from, bound_to) => {
+                    match (b_type_expr_id(bound_from), b_type_expr_id(bound_to)) {
+                        (Some(node_id_from), Some(node_id_to)) => {
+                            if step == 0 {
+                                return Some(node_id_from);
+                            } else if step == 1 {
+                                return Some(node_id_to);
+                            }
+                        }
+                        (Some(node_id), None) | (None, Some(node_id)) => {
+                            if step == 0 {
+                                return Some(node_id);
+                            }
+                        }
+                        (None, None) => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn handle_over_iter(&mut self, expr: Expression) -> Option<NodeId> {
+        let Expression::Over(Over {
+            func_args,
+            filter,
+            window,
+            ..
+        }) = expr
+        else {
+            panic!("Over expression expected");
+        };
+        let child_step = *self.get_child().borrow();
+        *self.get_child().borrow_mut() += 1;
+
+        let func_args_len = func_args.len();
+
+        if child_step < func_args_len {
+            return Some(func_args[child_step]);
+        }
+
+        if let Some(filter) = filter {
+            if child_step == func_args_len {
+                return Some(*filter);
+            }
+        }
+
+        let is_window_step = if filter.is_some() {
+            child_step == func_args_len + 1
+        } else {
+            child_step == func_args_len
+        };
+
+        if is_window_step {
+            // We iterate over windows without names in Projection. All named windows are
+            // iterated in NamedWindows node to keep the bind order for parameters.
+            return Some(*window);
+        }
+        None
     }
 }
 

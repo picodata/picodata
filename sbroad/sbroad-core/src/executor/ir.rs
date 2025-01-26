@@ -12,10 +12,10 @@ use crate::ir::node::expression::ExprOwned;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Delete, ExprInParentheses,
-    GroupBy, Having, Insert, Join, Like, Motion, Node, Node136, NodeId, NodeOwned, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, Selection, StableFunction, Trim, UnaryExpr, Update,
-    ValuesRow,
+    Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
+    ExprInParentheses, GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136,
+    NodeId, NodeOwned, OrderBy, Over, Reference, Row, ScanCte, ScanRelation, Selection,
+    StableFunction, Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -295,6 +295,7 @@ impl ExecutionPlan {
             | Relational::Intersect { .. }
             | Relational::Join { .. }
             | Relational::Projection { .. }
+            | Relational::NamedWindows { .. }
             | Relational::ScanRelation { .. }
             | Relational::Selection { .. }
             | Relational::SelectWithoutScan { .. }
@@ -495,6 +496,11 @@ impl ExecutionPlan {
             match node {
                 NodeOwned::Relational(ref mut rel) => {
                     match rel {
+                        RelOwned::NamedWindows(NamedWindows { windows, .. }) => {
+                            for window in windows {
+                                *window = subtree_map.get_id(*window);
+                            }
+                        }
                         RelOwned::Selection(Selection {
                             filter: ref mut expr_id,
                             ..
@@ -733,6 +739,63 @@ impl ExecutionPlan {
                     }
                 }
                 NodeOwned::Expression(ref mut expr) => match expr {
+                    ExprOwned::Window(Window {
+                        ref mut partition,
+                        ref mut ordering,
+                        ref mut frame,
+                        ..
+                    }) => {
+                        if let Some(partition) = partition {
+                            for expr_id in partition {
+                                *expr_id = subtree_map.get_id(*expr_id);
+                            }
+                        }
+                        if let Some(ordering) = ordering {
+                            for element in ordering {
+                                match &mut element.entity {
+                                    OrderByEntity::Expression { expr_id } => {
+                                        *expr_id = subtree_map.get_id(*expr_id);
+                                    }
+                                    OrderByEntity::Index { .. } => {}
+                                }
+                            }
+                        }
+                        if let Some(frame) = frame {
+                            match &mut frame.bound {
+                                Bound::Single(BoundType::PrecedingOffset(expr_id))
+                                | Bound::Single(BoundType::FollowingOffset(expr_id)) => {
+                                    *expr_id = subtree_map.get_id(*expr_id);
+                                }
+                                Bound::Between(b_start, b_end) => {
+                                    for b_type in [b_start, b_end].iter_mut() {
+                                        match b_type {
+                                            BoundType::PrecedingOffset(expr_id)
+                                            | BoundType::FollowingOffset(expr_id) => {
+                                                *expr_id = subtree_map.get_id(*expr_id);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    ExprOwned::Over(Over {
+                        ref mut func_args,
+                        ref mut filter,
+                        ref mut window,
+                        ..
+                    }) => {
+                        for arg in func_args {
+                            *arg = subtree_map.get_id(*arg);
+                        }
+
+                        if let Some(filter) = filter {
+                            *filter = subtree_map.get_id(*filter)
+                        }
+                        *window = subtree_map.get_id(*window);
+                    }
                     ExprOwned::Alias(Alias { ref mut child, .. })
                     | ExprOwned::ExprInParentheses(ExprInParentheses { ref mut child })
                     | ExprOwned::Cast(Cast { ref mut child, .. })
@@ -849,6 +912,7 @@ impl ExecutionPlan {
         };
         Ok(new_exec_plan)
     }
+
     /// # Errors
     /// - execution plan is invalid
     pub fn query_type(&self) -> Result<QueryType, SbroadError> {

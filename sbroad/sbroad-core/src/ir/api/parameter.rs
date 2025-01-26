@@ -5,10 +5,11 @@ use crate::ir::node::block::{Block, MutBlock};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, ExprInParentheses, Having, Join,
-    Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Parameter, Procedure, Row, Selection,
-    StableFunction, Trim, UnaryExpr, ValuesRow,
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
+    ExprInParentheses, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Over,
+    Parameter, Procedure, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
 };
+use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
 use crate::ir::value::Value;
@@ -243,6 +244,88 @@ impl<'binder> ParamsBinder<'binder> {
                     _ => {}
                 },
                 Node::Expression(expr) => match expr {
+                    Expression::Window(Window {
+                        partition,
+                        ordering,
+                        frame,
+                        ..
+                    }) => {
+                        if let Some(param_id) = partition {
+                            for param_id in param_id {
+                                self.cover_param_with_row(
+                                    *param_id,
+                                    false,
+                                    &mut param_index,
+                                    &mut row_ids,
+                                );
+                            }
+                        }
+                        if let Some(ordering) = ordering {
+                            for o_elem in ordering {
+                                if let OrderByEntity::Expression { expr_id } = o_elem.entity {
+                                    self.cover_param_with_row(
+                                        expr_id,
+                                        false,
+                                        &mut param_index,
+                                        &mut row_ids,
+                                    );
+                                }
+                            }
+                        }
+                        if let Some(frame) = frame {
+                            let mut bound_types = [None, None];
+                            match frame.bound {
+                                Bound::Single(
+                                    BoundType::PrecedingOffset(start)
+                                    | BoundType::FollowingOffset(start),
+                                ) => {
+                                    bound_types[0] = Some(start);
+                                }
+                                Bound::Between(
+                                    BoundType::PrecedingOffset(start)
+                                    | BoundType::FollowingOffset(start),
+                                    BoundType::FollowingOffset(end)
+                                    | BoundType::PrecedingOffset(end),
+                                ) => {
+                                    bound_types[0] = Some(start);
+                                    bound_types[1] = Some(end);
+                                }
+                                _ => {}
+                            }
+                            for id in bound_types.iter().flatten() {
+                                self.cover_param_with_row(
+                                    *id,
+                                    false,
+                                    &mut param_index,
+                                    &mut row_ids,
+                                );
+                            }
+                        }
+                    }
+                    Expression::Over(Over {
+                        func_args,
+                        filter,
+                        window,
+                        ..
+                    }) => {
+                        for param_id in func_args {
+                            self.cover_param_with_row(
+                                *param_id,
+                                false,
+                                &mut param_index,
+                                &mut row_ids,
+                            );
+                        }
+                        if let Some(param_id) = filter {
+                            self.cover_param_with_row(
+                                *param_id,
+                                false,
+                                &mut param_index,
+                                &mut row_ids,
+                            );
+                        }
+                        self.cover_param_with_row(*window, false, &mut param_index, &mut row_ids);
+                    }
                     Expression::Alias(Alias {
                         child: ref param_id,
                         ..
@@ -528,6 +611,60 @@ impl<'binder> ParamsBinder<'binder> {
                         for param_id in list {
                             bind_param(param_id, false, &mut param_index);
                         }
+                    }
+
+                    MutExpression::Window(Window {
+                        partition,
+                        ordering,
+                        frame,
+                        ..
+                    }) => {
+                        if let Some(param_id) = partition {
+                            for param_id in param_id {
+                                bind_param(param_id, true, &mut param_index);
+                            }
+                        }
+                        if let Some(ordering) = ordering {
+                            for o_elem in ordering {
+                                if let OrderByEntity::Expression { mut expr_id } = o_elem.entity {
+                                    bind_param(&mut expr_id, false, &mut param_index);
+                                }
+                            }
+                        }
+                        if let Some(frame) = frame {
+                            match frame.bound {
+                                Bound::Single(
+                                    BoundType::PrecedingOffset(mut start)
+                                    | BoundType::FollowingOffset(mut start),
+                                ) => {
+                                    bind_param(&mut start, false, &mut param_index);
+                                }
+                                Bound::Between(
+                                    BoundType::PrecedingOffset(mut start)
+                                    | BoundType::FollowingOffset(mut start),
+                                    BoundType::FollowingOffset(mut end)
+                                    | BoundType::PrecedingOffset(mut end),
+                                ) => {
+                                    bind_param(&mut start, false, &mut param_index);
+                                    bind_param(&mut end, false, &mut param_index);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    MutExpression::Over(Over {
+                        func_args,
+                        filter,
+                        window,
+                        ..
+                    }) => {
+                        for param_id in func_args {
+                            bind_param(param_id, false, &mut param_index);
+                        }
+                        if let Some(param_id) = filter {
+                            bind_param(param_id, false, &mut param_index);
+                        }
+                        bind_param(window, false, &mut param_index);
                     }
                     MutExpression::Case(Case {
                         ref mut search_expr,

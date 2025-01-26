@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     ArenaType, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
-    NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
+    NamedWindows, NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 
@@ -36,11 +36,13 @@ pub enum RelOwned {
     Union(Union),
     Values(Values),
     ValuesRow(ValuesRow),
+    NamedWindows(NamedWindows),
 }
 
 impl From<RelOwned> for NodeAligned {
     fn from(value: RelOwned) -> Self {
         match value {
+            RelOwned::NamedWindows(named_windows) => named_windows.into(),
             RelOwned::ScanCte(scan_cte) => scan_cte.into(),
             RelOwned::Delete(delete) => delete.into(),
             RelOwned::Except(except) => except.into(),
@@ -90,6 +92,7 @@ impl RelOwned {
             | RelOwned::Delete(_)
             | RelOwned::ScanSubQuery(_)
             | RelOwned::GroupBy(_)
+            | RelOwned::NamedWindows(_)
             | RelOwned::Projection(_) => ArenaType::Arena64,
             RelOwned::Insert(_) => ArenaType::Arena96,
             RelOwned::Update(_) | RelOwned::Motion(_) => ArenaType::Arena136,
@@ -184,6 +187,13 @@ impl RelOwned {
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = children[0];
             }
+            RelOwned::NamedWindows(NamedWindows { child, .. }) => {
+                if children.len() != 1 {
+                    unreachable!("NamedWindows may have only a single relational child");
+                }
+                // It is safe to unwrap here, because the length is already checked above.
+                *child = children[0];
+            }
             RelOwned::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -194,9 +204,9 @@ impl RelOwned {
     #[must_use]
     pub fn children(&self) -> Children<'_> {
         match self {
-            RelOwned::Limit(Limit { child, .. }) | RelOwned::ScanCte(ScanCte { child, .. }) => {
-                Children::Single(child)
-            }
+            RelOwned::Limit(Limit { child, .. })
+            | RelOwned::ScanCte(ScanCte { child, .. })
+            | RelOwned::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
@@ -223,6 +233,7 @@ impl RelOwned {
     pub fn mut_children(&mut self) -> MutChildren<'_> {
         match self {
             RelOwned::Limit(Limit { ref mut child, .. })
+            | RelOwned::NamedWindows(NamedWindows { ref mut child, .. })
             | RelOwned::ScanCte(ScanCte { ref mut child, .. }) => MutChildren::Single(child),
             RelOwned::Except(Except {
                 ref mut left,
@@ -308,6 +319,7 @@ impl RelOwned {
             | RelOwned::Insert(Insert { output, .. })
             | RelOwned::Intersect(Intersect { output, .. })
             | RelOwned::Motion(Motion { output, .. })
+            | RelOwned::NamedWindows(NamedWindows { output, .. })
             | RelOwned::Projection(Projection { output, .. })
             | RelOwned::ScanRelation(ScanRelation { output, .. })
             | RelOwned::ScanSubQuery(ScanSubQuery { output, .. })
@@ -349,6 +361,7 @@ pub enum Relational<'a> {
     Union(&'a Union),
     Values(&'a Values),
     ValuesRow(&'a ValuesRow),
+    NamedWindows(&'a NamedWindows),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -375,6 +388,7 @@ pub enum MutRelational<'a> {
     Union(&'a mut Union),
     Values(&'a mut Values),
     ValuesRow(&'a mut ValuesRow),
+    NamedWindows(&'a mut NamedWindows),
 }
 
 impl MutRelational<'_> {
@@ -396,6 +410,7 @@ impl MutRelational<'_> {
             | MutRelational::Insert(Insert { output, .. })
             | MutRelational::Intersect(Intersect { output, .. })
             | MutRelational::Motion(Motion { output, .. })
+            | MutRelational::NamedWindows(NamedWindows { output, .. })
             | MutRelational::Projection(Projection { output, .. })
             | MutRelational::ScanRelation(ScanRelation { output, .. })
             | MutRelational::ScanSubQuery(ScanSubQuery { output, .. })
@@ -414,6 +429,7 @@ impl MutRelational<'_> {
         // return MutChildren { node: self };
         match self {
             MutRelational::Limit(Limit { child, .. })
+            | MutRelational::NamedWindows(NamedWindows { child, .. })
             | MutRelational::ScanCte(ScanCte { child, .. }) => MutChildren::Single(child),
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
@@ -553,6 +569,13 @@ impl MutRelational<'_> {
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = children[0];
             }
+            MutRelational::NamedWindows(NamedWindows { child, .. }) => {
+                if children.len() != 1 {
+                    unreachable!("NamedWindows may have only a single relational child");
+                }
+                // It is safe to unwrap here, because the length is already checked above.
+                *child = children[0];
+            }
             MutRelational::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -629,6 +652,7 @@ impl Relational<'_> {
             | Relational::Insert(Insert { output, .. })
             | Relational::Intersect(Intersect { output, .. })
             | Relational::Motion(Motion { output, .. })
+            | Relational::NamedWindows(NamedWindows { output, .. })
             | Relational::Projection(Projection { output, .. })
             | Relational::ScanRelation(ScanRelation { output, .. })
             | Relational::ScanSubQuery(ScanSubQuery { output, .. })
@@ -645,9 +669,9 @@ impl Relational<'_> {
     #[must_use]
     pub fn children(&self) -> Children<'_> {
         match self {
-            Relational::Limit(Limit { child, .. }) | Relational::ScanCte(ScanCte { child, .. }) => {
-                Children::Single(child)
-            }
+            Relational::Limit(Limit { child, .. })
+            | Relational::ScanCte(ScanCte { child, .. })
+            | Relational::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
@@ -738,6 +762,7 @@ impl Relational<'_> {
             | Relational::ScanSubQuery(_)
             | Relational::Selection(_)
             | Relational::GroupBy(_)
+            | Relational::NamedWindows(_)
             | Relational::Having(_)
             | Relational::OrderBy(_)
             | Relational::UnionAll(_)
@@ -758,6 +783,7 @@ impl Relational<'_> {
     #[must_use]
     pub fn name(&self) -> &str {
         match self {
+            Relational::NamedWindows(_) => "NamedWindows",
             Relational::Except { .. } => "Except",
             Relational::Delete { .. } => "Delete",
             Relational::Insert { .. } => "Insert",
@@ -785,6 +811,9 @@ impl Relational<'_> {
     #[must_use]
     pub fn get_rel_owned(&self) -> RelOwned {
         match self {
+            Relational::NamedWindows(named_windows) => {
+                RelOwned::NamedWindows((*named_windows).clone())
+            }
             Relational::Delete(del) => RelOwned::Delete((*del).clone()),
             Relational::Except(except) => RelOwned::Except((*except).clone()),
             Relational::GroupBy(group_by) => RelOwned::GroupBy((*group_by).clone()),

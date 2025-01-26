@@ -4,10 +4,11 @@ use crate::ir::expression::{FunctionFeature, TrimKind};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Except, ExprInParentheses, GroupBy,
-    Having, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Projection, Reference,
-    ReferenceAsteriskSource, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, StableFunction, Trim, UnaryExpr, Union, UnionAll, Values, ValuesRow,
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except,
+    ExprInParentheses, FrameType, GroupBy, Having, Intersect, Join, Like, Limit, Motion,
+    NamedWindows, Node, NodeId, OrderBy, Over, Projection, Reference, ReferenceAsteriskSource, Row,
+    ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, StableFunction, Trim,
+    UnaryExpr, Union, UnionAll, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -65,6 +66,28 @@ pub enum SyntaxData {
     OrderByPosition(usize),
     /// "asc" or "desc"
     OrderByType(OrderByType),
+    /// "as"
+    As,
+    /// "over"
+    Over,
+    /// "partition by"
+    PartitionBy,
+    /// "filter"
+    Filter,
+    /// "where"
+    Where,
+    /// "order by"
+    OrderBy,
+    /// "rows" or "range"
+    WindowFrameType(FrameType),
+    /// "between"
+    Between,
+    /// "and"
+    And,
+    /// Offset expression may go before
+    WindowFrameBound(BoundType),
+    // "window"
+    Window,
     /// Inline sql string
     Inline(SmolStr),
     /// "from"
@@ -267,6 +290,94 @@ impl SyntaxNode {
     fn new_inline(value: &str) -> Self {
         SyntaxNode {
             data: SyntaxData::Inline(value.into()),
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_window() -> Self {
+        SyntaxNode {
+            data: SyntaxData::Window,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_partition_by() -> Self {
+        SyntaxNode {
+            data: SyntaxData::PartitionBy,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_as() -> Self {
+        SyntaxNode {
+            data: SyntaxData::As,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_over() -> Self {
+        SyntaxNode {
+            data: SyntaxData::Over,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_filter() -> Self {
+        SyntaxNode {
+            data: SyntaxData::Filter,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_where() -> Self {
+        SyntaxNode {
+            data: SyntaxData::Where,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_order_by() -> Self {
+        SyntaxNode {
+            data: SyntaxData::OrderBy,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_between() -> Self {
+        SyntaxNode {
+            data: SyntaxData::Between,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_frame_type(ty: FrameType) -> Self {
+        SyntaxNode {
+            data: SyntaxData::WindowFrameType(ty),
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_frame_bound(bound: &BoundType) -> Self {
+        SyntaxNode {
+            data: SyntaxData::WindowFrameBound(bound.clone()),
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_and() -> Self {
+        SyntaxNode {
+            data: SyntaxData::And,
             left: None,
             right: Vec::new(),
         }
@@ -577,6 +688,15 @@ pub struct SyntaxPlan<'p> {
     pub(crate) nodes: SyntaxNodes,
     /// Id of top `SyntaxNode`.
     pub(crate) top: Option<usize>,
+    /// Vec of Window ids in in `nodes`.
+    /// Windows are children of Projection node but have to
+    /// be placed between HAVING and ORDER BY clauses so we store them
+    /// here during Projection traversal so that they can be retrieved later
+    /// during HAVING traversal.
+    ///
+    /// This vec should be empty after WINDOWS are handled.
+    ///
+    /// map of { name, sn_id }.
     plan: &'p ExecutionPlan,
     snapshot: Snapshot,
 }
@@ -779,6 +899,7 @@ impl<'p> SyntaxPlan<'p> {
                 self.nodes.push_sn_plan(sn);
             }
             Node::Relational(ref rel) => match rel {
+                Relational::NamedWindows { .. } => self.add_named_windows(id),
                 Relational::Delete { .. } => self.add_delete(id),
                 Relational::Insert { .. } | Relational::Update { .. } => {
                     panic!("DML node {node:?} is not supported in the syntax plan")
@@ -804,6 +925,8 @@ impl<'p> SyntaxPlan<'p> {
                 Relational::Limit { .. } => self.add_limit(id),
             },
             Node::Expression(expr) => match expr {
+                Expression::Window { .. } => self.add_window(id),
+                Expression::Over { .. } => self.add_over(id),
                 Expression::ExprInParentheses { .. } => self.add_expr_in_parentheses(id),
                 Expression::Cast { .. } => self.add_cast(id),
                 Expression::Case { .. } => self.add_case(id),
@@ -846,6 +969,92 @@ impl<'p> SyntaxPlan<'p> {
 
     // Relational nodes.
 
+    fn handle_bound(&mut self, bound: &BoundType, parent_id: NodeId) -> Vec<usize> {
+        let bound_sn_id = self
+            .nodes
+            .push_sn_non_plan(SyntaxNode::new_frame_bound(bound));
+        let mut res: Vec<usize> = Vec::new();
+        res.push(bound_sn_id);
+        match bound {
+            BoundType::PrecedingOffset(expr_id) | BoundType::FollowingOffset(expr_id) => {
+                let expr_sn_id = self.pop_from_stack(*expr_id, parent_id);
+                res.push(expr_sn_id)
+            }
+            _ => {}
+        }
+        res
+    }
+
+    fn add_window(&mut self, id: NodeId) {
+        let (_, window) = self.prologue_expr(id);
+        let Expression::Window(Window {
+            partition,
+            ordering,
+            frame,
+            ..
+        }) = window
+        else {
+            panic!("expected WINDOW node");
+        };
+
+        let partition = partition.clone();
+        let ordering = ordering.clone();
+        let frame = frame.clone();
+
+        let mut right_children = Vec::new();
+
+        if let Some(frame) = frame {
+            match frame.bound {
+                Bound::Single(b) => right_children.extend(self.handle_bound(&b, id)),
+                Bound::Between(from, to) => {
+                    right_children.extend(self.handle_bound(&to, id));
+                    let and_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_and());
+                    right_children.push(and_sn_id);
+                    right_children.extend(self.handle_bound(&from, id));
+                    let between_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_between());
+                    right_children.push(between_sn_id);
+                }
+            }
+
+            let frame_ty_sn_node_id = self
+                .nodes
+                .push_sn_non_plan(SyntaxNode::new_frame_type(frame.ty));
+            right_children.push(frame_ty_sn_node_id);
+        }
+
+        if let Some(mut ordering) = ordering {
+            for elem in self
+                .order_by_elements_sn_nodes(&mut ordering, id)
+                .iter()
+                .rev()
+            {
+                right_children.push(*elem);
+            }
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_order_by()));
+        }
+
+        if let Some(partition) = partition {
+            if let Some((first_expr_id, other)) = partition.split_first() {
+                for expr_id in other.iter().rev() {
+                    let expr_sn_id = self.pop_from_stack(*expr_id, id);
+                    right_children.push(expr_sn_id);
+                    let comma_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_comma());
+                    right_children.push(comma_sn_id);
+                }
+
+                let expr_sn_id = self.pop_from_stack(*first_expr_id, id);
+                right_children.push(expr_sn_id);
+            }
+            let part_by_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_partition_by());
+            right_children.push(part_by_sn_id);
+        }
+
+        right_children.reverse();
+
+        let sn = SyntaxNode::new_pointer(id, None, right_children);
+        self.nodes.push_sn_plan(sn);
+    }
+
     fn add_delete(&mut self, id: NodeId) {
         // DELETE without WHERE clause doesn't have children, so we
         // have nothing to pop from the stack.
@@ -882,6 +1091,7 @@ impl<'p> SyntaxPlan<'p> {
         else {
             panic!("Expected FILTER node");
         };
+
         let filter_id = match self.snapshot {
             Snapshot::Latest => *filter,
             Snapshot::Oldest => *plan.undo.get_oldest(filter).map_or_else(|| filter, |id| id),
@@ -889,7 +1099,8 @@ impl<'p> SyntaxPlan<'p> {
         let child_plan_id = *children.first().expect("FILTER child");
         let filter_sn_id = self.pop_from_stack(filter_id, id);
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
-        let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), vec![filter_sn_id]);
+        let right = vec![filter_sn_id];
+        let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), right);
         self.nodes.push_sn_plan(sn);
     }
 
@@ -920,6 +1131,43 @@ impl<'p> SyntaxPlan<'p> {
             }
             sn_children.push(*first);
         }
+
+        let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), sn_children);
+        self.nodes.push_sn_plan(sn);
+    }
+
+    fn add_named_windows(&mut self, id: NodeId) {
+        let (_, named_windows) = self.prologue_rel(id);
+        let Relational::NamedWindows(NamedWindows { child, windows, .. }) = named_windows else {
+            panic!("Expected NAMED WINDOWS node");
+        };
+
+        let child_plan_id = *child;
+        let windows: Vec<NodeId> = windows.iter().rev().copied().collect();
+
+        let mut sn_children = Vec::with_capacity(windows.len() * 6);
+        for (pos, window_id) in windows.iter().enumerate() {
+            let window_sn_id = self.pop_from_stack(*window_id, id);
+            let (_, window_expr) = self.prologue_expr(*window_id);
+            let Expression::Window(Window { name, .. }) = window_expr else {
+                panic!("Expected WINDOW expression");
+            };
+            let name: String = name
+                .to_owned()
+                .map(|name| name.into())
+                .expect("window name");
+            if pos != 0 {
+                sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+            }
+            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            sn_children.push(window_sn_id);
+            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_as()));
+            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_inline(&name)));
+        }
+        sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_window()));
+        sn_children.reverse();
+        let child_sn_id = self.pop_from_stack(child_plan_id, id);
         let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), sn_children);
         self.nodes.push_sn_plan(sn);
     }
@@ -1042,6 +1290,64 @@ impl<'p> SyntaxPlan<'p> {
         arena.push_sn_plan(sn);
     }
 
+    // TODO: Move under `order_by_elements_sn_nodes` as closure.
+    fn wrapped_order_by_element(
+        &mut self,
+        elem: &OrderByElement,
+        parent_id: NodeId,
+        need_comma: bool,
+    ) -> [Option<usize>; 3] {
+        let mut nodes = [None, None, None];
+        match elem.entity {
+            OrderByEntity::Expression { expr_id } => {
+                let expr_sn_id = self.pop_from_stack(expr_id, parent_id);
+                nodes[2] = Some(expr_sn_id);
+            }
+            OrderByEntity::Index { value } => {
+                let sn = SyntaxNode::new_order_index(value);
+                nodes[2] = Some(self.nodes.push_sn_non_plan(sn));
+            }
+        }
+        if let Some(order_type) = &elem.order_type {
+            let sn = SyntaxNode::new_order_type(order_type);
+            nodes[1] = Some(self.nodes.push_sn_non_plan(sn));
+        }
+        if need_comma {
+            nodes[0] = Some(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+        }
+        nodes
+    }
+
+    fn order_by_elements_sn_nodes(
+        &mut self,
+        elems: &mut Vec<OrderByElement>,
+        parent_id: NodeId,
+    ) -> Vec<usize> {
+        let mut res: Vec<usize> = Vec::with_capacity(elems.len() * 3 - 1);
+
+        // The elements on the stack are in the reverse order.
+        let first = elems.pop().expect("at least one column in ORDER BY");
+        for id in self
+            .wrapped_order_by_element(&first, parent_id, false)
+            .into_iter()
+            .flatten()
+        {
+            res.push(id);
+        }
+        while let Some(elem) = elems.pop() {
+            for id in self
+                .wrapped_order_by_element(&elem, parent_id, true)
+                .into_iter()
+                .flatten()
+            {
+                res.push(id);
+            }
+        }
+        // Reverse the order of the vec back.
+        res.reverse();
+        res
+    }
+
     fn add_order_by(&mut self, id: NodeId) {
         let (_, order_by) = self.prologue_rel(id);
         let Relational::OrderBy(OrderBy {
@@ -1057,42 +1363,7 @@ impl<'p> SyntaxPlan<'p> {
             .expect("OrderBy must have first relational child.");
         let mut elems = order_by_elements.clone();
 
-        let mut children: Vec<usize> = Vec::with_capacity(elems.len() * 3 - 1);
-        let mut wrapped_syntax_nodes =
-            |elem: &OrderByElement, need_comma: bool| -> [Option<usize>; 3] {
-                let mut nodes = [None, None, None];
-                match elem.entity {
-                    OrderByEntity::Expression { expr_id } => {
-                        let expr_sn_id = self.pop_from_stack(expr_id, id);
-                        nodes[2] = Some(expr_sn_id);
-                    }
-                    OrderByEntity::Index { value } => {
-                        let sn = SyntaxNode::new_order_index(value);
-                        nodes[2] = Some(self.nodes.push_sn_non_plan(sn));
-                    }
-                }
-                if let Some(order_type) = &elem.order_type {
-                    let sn = SyntaxNode::new_order_type(order_type);
-                    nodes[1] = Some(self.nodes.push_sn_non_plan(sn));
-                }
-                if need_comma {
-                    nodes[0] = Some(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
-                }
-                nodes
-            };
-
-        // The elements on the stack are in the reverse order.
-        let first = elems.pop().expect("at least one column in ORDER BY");
-        for id in wrapped_syntax_nodes(&first, false).into_iter().flatten() {
-            children.push(id);
-        }
-        while let Some(elem) = elems.pop() {
-            for id in wrapped_syntax_nodes(&elem, true).into_iter().flatten() {
-                children.push(id);
-            }
-        }
-        // Reverse the order of the children back.
-        children.reverse();
+        let children = self.order_by_elements_sn_nodes(&mut elems, id);
 
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
 
@@ -1151,8 +1422,9 @@ impl<'p> SyntaxPlan<'p> {
         };
         let child_plan_id = *children.first().expect("PROJECTION child");
         let output = *output;
+        let children = children.clone();
 
-        for sq_id in children.clone().iter().skip(1).rev() {
+        for sq_id in children.iter().skip(1).rev() {
             // Pop sq from the stack and do nothing with them.
             // We've already handled them as a part of the `output`.
             self.pop_from_stack(*sq_id, id);
@@ -1169,14 +1441,16 @@ impl<'p> SyntaxPlan<'p> {
         // Remove the open and close parentheses.
         for (pos, id) in row_sn.right.iter().enumerate() {
             if pos == 0 {
+                // Skip open parentheses.
                 continue;
             }
             if pos == col_len - 1 {
-                children.push(sn_from_id);
+                // Skip close parentheses.
                 break;
             }
             children.push(*id);
         }
+        children.push(sn_from_id);
         let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), children);
         self.nodes.push_sn_plan(sn);
     }
@@ -1356,6 +1630,78 @@ impl<'p> SyntaxPlan<'p> {
         let left_sn_id = self.pop_from_stack(left_plan_id, id);
         let children = vec![op_sn_id, right_sn_id];
         let sn = SyntaxNode::new_pointer(id, Some(left_sn_id), children);
+        self.nodes.push_sn_plan(sn);
+    }
+
+    fn add_over(&mut self, id: NodeId) {
+        let (_, expr) = self.prologue_expr(id);
+        let Expression::Over(Over {
+            func_name,
+            func_args,
+            filter,
+            window,
+            ..
+        }) = expr
+        else {
+            panic!("Expected OVER node");
+        };
+
+        let func_name = func_name.clone();
+        let func_args = func_args.clone();
+        let filter = *filter;
+        let window = *window;
+
+        let mut right_children = Vec::new();
+
+        let plan = self.plan.get_ir_plan();
+        let window_plan_node = plan
+            .get_expression_node(window)
+            .expect("Window expression node is expected for OVER expression");
+        let Expression::Window(Window { name, .. }) = window_plan_node else {
+            panic!("WINDOW relational node expected, got {window_plan_node:?}")
+        };
+        if let Some(window_name) = name {
+            let name_sn_id = self
+                .nodes
+                .push_sn_non_plan(SyntaxNode::new_inline(window_name.as_str()));
+            right_children.push(name_sn_id);
+            // We still need to remove the window from the stack.
+            let _ = self.pop_from_stack(window, id);
+        } else {
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            let window_sn_id = self.pop_from_stack(window, id);
+            right_children.push(window_sn_id);
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+        }
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_over()));
+
+        if let Some(filter) = filter {
+            let filter_sn_id = self.pop_from_stack(filter, id);
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            right_children.push(filter_sn_id);
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_where()));
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+            let filter_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_filter());
+            right_children.push(filter_sn_id);
+        }
+
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        if let Some((last_id, other_ids)) = func_args.split_first() {
+            for other_id in other_ids.iter().rev() {
+                right_children.push(self.pop_from_stack(*other_id, id));
+                right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+            }
+            right_children.push(self.pop_from_stack(*last_id, id));
+        }
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+
+        let name_sn_id = self
+            .nodes
+            .push_sn_non_plan(SyntaxNode::new_inline(func_name.as_str()));
+        right_children.push(name_sn_id);
+        right_children.reverse();
+
+        let sn = SyntaxNode::new_pointer(id, None, right_children);
         self.nodes.push_sn_plan(sn);
     }
 
@@ -2032,7 +2378,7 @@ impl<'p> SyntaxPlan<'p> {
     fn reorder(&mut self, select: &Select) -> Result<(), SbroadError> {
         // Move projection under scan.
         let proj = self.nodes.get_mut_sn(select.proj);
-        let new_top = proj.left.ok_or_else(|| {
+        let new_top: usize = proj.left.ok_or_else(|| {
             SbroadError::Invalid(
                 Entity::SyntaxPlan,
                 Some("Proj syntax node does not have left child!".into()),

@@ -80,7 +80,7 @@ fn projection() {
     // Invalid alias names in the output
     assert_eq!(
         SbroadError::NotFound(Entity::Column, r#"with name "e""#.into()),
-        plan.add_proj(scan_id, &["a", "e"], false, false)
+        plan.add_proj(scan_id, vec![], &["a", "e"], false, false)
             .unwrap_err()
     );
 
@@ -97,7 +97,7 @@ fn projection() {
                 "node is not Relational type: Expression(Alias(Alias { name: \"a\", child: NodeId { offset: 0, arena_type: Arena96 } }))".into()
             )
         ),
-        plan.add_proj(test_node, &["a"], false, false).unwrap_err()
+        plan.add_proj(test_node, vec![], &["a"], false, false).unwrap_err()
     );
 
     test_node.offset = 42;
@@ -105,7 +105,8 @@ fn projection() {
     // Try to build projection from the non-existing node
     assert_eq!(
         SbroadError::NotFound(Entity::Node, "from Arena32 with index 42".to_smolstr()),
-        plan.add_proj(test_node, &["a"], false, false).unwrap_err()
+        plan.add_proj(test_node, vec![], &["a"], false, false)
+            .unwrap_err()
     );
 }
 

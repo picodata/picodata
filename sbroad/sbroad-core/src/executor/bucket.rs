@@ -11,9 +11,9 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoolExpr, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node,
-    NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, Union, UnionAll, Update, Values, ValuesRow,
+    BoolExpr, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
+    NamedWindows, Node, NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{Bool, JoinKind};
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -449,6 +449,7 @@ where
                     self.bucket_map.insert(*output, my_buckets);
                 }
                 Relational::Projection(Projection { output, .. })
+                | Relational::NamedWindows(NamedWindows { output, .. })
                 | Relational::GroupBy(GroupBy { output, .. })
                 | Relational::Having(Having { output, .. })
                 | Relational::OrderBy(OrderBy { output, .. })

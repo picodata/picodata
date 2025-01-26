@@ -3,7 +3,8 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Join, Node, NodeId, Reference, ScanRelation, StableFunction,
+    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Reference, ScanRelation,
+    StableFunction,
 };
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -261,6 +262,32 @@ impl ExecutionPlan {
             match data {
                 // TODO: should we care about plans without projections?
                 // Or they should be treated as invalid?
+                SyntaxData::As => sql.push_str("AS"),
+                SyntaxData::Over => sql.push_str("OVER"),
+                SyntaxData::PartitionBy => sql.push_str("PARTITION BY"),
+                SyntaxData::Filter => sql.push_str("FILTER"),
+                SyntaxData::Where => sql.push_str("WHERE"),
+                SyntaxData::OrderBy => sql.push_str("ORDER BY"),
+                SyntaxData::WindowFrameType(frame_ty) => {
+                    let str = match frame_ty {
+                        FrameType::Range => "RANGE",
+                        FrameType::Rows => "ROWS",
+                    };
+                    sql.push_str(str)
+                }
+                SyntaxData::Between => sql.push_str("BETWEEN"),
+                SyntaxData::And => sql.push_str("AND"),
+                SyntaxData::WindowFrameBound(frame_bound) => {
+                    let str = match frame_bound {
+                        BoundType::PrecedingUnbounded => "UNBOUNDED PRECEDING",
+                        BoundType::PrecedingOffset(_) => "PRECEDING",
+                        BoundType::CurrentRow => "CURRENT ROW",
+                        BoundType::FollowingOffset(_) => "FOLLOWING",
+                        BoundType::FollowingUnbounded => "UNBOUNDED FOLLOWING",
+                    };
+                    sql.push_str(str)
+                }
+                SyntaxData::Window => sql.push_str("WINDOW"),
                 SyntaxData::Asterisk(relation_name) => {
                     if let Some(relation_name) = relation_name {
                         push_identifier(&mut sql, relation_name.as_str());
@@ -379,6 +406,7 @@ impl ExecutionPlan {
                                 push_identifier(&mut sql, relation);
                             }
                             Relational::ScanSubQuery { .. }
+                            | Relational::NamedWindows { .. }
                             | Relational::ScanCte { .. }
                             | Relational::Motion { .. }
                             | Relational::ValuesRow { .. }
@@ -397,6 +425,8 @@ impl ExecutionPlan {
                         Node::Expression(expr) => {
                             match expr {
                                 Expression::Alias { .. }
+                                | Expression::Window { .. }
+                                | Expression::Over { .. }
                                 | Expression::ExprInParentheses { .. }
                                 | Expression::Bool { .. }
                                 | Expression::Arithmetic { .. }
@@ -536,6 +566,8 @@ impl ExecutionPlan {
                 }
             }
         }
+        println!("SQL: {sql}");
+        println!("Params: {params:?}");
         // MUST be constructed out of the `syntax.ordered.sql` context scope.
         Ok((PatternWithParams::new(sql, params), guard))
     }

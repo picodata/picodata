@@ -108,6 +108,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
             match node {
                 Node::Expression(expr) => {
                     match expr {
+                        Expression::Window { .. } => iter.handle_window_iter(expr),
+                        Expression::Over { .. } => iter.handle_over_iter(expr),
                         Expression::Alias { .. }
                         | Expression::ExprInParentheses { .. }
                         | Expression::Cast { .. }

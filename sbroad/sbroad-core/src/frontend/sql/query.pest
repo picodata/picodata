@@ -239,11 +239,12 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
                             (W ~ WhereClause)? ~
                             (W ~ ^"group" ~ W ~ ^"by" ~ W ~ GroupBy)? ~
                             (W ~ ^"having" ~ W ~ Having)? ~
+                            (W ~ ^"window" ~ W ~ NamedWindows)? ~
                             (W ~ ^"order" ~ W ~ ^"by" ~ W ~ OrderBy)?
                            }
     Projection = ${ (Distinct ~ W)? ~ ProjectionElements }
         ProjectionElements = _{ ProjectionElement ~ (WO ~ "," ~ WO ~ ProjectionElement)* }
-        ProjectionElement = _{ Asterisk | Column }
+        ProjectionElement = _{ Over | Asterisk | Column }
         Column = ${ Expr ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
         Asterisk = ${ (Identifier ~ ".")? ~ "*" }
     WhereClause = _{ ^"where" ~ W ~ Selection }
@@ -255,6 +256,8 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
             LeftJoinKind = { ^"left" ~ (W ~ ^"outer")? }
     GroupBy = { Expr ~ (WO ~ "," ~ WO ~ Expr)* }
     Having = { Expr }
+    NamedWindows = { WindowDef ~ (WO ~ "," ~ WO ~ WindowDef)* }
+    WindowDef = ${ Identifier ~ W ~ ^"as" ~ WO ~ WindowBody }
     OrderBy = { OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
         OrderByElement = ${ Expr ~ (W ~ OrderFlag)? }
         OrderFlag = _{ Asc | Desc }
@@ -305,14 +308,14 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                         | ^"case" | ^"cast" | ^"char"
                         | ^"decimal" | ^"desc" | ^"distinct" | ^"double"
                         | ^"else" | ^"end" | ^"except" | ^"exists"
-                        | ^"false" | ^"from" | ^"group"
+                        | ^"false" | ^"filter" | ^"from" | ^"group"
                         | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
                         | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null" | ^"numeric"
-                        | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
+                        | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"over" | ^"primary"
                         | ^"select" | ^"set" | ^"similar" | ^"smallint" | ^"string" | ^"substring"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
                         | ^"union" | ^"unsigned" | ^"using" | ^"uuid"
-                        | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with"
+                        | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with" | ^"window"
                         }
 
 Deallocate = ${ ^"deallocate" ~ (WithPrepare | WithoutPrepare) }
@@ -378,6 +381,28 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                     FunctionArgs = ${ (Distinct ~ W)? ~ FunctionArgsExprs? }
                         FunctionArgsExprs = _{ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
                     CountAsterisk = { "*" }
+            Over = ${ Identifier ~ WO ~ WindowFunctionArgs ~ WO ~ WindowFunctionFilter ~ WO? ~ ^"over" ~ WO ~ Window }
+                WindowFunctionArgs = { "(" ~ WO ~ (CountAsterisk | WindowFunctionArgsInner)? ~ WO ~ ")" }
+                    WindowFunctionArgsInner = !{  (Expr ~ ("," ~ Expr)*) }
+                WindowFunctionFilter = ${ (^"filter" ~ WO ~ "(" ~ WO ~ ^"where" ~ W ~ Expr ~ WO ~ ")")? }
+                Window = _{ Identifier | WindowBody }
+                    WindowBody = ${ "(" ~ WO ~ WindowBodyInner ~ WO ~ ")" }
+                        WindowBodyInner = _{ (WindowBodyInfo ~ (W ~ WindowBodyInfo){, 2}) | WindowBodyInfo? }
+                        WindowBodyInfo = _{ WindowPartition | WindowOrderBy | WindowFrame }
+                            WindowPartition = ${ ^"partition" ~ W ~ ^"by" ~ W ~ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+                            WindowOrderBy = ${ ^"order" ~ W ~ ^"by" ~ W ~ OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
+                            WindowFrame = ${ WindowFrameType ~ W ~ (WindowFrameSingle | WindowFrameBetween) }
+                                WindowFrameType = _{ WindowFrameTypeRange | WindowFrameTypeRows }
+                                    WindowFrameTypeRange = { ^"range" }
+                                    WindowFrameTypeRows = { ^"rows" }
+                                WindowFrameSingle = { WindowFrameBound }
+                                WindowFrameBetween = ${ ^"between" ~ W ~ WindowFrameBound ~ W ~ ^"and" ~ W ~ WindowFrameBound }
+                                WindowFrameBound = _{ PrecedingUnbounded | PrecedingOffset | CurrentRow | FollowingUnbounded | FollowingOffset }
+                                    PrecedingUnbounded = ${ ^"unbounded" ~ W ~ ^"preceding" }
+                                    PrecedingOffset = ${ Expr ~ W ~ ^"preceding" }
+                                    CurrentRow = ${ ^"current" ~ W ~ ^"row" }
+                                    FollowingOffset = ${ Expr ~ W ~ ^"following" }
+                                    FollowingUnbounded = ${ ^"unbounded" ~ W ~ ^"following" }
             ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
             Substring = ${ ^"substring" ~ WO ~ "(" ~ WO ~ SubstringVariant ~ WO ~ ")" }
                 SubstringVariant = _{ SubstringFromFor | SubstringRegular | SubstringFor | SubstringFrom | SubstringSimilar }

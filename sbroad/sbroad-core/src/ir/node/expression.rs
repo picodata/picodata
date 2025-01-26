@@ -7,8 +7,8 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Reference, Row, StableFunction,
-    Trim, UnaryExpr,
+    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Over, Reference, Row,
+    StableFunction, Trim, UnaryExpr, Window,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -30,11 +30,15 @@ pub enum ExprOwned {
     Case(Case),
     ExprInParentheses(ExprInParentheses),
     LocalTimestamp(LocalTimestamp),
+    Over(Over),
+    Window(Window),
 }
 
 impl From<ExprOwned> for NodeAligned {
     fn from(value: ExprOwned) -> Self {
         match value {
+            ExprOwned::Window(window) => window.into(),
+            ExprOwned::Over(over) => over.into(),
             ExprOwned::Alias(alias) => alias.into(),
             ExprOwned::Arithmetic(arithm) => arithm.into(),
             ExprOwned::Bool(bool) => bool.into(),
@@ -85,6 +89,8 @@ pub enum Expression<'a> {
     Case(&'a Case),
     ExprInParentheses(&'a ExprInParentheses),
     LocalTimestamp(&'a LocalTimestamp),
+    Over(&'a Over),
+    Window(&'a Window),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -106,6 +112,8 @@ pub enum MutExpression<'a> {
     Case(&'a mut Case),
     ExprInParentheses(&'a mut ExprInParentheses),
     LocalTimestamp(&'a mut LocalTimestamp),
+    Over(&'a mut Over),
+    Window(&'a mut Window),
 }
 
 #[allow(dead_code)]
@@ -188,6 +196,8 @@ impl Expression<'_> {
     #[must_use]
     pub fn get_expr_owned(&self) -> ExprOwned {
         match self {
+            Expression::Window(window) => ExprOwned::Window((*window).clone()),
+            Expression::Over(over) => ExprOwned::Over((*over).clone()),
             Expression::Alias(alias) => ExprOwned::Alias((*alias).clone()),
             Expression::Arithmetic(arithm) => ExprOwned::Arithmetic((*arithm).clone()),
             Expression::Bool(bool) => ExprOwned::Bool((*bool).clone()),

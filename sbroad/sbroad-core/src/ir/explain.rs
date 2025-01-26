@@ -28,7 +28,7 @@ use crate::ir::{node, OptionKind, Plan};
 use super::expression::FunctionFeature;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::Limit;
+use super::node::{Bound, BoundType, Frame, FrameType, Limit, NamedWindows, Over, Window};
 use super::operator::{Arithmetic, Bool, Unary};
 use super::relation::DerivedType;
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
@@ -48,6 +48,8 @@ enum ColExpr {
         Vec<(Box<ColExpr>, Box<ColExpr>)>,
         Option<Box<ColExpr>>,
     ),
+    Window(Box<WindowExplain>),
+    Over(String, Vec<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
     Concat(Box<ColExpr>, Box<ColExpr>),
     Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
     StableFunction(
@@ -65,6 +67,26 @@ enum ColExpr {
 impl Display for ColExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match &self {
+            ColExpr::Window(window) => window.to_string(),
+            ColExpr::Over(func_name, args, filter, window) => {
+                let formatted_args = format!("({})", args.iter().format(", "));
+
+                let prefix = if let Some(filter) = filter {
+                    format!("{func_name}{formatted_args} filter (where {filter}) over")
+                } else {
+                    format!("{func_name}{formatted_args} over")
+                };
+                if let ColExpr::Window(window_explain) = window.as_ref() {
+                    let WindowExplain { name, .. } = window_explain.as_ref();
+                    if let Some(name) = name {
+                        format!("{prefix} {name}")
+                    } else {
+                        format!("{prefix} {window}")
+                    }
+                } else {
+                    panic!("Expected Window expression in OVER clause")
+                }
+            }
             ColExpr::Parentheses(child_expr) => format!("({child_expr})"),
             ColExpr::Alias(expr, name) => format!("{expr} -> \"{name}\""),
             ColExpr::Arithmetic(left, op, right) => format!("{left} {op} {right}"),
@@ -156,13 +178,92 @@ impl ColExpr {
             let current_node = plan.get_expression_node(id)?;
 
             match &current_node {
+                Expression::Window(Window {
+                    name,
+                    partition,
+                    ordering,
+                    frame,
+                }) => {
+                    let frame = frame.as_ref().map(|f| FrameExplain::from_ir(f, &mut stack));
+
+                    let mut o_elems = Vec::new();
+                    if let Some(ordering) = ordering {
+                        for o_elem in ordering {
+                            let expr = match o_elem.entity {
+                                OrderByEntity::Expression { .. } => {
+                                    let (expr, _) = stack.pop().unwrap_or_else(|| {
+                                        panic!("Can't pop window ordering expr from stack.");
+                                    });
+                                    OrderByExpr::Expr { expr }
+                                }
+                                OrderByEntity::Index { value } => OrderByExpr::Index { value },
+                            };
+                            o_elems.push(OrderByPair {
+                                expr,
+                                order_type: o_elem.order_type.clone(),
+                            });
+                        }
+                        o_elems.reverse();
+                    };
+
+                    let mut p_elems = Vec::new();
+                    if let Some(partition) = partition {
+                        p_elems.reserve(partition.len());
+                        for _ in partition {
+                            let (expr, _) = stack.pop().unwrap_or_else(|| {
+                                panic!("Can't pop window partition expr from stack.")
+                            });
+                            p_elems.push(expr)
+                        }
+                        p_elems.reverse();
+                    }
+
+                    let window = WindowExplain {
+                        name: name.clone(),
+                        partition: p_elems,
+                        ordering: o_elems,
+                        frame,
+                    };
+                    let window_expr = ColExpr::Window(Box::new(window));
+                    stack.push((window_expr, id));
+                }
+                Expression::Over(Over {
+                    func_name,
+                    func_args,
+                    filter,
+                    ..
+                }) => {
+                    let (window, _) = stack
+                        .pop()
+                        .unwrap_or_else(|| panic!("Can't pop window expr from stack."));
+
+                    let filter = filter.map(|_| {
+                        let (expr, _) = stack.pop().unwrap_or_else(|| {
+                            panic!("Can't pop window function arg expr from stack.")
+                        });
+                        Box::new(expr)
+                    });
+
+                    let mut args = Vec::with_capacity(func_args.len());
+                    for _ in func_args {
+                        let (expr, _) = stack.pop().unwrap_or_else(|| {
+                            panic!("Can't pop window function arg expr from stack.")
+                        });
+                        args.push(expr);
+                    }
+                    args.reverse();
+
+                    let over_expr =
+                        ColExpr::Over(func_name.to_string(), args, filter, Box::new(window));
+                    stack.push((over_expr, id));
+                }
                 Expression::Cast(Cast { to, .. }) => {
                     let (expr, _) = stack.pop().ok_or_else(|| {
                         SbroadError::UnexpectedNumberOfValues(
                             "stack is empty while processing CAST expression".to_smolstr(),
                         )
                     })?;
-                    let cast_expr = ColExpr::Cast(Box::new(expr), *to);
+                    let cast_expr: ColExpr = ColExpr::Cast(Box::new(expr), *to);
                     stack.push((cast_expr, id));
                 }
                 Expression::Case(Case {
@@ -423,6 +524,141 @@ struct Projection {
     cols: Vec<ColExpr>,
 }
 
+#[derive(Debug, PartialEq, Serialize)]
+enum BoundTypeExplain {
+    PrecedingUnbounded,
+    PrecedingOffset(ColExpr),
+    CurrentRow,
+    FollowingOffset(ColExpr),
+    FollowingUnbounded,
+}
+
+impl BoundTypeExplain {
+    fn from_ir(b_type: &BoundType, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+        match b_type {
+            BoundType::PrecedingUnbounded => BoundTypeExplain::PrecedingUnbounded,
+            BoundType::PrecedingOffset(_) => {
+                let (expr, _) = stack
+                    .pop()
+                    .unwrap_or_else(|| panic!("Can't pop preceding offset expr from stack."));
+                BoundTypeExplain::PrecedingOffset(expr)
+            }
+            BoundType::CurrentRow => BoundTypeExplain::CurrentRow,
+            BoundType::FollowingOffset(_) => {
+                let (expr, _) = stack
+                    .pop()
+                    .unwrap_or_else(|| panic!("Can't pop following offset expr from stack."));
+                BoundTypeExplain::FollowingOffset(expr)
+            }
+            BoundType::FollowingUnbounded => BoundTypeExplain::FollowingUnbounded,
+        }
+    }
+}
+
+impl Display for BoundTypeExplain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BoundTypeExplain::PrecedingUnbounded => String::from("unbounded preceding"),
+            BoundTypeExplain::PrecedingOffset(expr) => format!("{} preceding", expr),
+            BoundTypeExplain::CurrentRow => String::from("current row"),
+            BoundTypeExplain::FollowingOffset(expr) => format!("{} following", expr),
+            BoundTypeExplain::FollowingUnbounded => String::from("unbounded following"),
+        };
+
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+enum BoundExplain {
+    Single(BoundTypeExplain),
+    Between(BoundTypeExplain, BoundTypeExplain),
+}
+
+impl BoundExplain {
+    fn from_ir(bound: &Bound, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+        match bound {
+            Bound::Single(b_type) => BoundExplain::Single(BoundTypeExplain::from_ir(b_type, stack)),
+            Bound::Between(lower, upper) => {
+                let upper_bound = BoundTypeExplain::from_ir(upper, stack);
+                let lower_bound = BoundTypeExplain::from_ir(lower, stack);
+                BoundExplain::Between(lower_bound, upper_bound)
+            }
+        }
+    }
+}
+
+impl Display for BoundExplain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BoundExplain::Single(bound) => format!("{bound}"),
+            BoundExplain::Between(lower, upper) => format!("between {lower} and {upper}"),
+        };
+
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct FrameExplain {
+    ty: FrameType,
+    bound: BoundExplain,
+}
+
+impl FrameExplain {
+    fn from_ir(frame: &Frame, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+        let bound = BoundExplain::from_ir(&frame.bound, stack);
+        FrameExplain {
+            ty: frame.ty.clone(),
+            bound,
+        }
+    }
+}
+
+impl Display for FrameExplain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.ty, self.bound)
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct WindowExplain {
+    name: Option<SmolStr>,
+    partition: Vec<ColExpr>,
+    ordering: Vec<OrderByPair>,
+    frame: Option<FrameExplain>,
+}
+
+impl Display for WindowExplain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::from("");
+
+        if let Some(name) = &self.name {
+            write!(s, "{name} as ")?;
+        }
+        write!(s, "(")?;
+
+        if !self.partition.is_empty() {
+            write!(s, "partition by ")?;
+            let exprs = format!("({})", self.partition.iter().format(", "));
+            write!(s, "{exprs} ")?;
+        }
+
+        if !self.ordering.is_empty() {
+            write!(s, "order by ")?;
+            let exprs = format!("({})", self.ordering.iter().format(", "));
+            write!(s, "{exprs} ")?;
+        }
+
+        if let Some(frame) = &self.frame {
+            write!(s, "{frame}")?;
+        }
+
+        write!(s, ")")?;
+        write!(f, "{s}")
+    }
+}
+
 impl Projection {
     #[allow(dead_code)]
     fn new(
@@ -430,13 +666,14 @@ impl Projection {
         output_id: NodeId,
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
-        let mut result = Projection { cols: vec![] };
+        let output = plan.get_expression_node(output_id)?;
+        let col_list = output.get_row_list()?;
+        let mut result = Projection {
+            cols: Vec::with_capacity(col_list.len()),
+        };
 
-        let alias_list = plan.get_expression_node(output_id)?;
-
-        for col_node_id in alias_list.get_row_list()? {
-            let col = ColExpr::new(plan, *col_node_id, sq_ref_map)?;
-
+        for col_id in col_list {
+            let col = ColExpr::new(plan, *col_id, sq_ref_map)?;
             result.cols.push(col);
         }
         Ok(result)
@@ -456,6 +693,29 @@ impl Display for Projection {
 
         write!(s, "({cols})")?;
         write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct NamedWindowsExplain {
+    windows: Vec<ColExpr>,
+}
+
+impl NamedWindowsExplain {
+    #[allow(dead_code)]
+    fn new(
+        plan: &Plan,
+        windows: &Vec<NodeId>,
+        sq_ref_map: &SubQueryRefMap,
+    ) -> Result<Self, SbroadError> {
+        let mut result = NamedWindowsExplain {
+            windows: Vec::with_capacity(windows.len()),
+        };
+        for window_id in windows {
+            let window = ColExpr::new(plan, *window_id, sq_ref_map)?;
+            result.windows.push(window);
+        }
+        Ok(result)
     }
 }
 
@@ -716,7 +976,7 @@ impl Display for Scan {
 
 #[derive(Debug, PartialEq, Serialize)]
 struct Ref {
-    /// Reference to subquery index in `FullExplain` parts
+    /// Reference to subquery/window index in `FullExplain` parts
     number: usize,
 }
 
@@ -765,6 +1025,7 @@ impl Row {
     fn add_col(&mut self, row: RowVal) {
         self.cols.push(row);
     }
+
     fn from_col_exprs_with_ids(
         plan: &Plan,
         exprs_with_ids: &mut Vec<(ColExpr, NodeId)>,
@@ -957,11 +1218,20 @@ enum ExplainNode {
     Motion(Motion),
     Cte(SmolStr, Ref),
     Limit(u64),
+    NamedWindows(NamedWindowsExplain),
 }
 
 impl Display for ExplainNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match &self {
+            ExplainNode::NamedWindows(NamedWindowsExplain { windows }) => {
+                let windows_str = windows
+                    .iter()
+                    .map(ToSmolStr::to_smolstr)
+                    .collect::<Vec<SmolStr>>()
+                    .join(", ");
+                format_smolstr!("windows: {windows_str}")
+            }
             ExplainNode::Cte(s, r) => format_smolstr!("scan cte {s}({r})"),
             ExplainNode::Delete(s) => format_smolstr!("delete \"{s}\""),
             ExplainNode::Except => "except".to_smolstr(),
@@ -993,7 +1263,7 @@ impl Display for ExplainNode {
 /// Describe sql query (or subquery) as recursive type
 #[derive(Debug, Serialize)]
 struct ExplainTreePart {
-    /// Level hepls to detect count of idents
+    /// Level helps to detect count of idents
     #[serde(skip_serializing)]
     level: usize,
     /// Current node of sql query
@@ -1052,6 +1322,8 @@ struct FullExplain {
     main_query: ExplainTreePart,
     /// Independent sub-trees of main sql query (e.g. sub-queries in `WHERE` cause, CTEs, etc.)
     subqueries: Vec<ExplainTreePart>,
+    /// Windows under Projection.
+    windows: Vec<ExplainTreePart>,
     /// Options imposed during query execution
     exec_options: Vec<(OptionKind, Value)>,
     /// Info related to plan execution
@@ -1104,6 +1376,10 @@ impl Display for FullExplain {
             writeln!(s, "subquery ${pos}:")?;
             s.push_str(&sq.to_string());
         }
+        for (pos, window) in self.windows.iter().enumerate() {
+            writeln!(s, "window ${pos}:")?;
+            s.push_str(&window.to_string());
+        }
         if !self.exec_options.is_empty() {
             writeln!(s, "execution options:")?;
             for opt in &self.exec_options {
@@ -1131,6 +1407,44 @@ impl Display for FullExplain {
 }
 
 impl FullExplain {
+    /// Retrieve SubQueryRefMap from relational node children and update
+    /// `current_node` children.
+    fn get_sq_ref_map(
+        &mut self,
+        current_node: &mut ExplainTreePart,
+        stack: &mut Vec<ExplainTreePart>,
+        children: &[NodeId],
+        req_children_number: usize,
+    ) -> SubQueryRefMap {
+        let mut sq_ref_map: SubQueryRefMap = HashMap::with_capacity(children.len());
+
+        // Note that subqueries are added to the stack in the `children` reversed order
+        // because of the PostOrder traversal. That's why we apply `rev` here.
+        for sq_id in children.iter().skip(req_children_number).rev() {
+            let sq_node = stack
+                .pop()
+                .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
+            self.subqueries.push(sq_node);
+            let offset = self.subqueries.len() - 1;
+            sq_ref_map.insert(*sq_id, offset);
+        }
+
+        let mut children_to_add = Vec::with_capacity(req_children_number);
+        for _ in 0..req_children_number {
+            children_to_add.push(
+                stack.pop().unwrap_or_else(|| {
+                    panic!("Expected to pop required child for {current_node:?}")
+                }),
+            );
+        }
+        children_to_add.reverse();
+        for child in children_to_add {
+            current_node.children.push(child);
+        }
+
+        sq_ref_map
+    }
+
     #[allow(dead_code)]
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
@@ -1150,35 +1464,13 @@ impl FullExplain {
             let mut current_node = ExplainTreePart::with_level(level);
             let node = ir.get_relation_node(id)?;
 
-            let mut get_sq_ref_map = |children: &Vec<NodeId>, req_children_number| {
-                let mut sq_ref_map: SubQueryRefMap = HashMap::with_capacity(children.len());
-
-                // Note that subqueries are added to the stack in the `children` reveresed order
-                // because of the PostOrder traversal. That's why we apply `rev` here.
-                for sq_id in children.iter().skip(req_children_number).rev() {
-                    let sq_node = stack
-                        .pop()
-                        .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
-                    result.subqueries.push(sq_node);
-                    let offset = result.subqueries.len() - 1;
-                    sq_ref_map.insert(*sq_id, offset);
-                }
-
-                let mut children_to_add = Vec::with_capacity(req_children_number);
-                for _ in 0..req_children_number {
-                    children_to_add.push(stack.pop().unwrap_or_else(|| {
-                        panic!("Expected to pop required child for {current_node:?}")
-                    }));
-                }
-                children_to_add.reverse();
-                for child in children_to_add {
-                    current_node.children.push(child);
-                }
-
-                sq_ref_map
-            };
-
             current_node.current = match &node {
+                Relational::NamedWindows(NamedWindows { child, windows, .. }) => {
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, &[*child], 1);
+                    let window_exprs = NamedWindowsExplain::new(ir, windows, &sq_ref_map)?;
+                    Some(ExplainNode::NamedWindows(window_exprs))
+                }
                 Relational::Intersect { .. } => {
                     if let (Some(right), Some(left)) = (stack.pop(), stack.pop()) {
                         current_node.children.push(left);
@@ -1207,7 +1499,8 @@ impl FullExplain {
                     children,
                     ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 1);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
                     let p = GroupBy::new(ir, gr_cols, *output, &sq_ref_map)?;
                     Some(ExplainNode::GroupBy(p))
                 }
@@ -1216,21 +1509,25 @@ impl FullExplain {
                     children,
                     ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 1);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
                     let o_b = OrderBy::new(ir, order_by_elements, &sq_ref_map)?;
                     Some(ExplainNode::OrderBy(o_b))
                 }
                 Relational::Projection(node::Projection {
                     output, children, ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 1);
+                    let sq_ref_map: HashMap<NodeId, usize> =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
+
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
                 }
                 Relational::SelectWithoutScan(node::SelectWithoutScan {
                     output, children, ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 0);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 0);
                     let p = Projection::new(ir, *output, &sq_ref_map)?;
                     Some(ExplainNode::Projection(p))
                 }
@@ -1258,7 +1555,8 @@ impl FullExplain {
                 | Relational::Having(Having {
                     children, filter, ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 1);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
                     let filter_id = ir.undo.get_oldest(filter).map_or_else(|| *filter, |id| *id);
                     let selection = ColExpr::new(ir, filter_id, &sq_ref_map)?;
                     let explain_node = match &node {
@@ -1359,7 +1657,8 @@ impl FullExplain {
                     kind,
                     ..
                 }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 2);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 2);
                     let condition = ColExpr::new(ir, *condition, &sq_ref_map)?;
                     Some(ExplainNode::InnerJoin(InnerJoin {
                         condition,
@@ -1367,7 +1666,8 @@ impl FullExplain {
                     }))
                 }
                 Relational::ValuesRow(ValuesRow { data, children, .. }) => {
-                    let sq_ref_map = get_sq_ref_map(children, 0);
+                    let sq_ref_map =
+                        result.get_sq_ref_map(&mut current_node, &mut stack, children, 0);
                     let row = ColExpr::new(ir, *data, &sq_ref_map)?;
 
                     Some(ExplainNode::ValueRow(row))

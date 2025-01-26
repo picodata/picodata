@@ -56,7 +56,9 @@ fn rel_nodes_from_reference_in_proj() {
     .unwrap();
     plan.add_rel(t);
     let scan_id = plan.add_scan("t", None).unwrap();
-    let proj_id = plan.add_proj(scan_id, &["a"], false, false).unwrap();
+    let proj_id = plan
+        .add_proj(scan_id, vec![], &["a"], false, false)
+        .unwrap();
     let output = plan.get_relational_output(proj_id).unwrap();
 
     let rel_set = plan.get_relational_nodes_from_row(output).unwrap();

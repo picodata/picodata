@@ -28,7 +28,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use super::expression::{ColumnPositionMap, ExpressionId};
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
-use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
+use super::node::{ArenaType, Limit, NamedWindows, Node, NodeAligned, SelectWithoutScan};
 use super::relation::DerivedType;
 use super::transformation::redistribution::{MotionPolicy, Program};
 use super::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
@@ -295,13 +295,13 @@ pub enum UpdateStrategy {
     LocalUpdate,
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum OrderByEntity {
     Expression { expr_id: NodeId },
     Index { value: usize },
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum OrderByType {
     Asc,
     Desc,
@@ -647,6 +647,7 @@ impl Plan {
         let proj_output = self.nodes.add_row(projection_cols, None);
         let proj_node = Projection {
             children: vec![rel_child_id],
+            windows: vec![],
             output: proj_output,
             is_distinct: false,
         };
@@ -873,7 +874,7 @@ impl Plan {
                 } else {
                     relation.clone()
                 };
-                let proj_id = self.add_proj(*child, &[], false, needs_bucket_id_column)?;
+                let proj_id = self.add_proj(*child, vec![], &[], false, needs_bucket_id_column)?;
                 let sq_id = self.add_sub_query(proj_id, Some(&scan_name))?;
                 children.push(sq_id);
 
@@ -1003,6 +1004,7 @@ impl Plan {
     pub fn add_proj(
         &mut self,
         child: NodeId,
+        windows: Vec<NodeId>,
         col_names: &[&str],
         is_distinct: bool,
         needs_shard_col: bool,
@@ -1010,6 +1012,7 @@ impl Plan {
         let output = self.add_row_for_output(child, col_names, needs_shard_col, None)?;
         let proj = Projection {
             children: vec![child],
+            windows,
             output,
             is_distinct,
         };
@@ -1027,13 +1030,15 @@ impl Plan {
     /// - columns are not aliases or have duplicate names
     pub fn add_proj_internal(
         &mut self,
-        child: NodeId,
+        children: Vec<NodeId>,
         columns: &[NodeId],
         is_distinct: bool,
+        windows: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let output = self.nodes.add_row(columns.to_vec(), None);
         let proj = Projection {
-            children: vec![child],
+            children,
+            windows,
             output,
             is_distinct,
         };
@@ -1041,6 +1046,23 @@ impl Plan {
         let proj_id = self.add_relational(proj.into())?;
         self.replace_parent_in_subtree(output, None, Some(proj_id))?;
         Ok(proj_id)
+    }
+
+    pub fn add_named_windows(
+        &mut self,
+        child: NodeId,
+        windows: Vec<NodeId>,
+    ) -> Result<NodeId, SbroadError> {
+        let output = self.add_row_for_output(child, &[], true, None)?;
+        let named_windows = NamedWindows {
+            child,
+            windows,
+            output,
+        };
+
+        let named_windows_id = self.add_relational(named_windows.into())?;
+        self.replace_parent_in_subtree(output, None, Some(named_windows_id))?;
+        Ok(named_windows_id)
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).
@@ -1182,7 +1204,7 @@ impl Plan {
             }
         }
         self.replace_parent_in_subtree(output, None, Some(plan_order_by_id))?;
-        let top_proj_id = self.add_proj(plan_order_by_id, &[], false, true)?;
+        let top_proj_id = self.add_proj(plan_order_by_id, vec![], &[], false, true)?;
         Ok((plan_order_by_id, top_proj_id))
     }
 
@@ -1238,7 +1260,7 @@ impl Plan {
                     .add_sub_query(child_id, Some(&alias))
                     .expect("add subquery in cte");
                 child_id = self
-                    .add_proj(sq_id, &[], false, false)
+                    .add_proj(sq_id, vec![], &[], false, false)
                     .expect("add projection in cte");
                 child_output_id = self
                     .get_relational_output(child_id)
@@ -1811,6 +1833,9 @@ impl Plan {
                 }
                 Ok(None)
             }
+            Relational::NamedWindows(NamedWindows { child, .. }) => {
+                self.scan_name(*child, output_alias_position)
+            }
             Relational::Except { .. }
             | Relational::Union { .. }
             | Relational::UnionAll { .. }
@@ -1879,9 +1904,9 @@ impl Plan {
     pub fn children(&self, rel_id: NodeId) -> Children<'_> {
         let node = self.get_relation_node(rel_id).unwrap();
         match node {
-            Relational::Limit(Limit { child, .. }) | Relational::ScanCte(ScanCte { child, .. }) => {
-                Children::Single(child)
-            }
+            Relational::Limit(Limit { child, .. })
+            | Relational::ScanCte(ScanCte { child, .. })
+            | Relational::NamedWindows(NamedWindows { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })

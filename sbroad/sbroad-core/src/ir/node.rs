@@ -245,7 +245,7 @@ impl From<Like> for NodeAligned {
 /// - relational node (containing this reference)
 /// - target(s) in the relational nodes list of children
 /// - column position in the child(ren) output tuple
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 pub struct Reference {
     /// Relational node ID that contains current reference.
     pub parent: Option<NodeId>,
@@ -299,7 +299,7 @@ impl From<Row> for NodeAligned {
 ///
 /// Example: `bucket_id("1")` (the number of buckets can be
 /// changed only after restarting the cluster).
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 pub struct StableFunction {
     /// Function name.
     pub name: SmolStr,
@@ -586,9 +586,10 @@ pub struct Projection {
     /// first one should be treated as a `SubQuery` node from
     /// the output tree.
     pub children: Vec<NodeId>,
+    pub windows: Vec<NodeId>,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
-    /// Wheter the select was marked with `distinct` keyword
+    /// Whether the select was marked with `distinct` keyword
     pub is_distinct: bool,
 }
 
@@ -961,6 +962,108 @@ impl From<CreateIndex> for NodeAligned {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub enum FrameType {
+    Range,
+    Rows,
+}
+
+impl Display for FrameType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FrameType::Range => write!(f, "range"),
+            FrameType::Rows => write!(f, "rows"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub enum BoundType {
+    PrecedingUnbounded,
+    PrecedingOffset(NodeId),
+    CurrentRow,
+    FollowingOffset(NodeId),
+    FollowingUnbounded,
+}
+
+impl BoundType {
+    pub(crate) fn index(&self) -> usize {
+        match self {
+            BoundType::PrecedingUnbounded => 0,
+            BoundType::PrecedingOffset(_) => 1,
+            BoundType::CurrentRow => 2,
+            BoundType::FollowingOffset(_) => 3,
+            BoundType::FollowingUnbounded => 4,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub enum Bound {
+    Single(BoundType),
+    Between(BoundType, BoundType),
+}
+
+impl Bound {
+    pub(crate) fn index(&self) -> usize {
+        match self {
+            Bound::Single(_) => 0,
+            Bound::Between(_, _) => 1,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub struct Frame {
+    pub ty: FrameType,
+    pub bound: Bound,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Window {
+    pub name: Option<SmolStr>,
+    pub partition: Option<Vec<NodeId>>,
+    pub ordering: Option<Vec<OrderByElement>>,
+    pub frame: Option<Frame>,
+}
+
+impl From<Window> for NodeAligned {
+    fn from(value: Window) -> Self {
+        Self::Node136(Node136::Window(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct NamedWindows {
+    pub child: NodeId,
+    pub output: NodeId,
+    pub windows: Vec<NodeId>,
+}
+
+impl From<NamedWindows> for NodeAligned {
+    fn from(value: NamedWindows) -> Self {
+        Self::Node64(Node64::NamedWindows(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+
+pub struct Over {
+    // FIXME: we should rather use a stable function node here.
+    // It would make out life easier on the type derivation.
+    pub func_name: SmolStr,
+    pub func_args: Vec<NodeId>,
+    pub filter: Option<NodeId>,
+    pub window: NodeId,
+    pub ref_by_name: bool,
+}
+
+impl From<Over> for NodeAligned {
+    fn from(value: Over) -> Self {
+        Self::Node64(Node64::Over(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct DropIndex {
     pub name: SmolStr,
@@ -1153,12 +1256,15 @@ pub enum Node64 {
     Invalid(Invalid),
     // Not in Node32 to allow in-place swapping with Constant using the replace()
     LocalTimestamp(LocalTimestamp),
+    Over(Over),
+    NamedWindows(NamedWindows),
 }
 
 impl Node64 {
     #[must_use]
     pub fn into_owned(self) -> NodeOwned {
         match self {
+            Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),
             Node64::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
@@ -1190,6 +1296,9 @@ impl Node64 {
             }
             Node64::ValuesRow(values_row) => NodeOwned::Relational(RelOwned::ValuesRow(values_row)),
             Node64::LocalTimestamp(lt) => NodeOwned::Expression(ExprOwned::LocalTimestamp(lt)),
+            Node64::NamedWindows(named_windows) => {
+                NodeOwned::Relational(RelOwned::NamedWindows(named_windows))
+            }
         }
     }
 }
@@ -1242,6 +1351,7 @@ pub enum Node136 {
     Update(Update),
     MigrateTo(MigrateTo),
     ChangeConfig(ChangeConfig),
+    Window(Window),
 }
 
 impl Node136 {
@@ -1270,6 +1380,7 @@ impl Node136 {
             Node136::ChangeConfig(change_config) => {
                 NodeOwned::Plugin(PluginOwned::ChangeConfig(change_config))
             }
+            Node136::Window(window) => NodeOwned::Expression(ExprOwned::Window(window)),
         }
     }
 }

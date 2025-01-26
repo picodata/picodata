@@ -119,6 +119,12 @@ impl ParseNodes {
         Ok(())
     }
 
+    pub fn push_child_1(&mut self, node_id: usize, child_id: usize) -> Result<(), SbroadError> {
+        let node = self.get_mut_node(node_id)?;
+        node.children.insert(1, child_id);
+        Ok(())
+    }
+
     /// Push `child_id` to the back of `node_id` children
     ///
     /// # Errors
@@ -513,7 +519,8 @@ impl AbstractSyntaxTree {
         // 4. Selection: optional
         // 5. GroupBy: optional
         // 6. Having: optional
-        // 7. OrderBy: optional
+        // 7. NamedWindows: optional
+        // 8. OrderBy: optional
         //
         // But for projection without scan (like `select 1`)
         // Scan is optional, and all other nodes are not required.
@@ -521,11 +528,12 @@ impl AbstractSyntaxTree {
         // We need to reorder this sequence to the following:
         // 1. OrderBy: optional
         // 2. Projection: required
-        // 3. Having: optional
-        // 4. GroupBy: optional
-        // 5. Selection: optional
-        // 6. Join: optional (can be repeated multiple times)
-        // 7. Scan: required
+        // 3. NamedWindows: optional
+        // 4. Having: optional
+        // 5. GroupBy: optional
+        // 6. Selection: optional
+        // 7. Join: optional (can be repeated multiple times)
+        // 8. Scan: required
         let mut proj_id: Option<usize> = None;
         let mut scan_id: Option<usize> = None;
         let mut join_ids = if children.len() > 2 {
@@ -536,12 +544,16 @@ impl AbstractSyntaxTree {
         let mut filter_id: Option<usize> = None;
         let mut group_id: Option<usize> = None;
         let mut having_id: Option<usize> = None;
+        let mut named_windows_id: Option<usize> = None;
         let mut order_by_id: Option<usize> = None;
 
         for child_id in children {
             let child = self.nodes.get_node(*child_id)?;
             match child.rule {
                 Rule::Projection => proj_id = Some(*child_id),
+                Rule::NamedWindows => {
+                    named_windows_id = Some(*child_id);
+                }
                 Rule::Scan => scan_id = Some(*child_id),
                 Rule::Join => join_ids.push(*child_id),
                 Rule::Selection => filter_id = Some(*child_id),
@@ -560,7 +572,7 @@ impl AbstractSyntaxTree {
         // Original nodes from grammar:
         // Projection -> Scan -> Join1 -> ... -> JoinK -> Selection -> GroupBy -> Having -> OrderBy.
         // We need to change the order of the chain to:
-        // OrderBy -> Projection -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
+        // OrderBy -> Projection -> NamedWindows -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
         let mut chain = Vec::with_capacity(children.len() - 1);
 
         // Note that OrderBy must go above Projection because
@@ -569,6 +581,9 @@ impl AbstractSyntaxTree {
             chain.push(order_by_id);
         }
         chain.push(proj_id);
+        if let Some(named_windows_id) = named_windows_id {
+            chain.push(named_windows_id);
+        }
         if let Some(having_id) = having_id {
             chain.push(having_id);
         }
@@ -591,6 +606,7 @@ impl AbstractSyntaxTree {
             self.nodes.push_front_child(id, child_id)?;
             child_id = id;
         }
+
         self.nodes.set_children(select_id, vec![child_id])?;
 
         Ok(())

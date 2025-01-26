@@ -15,6 +15,8 @@ use smol_str::format_smolstr;
 
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
+use super::node::{Bound, BoundType, Over, Window};
+use super::operator::OrderByEntity;
 use super::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
@@ -246,6 +248,59 @@ impl Plan {
                 // XXX: If you add a new expression type to the match, make sure to
                 // add it to the filter above.
                 match expr {
+                    MutExpression::Window(Window {
+                        partition,
+                        ordering,
+                        frame,
+                        ..
+                    }) => {
+                        if let Some(partition) = partition {
+                            for id in partition {
+                                map.replace(id);
+                            }
+                        }
+                        if let Some(ordering) = ordering {
+                            for o_elem in ordering {
+                                if let OrderByEntity::Expression { mut expr_id } = o_elem.entity {
+                                    map.replace(&mut expr_id);
+                                }
+                            }
+                        }
+                        if let Some(frame) = frame {
+                            match &frame.bound {
+                                Bound::Single(bound) => {
+                                    if let BoundType::PrecedingOffset(mut node_id)
+                                    | BoundType::FollowingOffset(mut node_id) = bound
+                                    {
+                                        map.replace(&mut node_id);
+                                    }
+                                }
+                                Bound::Between(bound_from, bound_to) => {
+                                    for bound in &[bound_from, bound_to] {
+                                        if let BoundType::PrecedingOffset(mut node_id)
+                                        | BoundType::FollowingOffset(mut node_id) = bound
+                                        {
+                                            map.replace(&mut node_id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    MutExpression::Over(Over {
+                        func_args,
+                        filter,
+                        window,
+                        ..
+                    }) => {
+                        for arg in func_args {
+                            map.replace(arg);
+                        }
+                        if let Some(filter) = filter {
+                            map.replace(filter);
+                        }
+                        map.replace(window);
+                    }
                     MutExpression::Alias(Alias { child, .. })
                     | MutExpression::ExprInParentheses(ExprInParentheses { child, .. })
                     | MutExpression::Cast(Cast { child, .. })

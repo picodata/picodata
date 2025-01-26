@@ -14,7 +14,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
-use super::node::Like;
+use super::node::{Bound, BoundType, Like, Over, Window};
+use super::operator::OrderByEntity;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
     ExprInParentheses, Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference,
@@ -269,10 +270,150 @@ impl<'plan> Comparator<'plan> {
     pub fn are_subtrees_equal(&self, lhs: NodeId, rhs: NodeId) -> Result<bool, SbroadError> {
         let l = self.plan.get_node(lhs)?;
         let r = self.plan.get_node(rhs)?;
+        let cmp_expr_vec = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
+            if l.len() != r.len() {
+                return Ok(false);
+            }
+            for (l, r) in l.iter().zip(r.iter()) {
+                if !self.are_subtrees_equal(*l, *r)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        };
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
                     Expression::Alias(_) | Expression::LocalTimestamp(_) => {}
+                    Expression::Window(Window {
+                        name: l_name,
+                        partition: l_partition,
+                        ordering: l_ordering,
+                        frame: l_frame,
+                    }) => {
+                        if let Expression::Window(Window {
+                            name: r_name,
+                            partition: r_partition,
+                            ordering: r_ordering,
+                            frame: r_frame,
+                        }) = right
+                        {
+                            let mut parts_equal = true;
+                            match (l_partition, r_partition) {
+                                (Some(l_partition), Some(r_partition)) => {
+                                    parts_equal = cmp_expr_vec(l_partition, r_partition)?;
+                                }
+                                (None, None) => {}
+                                _ => return Ok(false),
+                            }
+                            let mut ordering_equal = true;
+                            match (l_ordering, r_ordering) {
+                                (Some(l_ordering), Some(r_ordering)) => {
+                                    if l_ordering.len() != r_ordering.len() {
+                                        return Ok(false);
+                                    }
+                                    for (l_elem, r_elem) in l_ordering.iter().zip(r_ordering.iter())
+                                    {
+                                        if l_elem.order_type != r_elem.order_type {
+                                            return Ok(false);
+                                        }
+                                        match (&l_elem.entity, &r_elem.entity) {
+                                            (
+                                                &OrderByEntity::Expression { expr_id: l_expr },
+                                                &OrderByEntity::Expression { expr_id: r_expr },
+                                            ) => {
+                                                if !self.are_subtrees_equal(l_expr, r_expr)? {
+                                                    return Ok(false);
+                                                }
+                                            }
+                                            _ => ordering_equal &= l_elem.entity == r_elem.entity,
+                                        }
+                                    }
+                                }
+                                (None, None) => {}
+                                _ => return Ok(false),
+                            }
+                            let mut frame_equal = true;
+                            match (l_frame, r_frame) {
+                                (Some(l_frame), Some(r_frame)) => {
+                                    if l_frame.ty != r_frame.ty {
+                                        return Ok(false);
+                                    }
+                                    let mut bound_types = [None, None];
+                                    match (&l_frame.bound, &r_frame.bound) {
+                                        (Bound::Single(l_bound), Bound::Single(r_bound)) => {
+                                            bound_types[0] = Some((l_bound, r_bound));
+                                        }
+                                        (
+                                            Bound::Between(l_lower, l_upper),
+                                            Bound::Between(r_lower, r_upper),
+                                        ) => {
+                                            bound_types[0] = Some((l_lower, r_lower));
+                                            bound_types[1] = Some((l_upper, r_upper));
+                                        }
+                                        _ => return Ok(false),
+                                    }
+                                    for b_type in bound_types {
+                                        let Some((l_bound, r_bound)) = b_type else {
+                                            continue;
+                                        };
+                                        match (l_bound, r_bound) {
+                                            (
+                                                BoundType::PrecedingOffset(l_offset),
+                                                BoundType::PrecedingOffset(r_offset),
+                                            ) => {
+                                                frame_equal &=
+                                                    self.are_subtrees_equal(*l_offset, *r_offset)?;
+                                            }
+                                            (
+                                                BoundType::FollowingOffset(l_offset),
+                                                BoundType::FollowingOffset(r_offset),
+                                            ) => {
+                                                frame_equal &=
+                                                    self.are_subtrees_equal(*l_offset, *r_offset)?;
+                                            }
+                                            _ => frame_equal &= l_bound == r_bound,
+                                        }
+                                    }
+                                }
+                                (None, None) => {}
+                                _ => return Ok(false),
+                            }
+                            return Ok(l_name == r_name
+                                && parts_equal
+                                && ordering_equal
+                                && frame_equal);
+                        }
+                    }
+                    Expression::Over(Over {
+                        func_name: l_func_name,
+                        func_args: l_func_args,
+                        filter: l_filter,
+                        window: l_window,
+                        ..
+                    }) => {
+                        if let Expression::Over(Over {
+                            func_name: r_func_name,
+                            func_args: r_func_args,
+                            filter: r_filter,
+                            window: r_window,
+                            ..
+                        }) = right
+                        {
+                            let mut filter_equal = true;
+                            match (l_filter, r_filter) {
+                                (Some(l_filter), Some(r_filter)) => {
+                                    filter_equal = self.are_subtrees_equal(*l_filter, *r_filter)?;
+                                }
+                                (None, None) => {}
+                                _ => return Ok(false),
+                            }
+                            return Ok(l_func_name == r_func_name
+                                && cmp_expr_vec(l_func_args, r_func_args)?
+                                && filter_equal
+                                && l_window == r_window);
+                        }
+                    }
                     Expression::CountAsterisk(_) => {
                         return Ok(matches!(right, Expression::CountAsterisk(_)))
                     }
@@ -517,6 +658,94 @@ impl<'plan> Comparator<'plan> {
             panic!("Hasher should have been set previously");
         };
         match node {
+            Expression::Window(Window {
+                name,
+                partition,
+                ordering,
+                frame,
+            }) => {
+                name.hash(state);
+                if let Some(ordering) = ordering {
+                    for elem in ordering {
+                        elem.order_type.hash(state);
+                    }
+                }
+                if let Some(ordering) = ordering {
+                    for elem in ordering {
+                        if let OrderByEntity::Index { value } = &elem.entity {
+                            value.hash(state);
+                        }
+                    }
+                }
+                if let Some(frame) = frame {
+                    frame.ty.hash(state);
+                    frame.bound.index().hash(state);
+                    match &frame.bound {
+                        Bound::Single(bound) => {
+                            bound.index().hash(state);
+                        }
+                        Bound::Between(lower, upper) => {
+                            lower.index().hash(state);
+                            upper.index().hash(state);
+                        }
+                    }
+                }
+
+                if let Some(ordering) = ordering {
+                    for elem in ordering {
+                        if let OrderByEntity::Expression { expr_id } = &elem.entity {
+                            self.hash_for_child_expr(*expr_id, depth);
+                        }
+                    }
+                }
+                if let Some(partition) = partition {
+                    for child in partition {
+                        self.hash_for_child_expr(*child, depth);
+                    }
+                }
+                if let Some(frame) = frame {
+                    let mut bound_types = [None, None];
+                    match &frame.bound {
+                        Bound::Single(bound) => {
+                            bound_types[0] = Some(bound);
+                        }
+                        Bound::Between(lower, upper) => {
+                            bound_types[0] = Some(lower);
+                            bound_types[1] = Some(upper);
+                        }
+                    }
+                    bound_types.into_iter().for_each(|b_type| {
+                        if let Some(b_type) = b_type {
+                            match b_type {
+                                BoundType::PrecedingOffset(offset) => {
+                                    self.hash_for_child_expr(*offset, depth);
+                                }
+                                BoundType::FollowingOffset(offset) => {
+                                    self.hash_for_child_expr(*offset, depth);
+                                }
+                                _ => {}
+                            }
+                        }
+                    });
+                }
+            }
+            Expression::Over(Over {
+                func_name,
+                func_args,
+                filter,
+                window,
+                ref_by_name,
+            }) => {
+                func_name.hash(state);
+                ref_by_name.hash(state);
+                for arg in func_args {
+                    self.hash_for_child_expr(*arg, depth);
+                }
+                if let Some(filter) = filter {
+                    self.hash_for_child_expr(*filter, depth);
+                }
+                self.hash_for_child_expr(*window, depth);
+            }
             Expression::ExprInParentheses(ExprInParentheses { child }) => {
                 self.hash_for_child_expr(*child, depth);
             }

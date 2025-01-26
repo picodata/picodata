@@ -469,7 +469,7 @@ impl Plan {
     ///
     /// # Arguments
     /// [`finals`] - ids of nodes in final (reduce stage) before adding two stage aggregation.
-    /// It may contain ids of `Projection`, `Having`, `Limit`, `OrderBy`.
+    /// It may contain ids of `Projection`, `Having` or `NamedWindows`.
     /// Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
     fn collect_aggregates(&self, finals: &Vec<NodeId>) -> Result<Vec<AggrInfo>, SbroadError> {
         let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY);
@@ -480,6 +480,9 @@ impl Plan {
                     for col in self.get_row_list(*output)? {
                         collector.collect_aggregates(*col, *node_id)?;
                     }
+                }
+                Relational::NamedWindows(_) => {
+                    unreachable!("NamedWindows node should not be present in finals");
                 }
                 Relational::Having(Having { filter, .. }) => {
                     collector.collect_aggregates(*filter, *node_id)?;
@@ -527,12 +530,13 @@ impl Plan {
     /// Approximate plan before adding 2-stage aggregation:
     /// ```txt
     /// Projection (1)
-    ///     Having (2)
-    ///         GroupBy (3)
-    ///             Scan (4)
+    ///     NamedWindows (2)
+    ///         Having (3)
+    ///             GroupBy (4)
+    ///                 Scan (5)
     /// ```
-    /// Then this function will return `([1, 2], 4)`
-    fn split_reduce_stage(
+    /// Then this function will return `([1, 2, 3], 4)`
+    pub(crate) fn split_group_by(
         &self,
         final_proj_id: NodeId,
     ) -> Result<(Vec<NodeId>, NodeId), SbroadError> {
@@ -549,10 +553,10 @@ impl Plan {
             Ok(c)
         };
         let mut next = final_proj_id;
-        let max_reduce_nodes = 2;
+        let max_reduce_nodes = 3;
         for _ in 0..=max_reduce_nodes {
             match self.get_relation_node(next)? {
-                Relational::Projection(_) | Relational::Having(_) => {
+                Relational::Projection(_) | Relational::NamedWindows(_) | Relational::Having(_) => {
                     finals.push(next);
                     next = get_first_child(next)?;
                 }
@@ -659,6 +663,9 @@ impl Plan {
                         for col in self.get_row_list(*output)? {
                             mapper.find_matches(*col, *node_id)?;
                         }
+                    }
+                    Relational::NamedWindows(_) => {
+                        unreachable!("NamedWindows node should not be present in finals");
                     }
                     Relational::Having(Having { filter, .. }) => {
                         mapper.find_matches(*filter, *node_id)?;
@@ -847,6 +854,9 @@ impl Plan {
         let proj = Projection {
             output: proj_output,
             children,
+            // TODO: Do we need to handle projections with window functions
+            //       and aggregates somehow specifically?
+            windows: vec![],
             is_distinct: false,
         };
         let proj_id = self.add_relational(proj.into())?;
@@ -1369,6 +1379,9 @@ impl Plan {
                 // must not be changed (because those are user aliases), so
                 // nothing to do here
                 Relational::Projection(_) => {}
+                Relational::NamedWindows(_) => {
+                    unreachable!("NamedWindows node should not be in finals")
+                }
                 Relational::Having(Having { children, .. }) => {
                     let child_id = *children.first().ok_or_else(|| {
                         SbroadError::Invalid(
@@ -1526,7 +1539,7 @@ impl Plan {
         &mut self,
         final_proj_id: NodeId,
     ) -> Result<bool, SbroadError> {
-        let (finals, upper) = self.split_reduce_stage(final_proj_id)?;
+        let (finals, upper) = self.split_group_by(final_proj_id)?;
         let mut aggr_infos = self.collect_aggregates(&finals)?;
         let has_aggregates = !aggr_infos.is_empty();
         let (upper, grouping_exprs, gr_expr_map) =
