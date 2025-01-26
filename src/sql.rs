@@ -438,15 +438,17 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                     let param_def = &routine.params[pos];
                     let param_type = Type::try_from(param_def.r#type)?;
                     // Check that the value has a correct type.
-                    if !value.get_type().is_castable_to(&param_type) {
-                        return Err(Error::Sbroad(SbroadError::Invalid(
-                            Entity::Routine,
-                            Some(format_smolstr!(
-                                "expected {} for parameter on position {pos}, got {}",
-                                param_def.r#type,
-                                value.get_type(),
-                            )),
-                        )));
+                    if let Some(ty) = value.get_type().get() {
+                        if !ty.is_castable_to(&param_type) {
+                            return Err(Error::Sbroad(SbroadError::Invalid(
+                                Entity::Routine,
+                                Some(format_smolstr!(
+                                    "expected {} for parameter on position {pos}, got {}",
+                                    param_def.r#type,
+                                    ty,
+                                )),
+                            )));
+                        }
                     }
                     params.push(value);
                 }

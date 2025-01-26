@@ -7,7 +7,7 @@ fn coalesce_in_projection() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     let expected_explain = String::from(
-        r#"projection (coalesce((NULL::integer, "test_space"."FIRST_NAME"::string))::any -> "col_1")
+        r#"projection (coalesce((NULL::unknown, "test_space"."FIRST_NAME"::string))::any -> "col_1")
     scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000

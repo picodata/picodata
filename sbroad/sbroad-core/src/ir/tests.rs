@@ -16,7 +16,7 @@ use smol_str::SmolStr;
 pub fn column_integer_user_non_null(name: SmolStr) -> Column {
     Column {
         name,
-        r#type: Type::Integer,
+        r#type: DerivedType::new(Type::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     }
@@ -27,7 +27,7 @@ pub fn column_integer_user_non_null(name: SmolStr) -> Column {
 #[cfg(test)]
 pub fn vcolumn_integer_user_non_null() -> VTableColumn {
     VTableColumn {
-        r#type: Type::Integer,
+        r#type: DerivedType::new(Type::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     }
@@ -43,7 +43,7 @@ pub fn vcolumn_integer_user_non_null() -> VTableColumn {
 pub fn column_user_non_null(name: SmolStr, r#type: Type) -> Column {
     Column {
         name,
-        r#type,
+        r#type: DerivedType::new(r#type),
         role: ColumnRole::User,
         is_nullable: false,
     }
@@ -54,7 +54,7 @@ pub fn column_user_non_null(name: SmolStr, r#type: Type) -> Column {
 #[cfg(test)]
 pub fn vcolumn_user_non_null(r#type: Type) -> VTableColumn {
     VTableColumn {
-        r#type,
+        r#type: DerivedType::new(r#type),
         role: ColumnRole::User,
         is_nullable: false,
     }
@@ -71,7 +71,7 @@ pub fn vcolumn_user_non_null(r#type: Type) -> VTableColumn {
 pub fn sharding_column() -> Column {
     Column {
         name: SmolStr::from("bucket_id"),
-        r#type: Type::Unsigned,
+        r#type: DerivedType::new(Type::Unsigned),
         role: ColumnRole::Sharding,
         is_nullable: true,
     }
@@ -83,7 +83,12 @@ fn get_node() {
 
     let t = Table::new_sharded(
         "t",
-        vec![Column::new("a", Type::Boolean, ColumnRole::User, false)],
+        vec![Column::new(
+            "a",
+            DerivedType::new(Type::Boolean),
+            ColumnRole::User,
+            false,
+        )],
         &["a"],
         &["a"],
         SpaceEngine::Memtx,

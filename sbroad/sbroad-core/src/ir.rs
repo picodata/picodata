@@ -34,7 +34,7 @@ use crate::ir::node::{
     StableFunction, Trim, UnaryExpr, Values,
 };
 use crate::ir::operator::Bool;
-use crate::ir::relation::Column;
+use crate::ir::relation::{Column, DerivedType};
 use crate::ir::tree::traversal::{
     BreadthFirst, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
 };
@@ -1829,7 +1829,7 @@ impl Plan {
 }
 
 impl Plan {
-    fn get_param_type(&self, param_id: NodeId) -> Result<Option<Type>, SbroadError> {
+    fn get_param_type(&self, param_id: NodeId) -> Result<DerivedType, SbroadError> {
         let node = self.get_node(param_id)?;
         if let Node::Parameter(ty) = node {
             return Ok(ty.param_type);
@@ -1843,7 +1843,7 @@ impl Plan {
     fn set_param_type(&mut self, param_id: NodeId, ty: Type) -> Result<(), SbroadError> {
         let node = self.get_mut_node(param_id)?;
         if let MutNode::Parameter(param) = node {
-            param.param_type = Some(ty);
+            param.param_type.set(ty);
             Ok(())
         } else {
             Err(SbroadError::Invalid(
@@ -1881,7 +1881,7 @@ impl Plan {
         let mut inferred_types = vec![None; params_count];
 
         for (node_id, param_idx) in &self.pg_params_map {
-            let param_type = self.get_param_type(*node_id)?;
+            let param_type = *self.get_param_type(*node_id)?.get();
             let inferred_type = inferred_types.get(*param_idx).unwrap_or_else(|| {
                 panic!("param idx {param_idx} exceeds params count {params_count}")
             });

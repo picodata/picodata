@@ -2,12 +2,12 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::node::{NodeId, StableFunction};
-use crate::ir::relation::Type;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use super::expression::FunctionFeature;
+use super::relation::DerivedType;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Behavior {
@@ -23,7 +23,7 @@ pub enum Behavior {
 pub struct Function {
     pub name: SmolStr,
     pub behavior: Behavior,
-    pub func_type: Type,
+    pub func_type: DerivedType,
     /// True if this function is provided by tarantool,
     /// when referencing this func in local sql, we must
     /// not use quotes
@@ -32,7 +32,7 @@ pub struct Function {
 
 impl Function {
     #[must_use]
-    pub fn new(name: SmolStr, behavior: Behavior, func_type: Type, is_system: bool) -> Self {
+    pub fn new(name: SmolStr, behavior: Behavior, func_type: DerivedType, is_system: bool) -> Self {
         Self {
             name,
             behavior,
@@ -42,7 +42,7 @@ impl Function {
     }
 
     #[must_use]
-    pub fn new_stable(name: SmolStr, func_type: Type, is_system: bool) -> Self {
+    pub fn new_stable(name: SmolStr, func_type: DerivedType, is_system: bool) -> Self {
         Self::new(name, Behavior::Stable, func_type, is_system)
     }
 

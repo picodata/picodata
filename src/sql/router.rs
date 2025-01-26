@@ -37,7 +37,7 @@ use crate::storage::{Clusterwide, ClusterwideTable};
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
-use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table, Type};
+use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, DerivedType, Table, Type};
 
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
@@ -513,7 +513,7 @@ impl Metadata for RouterMetadata {
             };
             let column = Column {
                 name: col_name.to_smolstr(),
-                r#type: col_type,
+                r#type: DerivedType::new(col_type),
                 role,
                 is_nullable,
             };

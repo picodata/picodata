@@ -2,7 +2,10 @@ use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::{
     errors::{Entity, SbroadError, TypeError},
-    ir::{relation::Type, Plan},
+    ir::{
+        relation::{DerivedType, Type},
+        Plan,
+    },
 };
 
 use super::{
@@ -11,7 +14,7 @@ use super::{
 };
 
 impl Plan {
-    fn get_node_type(&self, node_id: NodeId) -> Result<Type, SbroadError> {
+    fn get_node_type(&self, node_id: NodeId) -> Result<DerivedType, SbroadError> {
         match self.get_node(node_id)? {
             Node::Expression(expr) => expr.calculate_type(self),
             Node::Relational(relational) => Err(SbroadError::Invalid(
@@ -22,7 +25,7 @@ impl Plan {
             )),
             // Parameter nodes must recalculate their type during
             // binding (see `bind_params` function).
-            Node::Parameter(ty) => Ok(ty.param_type.unwrap_or(Type::default())),
+            Node::Parameter(ty) => Ok(ty.param_type),
             Node::Ddl(ddl) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("DDL node {ddl:?} has no type")),
@@ -57,93 +60,99 @@ impl Plan {
 
 impl Expression<'_> {
     /// Calculate the type of the expression.
-    ///
-    /// # Errors
-    /// - the row list contains non-expression nodes;
-    ///
-    /// # Panics
-    /// - Plan is in inconsistent state
-    pub fn calculate_type(&self, plan: &Plan) -> Result<Type, SbroadError> {
-        match self {
+    pub fn calculate_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
+        let ty = match self {
             Expression::Case(Case {
                 when_blocks,
                 else_expr,
                 ..
             }) => {
-                let mut case_type = None;
-                let check_types_corresponds = |case_type: &Type, ret_expr_type: &Type| {
-                    if case_type != ret_expr_type {
-                        return if matches!(ret_expr_type, Type::Array)
-                            || matches!(ret_expr_type, Type::Map)
-                        {
-                            Some(Type::Any)
-                        } else {
-                            Some(Type::default())
-                        };
+                // Outer option -- for uninitialized type.
+                // Inner option -- for the case of Null met.
+                let mut case_ty_general: Option<DerivedType> = None;
+                let mut check_types_corresponds = |another_ty: &DerivedType| {
+                    if let Some(case_ty) = case_ty_general {
+                        match (case_ty.get(), another_ty.get()) {
+                            (Some(case_ty), Some(another_ty)) => {
+                                if *case_ty != *another_ty {
+                                    return Err(SbroadError::TypeError(TypeError::TypeMismatch(
+                                        *case_ty,
+                                        *another_ty,
+                                    )));
+                                }
+                            }
+                            (None, Some(_)) => case_ty_general = Some(*another_ty),
+                            (_, _) => {}
+                        }
+                    } else {
+                        case_ty_general = Some(*another_ty)
                     }
-                    None
+                    Ok(())
                 };
 
                 for (_, ret_expr) in when_blocks {
                     let ret_expr_type = plan.get_node_type(*ret_expr)?;
-                    if let Some(case_type) = &case_type {
-                        if let Some(ret_type) = check_types_corresponds(case_type, &ret_expr_type) {
-                            return Ok(ret_type);
-                        }
-                    } else {
-                        case_type = Some(ret_expr_type);
-                    }
+                    check_types_corresponds(&ret_expr_type)?
                 }
-                let case_type_unwrapped = case_type.expect("Case WHEN type must be known");
                 if let Some(else_expr) = else_expr {
                     let else_expr_type = plan.get_node_type(*else_expr)?;
-                    if let Some(ret_type) =
-                        check_types_corresponds(&case_type_unwrapped, &else_expr_type)
-                    {
-                        return Ok(ret_type);
-                    }
+                    check_types_corresponds(&else_expr_type)?
                 }
-                Ok(case_type_unwrapped)
+                case_ty_general.expect("Case type must be known")
             }
             Expression::Alias(Alias { child, .. })
             | Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                plan.get_node_type(*child)
+                plan.get_node_type(*child)?
             }
             Expression::Bool(_) | Expression::Unary(_) | Expression::Like { .. } => {
-                Ok(Type::Boolean)
+                DerivedType::new(Type::Boolean)
             }
             Expression::Arithmetic(ArithmeticExpr {
                 left, right, op, ..
             }) => {
                 let left_type = plan.get_node_type(*left)?;
                 let right_type = plan.get_node_type(*right)?;
-                match (&left_type, &right_type) {
+
+                let (left_type, right_type) = match (left_type.get(), right_type.get()) {
+                    (Some(l_t), Some(r_t)) => (l_t, r_t),
+                    _ => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some(format_smolstr!(
+                                "Null type is not supported for arithmetic expression"
+                            )),
+                        ))
+                    }
+                };
+
+                let res = match (left_type, right_type) {
                     (Type::Double, Type::Double | Type::Unsigned | Type::Integer | Type::Decimal)
                     | (Type::Unsigned | Type::Integer | Type::Decimal, Type::Double) => {
-                        Ok(Type::Double)
+                        Type::Double
                     }
                     (Type::Decimal, Type::Decimal | Type::Unsigned | Type::Integer)
-                    | (Type::Unsigned | Type::Integer, Type::Decimal) => Ok(Type::Decimal),
+                    | (Type::Unsigned | Type::Integer, Type::Decimal) => Type::Decimal,
                     (Type::Integer, Type::Unsigned | Type::Integer)
-                    | (Type::Unsigned, Type::Integer) => Ok(Type::Integer),
-                    (Type::Unsigned, Type::Unsigned) => Ok(Type::Unsigned),
-                    _ => Err(SbroadError::Invalid(
+                    | (Type::Unsigned, Type::Integer) => Type::Integer,
+                    (Type::Unsigned, Type::Unsigned) => Type::Unsigned,
+                    _ => return Err(SbroadError::Invalid(
                         Entity::Expression,
                         Some(format_smolstr!("types {left_type} and {right_type} are not supported for arithmetic expression ({:?} {op:?} {:?})",
                         plan.get_node(*left)?, plan.get_node(*right)?)),
                     )),
-                }
+                };
+                DerivedType::new(res)
             }
-            Expression::Cast(Cast { to, .. }) => Ok(to.as_relation_type()),
-            Expression::Trim(_) | Expression::Concat(_) => Ok(Type::String),
-            Expression::Constant(Constant { value, .. }) => Ok(value.get_type()),
-            Expression::Reference(Reference { col_type, .. }) => Ok(*col_type),
+            Expression::Cast(Cast { to, .. }) => DerivedType::new(to.as_relation_type()),
+            Expression::Trim(_) | Expression::Concat(_) => DerivedType::new(Type::String),
+            Expression::Constant(Constant { value, .. }) => value.get_type(),
+            Expression::Reference(Reference { col_type, .. }) => *col_type,
             Expression::Row(Row { list, .. }) => {
                 if let (Some(expr_id), None) = (list.first(), list.get(1)) {
                     let expr = plan.get_expression_node(*expr_id)?;
-                    expr.calculate_type(plan)
+                    expr.calculate_type(plan)?
                 } else {
-                    Ok(Type::Array)
+                    DerivedType::new(Type::Array)
                 }
             }
             Expression::StableFunction(StableFunction {
@@ -160,28 +169,32 @@ impl Expression<'_> {
                             .first()
                             .expect("min/max functions must have an argument");
                         let expr = plan.get_expression_node(*expr_id)?;
-                        expr.calculate_type(plan)
+                        expr.calculate_type(plan)?
                     }
                     "coalesce" => {
-                        let first_id = children.first().expect("coalesce must have children");
-                        let child = plan.get_expression_node(*first_id)?;
-                        let ty = child.calculate_type(plan)?;
-                        // ensure all the types are the same
+                        let mut last_ty = DerivedType::unknown();
                         for child_id in children {
                             let child = plan.get_expression_node(*child_id)?;
-                            let child_ty = child.calculate_type(plan)?;
-                            if child_ty != ty {
-                                return Err(TypeError::TypeMismatch(ty, child_ty).into());
+                            let ty = child.calculate_type(plan)?;
+                            if let Some(ty) = ty.get() {
+                                if let Some(last_ty) = last_ty.get() {
+                                    if ty != last_ty {
+                                        return Err(TypeError::TypeMismatch(*last_ty, *ty).into());
+                                    }
+                                } else {
+                                    last_ty.set(*ty)
+                                }
                             }
                         }
-                        Ok(ty)
+                        last_ty
                     }
-                    _ => Ok(*func_type),
+                    _ => *func_type,
                 }
             }
-            Expression::CountAsterisk(_) => Ok(Type::Integer),
-            Expression::LocalTimestamp(_) => Ok(Type::Datetime),
-        }
+            Expression::CountAsterisk(_) => DerivedType::new(Type::Integer),
+            Expression::LocalTimestamp(_) => DerivedType::new(Type::Datetime),
+        };
+        Ok(ty)
     }
 
     /// Returns the recalculated type of the expression.
@@ -200,7 +213,7 @@ impl Expression<'_> {
     ///
     /// # Errors
     /// - if the reference is invalid;
-    pub fn recalculate_type(&self, plan: &Plan) -> Result<Type, SbroadError> {
+    pub fn recalculate_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
         if let Expression::Reference(Reference {
             parent,
             targets,
@@ -247,7 +260,7 @@ impl Expression<'_> {
 }
 
 impl MutExpression<'_> {
-    pub fn set_ref_type(&mut self, new_type: Type) {
+    pub fn set_ref_type(&mut self, new_type: DerivedType) {
         if let MutExpression::Reference(Reference { col_type, .. }) = self {
             *col_type = new_type;
         }

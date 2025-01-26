@@ -1,8 +1,6 @@
 use pretty_assertions::{assert_eq, assert_ne};
-use tarantool::decimal;
 
 use super::*;
-use crate::ir::relation::Type;
 
 #[test]
 fn box_execute_result_serialize() {

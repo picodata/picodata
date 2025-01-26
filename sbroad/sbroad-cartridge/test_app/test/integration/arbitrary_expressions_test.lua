@@ -60,6 +60,16 @@ arbitrary_projection.test_arbitrary_invalid = function()
         select "a" + "b" and true from "arithmetic_space"
     ]], {} })
     t.assert_str_contains(tostring(err), "Type mismatch: can not convert integer(3) to boolean")
+
+    local _, err = api:call("sbroad.execute", { [[
+        SELECT
+            CASE "id"
+                WHEN 1 THEN 'first'
+                ELSE 42
+            END "case_result"
+        FROM "arithmetic_space"
+    ]], {} })
+    t.assert_str_contains(tostring(err), "expected string type, but got unsigned")
 end
 
 arbitrary_projection.test_arbitrary_valid = function()
@@ -196,16 +206,16 @@ arbitrary_projection.test_arbitrary_valid = function()
             CASE "id"
                 WHEN 1 THEN 'first'
                 WHEN 2 THEN 'second'
-                ELSE 42
+                ELSE '42'
             END "case_result"
         FROM "arithmetic_space"
     ]], {} })
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
-        {name = "case_result", type = "integer"},
+        {name = "case_result", type = "string"},
     })
     t.assert_items_equals(r.rows, {
-        {'first'}, {42}, {42}, {42}, {42}, {'second'}, {42}, {42}, {42}, {42}
+        {'first'}, {'42'}, {'42'}, {'42'}, {'42'}, {'second'}, {'42'}, {'42'}, {'42'}, {'42'}
     })
 
     local r, err = api:call("sbroad.execute", { [[
@@ -281,14 +291,14 @@ arbitrary_projection.test_arbitrary_valid = function()
         SELECT
             "id",
             CASE
-                WHEN false THEN 'never'
+                WHEN false THEN 0
                 WHEN "id" < 3 THEN 1
                 WHEN "id" > 3 AND "id" < 8 THEN 2
                 ELSE
                     CASE
                         WHEN "id" = 8 THEN 3
                         WHEN "id" = 9 THEN 4
-                        ELSE 0.42
+                        ELSE 0
                     END
             END
         FROM "arithmetic_space"
@@ -296,16 +306,16 @@ arbitrary_projection.test_arbitrary_valid = function()
     t.assert_equals(err, nil)
     t.assert_equals(r.metadata, {
         {name = "id", type = "integer"},
-        {name = "col_1", type = "double"},
+        {name = "col_1", type = "unsigned"},
     })
     t.assert_items_equals(r.rows, {
         {1, 1},
         {5, 2},
         {8, 3},
         {9, 4},
-        {10, 0.42},
+        {10, 0},
         {2, 1},
-        {3, 0.42},
+        {3, 0},
         {4, 2},
         {6, 2},
         {7, 2},

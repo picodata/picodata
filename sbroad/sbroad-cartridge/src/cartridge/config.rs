@@ -11,6 +11,7 @@ use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::{get_builtin_functions, Metadata};
 use sbroad::executor::lru::DEFAULT_CAPACITY;
 use sbroad::ir::function::Function;
+use sbroad::ir::relation::DerivedType;
 use sbroad::ir::relation::{Column, ColumnRole, SpaceEngine, Table, Type};
 use sbroad::{debug, warn};
 
@@ -138,7 +139,7 @@ impl RouterConfiguration {
                         } else {
                             ColumnRole::User
                         };
-                        let col = Column::new(name, t, role, is_nullable);
+                        let col = Column::new(name, DerivedType::new(t), role, is_nullable);
                         result.push(col);
                     }
                     result

@@ -28,15 +28,6 @@ fn reshard_vtable(
     }
 }
 
-// Helper function to format back sql.
-// The local sql we produce doesn't contain line breaks,
-// but in code it's hard to read such long string, so
-// we insert line breaks and remove them back for
-// string comparison with expected pattern.
-fn f_sql(s: &str) -> String {
-    s.replace("\n", " ")
-}
-
 /// Helper function to generate sql from `exec_plan` from given `top_id` node.
 /// Used for testing.
 fn get_sql_from_execution_plan(
@@ -231,17 +222,20 @@ fn exec_plan_subtree_aggregates() {
     } else {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
+
+    println!("{}", sql.pattern);
     assert_eq!(
         sql,
         PatternWithParams::new(
             f_sql(
                 r#"SELECT "T1"."sys_op" as "column_596",
-("T1"."id") * ("T1"."sys_op") as "column_1632", "T1"."id" as "column_2096",
-count ("T1"."id") as "count_2696", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496",
-total ("T1"."id") as "total_2896", min ("T1"."id") as "min_3096", max ("T1"."id") as "max_3296",
-count ("T1"."sysFrom") as "count_1596", sum ("T1"."id") as "sum_1796"
-FROM "test_space" as "T1"
-GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#
+("T1"."id") * ("T1"."sys_op") as "column_1632",
+"T1"."id" as "column_2096", count ("T1"."sysFrom") as "count_1596",
+sum ("T1"."id") as "sum_1796", count ("T1"."id") as "count_2696",
+min ("T1"."id") as "min_3096", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496",
+total ("T1"."id") as "total_2896",
+max ("T1"."id") as "max_3296" FROM "test_space" as "T1" GROUP BY "T1"."sys_op",
+("T1"."id") * ("T1"."sys_op"), "T1"."id""#
             ),
             vec![Value::from("o")]
         )
@@ -249,19 +243,18 @@ GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    println!("{}", sql.pattern);
     assert_eq!(
         sql,
         PatternWithParams::new(
-            format!(
-                "{} {} {} {} {} {} {} {}",
-                r#"SELECT ("COL_1") || ("COL_1") as "col_1","#,
-                r#"("COL_1") * (?) + (sum ("COL_9")) as "col_2", sum ("COL_10") as "col_3","#,
-                r#"(sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4","#,
-                r#"group_concat ("COL_5", ?) as "col_5","#,
-                r#"sum (CAST ("COL_10" as double)) / sum (CAST ("COL_4" as double)) as "col_6","#,
-                r#"total ("COL_6") as "col_7", min ("COL_7") as "col_8", max ("COL_8") as "col_9""#,
-                r#"FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136")"#,
-                r#"GROUP BY "COL_1""#
+            f_sql(
+                r#"SELECT ("COL_1") || ("COL_1") as "col_1",
+("COL_1") * (?) + (sum ("COL_4")) as "col_2",
+sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4",
+group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6",
+total ("COL_9") as "col_7", min ("COL_7") as "col_8",
+max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136")
+GROUP BY "COL_1""#
             ),
             vec![Value::Unsigned(2), Value::from("o")]
         )

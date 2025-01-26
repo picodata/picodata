@@ -230,7 +230,12 @@ fn insert() {
         vec![
             column_user_non_null(SmolStr::from("a"), Type::Unsigned),
             column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-            Column::new("c", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "c",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ],
         &["a"],
         &["a"],

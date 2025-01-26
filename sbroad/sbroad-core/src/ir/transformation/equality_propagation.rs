@@ -94,7 +94,7 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, NodeId, Reference, ReferenceAsteriskSource, Row};
 use crate::ir::operator::Bool;
-use crate::ir::relation::Type;
+use crate::ir::relation::DerivedType;
 use crate::ir::transformation::merge_tuples::Chain;
 use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::value::{Trivalent, Value};
@@ -109,7 +109,7 @@ struct EqClassRef {
     targets: Option<Vec<usize>>,
     position: usize,
     parent: Option<NodeId>,
-    col_type: Type,
+    col_type: DerivedType,
     asterisk_source: Option<ReferenceAsteriskSource>,
 }
 

@@ -4,6 +4,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, Node64, NodeId, Parameter};
 use crate::ir::value::Value;
+use crate::ir::DerivedType;
 use crate::ir::{ArenaType, Nodes, Plan};
 
 impl Expression<'_> {
@@ -105,9 +106,12 @@ impl Plan {
     pub fn stash_constants(&mut self) -> Result<(), SbroadError> {
         let constants = self.get_const_list();
         for const_id in constants {
-            let const_node = self
-                .nodes
-                .replace(const_id, Node64::Parameter(Parameter { param_type: None }))?;
+            let const_node = self.nodes.replace(
+                const_id,
+                Node64::Parameter(Parameter {
+                    param_type: DerivedType::unknown(),
+                }),
+            )?;
             self.constants.insert(const_id, const_node);
         }
         Ok(())

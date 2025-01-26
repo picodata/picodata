@@ -107,7 +107,7 @@ impl Type {
     #[must_use]
     pub fn as_relation_type(&self) -> RelationType {
         match self {
-            Type::Any => RelationType::default(),
+            Type::Any => RelationType::Any,
             Type::Map => RelationType::Map,
             Type::Boolean => RelationType::Boolean,
             Type::Datetime => RelationType::Datetime,
@@ -135,7 +135,7 @@ impl Plan {
 
         let child_plan_node = self.get_mut_node(expr_id)?;
         if let MutNode::Parameter(ty) = child_plan_node {
-            ty.param_type = Some(to_type.as_relation_type());
+            ty.param_type.set(to_type.as_relation_type());
         }
 
         Ok(cast_id)

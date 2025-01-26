@@ -29,7 +29,7 @@ const DEFAULT_VALUE: Value = Value::Null;
 
 /// Supported column types, which is used in a schema only.
 /// This `Type` is derived from the result's metadata.
-#[derive(Serialize, Default, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
 pub enum Type {
     Any,
     Map,
@@ -38,11 +38,37 @@ pub enum Type {
     Datetime,
     Decimal,
     Double,
-    #[default]
     Integer,
     String,
     Uuid,
     Unsigned,
+}
+
+/// Derived type (`Some<Type>`) or its absence (`None`).
+/// Type absence is possible in case we met a Null.
+#[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
+pub struct DerivedType(Option<Type>);
+
+impl DerivedType {
+    pub fn unknown() -> Self {
+        Self(None)
+    }
+
+    pub fn new(ty: Type) -> Self {
+        Self(Some(ty))
+    }
+
+    pub fn get(&self) -> &Option<Type> {
+        &self.0
+    }
+
+    pub fn get_mut(&mut self) -> &mut Option<Type> {
+        &mut self.0
+    }
+
+    pub fn set(&mut self, ty: Type) {
+        self.0 = Some(ty)
+    }
 }
 
 impl fmt::Display for Type {
@@ -59,6 +85,15 @@ impl fmt::Display for Type {
             Type::Unsigned => write!(f, "unsigned"),
             Type::Any => write!(f, "any"),
             Type::Map => write!(f, "map"),
+        }
+    }
+}
+
+impl fmt::Display for DerivedType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            None => write!(f, "unknown"),
+            Some(t) => t.fmt(f),
         }
     }
 }
@@ -204,7 +239,7 @@ pub struct Column {
     /// Column name.
     pub name: SmolStr,
     /// Column type.
-    pub r#type: Type,
+    pub r#type: DerivedType,
     /// Column role.
     pub role: ColumnRole,
     /// Column is_nullable status.
@@ -216,7 +251,7 @@ impl Default for Column {
     fn default() -> Self {
         Column {
             name: SmolStr::default(),
-            r#type: Type::default(),
+            r#type: DerivedType::unknown(),
             role: ColumnRole::default(),
             is_nullable: true,
         }
@@ -225,18 +260,22 @@ impl Default for Column {
 
 impl From<Column> for Field {
     fn from(column: Column) -> Self {
-        let field = match column.r#type {
-            Type::Boolean => Field::boolean(column.name),
-            Type::Datetime => Field::datetime(column.name),
-            Type::Decimal => Field::decimal(column.name),
-            Type::Double => Field::double(column.name),
-            Type::Integer => Field::integer(column.name),
-            Type::String => Field::string(column.name),
-            Type::Uuid => Field::uuid(column.name),
-            Type::Unsigned => Field::unsigned(column.name),
-            Type::Array => Field::array(column.name),
-            Type::Any => Field::any(column.name),
-            Type::Map => Field::map(column.name),
+        let field = if let Some(ty) = column.r#type.get() {
+            match ty {
+                Type::Boolean => Field::boolean(column.name),
+                Type::Datetime => Field::datetime(column.name),
+                Type::Decimal => Field::decimal(column.name),
+                Type::Double => Field::double(column.name),
+                Type::Integer => Field::integer(column.name),
+                Type::String => Field::string(column.name),
+                Type::Uuid => Field::uuid(column.name),
+                Type::Unsigned => Field::unsigned(column.name),
+                Type::Array => Field::array(column.name),
+                Type::Any => Field::any(column.name),
+                Type::Map => Field::map(column.name),
+            }
+        } else {
+            Field::scalar(column.name)
         };
         field.is_nullable(true)
     }
@@ -244,7 +283,11 @@ impl From<Column> for Field {
 
 impl From<&Column> for FieldType {
     fn from(column: &Column) -> Self {
-        FieldType::from(&column.r#type)
+        if let Some(ty) = &column.r#type.get() {
+            FieldType::from(ty)
+        } else {
+            FieldType::Scalar
+        }
     }
 }
 
@@ -263,19 +306,25 @@ impl SerSerialize for Column {
     {
         let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("name", &self.name)?;
-        match &self.r#type {
-            Type::Boolean => map.serialize_entry("type", "boolean")?,
-            Type::Datetime => map.serialize_entry("type", "datetime")?,
-            Type::Decimal => map.serialize_entry("type", "decimal")?,
-            Type::Double => map.serialize_entry("type", "double")?,
-            Type::Integer => map.serialize_entry("type", "integer")?,
-            Type::String => map.serialize_entry("type", "string")?,
-            Type::Uuid => map.serialize_entry("type", "uuid")?,
-            Type::Unsigned => map.serialize_entry("type", "unsigned")?,
-            Type::Array => map.serialize_entry("type", "array")?,
-            Type::Any => map.serialize_entry("type", "any")?,
-            Type::Map => map.serialize_entry("type", "map")?,
-        }
+
+        let type_str = match &self.r#type.get() {
+            Some(ty) => match ty {
+                Type::Boolean => "boolean",
+                Type::Datetime => "datetime",
+                Type::Decimal => "decimal",
+                Type::Double => "double",
+                Type::Integer => "integer",
+                Type::String => "string",
+                Type::Uuid => "uuid",
+                Type::Unsigned => "unsigned",
+                Type::Array => "array",
+                Type::Any => "any",
+                Type::Map => "map",
+            },
+            None => "unknown",
+        };
+        map.serialize_entry("type", type_str)?;
+
         map.serialize_entry(
             "role",
             match self.role {
@@ -322,28 +371,22 @@ impl<'de> Visitor<'de> for ColumnVisitor {
 
         let is_nullable = matches!(column_is_nullable.as_str(), "true");
 
-        match column_type.as_str() {
-            "any" => Ok(Column::new(&column_name, Type::Any, role, is_nullable)),
-            "boolean" => Ok(Column::new(&column_name, Type::Boolean, role, is_nullable)),
-            "datetime" => Ok(Column::new(&column_name, Type::Datetime, role, is_nullable)),
-            "decimal" => Ok(Column::new(&column_name, Type::Decimal, role, is_nullable)),
-            "double" => Ok(Column::new(&column_name, Type::Double, role, is_nullable)),
-            "integer" => Ok(Column::new(&column_name, Type::Integer, role, is_nullable)),
-            "numeric" => Ok(Column::new(
-                &column_name,
-                Type::default(),
-                role,
-                is_nullable,
-            )),
-            "string" | "text" | "varchar" => {
-                Ok(Column::new(&column_name, Type::String, role, is_nullable))
-            }
-            "unsigned" => Ok(Column::new(&column_name, Type::Unsigned, role, is_nullable)),
-            "array" => Ok(Column::new(&column_name, Type::Array, role, is_nullable)),
-            "uuid" => Ok(Column::new(&column_name, Type::Uuid, role, is_nullable)),
-            "map" => Ok(Column::new(&column_name, Type::Map, role, is_nullable)),
-            s => Err(Error::custom(format!("unsupported column type: {s}"))),
-        }
+        let ty = match column_type.as_str() {
+            "any" => DerivedType::new(Type::Any),
+            "boolean" => DerivedType::new(Type::Boolean),
+            "datetime" => DerivedType::new(Type::Datetime),
+            "decimal" | "numeric" => DerivedType::new(Type::Decimal),
+            "double" => DerivedType::new(Type::Double),
+            "integer" => DerivedType::new(Type::Integer),
+            "string" | "text" | "varchar" => DerivedType::new(Type::String),
+            "unsigned" => DerivedType::new(Type::Unsigned),
+            "array" => DerivedType::new(Type::Array),
+            "uuid" => DerivedType::new(Type::Uuid),
+            "map" => DerivedType::new(Type::Map),
+            "unknown" => DerivedType::unknown(),
+            s => return Err(Error::custom(format!("unsupported column type: {s}"))),
+        };
+        Ok(Column::new(&column_name, ty, role, is_nullable))
     }
 }
 
@@ -359,10 +402,10 @@ impl<'de> Deserialize<'de> for Column {
 impl Column {
     /// Column constructor.
     #[must_use]
-    pub fn new(n: &str, t: Type, role: ColumnRole, is_nullable: bool) -> Self {
+    pub fn new(n: &str, ty: DerivedType, role: ColumnRole, is_nullable: bool) -> Self {
         Column {
             name: n.into(),
-            r#type: t,
+            r#type: ty,
             role,
             is_nullable,
         }

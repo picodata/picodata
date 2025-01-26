@@ -20,7 +20,7 @@ use crate::errors::SbroadError;
 use crate::executor::vtable::{VTableTuple, VirtualTable};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
-use crate::ir::relation::{Column, ColumnRole, Type};
+use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
 use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::value::{LuaValue, Value};
 use crate::ir::Plan;
@@ -72,7 +72,12 @@ impl TryInto<Column> for &MetadataColumn {
 
     fn try_into(self) -> Result<Column, Self::Error> {
         let col_type = Type::new(&self.r#type)?;
-        Ok(Column::new(&self.name, col_type, ColumnRole::User, true))
+        Ok(Column::new(
+            &self.name,
+            DerivedType::new(col_type),
+            ColumnRole::User,
+            true,
+        ))
     }
 }
 
@@ -151,11 +156,26 @@ impl ProducerResult {
                 let column = &columns[i];
                 let value = Value::from(value);
 
-                if value.get_type() == column.r#type {
+                // TODO: Seems like logic of casting may be removed and replaced with
+                //       `cast_values` call after vtable is built.
+                let Some(column_ty) = column.r#type.get() else {
+                    // No need to cast Null.
                     tuple.push(value);
+                    continue;
+                };
+
+                let types_equal = if let Some(value_type) = value.get_type().get() {
+                    value_type == column_ty
                 } else {
-                    tuple.push(value.cast(column.r#type)?);
-                }
+                    false
+                };
+
+                let casted_value = if types_equal {
+                    value
+                } else {
+                    value.cast(*column_ty)?
+                };
+                tuple.push(casted_value);
             }
             data.push(tuple);
         }

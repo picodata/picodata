@@ -20,7 +20,6 @@ use crate::ir::node::{
     Selection, StableFunction, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
 };
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
-use crate::ir::relation::Type;
 use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Target as IrTarget,
 };
@@ -31,6 +30,7 @@ use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::Limit;
 use super::operator::{Arithmetic, Bool, Unary};
+use super::relation::DerivedType;
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::value::Value;
 
@@ -41,7 +41,7 @@ enum ColExpr {
     Arithmetic(Box<ColExpr>, Arithmetic, Box<ColExpr>),
     Bool(Box<ColExpr>, Bool, Box<ColExpr>),
     Unary(Unary, Box<ColExpr>),
-    Column(String, Type),
+    Column(String, DerivedType),
     Cast(Box<ColExpr>, CastType),
     Case(
         Option<Box<ColExpr>>,
@@ -50,7 +50,13 @@ enum ColExpr {
     ),
     Concat(Box<ColExpr>, Box<ColExpr>),
     Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
-    StableFunction(SmolStr, Vec<ColExpr>, Option<FunctionFeature>, Type, bool),
+    StableFunction(
+        SmolStr,
+        Vec<ColExpr>,
+        Option<FunctionFeature>,
+        DerivedType,
+        bool,
+    ),
     Trim(Option<TrimKind>, Option<Box<ColExpr>>, Box<ColExpr>),
     Row(Row),
     None,
@@ -99,8 +105,9 @@ impl Display for ColExpr {
                 }
                 let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
                 let formatted_args = format!("({})", args.iter().format(", "));
+                let func_type_name = func_type.to_string();
                 format!(
-                    "{name}({}{formatted_args})::{func_type}",
+                    "{name}({}{formatted_args})::{func_type_name}",
                     if is_distinct { "distinct " } else { "" }
                 )
             }

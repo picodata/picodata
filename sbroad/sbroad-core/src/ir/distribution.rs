@@ -60,13 +60,15 @@ impl Key {
                             format_smolstr!("column {name} not found at position {pos}"),
                         )
                     })?;
-                    if !column.r#type.is_scalar() {
-                        return Err(SbroadError::Invalid(
-                            Entity::Column,
-                            Some(format_smolstr!(
-                                "column {name} at position {pos} is not scalar"
-                            )),
-                        ));
+                    if let Some(ty) = column.r#type.get() {
+                        if !ty.is_scalar() {
+                            return Err(SbroadError::Invalid(
+                                Entity::Column,
+                                Some(format_smolstr!(
+                                    "column {name} at position {pos} is not scalar"
+                                )),
+                            ));
+                        }
                     }
                     Ok(pos)
                 }

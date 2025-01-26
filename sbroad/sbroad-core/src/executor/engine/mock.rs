@@ -32,6 +32,7 @@ use crate::executor::Cache;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
+use crate::ir::relation::DerivedType;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table, Type};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::{LuaValue, Value};
@@ -106,9 +107,11 @@ impl RouterConfigurationMock {
     #[must_use]
     pub fn new() -> Self {
         let name_func = normalize_name_from_sql("func");
-        let fn_func = Function::new_stable(name_func.clone(), Type::Integer, false);
+        let fn_func =
+            Function::new_stable(name_func.clone(), DerivedType::new(Type::Integer), false);
         let name_trim = normalize_name_from_sql("trim");
-        let trim_func = Function::new_stable(name_trim.clone(), Type::String, false);
+        let trim_func =
+            Function::new_stable(name_trim.clone(), DerivedType::new(Type::String), false);
         let mut functions = HashMap::new();
         functions.insert(name_func, fn_func);
         functions.insert(name_trim, trim_func);
@@ -121,14 +124,34 @@ impl RouterConfigurationMock {
         let columns = vec![
             Column::new(
                 "identification_number",
-                Type::Integer,
+                DerivedType::new(Type::Integer),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("product_code", Type::String, ColumnRole::User, false),
-            Column::new("product_units", Type::Boolean, ColumnRole::User, true),
-            Column::new("sys_op", Type::Unsigned, ColumnRole::User, true),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "product_code",
+                DerivedType::new(Type::String),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "product_units",
+                DerivedType::new(Type::Boolean),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "sys_op",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key = &["identification_number", "product_code"];
         let primary_key = &["product_code", "identification_number"];
@@ -182,11 +205,36 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("id", Type::Unsigned, ColumnRole::User, false),
-            Column::new("sysFrom", Type::Unsigned, ColumnRole::User, true),
-            Column::new("FIRST_NAME", Type::String, ColumnRole::User, true),
-            Column::new("sys_op", Type::Unsigned, ColumnRole::User, true),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "sysFrom",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "FIRST_NAME",
+                DerivedType::new(Type::String),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "sys_op",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key = &["id"];
         let primary_key = &["id"];
@@ -216,8 +264,18 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("id", Type::Unsigned, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key: &[&str] = &["id"];
         let primary_key: &[&str] = &["id"];
@@ -234,9 +292,24 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("A", Type::Unsigned, ColumnRole::User, true),
-            Column::new("B", Type::Unsigned, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "A",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "B",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key: &[&str] = &["A", "B"];
         let primary_key: &[&str] = &["B"];
@@ -253,11 +326,36 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("a", Type::Unsigned, ColumnRole::User, true),
-            Column::new("b", Type::Unsigned, ColumnRole::User, false),
-            Column::new("c", Type::Unsigned, ColumnRole::User, true),
-            Column::new("d", Type::Unsigned, ColumnRole::User, true),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "a",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "c",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "d",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key: &[&str] = &["a", "b"];
         let primary_key: &[&str] = &["b"];
@@ -268,9 +366,19 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("a", Type::String, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
-            Column::new("b", Type::Integer, ColumnRole::User, false),
+            Column::new("a", DerivedType::new(Type::String), ColumnRole::User, false),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
         ];
         let sharding_key: &[&str] = &["a", "b"];
         let primary_key: &[&str] = &["a", "b"];
@@ -281,11 +389,36 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("e", Type::Unsigned, ColumnRole::User, false),
-            Column::new("f", Type::Unsigned, ColumnRole::User, false),
-            Column::new("g", Type::Unsigned, ColumnRole::User, false),
-            Column::new("h", Type::Unsigned, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "e",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "f",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "g",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "h",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key: &[&str] = &["e", "f"];
         let primary_key: &[&str] = &["g", "h"];
@@ -296,9 +429,19 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
-            Column::new("a", Type::String, ColumnRole::User, false),
-            Column::new("b", Type::Integer, ColumnRole::User, false),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new("a", DerivedType::new(Type::String), ColumnRole::User, false),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
         ];
         let sharding_key: &[&str] = &["a"];
         let primary_key: &[&str] = &["a"];
@@ -309,9 +452,19 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
-            Column::new("c", Type::String, ColumnRole::User, false),
-            Column::new("d", Type::Integer, ColumnRole::User, false),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new("c", DerivedType::new(Type::String), ColumnRole::User, false),
+            Column::new(
+                "d",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
         ];
         let sharding_key: &[&str] = &["c"];
         let primary_key: &[&str] = &["d"];
@@ -322,8 +475,18 @@ impl RouterConfigurationMock {
         );
 
         let columns = vec![
-            Column::new("a", Type::Integer, ColumnRole::User, false),
-            Column::new("b", Type::Integer, ColumnRole::User, false),
+            Column::new(
+                "a",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
         ];
         let primary_key: &[&str] = &["a"];
         tables.insert(
@@ -333,365 +496,630 @@ impl RouterConfigurationMock {
 
         // Table for sbroad-benches
         let columns = vec![
-            Column::new("vehicleguid", Type::Unsigned, ColumnRole::User, false),
-            Column::new("reestrid", Type::Unsigned, ColumnRole::User, false),
-            Column::new("reestrstatus", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehicleregno", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclevin", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclevin2", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclechassisnum", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicleguid",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "reestrid",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "reestrstatus",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehicleregno",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclevin",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclevin2",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclechassisnum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehiclereleaseyear",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "operationregdoctypename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("operationregdoc", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "operationregdoc",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "operationregdocissuedate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "operationregdoccomments",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "vehicleptstypename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehicleptsnum", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicleptsnum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehicleptsissuedate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehicleptsissuer", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicleptsissuer",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehicleptscomments",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehiclebodycolor", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclebrand", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclemodel", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclebrandmodel", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclebodynum", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclecost", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclegasequip", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehiclebodycolor",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclebrand",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclemodel",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclebrandmodel",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclebodynum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclecost",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclegasequip",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehicleproducername",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehiclegrossmass", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclemass", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehiclegrossmass",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclemass",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehiclesteeringwheeltypeid",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehiclekpptype", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehiclekpptype",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehicletransmissiontype",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehicletypename", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehiclecategory", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehicletypeunit", Type::Unsigned, ColumnRole::User, false),
-            Column::new("vehicleecoclass", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicletypename",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehiclecategory",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehicletypeunit",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "vehicleecoclass",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehiclespecfuncname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "vehicleenclosedvolume",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "vehicleenginemodel",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehicleenginenum", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicleenginenum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "vehicleenginepower",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "vehicleenginepowerkw",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("vehicleenginetype", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "vehicleenginetype",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "holdrestrictiondate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("approvalnum", Type::Unsigned, ColumnRole::User, false),
-            Column::new("approvaldate", Type::Unsigned, ColumnRole::User, false),
-            Column::new("approvaltype", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "approvalnum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "approvaldate",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "approvaltype",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "utilizationfeename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("customsdoc", Type::Unsigned, ColumnRole::User, false),
-            Column::new("customsdocdate", Type::Unsigned, ColumnRole::User, false),
-            Column::new("customsdocissue", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "customsdoc",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "customsdocdate",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "customsdocissue",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "customsdocrestriction",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "customscountryremovalid",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "customscountryremovalname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("ownerorgname", Type::Unsigned, ColumnRole::User, false),
-            Column::new("ownerinn", Type::Unsigned, ColumnRole::User, false),
-            Column::new("ownerogrn", Type::Unsigned, ColumnRole::User, false),
-            Column::new("ownerkpp", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "ownerorgname",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "ownerinn",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "ownerogrn",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "ownerkpp",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "ownerpersonlastname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "ownerpersonfirstname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "ownerpersonmiddlename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "ownerpersonbirthdate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("ownerbirthplace", Type::Unsigned, ColumnRole::User, false),
-            Column::new("ownerpersonogrnip", Type::Unsigned, ColumnRole::User, false),
-            Column::new("owneraddressindex", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "ownerbirthplace",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "ownerpersonogrnip",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "owneraddressindex",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "owneraddressmundistrict",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "owneraddresssettlement",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "owneraddressstreet",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("ownerpersoninn", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "ownerpersoninn",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "ownerpersondoccode",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("ownerpersondocnum", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "ownerpersondocnum",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "ownerpersondocdate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("operationname", Type::Unsigned, ColumnRole::User, false),
-            Column::new("operationdate", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "operationname",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "operationdate",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "operationdepartmentname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("operationattorney", Type::Unsigned, ColumnRole::User, false),
-            Column::new("operationlising", Type::Unsigned, ColumnRole::User, false),
-            Column::new("holdertypeid", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "operationattorney",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "operationlising",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "holdertypeid",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "holderpersondoccode",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersondocnum",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersondocdate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersondocissuer",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersonlastname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersonfirstname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersonmiddlename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersonbirthdate",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderpersonbirthregionid",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("holderpersonsex", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "holderpersonsex",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "holderpersonbirthplace",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("holderpersoninn", Type::Unsigned, ColumnRole::User, false),
-            Column::new("holderpersonsnils", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "holderpersoninn",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "holderpersonsnils",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "holderpersonogrnip",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("holderaddressguid", Type::Unsigned, ColumnRole::User, false),
+            Column::new(
+                "holderaddressguid",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
             Column::new(
                 "holderaddressregionid",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressregionname",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressdistrict",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressmundistrict",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddresssettlement",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressstreet",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressbuilding",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressstructureid",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressstructurename",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
             Column::new(
                 "holderaddressstructure",
-                Type::Unsigned,
+                DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("sys_from", Type::Unsigned, ColumnRole::User, false),
-            Column::new("sys_to", Type::Unsigned, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "sys_from",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "sys_to",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ];
         let sharding_key: &[&str] = &["reestrid"];
         let primary_key: &[&str] = &["reestrid"];

@@ -3,6 +3,7 @@
 //! Contains operator nodes that transform the tuples in IR tree.
 
 use crate::executor::engine::helpers::to_user;
+use crate::executor::vtable::calculate_unified_types;
 use crate::frontend::sql::get_unnamed_column_alias;
 use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;
@@ -28,6 +29,7 @@ use super::expression::{ColumnPositionMap, ExpressionId};
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
 use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
+use super::relation::DerivedType;
 use super::transformation::redistribution::{MotionPolicy, Program};
 use super::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::distribution::{Distribution, Key, KeySet};
@@ -1452,22 +1454,32 @@ impl Plan {
             ));
         };
 
+        let mut types = Vec::new();
+        for row_id in &value_rows {
+            let value_row = self.get_relation_node(*row_id)?;
+            let output_id = value_row.output();
+            let output: Expression<'_> = self.get_expression_node(output_id)?;
+            let row_list = output.get_row_list()?;
+            let tuple_types: Result<Vec<DerivedType>, SbroadError> = row_list
+                .iter()
+                .map(|col_id| {
+                    let col_expr = self.get_expression_node(*col_id)?;
+                    col_expr.calculate_type(self)
+                })
+                .collect();
+            types.push(tuple_types?)
+        }
+        let unified_types = calculate_unified_types(&types)?;
+
         // Generate a row of aliases referencing all the children.
         let mut aliases: Vec<NodeId> = Vec::with_capacity(names.len());
-        let columns = last_output.clone_row_list()?;
         for (pos, name) in names.iter().enumerate() {
-            let col_id = *columns.get(pos).ok_or_else(|| {
-                SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "Values node has no column at position {pos}"
-                ))
-            })?;
-            let col_expr = self.get_expression_node(col_id)?;
-            let col_type = col_expr.calculate_type(self)?;
+            let unified_type = unified_types[pos].1;
             let ref_id = self.nodes.add_ref(
                 None,
                 Some((0..value_rows.len()).collect::<Vec<usize>>()),
                 pos,
-                col_type,
+                unified_type,
                 None,
             );
             let alias_id = self.nodes.add_alias(name, ref_id)?;

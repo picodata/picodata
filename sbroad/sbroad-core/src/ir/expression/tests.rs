@@ -3,7 +3,7 @@ use crate::ir::tests::{column_integer_user_non_null, sharding_column};
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
 
-use crate::ir::relation::{Column, SpaceEngine, Table, Type};
+use crate::ir::relation::{Column, DerivedType, SpaceEngine, Table, Type};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -69,7 +69,7 @@ fn derive_expr_type() {
     fn column(name: SmolStr, ty: Type) -> Column {
         Column {
             name,
-            r#type: ty,
+            r#type: DerivedType::new(ty),
             role: Default::default(),
             is_nullable: false,
         }
@@ -106,40 +106,58 @@ fn derive_expr_type() {
         .add_arithmetic_to_plan(b_id, Arithmetic::Divide, c_id)
         .unwrap();
     let expr = plan.get_expression_node(arith_divide_id).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Integer);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Integer
+    );
 
     // d*e
     let arith_multiply_id = plan
         .add_arithmetic_to_plan(d_id, Arithmetic::Multiply, e_id)
         .unwrap();
     let expr = plan.get_expression_node(arith_multiply_id).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Decimal);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Decimal
+    );
 
     // (b/c + d*e)
     let arith_addition_id = plan
         .add_arithmetic_to_plan(arith_divide_id, Arithmetic::Add, arith_multiply_id)
         .unwrap();
     let expr = plan.get_expression_node(arith_addition_id).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Decimal);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Decimal
+    );
 
     // (b/c + d*e) * f
     let arith_multiply_id2 = plan
         .add_arithmetic_to_plan(arith_addition_id, Arithmetic::Multiply, f_id)
         .unwrap();
     let expr = plan.get_expression_node(arith_multiply_id2).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Double);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Double
+    );
 
     // a + (b/c + d*e) * f
     let arith_addition_id2 = plan
         .add_arithmetic_to_plan(a_id, Arithmetic::Add, arith_multiply_id2)
         .unwrap();
     let expr = plan.get_expression_node(arith_addition_id2).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Double);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Double
+    );
 
     // a + (b/c + d*e) * f - b
     let arith_subract_id = plan
         .add_arithmetic_to_plan(arith_addition_id2, Arithmetic::Subtract, b_id)
         .unwrap();
     let expr = plan.get_expression_node(arith_subract_id).unwrap();
-    assert_eq!(expr.calculate_type(&plan).unwrap(), Type::Double);
+    assert_eq!(
+        expr.calculate_type(&plan).unwrap().get().unwrap(),
+        Type::Double
+    );
 }

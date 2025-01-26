@@ -264,6 +264,10 @@ pub fn calculate_filter_selectivity(
         )),
     ));
 
+    let Some(column_type) = column_type.get() else {
+        return types_mismatch_error;
+    };
+
     match column_type {
         Type::Boolean => match constant {
             Value::Boolean(b) => {
@@ -406,8 +410,8 @@ pub fn calculate_condition_selectivity(
         )),
     ));
 
-    match (left_column_type, right_column_type) {
-        (Type::Boolean, Type::Boolean) => {
+    match (left_column_type.get(), right_column_type.get()) {
+        (Some(Type::Boolean), Some(Type::Boolean)) => {
             let left_downcasted_stats =
                 downcast_column_stats::<bool>(&left_column_stats, left_column)?;
             let right_downcasted_stats =

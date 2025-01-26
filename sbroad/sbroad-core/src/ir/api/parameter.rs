@@ -7,6 +7,7 @@ use crate::ir::node::{
     Like, LocalTimestamp, MutNode, Node64, NodeId, Parameter, Procedure, Row, Selection,
     StableFunction, Trim, UnaryExpr, ValuesRow,
 };
+use crate::ir::relation::DerivedType;
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan, ValueIdx};
@@ -15,7 +16,6 @@ use smol_str::format_smolstr;
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
-use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet, RandomState};
 use std::collections::HashMap;
 
@@ -406,7 +406,7 @@ impl<'binder> ParamsBinder<'binder> {
     /// Replace parameters in the plan.
     #[allow(clippy::too_many_lines)]
     fn bind_params(&mut self) -> Result<(), SbroadError> {
-        let mut exprs_to_set_ref_type: HashMap<NodeId, Type> = HashMap::new();
+        let mut exprs_to_set_ref_type: HashMap<NodeId, DerivedType> = HashMap::new();
 
         for LevelNode(_, id) in &self.nodes {
             // Before binding, references that referred to
@@ -595,7 +595,12 @@ impl<'binder> ParamsBinder<'binder> {
 
 impl Plan {
     pub fn add_param(&mut self) -> NodeId {
-        self.nodes.push(Parameter { param_type: None }.into())
+        self.nodes.push(
+            Parameter {
+                param_type: DerivedType::unknown(),
+            }
+            .into(),
+        )
     }
 
     /// Bind params related to `Option` clause.

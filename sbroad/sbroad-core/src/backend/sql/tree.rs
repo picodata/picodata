@@ -1011,7 +1011,13 @@ impl<'p> SyntaxPlan<'p> {
                     let Expression::Reference(Reference { col_type, .. }) = ref_expr else {
                         panic!("expected Reference under Alias in Motion output");
                     };
-                    select_columns.push(format_smolstr!("cast(null as {col_type})"));
+                    let casted_null_str = if let Some(col_type) = col_type.get() {
+                        format_smolstr!("cast(null as {col_type})")
+                    } else {
+                        // No need to cast as there are no type.
+                        SmolStr::from("null")
+                    };
+                    select_columns.push(casted_null_str);
                 }
                 let empty_select =
                     format_smolstr!("select {} where false", select_columns.join(","));

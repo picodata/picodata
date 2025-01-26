@@ -19,13 +19,13 @@ use super::{
     ddl::AlterSystemType,
     expression::{cast, FunctionFeature, TrimKind},
     operator::{self, ConflictStrategy, JoinKind, OrderByElement, UpdateStrategy},
+    relation::DerivedType,
 };
 use crate::ir::{
     acl::{AlterOption, GrantRevokeType},
     ddl::{ColumnDef, Language, ParamDef, SetParamScopeType, SetParamValue},
     distribution::Distribution,
     helpers::RepeatableState,
-    relation::Type,
     transformation::redistribution::{ColumnPosition, MotionPolicy, Program},
     value::Value,
 };
@@ -257,7 +257,7 @@ pub struct Reference {
     /// Expression position in the input tuple (i.e. `Alias` column).
     pub position: usize,
     /// Referred column type in the input tuple.
-    pub col_type: Type,
+    pub col_type: DerivedType,
     /// Field indicating whether this reference resulted
     /// from an asterisk "*" under projection.
     pub asterisk_source: Option<ReferenceAsteriskSource>,
@@ -308,7 +308,7 @@ pub struct StableFunction {
     /// Optional function feature.
     pub feature: Option<FunctionFeature>,
     /// Function return type.
-    pub func_type: Type,
+    pub func_type: DerivedType,
     /// Whether function is provided by tarantool,
     /// when referencing these funcs from local
     /// sql we must not use quotes.
@@ -380,7 +380,7 @@ impl From<Case> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parameter {
-    pub param_type: Option<Type>,
+    pub param_type: DerivedType,
 }
 
 impl From<Parameter> for NodeAligned {

@@ -15,7 +15,7 @@ use sbroad::{
             acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
             relational::Relational, tcl::Tcl, Alias, GrantPrivilege, Node, RevokePrivilege,
         },
-        relation::Type as SbroadType,
+        relation::{DerivedType, Type as SbroadType},
         Plan,
     },
 };
@@ -297,16 +297,20 @@ impl MetadataColumn {
     }
 }
 
-fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
-    match sbroad {
-        SbroadType::Integer | SbroadType::Unsigned => Ok(Type::INT8),
-        SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(Type::JSON),
-        SbroadType::String => Ok(Type::TEXT),
-        SbroadType::Boolean => Ok(Type::BOOL),
-        SbroadType::Double => Ok(Type::FLOAT8),
-        SbroadType::Decimal => Ok(Type::NUMERIC),
-        SbroadType::Uuid => Ok(Type::UUID),
-        SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
+fn pg_type_from_sbroad(sbroad: &DerivedType) -> PgResult<Type> {
+    if let Some(sbroad) = sbroad.get() {
+        match sbroad {
+            SbroadType::Integer | SbroadType::Unsigned => Ok(Type::INT8),
+            SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(Type::JSON),
+            SbroadType::String => Ok(Type::TEXT),
+            SbroadType::Boolean => Ok(Type::BOOL),
+            SbroadType::Double => Ok(Type::FLOAT8),
+            SbroadType::Decimal => Ok(Type::NUMERIC),
+            SbroadType::Uuid => Ok(Type::UUID),
+            SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
+        }
+    } else {
+        Ok(Type::UNKNOWN)
     }
 }
 

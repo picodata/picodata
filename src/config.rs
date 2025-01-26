@@ -21,6 +21,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
+use sbroad::ir::relation::DerivedType;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
@@ -1720,6 +1721,7 @@ pub fn validate_alter_system_parameter_value<'v>(
         return Err(Error::other(format!("unknown parameter: '{name}'")));
     };
 
+    let expected_type = DerivedType::new(expected_type);
     let Ok(casted_value) = value.cast_and_encode(&expected_type) else {
         let actual_type = value_type_str(value);
         return Err(Error::other(format!(

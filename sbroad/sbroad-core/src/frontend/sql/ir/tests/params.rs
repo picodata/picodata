@@ -186,7 +186,7 @@ fn front_params2() {
 
     let expected_explain = String::from(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::integer) and ROW("test_space"."FIRST_NAME"::string) = ROW('hello'::string)
+    selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown) and ROW("test_space"."FIRST_NAME"::string) = ROW('hello'::string)
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -207,7 +207,7 @@ fn front_params3() {
 
     let expected_explain = String::from(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::integer) and ROW("test_space"."FIRST_NAME"::string) = ROW('кириллица'::string)
+    selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown) and ROW("test_space"."FIRST_NAME"::string) = ROW('кириллица'::string)
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000

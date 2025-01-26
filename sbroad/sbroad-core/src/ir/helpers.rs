@@ -186,10 +186,11 @@ impl Plan {
                         writeln!(buf, "NO TARGETS")?;
                     }
 
+                    let col_type_str = col_type.to_string();
                     writeln_with_tabulation(
                         buf,
                         tabulation_number + 1,
-                        format!("Column type: {col_type}").as_str(),
+                        format!("Column type: {col_type_str}").as_str(),
                     )?;
                 }
                 Expression::Row(Row { list, distribution }) => {

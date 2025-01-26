@@ -3612,6 +3612,15 @@ impl AbstractSyntaxTree {
 
             let entity = match expr {
                 Node::Expression(expr) => {
+                    if let Expression::Reference(Reference {col_type, ..}) = expr {
+                        if matches!(col_type.get(), Some(Type::Array)) {
+                            return Err(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
+                            ));
+                        }
+                    }
+
                     if let Expression::Constant(Constant {value: Value::Unsigned(index)}) = expr {
                         let index_usize = usize::try_from(*index).map_err(|_| {
                             SbroadError::Invalid(
@@ -3626,11 +3635,13 @@ impl AbstractSyntaxTree {
                         if let Some(alias_node_id) = sq_output.get(index_usize - 1) {
                             let alias_node = plan.get_expression_node(*alias_node_id)?;
                             if let Expression::Alias(Alias { child, .. }) = alias_node {
-                                if let Expression::Reference(Reference { col_type: Type::Array, .. }) = plan.get_expression_node(*child)? {
-                                    return Err(SbroadError::Invalid(
-                                        Entity::Expression,
-                                        Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
-                                    ));
+                                if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
+                                    if matches!(col_type.get(), Some(Type::Array)) {
+                                        return Err(SbroadError::Invalid(
+                                            Entity::Expression,
+                                            Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
+                                        ));
+                                    }
                                 }
                             }
                         } else {
@@ -3640,11 +3651,6 @@ impl AbstractSyntaxTree {
                             ));
                         }
                         OrderByEntity::Index { value: index_usize }
-                    } else if let Expression::Reference(Reference {col_type: Type::Array, ..}) = expr {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
-                        ));
                     } else {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.

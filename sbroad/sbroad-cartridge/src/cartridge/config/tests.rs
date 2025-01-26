@@ -1,5 +1,6 @@
 use super::*;
 use pretty_assertions::assert_eq;
+use sbroad::ir::relation::DerivedType;
 
 #[test]
 fn test_yaml_schema_parser() {
@@ -145,15 +146,40 @@ fn test_getting_table_segment() {
         vec![
             Column::new(
                 "identification_number",
-                Type::Integer,
+                DerivedType::new(Type::Integer),
                 ColumnRole::User,
                 false,
             ),
-            Column::new("product_code", Type::String, ColumnRole::User, false),
-            Column::new("product_units", Type::Boolean, ColumnRole::User, false),
-            Column::new("sys_op", Type::Integer, ColumnRole::User, false),
-            Column::new("detail", Type::Array, ColumnRole::User, false),
-            Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, true),
+            Column::new(
+                "product_code",
+                DerivedType::new(Type::String),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "product_units",
+                DerivedType::new(Type::Boolean),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "sys_op",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "detail",
+                DerivedType::new(Type::Array),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
         ],
         &["identification_number", "product_code"],
         &["identification_number"],

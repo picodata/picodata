@@ -98,8 +98,18 @@ fn table_seg_dno_bucket_id_column() {
             column_user_non_null(SmolStr::from("a"), Type::Boolean),
             column_user_non_null(SmolStr::from("b"), Type::Unsigned),
             column_user_non_null(SmolStr::from("c"), Type::String),
-            Column::new("bucket_id", Type::String, ColumnRole::Sharding, false),
-            Column::new("bucket_id2", Type::String, ColumnRole::Sharding, false),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::String),
+                ColumnRole::Sharding,
+                false,
+            ),
+            Column::new(
+                "bucket_id2",
+                DerivedType::new(Type::String),
+                ColumnRole::Sharding,
+                false,
+            ),
         ],
         &["b", "a"],
         &["b", "a"],
@@ -139,7 +149,12 @@ fn table_seg_compound_type_in_key() {
         Table::new_sharded(
             "t",
             vec![
-                Column::new("bucket_id", Type::Unsigned, ColumnRole::Sharding, false),
+                Column::new(
+                    "bucket_id",
+                    DerivedType::new(Type::Unsigned),
+                    ColumnRole::Sharding,
+                    false
+                ),
                 column_user_non_null(SmolStr::from("a"), Type::Array),
             ],
             &["a"],

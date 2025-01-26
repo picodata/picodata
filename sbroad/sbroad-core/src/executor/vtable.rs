@@ -16,7 +16,7 @@ use crate::executor::protocol::{Binary, EncodedRows, EncodedTables};
 use crate::executor::{bucket::Buckets, Vshard};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
-use crate::ir::relation::{Column, ColumnRole, Type};
+use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
 use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Target};
 use crate::ir::value::{EncodedValue, LuaValue, MsgPackValue, Value};
 use crate::utils::{write_u32_array_len, ByteCounter};
@@ -100,7 +100,7 @@ pub struct VirtualTable {
 /// (as soon as it's generated automatically).
 #[derive(PartialEq, Debug, Eq, Clone)]
 pub struct VTableColumn {
-    pub r#type: Type,
+    pub r#type: DerivedType,
     pub role: ColumnRole,
     pub is_nullable: bool,
 }
@@ -187,6 +187,15 @@ impl VirtualTable {
         &self.tuples
     }
 
+    /// Retrieve value types of virtual table tuples.
+    #[must_use]
+    pub fn get_types(&self) -> Vec<Vec<DerivedType>> {
+        self.get_tuples()
+            .iter()
+            .map(|tuple| tuple.iter().map(|v| v.get_type()).collect::<Vec<_>>())
+            .collect()
+    }
+
     /// Gets a mutable virtual table tuples list
     #[must_use]
     pub fn get_mut_tuples(&mut self) -> &mut Vec<VTableTuple> {
@@ -194,13 +203,7 @@ impl VirtualTable {
     }
 
     /// Given a vec of [(`is_nullable`, `correct_type`)], fix metadata of each value in the tuples.
-    ///
-    /// # Errors
-    /// - Unable to apply values cast.
-    ///
-    /// # Panics
-    /// - Unacceptable type met.
-    pub fn cast_values(&mut self, fixed_types: &[(bool, Type)]) -> Result<(), SbroadError> {
+    pub fn cast_values(&mut self, fixed_types: &[(bool, DerivedType)]) -> Result<(), SbroadError> {
         for tuple in self.get_mut_tuples() {
             for (i, v) in tuple.iter_mut().enumerate() {
                 let (_, ty) = fixed_types.get(i).expect("Type expected.");
@@ -753,22 +756,18 @@ impl ExecutionPlan {
     }
 }
 
-/// In case Vtable tuples have values of different types, we try to
+/// In case passed types are different, we try to
 /// unify them:
 /// * Some types (like String or Boolean) support only values of the same type. In case we met inconsistency,
 ///   we throw an error.
 /// * Numerical values can be cast according to the following order:
 ///   Decimal > Double > Integer > Unsigned > Null.
 ///
-/// # Errors
-/// - Contains values of inconsistent types.
-///
-/// # Panics
-/// - Internal error.
+/// Each pair in the returned vec is (is_type_nullable, unified_type).
 #[allow(clippy::too_many_lines)]
-pub fn calculate_vtable_unified_types(
-    vtable: &VirtualTable,
-) -> Result<Vec<(bool, Type)>, SbroadError> {
+pub fn calculate_unified_types(
+    types: &Vec<Vec<DerivedType>>,
+) -> Result<Vec<(bool, DerivedType)>, SbroadError> {
     // Map of { type -> types_which_can_be_upcasted_to_given_one }.
     let get_types_less = |ty: &Type| -> &[Type] {
         match ty {
@@ -786,10 +785,10 @@ pub fn calculate_vtable_unified_types(
         }
     };
 
-    let columns_len = vtable.columns.len();
+    let columns_len = types.first().expect("Types vec should not be empty").len();
     let mut nullable_column_indices = HashSet::with_capacity(columns_len);
-    let fix_type = |current_type_unified: &mut Option<Type>, given_type: &Type| {
-        if let Some(current_type_unified) = current_type_unified {
+    let fix_type = |current_type_unified: &mut DerivedType, given_type: &Type| {
+        if let Some(current_type_unified) = current_type_unified.get_mut() {
             if get_types_less(given_type).contains(current_type_unified) {
                 *current_type_unified = *given_type;
             } else if *given_type != *current_type_unified
@@ -797,80 +796,38 @@ pub fn calculate_vtable_unified_types(
             {
                 return Err(SbroadError::Invalid(
                     Entity::Type,
-                    Some(format_smolstr!("Virtual table contains values of inconsistent types: {current_type_unified:?} and {given_type:?}.")),
+                    Some(format_smolstr!("Unable to unify inconsistent types: {current_type_unified:?} and {given_type:?}.")),
                 ));
             }
         } else {
-            *current_type_unified = Some(*given_type);
+            current_type_unified.set(*given_type);
         }
         Ok(())
     };
 
-    let mut unified_types: Vec<Option<Type>> = iter::repeat(None).take(columns_len).collect();
+    let mut unified_types: Vec<DerivedType> = iter::repeat(DerivedType::unknown())
+        .take(columns_len)
+        .collect();
 
-    for tuple in vtable.get_tuples() {
-        for (i, value) in tuple.iter().enumerate() {
-            let current_type_unified = unified_types
-                .get_mut(i)
-                .expect("Unified types vec isn't initialized.");
-            match value {
-                Value::Boolean(_) => {
-                    fix_type(current_type_unified, &Type::Boolean)?;
-                }
-                Value::String(_) => {
-                    fix_type(current_type_unified, &Type::String)?;
-                }
-                Value::Uuid(_) => {
-                    fix_type(current_type_unified, &Type::Uuid)?;
-                }
-                Value::Datetime(_) => {
-                    fix_type(current_type_unified, &Type::Datetime)?;
-                }
-                Value::Null => {
-                    nullable_column_indices.insert(i);
-                }
-                Value::Unsigned(_) => {
-                    fix_type(current_type_unified, &Type::Unsigned)?;
-                }
-                Value::Integer(_) => {
-                    fix_type(current_type_unified, &Type::Integer)?;
-                }
-                Value::Double(_) => {
-                    fix_type(current_type_unified, &Type::Double)?;
-                }
-                Value::Decimal(_) => {
-                    fix_type(current_type_unified, &Type::Decimal)?;
-                }
-                Value::Tuple(_) => panic!("Unexpected tuple under values."),
+    for type_tuple in types {
+        for (i, ty) in type_tuple.iter().enumerate() {
+            let current_type_unified = unified_types.get_mut(i).unwrap_or_else(|| {
+                panic!("Unified types vec isn't initialized to retrieve index {i}.")
+            });
+            if let Some(ty) = ty.get() {
+                fix_type(current_type_unified, ty)?;
+            } else {
+                nullable_column_indices.insert(i);
             }
         }
     }
 
-    if unified_types
-        .first()
-        .expect("Unified types vec is empty.")
-        .is_none()
-    {
-        // This is possible in case we deal with VALUES like
-        // `values ((select a from t where false), (select a from t where false), ...)`
-        // where there are no tuples to traverse so that we just infer types returned to us from
-        // local SQL execution.
-        Ok(vtable
-            .get_columns()
-            .iter()
-            .map(|c| (c.is_nullable, c.r#type))
-            .collect())
-    } else {
-        Ok(unified_types
-            .into_iter()
-            .zip(vtable.get_columns().iter())
-            .enumerate()
-            .map(|(i, (t, c))| {
-                let t = if let Some(t) = t { t } else { c.r#type };
-                (nullable_column_indices.contains(&i), t)
-            })
-            .collect())
-    }
+    let res = unified_types
+        .into_iter()
+        .enumerate()
+        .map(|(i, t)| (nullable_column_indices.contains(&i), t))
+        .collect();
+    Ok(res)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]

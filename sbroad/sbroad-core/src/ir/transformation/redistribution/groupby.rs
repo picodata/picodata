@@ -867,7 +867,7 @@ impl Plan {
         arguments: &[NodeId],
         local_alias: &str,
     ) -> Result<NodeId, SbroadError> {
-        let fun = Function {
+        let fun: Function = Function {
             name: kind.to_smolstr(),
             behavior: Behavior::Stable,
             func_type: kind.to_type(self, arguments)?,
@@ -1168,13 +1168,15 @@ impl Plan {
             };
             let position = child_map.get(local_alias)?;
             let col_type = self.get_expression_node(*expr_id)?.calculate_type(self)?;
-            if !col_type.is_scalar() {
-                return Err(SbroadError::Invalid(
-                    Entity::Type,
-                    Some(format_smolstr!(
-                        "add_final_groupby: GroupBy expr ({expr_id:?}) is not scalar ({col_type})!"
-                    )),
-                ));
+            if let Some(col_type) = col_type.get() {
+                if !col_type.is_scalar() {
+                    return Err(SbroadError::Invalid(
+                        Entity::Type,
+                        Some(format_smolstr!(
+                            "add_final_groupby: GroupBy expr ({expr_id:?}) is not scalar ({col_type})!"
+                        )),
+                    ));
+                }
             }
             let new_col = Reference {
                 position,
@@ -1268,14 +1270,16 @@ impl Plan {
                 };
                 let position = alias_to_pos_map.get(local_alias)?;
                 let col_type = self.get_expression_node(expr_id)?.calculate_type(self)?;
-                if !col_type.is_scalar() {
-                    return Err(SbroadError::Invalid(
-                        Entity::Type,
-                        Some(format_smolstr!(
-                            "patch_finals: expected scalar expression, found: {col_type}"
-                        )),
-                    ));
-                };
+                if let Some(col_type) = col_type.get() {
+                    if !col_type.is_scalar() {
+                        return Err(SbroadError::Invalid(
+                            Entity::Type,
+                            Some(format_smolstr!(
+                                "patch_finals: expected scalar expression, found: {col_type}"
+                            )),
+                        ));
+                    };
+                }
                 let new_ref = Reference {
                     parent: Some(rel_id),
                     targets: Some(vec![0]),

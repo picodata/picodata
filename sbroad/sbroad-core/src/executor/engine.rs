@@ -22,8 +22,8 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
 use crate::ir::function::Function;
-use crate::ir::relation::Table;
 use crate::ir::relation::Type;
+use crate::ir::relation::{DerivedType, Table};
 use crate::ir::value::Value;
 
 use super::result::ProducerResult;
@@ -78,12 +78,12 @@ pub fn get_builtin_functions() -> &'static [Function] {
     unsafe {
         BUILTINS.get_or_init(|| {
             vec![
-                Function::new_stable("to_date".into(), Type::Datetime, false),
-                Function::new_stable("to_char".into(), Type::String, false),
-                Function::new_stable("substr".into(), Type::String, true),
-                Function::new_stable("lower".into(), Type::String, true),
-                Function::new_stable("upper".into(), Type::String, true),
-                Function::new_stable("coalesce".into(), Type::Any, true),
+                Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
+                Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
+                Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
+                Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
+                Function::new_stable("upper".into(), DerivedType::new(Type::String), true),
+                Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
             ]
         })
     }

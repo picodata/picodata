@@ -13,6 +13,16 @@ use crate::ir::value::{LuaValue, Value};
 
 use super::*;
 
+// Helper function to format back sql.
+// The local sql we produce doesn't contain line breaks,
+// but in code it's hard to read such long string, so
+// we insert line breaks and remove them back for
+// string comparison with expected pattern.
+#[cfg(test)]
+pub fn f_sql(s: &str) -> String {
+    s.replace("\n", " ")
+}
+
 #[test]
 fn shard_query() {
     let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" = 1"#;

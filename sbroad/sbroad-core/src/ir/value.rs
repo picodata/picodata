@@ -17,8 +17,10 @@ use tarantool::uuid::Uuid;
 use crate::error;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::hash::ToHashString;
-use crate::ir::relation::Type;
+use crate::ir::relation::DerivedType;
 use crate::ir::value::double::Double;
+
+use super::relation::Type;
 
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Tuple(pub(crate) Vec<Value>);
@@ -880,7 +882,11 @@ impl Value {
     /// # Errors
     /// - the value cannot be cast to the given type.
     #[allow(clippy::too_many_lines)]
-    pub fn cast_and_encode(&self, column_type: &Type) -> Result<EncodedValue, SbroadError> {
+    pub fn cast_and_encode(&self, column_type: &DerivedType) -> Result<EncodedValue, SbroadError> {
+        let Some(column_type) = column_type.get() else {
+            return Ok(self.into());
+        };
+
         // First, try variants returning EncodedValue::Ref to avoid cloning.
         match (column_type, self) {
             (Type::Any, value) => return Ok(value.into()),
@@ -900,8 +906,8 @@ impl Value {
     }
 
     #[must_use]
-    pub fn get_type(&self) -> Type {
-        match self {
+    pub fn get_type(&self) -> DerivedType {
+        let ty = match self {
             Value::Unsigned(_) => Type::Unsigned,
             Value::Integer(_) => Type::Integer,
             Value::Datetime(_) => Type::Datetime,
@@ -911,8 +917,9 @@ impl Value {
             Value::String(_) => Type::String,
             Value::Tuple(_) => Type::Array,
             Value::Uuid(_) => Type::Uuid,
-            Value::Null => Type::default(),
-        }
+            Value::Null => return DerivedType::unknown(),
+        };
+        DerivedType::new(ty)
     }
 }
 

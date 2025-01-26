@@ -24,7 +24,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::node::ReferenceAsteriskSource;
 use crate::ir::operator::Bool;
-use crate::ir::relation::Type;
+use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Nodes, Plan, Positions as Targets};
 
@@ -140,7 +140,7 @@ impl Nodes {
         parent: Option<NodeId>,
         targets: Option<Vec<usize>>,
         position: usize,
-        col_type: Type,
+        col_type: DerivedType,
         asterisk_source: Option<ReferenceAsteriskSource>,
     ) -> NodeId {
         let r = Reference {
@@ -1485,7 +1485,8 @@ impl Plan {
                 }
             }
             Expression::Reference(Reference { col_type, .. }) => {
-                return Ok(matches!(col_type, Type::Boolean))
+                let col_type_inner = col_type.get();
+                return Ok(col_type_inner.map_or(true, |t| matches!(t, Type::Boolean)));
             }
             _ => {}
         }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::tests::f_sql;
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -65,14 +66,21 @@ fn selection2_latest() {
         AND ("product_units" <> "sys_op" OR "product_units" IS NULL)"#;
 
     let expected = PatternWithParams::new(
-        [
-            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."product_units", "hash_testing"."product_units", "hash_testing"."identification_number") = ("hash_testing"."identification_number", ?, ?)"#,
-            r#"and ("hash_testing"."product_units") <> ("hash_testing"."sys_op")"#,
-            r#"or ("hash_testing"."product_units", "hash_testing"."product_units", "hash_testing"."identification_number") = ("hash_testing"."identification_number", ?, ?)"#,
-            r#"and ("hash_testing"."product_units") is null"#
-        ].join(" "),
-        vec![Value::Unsigned(1), Value::Unsigned(1), Value::Unsigned(1), Value::Unsigned(1)],
+        f_sql(
+            r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
+WHERE ("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number") =
+("hash_testing"."product_units", ?, ?)
+and ("hash_testing"."product_units") <> ("hash_testing"."sys_op")
+or ("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number")
+= ("hash_testing"."product_units", ?, ?)
+and ("hash_testing"."product_units") is null"#,
+        ),
+        vec![
+            Value::Unsigned(1),
+            Value::Unsigned(1),
+            Value::Unsigned(1),
+            Value::Unsigned(1),
+        ],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }

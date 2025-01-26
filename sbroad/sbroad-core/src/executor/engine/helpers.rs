@@ -3,9 +3,12 @@ use ahash::AHashMap;
 use crate::{
     error,
     executor::vtable::vtable_indexed_column_name,
-    ir::node::{
-        expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
-        Update, Values, ValuesRow,
+    ir::{
+        node::{
+            expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
+            Update, Values, ValuesRow,
+        },
+        relation::DerivedType,
     },
     utils::MutexLike,
 };
@@ -45,10 +48,10 @@ use crate::{
         ir::{ExecutionPlan, QueryType},
         protocol::{Binary, EncodedOptionalData, OptionalData, RequiredData},
         result::{ConsumerResult, MetadataColumn, ProducerResult},
-        vtable::{calculate_vtable_unified_types, VTableTuple, VirtualTable},
+        vtable::{calculate_unified_types, VTableTuple, VirtualTable},
     },
     ir::{
-        relation::{Column, ColumnRole, Type},
+        relation::{Column, ColumnRole},
         transformation::redistribution::{MotionKey, MotionPolicy},
         tree::Snapshot,
         value::Value,
@@ -429,7 +432,7 @@ pub enum TupleBuilderCommand {
     TakePosition(usize),
     /// Take a value from the original tuple and cast
     /// it into specified type.
-    TakeAndCastPosition(usize, Type),
+    TakeAndCastPosition(usize, DerivedType),
     /// Set a specified value.
     /// Related only to the tuple we are currently constructing and not to the original tuple.
     SetValue(Value),
@@ -442,7 +445,7 @@ pub enum TupleBuilderCommand {
     /// Update table column to the value in original tuple on specified position and cast it
     /// into specifeid type.
     /// Needed only for `Update`.
-    UpdateColToCastedPos(usize, usize, Type),
+    UpdateColToCastedPos(usize, usize, DerivedType),
 }
 
 /// Vec of commands that helps us transforming `VTableTuple` into a tuple suitable to be passed
@@ -1046,7 +1049,8 @@ pub fn materialize_values(
             .as_virtual_table(columns)?
     };
 
-    let unified_types = calculate_vtable_unified_types(&vtable)?;
+    let vtable_types = vtable.get_types();
+    let unified_types = calculate_unified_types(&vtable_types)?;
     vtable.cast_values(&unified_types)?;
 
     let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);

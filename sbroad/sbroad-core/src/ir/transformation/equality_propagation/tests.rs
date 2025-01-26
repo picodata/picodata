@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::collection;
-use crate::ir::relation::Type;
+use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -86,7 +86,7 @@ fn equality_propagation4() {
             "{} {} {}",
             r#"SELECT "t"."a" FROM "t""#,
             r#"WHERE ("t"."b") = (?) and ("t"."a") = (?) and ("t"."a") = (?)"#,
-            r#"and ("t"."b") = (?) and ("t"."a") = ("t"."b")"#,
+            r#"and ("t"."b") = (?) and ("t"."b") = ("t"."a")"#,
         ),
         vec![
             Value::from(1_u64),
@@ -96,6 +96,10 @@ fn equality_propagation4() {
         ],
     );
 
+    println!(
+        "{}",
+        check_transformation(input, vec![], &derive_equalities).pattern
+    );
     assert_eq!(
         check_transformation(input, vec![], &derive_equalities),
         expected
@@ -113,8 +117,8 @@ fn equality_propagation5() {
             r#"SELECT "t"."a" FROM "t""#,
             r#"WHERE ("t"."d") = (?) and ("t"."c") = (?)"#,
             r#"and ("t"."a") = (?) and ("t"."b") = (?)"#,
-            r#"and ("t"."d") = ("t"."b") and ("t"."b") = ("t"."c")"#,
-            r#"and ("t"."c") = ("t"."a")"#,
+            r#"and ("t"."b") = ("t"."c") and ("t"."c") = ("t"."d")"#,
+            r#"and ("t"."d") = ("t"."a")"#,
         ),
         vec![
             Value::from(1_u64),
@@ -124,6 +128,10 @@ fn equality_propagation5() {
         ],
     );
 
+    println!(
+        "{}",
+        check_transformation(input, vec![], &derive_equalities).pattern
+    );
     assert_eq!(
         check_transformation(input, vec![], &derive_equalities),
         expected
@@ -153,7 +161,7 @@ impl ColumnBuilder {
                 offset: 0,
                 arena_type: crate::ir::node::ArenaType::Arena64,
             }),
-            col_type: Type::Integer,
+            col_type: DerivedType::new(Type::Integer),
             asterisk_source: None,
         })
     }

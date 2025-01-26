@@ -20,15 +20,25 @@ impl Default for ColumnDef {
     fn default() -> Self {
         Self {
             name: SmolStr::default(),
-            data_type: RelationType::default(),
+            // TODO: Fix to Option.
+            data_type: RelationType::Any,
             is_nullable: true,
         }
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ParamDef {
     pub data_type: RelationType,
+}
+
+impl Default for ParamDef {
+    fn default() -> Self {
+        Self {
+            // TODO: Remove later.
+            data_type: RelationType::Any,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

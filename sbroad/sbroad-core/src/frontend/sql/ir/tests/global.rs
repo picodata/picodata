@@ -811,9 +811,9 @@ fn front_sql_global_aggregate5() {
     let expected_explain = String::from(
         r#"projection ("column_1432"::integer -> "col_1", sum(("sum_2896"::decimal))::decimal -> "col_2")
     having ROW(sum(("sum_2296"::decimal::double))::decimal / sum(("count_2296"::decimal::double))::decimal) > ROW(3::unsigned)
-        group by ("column_1432"::integer) output: ("column_1432"::integer -> "column_1432", "sum_2896"::decimal -> "sum_2896", "sum_2296"::decimal -> "sum_2296", "count_2296"::unsigned -> "count_2296")
+        group by ("column_1432"::integer) output: ("column_1432"::integer -> "column_1432", "sum_2296"::decimal -> "sum_2296", "count_2296"::unsigned -> "count_2296", "sum_2896"::decimal -> "sum_2896")
             motion [policy: segment([ref("column_1432")])]
-                projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "column_1432", sum(("global_t"."a"::integer))::decimal -> "sum_2896", sum(("global_t"."b"::integer))::decimal -> "sum_2296", count(("global_t"."b"::integer))::unsigned -> "count_2296")
+                projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "column_1432", sum(("global_t"."b"::integer))::decimal -> "sum_2296", count(("global_t"."b"::integer))::unsigned -> "count_2296", sum(("global_t"."a"::integer))::decimal -> "sum_2896")
                     group by (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer)) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
                         selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
                             scan "global_t"
@@ -826,6 +826,8 @@ execution options:
     sql_motion_row_max = 5000
 "#,
     );
+
+    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
