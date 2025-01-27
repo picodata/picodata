@@ -46,29 +46,29 @@ cluster:
       can_vote: true # (3)!
   default_replication_factor: 1 # (1)!
 instance:
-  instance_dir: . # (8)!
+  instance_dir: . # (10)!
   service_password_file: null # (25)!
-  name: null # (11)!
+  name: null # (19)!
   replicaset_name: null # (24)!
   tier: default # (27)!
-  failure_domain: {} # (9)!
+  failure_domain: {} # (8)!
   peer: # (20)!
   - 127.0.0.1:3301
-  listen: 127.0.0.1:3301 # (13)!
+  listen: 127.0.0.1:3301 # (12)!
   advertise_address: 127.0.0.1:3301 # (6)!
-  http_listen: null # (10)!
+  http_listen: null # (9)!
   admin_socket: ./admin.sock # (5)!
   plugin_dir: null # (23)!
   audit: null # (7)!
   shredding: false # (26)!
   log:
-    level: info # (16)!
-    destination: null # (14)!
-    format: plain # (15)!
+    level: info # (15)!
+    destination: null # (13)!
+    format: plain # (14)!
   memtx:
-    memory: 67108864 # (19)!
-    checkpoint_count: 2 # (17)!
-    checkpoint_interval: 3600.0 # (18)!
+    memory: 67108864 # (18)!
+    checkpoint_count: 2 # (16)!
+    checkpoint_interval: 3600.0 # (17)!
   vinyl:
     memory: 134217728 # (29)!
     cache: 134217728 # (28)!
@@ -82,7 +82,7 @@ instance:
     write_threads: 4 # (37)!
     timeout: 60.0 # (38)!
   iproto:
-    max_concurrent_messages: 768 # (12)!
+    max_concurrent_messages: 768 # (11)!
   pg:
     listen: 127.0.0.1:4327 # (21)!
     ssl: false # (22)!
