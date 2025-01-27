@@ -1,6 +1,8 @@
 //! Background container for long live jobs.
 //! Background container guarantees job liveness across plugin life cycle.
 
+use crate::internal::ffi;
+use crate::plugin::interface::PicoContext;
 use crate::plugin::interface::ServiceId;
 use crate::system::tarantool::fiber;
 use std::collections::HashMap;
@@ -112,8 +114,8 @@ fn cancel_handles(handles: Vec<CancellationTokenHandle>, deadline: Instant) -> u
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ServiceWorkerManager {
+    service_id: ServiceId,
     jobs: Rc<fiber::Mutex<(TaggedJobs, UnTaggedJobs)>>,
-    shutdown_timeout: Rc<fiber::Mutex<Duration>>,
 }
 
 impl ServiceWorkerManager {
@@ -221,9 +223,45 @@ impl ServiceWorkerManager {
     /// jobs gracefully end.
     ///
     /// By default, 5-second timeout are used.
+    #[deprecated = "use `PicoContext::set_jobs_shutdown_timeout` instead"]
     pub fn set_shutdown_timeout(&self, timeout: Duration) {
-        *self.shutdown_timeout.lock() = timeout;
+        let plugin = &self.service_id.plugin;
+        let service = &self.service_id.service;
+        let version = &self.service_id.version;
+        set_jobs_shutdown_timeout(plugin, service, version, timeout)
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// set_background_jobs_shutdown_timeout
+////////////////////////////////////////////////////////////////////////////////
+
+/// In case when jobs were canceled by `picodata` use this function for determine
+/// a shutdown timeout - time duration that `picodata` uses to ensure that all
+/// jobs gracefully end.
+///
+/// By default, 5-second timeout are used.
+///
+/// Consider using [`PicoContext::set_jobs_shutdown_timeout`] instead
+pub fn set_jobs_shutdown_timeout(
+    plugin: &str,
+    service: &str,
+    version: &str,
+    timeout: Duration,
+) {
+    // SAFETY: safe as long as picodata version is compatible
+    let rc = unsafe {
+        ffi::pico_ffi_background_set_jobs_shutdown_timeout(
+            plugin.into(),
+            service.into(),
+            version.into(),
+            timeout.as_secs_f64(),
+        )
+    };
+    debug_assert!(
+        rc == 0,
+        "return code is only for future compatibility at the moment"
+    );
 }
 
 /// This component is using by `picodata` for manage all worker managers.
@@ -246,8 +284,8 @@ impl InternalGlobalWorkerManager {
         match managers.get(&service_id) {
             None => {
                 let mgr = ServiceWorkerManager {
+                    service_id: service_id.clone(),
                     jobs: Rc::new(Default::default()),
-                    shutdown_timeout: Rc::new(fiber::Mutex::new(Duration::from_secs(5))),
                 };
                 managers.insert(service_id, mgr.clone());
                 mgr
@@ -290,14 +328,6 @@ impl InternalGlobalWorkerManager {
     /// Create a new worker manager for given `id` or return existed.
     pub fn get_or_init_manager(&self, id: ServiceId) -> ServiceWorkerManager {
         self.get_or_insert_worker_manager(id)
-    }
-
-    /// Return preferred shutdown timeout for worker manager jobs.
-    pub fn get_shutdown_timeout(&self, service_id: &ServiceId) -> Option<Duration> {
-        self.managers
-            .lock()
-            .get(service_id)
-            .map(|mgr| *mgr.shutdown_timeout.lock())
     }
 
     /// Remove worker manager by `id` with all jobs.

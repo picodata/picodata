@@ -11,12 +11,15 @@ use abi_stable::{sabi_extern_fn, RTuple};
 use picodata_plugin::internal::types;
 use picodata_plugin::internal::types::{DmlInner, OpInner};
 use picodata_plugin::metrics::FfiMetricsHandler;
+use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::sql::types::{SqlValue, SqlValueInner};
 use picodata_plugin::transport::rpc::client::FfiSafeRpcRequestArguments;
 use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::FfiSafeBytes;
+use picodata_plugin::util::FfiSafeStr;
 use sbroad::ir::value::double::Double;
 use sbroad::ir::value::{LuaValue, Tuple, Value};
+use std::time::Duration;
 use std::{mem, slice};
 use tarantool::datetime::Datetime;
 use tarantool::error::IntoBoxError;
@@ -392,6 +395,28 @@ pub extern "C" fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) 
         e.set_last();
         return -1;
     }
+
+    0
+}
+
+/// Set a user-specified timeout value when shutting down all background jobs
+/// in case of service shutdown.
+#[no_mangle]
+pub extern "C" fn pico_ffi_background_set_jobs_shutdown_timeout(
+    plugin: FfiSafeStr,
+    service: FfiSafeStr,
+    version: FfiSafeStr,
+    timeout: f64,
+) -> i32 {
+    // SAFETY: data outlives this function call
+    let plugin = unsafe { plugin.as_str() };
+    let service = unsafe { service.as_str() };
+    let version = unsafe { version.as_str() };
+    let service_id = ServiceId::new(plugin, service, version);
+    crate::plugin::background::set_jobs_shutdown_timeout(
+        service_id,
+        Duration::from_secs_f64(timeout),
+    );
 
     0
 }

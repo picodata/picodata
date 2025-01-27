@@ -1,3 +1,4 @@
+pub mod background;
 mod ffi;
 pub mod lock;
 pub mod manager;
@@ -30,6 +31,7 @@ pub use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -142,6 +144,8 @@ type Result<T, E = PluginError> = std::result::Result<T, E>;
 pub struct ServiceState {
     pub id: ServiceId,
 
+    background_job_shutdown_timeout: Cell<Option<Duration>>,
+
     /// The dynamic state of the service. It is guarded by a fiber mutex,
     /// because we don't want to enter the plugin callbacks from concurrent fibers.
     volatile_state: fiber::Mutex<ServiceStateVolatile>,
@@ -157,6 +161,7 @@ impl ServiceState {
     ) -> Self {
         Self {
             id,
+            background_job_shutdown_timeout: Cell::new(None),
             volatile_state: fiber::Mutex::new(ServiceStateVolatile {
                 inner,
                 config_validator,

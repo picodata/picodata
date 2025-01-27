@@ -8,6 +8,7 @@ use abi_stable::{sabi_trait, RTuple, StableAbi};
 use serde::de::DeserializeOwned;
 use std::error::Error;
 use std::fmt::Display;
+use std::time::Duration;
 use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
@@ -62,17 +63,36 @@ impl PicoContext {
             unsafe { &*(self.global_wm as *const InternalGlobalWorkerManager) };
 
         // TODO: can we eliminate allocation here?
-        let service_id = ServiceId::new(
-            self.plugin_name(),
-            self.service_name(),
-            self.plugin_version(),
-        );
-        global_manager.get_or_init_manager(service_id)
+        global_manager.get_or_init_manager(self.make_service_id())
     }
 
     #[inline(always)]
     pub fn register_metrics_callback(&self, callback: impl Fn() -> String) -> Result<(), BoxError> {
         crate::metrics::register_metrics_handler(self, callback)
+    }
+
+    /// In case when jobs were canceled by `picodata` use this function for determine
+    /// a shutdown timeout - time duration that `picodata` uses to ensure that all
+    /// jobs gracefully end.
+    ///
+    /// By default, 5-second timeout are used.
+    #[inline(always)]
+    pub fn set_jobs_shutdown_timeout(&self, timeout: Duration) {
+        crate::background::set_jobs_shutdown_timeout(
+            self.plugin_name(),
+            self.service_name(),
+            self.plugin_version(),
+            timeout,
+        )
+    }
+
+    #[inline(always)]
+    pub fn make_service_id(&self) -> ServiceId {
+        ServiceId::new(
+            self.plugin_name(),
+            self.service_name(),
+            self.plugin_version(),
+        )
     }
 
     #[inline]

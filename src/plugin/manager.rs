@@ -74,6 +74,24 @@ struct PluginState {
     version: String,
 }
 
+impl PluginState {
+    fn new(version: String) -> Self {
+        Self {
+            version,
+            services: vec![],
+        }
+    }
+
+    fn remove_service(&mut self, service: &str) -> Option<Rc<ServiceState>> {
+        let index = self
+            .services
+            .iter()
+            .position(|svc| svc.id.service == service)?;
+        let service = self.services.swap_remove(index);
+        Some(service)
+    }
+}
+
 pub struct PluginManager {
     /// List of pairs (plugin name -> plugin state).
     ///
@@ -581,6 +599,9 @@ impl PluginManager {
             ));
         };
 
+        let service = Rc::new(new_service);
+        let id = &service.id;
+
         // call `on_start` callback
         let mut ctx = context_from_node(node);
         let cfg = node
@@ -588,13 +609,21 @@ impl PluginManager {
             .plugin_config
             .get_by_entity_as_mp(plugin_ident, &service_defs[0].name)?;
         let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
-        context_set_service_info(&mut ctx, &new_service);
 
-        let id = &new_service.id;
+        // add the service to the storage, because the `on_start` may attempt to
+        // indirectly reference it through there
+        let mut plugins = self.plugins.lock();
+        let plugin = plugins
+            .entry(plugin_def.name)
+            .or_insert_with(|| PluginState::new(plugin_ident.version.to_string()));
+        plugin.services.push(service.clone());
+
         #[rustfmt::skip]
         tlog!(Debug, "calling {id}.on_start");
 
-        let mut guard = new_service.volatile_state.lock();
+        context_set_service_info(&mut ctx, &service);
+
+        let mut guard = service.volatile_state.lock();
         let res = guard.inner.on_start(&ctx, RSlice::from(cfg_raw.as_slice()));
         // Release the lock
         drop(guard);
@@ -605,16 +634,11 @@ impl PluginManager {
             #[rustfmt::skip]
             tlog!(Error, "plugin callback {id}.on_start error: {loc}{error}");
 
+            // Remove the service which we just added, because it failed to enable
+            plugin.remove_service(&id.service);
+
             return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
         }
-
-        // append new service to a plugin
-        let mut plugins = self.plugins.lock();
-        let entry = plugins.entry(plugin_def.name).or_insert(PluginState {
-            services: vec![],
-            version: plugin_ident.version.to_string(),
-        });
-        entry.services.push(Rc::new(new_service));
 
         Ok(())
     }
@@ -632,14 +656,9 @@ impl PluginManager {
             return;
         }
 
-        let Some(svc_idx) = state
-            .services
-            .iter()
-            .position(|svc| svc.id.service == service)
-        else {
+        let Some(service_to_del) = state.remove_service(service) else {
             return;
         };
-        let service_to_del = state.services.swap_remove(svc_idx);
         drop(plugins);
 
         // stop all background jobs and remove metrics first
@@ -866,6 +885,18 @@ impl PluginManager {
             .try_send(event)
             .map_err(|_| PluginError::AsyncEventQueueFull)
     }
+
+    pub fn get_service_state(&self, id: &ServiceId) -> Option<Rc<ServiceState>> {
+        let plugins = self.plugins.lock();
+        let plugin = plugins.get(id.plugin())?;
+        for service in &plugin.services {
+            if &service.id == id {
+                return Some(service.clone());
+            }
+        }
+
+        None
+    }
 }
 
 impl Drop for PluginManager {
@@ -962,23 +993,19 @@ fn stop_background_jobs<'a>(services: impl IntoIterator<Item = &'a Rc<ServiceSta
     const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
     let mut service_to_unregister = vec![];
-    let mut max_shutdown_timeout = DEFAULT_SHUTDOWN_TIMEOUT;
     for service in services {
-        if let Some(timeout) =
-            InternalGlobalWorkerManager::instance().get_shutdown_timeout(&service.id)
-        {
-            if max_shutdown_timeout < timeout {
-                max_shutdown_timeout = timeout;
-            }
+        let mut timeout = DEFAULT_SHUTDOWN_TIMEOUT;
+        if let Some(user_specified) = service.background_job_shutdown_timeout.get() {
+            timeout = user_specified;
         }
-        service_to_unregister.push(&service.id);
+        service_to_unregister.push((&service.id, timeout));
     }
 
     let mut fibers = vec![];
-    for svc_id in service_to_unregister {
+    for (svc_id, timeout) in service_to_unregister {
         fibers.push(fiber::start(move || {
             if let Err(Error::PartialCompleted(expected, completed)) =
-                InternalGlobalWorkerManager::instance().unregister_service(&svc_id, max_shutdown_timeout)
+                InternalGlobalWorkerManager::instance().unregister_service(&svc_id, timeout)
             {
                 tlog!(Warning, "Not all jobs for service {svc_id} was completed on time, expected: {expected}, completed: {completed}");
             }

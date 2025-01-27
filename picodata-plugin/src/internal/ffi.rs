@@ -4,6 +4,7 @@ use crate::sql::types::SqlValue;
 use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
 use crate::transport::rpc::server::FfiRpcHandler;
 use crate::util::FfiSafeBytes;
+use crate::util::FfiSafeStr;
 use abi_stable::derive_macro_reexports::{ROption, RResult};
 use abi_stable::std_types::{RDuration, RVec};
 use abi_stable::RTuple;
@@ -52,4 +53,11 @@ extern "C" {
     ) -> i32;
 
     pub fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32;
+
+    pub fn pico_ffi_background_set_jobs_shutdown_timeout(
+        plugin: FfiSafeStr,
+        service: FfiSafeStr,
+        version: FfiSafeStr,
+        timeout: f64,
+    ) -> i32;
 }
