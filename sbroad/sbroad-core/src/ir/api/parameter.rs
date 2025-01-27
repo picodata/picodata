@@ -69,6 +69,9 @@ fn get_param_value(
 impl<'binder> ParamsBinder<'binder> {
     fn new(plan: &'binder mut Plan, mut values: Vec<Value>) -> Result<Self, SbroadError> {
         let capacity = plan.nodes.len();
+
+        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
+        //       the same nodes twice. See `update_values_row` for more info.
         let mut tree = PostOrder::with_capacity(|node| plan.subtree_iter(node, false), capacity);
         let top_id = plan.get_top()?;
         tree.populate_nodes(top_id);
@@ -406,24 +409,6 @@ impl<'binder> ParamsBinder<'binder> {
     /// Replace parameters in the plan.
     #[allow(clippy::too_many_lines)]
     fn bind_params(&mut self) -> Result<(), SbroadError> {
-        let mut exprs_to_set_ref_type: HashMap<NodeId, DerivedType> = HashMap::new();
-
-        for LevelNode(_, id) in &self.nodes {
-            // Before binding, references that referred to
-            // parameters had scalar type (by default),
-            // but in fact they may refer to different stuff.
-            if let Node::Expression(expr) = self.plan.get_node(*id)? {
-                if let Expression::Reference { .. } = expr {
-                    exprs_to_set_ref_type.insert(*id, expr.recalculate_type(self.plan)?);
-                    continue;
-                }
-            }
-        }
-        for (id, new_type) in exprs_to_set_ref_type {
-            let mut expr = self.plan.get_mut_expression_node(id)?;
-            expr.set_ref_type(new_type);
-        }
-
         // Len of `value_ids` - `param_index` = param index we are currently binding.
         let mut param_index = self.value_ids.len();
 
@@ -591,6 +576,31 @@ impl<'binder> ParamsBinder<'binder> {
         }
         Ok(())
     }
+
+    fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
+        for LevelNode(_, id) in &self.nodes {
+            // Before binding, references that referred to
+            // parameters had an unknown types,
+            // but in fact they should have the types of given parameters.
+            let new_type = if let Node::Expression(ref mut expr @ Expression::Reference(_)) =
+                self.plan.get_node(*id)?
+            {
+                Some(expr.recalculate_ref_type(self.plan)?)
+            } else {
+                None
+            };
+
+            if let Some(new_type) = new_type {
+                let MutNode::Expression(ref mut expr @ MutExpression::Reference { .. }) =
+                    self.plan.get_mut_node(*id)?
+                else {
+                    panic!("Reference expected to set recalculated type")
+                };
+                expr.set_ref_type(new_type);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Plan {
@@ -605,12 +615,6 @@ impl Plan {
 
     /// Bind params related to `Option` clause.
     /// Returns the number of params binded to options.
-    ///
-    /// # Errors
-    /// - User didn't provide parameter value for corresponding option parameter
-    ///
-    /// # Panics
-    /// - Plan is inconsistent state
     pub fn bind_option_params(&mut self, values: &mut Vec<Value>) -> usize {
         // Bind parameters in options to values.
         // Because the Option clause is the last clause in the
@@ -639,9 +643,7 @@ impl Plan {
     }
 
     // Gather all parameter nodes from the tree to a hash set.
-    /// # Panics
     #[must_use]
-    /// # Panics
     pub fn get_param_set(&self) -> AHashSet<NodeId> {
         let param_set: AHashSet<NodeId> = self
             .nodes
@@ -664,13 +666,9 @@ impl Plan {
 
     /// Synchronize values row output with the data tuple after parameter binding.
     ///
-    /// # Errors
-    /// - Node is not values row
-    /// - Output and data tuples have different number of columns
-    /// - Output is not a row of aliases
-    ///
-    /// # Panics
-    /// - Plan is inconsistent state
+    /// ValuesRow fields `data` and `output` are referencing the same nodes. We exclude
+    /// their output from nodes traversing. And in case parameters are met under ValuesRow, we don't update
+    /// references in its output. That why we have to traverse the tree one more time fixing output.
     pub fn update_values_row(&mut self, id: NodeId) -> Result<(), SbroadError> {
         let values_row = self.get_node(id)?;
         let (output_id, data_id) =
@@ -702,10 +700,6 @@ impl Plan {
     /// Substitute parameters to the plan.
     /// The purpose of this function is to find every `Parameter` node and replace it
     /// with `Expression::Constant` (under the row).
-    ///
-    /// # Errors
-    /// - Invalid amount of parameters.
-    /// - Internal errors.
     #[allow(clippy::too_many_lines)]
     pub fn bind_params(&mut self, values: Vec<Value>) -> Result<(), SbroadError> {
         if values.is_empty() {
@@ -744,6 +738,7 @@ impl Plan {
         binder.cover_params_with_rows()?;
         binder.bind_params()?;
         binder.update_value_rows()?;
+        binder.recalculate_ref_types()?;
 
         Ok(())
     }

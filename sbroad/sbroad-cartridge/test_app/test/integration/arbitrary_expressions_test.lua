@@ -321,3 +321,55 @@ arbitrary_projection.test_arbitrary_valid = function()
         {7, 2},
     })
 end
+
+arbitrary_projection.test_values = function()
+    local api = cluster:server("api-1").net_box
+
+    local r, err = api:call("sbroad.execute", { [[VALUES (?, ?, ?), (?, ?, ?)]], { 8, 8, box.NULL, 9, 9, 'hello' } })
+    t.assert_equals(err, nil)
+    t.assert_items_equals(r["metadata"], {
+        {name = "COLUMN_4", type = "integer"},
+        {name = "COLUMN_5", type = "integer"},
+        {name = "COLUMN_6", type = "string"},
+    })
+    t.assert_items_equals(r["rows"], { { 8, 8, box.NULL }, { 9, 9, 'hello' } })
+
+    local r, err = api:call("sbroad.execute", { [[VALUES (?, ?, ?), (?, ?, ?)]], { 8, 8, box.NULL, 9, 9, 'hello' } })
+    t.assert_equals(err, nil)
+    t.assert_items_equals(r["metadata"], {
+        {name = "COLUMN_4", type = "integer"},
+        {name = "COLUMN_5", type = "integer"},
+        {name = "COLUMN_6", type = "string"},
+    })
+    t.assert_items_equals(r["rows"], { { 8, 8, box.NULL }, { 9, 9, 'hello' } })
+
+    r, err = api:call(
+        "sbroad.execute",
+        { [[VALUES (?, ?, ?), (?, ?, ?)]], { 9, 9, 'hello', 8, 8, box.NULL } }
+    )
+    t.assert_equals(err, nil)
+    t.assert_items_equals(r["metadata"], {
+        {name = "COLUMN_4", type = "integer"},
+        {name = "COLUMN_5", type = "integer"},
+        {name = "COLUMN_6", type = "string"},
+    })
+    t.assert_items_equals(r["rows"], { { 9, 9, 'hello' }, { 8, 8, box.NULL } })
+
+    r, err = api:call("sbroad.execute", { [[VALUES (8, 8, null), (9, 9, 'hello')]], {} })
+    t.assert_equals(err, nil)
+    t.assert_items_equals(r["metadata"], {
+        {name = "COLUMN_4", type = "unsigned"},
+        {name = "COLUMN_5", type = "unsigned"},
+        {name = "COLUMN_6", type = "string"},
+    })
+    t.assert_items_equals(r["rows"], { { 8, 8, box.NULL }, { 9, 9, 'hello' } })
+
+    r, err = api:call("sbroad.execute", { [[VALUES (9, 9, 'hello'), (8, 8, null)]], {} })
+    t.assert_equals(err, nil)
+    t.assert_items_equals(r["metadata"], {
+        {name = "COLUMN_4", type = "unsigned"},
+        {name = "COLUMN_5", type = "unsigned"},
+        {name = "COLUMN_6", type = "string"},
+    })
+    t.assert_items_equals(r["rows"], { { 9, 9, 'hello' }, { 8, 8, box.NULL } })
+end

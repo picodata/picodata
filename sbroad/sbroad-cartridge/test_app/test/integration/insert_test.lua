@@ -241,33 +241,6 @@ end
 g.test_insert_7 = function()
     local api = cluster:server("api-1").net_box
 
-    local r, err = api:call("sbroad.execute", { [[INSERT INTO "space_simple_shard_key"
-    ("sysOp", "id", "name") VALUES (8, 8, '')]], {} })
-
-    t.assert_equals(err, nil)
-    t.assert_equals(r, {row_count = 1})
-
-    r, err = api:call("sbroad.execute", { [[SELECT *, "bucket_id" FROM "space_simple_shard_key"]], {} })
-
-    t.assert_equals(err, nil)
-    t.assert_equals(r.metadata, {
-        {name = "id", type = "integer"},
-        {name = "name", type = "string"},
-        {name = "sysOp", type = "integer"},
-        {name = "bucket_id", type = "unsigned"},
-    })
-    t.assert_items_equals(r.rows, {
-        {1, "ok", 1, 3940},
-        {8, "", 8, 12104},
-        {10, box.NULL, 0, 11520}
-    })
-end
-
--- TODO(ars): this test fails. What also fails is a simple query like: values (1, 'hello')...
--- check type derivation for null column in the first row of the VALUES operator
-g.test_insert_8 = function()
-    local api = cluster:server("api-1").net_box
-
     local r, err = api:call("sbroad.execute", { [[VALUES (?, ?, ?), (?, ?, ?)]], { 8, 8, box.NULL, 9, 9, 'hello' } })
     t.assert_equals(err, nil)
     t.assert_items_equals(r["metadata"], {
@@ -308,6 +281,33 @@ g.test_insert_8 = function()
     t.assert_items_equals(r["rows"], { { 9, 9, 'hello' }, { 8, 8, box.NULL } })
 
     r, err = api:call("sbroad.execute", { [[INSERT INTO "space_simple_shard_key"
+    ("sysOp", "id", "name") VALUES (8, 8, '')]], {} })
+
+    t.assert_equals(err, nil)
+    t.assert_equals(r, {row_count = 1})
+
+    r, err = api:call("sbroad.execute", { [[SELECT *, "bucket_id" FROM "space_simple_shard_key"]], {} })
+
+    t.assert_equals(err, nil)
+    t.assert_equals(r.metadata, {
+        {name = "id", type = "integer"},
+        {name = "name", type = "string"},
+        {name = "sysOp", type = "integer"},
+        {name = "bucket_id", type = "unsigned"},
+    })
+    t.assert_items_equals(r.rows, {
+        {1, "ok", 1, 3940},
+        {8, "", 8, 12104},
+        {10, box.NULL, 0, 11520}
+    })
+end
+
+-- TODO(ars): this test fails. What also fails is a simple query like: values (1, 'hello')...
+-- check type derivation for null column in the first row of the VALUES operator
+g.test_insert_8 = function()
+    local api = cluster:server("api-1").net_box
+
+    local r, err = api:call("sbroad.execute", { [[INSERT INTO "space_simple_shard_key"
     ("sysOp", "id", "name") VALUES (?, ?, ?), (?, ?, ?)]], { 8, 8, box.NULL, 9, 9, 'hello' } })
     t.assert_equals(err, nil)
     t.assert_equals(r, {row_count = 2})

@@ -2,6 +2,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::{
     errors::{Entity, SbroadError, TypeError},
+    executor::vtable::calculate_unified_types,
     ir::{
         relation::{DerivedType, Type},
         Plan,
@@ -208,54 +209,55 @@ impl Expression<'_> {
     /// where we can't calculate type of
     /// upper reference, because we don't know what value will be
     /// passed as an argument.
-    /// When `resolve_metadata` is called references are typed with `Scalar`.
+    /// When `resolve_metadata` is called references have unknown type.
     /// When `bind_params` is called references types are refined.
-    ///
-    /// # Errors
-    /// - if the reference is invalid;
-    pub fn recalculate_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
-        if let Expression::Reference(Reference {
+    pub fn recalculate_ref_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
+        let prev_type = self.calculate_type(plan)?;
+        let Expression::Reference(Reference {
             parent,
             targets,
             position,
             ..
         }) = self
-        {
-            let parent_id = parent.ok_or_else(|| {
-                SbroadError::Invalid(
-                    Entity::Expression,
-                    Some("reference expression has no parent".to_smolstr()),
-                )
-            })?;
-            let parent_rel = plan.get_relation_node(parent_id)?;
-            // We are interested only in the first target, because:
-            // - union all relies on the first child type;
-            // - scan has no children (and the space column type can't change anyway);
-            if let Some(Some(target)) = targets.as_ref().map(|targets| targets.first()) {
-                let target_children = parent_rel.children();
-                let target_rel_id = *target_children.get(*target).ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::Expression,
-                        Some(format_smolstr!(
-                            "reference expression has no target relation at position {target}"
-                        )),
-                    )
-                })?;
-                let target_rel = plan.get_relation_node(target_rel_id)?;
-                let columns = plan.get_row_list(target_rel.output())?;
-                let column_id = *columns.get(*position).ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::Expression,
-                        Some(format_smolstr!(
-                            "reference expression has no target column at position {position}"
-                        )),
-                    )
-                })?;
-                let col_expr = plan.get_expression_node(column_id)?;
-                return col_expr.calculate_type(plan);
-            }
+        else {
+            return Ok(prev_type);
+        };
+
+        let Some(targets) = targets else {
+            // No need to recalculate types for Scan node references.
+            return Ok(prev_type);
+        };
+
+        let parent_id = parent.ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Expression,
+                Some("reference expression has no parent".to_smolstr()),
+            )
+        })?;
+        let parent_rel = plan.get_relation_node(parent_id)?;
+        let rel_children: crate::ir::api::children::Children<'_> = parent_rel.children();
+
+        let mut types = Vec::new();
+        for target_index in targets {
+            let target_rel_id = *rel_children.get(*target_index).unwrap_or_else(|| {
+                panic!("reference expression has no target relation at position {target_index}")
+            });
+
+            let target_rel = plan.get_relation_node(target_rel_id)?;
+            let columns = plan.get_row_list(target_rel.output())?;
+            let column_id = *columns.get(*position).unwrap_or_else(|| {
+                panic!("reference expression has no target column at position {position}")
+            });
+            let col_expr = plan.get_expression_node(column_id)?;
+            let ty: DerivedType = col_expr.calculate_type(plan)?;
+            types.push(vec![ty])
         }
-        self.calculate_type(plan)
+
+        let unified_res = calculate_unified_types(&types)?;
+        let (_, unified_type) = unified_res.first().expect(
+            "Vec for reference unified type recalculation should consists of a single column.",
+        );
+        Ok(*unified_type)
     }
 }
 
