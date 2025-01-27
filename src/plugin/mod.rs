@@ -6,22 +6,6 @@ pub mod migration;
 pub mod rpc;
 pub mod topology;
 
-use picodata_plugin::error_code::ErrorCode;
-use picodata_plugin::plugin::interface::ServiceId;
-use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
-use rmpv::Value;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::io;
-use std::rc::Rc;
-use std::time::Duration;
-use tarantool::error::{BoxError, IntoBoxError};
-use tarantool::fiber;
-use tarantool::time::Instant;
-
 use crate::cas::Range;
 use crate::config::PicodataConfig;
 use crate::info::InstanceInfo;
@@ -39,6 +23,22 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
 use crate::{cas, tlog, traft};
+use picodata_plugin::error_code::ErrorCode;
+#[allow(unused_imports)]
+use picodata_plugin::plugin::interface;
+pub use picodata_plugin::plugin::interface::ServiceId;
+use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
+use rmpv::Value;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io;
+use std::rc::Rc;
+use std::time::Duration;
+use tarantool::error::{BoxError, IntoBoxError};
+use tarantool::fiber;
+use tarantool::time::Instant;
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
@@ -138,13 +138,48 @@ pub enum PluginCallbackError {
 
 type Result<T, E = PluginError> = std::result::Result<T, E>;
 
-pub struct Service {
-    inner: ServiceBox,
-    pub name: String,
-    pub version: String,
-    pub plugin_name: String,
+/// State of the loaded service.
+pub struct ServiceState {
     pub id: ServiceId,
+
+    /// The dynamic state of the service. It is guarded by a fiber mutex,
+    /// because we don't want to enter the plugin callbacks from concurrent fibers.
+    volatile_state: fiber::Mutex<ServiceStateVolatile>,
+}
+
+impl ServiceState {
+    #[inline]
+    fn new(
+        id: ServiceId,
+        inner: ServiceBox,
+        config_validator: ValidatorBox,
+        lib: Rc<LibraryWrapper>,
+    ) -> Self {
+        Self {
+            id,
+            volatile_state: fiber::Mutex::new(ServiceStateVolatile {
+                inner,
+                config_validator,
+                _lib: lib,
+            }),
+        }
+    }
+}
+
+/// This struct stores volatile state of the service. For example function
+/// pointers into the dynamically loaded library. It must be accessed only via
+/// a fiber mutex, so that we don't enter into the plugin callbacks from
+/// concurrent fibers.
+pub struct ServiceStateVolatile {
+    /// The implementation of [`interface::Service`] trait which was loaded from
+    /// the dynamic library [`Self::_lib`].
+    inner: ServiceBox,
+
+    /// The implementation of [`interface::Validator`] trait which was loaded from
+    /// the dynamic library [`Self::_lib`].
     config_validator: ValidatorBox,
+
+    /// A handle to the dynamic library from which the service callbacks are loaded.
     _lib: Rc<LibraryWrapper>,
 }
 
@@ -473,8 +508,8 @@ pub fn remove_routes(keys: &[ServiceRouteKey], timeout: Duration) -> traft::Resu
     // assert that instances update only self-owned information
     debug_assert!({
         let node = node::global()?;
-        let info = InstanceInfo::try_get(node, None)?;
-        keys.iter().all(|key| key.instance_name == &info.name)
+        let instance_name = node.topology_cache.my_instance_name();
+        keys.iter().all(|key| key.instance_name == instance_name)
     });
     // use empty ranges cause all instances update only self-owned information
     let ranges = vec![];

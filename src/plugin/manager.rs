@@ -1,12 +1,12 @@
 use crate::config::PicodataConfig;
-use crate::info::InstanceInfo;
 use crate::info::PICODATA_VERSION;
 use crate::plugin::rpc;
 use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
+use crate::plugin::ServiceState;
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
-    PluginError, PluginEvent, PluginIdentifier, Result, Service,
+    PluginError, PluginEvent, PluginIdentifier, Result,
 };
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
 use crate::storage::Clusterwide;
@@ -38,10 +38,10 @@ fn context_from_node(node: &Node) -> PicoContext {
     PicoContext::new(!node.is_readonly())
 }
 
-fn context_set_service_info(context: &mut PicoContext, service: &Service) {
-    context.plugin_name = service.plugin_name.as_str().into();
-    context.service_name = service.name.as_str().into();
-    context.plugin_version = service.version.as_str().into();
+fn context_set_service_info(context: &mut PicoContext, service: &ServiceState) {
+    context.plugin_name = service.id.plugin.as_str().into();
+    context.service_name = service.id.service.as_str().into();
+    context.plugin_version = service.id.version.as_str().into();
 }
 
 fn plugin_compatibility_check_enabled() -> bool {
@@ -64,7 +64,7 @@ fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
         ))
 }
 
-type PluginServices = Vec<Rc<fiber::Mutex<Service>>>;
+type PluginServices = Vec<Rc<ServiceState>>;
 
 /// Represent loaded part of a plugin - services and flag of plugin activation.
 struct PluginState {
@@ -148,7 +148,7 @@ impl PluginManager {
         plugin_def: &PluginDef,
         service_defs: &[ServiceDef],
         dry_run: bool,
-    ) -> Result<Vec<Service>> {
+    ) -> Result<Vec<ServiceState>> {
         let mut loaded_services = Vec::with_capacity(service_defs.len());
 
         let mut service_defs_to_load = service_defs.to_vec();
@@ -206,23 +206,16 @@ impl PluginManager {
                     .make(&service_def.name, &plugin_def.version)
                     .expect("checked at previous step");
                 if let Some(service_inner) = maybe_service {
-                    let plugin_name = plugin_def.name.clone();
-                    let service_name = service_def.name.clone();
-                    let plugin_version = service_def.version.clone();
-                    let service_id = ServiceId::new(&plugin_name, &service_name, &plugin_version);
+                    let plugin_name = &*plugin_def.name;
+                    let service_name = &*service_def.name;
+                    let plugin_version = &*service_def.version;
+                    let service_id = ServiceId::new(plugin_name, service_name, plugin_version);
                     let config_validator = registry
-                        .remove_config_validator(&service_name, &plugin_version)
+                        .remove_config_validator(service_name, plugin_version)
                         .expect("infallible, at least default validator should exists");
 
-                    let service = Service {
-                        _lib: lib.clone(),
-                        name: service_name,
-                        version: plugin_version,
-                        inner: service_inner,
-                        plugin_name,
-                        id: service_id,
-                        config_validator,
-                    };
+                    let service =
+                        ServiceState::new(service_id, service_inner, config_validator, lib.clone());
                     loaded_services.push(service);
                     return false;
                 }
@@ -290,10 +283,7 @@ impl PluginManager {
         self.plugins.lock().insert(
             plugin_def.name.clone(),
             PluginState {
-                services: loaded_services
-                    .into_iter()
-                    .map(|svc| Rc::new(fiber::Mutex::new(svc)))
-                    .collect(),
+                services: loaded_services.into_iter().map(Rc::new).collect(),
                 version: ident.version.to_string(),
             },
         );
@@ -351,7 +341,7 @@ impl PluginManager {
                 .services
                 .iter()
                 .map(|svc| {
-                    ServiceRouteItem::new_healthy(instance_name.clone(), &ident, &svc.lock().name)
+                    ServiceRouteItem::new_healthy(instance_name.clone(), &ident, &svc.id.service)
                 })
                 .collect();
             // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
@@ -368,7 +358,7 @@ impl PluginManager {
         plugin_name: &str,
     ) -> traft::Result<()> {
         let node = node::global().expect("node must be already initialized");
-        let mut ctx = context_from_node(node);
+        let ctx = context_from_node(node);
 
         let plugin = {
             let mut lock = plugins.lock();
@@ -381,9 +371,7 @@ impl PluginManager {
             remove_metrics(std::iter::once(&plugin_state.services));
 
             for service in plugin_state.services.iter() {
-                let mut service = service.lock();
-                context_set_service_info(&mut ctx, &service);
-                stop_service(&mut service, &ctx);
+                stop_service(service, &ctx);
             }
         }
 
@@ -393,7 +381,7 @@ impl PluginManager {
     /// Stop all plugin services.
     fn handle_instance_shutdown(&self) {
         let node = node::global().expect("node must be already initialized");
-        let mut ctx = context_from_node(node);
+        let ctx = context_from_node(node);
 
         let plugins = self.plugins.lock();
         let services_to_stop = plugins.values().map(|state| &state.services);
@@ -404,9 +392,7 @@ impl PluginManager {
 
         for services in services_to_stop {
             for service in services.iter() {
-                let mut service = service.lock();
-                context_set_service_info(&mut ctx, &service);
-                stop_service(&mut service, &ctx);
+                stop_service(service, &ctx);
             }
         }
     }
@@ -430,7 +416,7 @@ impl PluginManager {
                     plugin_state
                         .services
                         .iter()
-                        .find(|svc| svc.lock().name == service)
+                        .find(|svc| svc.id.service == service)
                 })
                 .cloned()
         };
@@ -439,41 +425,35 @@ impl PluginManager {
             // service is not enabled yet, so we don't need to start a callback
             return Ok(());
         };
-        let mut service = service.lock();
+        let id = &service.id;
         context_set_service_info(&mut ctx, &service);
 
         #[rustfmt::skip]
-        tlog!(Debug, "calling {}.{}:{}.on_config_change", service.plugin_name, service.name, service.version);
+        tlog!(Debug, "calling {id}.on_config_change");
 
-        let change_config_result = service.inner.on_config_change(
+        let mut guard = service.volatile_state.lock();
+        let change_config_result = guard.inner.on_config_change(
             &ctx,
             RSlice::from(new_cfg_raw),
             RSlice::from(old_cfg_raw),
         );
+        // Release the lock
+        drop(guard);
 
-        let instance_info = InstanceInfo::try_get(node, None)?;
-        let service_name = service.name.clone();
-        let plugin_name = service.plugin_name.clone();
-        drop(service);
-
+        let instance_name = node.topology_cache.my_instance_name();
         match change_config_result {
             RResult::ROk(_) => {
                 let current_instance_poisoned = storage
                     .service_route_table
-                    .get(&ServiceRouteKey {
-                        instance_name: &instance_info.name,
-                        plugin_name: &plugin_name,
-                        plugin_version: &plugin_identity.version,
-                        service_name: &service_name,
-                    })?
+                    .get(&ServiceRouteKey::new(instance_name, id))?
                     .map(|route| route.poison);
 
                 if current_instance_poisoned == Some(true) {
                     // now the route is healthy
                     let route = ServiceRouteItem::new_healthy(
-                        instance_info.name,
+                        instance_name.into(),
                         plugin_identity,
-                        service_name,
+                        &id.service,
                     );
                     // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
                     replace_routes(&[route], Duration::from_secs(10))?;
@@ -481,13 +461,17 @@ impl PluginManager {
             }
             RErr(_) => {
                 let error = BoxError::last();
+                let loc = DisplayErrorLocation(&error);
                 tlog!(
                     Warning,
-                    "service poisoned, `on_config_change` error: {error}"
+                    "service poisoned, {id}.on_config_change error: {loc}{error}"
                 );
                 // now the route is poison
-                let route =
-                    ServiceRouteItem::new_poison(instance_info.name, plugin_identity, service_name);
+                let route = ServiceRouteItem::new_poison(
+                    instance_name.into(),
+                    plugin_identity,
+                    &id.service,
+                );
                 // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
                 replace_routes(&[route], Duration::from_secs(10))?;
             }
@@ -501,7 +485,7 @@ impl PluginManager {
         let node = node::global()?;
         let mut ctx = context_from_node(node);
         let storage = &node.storage;
-        let instance_info = InstanceInfo::try_get(node, None)?;
+        let instance_name = node.topology_cache.my_instance_name();
         let mut routes_to_replace = vec![];
 
         for (plugin_name, plugin_state) in self.plugins.lock().iter() {
@@ -519,49 +503,45 @@ impl PluginManager {
             let plugin_identity = plugin_def.into_identifier();
 
             for service in plugin_state.services.iter() {
-                let mut service = service.lock();
-                let service_name = service.name.clone();
-                context_set_service_info(&mut ctx, &service);
+                let id = &service.id;
+                context_set_service_info(&mut ctx, service);
 
                 #[rustfmt::skip]
-                tlog!(Debug, "calling {}.{}:{}.on_leader_change", service.plugin_name, service.name, service.version);
+                tlog!(Debug, "calling {id}.on_leader_change");
 
-                let result = service.inner.on_leader_change(&ctx);
+                let mut guard = service.volatile_state.lock();
+                let result = guard.inner.on_leader_change(&ctx);
                 // Release the lock
-                drop(service);
+                drop(guard);
 
                 match result {
                     RResult::ROk(_) => {
                         let current_instance_poisoned = storage
                             .service_route_table
-                            .get(&ServiceRouteKey {
-                                instance_name: &instance_info.name,
-                                plugin_name: &plugin_identity.name,
-                                plugin_version: &plugin_identity.version,
-                                service_name: &service_name,
-                            })?
+                            .get(&ServiceRouteKey::new(instance_name, id))?
                             .map(|route| route.poison);
 
                         if current_instance_poisoned == Some(true) {
                             // now the route is healthy
                             routes_to_replace.push(ServiceRouteItem::new_healthy(
-                                instance_info.name.clone(),
+                                instance_name.into(),
                                 &plugin_identity,
-                                service_name,
+                                &id.service,
                             ));
                         }
                     }
                     RErr(_) => {
                         let error = BoxError::last();
+                        let loc = DisplayErrorLocation(&error);
                         tlog!(
                             Warning,
-                            "service poisoned, `on_leader_change` error: {error}"
+                            "service poisoned, {id}.on_leader_change error: {loc}{error}"
                         );
                         // now the route is poison
                         routes_to_replace.push(ServiceRouteItem::new_poison(
-                            instance_info.name.clone(),
+                            instance_name.into(),
                             &plugin_identity,
-                            service_name,
+                            &id.service,
                         ));
                     }
                 }
@@ -596,7 +576,7 @@ impl PluginManager {
 
         let mut loaded_services = self.try_load_inner(&plugin_def, &service_defs, false)?;
         debug_assert!(loaded_services.len() == 1);
-        let Some(mut new_service) = loaded_services.pop() else {
+        let Some(new_service) = loaded_services.pop() else {
             return Err(PluginError::ServiceNotFound(
                 service.to_string(),
                 plugin_ident.clone(),
@@ -612,14 +592,21 @@ impl PluginManager {
         let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
         context_set_service_info(&mut ctx, &new_service);
 
+        let id = &new_service.id;
         #[rustfmt::skip]
-        tlog!(Debug, "calling {}.{}:{}.on_start", new_service.plugin_name, new_service.name, new_service.version);
+        tlog!(Debug, "calling {id}.on_start");
 
-        if let RErr(_) = new_service
-            .inner
-            .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
-        {
+        let mut guard = new_service.volatile_state.lock();
+        let res = guard.inner.on_start(&ctx, RSlice::from(cfg_raw.as_slice()));
+        // Release the lock
+        drop(guard);
+
+        if res.is_err() {
             let error = BoxError::last();
+            let loc = DisplayErrorLocation(&error);
+            #[rustfmt::skip]
+            tlog!(Error, "plugin callback {id}.on_start error: {loc}{error}");
+
             return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
         }
 
@@ -629,14 +616,14 @@ impl PluginManager {
             services: vec![],
             version: plugin_ident.version.to_string(),
         });
-        entry.services.push(Rc::new(fiber::Mutex::new(new_service)));
+        entry.services.push(Rc::new(new_service));
 
         Ok(())
     }
 
     fn handle_service_disabled(&self, plugin_ident: &PluginIdentifier, service: &str) {
         let node = node::global().expect("node must be already initialized");
-        let mut ctx = context_from_node(node);
+        let ctx = context_from_node(node);
 
         // remove service from runtime
         let mut plugins = self.plugins.lock();
@@ -650,7 +637,7 @@ impl PluginManager {
         let Some(svc_idx) = state
             .services
             .iter()
-            .position(|svc| svc.lock().name == service)
+            .position(|svc| svc.id.service == service)
         else {
             return;
         };
@@ -662,9 +649,7 @@ impl PluginManager {
         remove_metrics(std::iter::once(&vec![service_to_del.clone()]));
 
         // call `on_stop` callback and drop service
-        let mut service = service_to_del.lock();
-        context_set_service_info(&mut ctx, &service);
-        stop_service(&mut service, &ctx);
+        stop_service(&service_to_del, &ctx);
     }
 
     fn get_plugin_services(&self, plugin_ident: &PluginIdentifier) -> Result<PluginServices> {
@@ -687,10 +672,10 @@ impl PluginManager {
         let mut ctx = context_from_node(node);
 
         for service in services.iter() {
-            let mut service = service.lock();
+            let id = &service.id;
             let def = service_defs
                 .iter()
-                .find(|def| def.plugin_name == service.plugin_name && def.name == service.name)
+                .find(|def| def.plugin_name == id.plugin && def.name == id.service)
                 .expect("definition must exists");
 
             let cfg = node
@@ -700,14 +685,20 @@ impl PluginManager {
             let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
 
             #[rustfmt::skip]
-            tlog!(Debug, "calling {}.{}:{}.on_start", service.plugin_name, service.name, service.version);
+            tlog!(Debug, "calling {id}.on_start");
 
-            context_set_service_info(&mut ctx, &service);
-            if let RErr(_) = service
-                .inner
-                .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
-            {
+            context_set_service_info(&mut ctx, service);
+
+            let mut guard = service.volatile_state.lock();
+            let res = guard.inner.on_start(&ctx, RSlice::from(cfg_raw.as_slice()));
+            // Release the lock
+            drop(guard);
+
+            if res.is_err() {
                 let error = BoxError::last();
+                let loc = DisplayErrorLocation(&error);
+                tlog!(Error, "plugin callback {id}.on_start error: {loc}{error}");
+
                 return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
             }
         }
@@ -717,7 +708,7 @@ impl PluginManager {
 
     fn handle_plugin_load_error(&self, plugin: &str) -> Result<()> {
         let node = node::global().expect("must be initialized");
-        let mut ctx = context_from_node(node);
+        let ctx = context_from_node(node);
 
         let maybe_plugin_state = {
             let mut lock = self.plugins.lock();
@@ -730,9 +721,7 @@ impl PluginManager {
             remove_metrics(std::iter::once(&plugin_state.services));
 
             for service in plugin_state.services.iter() {
-                let mut service = service.lock();
-                context_set_service_info(&mut ctx, &service);
-                stop_service(&mut service, &ctx);
+                stop_service(&service, &ctx);
             }
         }
         Ok(())
@@ -748,21 +737,31 @@ impl PluginManager {
         // fast path - service already in memory
         if let Ok(services) = self.get_plugin_services(plugin_ident) {
             for service in services.iter() {
-                let service = service.lock();
-                if service.name == service_name {
-                    #[rustfmt::skip]
-                tlog!(Debug, "calling {}.{}:{}.on_config_validate", service.plugin_name, service.name, service.version);
-                    return if let RErr(_) =
-                        service.config_validator.validate(RSlice::from(new_cfg_raw))
-                    {
-                        let error = BoxError::last();
-                        Err(PluginError::Callback(
-                            PluginCallbackError::InvalidConfiguration(error),
-                        ))
-                    } else {
-                        Ok(())
-                    };
+                if service.id.service != service_name {
+                    continue;
                 }
+                let id = &service.id;
+
+                #[rustfmt::skip]
+                tlog!(Debug, "calling {id}.config.validate");
+
+                let service = service.volatile_state.lock();
+                let res = service.config_validator.validate(RSlice::from(new_cfg_raw));
+
+                if res.is_err() {
+                    let error = BoxError::last();
+                    let loc = DisplayErrorLocation(&error);
+                    tlog!(
+                        Error,
+                        "plugin callback {id}.config.validate error: {loc}{error}"
+                    );
+
+                    return Err(PluginError::Callback(
+                        PluginCallbackError::InvalidConfiguration(error),
+                    ));
+                }
+
+                return Ok(());
             }
         }
 
@@ -883,26 +882,33 @@ impl Drop for PluginManager {
 }
 
 #[track_caller]
-fn stop_service(service: &mut Service, context: &PicoContext) {
+fn stop_service(service: &ServiceState, context: &PicoContext) {
+    let service_id = &service.id;
+
     // SAFETY: It's always safe to clone the context on picodata's side.
     let mut context = unsafe { context.clone() };
     context_set_service_info(&mut context, service);
 
     #[rustfmt::skip]
-    tlog!(Debug, "calling {}.{}:{}.on_stop", service.plugin_name, service.name, service.version);
+    tlog!(Debug, "calling {service_id}.on_stop");
 
-    if service.inner.on_stop(&context).is_err() {
+    let mut guard = service.volatile_state.lock();
+    let res = guard.inner.on_stop(&context);
+    // Release the lock
+    drop(guard);
+
+    if res.is_err() {
         let error = BoxError::last();
-        tlog!(
-            Error,
-            "plugin {} service {} `on_stop` error: {}{error}",
-            service.plugin_name,
-            service.name,
-            DisplayErrorLocation(&error),
-        );
+        let loc = DisplayErrorLocation(&error);
+        #[rustfmt::skip]
+        tlog!(Error, "plugin callback {service_id}.on_stop error: {loc}{error}");
     }
 
-    rpc::server::unregister_all_rpc_handlers(&service.plugin_name, &service.name, &service.version);
+    rpc::server::unregister_all_rpc_handlers(
+        &service_id.plugin,
+        &service_id.service,
+        &service_id.version,
+    );
 }
 
 /// Plugin manager inner loop, using for handle async events (must be run in a separate fiber).
@@ -961,18 +967,14 @@ fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
     let mut max_shutdown_timeout = DEFAULT_SHUTDOWN_TIMEOUT;
     for services in plugins {
         for service in services.iter() {
-            let lock = service.lock();
-            let svc_id = ServiceId::new(&lock.plugin_name, &lock.name, &lock.version);
-            drop(lock);
-
             if let Some(timeout) =
-                InternalGlobalWorkerManager::instance().get_shutdown_timeout(&svc_id)
+                InternalGlobalWorkerManager::instance().get_shutdown_timeout(&service.id)
             {
                 if max_shutdown_timeout < timeout {
                     max_shutdown_timeout = timeout;
                 }
             }
-            service_to_unregister.push(svc_id);
+            service_to_unregister.push(&service.id);
         }
     }
 
@@ -994,11 +996,7 @@ fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
 fn remove_metrics<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
     for services in plugins {
         for service in services.iter() {
-            let lock = service.lock();
-            let svc_id = ServiceId::new(&lock.plugin_name, &lock.name, &lock.version);
-            drop(lock);
-
-            crate::plugin::metrics::unregister_metrics_handler(&svc_id)
+            crate::plugin::metrics::unregister_metrics_handler(&service.id)
         }
     }
 }

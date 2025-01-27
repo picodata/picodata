@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_and_return)]
+#![allow(clippy::needless_borrow)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::needless_late_init)]
 #![allow(clippy::needless_range_loop)]

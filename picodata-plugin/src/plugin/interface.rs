@@ -122,6 +122,21 @@ impl ServiceId {
             version: version.into(),
         }
     }
+
+    #[inline(always)]
+    pub fn plugin(&self) -> &str {
+        &self.plugin
+    }
+
+    #[inline(always)]
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
+    #[inline(always)]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
 }
 
 // --------------------------- user interface ------------------------------------------------------

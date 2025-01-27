@@ -4,6 +4,7 @@ use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::plugin::PluginIdentifier;
+use crate::plugin::ServiceId;
 use crate::storage::{self, RoutineId, ToEntryIter};
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -572,13 +573,9 @@ impl ServiceDef {
 /// Single route definition in _pico_service_route system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceRouteItem {
-    /// Plugin name.
     pub plugin_name: String,
-    /// Plugin version.
     pub plugin_version: String,
-    /// Service name.
     pub service_name: String,
-    /// Instance name.
     pub instance_name: InstanceName,
     /// `true` if route is poisoned, `false` otherwise.
     pub poison: bool,
@@ -656,16 +653,24 @@ impl ServiceRouteItem {
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ServiceRouteKey<'a> {
-    /// Plugin name.
     pub plugin_name: &'a str,
-    /// Plugin version.
     pub plugin_version: &'a str,
-    /// Service name.
     pub service_name: &'a str,
-    /// Instance name.
-    pub instance_name: &'a InstanceName,
+    pub instance_name: &'a str,
 }
 impl<'a> Encode for ServiceRouteKey<'a> {}
+
+impl<'a> ServiceRouteKey<'a> {
+    #[inline(always)]
+    pub fn new(instance_name: &'a str, service: &'a ServiceId) -> Self {
+        Self {
+            plugin_name: &service.plugin,
+            service_name: &service.service,
+            plugin_version: &service.version,
+            instance_name,
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // PluginMigrationRecord
@@ -674,7 +679,6 @@ impl<'a> Encode for ServiceRouteKey<'a> {}
 /// Single record in _pico_plugin_migration system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PluginMigrationRecord {
-    /// Plugin name.
     pub plugin_name: String,
     /// Migration file path.
     pub migration_file: String,
