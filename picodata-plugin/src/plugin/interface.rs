@@ -6,6 +6,7 @@ use abi_stable::pmr::{RErr, RResult, RSlice};
 use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
 use abi_stable::{sabi_trait, RTuple, StableAbi};
 use serde::de::DeserializeOwned;
+use smol_str::SmolStr;
 use std::error::Error;
 use std::fmt::Display;
 use std::time::Duration;
@@ -117,9 +118,9 @@ impl PicoContext {
 /// Unique service identifier.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ServiceId {
-    pub plugin: String,
-    pub service: String,
-    pub version: String,
+    pub plugin: SmolStr,
+    pub service: SmolStr,
+    pub version: SmolStr,
 }
 
 impl std::fmt::Display for ServiceId {
@@ -132,9 +133,9 @@ impl std::fmt::Display for ServiceId {
 impl ServiceId {
     #[inline(always)]
     pub fn new(
-        plugin: impl Into<String>,
-        service: impl Into<String>,
-        version: impl Into<String>,
+        plugin: impl Into<SmolStr>,
+        service: impl Into<SmolStr>,
+        version: impl Into<SmolStr>,
     ) -> Self {
         Self {
             plugin: plugin.into(),

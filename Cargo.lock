@@ -2769,6 +2769,7 @@ dependencies = [
  "rmpv",
  "serde",
  "serde_json",
+ "smol_str",
  "tarantool 6.0.0",
  "tarolog 0.2.1",
  "thiserror",
