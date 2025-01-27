@@ -139,6 +139,7 @@ nav:
   - Плагины:
     - plugins/radix.md
     - plugins/synapse.md
+    - plugins/uroboros.md
     - plugins/gostech_audit_log.md
   - Обеспечение безопасности:
     - security/os.md
