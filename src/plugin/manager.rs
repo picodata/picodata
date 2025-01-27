@@ -367,8 +367,8 @@ impl PluginManager {
 
         if let Some(plugin_state) = plugin {
             // stop all background jobs and remove metrics first
-            stop_background_jobs(std::iter::once(&plugin_state.services));
-            remove_metrics(std::iter::once(&plugin_state.services));
+            stop_background_jobs(&plugin_state.services);
+            remove_metrics(&plugin_state.services);
 
             for service in plugin_state.services.iter() {
                 stop_service(service, &ctx);
@@ -384,16 +384,14 @@ impl PluginManager {
         let ctx = context_from_node(node);
 
         let plugins = self.plugins.lock();
-        let services_to_stop = plugins.values().map(|state| &state.services);
+        let services_to_stop = plugins.values().flat_map(|state| &state.services);
 
         // stop all background jobs and remove metrics first
         stop_background_jobs(services_to_stop.clone());
         remove_metrics(services_to_stop.clone());
 
-        for services in services_to_stop {
-            for service in services.iter() {
-                stop_service(service, &ctx);
-            }
+        for service in services_to_stop {
+            stop_service(service, &ctx);
         }
     }
 
@@ -645,8 +643,8 @@ impl PluginManager {
         drop(plugins);
 
         // stop all background jobs and remove metrics first
-        stop_background_jobs(std::iter::once(&vec![service_to_del.clone()]));
-        remove_metrics(std::iter::once(&vec![service_to_del.clone()]));
+        stop_background_jobs(&[service_to_del.clone()]);
+        remove_metrics(&[service_to_del.clone()]);
 
         // call `on_stop` callback and drop service
         stop_service(&service_to_del, &ctx);
@@ -717,8 +715,8 @@ impl PluginManager {
 
         if let Some(plugin_state) = maybe_plugin_state {
             // stop all background jobs and remove metrics first
-            stop_background_jobs(std::iter::once(&plugin_state.services));
-            remove_metrics(std::iter::once(&plugin_state.services));
+            stop_background_jobs(&plugin_state.services);
+            remove_metrics(&plugin_state.services);
 
             for service in plugin_state.services.iter() {
                 stop_service(&service, &ctx);
@@ -960,22 +958,20 @@ impl Loop {
     }
 }
 
-fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
+fn stop_background_jobs<'a>(services: impl IntoIterator<Item = &'a Rc<ServiceState>>) {
     const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
     let mut service_to_unregister = vec![];
     let mut max_shutdown_timeout = DEFAULT_SHUTDOWN_TIMEOUT;
-    for services in plugins {
-        for service in services.iter() {
-            if let Some(timeout) =
-                InternalGlobalWorkerManager::instance().get_shutdown_timeout(&service.id)
-            {
-                if max_shutdown_timeout < timeout {
-                    max_shutdown_timeout = timeout;
-                }
+    for service in services {
+        if let Some(timeout) =
+            InternalGlobalWorkerManager::instance().get_shutdown_timeout(&service.id)
+        {
+            if max_shutdown_timeout < timeout {
+                max_shutdown_timeout = timeout;
             }
-            service_to_unregister.push(&service.id);
         }
+        service_to_unregister.push(&service.id);
     }
 
     let mut fibers = vec![];
@@ -993,10 +989,8 @@ fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
     }
 }
 
-fn remove_metrics<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
-    for services in plugins {
-        for service in services.iter() {
-            crate::plugin::metrics::unregister_metrics_handler(&service.id)
-        }
+fn remove_metrics<'a>(plugins: impl IntoIterator<Item = &'a Rc<ServiceState>>) {
+    for service in plugins {
+        crate::plugin::metrics::unregister_metrics_handler(&service.id)
     }
 }
