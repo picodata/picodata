@@ -563,7 +563,7 @@ class Instance:
     cwd: str
     color_code: str
 
-    plugin_dir: str | None = None
+    share_dir: str | None = None
     cluster_name: str | None = None
     _instance_dir: str | None = None
     peers: list[str] = field(default_factory=list)
@@ -644,7 +644,7 @@ class Instance:
             *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
             *([f"--instance-dir={self._instance_dir}"] if self._instance_dir else []),
-            *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
+            *([f"--share-dir={self.share_dir}"] if self.share_dir else []),
             *([f"--listen={self.listen}"] if self.listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
             *([f"-c instance.pg.ssl={self.pg_ssl}"] if self.pg_ssl else []),
@@ -1686,7 +1686,7 @@ class Cluster:
     instances: list[Instance] = field(default_factory=list)
     config_path: str | None = None
     service_password_file: str | None = None
-    plugin_dir: str | None = None
+    share_dir: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}", n={len(self.instances)})'
@@ -1805,7 +1805,7 @@ class Cluster:
             name=name,
             replicaset_name=replicaset_name,
             _instance_dir=f"{self.instance_dir}/i{i}",
-            plugin_dir=self.plugin_dir,
+            share_dir=self.share_dir,
             host=self.base_host,
             port=port,
             pg_host=self.base_host,
@@ -2307,12 +2307,12 @@ def binary_path() -> str:
 
 
 def copy_plugin_library(
-    binary_path: Path | str, plugin_dir: Path | str, file_name: str = "libtestplug"
+    binary_path: Path | str, share_dir: Path | str, file_name: str = "libtestplug"
 ):
     ext = dynamic_library_extension()
     lib_name = f"{file_name}.{ext}"
     source = Path(binary_path).parent / lib_name
-    destination = Path(plugin_dir) / lib_name
+    destination = Path(share_dir) / lib_name
     if os.path.exists(destination) and filecmp.cmp(source, destination):
         return
     eprint(f"Copying '{source}' to '{destination}'")
@@ -2378,12 +2378,12 @@ def cluster(
     """Return a `Cluster` object capable of deploying test clusters."""
     # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
     # see how it's done in def binary_path()
-    plugin_dir = os.getcwd() + "/test/testplug"
+    share_dir = os.getcwd() + "/test/testplug"
     cluster = Cluster(
         binary_path=binary_path_fixt,
         id=next(cluster_names),
         instance_dir=tmpdir,
-        plugin_dir=plugin_dir,
+        share_dir=share_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
     )

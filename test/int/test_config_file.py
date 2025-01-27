@@ -90,6 +90,7 @@ instance:
             name=dict(value="my-instance", source="config_file"),
             replicaset_name=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
+            share_dir=dict(value="/usr/share/picodata/", source="default"),
             audit=dict(
                 value=f"{instance_dir}/audit.log", source="commandline_or_environment"
             ),
@@ -423,7 +424,9 @@ def test_picodata_default_config(cluster: Cluster):
     default_config_3 = data.decode()
     assert default_config.strip() == default_config_3.strip()
 
+    #
     # Check that running with the generated config file works
+    #
     cluster.set_config_file(yaml=default_config)
     i = cluster.add_instance(wait_online=False)
 
@@ -487,7 +490,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.listen':
         'instance.advertise_address':
         'instance.admin_socket':
-        'instance.plugin_dir':
+        'instance.share_dir':
         'instance.audit':
         'instance.shredding': false
         'instance.log.level': "verbose"

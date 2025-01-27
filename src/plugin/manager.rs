@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::info::InstanceInfo;
 use crate::info::PICODATA_VERSION;
 use crate::plugin::rpc;
@@ -5,7 +6,7 @@ use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
-    PluginError, PluginEvent, PluginIdentifier, Result, Service, PLUGIN_DIR,
+    PluginError, PluginEvent, PluginIdentifier, Result, Service,
 };
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
 use crate::storage::Clusterwide;
@@ -113,8 +114,8 @@ impl PluginManager {
     const AVAILABLE_EXT: &'static [&'static str] = &["so", "dylib"];
 
     fn load_plugin_dir(&self, ident: &PluginIdentifier) -> Result<ReadDir> {
-        let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
-        let plugin_dir = plugin_dir.join(&ident.name);
+        let share_dir = PicodataConfig::get().instance.share_dir();
+        let plugin_dir = share_dir.join(&ident.name);
         let plugin_dir = plugin_dir.join(&ident.version);
         Ok(fs::read_dir(plugin_dir)?)
     }

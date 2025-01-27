@@ -1,8 +1,9 @@
 use crate::cas;
 use crate::cbus::ENDPOINT_NAME;
+use crate::config::PicodataConfig;
+use crate::plugin::PluginIdentifier;
 use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
-use crate::plugin::{PluginIdentifier, PLUGIN_DIR};
 use crate::schema::ADMIN_ID;
 use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::traft::node;
@@ -201,8 +202,8 @@ pub struct MigrationInfo {
 impl MigrationInfo {
     /// Initializes the struct, doesn't read the file yet.
     pub fn new_unparsed(plugin_ident: &PluginIdentifier, filename: String) -> Self {
-        let plugin_dir = PLUGIN_DIR
-            .with(|dir| dir.lock().clone())
+        let share_dir = PicodataConfig::get().instance.share_dir();
+        let plugin_dir = share_dir
             .join(&plugin_ident.name)
             .join(&plugin_ident.version);
         let fullpath = plugin_dir.join(&filename);

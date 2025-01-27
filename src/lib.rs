@@ -12,7 +12,6 @@
 #![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
@@ -947,10 +946,6 @@ fn postjoin(
             .expect("found zero raft_id during audit log init");
         let gen = raft_storage.gen().expect("failed to get gen for audit log");
         audit::init(config, raft_id, gen);
-    }
-
-    if let Some(ref plugin_dir) = config.instance.plugin_dir {
-        plugin::set_plugin_dir(Path::new(plugin_dir));
     }
 
     if let Some(addr) = &config.instance.http_listen {

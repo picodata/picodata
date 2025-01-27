@@ -189,8 +189,12 @@ pub struct Run {
     /// By default the "admin.sock" in the instance directory is used.
     pub admin_sock: Option<PathBuf>,
 
-    #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR")]
-    /// Path to directory with plugin files
+    #[clap(long, value_name = "PATH", env = "PICODATA_SHARE_DIR")]
+    /// Path to directory with plugin installations.
+    pub share_dir: Option<PathBuf>,
+
+    #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR", hide = true)]
+    /// Deprecated. Use --share-dir instead.
     pub plugin_dir: Option<PathBuf>,
 
     #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]

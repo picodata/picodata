@@ -23,6 +23,10 @@ with the `YY.MINOR.MICRO` scheme.
 - New parameters for Vinyl configuration: `bloom_fpr`, `max_tuple_size`, `page_size`, `range_size`,
   `run_count_per_size`, `run_size_ratio`, `read_threads`, `write_threads` and `timeout`.
 
+- `plugin_dir` parameter is renamed to `share_dir` (--plugin-dir -> --share-dir,
+  PICODATA_PLUGIN_DIR -> PICODATA_SHARE_DIR, config: instance.plugin_dir ->
+  instance.share_dir)
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

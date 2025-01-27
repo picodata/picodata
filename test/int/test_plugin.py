@@ -400,8 +400,8 @@ def init_dummy_plugin(
     library_name: str = "libtestplug",
 ) -> Path:
     """Does the following:
-    - Setup --plugin-dir option for the cluster
-    - Create plugin directory <cluster-plugin-dir>/<plugin>/<version>
+    - Setup --share-dir option for the cluster
+    - Create plugin directory <share-dir>/<plugin>/<version>
     - Create manifest.yaml in that directory with provided info
     - Copy the <library_name>.so into that directory
 
@@ -410,9 +410,9 @@ def init_dummy_plugin(
     Does *NOT* create migration files, you have to do it yourself.
 
     """
-    cluster.plugin_dir = cluster.instance_dir
+    cluster.share_dir = cluster.instance_dir
     # Initialize the plugin directory
-    plugin_dir = Path(cluster.plugin_dir) / plugin / version
+    plugin_dir = Path(cluster.share_dir) / plugin / version
     os.makedirs(plugin_dir)
 
     # Copy plugin library
@@ -438,7 +438,7 @@ def init_dummy_plugin(
 
 def test_invalid_manifest_plugin(cluster: Cluster):
     # This must be set before any instances start up
-    cluster.plugin_dir = cluster.instance_dir
+    cluster.share_dir = cluster.instance_dir
 
     i1, i2 = cluster.deploy(instance_count=2)
 
@@ -1088,8 +1088,8 @@ def test_migration_separate_command(cluster: Cluster):
 
     # check migration file checksums are calculated correctly
     rows = i1.sql(""" SELECT "migration_file", "hash" FROM "_pico_plugin_migration" """)
-    assert i1.plugin_dir
-    plugin_dir = os.path.join(i1.plugin_dir, _PLUGIN_WITH_MIGRATION, "0.1.0")
+    assert i1.share_dir
+    plugin_dir = os.path.join(i1.share_dir, _PLUGIN_WITH_MIGRATION, "0.1.0")
     for filename, checksum in rows:
         fullpath = os.path.join(plugin_dir, filename)
         with open(fullpath, "rb") as f:

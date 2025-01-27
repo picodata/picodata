@@ -80,10 +80,6 @@ fn validate_args(args: &args::Run) -> Result<(), Error> {
 static mut GLOBAL_CONFIG: Option<Box<PicodataConfig>> = None;
 
 impl PicodataConfig {
-    // TODO:
-    // fn default() -> Self
-    // which returns an instance of config with all the default parameters.
-    // Also add a command to generate a default config from command line.
     pub fn init(args: args::Run) -> Result<&'static Self, Error> {
         validate_args(&args)?;
 
@@ -148,6 +144,8 @@ Using configuration file '{args_path}'.");
         };
 
         config.set_from_args_and_env(args, &mut parameter_sources)?;
+
+        config.handle_deprecated_parameters(&mut parameter_sources)?;
 
         config.set_defaults_explicitly(&parameter_sources);
 
@@ -317,7 +315,12 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.audit = Some(audit_destination);
         }
 
-        config_from_args.instance.plugin_dir = args.plugin_dir;
+        config_from_args.instance.share_dir = args.share_dir;
+
+        #[allow(deprecated)]
+        {
+            config_from_args.instance.plugin_dir = args.plugin_dir;
+        }
 
         if let Some(admin_socket) = args.admin_sock {
             config_from_args.instance.admin_socket = Some(admin_socket);
@@ -363,7 +366,7 @@ Using configuration file '{args_path}'.");
         Ok(())
     }
 
-    fn set_defaults_explicitly(&mut self, parameter_sources: &HashMap<String, ParameterSource>) {
+    fn set_defaults_explicitly(&mut self, parameter_sources: &ParameterSourcesMap) {
         for path in &leaf_field_paths::<Self>() {
             if !matches!(
                 parameter_sources.get(path),
@@ -484,6 +487,88 @@ Using configuration file '{args_path}'.");
             let msg = String::from_utf8_lossy(&buffer);
             return Err(Error::InvalidConfiguration(msg.into()));
         }
+
+        Ok(())
+    }
+
+    /// This function handles the usage of deprecated parameters:
+    ///
+    /// - Logs a warning message if deprecated parameter is used instead of replacement
+    ///
+    /// - Returns error in case deprecated parameter and it's replacement are
+    ///   specified at the same time
+    ///
+    /// - Moves the value of the deprecated parameter to it's replacement field
+    ///
+    /// Only stuff related to deprecated parameters goes here.
+    ///
+    /// Must be called before [`Self::set_defaults_explicitly`]!.
+    #[allow(deprecated)]
+    fn handle_deprecated_parameters(
+        &mut self,
+        parameter_sources: &mut ParameterSourcesMap,
+    ) -> Result<(), Error> {
+        // In the future when renaming configuration file parameters just
+        // add a pair of names into this array.
+        let renamed_parameters = &[
+            // (deprecated, use_instead)
+            (
+                config_parameter_path!(instance.plugin_dir),
+                config_parameter_path!(instance.share_dir),
+            ),
+        ];
+
+        // Handle renamed parameters
+        for &(deprecated, use_instead) in renamed_parameters {
+            let value = self
+                .get_field_as_rmpv(deprecated)
+                .expect("this should be tested thoroughly");
+
+            if !value_is_specified(deprecated, &value) {
+                continue;
+            }
+
+            let deprecated_source = parameter_sources.get(deprecated);
+            let deprecated_source =
+                *deprecated_source.expect("the parameter was specified, so source must be set");
+
+            let conflicting_value = self
+                .get_field_as_rmpv(use_instead)
+                .expect("this should be tested thoroughly");
+
+            if value_is_specified(use_instead, &conflicting_value) {
+                let conflicting_source = parameter_sources.get(use_instead);
+                let conflicting_source = *conflicting_source
+                    .expect("the parameter was specified, so source must be set");
+                #[rustfmt::skip]
+                tlog!(Info, "{deprecated} is set to {value} via {deprecated_source}");
+                #[rustfmt::skip]
+                tlog!(Info, "{use_instead} is set to {conflicting_value} via {conflicting_source}");
+
+                #[rustfmt::skip]
+                return Err(Error::invalid_configuration(format!("{deprecated} is deprecated, use {use_instead} instead (cannot use both at the same time)")));
+            }
+
+            #[rustfmt::skip]
+            tlog!(Warning, "{deprecated} is deprecated, use {use_instead} instead");
+
+            // Copy the value from the deprecated parameter to the one that should be used instead
+            self.set_field_from_rmpv(use_instead, &value)
+                .expect("these fields have the same type");
+
+            // Copy the parameter source info as well, so that other parts of the system work correclty.
+            // For example set_defaults_explicitly relies on this.
+            parameter_sources.insert(use_instead.into(), deprecated_source);
+        }
+
+        // TODO: we will likely have more complicated cases of deprecation, not
+        // just renamings of parameters. For example some parameter may be
+        // deprecated because the feature is replaced with a different feature,
+        // for example we don't want users to specify the instance_name directly
+        // or something like this. In this case we would just need to log a
+        // warning if the parameter is specified. Or even more complex cases can
+        // happen like one parameter is replaced with 2 or even more. These
+        // kinds of cases are not covered by the above code unfortunately.
 
         Ok(())
     }
@@ -1021,9 +1106,11 @@ pub struct InstanceConfig {
     #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
 
-    // TODO:
-    // - sepparate config file for common parameters
+    #[deprecated = "use share_dir instead"]
     pub plugin_dir: Option<PathBuf>,
+
+    #[introspection(config_default = "/usr/share/picodata/")]
+    pub share_dir: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain this option,
     // because it's deprecated.
@@ -1140,6 +1227,13 @@ impl InstanceConfig {
     #[inline]
     pub fn shredding(&self) -> bool {
         self.shredding
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
+    pub fn share_dir(&self) -> &Path {
+        self.share_dir
+            .as_deref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }

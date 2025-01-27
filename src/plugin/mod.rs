@@ -6,7 +6,6 @@ pub mod migration;
 pub mod rpc;
 pub mod topology;
 
-use once_cell::unsync;
 use picodata_plugin::error_code::ErrorCode;
 use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
@@ -17,7 +16,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, IntoBoxError};
@@ -25,6 +23,7 @@ use tarantool::fiber;
 use tarantool::time::Instant;
 
 use crate::cas::Range;
+use crate::config::PicodataConfig;
 use crate::info::InstanceInfo;
 use crate::info::PICODATA_VERSION;
 use crate::plugin::lock::PicoPropertyLock;
@@ -40,20 +39,6 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
 use crate::{cas, tlog, traft};
-
-const DEFAULT_PLUGIN_DIR: &'static str = "/usr/share/picodata/";
-
-thread_local! {
-    // TODO this will be removed and replaced with the config (in future)
-    static PLUGIN_DIR: unsync::Lazy<fiber::Mutex<PathBuf>> =
-        unsync::Lazy::new(|| fiber::Mutex::new(PathBuf::from(DEFAULT_PLUGIN_DIR)));
-}
-
-/// Set the new plugin directory.
-/// Search of manifest and shared objects will take place in this directory.
-pub fn set_plugin_dir(path: &Path) {
-    PLUGIN_DIR.with(|dir| *dir.lock() = path.to_path_buf());
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
@@ -270,9 +255,10 @@ impl Manifest {
         let plugin_name = ident.name.as_str();
         let version = ident.version.as_str();
 
-        // TODO move this into config (in future)
-        let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
-        let manifest_path = plugin_dir.join(format!("{plugin_name}/{version}/manifest.yaml"));
+        let share_dir = PicodataConfig::get().instance.share_dir();
+        let plugin_dir = share_dir.join(plugin_name);
+        let plugin_dir = plugin_dir.join(version);
+        let manifest_path = plugin_dir.join("manifest.yaml");
         // TODO non-blocking needed?
         let file = File::open(&manifest_path).map_err(|e| {
             PluginError::ManifestNotFound(manifest_path.to_string_lossy().to_string(), e)
