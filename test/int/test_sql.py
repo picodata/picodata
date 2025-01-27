@@ -1901,6 +1901,33 @@ def test_check_format(cluster: Cluster):
     assert dml["row_count"] == 2
 
 
+def test_values(cluster: Cluster):
+    # Initially test scenarios (presented below) were described in the issue:
+    # https://git.picodata.io/core/picodata/-/issues/1278.
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+
+    ddl = i1.sql(""" create table t (a int primary key, b text) """)
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(""" insert into t values (1, (values(?))), (2, 'hi') """, None)
+    assert dml["row_count"] == 2
+
+    data = i1.sql("""select * from t """)
+    assert data == [[1, None], [2, "hi"]]
+
+    ddl = i1.sql(
+        """ create table gt (a unsigned primary key, b integer) distributed globally """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(""" insert into gt values (0, -9), (1, 9) """)
+    assert dml["row_count"] == 2
+
+    data = i1.sql("""select * from gt """)
+    assert data == [[0, -9], [1, 9]]
+
+
 def test_insert(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, _ = cluster.instances
