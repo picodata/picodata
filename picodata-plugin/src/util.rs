@@ -1,3 +1,4 @@
+use crate::error_code::ErrorCode;
 use abi_stable::StableAbi;
 use std::ptr::NonNull;
 use tarantool::error::BoxError;
@@ -379,6 +380,14 @@ fn as_non_null_ptr<T>(data: &[T]) -> NonNull<T> {
     // Also I have to cast to `* mut` here even though we're not going to
     // mutate it, because there's no constructor that takes `* const`....
     unsafe { NonNull::new_unchecked(pointer as *mut _) }
+}
+
+// TODO: this should be in tarantool module
+pub fn tarantool_error_to_box_error(e: tarantool::error::Error) -> BoxError {
+    match e {
+        tarantool::error::Error::Tarantool(e) => e,
+        other => BoxError::new(ErrorCode::Other, other.to_string()),
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

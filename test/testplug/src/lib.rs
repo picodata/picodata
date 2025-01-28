@@ -422,8 +422,32 @@ impl Service for Service3 {
                     save_persisted_data("background_job_stopped");
                 }
 
-                let wm = ctx.worker_manager();
-                wm.register_job(my_job).unwrap();
+                ctx.register_job(my_job).unwrap();
+
+                ctx.set_jobs_shutdown_timeout(Duration::from_secs(3));
+
+                ctx.cancel_tagged_jobs("no-such-tag", Duration::from_secs(10))
+                    .unwrap();
+
+                let service = ctx.make_service_id();
+                rpc::RouteBuilder::from(ctx)
+                    .path("/test_cancel_tagged_basic")
+                    .register(move |_, _| {
+                        background_tests::test_cancel_tagged_basic(&service);
+
+                        Ok(rpc::Response::empty())
+                    })
+                    .unwrap();
+
+                let service = ctx.make_service_id();
+                rpc::RouteBuilder::from(ctx)
+                    .path("/test_cancel_tagged_timeout")
+                    .register(move |_, _| {
+                        background_tests::test_cancel_tagged_timeout(&service);
+
+                        Ok(rpc::Response::empty())
+                    })
+                    .unwrap();
             }
             "no_test" => {}
             "metrics" => {
@@ -458,6 +482,71 @@ impl Service for Service3 {
         }
 
         Ok(())
+    }
+}
+
+mod background_tests {
+    use picodata_plugin::background;
+    use picodata_plugin::plugin::interface::ServiceId;
+    use picodata_plugin::system::tarantool::fiber;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    static _1_MS: Duration = Duration::from_millis(1);
+    static _10_MS: Duration = Duration::from_millis(10);
+    static _100_MS: Duration = Duration::from_millis(100);
+    static _200_MS: Duration = Duration::from_millis(200);
+
+    fn make_job(
+        counter: &'static AtomicU64,
+        iteration_duration: Duration,
+    ) -> impl Fn(background::CancellationToken) {
+        move |cancel_token: background::CancellationToken| {
+            while cancel_token.wait_timeout(_1_MS).is_err() {
+                counter.fetch_add(1, Ordering::SeqCst);
+                fiber::sleep(iteration_duration);
+            }
+            counter.store(0, Ordering::SeqCst);
+        }
+    }
+
+    pub fn test_cancel_tagged_basic(service: &ServiceId) {
+        static COUNTER_1: AtomicU64 = AtomicU64::new(0);
+        static COUNTER_2: AtomicU64 = AtomicU64::new(0);
+
+        background::register_tagged_job(service, make_job(&COUNTER_1, _1_MS), "j1").unwrap();
+        background::register_tagged_job(service, make_job(&COUNTER_1, _1_MS), "j1").unwrap();
+        background::register_tagged_job(service, make_job(&COUNTER_2, _1_MS), "j2").unwrap();
+
+        fiber::sleep(_10_MS);
+        assert!(COUNTER_1.load(Ordering::SeqCst) > 0);
+        assert!(COUNTER_2.load(Ordering::SeqCst) > 0);
+
+        background::cancel_jobs_by_tag(service, "j1", _10_MS).unwrap();
+
+        assert_eq!(COUNTER_1.load(Ordering::SeqCst), 0);
+        assert_ne!(COUNTER_2.load(Ordering::SeqCst), 0);
+
+        background::cancel_jobs_by_tag(service, "j2", _10_MS).unwrap();
+
+        assert_eq!(COUNTER_1.load(Ordering::SeqCst), 0);
+        assert_eq!(COUNTER_2.load(Ordering::SeqCst), 0);
+    }
+
+    pub fn test_cancel_tagged_timeout(service: &ServiceId) {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let job_tag = "my tag";
+        // this job cannot stop at 10ms interval
+        background::register_tagged_job(service, make_job(&COUNTER, _100_MS), job_tag).unwrap();
+        // but this job can
+        background::register_tagged_job(service, make_job(&COUNTER, _1_MS), job_tag).unwrap();
+
+        fiber::sleep(_10_MS);
+
+        let result = background::cancel_jobs_by_tag(service, job_tag, _10_MS).unwrap();
+        assert_eq!(result.n_total, 2);
+        assert_eq!(result.n_timeouts, 1);
     }
 }
 

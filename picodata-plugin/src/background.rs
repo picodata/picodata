@@ -2,18 +2,157 @@
 //! Background container guarantees job liveness across plugin life cycle.
 
 use crate::internal::ffi;
+#[allow(unused_imports)]
 use crate::plugin::interface::PicoContext;
 use crate::plugin::interface::ServiceId;
-use crate::system::tarantool::fiber;
-use std::collections::HashMap;
-use std::mem;
-use std::rc::Rc;
-use std::string::ToString;
-use std::sync::OnceLock;
+use crate::util::tarantool_error_to_box_error;
+use crate::util::DisplayErrorLocation;
+use std::cell::Cell;
 use std::time::Duration;
+use tarantool::error::BoxError;
+use tarantool::error::TarantoolErrorCode;
+use tarantool::fiber;
+use tarantool::fiber::FiberId;
 use tarantool::fiber::{Channel, RecvError};
-use tarantool::time::Instant;
 use tarantool::util::IntoClones;
+
+/// Same as [`PicoContext::register_job`].
+#[track_caller]
+pub fn register_job<F>(service_id: &ServiceId, job: F) -> Result<(), BoxError>
+where
+    F: FnOnce(CancellationToken) + 'static,
+{
+    let loc = std::panic::Location::caller();
+    let tag = format!("{}:{}", loc.file(), loc.line());
+
+    register_tagged_job(service_id, job, &tag)
+}
+
+/// Same as [`PicoContext::register_tagged_job`].
+#[allow(deprecated)]
+pub fn register_tagged_job<F>(service_id: &ServiceId, job: F, tag: &str) -> Result<(), BoxError>
+where
+    F: FnOnce(CancellationToken) + 'static,
+{
+    let (token, handle) = CancellationToken::new();
+    let finish_channel = handle.finish_channel.clone();
+
+    let fiber_id = fiber::Builder::new()
+        .name(tag)
+        .func(move || {
+            job(token);
+            // send shutdown signal to the waiter side
+            _ = finish_channel.send(());
+        })
+        .start_non_joinable()
+        .map_err(tarantool_error_to_box_error)?;
+
+    let plugin = &service_id.plugin;
+    let service = &service_id.service;
+    let version = &service_id.version;
+
+    let token = FfiBackgroundJobCancellationToken::new(
+        fiber_id,
+        handle.cancel_channel,
+        handle.finish_channel,
+    );
+    register_background_job_cancellation_token(plugin, service, version, tag, token)?;
+
+    Ok(())
+}
+
+fn register_background_job_cancellation_token(
+    plugin: &str,
+    service: &str,
+    version: &str,
+    job_tag: &str,
+    token: FfiBackgroundJobCancellationToken,
+) -> Result<(), BoxError> {
+    // SAFETY: safe as long as picodata version is compatible
+    let rc = unsafe {
+        ffi::pico_ffi_background_register_job_cancellation_token(
+            plugin.into(),
+            service.into(),
+            version.into(),
+            job_tag.into(),
+            token,
+        )
+    };
+
+    if rc != 0 {
+        return Err(BoxError::last());
+    }
+
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// cancel_jobs_by_tag
+////////////////////////////////////////////////////////////////////////////////
+
+/// Outcome of the request to cancel a set of background jobs.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct JobCancellationResult {
+    /// Attempted to cancel this many background jobs.
+    pub n_total: u32,
+    /// This many jobs didn't finish in time.
+    pub n_timeouts: u32,
+}
+
+impl JobCancellationResult {
+    #[inline(always)]
+    pub fn new(n_total: u32, n_timeouts: u32) -> Self {
+        Self {
+            n_total,
+            n_timeouts,
+        }
+    }
+}
+
+/// Same as [`PicoContext::cancel_tagged_jobs`].
+#[inline(always)]
+pub fn cancel_jobs_by_tag(
+    service_id: &ServiceId,
+    job_tag: &str,
+    timeout: Duration,
+) -> Result<JobCancellationResult, BoxError> {
+    cancel_background_jobs_by_tag_inner(
+        &service_id.plugin,
+        &service_id.service,
+        &service_id.version,
+        job_tag,
+        timeout,
+    )
+}
+
+/// Same as [`PicoContext::cancel_tagged_jobs`].
+pub fn cancel_background_jobs_by_tag_inner(
+    plugin: &str,
+    service: &str,
+    version: &str,
+    job_tag: &str,
+    timeout: Duration,
+) -> Result<JobCancellationResult, BoxError> {
+    let mut result = JobCancellationResult::default();
+    // SAFETY: safe as long as picodata version is compatible
+    let rc = unsafe {
+        ffi::pico_ffi_background_cancel_jobs_by_tag(
+            plugin.into(),
+            service.into(),
+            version.into(),
+            job_tag.into(),
+            timeout.as_secs_f64(),
+            &mut result,
+        )
+    };
+
+    if rc != 0 {
+        return Err(BoxError::last());
+    }
+
+    Ok(result)
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -22,6 +161,10 @@ pub enum Error {
     #[error("timeout")]
     CancellationTimeout,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CancellationToken
+////////////////////////////////////////////////////////////////////////////////
 
 /// A token which can be used to signal a cancellation request to the job.
 #[non_exhaustive]
@@ -34,6 +177,7 @@ impl CancellationToken {
     /// Create a cancellation token and cancellation token handle pair.
     /// User should use cancellation token for graceful shutdown their job.
     /// Cancellation token handle used by `picodata` for sending cancel signal to a user job.
+    #[allow(deprecated)]
     pub fn new() -> (CancellationToken, CancellationTokenHandle) {
         let (cancel_tx, cancel_rx) = Channel::new(1).into_clones();
         (
@@ -65,11 +209,13 @@ impl CancellationToken {
 }
 
 #[derive(Debug)]
+#[deprecated = "don't use this"]
 pub struct CancellationTokenHandle {
     cancel_channel: Channel<()>,
     finish_channel: Channel<()>,
 }
 
+#[allow(deprecated)]
 impl CancellationTokenHandle {
     /// Cancel related job and return a backpressure channel.
     /// Caller should wait a message in the backpressure channel
@@ -84,30 +230,9 @@ impl CancellationTokenHandle {
     }
 }
 
-type Tag = String;
-type TaggedJobs = HashMap<Tag, Vec<CancellationTokenHandle>>;
-type UnTaggedJobs = Vec<CancellationTokenHandle>;
-
-fn cancel_handles(handles: Vec<CancellationTokenHandle>, deadline: Instant) -> usize {
-    let mut shutdown_channels = Vec::with_capacity(handles.len());
-
-    for handle in handles {
-        let shutdown_channel = handle.cancel();
-        shutdown_channels.push(shutdown_channel);
-    }
-
-    let mut completed_counter = 0;
-    for sd_chan in shutdown_channels {
-        // recalculate timeout at every iteration
-        let timeout = deadline.duration_since(Instant::now_fiber());
-
-        if sd_chan.recv_timeout(timeout).is_ok() {
-            completed_counter += 1;
-        }
-    }
-
-    completed_counter
-}
+////////////////////////////////////////////////////////////////////////////////
+// Java-style API
+////////////////////////////////////////////////////////////////////////////////
 
 /// [`ServiceWorkerManager`] allows plugin services
 /// to create long-live jobs and manage their life cycle.
@@ -115,31 +240,12 @@ fn cancel_handles(handles: Vec<CancellationTokenHandle>, deadline: Instant) -> u
 #[non_exhaustive]
 pub struct ServiceWorkerManager {
     service_id: ServiceId,
-    jobs: Rc<fiber::Mutex<(TaggedJobs, UnTaggedJobs)>>,
 }
 
 impl ServiceWorkerManager {
-    fn register_job_inner<F>(&self, job: F, maybe_tag: Option<&str>) -> tarantool::Result<()>
-    where
-        F: FnOnce(CancellationToken) + 'static,
-    {
-        let (token, handle) = CancellationToken::new();
-        let finish_chan = handle.finish_channel.clone();
-        let mut jobs = self.jobs.lock();
-        if let Some(tag) = maybe_tag {
-            jobs.0.entry(tag.to_string()).or_default().push(handle);
-        } else {
-            jobs.1.push(handle);
-        }
-
-        fiber::Builder::new()
-            .func(move || {
-                job(token);
-                // send shutdown signal to the waiter side
-                _ = finish_chan.send(());
-            })
-            .start_non_joinable()?;
-        Ok(())
+    #[inline(always)]
+    pub(crate) fn new(service_id: ServiceId) -> Self {
+        Self { service_id }
     }
 
     /// Add a new job to the execution.
@@ -156,11 +262,10 @@ impl ServiceWorkerManager {
     ///
     /// ```no_run
     /// use std::time::Duration;
-    /// use picodata_plugin::background::{CancellationToken, InternalGlobalWorkerManager, ServiceWorkerManager};
-    /// use picodata_plugin::plugin::interface::ServiceId;
+    /// use picodata_plugin::background::CancellationToken;
     ///
-    /// # let worker_manager = InternalGlobalWorkerManager::instance()
-    /// #    .get_or_init_manager(ServiceId::new("any_plugin", "any_service", "0.1.0"));
+    /// # use picodata_plugin::background::ServiceWorkerManager;
+    /// # fn test(worker_manager: ServiceWorkerManager) {
     ///
     /// // this job will print "hello" every second,
     /// // and print "bye" after being canceled
@@ -171,12 +276,18 @@ impl ServiceWorkerManager {
     ///     println!("job cancelled, bye!")
     /// }
     /// worker_manager.register_job(hello_printer).unwrap();
+    ///
+    /// # }
     /// ```
+    #[track_caller]
+    #[inline(always)]
     pub fn register_job<F>(&self, job: F) -> tarantool::Result<()>
     where
         F: FnOnce(CancellationToken) + 'static,
     {
-        self.register_job_inner(job, None)
+        register_job(&self.service_id, job)?;
+
+        Ok(())
     }
 
     /// Same as [`ServiceWorkerManager::register_job`] but caller may provide a special tag.
@@ -186,11 +297,14 @@ impl ServiceWorkerManager {
     ///
     /// * `job`: callback that will be executed in separated fiber
     /// * `tag`: tag, that will be related to a job, single tag may be related to the multiple jobs
+    #[inline(always)]
     pub fn register_tagged_job<F>(&self, job: F, tag: &str) -> tarantool::Result<()>
     where
         F: FnOnce(CancellationToken) + 'static,
     {
-        self.register_job_inner(job, Some(tag))
+        register_tagged_job(&self.service_id, job, tag)?;
+
+        Ok(())
     }
 
     /// Cancel all jobs related to the given tag.
@@ -203,16 +317,19 @@ impl ServiceWorkerManager {
     /// * `tag`: determine what jobs should be cancelled
     /// * `timeout`: shutdown timeout
     pub fn cancel_tagged(&self, tag: &str, timeout: Duration) -> Result<(), Error> {
-        let deadline = fiber::clock().saturating_add(timeout);
+        let res = cancel_jobs_by_tag(&self.service_id, tag, timeout);
+        let res = match res {
+            Ok(res) => res,
+            Err(e) => {
+                let loc = DisplayErrorLocation(&e);
+                tarantool::say_error!("unexpected error: {loc}{e}");
+                return Ok(());
+            }
+        };
 
-        let mut jobs = self.jobs.lock();
-        let handles = jobs.0.remove(tag).unwrap_or_default();
-
-        let job_count = handles.len();
-
-        let completed_counter = cancel_handles(handles, deadline);
-        if job_count != completed_counter {
-            return Err(Error::PartialCompleted(job_count, completed_counter));
+        if res.n_timeouts != 0 {
+            let n_completed = res.n_total - res.n_timeouts;
+            return Err(Error::PartialCompleted(res.n_total as _, n_completed as _));
         }
 
         Ok(())
@@ -236,19 +353,14 @@ impl ServiceWorkerManager {
 // set_background_jobs_shutdown_timeout
 ////////////////////////////////////////////////////////////////////////////////
 
-/// In case when jobs were canceled by `picodata` use this function for determine
+/// In case when jobs were canceled by `picodata` use this function to determine
 /// a shutdown timeout - time duration that `picodata` uses to ensure that all
 /// jobs gracefully end.
 ///
 /// By default, 5-second timeout are used.
 ///
 /// Consider using [`PicoContext::set_jobs_shutdown_timeout`] instead
-pub fn set_jobs_shutdown_timeout(
-    plugin: &str,
-    service: &str,
-    version: &str,
-    timeout: Duration,
-) {
+pub fn set_jobs_shutdown_timeout(plugin: &str, service: &str, version: &str, timeout: Duration) {
     // SAFETY: safe as long as picodata version is compatible
     let rc = unsafe {
         ffi::pico_ffi_background_set_jobs_shutdown_timeout(
@@ -264,175 +376,183 @@ pub fn set_jobs_shutdown_timeout(
     );
 }
 
-/// This component is using by `picodata` for manage all worker managers.
-///
-/// *For internal usage, don't use it in your code*.
-#[derive(Default)]
-pub struct InternalGlobalWorkerManager {
-    managers: fiber::Mutex<HashMap<ServiceId, ServiceWorkerManager>>,
+////////////////////////////////////////////////////////////////////////////////
+// CancellationCallbackState
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct CancellationCallbackState {
+    cancel_channel: Channel<()>,
+    finish_channel: Channel<()>,
+    status: Cell<CancellationCallbackStatus>,
 }
 
-// SAFETY: `GlobalWorkerManager` must be used only in the tx thread
-unsafe impl Send for InternalGlobalWorkerManager {}
-unsafe impl Sync for InternalGlobalWorkerManager {}
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum CancellationCallbackStatus {
+    #[default]
+    Initial = 0,
+    JobCancelled = 1,
+    JobFinished = 2,
+}
 
-static IGWM: OnceLock<InternalGlobalWorkerManager> = OnceLock::new();
-
-impl InternalGlobalWorkerManager {
-    fn get_or_insert_worker_manager(&self, service_id: ServiceId) -> ServiceWorkerManager {
-        let mut managers = self.managers.lock();
-        match managers.get(&service_id) {
-            None => {
-                let mgr = ServiceWorkerManager {
-                    service_id: service_id.clone(),
-                    jobs: Rc::new(Default::default()),
-                };
-                managers.insert(service_id, mgr.clone());
-                mgr
-            }
-            Some(mgr) => mgr.clone(),
+impl CancellationCallbackState {
+    fn new(cancel_channel: Channel<()>, finish_channel: Channel<()>) -> Self {
+        Self {
+            cancel_channel,
+            finish_channel,
+            status: Cell::new(CancellationCallbackStatus::Initial),
         }
     }
 
-    fn remove_plugin_worker_manager(
-        &self,
-        service_id: &ServiceId,
-        timeout: Duration,
-    ) -> Result<(), Error> {
-        let deadline = fiber::clock().saturating_add(timeout);
+    fn cancellation_callback(&self, action: u64, timeout: Duration) -> Result<(), BoxError> {
+        use CancellationCallbackStatus::*;
+        let next_status = action;
 
-        let wm = self.managers.lock().remove(service_id);
+        if next_status == JobCancelled as u64 {
+            debug_assert_eq!(self.status.get(), Initial);
+            _ = self.cancel_channel.send(());
 
-        // drain all jobs manually cause user may have shared references to worker manager
-        if let Some(wm) = wm {
-            let mut jobs = wm.jobs.lock();
-            let (tagged_jobs, untagged_jobs) = mem::take(&mut *jobs);
+            self.status.set(JobCancelled);
+        } else if next_status == JobFinished as u64 {
+            debug_assert_eq!(self.status.get(), JobCancelled);
+            self.finish_channel.recv_timeout(timeout).map_err(|e| {
+                BoxError::new(TarantoolErrorCode::Timeout, stupid_recv_error_to_string(e))
+            })?;
 
-            let mut job_counter = 0;
-            let mut completed_job_counter = 0;
-
-            for (_, handles) in tagged_jobs {
-                job_counter += handles.len();
-                completed_job_counter += cancel_handles(handles, deadline);
-            }
-
-            job_counter += untagged_jobs.len();
-            completed_job_counter += cancel_handles(untagged_jobs, deadline);
-            if job_counter != completed_job_counter {
-                return Err(Error::PartialCompleted(job_counter, completed_job_counter));
-            }
+            self.status.set(JobFinished);
+        } else {
+            return Err(BoxError::new(
+                TarantoolErrorCode::IllegalParams,
+                format!("unexpected action: {action}"),
+            ));
         }
+
         Ok(())
     }
+}
 
-    /// Create a new worker manager for given `id` or return existed.
-    pub fn get_or_init_manager(&self, id: ServiceId) -> ServiceWorkerManager {
-        self.get_or_insert_worker_manager(id)
-    }
-
-    /// Remove worker manager by `id` with all jobs.
-    /// This function return after all related jobs will be gracefully shutdown or
-    /// after `timeout` duration (with [`Error::PartialCompleted`] error.
-    pub fn unregister_service(&self, id: &ServiceId, timeout: Duration) -> Result<(), Error> {
-        self.remove_plugin_worker_manager(id, timeout)
-    }
-
-    /// Return reference to global internal worker manager.
-    pub fn instance() -> &'static Self {
-        let igwm_ref = IGWM.get_or_init(InternalGlobalWorkerManager::default);
-        igwm_ref
+#[inline]
+fn stupid_recv_error_to_string(e: fiber::channel::RecvError) -> &'static str {
+    match e {
+        fiber::channel::RecvError::Timeout => "timeout",
+        fiber::channel::RecvError::Disconnected => "disconnected",
     }
 }
 
-#[cfg(feature = "internal_test")]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::Duration;
-    use tarantool::fiber;
+////////////////////////////////////////////////////////////////////////////////
+// ffi wrappers
+////////////////////////////////////////////////////////////////////////////////
 
-    static _1_MS: Duration = Duration::from_millis(1);
-    static _10_MS: Duration = Duration::from_millis(10);
-    static _100_MS: Duration = Duration::from_millis(100);
-    static _200_MS: Duration = Duration::from_millis(200);
+/// **For internal use**.
+#[repr(C)]
+pub struct FfiBackgroundJobCancellationToken {
+    /// This is just a way to do arbitrarily complex things across ABI boundary
+    /// without introducing a large amount of FFI-safe wrappers. This will
+    /// always be [`CancellationCallbackState::cancellation_callback`].
+    callback: extern "C-unwind" fn(data: *const Self, action: u64, timeout: f64) -> i32,
+    drop: extern "C-unwind" fn(*mut Self),
 
-    fn make_job(
-        counter: &'static AtomicU64,
-        iteration_duration: Duration,
-    ) -> impl Fn(CancellationToken) {
-        move |cancel_token: CancellationToken| {
-            while cancel_token.wait_timeout(_1_MS).is_err() {
-                counter.fetch_add(1, Ordering::SeqCst);
-                fiber::sleep(iteration_duration);
+    /// The pointer to the closure object.
+    closure_pointer: *mut (),
+
+    /// This is the background job fiber which will be cancelled by this token.
+    pub fiber_id: FiberId,
+}
+
+impl Drop for FfiBackgroundJobCancellationToken {
+    #[inline(always)]
+    fn drop(&mut self) {
+        (self.drop)(self)
+    }
+}
+
+impl FfiBackgroundJobCancellationToken {
+    fn new(fiber_id: FiberId, cancel_channel: Channel<()>, finish_channel: Channel<()>) -> Self {
+        let callback_state = CancellationCallbackState::new(cancel_channel, finish_channel);
+        let callback = move |action, timeout| {
+            let res = callback_state.cancellation_callback(action, timeout);
+            if let Err(e) = res {
+                e.set_last();
+                return -1;
             }
-            counter.store(0, Ordering::SeqCst);
+
+            0
+        };
+
+        Self::new_inner(fiber_id, callback)
+    }
+
+    /// This function is needed, because we need this `F` type parameter so that
+    /// we can specialize the `callback` and `drop` with it inside this function.
+    /// If rust supported something like `type F = type_of(callback);` we
+    /// wouldn't need this additional function and would just write this code in
+    /// the [`Self::new`] above.
+    // FIXME: just define an explicit extern "C" fn for cancellation_callback?
+    fn new_inner<F>(fiber_id: FiberId, f: F) -> Self
+    where
+        F: FnMut(u64, Duration) -> i32,
+    {
+        let closure = Box::new(f);
+        let closure_pointer: *mut F = Box::into_raw(closure);
+
+        Self {
+            callback: Self::trampoline::<F>,
+            drop: Self::drop_handler::<F>,
+            closure_pointer: closure_pointer.cast(),
+
+            fiber_id,
         }
     }
 
-    #[::tarantool::test]
-    fn test_work_manager_works() {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
+    /// An ABI-safe wrapper which calls the rust closure stored in `handler`.
+    ///
+    /// The result of the closure is copied onto the fiber's region allocation
+    /// and the pointer to that allocation is written into `output`.
+    extern "C-unwind" fn trampoline<F>(data: *const Self, action: u64, timeout: f64) -> i32
+    where
+        F: FnMut(u64, Duration) -> i32,
+    {
+        // This is safe. To verify see `register_rpc_handler` above.
+        let closure_pointer: *mut F = unsafe { (*data).closure_pointer.cast::<F>() };
+        let closure = unsafe { &mut *closure_pointer };
 
-        let gwm = InternalGlobalWorkerManager::instance();
-        let svc_id = ServiceId::new("plugin_x", "svc_x", "0.1.0");
-        let wm = gwm.get_or_init_manager(svc_id.clone());
-
-        wm.register_job(make_job(&COUNTER, _1_MS)).unwrap();
-        wm.register_job(make_job(&COUNTER, _1_MS)).unwrap();
-
-        fiber::sleep(_10_MS);
-        assert!(COUNTER.load(Ordering::SeqCst) > 0);
-
-        gwm.unregister_service(&svc_id, _100_MS).unwrap();
-        assert_eq!(COUNTER.load(Ordering::SeqCst), 0);
+        closure(action, Duration::from_secs_f64(timeout))
     }
 
-    #[::tarantool::test]
-    fn test_work_manager_tagged_jobs_works() {
-        static COUNTER_1: AtomicU64 = AtomicU64::new(0);
-        static COUNTER_2: AtomicU64 = AtomicU64::new(0);
+    extern "C-unwind" fn drop_handler<F>(handler: *mut Self) {
+        unsafe {
+            let closure_pointer: *mut F = (*handler).closure_pointer.cast::<F>();
+            let closure = Box::from_raw(closure_pointer);
+            drop(closure);
 
-        let gwm = InternalGlobalWorkerManager::instance();
-        let svc_id = ServiceId::new("plugin_x", "svc_x", "0.1.0");
-        let wm = gwm.get_or_init_manager(svc_id.clone());
-
-        wm.register_tagged_job(make_job(&COUNTER_1, _1_MS), "j1")
-            .unwrap();
-        wm.register_tagged_job(make_job(&COUNTER_1, _1_MS), "j1")
-            .unwrap();
-        wm.register_tagged_job(make_job(&COUNTER_2, _1_MS), "j2")
-            .unwrap();
-
-        fiber::sleep(_10_MS);
-        assert!(COUNTER_1.load(Ordering::SeqCst) > 0);
-        assert!(COUNTER_2.load(Ordering::SeqCst) > 0);
-
-        wm.cancel_tagged("j1", _10_MS).unwrap();
-
-        assert_eq!(COUNTER_1.load(Ordering::SeqCst), 0);
-        assert_ne!(COUNTER_2.load(Ordering::SeqCst), 0);
-
-        gwm.unregister_service(&svc_id, _10_MS).unwrap();
-
-        assert_eq!(COUNTER_1.load(Ordering::SeqCst), 0);
-        assert_eq!(COUNTER_2.load(Ordering::SeqCst), 0);
+            if cfg!(debug_assertions) {
+                // Overwrite the pointer with garbage so that we fail loudly is case of a bug
+                (*handler).closure_pointer = 0xcccccccccccccccc_u64 as _;
+            }
+        }
     }
 
-    #[::tarantool::test]
-    fn test_work_manager_graceful_shutdown() {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
+    /// The error is returned via [`BoxError::set_last`].
+    #[inline(always)]
+    pub fn cancel_job(&self) {
+        let rc = (self.callback)(self, CancellationCallbackStatus::JobCancelled as _, 0.0);
+        debug_assert!(rc == 0);
+    }
 
-        let gwm = InternalGlobalWorkerManager::instance();
-        let svc_id = ServiceId::new("plugin_x", "svc_x", "0.1.0");
-        let wm = gwm.get_or_init_manager(svc_id.clone());
-        // this job cannot stop at 10ms interval
-        wm.register_job(make_job(&COUNTER, _100_MS)).unwrap();
-        // but this job can
-        wm.register_job(make_job(&COUNTER, _1_MS)).unwrap();
-        fiber::sleep(_10_MS);
-        let result = gwm.unregister_service(&svc_id, _10_MS);
-        assert!(
-            matches!(result, Err(Error::PartialCompleted(all, completed)) if all == 2 && completed == 1)
+    /// The error is returned via [`BoxError::set_last`].
+    #[inline(always)]
+    pub fn wait_job_finished(&self, timeout: Duration) -> Result<(), ()> {
+        let rc = (self.callback)(
+            self,
+            CancellationCallbackStatus::JobFinished as _,
+            timeout.as_secs_f64(),
         );
+        if rc == -1 {
+            // Actual error is passed through tarantool. Can't return BoxError
+            // here, because tarantool-module version may be different in picodata.
+            return Err(());
+        }
+
+        Ok(())
     }
 }

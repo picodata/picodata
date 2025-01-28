@@ -1,7 +1,6 @@
 use crate::tlog;
 use crate::traft::node;
 use picodata_plugin::metrics::FfiMetricsHandler;
-use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::util::RegionGuard;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;

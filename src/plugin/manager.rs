@@ -1,5 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::info::PICODATA_VERSION;
+use crate::plugin::background;
 use crate::plugin::rpc;
 use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
@@ -18,13 +19,14 @@ use crate::version::Version;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use abi_stable::std_types::RStr;
-use picodata_plugin::background::{Error, InternalGlobalWorkerManager};
+use picodata_plugin::background::FfiBackgroundJobCancellationToken;
 use picodata_plugin::error_code::ErrorCode::PluginError as PluginErrorCode;
 use picodata_plugin::metrics::FfiMetricsHandler;
 use picodata_plugin::plugin::interface::FnServiceRegistrar;
 use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picodata_plugin::util::DisplayErrorLocation;
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::ReadDir;
@@ -94,6 +96,8 @@ impl PluginState {
 }
 
 type MetricsHandlerMap = HashMap<ServiceId, Rc<FfiMetricsHandler>>;
+type BackgroundJobCancellationTokenMap =
+    HashMap<ServiceId, Vec<(SmolStr, FfiBackgroundJobCancellationToken)>>;
 
 pub struct PluginManager {
     /// List of pairs (plugin name -> plugin state).
@@ -110,6 +114,8 @@ pub struct PluginManager {
 
     /// Plugin-defined metrics callbacks.
     pub(crate) metrics_handlers: fiber::Mutex<MetricsHandlerMap>,
+
+    pub(crate) background_job_cancellation_tokens: fiber::Mutex<BackgroundJobCancellationTokenMap>,
 
     /// Fiber for handle async events, those handlers need it for avoided yield's.
     /// Id is only stored for debugging.
@@ -139,6 +145,7 @@ impl PluginManager {
             pool,
             events_queue: Some(rx),
             metrics_handlers: Default::default(),
+            background_job_cancellation_tokens: Default::default(),
             async_event_fiber_id,
         }
     }
@@ -412,7 +419,7 @@ impl PluginManager {
 
         if let Some(plugin_state) = plugin {
             // stop all background jobs and remove metrics first
-            stop_background_jobs(&plugin_state.services);
+            self.stop_background_jobs(&plugin_state.services);
             self.remove_metrics_handlers(&plugin_state.services);
 
             for service in plugin_state.services.iter() {
@@ -432,7 +439,7 @@ impl PluginManager {
         let services_to_stop = plugins.values().flat_map(|state| &state.services);
 
         // stop all background jobs and remove metrics first
-        stop_background_jobs(services_to_stop.clone());
+        self.stop_background_jobs(services_to_stop.clone());
         self.remove_metrics_handlers(services_to_stop.clone());
 
         for service in services_to_stop {
@@ -689,7 +696,7 @@ impl PluginManager {
         drop(plugins);
 
         // stop all background jobs and remove metrics first
-        stop_background_jobs(&[service_to_del.clone()]);
+        self.stop_background_jobs(&[service_to_del.clone()]);
         self.remove_metrics_handlers(&[service_to_del.clone()]);
 
         // call `on_stop` callback and drop service
@@ -859,6 +866,37 @@ impl PluginManager {
         }
     }
 
+    fn stop_background_jobs<'a>(&self, services: impl IntoIterator<Item = &'a Rc<ServiceState>>) {
+        let mut guard = self.background_job_cancellation_tokens.lock();
+
+        let mut service_jobs = vec![];
+        for service in services {
+            let Some(jobs) = guard.remove(&service.id) else {
+                continue;
+            };
+
+            service_jobs.push((service, jobs));
+        }
+
+        // Release the lock.
+        drop(guard);
+
+        for (service, jobs) in &service_jobs {
+            background::cancel_jobs(service, jobs);
+        }
+
+        const DEFAULT_BACKGROUND_JOB_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
+        let start = fiber::clock();
+        for (service, jobs) in &service_jobs {
+            let timeout = service.background_job_shutdown_timeout.get();
+            let timeout = timeout.unwrap_or(DEFAULT_BACKGROUND_JOB_SHUTDOWN_TIMEOUT);
+            let deadline = start.saturating_add(timeout);
+
+            background::wait_jobs_finished(service, jobs, deadline);
+        }
+    }
+
     pub fn get_service_state(&self, id: &ServiceId) -> Option<Rc<ServiceState>> {
         let plugins = self.plugins.lock();
         let plugin = plugins.get(id.plugin())?;
@@ -917,32 +955,5 @@ fn plugin_manager_async_event_loop(event_chan: fiber::channel::Channel<PluginAsy
         if let Err(e) = node.plugin_manager.handle_async_event(event) {
             tlog!(Error, "plugin async event handler error: {e}");
         }
-    }
-}
-
-fn stop_background_jobs<'a>(services: impl IntoIterator<Item = &'a Rc<ServiceState>>) {
-    const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-
-    let mut service_to_unregister = vec![];
-    for service in services {
-        let mut timeout = DEFAULT_SHUTDOWN_TIMEOUT;
-        if let Some(user_specified) = service.background_job_shutdown_timeout.get() {
-            timeout = user_specified;
-        }
-        service_to_unregister.push((&service.id, timeout));
-    }
-
-    let mut fibers = vec![];
-    for (svc_id, timeout) in service_to_unregister {
-        fibers.push(fiber::start(move || {
-            if let Err(Error::PartialCompleted(expected, completed)) =
-                InternalGlobalWorkerManager::instance().unregister_service(&svc_id, timeout)
-            {
-                tlog!(Warning, "Not all jobs for service {svc_id} was completed on time, expected: {expected}, completed: {completed}");
-            }
-        }));
-    }
-    for fiber in fibers {
-        fiber.join();
     }
 }

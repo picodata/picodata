@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::error_code::ErrorCode;
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
@@ -8,6 +10,8 @@ use crate::{cas, sql, traft};
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
 use abi_stable::std_types::{RDuration, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
+use picodata_plugin::background::FfiBackgroundJobCancellationToken;
+use picodata_plugin::background::JobCancellationResult;
 use picodata_plugin::internal::types;
 use picodata_plugin::internal::types::{DmlInner, OpInner};
 use picodata_plugin::metrics::FfiMetricsHandler;
@@ -392,6 +396,77 @@ extern "C" fn pico_ffi_rpc_request(
 #[no_mangle]
 pub extern "C" fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32 {
     if let Err(e) = crate::plugin::metrics::register_metrics_handler(handler) {
+        e.set_last();
+        return -1;
+    }
+
+    0
+}
+
+/// Returns error with code [`ErrorCode::NoSuchService`] if there's no service with provided id.
+///
+/// Otherwise writes into `result` info about how many jobs (if any) didn't
+/// finish in the provided `timeout`.
+#[no_mangle]
+pub extern "C" fn pico_ffi_background_cancel_jobs_by_tag(
+    plugin: FfiSafeStr,
+    service: FfiSafeStr,
+    version: FfiSafeStr,
+    job_tag: FfiSafeStr,
+    timeout: f64,
+    result: *mut JobCancellationResult,
+) -> i32 {
+    // SAFETY: data outlives this function call
+    let plugin = unsafe { plugin.as_str() };
+    let service = unsafe { service.as_str() };
+    let version = unsafe { version.as_str() };
+    let service_id = ServiceId::new(plugin, service, version);
+
+    let job_tag = unsafe { job_tag.as_str() };
+
+    let res = crate::plugin::background::cancel_background_jobs_by_tag(
+        service_id,
+        job_tag.into(),
+        Duration::from_secs_f64(timeout),
+    );
+
+    let res = match res {
+        Ok(v) => v,
+        Err(e) => {
+            e.set_last();
+            return -1;
+        }
+    };
+
+    // SAFETY: the caller is responsible for this to be safe
+    unsafe { std::ptr::write(result, res) };
+
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn pico_ffi_background_register_job_cancellation_token(
+    plugin: FfiSafeStr,
+    service: FfiSafeStr,
+    version: FfiSafeStr,
+    job_tag: FfiSafeStr,
+    token: FfiBackgroundJobCancellationToken,
+) -> i32 {
+    // SAFETY: data outlives this function call
+    let plugin = unsafe { plugin.as_str() };
+    let service = unsafe { service.as_str() };
+    let version = unsafe { version.as_str() };
+    let service_id = ServiceId::new(plugin, service, version);
+
+    let job_tag = unsafe { job_tag.as_str() };
+
+    let res = crate::plugin::background::register_background_job_cancellation_token(
+        service_id,
+        job_tag.into(),
+        token,
+    );
+
+    if let Err(e) = res {
         e.set_last();
         return -1;
     }

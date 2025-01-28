@@ -1,3 +1,5 @@
+pico_ffi_background_cancel_jobs_by_tag
+pico_ffi_background_register_job_cancellation_token
 pico_ffi_background_set_jobs_shutdown_timeout
 pico_ffi_cas
 pico_ffi_instance_info

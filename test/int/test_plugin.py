@@ -2093,11 +2093,11 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
 # -------------------------- RPC SDK tests -------------------------------------
 
 
-def make_context(override: dict[Any, Any] = {}) -> dict[Any, Any]:
+def make_context(override: dict[Any, Any] = {}, service=SERVICE_W_RPC) -> dict[Any, Any]:
     context = {
         REQUEST_ID: uuid.uuid4(),
         PLUGIN_NAME: _PLUGIN_W_SDK,
-        SERVICE_NAME: SERVICE_W_RPC,
+        SERVICE_NAME: service,
         PLUGIN_VERSION: _PLUGIN_VERSION_1,
         "timeout": 5.0,
     }
@@ -2762,28 +2762,36 @@ def test_sdk_metrics(instance: Instance):
 def test_sdk_background(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
+    plugin = _PLUGIN_W_SDK
+    [service] = _PLUGIN_W_SDK_SERVICES
+
     install_and_enable_plugin(
         i1,
-        _PLUGIN_W_SDK,
-        _PLUGIN_W_SDK_SERVICES,
+        plugin,
+        [service],
         migrate=True,
         default_config={"test_type": "background"},
     )
+
+    # Run internal tests
+    context = make_context(service=service)
+    i1.call(".proc_rpc_dispatch", "/test_cancel_tagged_basic", b"", context)
+    i1.call(".proc_rpc_dispatch", "/test_cancel_tagged_timeout", b"", context)
 
     # assert that job is working
     Retriable(timeout=5, rps=2).call(PluginReflection.assert_persisted_data_exists, "background_job_running", i1)
 
     # assert that job ends after plugin disabled
-    i1.call("pico.disable_plugin", _PLUGIN_W_SDK, _PLUGIN_VERSION_1)
+    i1.call("pico.disable_plugin", plugin, "0.1.0")
 
     Retriable(timeout=5, rps=2).call(PluginReflection.assert_persisted_data_exists, "background_job_stopped", i1)
 
     # run again
-    i1.call("pico.enable_plugin", _PLUGIN_W_SDK, _PLUGIN_VERSION_1)
+    i1.call("pico.enable_plugin", plugin, "0.1.0")
     Retriable(timeout=5, rps=2).call(PluginReflection.assert_persisted_data_exists, "background_job_running", i1)
 
     # now shutdown 1 and check that job ended
-    i1.sql(f"ALTER PLUGIN {_PLUGIN_W_SDK} {_PLUGIN_VERSION_1} SET    {_PLUGIN_W_SDK_SERVICES[0]}.test_type = 'no_test'")
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 SET {service}.test_type = 'no_test'")
 
     i1.restart()
     i1.wait_online()

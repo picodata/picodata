@@ -1,5 +1,6 @@
-use crate::background::{InternalGlobalWorkerManager, ServiceWorkerManager};
-use crate::error_code::ErrorCode::PluginError;
+use crate::background;
+use crate::background::ServiceWorkerManager;
+use crate::error_code::ErrorCode;
 use crate::util::FfiSafeStr;
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
@@ -10,6 +11,7 @@ use smol_str::SmolStr;
 use std::error::Error;
 use std::fmt::Display;
 use std::time::Duration;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
@@ -17,7 +19,6 @@ use tarantool::error::{BoxError, IntoBoxError};
 #[derive(StableAbi, Debug)]
 pub struct PicoContext {
     is_master: bool,
-    global_wm: *const (),
     pub plugin_name: FfiSafeStr,
     pub service_name: FfiSafeStr,
     pub plugin_version: FfiSafeStr,
@@ -26,12 +27,8 @@ pub struct PicoContext {
 impl PicoContext {
     #[inline]
     pub fn new(is_master: bool) -> PicoContext {
-        let gwm = InternalGlobalWorkerManager::instance() as *const InternalGlobalWorkerManager
-            as *const ();
-
         Self {
             is_master,
-            global_wm: gwm,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
@@ -44,7 +41,6 @@ impl PicoContext {
     pub unsafe fn clone(&self) -> Self {
         Self {
             is_master: self.is_master,
-            global_wm: self.global_wm,
             plugin_name: self.plugin_name.clone(),
             service_name: self.service_name.clone(),
             plugin_version: self.plugin_version.clone(),
@@ -58,18 +54,95 @@ impl PicoContext {
     }
 
     /// Return [`ServiceWorkerManager`] for current service.
+    #[deprecated = "use `register_job`, `register_tagged_job` or `cancel_background_jobs_by_tag` directly instead"]
     pub fn worker_manager(&self) -> ServiceWorkerManager {
-        let global_manager: &'static InternalGlobalWorkerManager =
-            // SAFETY: `picodata` guaranty that this reference live enough
-            unsafe { &*(self.global_wm as *const InternalGlobalWorkerManager) };
-
-        // TODO: can we eliminate allocation here?
-        global_manager.get_or_init_manager(self.make_service_id())
+        ServiceWorkerManager::new(self.make_service_id())
     }
+
+    // TODO:
+    // pub fn register_job(&self) -> ServiceWorkerManager {
+    // pub fn register_tagged_job(&self) -> ServiceWorkerManager {
+    // pub fn cancel_job_by_tag(&self) -> ServiceWorkerManager {
 
     #[inline(always)]
     pub fn register_metrics_callback(&self, callback: impl Fn() -> String) -> Result<(), BoxError> {
         crate::metrics::register_metrics_handler(self, callback)
+    }
+
+    /// Add a new job to the execution.
+    /// Job work life cycle will be tied to the service life cycle;
+    /// this means that job will be canceled just before service is stopped.
+    ///
+    /// # Arguments
+    ///
+    /// * `job`: callback that will be executed in separated fiber.
+    /// Note that it is your responsibility to organize job graceful shutdown, see a
+    /// [`background::CancellationToken`] for details.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use picodata_plugin::background::CancellationToken;
+    ///
+    /// # use picodata_plugin::plugin::interface::PicoContext;
+    /// # fn on_start(context: PicoContext) {
+    ///
+    /// // this job will print "hello" every second,
+    /// // and print "bye" after being canceled
+    /// fn hello_printer(cancel: CancellationToken) {
+    ///     while cancel.wait_timeout(Duration::from_secs(1)).is_err() {
+    ///         println!("hello!");
+    ///     }
+    ///     println!("job cancelled, bye!")
+    /// }
+    /// context.register_job(hello_printer).unwrap();
+    ///
+    /// # }
+    /// ```
+    #[inline(always)]
+    pub fn register_job<F>(&self, job: F) -> Result<(), BoxError>
+    where
+        F: FnOnce(background::CancellationToken) + 'static,
+    {
+        background::register_job(&self.make_service_id(), job)
+    }
+
+    /// Same as [`Self::register_job`] but caller may provide a special tag.
+    /// This tag may be used for manual job cancellation using [`Self::cancel_tagged_jobs`].
+    ///
+    /// # Arguments
+    ///
+    /// * `job`: callback that will be executed in separated fiber
+    /// * `tag`: tag, that will be related to a job, single tag may be related to the multiple jobs
+    #[inline(always)]
+    pub fn register_tagged_job<F>(&self, job: F, tag: &str) -> Result<(), BoxError>
+    where
+        F: FnOnce(background::CancellationToken) + 'static,
+    {
+        background::register_tagged_job(&self.make_service_id(), job, tag)
+    }
+
+    /// Cancel all jobs related to the given `tag`.
+    /// This function return after all related jobs will be gracefully shutdown or
+    /// after `timeout` duration.
+    ///
+    /// Returns error with code [`TarantoolErrorCode::Timeout`] in case some
+    /// jobs didn't finish within `timeout`.
+    ///
+    /// May also theoretically return error with code [`ErrorCode::NoSuchService`]
+    /// in case the service doesn't exist anymore (highly unlikely).
+    ///
+    /// See also [`Self::register_tagged_job`].
+    #[inline(always)]
+    pub fn cancel_tagged_jobs(&self, tag: &str, timeout: Duration) -> Result<(), BoxError> {
+        let res = background::cancel_jobs_by_tag(&self.make_service_id(), tag, timeout)?;
+        if res.n_timeouts != 0 {
+            #[rustfmt::skip]
+            return Err(BoxError::new(TarantoolErrorCode::Timeout, format!("some background jobs didn't finish in time (expected: {}, timed out: {})", res.n_total, res.n_timeouts)));
+        }
+
+        Ok(())
     }
 
     /// In case when jobs were canceled by `picodata` use this function for determine
@@ -319,7 +392,7 @@ impl<C: DeserializeOwned> ServiceProxy<C> {
 /// UAF can happen if user error points into memory allocated by dynamic lib and lives
 /// longer than dynamic lib memory (that was unmapped by system).
 fn error_into_tt_error<T>(source: impl Display) -> RResult<T, ()> {
-    let tt_error = BoxError::new(PluginError, source.to_string());
+    let tt_error = BoxError::new(ErrorCode::PluginError, source.to_string());
     tt_error.set_last_error();
     RErr(())
 }

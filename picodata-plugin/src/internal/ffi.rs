@@ -1,3 +1,5 @@
+use crate::background::FfiBackgroundJobCancellationToken;
+use crate::background::JobCancellationResult;
 use crate::internal::types;
 use crate::metrics::FfiMetricsHandler;
 use crate::sql::types::SqlValue;
@@ -53,6 +55,23 @@ extern "C" {
     ) -> i32;
 
     pub fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32;
+
+    pub fn pico_ffi_background_register_job_cancellation_token(
+        plugin: FfiSafeStr,
+        service: FfiSafeStr,
+        version: FfiSafeStr,
+        job_tag: FfiSafeStr,
+        token: FfiBackgroundJobCancellationToken,
+    ) -> i32;
+
+    pub fn pico_ffi_background_cancel_jobs_by_tag(
+        plugin: FfiSafeStr,
+        service: FfiSafeStr,
+        version: FfiSafeStr,
+        job_tag: FfiSafeStr,
+        timeout: f64,
+        result: *mut JobCancellationResult,
+    ) -> i32;
 
     pub fn pico_ffi_background_set_jobs_shutdown_timeout(
         plugin: FfiSafeStr,
