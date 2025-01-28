@@ -1331,7 +1331,7 @@ impl NodeImpl {
 
                 if let Err(e) = self
                     .plugin_manager
-                    .handle_event_async(PluginAsyncEvent::PluginDisabled { name: ident.name })
+                    .add_async_event_to_queue(PluginAsyncEvent::PluginDisabled { name: ident.name })
                 {
                     tlog!(Warning, "async plugin event: {e}");
                 }
@@ -1431,7 +1431,7 @@ impl NodeImpl {
                         let old_cfg_raw =
                             rmp_serde::encode::to_vec_named(&old_cfg).expect("out of memory");
 
-                        if let Err(e) = self.plugin_manager.handle_event_async(
+                        if let Err(e) = self.plugin_manager.add_async_event_to_queue(
                             PluginAsyncEvent::ServiceConfigurationUpdated {
                                 ident: ident.clone(),
                                 service: svc.name,

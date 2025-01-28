@@ -1,32 +1,12 @@
 use crate::tlog;
+use crate::traft::node;
 use picodata_plugin::metrics::FfiMetricsHandler;
 use picodata_plugin::plugin::interface::ServiceId;
 use picodata_plugin::util::RegionGuard;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::rc::Rc;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
-use tarantool::fiber::mutex::MutexGuard;
-use tarantool::fiber::Mutex;
-
-static mut HANDLERS: Option<Mutex<MetricsHandlerMap>> = None;
-
-type MetricsHandlerMap = HashMap<ServiceId, Rc<FfiMetricsHandler>>;
-
-pub(crate) fn init_handlers() {
-    unsafe {
-        HANDLERS = Some(Mutex::new(HashMap::new()));
-    }
-}
-
-#[inline]
-fn handlers() -> MutexGuard<'static, MetricsHandlerMap> {
-    // SAFETY: global variable access: safe in tx thread.
-    let handlers = unsafe { HANDLERS.as_ref() };
-    let handlers = handlers.expect("should be initialized at startup");
-    handlers.lock()
-}
 
 pub fn register_metrics_handler(handler: FfiMetricsHandler) -> Result<(), BoxError> {
     let identifier = &handler.identifier;
@@ -50,7 +30,8 @@ pub fn register_metrics_handler(handler: FfiMetricsHandler) -> Result<(), BoxErr
         return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "RPC route service version cannot be empty"));
     }
 
-    let mut handlers = handlers();
+    let node = node::global()?;
+    let mut handlers = node.plugin_manager.metrics_handlers.lock();
     let service_id = identifier.service_id();
     let entry = handlers.entry(service_id);
 
@@ -76,20 +57,16 @@ pub fn register_metrics_handler(handler: FfiMetricsHandler) -> Result<(), BoxErr
     Ok(())
 }
 
-pub fn unregister_metrics_handler(service_id: &ServiceId) {
-    // SAFETY: global variable access: safe in tx thread.
-    let handler = handlers().remove(service_id);
-    if handler.is_some() {
-        tlog!(Info, "unregistered metrics handler for `{service_id}`");
-    }
-}
-
 pub fn get_plugin_metrics() -> String {
     let _guard = RegionGuard::new();
 
     let mut res = String::new();
 
-    let handlers = handlers();
+    let Ok(node) = node::global() else {
+        return "".into();
+    };
+
+    let handlers = node.plugin_manager.metrics_handlers.lock();
     // Note: must first copy all references to a local vec, because the callbacks may yield.
     let handler_copies: Vec<_> = handlers.values().cloned().collect();
     // Release the lock.

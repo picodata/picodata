@@ -293,7 +293,6 @@ fn start_webui() {
 /// (discovery, rpc, public proc api).
 fn init_handlers() {
     plugin::rpc::server::init_handlers();
-    plugin::metrics::init_handlers();
 
     rpc::init_static_proc_set();
 
