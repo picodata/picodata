@@ -20,6 +20,7 @@ use crate::traft::Result;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io;
+use std::ptr::addr_of;
 
 use serde::de::DeserializeOwned;
 use std::collections::HashSet;
@@ -75,18 +76,18 @@ pub fn init_static_proc_set() {
         map.insert(format!(".{}", proc.name()));
     }
 
-    // Safety: safe as long as only called from tx thread
+    // SAFETY: only called from main thread + never mutated after initialization
     unsafe {
-        assert!(STATIC_PROCS.is_none());
+        assert!((*addr_of!(STATIC_PROCS)).is_none());
         STATIC_PROCS = Some(map);
     }
 }
 
 #[inline(always)]
 pub fn to_static_proc_name(name: &str) -> Option<&'static str> {
-    // Safety: safe as long as only called from tx thread
+    // SAFETY: only called from main thread + never mutated after initialization
     let name_ref = unsafe {
-        STATIC_PROCS
+        (*addr_of!(STATIC_PROCS))
             .as_ref()
             .expect("should be initialized at startup")
             .get(name)?

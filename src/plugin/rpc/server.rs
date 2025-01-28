@@ -5,6 +5,7 @@ use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::RegionBuffer;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
@@ -122,7 +123,9 @@ pub(crate) fn init_handlers() {
 }
 
 unsafe fn handlers_mut() -> &'static mut RpcHandlerMap {
-    HANDLERS.as_mut().expect("should be initialized at startup")
+    (*addr_of_mut!(HANDLERS))
+        .as_mut()
+        .expect("should be initialized at startup")
 }
 
 pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
@@ -191,7 +194,10 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
 }
 
 pub fn unregister_all_rpc_handlers(plugin_name: &str, service_name: &str, plugin_version: &str) {
-    // SAFETY: safe because we don't leak any references to the stored data
+    // SAFETY:
+    // - only called from main thread
+    // - &'static mut never leaves the scope of this function
+    // - function never yields
     let handlers = unsafe { handlers_mut() };
     handlers.retain(|_, handler| {
         let matches = handler.identifier.plugin() == plugin_name

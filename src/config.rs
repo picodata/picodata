@@ -30,6 +30,8 @@ use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tarantool::log::SayLevel;
@@ -158,8 +160,8 @@ Using configuration file '{args_path}'.");
 
         // Safe, because we only initialize config once in a single thread.
         let config_ref = unsafe {
-            assert!(GLOBAL_CONFIG.is_none());
-            GLOBAL_CONFIG.insert(config)
+            assert!((*addr_of!(GLOBAL_CONFIG)).is_none());
+            (*addr_of_mut!(GLOBAL_CONFIG)).insert(config)
         };
 
         Ok(config_ref)
@@ -167,10 +169,11 @@ Using configuration file '{args_path}'.");
 
     #[inline(always)]
     pub fn get() -> &'static Self {
-        // Safe, because we only mutate GLOBAL_CONFIG once and
-        // strictly before anybody calls this function.
+        // SAFETY:
+        // - only called from main thread
+        // - never mutated after initialization
         unsafe {
-            GLOBAL_CONFIG
+            (*addr_of!(GLOBAL_CONFIG))
                 .as_ref()
                 .expect("shouldn't be called before config is initialized")
         }
@@ -815,8 +818,8 @@ Using configuration file '{args_path}'.");
         let config = Box::new(Self::with_defaults());
         // Safe, because we only initialize config once in a single thread.
         unsafe {
-            assert!(GLOBAL_CONFIG.is_none());
-            let _ = GLOBAL_CONFIG.insert(config);
+            assert!((*addr_of!(GLOBAL_CONFIG)).is_none());
+            let _ = (*addr_of_mut!(GLOBAL_CONFIG)).insert(config);
         };
     }
 }

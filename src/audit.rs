@@ -1,6 +1,8 @@
 use crate::traft::LogicalClock;
 use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
+use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
 use tarantool::{error::TarantoolError, log::SayLevel};
 
 /// Tarantool's low-level APIs.
@@ -305,7 +307,7 @@ static mut CLOCK: OnceCell<LogicalClock> = OnceCell::new();
 /// Generate next unique record id.
 fn next_unique_id() -> Option<LogicalClock> {
     // SAFETY: we'll call this only from TX thread.
-    let clock = unsafe { CLOCK.get_mut()? };
+    let clock = unsafe { (*addr_of_mut!(CLOCK)).get_mut()? };
     clock.inc();
     Some(*clock)
 }
@@ -391,7 +393,7 @@ pub fn init(config: &str, raft_id: u64, raft_gen: u64) {
     // SAFETY: this is the first time we access this variable, and it's
     // always done from the main (TX) thread.
     unsafe {
-        CLOCK
+        (*addr_of!(CLOCK))
             .set(LogicalClock::new(raft_id, raft_gen))
             .expect("failed to initialize global audit event id generator");
     }

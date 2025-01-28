@@ -16,6 +16,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
+use std::ptr::addr_of;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -713,9 +714,11 @@ const SCHEMA_RELATED_PROPERTIES: [&str; 4] = [
 fn schema_related_property_keys() -> &'static [Tuple] {
     static mut DATA: Option<Vec<Tuple>> = None;
 
-    // Safety: we only call this from tx thread, so it's ok, trust me
+    // SAFETY:
+    // - only called from main thread
+    // - never mutated after initialization
     unsafe {
-        if DATA.is_none() {
+        if (*addr_of!(DATA)).is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
                 let t = Tuple::new(&(key,)).expect("keys should convert to tuple");
@@ -724,17 +727,24 @@ fn schema_related_property_keys() -> &'static [Tuple] {
             DATA = Some(data);
         }
 
-        DATA.as_ref().unwrap()
+        (*addr_of!(DATA)).as_ref().unwrap()
     }
 }
 
 fn pending_plugin_operation_key() -> &'static Tuple {
     static mut TUPLE: Option<Tuple> = None;
-    // Safety: only called from main thread
+
+    // SAFETY:
+    // - only called from main thread
+    // - never mutated after initialization
     unsafe {
-        TUPLE.get_or_insert_with(|| {
-            Tuple::new(&[storage::PropertyName::PendingPluginOperation]).expect("cannot fail")
-        })
+        if (*addr_of!(TUPLE)).is_none() {
+            let tuple =
+                Tuple::new(&[storage::PropertyName::PendingPluginOperation]).expect("cannot fail");
+            TUPLE = Some(tuple);
+        }
+
+        (*addr_of!(TUPLE)).as_ref().unwrap()
     }
 }
 
@@ -743,9 +753,11 @@ fn pending_plugin_operation_key() -> &'static Tuple {
 pub fn schema_change_ranges() -> &'static [Range] {
     static mut DATA: Option<Vec<Range>> = None;
 
-    // Safety: we only call this from tx thread, so it's ok, trust me
+    // SAFETY:
+    // - only called from main thread
+    // - never mutated after initialization
     unsafe {
-        if DATA.is_none() {
+        if (*addr_of!(DATA)).is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
                 let r = Range::new(ClusterwideTable::Property).eq((key,));
@@ -754,7 +766,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
             DATA = Some(data);
         }
 
-        DATA.as_ref().unwrap()
+        (*addr_of!(DATA)).as_ref().unwrap()
     }
 }
 

@@ -50,6 +50,8 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
+use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -500,17 +502,19 @@ impl Clusterwide {
     ///   - if `init` is `true` and storage initialization failed.
     #[inline]
     pub fn try_get(init: bool) -> Result<&'static Self> {
+        // It is trivial to keep track of accesses to this variable, because
+        // it can only be accessed via this function
         static mut STORAGE: Option<Clusterwide> = None;
 
-        // Safety: this is safe as long as we only use it in tx thread.
+        // SAFETY: this is safe as long as we only use it in tx thread.
         unsafe {
-            if STORAGE.is_none() {
+            if (*addr_of!(STORAGE)).is_none() {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
                 STORAGE = Some(Self::initialize()?);
             }
-            Ok(STORAGE.as_ref().unwrap())
+            Ok((*addr_of!(STORAGE)).as_ref().unwrap())
         }
     }
 
@@ -601,8 +605,12 @@ fn cached_key_def_impl(
     let id = (space_id, index_id, kind);
 
     static mut SYSTEM_KEY_DEFS: Option<KeyDefCache> = None;
-    // Safety: this is only called from main thread
-    let system_key_defs = unsafe { SYSTEM_KEY_DEFS.get_or_insert_with(HashMap::new) };
+    // SAFETY: it is perfectly safe to make a &'static mut in this case, because
+    // it only lives for a short time during this function call which is only
+    // called from main thread, and we know for a fact that the fiber doesn't
+    // yield while holding this reference, because of the NoYieldsGuard above.
+    let system_key_defs: &'static mut _ = unsafe { &mut *addr_of_mut!(SYSTEM_KEY_DEFS) };
+    let system_key_defs = system_key_defs.get_or_insert_with(HashMap::new);
     if ClusterwideTable::try_from(space_id).is_ok() {
         // System table definition's never change during a single
         // execution, so it's safe to cache these
@@ -611,9 +619,12 @@ fn cached_key_def_impl(
     }
 
     static mut USER_KEY_DEFS: Option<(u64, KeyDefCache)> = None;
-    let (schema_version, user_key_defs) =
-        // Safety: this is only called from main thread
-        unsafe { USER_KEY_DEFS.get_or_insert_with(|| (0, HashMap::new())) };
+    // SAFETY: it is perfectly safe to make a &'static mut in this case, because
+    // it only lives for a short time during this function call which is only
+    // called from main thread, and we know for a fact that the fiber doesn't
+    // yield while holding this reference, because of the NoYieldsGuard above.
+    let user_key_defs: &'static mut _ = unsafe { &mut *addr_of_mut!(USER_KEY_DEFS) };
+    let (schema_version, user_key_defs) = user_key_defs.get_or_insert_with(|| (0, HashMap::new()));
     let box_schema_version = box_schema_version();
     if *schema_version != box_schema_version {
         user_key_defs.clear();
