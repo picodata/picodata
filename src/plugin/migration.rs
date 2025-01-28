@@ -291,13 +291,13 @@ fn parse_migration_queries(
 
     let mut state = State::Initial;
 
-    for (line, lineno) in source.lines().zip(1..) {
-        let line_trimmed = line.trim();
-        if line_trimmed.is_empty() {
+    for (mut line, lineno) in source.lines().zip(1..) {
+        line = line.trim_end();
+        if line.is_empty() {
             continue;
         }
 
-        let temp = line_trimmed
+        let temp = line
             .split_once("--")
             .map(|(l, r)| (l.trim_end(), r.trim_start()));
         match temp {
@@ -336,9 +336,14 @@ fn parse_migration_queries(
                     "{filename}:{lineno}: unexpected `pico.DOWN` annotation, it must be at the start of the line"
                 )));
             }
-            Some(_) => {
-                // Ignore other comments
-                continue;
+            Some((code, _)) => {
+                if code.is_empty() {
+                    // Ignore other comments
+                    continue;
+                }
+
+                // Remove the trailling comment
+                line = code;
             }
             None => {}
         }
@@ -771,15 +776,15 @@ nested (
 
 command with 'semicolon ; in quotes';
 
-comment after; -- command
+   comment after;   -- command
 
 -- test comment
 
 no semicolon after last command
--- pico.DOWN
+  -- pico.DOWN
 
 sql_command1;
-sql_command2;
+sql_command2; -- another comment --
 
 -- test comment
 
@@ -792,6 +797,8 @@ sql_command2;
                 "another command;",
                 "nested (\n    multiline\n    command\n);",
                 "command with 'semicolon ; in quotes';",
+                // Indentation is preserved, but trailing whitespace is removed
+                "   comment after;",
                 "no semicolon after last command",
             ],
         );
