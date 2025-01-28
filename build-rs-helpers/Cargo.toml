@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 jobserver = "0.1.26"
+pkg-config = "0.3"

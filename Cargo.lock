@@ -675,6 +675,7 @@ name = "build-rs-helpers"
 version = "0.1.0"
 dependencies = [
  "jobserver",
+ "pkg-config",
 ]
 
 [[package]]

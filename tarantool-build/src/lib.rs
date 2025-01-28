@@ -1,5 +1,9 @@
-use build_rs_helpers::{cargo, cmake, rustc, CommandExt};
-use std::{collections::HashMap, path::PathBuf, process::Command};
+use build_rs_helpers::{
+    cargo,
+    cmake::{self, CmakeVariables},
+    pkg_config, rustc, CommandExt,
+};
+use std::{path::PathBuf, process::Command};
 
 /// This struct represents Tarantool's build directory.
 /// NOTE: please **do not** add irrelevant fields here.
@@ -139,18 +143,29 @@ impl TarantoolBuildRoot {
                 // to build the crate after tarantool, while the order is not determined.
                 // Thus, in practice, openssl crate builds before tarantool and throws an error that it
                 // can't find the library because it wasn't built yet.
-                let args = [&common_args[..], &["-DOPENSSL_USE_STATIC_LIBS=FALSE"]].concat();
+                common_args.push("-DOPENSSL_USE_STATIC_LIBS=FALSE");
 
                 // static build is a separate project that uses CMAKE_TARANTOOL_ARGS
                 // to forward parameters to tarantool cmake project
                 configure_cmd
                     .args(["-S", "tarantool-sys/static-build"])
-                    .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", args.join(";")));
+                    .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", common_args.join(";")));
             } else {
+                // Note: we only consider system curl if it's fresh enough.
+                // See https://git.picodata.io/core/picodata/-/issues/1299.
+                let have_system_curl = pkg_config()
+                    .atleast_version("8.4.0")
+                    .probe("libcurl")
+                    .is_ok();
+
                 // for dynamic build we do not use most of the bundled dependencies
                 configure_cmd
                     .args(["-S", "tarantool-sys"])
                     .args(common_args)
+                    .arg(format!(
+                        "-DENABLE_BUNDLED_LIBCURL={}",
+                        cmake::print_bool(!have_system_curl),
+                    ))
                     .args([
                         "-DENABLE_BUNDLED_LDAP=OFF",
                         "-DENABLE_BUNDLED_LIBUNWIND=OFF",
@@ -187,45 +202,10 @@ impl TarantoolBuildRoot {
 }
 
 impl TarantoolBuildRoot {
-    fn tarantool_cmake_variables(&self) -> HashMap<String, String> {
+    fn tarantool_cmake_variables(&self) -> CmakeVariables {
+        let tarantool_src = "tarantool-sys";
         let tarantool_build = self.tarantool_build_dir();
-
-        let output = Command::new("cmake")
-            .args(["-S", "tarantool-sys"])
-            .arg("-B")
-            .arg(&tarantool_build)
-            .arg("-L")
-            .output()
-            .expect("failed to get cmake variables");
-
-        let stdout = String::from_utf8(output.stdout).expect("invalid utf-8");
-        let stderr = String::from_utf8(output.stderr).expect("invalid utf-8");
-
-        if !output.status.success() {
-            panic!("failed to get cmake variables: {stderr}");
-        }
-
-        let mut result = HashMap::new();
-        for line in stdout.lines() {
-            // Skip comments, e.g. `-- Generating done (0.3s)`.
-            if line.starts_with("--") {
-                continue;
-            }
-
-            // E.g. `ENABLE_BACKTRACE:BOOL=ON`.
-            let Some((name_type, value)) = line.split_once('=') else {
-                continue;
-            };
-
-            // E.g. `BASH:FILEPATH`.
-            let Some((name, _)) = name_type.split_once(':') else {
-                continue;
-            };
-
-            result.insert(name.to_owned(), value.to_owned());
-        }
-
-        result
+        CmakeVariables::gather(tarantool_src, tarantool_build)
     }
 }
 
@@ -253,9 +233,11 @@ impl TarantoolBuildRoot {
 
         let cmake_variables = self.tarantool_cmake_variables();
         let enable_backtrace = cmake_variables
-            .get("ENABLE_BACKTRACE")
-            .map(|s| cmake::try_parse_bool(s).expect("ENABLE_BACKTRACE is not a bool"))
+            .get_bool("ENABLE_BACKTRACE")
             .expect("ENABLE_BACKTRACE is not found in cmake build");
+        let enable_bundled_libcurl = cmake_variables
+            .get_bool("ENABLE_BUNDLED_LIBCURL")
+            .expect("ENABLE_BUNDLED_LIBCURL is not found in cmake build");
 
         let tarantool_libs = [
             "core",
@@ -380,16 +362,18 @@ impl TarantoolBuildRoot {
         }
 
         // libcurl
-        // Note: curl is always linked statically even in dynamic build.
-        // for details see https://git.picodata.io/core/picodata/-/issues/1299
-        rustc::link_search(tarantool_build.join("build/curl/dest/lib"));
-        rustc::link_lib_static_whole_archive("curl");
+        if use_static_build || enable_bundled_libcurl {
+            rustc::link_search(tarantool_build.join("build/curl/dest/lib"));
+            rustc::link_lib_static_whole_archive("curl");
 
-        // Static curl depends on nghttp2 & cares.
-        rustc::link_search(tarantool_build.join("build/nghttp2/dest/lib"));
-        rustc::link_lib_static_whole_archive("nghttp2");
-        rustc::link_search(tarantool_build.join("build/ares/dest/lib"));
-        rustc::link_lib_dynamic("cares");
+            // Static curl depends on nghttp2 & cares.
+            rustc::link_search(tarantool_build.join("build/nghttp2/dest/lib"));
+            rustc::link_lib_static_whole_archive("nghttp2");
+            rustc::link_search(tarantool_build.join("build/ares/dest/lib"));
+            rustc::link_lib_dynamic("cares");
+        } else {
+            rustc::link_lib_dynamic("curl");
+        }
 
         // libz
         if use_static_build {

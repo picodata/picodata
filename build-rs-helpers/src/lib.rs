@@ -55,3 +55,15 @@ pub fn debug_print_env() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
 }
+
+/// Get a `pkg_config` resolver with reasonable defaults.
+pub fn pkg_config() -> pkg_config::Config {
+    let mut config = pkg_config::Config::new();
+    config
+        // DO NOT emit link flags by default!
+        .cargo_metadata(false)
+        // Emit magic prints to rebuild the project if the dep changes.
+        .env_metadata(true);
+
+    config
+}
