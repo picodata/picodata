@@ -1,0 +1,508 @@
+-- TEST: window6
+-- SQL:
+    DROP TABLE IF EXISTS t1;
+    CREATE TABLE t1(a INTEGER PRIMARY KEY, b TEXT, c TEXT, d INTEGER);
+    INSERT INTO t1 VALUES(1, 'odd',  'one',   1);
+    INSERT INTO t1 VALUES(2, 'even', 'two',   2);
+    INSERT INTO t1 VALUES(3, 'odd',  'three', 3);
+    INSERT INTO t1 VALUES(4, 'even', 'four',  4);
+    INSERT INTO t1 VALUES(5, 'odd',  'five',  5);
+    INSERT INTO t1 VALUES(6, 'even', 'six',   6);
+
+-- TEST: window6-1.1
+-- SQL:
+SELECT c, sum(d) OVER (PARTITION BY b ORDER BY c) FROM t1;
+-- EXPECTED:
+'four', 4,
+'six', 10,
+'two', 12,
+'five', 5,
+'one', 6,
+'three', 9
+
+-- TEST: window6-1.2
+-- SQL:
+SELECT sum(d) OVER () FROM t1;
+-- EXPECTED:
+21, 21, 21, 21, 21, 21
+
+-- TEST: window6-1.3
+-- SQL:
+WITH tmp(a, s) AS (SELECT b, sum(d) OVER (PARTITION BY b) FROM t1 ORDER BY b)
+SELECT s FROM tmp;
+-- EXPECTED:
+12, 12, 12, 9, 9, 9
+
+-- TEST: window6-2.1
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1000 PRECEDING AND 1 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 3,
+2, 6,
+3, 10,
+4, 15,
+5, 21,
+6, 21
+
+-- TEST: window6-2.2
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1000 PRECEDING AND 1000 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 21,
+3, 21,
+4, 21,
+5, 21,
+6, 21
+
+-- TEST: window6-2.3
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 1000 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 21,
+3, 20,
+4, 18,
+5, 15,
+6, 11
+
+-- TEST: window6-2.4
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 3,
+2, 6,
+3, 9,
+4, 12,
+5, 15,
+6, 11
+
+-- TEST: window6-2.5
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 0 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 3,
+3, 5,
+4, 7,
+5, 9,
+6, 11
+
+-- TEST: window6-2.6
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 4,
+2, 6,
+3, 9,
+4, 12,
+5, 8,
+6, 10
+
+-- TEST: window6-2.7
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 0 PRECEDING AND 0 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 2,
+3, 3,
+4, 4,
+5, 5,
+6, 6
+
+-- TEST: window6-2.8
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 6,
+2, 9,
+3, 12,
+4, 15,
+5, 11,
+6, 6
+
+-- TEST: window6-2.9
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN UNBOUNDED PRECEDING AND 2 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 6,
+2, 10,
+3, 15,
+4, 21,
+5, 21,
+6, 21
+
+-- TEST: window6-2.10
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 6,
+2, 9,
+3, 12,
+4, 15,
+5, 11,
+6, 6
+
+-- TEST: window6-2.11
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 3,
+3, 6,
+4, 9,
+5, 12,
+6, 15
+
+-- TEST: window6-2.13
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 2 PRECEDING AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 21,
+3, 21,
+4, 20,
+5, 18,
+6, 15
+
+-- TEST: window6-2.14
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, NULL,
+2, 1,
+3, 3,
+4, 6,
+5, 9,
+6, 12
+
+-- TEST: window6-2.15
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 0 PRECEDING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 2,
+3, 4,
+4, 6,
+5, 8,
+6, 10
+
+-- TEST: window6-2.16
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, NULL,
+2, NULL,
+3, 1,
+4, 2,
+5, 3,
+6, 4
+
+-- TEST: window6-2.17
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, NULL,
+2, NULL,
+3, NULL,
+4, NULL,
+5, NULL,
+6, NULL
+
+-- TEST: window6-2.18
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN UNBOUNDED PRECEDING AND 2 PRECEDING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, NULL,
+2, NULL,
+3, NULL,
+4, NULL,
+5, 1,
+6, 2
+
+-- TEST: window6-2.19
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 FOLLOWING AND 3 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 8,
+2, 10,
+3, 5,
+4, 6,
+5, NULL,
+6, NULL
+
+-- TEST: window6-2.20
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1 FOLLOWING AND 2 FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 5,
+2, 7,
+3, 9,
+4, 11,
+5, 6,
+6, NULL
+
+-- TEST: window6-2.21
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 20,
+2, 18,
+3, 15,
+4, 11,
+5, 6,
+6, NULL
+
+-- TEST: window6-2.22
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 8,
+2, 10,
+3, 5,
+4, 6,
+5, NULL,
+6, NULL
+
+-- TEST: window6-2.23
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 20,
+3, 18,
+4, 15,
+5, 11,
+6, 6
+
+-- TEST: window6-2.25
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 21,
+3, 21,
+4, 21,
+5, 21,
+6, 21
+
+-- TEST: window6-2.26
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 9,
+2, 12,
+3, 9,
+4, 12,
+5, 9,
+6, 12
+
+-- TEST: window6-2.27
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND CURRENT ROW
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 2,
+3, 3,
+4, 4,
+5, 5,
+6, 6
+
+-- TEST: window6-2.28
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND CURRENT ROW
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 1,
+2, 2,
+3, 3,
+4, 4,
+5, 5,
+6, 6
+
+-- TEST: window6-2.29
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 20,
+3, 18,
+4, 15,
+5, 11,
+6, 6
+
+-- TEST: window6-2.30
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY b
+    RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 9,
+2, 21,
+3, 9,
+4, 21,
+5, 9,
+6, 21
+
+-- TEST: window6-3.1
+-- SQL:
+SELECT a, sum(d) OVER (
+    PARTITION BY b ORDER BY d
+    ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 9,
+2, 12,
+3, 8,
+4, 10,
+5, 5,
+6, 6
+
+-- TEST: window6-3.3
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY d
+    RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM t1
+ORDER BY a
+-- EXPECTED:
+1, 21,
+2, 20,
+3, 18,
+4, 15,
+5, 11,
+6, 6
+
+-- TEST: window6-3.4
+-- SQL:
+SELECT a, sum(d) OVER (
+    ORDER BY cast((d / 2) AS DECIMAL)
+    ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+) FROM (SELECT * FROM t1 ORDER BY a);
+-- EXPECTED:
+1, 21,
+2, 20,
+3, 18,
+4, 15,
+5, 11,
+6, 6

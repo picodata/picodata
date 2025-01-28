@@ -1,0 +1,14 @@
+-- TEST: window3
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(x INT PRIMARY KEY);
+INSERT INTO t1 VALUES(7), (6), (5), (4), (3), (2), (1);
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2(x TEXT PRIMARY KEY);
+INSERT INTO t2 VALUES('b'), ('a');
+
+-- TEST: window3-6.1
+-- SQL:
+SELECT x, count(*) OVER (ORDER BY x) FROM t1;
+-- EXPECTED:
+1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7
