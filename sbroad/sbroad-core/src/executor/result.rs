@@ -164,11 +164,7 @@ impl ProducerResult {
                     continue;
                 };
 
-                let types_equal = if let Some(value_type) = value.get_type().get() {
-                    value_type == column_ty
-                } else {
-                    false
-                };
+                let types_equal = *value.get_type().get() == Some(*column_ty);
 
                 let casted_value = if types_equal {
                     value

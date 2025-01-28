@@ -1457,7 +1457,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1483,7 +1482,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1546,7 +1544,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1580,7 +1577,6 @@ execution options:
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -1662,7 +1658,6 @@ execution options:
 "#,
     );
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -1687,7 +1682,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -1736,7 +1730,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1805,7 +1798,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1827,7 +1819,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1849,7 +1840,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1871,7 +1861,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1893,7 +1882,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1947,7 +1935,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -1970,7 +1957,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2009,7 +1995,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2032,7 +2017,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2056,7 +2040,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2078,7 +2061,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2208,7 +2190,7 @@ execution options:
     sql_motion_row_max = 42
 "#,
     );
-    println!("{}", plan.as_explain().unwrap());
+
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2360,7 +2342,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2389,7 +2370,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2421,7 +2401,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2444,7 +2423,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2471,7 +2449,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 
     let input = r#"SELECT "b", "a" from "t"
@@ -2496,7 +2473,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2523,7 +2499,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2553,7 +2528,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2577,7 +2551,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2601,7 +2574,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2624,7 +2596,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2648,7 +2619,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -2744,7 +2714,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -2778,7 +2747,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -2811,7 +2779,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2868,7 +2835,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2892,7 +2858,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2915,7 +2880,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -2964,7 +2928,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3015,7 +2978,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -3048,7 +3010,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3070,7 +3031,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3096,7 +3056,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3161,7 +3120,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -3183,7 +3141,6 @@ execution options:
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());
-    println!("{}", plan.as_explain().unwrap());
 }
 
 #[test]
@@ -3221,7 +3178,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3241,7 +3197,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -3599,7 +3554,7 @@ execution options:
     sql_motion_row_max = 5000
 "#,
     );
-    println!("{}", plan.as_explain().unwrap());
+
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 
@@ -4155,7 +4110,7 @@ execution options:
     sql_motion_row_max = 5000
 "#,
     );
-    println!("{}", plan.as_explain().unwrap());
+
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 

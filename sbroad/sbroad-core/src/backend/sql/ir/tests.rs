@@ -31,7 +31,6 @@ fn check_sql_with_snapshot(
     let nodes = ordered.to_syntax_data().unwrap();
     let (sql, _) = ex_plan.to_sql(&nodes, "test", None).unwrap();
 
-    println!("{}", sql.pattern);
     assert_eq!(expected, sql,);
 }
 

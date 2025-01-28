@@ -7,7 +7,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::rc::Rc;
-use std::{iter, vec};
+use std::vec;
 use tarantool::tuple::TupleBuilder;
 
 use crate::errors::{Entity, SbroadError};
@@ -805,9 +805,7 @@ pub fn calculate_unified_types(
         Ok(())
     };
 
-    let mut unified_types: Vec<DerivedType> = iter::repeat(DerivedType::unknown())
-        .take(columns_len)
-        .collect();
+    let mut unified_types: Vec<DerivedType> = vec![DerivedType::unknown(); columns_len];
 
     for type_tuple in types {
         for (i, ty) in type_tuple.iter().enumerate() {

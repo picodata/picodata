@@ -223,7 +223,6 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
 
-    println!("{}", sql.pattern);
     assert_eq!(
         sql,
         PatternWithParams::new(
@@ -243,7 +242,6 @@ max ("T1"."id") as "max_3296" FROM "test_space" as "T1" GROUP BY "T1"."sys_op",
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    println!("{}", sql.pattern);
     assert_eq!(
         sql,
         PatternWithParams::new(

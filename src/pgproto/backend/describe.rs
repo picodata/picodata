@@ -297,20 +297,20 @@ impl MetadataColumn {
     }
 }
 
-fn pg_type_from_sbroad(sbroad: &DerivedType) -> PgResult<Type> {
+fn pg_type_from_sbroad(sbroad: &DerivedType) -> Type {
     if let Some(sbroad) = sbroad.get() {
         match sbroad {
-            SbroadType::Integer | SbroadType::Unsigned => Ok(Type::INT8),
-            SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(Type::JSON),
-            SbroadType::String => Ok(Type::TEXT),
-            SbroadType::Boolean => Ok(Type::BOOL),
-            SbroadType::Double => Ok(Type::FLOAT8),
-            SbroadType::Decimal => Ok(Type::NUMERIC),
-            SbroadType::Uuid => Ok(Type::UUID),
-            SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
+            SbroadType::Integer | SbroadType::Unsigned => Type::INT8,
+            SbroadType::Map | SbroadType::Array | SbroadType::Any => Type::JSON,
+            SbroadType::String => Type::TEXT,
+            SbroadType::Boolean => Type::BOOL,
+            SbroadType::Double => Type::FLOAT8,
+            SbroadType::Decimal => Type::NUMERIC,
+            SbroadType::Uuid => Type::UUID,
+            SbroadType::Datetime => Type::TIMESTAMPTZ,
         }
     } else {
-        Ok(Type::UNKNOWN)
+        Type::UNKNOWN
     }
 }
 
@@ -333,7 +333,7 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
             )
             .into());
         };
-        let ty = pg_type_from_sbroad(&column_type)?;
+        let ty = pg_type_from_sbroad(&column_type);
         metadata.push(MetadataColumn::new(column_name, ty));
     }
     Ok(metadata)

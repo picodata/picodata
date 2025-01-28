@@ -1914,7 +1914,7 @@ def test_values(cluster: Cluster):
     assert dml["row_count"] == 2
 
     data = i1.sql("""select * from t """)
-    assert data == [[1, None], [2, "hi"]]
+    assert sorted(data) == [[1, None], [2, "hi"]]
 
     ddl = i1.sql(
         """ create table gt (a unsigned primary key, b integer) distributed globally """

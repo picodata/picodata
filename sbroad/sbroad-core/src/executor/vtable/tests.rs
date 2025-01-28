@@ -390,7 +390,6 @@ fn vtable_values_types_casting_two_tuples_err() {
     actual_vtable.add_tuple(vec![Value::String("name".into())]);
     let vtable_types = actual_vtable.get_types();
     let err = calculate_unified_types(&vtable_types).unwrap_err();
-    println!("{}", err);
     assert_eq!(
         true,
         err.to_string()

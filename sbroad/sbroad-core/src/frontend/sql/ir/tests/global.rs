@@ -827,7 +827,6 @@ execution options:
 "#,
     );
 
-    println!("{}", plan.as_explain().unwrap());
     assert_eq!(expected_explain, plan.as_explain().unwrap());
 }
 

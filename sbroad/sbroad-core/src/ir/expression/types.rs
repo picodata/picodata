@@ -116,14 +116,7 @@ impl Expression<'_> {
 
                 let (left_type, right_type) = match (left_type.get(), right_type.get()) {
                     (Some(l_t), Some(r_t)) => (l_t, r_t),
-                    _ => {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some(format_smolstr!(
-                                "Null type is not supported for arithmetic expression"
-                            )),
-                        ))
-                    }
+                    _ => return Ok(DerivedType::unknown()),
                 };
 
                 let res = match (left_type, right_type) {

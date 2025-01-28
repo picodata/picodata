@@ -96,10 +96,6 @@ fn equality_propagation4() {
         ],
     );
 
-    println!(
-        "{}",
-        check_transformation(input, vec![], &derive_equalities).pattern
-    );
     assert_eq!(
         check_transformation(input, vec![], &derive_equalities),
         expected
@@ -128,10 +124,6 @@ fn equality_propagation5() {
         ],
     );
 
-    println!(
-        "{}",
-        check_transformation(input, vec![], &derive_equalities).pattern
-    );
     assert_eq!(
         check_transformation(input, vec![], &derive_equalities),
         expected
