@@ -9,12 +9,15 @@ use crate::access_control::user_by_id;
 use crate::access_control::UserMetadata;
 use crate::config::apply_parameter;
 use crate::config::PicodataConfig;
+use crate::error_code::ErrorCode;
 use crate::governor;
 use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
+use crate::plugin::manager::PluginManager;
 use crate::plugin::migration;
+use crate::plugin::PluginAsyncEvent;
 use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
@@ -53,7 +56,6 @@ use crate::traft::RaftTerm;
 use crate::unwrap_ok_or;
 use crate::unwrap_some_or;
 use crate::warn_or_panic;
-
 use ::raft::prelude as raft;
 use ::raft::storage::Storage as _;
 use ::raft::Error as RaftError;
@@ -75,13 +77,11 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::{Decode, Tuple};
 use protobuf::Message as _;
-
-use crate::plugin::manager::PluginManager;
-use crate::plugin::PluginAsyncEvent;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::ControlFlow;
+use std::ptr::addr_of;
 use std::rc::Rc;
 use std::time::Duration;
 use ApplyEntryResult::*;
@@ -192,7 +192,9 @@ impl Node {
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
     ) -> Result<&'static Self, Error> {
-        if unsafe { RAFT_NODE.is_some() } {
+        // SAFETY: only accessed from main thread, and never mutated after
+        // initialization (initialization happens later in this function)
+        if unsafe { (*addr_of!(RAFT_NODE)).is_some() } {
             return Err(Error::other("raft node is already initialized"));
         }
 
@@ -253,6 +255,7 @@ impl Node {
             instance_reachability,
         };
 
+        // SAFETY: only accessed from main thread, and never mutated after this
         unsafe { RAFT_NODE = Some(Box::new(node)) };
         let node = global().expect("just initialized it");
 
@@ -2583,12 +2586,21 @@ impl Drop for MainLoop {
     }
 }
 
-pub fn global() -> traft::Result<&'static Node> {
+pub fn global() -> Result<&'static Node, BoxError> {
     // Uninitialized raft node is a regular case. This case may take
     // place while the instance is executing `start_discover()` function.
     // It has already started listening, but the node is only initialized
     // in `postjoin()`.
-    unsafe { RAFT_NODE.as_deref() }.ok_or(Error::Uninitialized)
+    // SAFETY:
+    // - static mut access: safe because node is only accessed from main thread
+    // - &'static to static mut: safe because it is never mutated after initialization
+    //
+    // Note that this is basically the behavior of std::cell::OnceLock, but we
+    // can't use it because it doesn't implement Sync, and we don't want to use
+    // std::sync::OnceLock, because we don't want to pay for the atomic read
+    // which we don't need.
+    unsafe { (*addr_of!(RAFT_NODE)).as_deref() }
+        .ok_or(BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
 }
 
 #[proc(packed_args)]

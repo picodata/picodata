@@ -1,10 +1,3 @@
-use futures::future::join_all;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error};
-
-use ::tarantool::fiber;
-use tarantool::fiber::r#async::timeout::IntoTimeout;
-
 use crate::info::{RuntimeInfo, VersionInfo};
 use crate::instance::{Instance, InstanceName, StateVariant};
 use crate::replicaset::{Replicaset, ReplicasetName};
@@ -12,8 +5,14 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
+use crate::traft::Result;
 use crate::util::Uppercase;
 use crate::{has_states, tlog, unwrap_ok_or};
+use futures::future::join_all;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tarantool::fiber;
+use tarantool::fiber::r#async::timeout::IntoTimeout;
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
@@ -153,9 +152,7 @@ pub(crate) struct ClusterInfo {
     plugins: Vec<String>,
 }
 
-fn get_replicasets(
-    storage: &Clusterwide,
-) -> Result<HashMap<ReplicasetName, Replicaset>, Box<dyn Error>> {
+fn get_replicasets(storage: &Clusterwide) -> Result<HashMap<ReplicasetName, Replicaset>> {
     let i = storage.replicasets.iter()?;
     Ok(i.map(|item| (item.name.clone(), item)).collect())
 }
@@ -165,7 +162,7 @@ fn get_peer_addresses(
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
-) -> Result<HashMap<u64, String>, Box<dyn Error>> {
+) -> Result<HashMap<u64, String>> {
     let leaders: HashMap<u64, bool> = instances
         .iter()
         .filter(|item| {
@@ -243,10 +240,7 @@ async fn get_instances_data(
 
 // Collect detailed information from replicasets and instances
 //
-fn get_replicasets_info(
-    storage: &Clusterwide,
-    only_leaders: bool,
-) -> Result<Vec<ReplicasetInfo>, Box<dyn Error>> {
+fn get_replicasets_info(storage: &Clusterwide, only_leaders: bool) -> Result<Vec<ReplicasetInfo>> {
     let node = crate::traft::node::global()?;
     let instances = storage.instances.all_instances()?;
     let instances_props = fiber::block_on(get_instances_data(&node.pool, &instances));
@@ -325,7 +319,7 @@ fn get_replicasets_info(
     Ok(res.into_values().collect())
 }
 
-pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
+pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     let version = String::from(VersionInfo::current().picodata_version);
 
     let storage = Clusterwide::get();
@@ -375,7 +369,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     Ok(res)
 }
 
-pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
+pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
     let storage = Clusterwide::get();
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = storage.tiers.iter()?;

@@ -175,6 +175,7 @@ impl std::fmt::Display for IdOfInstance {
 impl Error {
     pub fn error_code(&self) -> u32 {
         match self {
+            Self::Uninitialized => ErrorCode::Uninitialized as _,
             Self::Tarantool(e) => e.error_code(),
             Self::Cas(e) => e.error_code(),
             Self::Raft(raft::Error::Store(raft::StorageError::Compacted)) => {

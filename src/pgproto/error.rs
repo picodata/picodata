@@ -126,6 +126,13 @@ impl From<tarantool::error::Error> for PgError {
     }
 }
 
+impl From<tarantool::error::BoxError> for PgError {
+    #[inline(always)]
+    fn from(e: tarantool::error::BoxError) -> Self {
+        crate::traft::error::Error::from(e).into()
+    }
+}
+
 impl IntoBoxError for PgError {}
 
 impl PgError {

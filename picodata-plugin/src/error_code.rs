@@ -79,6 +79,9 @@ tarantool::define_enum_with_introspection! {
         /// TableNotOperable: table {table} is prohibited for use in a predicate
         CasTableNotOperable = 10023,
 
+        /// Picodata machinery is not yet initialized on the instance.
+        Uninitialized = 10024,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
