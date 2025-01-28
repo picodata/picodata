@@ -20,7 +20,6 @@ use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, plugin, tlog};
 
-use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, decode_msgpack,
@@ -501,10 +500,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let tuple = match query.dispatch() {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                    debug!(
-                        Option::from("dispatch"),
-                        &format!("Dispatch result: {tuple:?}"),
-                    );
+                    tlog!(Trace, "dispatch: Dispatch result: {tuple:?}");
                     let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
                     Ok(tuple)
                 } else {
@@ -1619,10 +1615,7 @@ pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
     match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
         Ok(mut any_tuple) => {
             if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                debug!(
-                    Option::from("proc_sql_execute"),
-                    &format!("Execution result: {tuple:?}"),
-                );
+                tlog!(Trace, "proc_sql_execute: Execution result: {tuple:?}");
                 let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
                 Ok(tuple)
             } else {
