@@ -14,6 +14,7 @@ use crate::traft::network::ConnectionPool;
 use crate::traft::network::WorkerOptions;
 use crate::traft::node;
 use crate::traft::node::Node;
+use crate::version::Version;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use abi_stable::std_types::RStr;
@@ -50,14 +51,17 @@ fn plugin_compatibility_check_enabled() -> bool {
 }
 
 /// Check if picodata version matches picodata_plugin version.
-fn ensure_picodata_version_compatible(picodata_plugin_version: &str) -> Result<()> {
-    if PICODATA_VERSION.starts_with(picodata_plugin_version) {
-        return Ok(());
-    }
+fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
+    let picodata = Version::try_from(PICODATA_VERSION).expect("correct picodata version");
+    let picoplugin = Version::try_from(picoplugin_version).expect("correct picoplugin version");
 
-    Err(PluginError::IncompatiblePicopluginVersion(
-        picodata_plugin_version.to_string(),
-    ))
+    picodata
+        .cmp_up_to_patch(&picoplugin)
+        .is_eq()
+        .then_some(())
+        .ok_or(PluginError::IncompatiblePicopluginVersion(
+            picoplugin_version.to_string(),
+        ))
 }
 
 type PluginServices = Vec<Rc<fiber::Mutex<Service>>>;

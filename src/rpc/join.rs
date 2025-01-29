@@ -15,6 +15,7 @@ use crate::tlog;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
+use crate::version::Version;
 use std::collections::HashSet;
 use std::time::Duration;
 use tarantool::fiber;
@@ -66,41 +67,27 @@ crate::define_rpc_request! {
 
 // Compares the versions of instances before joining the cluster.
 // A cluster is considered compatible if the versions have a minor difference of 1.
-// For example, if the leader's version is 25.X, the follower's version must be either 25.X or 25.(X+1).
-pub fn compare_picodata_versions(
-    leader_version: &str,
-    follower_version: &str,
-) -> Result<u8, Error> {
-    let parse_version = |version: &str| -> (u8, u8) {
-        let parts: Vec<&str> = version.split('.').collect();
-        let major: u8 = parts[0]
-            .parse::<u8>()
-            .expect("Invalid major picodata version");
-        let minor: u8 = parts[1]
-            .parse::<u8>()
-            .expect("Invalid minor picodata version");
-        (major, minor)
+// For example, if the leader's version is 25.X, the joinee's version must be either 25.X or 25.(X+1).
+// WARNING: passed versions to this function should be in correct format, otherwise it will panic.
+pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> Result<u8, Error> {
+    let version_mismatch = || Error::PicodataVersionMismatch {
+        leader_version: leader_version.to_owned(),
+        instance_version: joinee_version.to_owned(),
     };
 
-    let (leader_major, leader_minor) = parse_version(leader_version);
-    let (follower_major, follower_minor) = parse_version(follower_version);
+    let leader = Version::try_from(leader_version).expect("correct picodata version");
+    let joinee = Version::try_from(joinee_version).expect("correct picodata version");
 
-    if leader_major != follower_major {
-        return Err(Error::PicodataVersionMismatch {
-            leader_version: leader_version.to_string(),
-            instance_version: follower_version.to_string(),
-        });
+    if leader.major != joinee.major {
+        return Err(version_mismatch());
     }
 
-    if leader_minor == follower_minor {
-        return Ok(0);
-    } else if follower_minor == leader_minor + 1 {
-        return Ok(1);
+    if leader.minor == joinee.minor {
+        Ok(0)
+    } else if joinee.minor == leader.minor + 1 {
+        Ok(1)
     } else {
-        return Err(Error::PicodataVersionMismatch {
-            leader_version: leader_version.to_string(),
-            instance_version: follower_version.to_string(),
-        });
+        Err(version_mismatch())
     }
 }
 

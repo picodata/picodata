@@ -144,6 +144,7 @@ mod tests {
     use crate::rpc::update_instance::update_instance;
     use crate::tier::Tier;
     use crate::traft::op::Dml;
+    use crate::version::Version;
 
     use super::*;
 
@@ -474,15 +475,8 @@ mod tests {
     fn test_update_picodata_version() {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
-        let global_cluster_version = PICODATA_VERSION.to_string();
-
-        let next_minor_version = |version: &str| -> String {
-            let parts: Vec<&str> = version.split('.').collect();
-            let major: u8 = parts[0].parse().expect("Invalid major version");
-            let minor: u8 = parts[1].parse().expect("Invalid minor version");
-            format!("{}.{}.x", major, minor + 1)
-        };
-        let new_picodata_version = next_minor_version(&global_cluster_version);
+        let global_cluster_version = PICODATA_VERSION;
+        let new_picodata_version = Version::try_from(global_cluster_version).expect("correct picodata version").next_by_minor().to_string();
 
         let instance_name = "default_r1_1";
         let instance = dummy_instance(1, instance_name, "r1", &State::new(Online, 1));
@@ -491,7 +485,7 @@ mod tests {
 
         let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_picodata_version(new_picodata_version.clone());
-        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, &global_cluster_version)
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds, global_cluster_version)
             .unwrap()
             .expect("expected update picodata version");
 
@@ -523,7 +517,7 @@ mod tests {
         // Now try to update the picodata_version on the expelled instance.
         let req = rpc::update_instance::Request::new(expelled_instance.name.clone(), "".into())
             .with_picodata_version(new_picodata_version.clone());
-        let err = update_instance(&expelled_instance, &req, &existing_fds, &global_cluster_version)
+        let err = update_instance(&expelled_instance, &req, &existing_fds, global_cluster_version)
             .unwrap_err();
 
         assert_eq!(

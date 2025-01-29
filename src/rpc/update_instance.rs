@@ -274,6 +274,7 @@ pub fn update_instance(
     }
 
     if let Some(picodata_version) = req.picodata_version.as_ref() {
+        tlog!(Error, "joinee version is {picodata_version}");
         compare_picodata_versions(global_cluster_version, picodata_version)?;
 
         if instance.picodata_version != *picodata_version {

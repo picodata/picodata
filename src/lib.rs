@@ -82,6 +82,7 @@ pub mod to_rmpv_named;
 pub mod topology_cache;
 pub mod traft;
 pub mod util;
+pub mod version;
 pub mod vshard;
 
 macro_rules! lua_preload {
