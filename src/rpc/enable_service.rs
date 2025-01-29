@@ -1,4 +1,3 @@
-use crate::plugin::PluginEvent;
 use crate::plugin::PluginOp;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -30,10 +29,7 @@ crate::define_rpc_request! {
             return Err(Error::other("found unexpected plugin operation expected AlterServiceTiers, found {plugin_op:?}"));
         };
 
-        node.plugin_manager.handle_event_sync(PluginEvent::ServiceEnabled {
-            ident: plugin,
-            service,
-        })?;
+        node.plugin_manager.handle_service_enabled(plugin, service)?;
 
         Ok(Response {})
     }

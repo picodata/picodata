@@ -1,4 +1,3 @@
-use crate::plugin::PluginEvent;
 use crate::tlog;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
@@ -20,7 +19,7 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let result = node.plugin_manager.handle_event_sync(PluginEvent::InstanceOnline);
+        let result = node.plugin_manager.handle_instance_online();
         if let Err(e) = result {
             tlog!(Error, "failed initializing plugin system: {e}");
             return Err(e.into());

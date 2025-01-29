@@ -6,7 +6,7 @@ use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::ServiceState;
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
-    PluginError, PluginEvent, PluginIdentifier, Result,
+    PluginError, PluginIdentifier, Result,
 };
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
 use crate::storage::Clusterwide;
@@ -316,10 +316,9 @@ impl PluginManager {
             },
         );
 
-        self.handle_event_sync(PluginEvent::PluginLoad {
-            ident,
-            service_defs: &service_defs,
-        })
+        self.handle_plugin_load(ident, &service_defs)?;
+
+        Ok(())
     }
 
     /// Check the possibility of loading plugin into instance.
@@ -335,7 +334,7 @@ impl PluginManager {
     }
 
     /// Load and start all enabled plugins and services that must be loaded.
-    fn handle_instance_online(&self) -> Result<()> {
+    pub(crate) fn handle_instance_online(&self) -> Result<()> {
         let node = node::global().expect("node must be already initialized");
 
         let instance_name = node
@@ -425,7 +424,7 @@ impl PluginManager {
     }
 
     /// Stop all plugin services.
-    fn handle_instance_shutdown(&self) {
+    pub(crate) fn handle_instance_shutdown(&self) {
         let node = node::global().expect("node must be already initialized");
         let ctx = context_from_node(node);
 
@@ -525,7 +524,7 @@ impl PluginManager {
     }
 
     /// Call `on_leader_change` at services. Poison services if error at callbacks happens.
-    fn handle_rs_leader_change(&self) -> traft::Result<()> {
+    pub(crate) fn handle_rs_leader_change(&self) -> traft::Result<()> {
         let node = node::global()?;
         let mut ctx = context_from_node(node);
         let storage = &node.storage;
@@ -671,7 +670,7 @@ impl PluginManager {
         Ok(())
     }
 
-    fn handle_service_disabled(&self, plugin_ident: &PluginIdentifier, service: &str) {
+    pub(crate) fn handle_service_disabled(&self, plugin_ident: &PluginIdentifier, service: &str) {
         let node = node::global().expect("node must be already initialized");
         let ctx = context_from_node(node);
 
@@ -751,29 +750,8 @@ impl PluginManager {
         Ok(())
     }
 
-    fn handle_plugin_load_error(&self, plugin: &str) -> Result<()> {
-        let node = node::global().expect("must be initialized");
-        let ctx = context_from_node(node);
-
-        let maybe_plugin_state = {
-            let mut lock = self.plugins.lock();
-            lock.remove(plugin)
-        };
-
-        if let Some(plugin_state) = maybe_plugin_state {
-            // stop all background jobs and remove metrics first
-            stop_background_jobs(&plugin_state.services);
-            self.remove_metrics_handlers(&plugin_state.services);
-
-            for service in plugin_state.services.iter() {
-                stop_service(&service, &ctx);
-            }
-        }
-        Ok(())
-    }
-
     /// Call user defined service configuration validation.
-    fn handle_before_service_reconfigured(
+    pub(crate) fn handle_before_service_reconfigured(
         &self,
         plugin_ident: &PluginIdentifier,
         service_name: &str,
@@ -851,53 +829,6 @@ impl PluginManager {
                 "Configuration validator for service not found",
             )),
         ))
-    }
-
-    /// Handle picodata event by plugin system.
-    /// Any event may be handled by any count of plugins that are interested in this event.
-    /// Return error if any of service callbacks return error.
-    ///
-    /// # Arguments
-    ///
-    /// * `event`: upcoming event
-    pub fn handle_event_sync(&self, event: PluginEvent) -> Result<()> {
-        match event {
-            PluginEvent::InstanceOnline => {
-                self.handle_instance_online()?;
-            }
-            PluginEvent::InstanceShutdown => {
-                self.handle_instance_shutdown();
-            }
-            PluginEvent::PluginLoad {
-                ident,
-                service_defs,
-            } => {
-                self.handle_plugin_load(ident, service_defs)?;
-            }
-            PluginEvent::PluginLoadError { name } => {
-                self.handle_plugin_load_error(name)?;
-            }
-            PluginEvent::BeforeServiceConfigurationUpdated {
-                ident,
-                service,
-                new_raw,
-            } => {
-                self.handle_before_service_reconfigured(ident, service, new_raw)?;
-            }
-            PluginEvent::InstanceDemote | PluginEvent::InstancePromote => {
-                if let Err(e) = self.handle_rs_leader_change() {
-                    tlog!(Error, "on_leader_change error: {e}");
-                }
-            }
-            PluginEvent::ServiceEnabled { ident, service } => {
-                self.handle_service_enabled(ident, service)?;
-            }
-            PluginEvent::ServiceDisabled { ident, service } => {
-                self.handle_service_disabled(ident, service);
-            }
-        }
-
-        Ok(())
     }
 
     /// Queue event for deferred execution.

@@ -1,4 +1,3 @@
-use crate::plugin::PluginEvent;
 use crate::plugin::PluginOp;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -29,10 +28,7 @@ crate::define_rpc_request! {
         };
 
         // reaction at `ServiceDisabled` is idempotent, so no errors occurred
-        _ = node.plugin_manager.handle_event_sync(PluginEvent::ServiceDisabled {
-            ident: plugin,
-            service,
-        });
+        node.plugin_manager.handle_service_disabled(plugin, service);
 
         Ok(Response {})
     }

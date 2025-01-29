@@ -1,5 +1,4 @@
 use crate::has_states;
-use crate::plugin::PluginEvent;
 use crate::tarantool;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -31,12 +30,7 @@ pub async fn callback() {
     // 1. Wake up the sentinel so it starts trying to set target state Offline.
     node.sentinel_loop.on_shut_down();
 
-    if let Err(e) = node
-        .plugin_manager
-        .handle_event_sync(PluginEvent::InstanceShutdown)
-    {
-        tlog!(Error, "plugin `on_stop` error: {e}");
-    };
+    node.plugin_manager.handle_instance_shutdown();
 
     fiber::reschedule();
 

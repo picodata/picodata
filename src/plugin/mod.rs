@@ -365,43 +365,6 @@ impl Manifest {
 }
 
 /// Events that may be fired at picodata
-/// and which plugins should respond to.
-#[derive(Clone, PartialEq, Debug)]
-pub enum PluginEvent<'a> {
-    /// Picodata instance goes online.
-    InstanceOnline,
-    /// Picodata instance shutdown (shutdown trigger is called).
-    InstanceShutdown,
-    /// New plugin load at instance.
-    PluginLoad {
-        ident: &'a PluginIdentifier,
-        service_defs: &'a [ServiceDef],
-    },
-    /// Error occurred while the plugin loaded.
-    PluginLoadError { name: &'a str },
-    /// Request for update service configuration received.
-    BeforeServiceConfigurationUpdated {
-        ident: &'a PluginIdentifier,
-        service: &'a str,
-        new_raw: &'a [u8],
-    },
-    /// Instance demote.
-    InstanceDemote,
-    /// Instance promote as a replicaset leader.
-    InstancePromote,
-    /// Plugin service enabled at instance.
-    ServiceEnabled {
-        ident: &'a PluginIdentifier,
-        service: &'a str,
-    },
-    /// Plugin service disabled at instance.
-    ServiceDisabled {
-        ident: &'a PluginIdentifier,
-        service: &'a str,
-    },
-}
-
-/// Events that may be fired at picodata
 /// and which plugins should respond to *asynchronously*.
 ///
 /// Asynchronous events needed when fired side can't yield while event handled by plugins,
@@ -1232,12 +1195,10 @@ pub fn change_config_atom(
 
             let new_cfg_raw =
                 rmp_serde::to_vec_named(&Value::Map(current_cfg)).expect("out of memory");
-            let event = PluginEvent::BeforeServiceConfigurationUpdated {
-                ident,
-                service,
-                new_raw: new_cfg_raw.as_slice(),
-            };
-            node.plugin_manager.handle_event_sync(event)?;
+
+            node.plugin_manager
+                .handle_before_service_reconfigured(ident, service, &new_cfg_raw)?;
+
             service_config_part.push((service.to_string(), kv));
         }
 

@@ -37,7 +37,6 @@ use crate::governor;
 #[allow(unused_imports)]
 use crate::governor::plan;
 use crate::pico_service::pico_service_password;
-use crate::plugin::PluginEvent;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::schema::PICO_SERVICE_USER_NAME;
@@ -155,6 +154,8 @@ fn is_read_only() -> Result<bool> {
 ///
 /// Returns errors in the following cases: See implementation.
 fn promote_to_master() -> Result<()> {
+    let node = node::global()?;
+
     // XXX: Currently we just change the box.cfg.read_only option of the
     // instance but at some point we will implement support for
     // tarantool synchronous transactions then this operation will probably
@@ -175,9 +176,10 @@ fn promote_to_master() -> Result<()> {
 
     if was_read_only {
         // errors ignored because it must be already handled by plugin manager itself
-        _ = node::global()?
-            .plugin_manager
-            .handle_event_sync(PluginEvent::InstancePromote);
+        let res = node.plugin_manager.handle_rs_leader_change();
+        if let Err(e) = res {
+            tlog!(Error, "on_leader_change error: {e}");
+        }
     }
 
     Ok(())
@@ -202,7 +204,10 @@ crate::define_rpc_request! {
 
         if !was_read_only {
             // errors ignored because it must be already handled by plugin manager itself
-            _ = node::global()?.plugin_manager.handle_event_sync(PluginEvent::InstanceDemote);
+            let res = node.plugin_manager.handle_rs_leader_change();
+            if let Err(e) = res {
+                tlog!(Error, "on_leader_change error: {e}");
+            }
         }
 
         let vclock = Vclock::current();
