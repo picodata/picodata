@@ -46,6 +46,8 @@ from framework.log import log
 from framework.constants import BASE_HOST
 from framework.port_distributor import PortDistributor
 
+pytest_plugins = "framework.sqltester"
+
 
 # From raft.rs:
 # A constant represents invalid id of raft.

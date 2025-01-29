@@ -1,14 +1,14 @@
-from sqltester import (  # noqa F401
+from framework.sqltester import (
     ClusterTwoInstances,
-    cluster_2,
-    parse_file,
-    pytest_generate_tests,
+    sql_test_file,
 )
 
 
+@sql_test_file("example.sql")
 class TestExample1(ClusterTwoInstances):
-    params = parse_file("example.txt")
+    pass
 
 
+@sql_test_file("example.sql")
 class TestExample2(ClusterTwoInstances):
-    params = parse_file("example.txt")
+    pass

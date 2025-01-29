@@ -1,4 +1,6 @@
-import os
+import inspect
+from pathlib import Path
+from typing import Type
 import pytest
 import re
 from conftest import Cluster, TarantoolError
@@ -57,12 +59,9 @@ def _parse_line(input_string):
     return result
 
 
-def parse_file(file_name: str) -> list:
-    current_file_path = os.path.abspath(__file__)
-    dir_path = os.path.dirname(current_file_path)
-    path = os.path.join(dir_path, file_name)
-    with open(path, "r") as f:
-        content = f.read()
+def parse_file(cls: Type, file_name: str) -> list:
+    test_file = Path(inspect.getfile(cls)).parent / file_name
+    content = test_file.read_text()
     test_pattern = (
         r"-- TEST: (.*?)\n"  # Test name
         r"-- SQL:\n(.*?)\n"  # SQL query
@@ -84,7 +83,16 @@ def parse_file(file_name: str) -> list:
     return params
 
 
-# Pytest hook to generate tests from parameters
+def sql_test_file(file_name: str):
+    def inner(cls):
+        cls = pytest.mark.xdist_group(name=f"{file_name}#{cls.__name__}")(cls)
+        cls.params = parse_file(cls, file_name)
+        return cls
+
+    return inner
+
+
+# Pytest hook to generate tests from parameters. For details see test/framework/sqltester.py
 def pytest_generate_tests(metafunc):
     if metafunc.function.__name__ == "test_sql":
         assert "query" in metafunc.fixturenames
