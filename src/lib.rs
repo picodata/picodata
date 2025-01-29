@@ -1015,7 +1015,8 @@ fn postjoin(
     let lua = ::tarantool::lua_state();
     lua.exec_with(r#"require('console').listen(...)"#, &socket_uri)?;
 
-    if let Err(e) = tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback())) {
+    let res = on_shutdown::setup_on_shutdown_trigger();
+    if let Err(e) = res {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 

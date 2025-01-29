@@ -1830,6 +1830,9 @@ class Cluster:
             listen = f"{self.base_host}:{self.port_distributor.get()}"
             instance.env["PICODATA_HTTP_LISTEN"] = listen
 
+        # Tweak the on_shutdown timeout so that tests don't run for too long
+        instance.env["PICODATA_INTERNAL_ON_SHUTDOWN_TIMEOUT"] = "5"
+
         self.instances.append(instance)
 
         if wait_online:
