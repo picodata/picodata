@@ -13,10 +13,11 @@ select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* ('FROM' scan
                 ('WHERE' expression)?
                 ('GROUP' 'BY' expression (',' expression)*)?
                 ('HAVING' expression)?
+                ('WINDOW' name 'AS' '(' partition ')')?
                 ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
                 (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?)?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
-projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate
+projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window
 scan        ::= (table | '(' dql ')') ('AS'? name)?
 expression  ::= ('NOT'* (
                     (table '.')? column
@@ -51,6 +52,27 @@ expression  ::= ('NOT'* (
                 expression
 aggregate   ::= ('AVG' | 'COUNT' | 'MAX' | 'MIN' | 'SUM' | 'TOTAL') '(' ('DISTINCT'? expression) ')'
                | ('GROUP_CONCAT' | 'STRING_AGG') '(' expression ',' "'" string "'" ')'
+window      ::= (builtin | aggregate) ('FILTER' '(' 'WHERE' expression ')')?
+                 'OVER' (name | ('(' partition ')'))
+partition   ::= ('PARTITION' 'BY' expression (',' expression)*)?
+                 ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
+                 (('RANGE' | 'ROWS') (
+                   (
+                      'BETWEEN'
+                      (
+                        ('UNBOUNDED' 'PRECEDING')
+                        | (expression ('FOLLOWING' | 'PRECEDING'))
+                        | ('CURRENT' 'ROW')
+                      )
+                      'AND'
+                      (
+                        ('UNBOUNDED' 'FOLLOWING')
+                        | (expression ('FOLLOWING' | 'PRECEDING'))
+                        | ('CURRENT' 'ROW')
+                      )
+                   ) | ('UNBOUNDED' 'PRECEDING') | ('CURRENT' 'ROW') | ( expression 'PRECEDING')
+                 ))?
+builtin     ::= 'ROW_NUMBER' '(' ')'
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
