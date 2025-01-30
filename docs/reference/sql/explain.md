@@ -27,7 +27,7 @@
 
 Дополнительно, запрос `EXPLAIN` показывает следующие элементы:
 
-- текущие значения `VDBE_MAX_STEPS` и `VDBE_MAX_ROWS`, служащие для
+- текущие значения `SQL_VDBE_OPCODE_MAX` и `SQL_MOTION_ROW_MAX`, служащие для
   [ограничения запросов](non_block.md#query_limitations)
 - расчетный диапазон [бакетов](../../overview/glossary.md#bucket), на
   которых будет выполнен запрос
@@ -44,8 +44,8 @@ EXPLAIN SELECT item FROM warehouse;
 projection ("warehouse"."item"::string -> "item")
     scan "warehouse"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = [1-3000]
 ```
 
@@ -366,8 +366,8 @@ projection ("warehouse"."id"::integer -> "id", "warehouse"."item"::string -> "it
     selection ROW("warehouse"."id"::integer) in ROW(1::unsigned, 2::unsigned, 3::unsigned)
         scan "warehouse"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = [1410,1934,1958]
 ```
 
@@ -387,8 +387,8 @@ update "warehouse"
         projection ('N/A'::string -> "col_0", "warehouse"."id"::integer -> "col_1")
             scan "warehouse"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = [1-3000]
 ```
 
@@ -412,8 +412,8 @@ insert "orders" on conflict: fail
             selection ROW("items"."id"::integer) = ROW(5::unsigned)
                 scan "items"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = [219]
 ```
 
@@ -433,8 +433,8 @@ EXPLAIN SELECT id FROM _pico_table;
 projection ("_pico_table"."id"::unsigned -> "id")
     scan "_pico_table"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = any
 ```
 
@@ -461,7 +461,7 @@ update "deliveries"
             selection ROW("deliveries"."nmbr"::integer) = ROW(1::unsigned)
                 scan "deliveries"
 execution options:
-    vdbe_max_steps = 45000
-    vtable_max_rows = 5000
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
 buckets = unknown
 ```

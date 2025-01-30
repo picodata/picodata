@@ -63,7 +63,7 @@
 
 Примеры изменяемых параметров:
 
-- `VDBE_MAX_STEPS / VTABLE_MAX_ROWS`{.full} ([неблокирующие запросы](../reference/sql/non_block.md#query_limitations))
+- `SQL_VDBE_OPCODE_MAX / SQL_MOTION_ROW_MAX`{.full} ([неблокирующие запросы](../reference/sql/non_block.md#query_limitations))
 - `PICODATA_CONFIG_FILE`{.partly} ([путь к файлу конфигурации](../reference/cli.md#run_config))
 - `PICODATA_CONFIG_PARAMETERS`{.partly} ([список пар ключ-значение](../reference/cli.md#run_config_parameter))
 

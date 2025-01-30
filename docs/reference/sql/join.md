@@ -222,8 +222,8 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
             projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
 ```
 
 ### Частичное перемещение {: #segment_motion }
@@ -249,8 +249,8 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
             projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
 ```
 
 ### Полное перемещение {: #full_motion }
@@ -279,8 +279,8 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
 ```
 
 Также, при использовании математических выражений или литералов, перемещение всегда будет полным:
@@ -300,8 +300,8 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
 ```
 
 ```sql
@@ -319,6 +319,6 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000
+sql_vdbe_opcode_max = 45000
+sql_motion_row_max = 5000
 ```

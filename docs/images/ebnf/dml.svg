@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="823"
-   height="213"
-   viewBox="0 0 823 213"
+   width="685"
+   height="339"
    version="1.1"
-   id="svg27"
+   id="svg26"
+   viewBox="0 0 685 339"
    sodipodi:docname="dml.svg"
-   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
-     id="namedview27"
+     id="namedview26"
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1.0"
@@ -21,17 +21,17 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="3.2442712"
-     inkscape:cx="474.52876"
-     inkscape:cy="98.943639"
+     inkscape:zoom="1.1200159"
+     inkscape:cx="316.06696"
+     inkscape:cy="95.08794"
      inkscape:window-width="1858"
      inkscape:window-height="1014"
      inkscape:window-x="62"
      inkscape:window-y="29"
      inkscape:window-maximized="1"
-     inkscape:current-layer="svg27" />
+     inkscape:current-layer="svg26" />
   <defs
-     id="defs2">
+     id="defs1">
     <style
        type="text/css"
        id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
@@ -47,284 +47,276 @@ rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
 rect.text { fill: none; stroke: none; }
 polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
 </style>
-    <style
-       class="darkreader darkreader--sync"
-       media="screen"
-       id="style2" />
   </defs>
   <polygon
-     points="9 61 1 57 1 65"
-     id="polygon2" />
+     points="11 17 3 13 3 21"
+     id="polygon1" />
   <polygon
-     points="17 61 9 57 9 65"
-     id="polygon3" />
+     points="19 17 11 13 11 21"
+     id="polygon2" />
   <a
      xlink:href="../call"
      xlink:title="call"
-     id="a4">
+     id="a3">
+    <rect
+       x="53"
+       y="3"
+       width="40"
+       height="32"
+       id="rect2" />
     <rect
        x="51"
-       y="47"
-       width="40"
-       height="32"
-       id="rect3" />
-    <rect
-       x="49"
-       y="45"
+       y="1"
        width="40"
        height="32"
        class="nonterminal"
-       id="rect4" />
+       id="rect3" />
     <text
        class="nonterminal"
-       x="59"
-       y="65"
-       id="text4">call</text>
+       x="61"
+       y="21"
+       id="text3">call</text>
   </a>
   <a
      xlink:href="../delete"
      xlink:title="delete"
-     id="a6">
+     id="a5">
+    <rect
+       x="53"
+       y="47"
+       width="60"
+       height="32"
+       id="rect4" />
     <rect
        x="51"
-       y="91"
-       width="60"
-       height="32"
-       id="rect5" />
-    <rect
-       x="49"
-       y="89"
+       y="45"
        width="60"
        height="32"
        class="nonterminal"
-       id="rect6" />
+       id="rect5" />
     <text
        class="nonterminal"
-       x="59"
-       y="109"
-       id="text6">delete</text>
+       x="61"
+       y="65"
+       id="text5">delete</text>
   </a>
   <a
      xlink:href="../insert"
      xlink:title="insert"
-     id="a8">
+     id="a7">
+    <rect
+       x="53"
+       y="91"
+       width="56"
+       height="32"
+       id="rect6" />
     <rect
        x="51"
-       y="135"
-       width="56"
-       height="32"
-       id="rect7" />
-    <rect
-       x="49"
-       y="133"
+       y="89"
        width="56"
        height="32"
        class="nonterminal"
-       id="rect8" />
+       id="rect7" />
     <text
        class="nonterminal"
-       x="59"
-       y="153"
-       id="text8">insert</text>
+       x="61"
+       y="109"
+       id="text7">insert</text>
   </a>
   <a
      xlink:href="../update"
      xlink:title="update"
-     id="a10">
+     id="a9">
+    <rect
+       x="53"
+       y="135"
+       width="64"
+       height="32"
+       id="rect8" />
     <rect
        x="51"
-       y="179"
-       width="64"
-       height="32"
-       id="rect9" />
-    <rect
-       x="49"
-       y="177"
+       y="133"
        width="64"
        height="32"
        class="nonterminal"
-       id="rect10" />
+       id="rect9" />
     <text
        class="nonterminal"
-       x="59"
-       y="197"
-       id="text10">update</text>
+       x="61"
+       y="153"
+       id="text9">update</text>
   </a>
   <rect
-     x="175"
-     y="47"
+     x="45"
+     y="245"
      width="76"
      height="32"
+     rx="10"
+     id="rect10" />
+  <rect
+     x="43"
+     y="243"
+     width="76"
+     height="32"
+     class="terminal"
      rx="10"
      id="rect11" />
-  <rect
-     x="173"
-     y="45"
-     width="76"
-     height="32"
+  <text
      class="terminal"
+     x="53"
+     y="263"
+     id="text11">OPTION</text>
+  <rect
+     x="141"
+     y="245"
+     width="26"
+     height="32"
      rx="10"
      id="rect12" />
-  <text
-     class="terminal"
-     x="183"
-     y="65"
-     id="text12">OPTION</text>
   <rect
-     x="271"
-     y="47"
+     x="139"
+     y="243"
      width="26"
      height="32"
+     class="terminal"
      rx="10"
      id="rect13" />
-  <rect
-     x="269"
-     y="45"
-     width="26"
-     height="32"
+  <text
      class="terminal"
+     x="149"
+     y="263"
+     id="text13">(</text>
+  <rect
+     x="227"
+     y="245"
+     width="168"
+     height="32"
      rx="10"
      id="rect14" />
-  <text
-     class="terminal"
-     x="279"
-     y="65"
-     id="text14">(</text>
   <rect
-     x="357"
-     y="47"
-     width="162"
+     x="225"
+     y="243"
+     width="168"
      height="32"
+     class="terminal"
      rx="10"
      id="rect15" />
-  <rect
-     x="355"
-     y="45"
-     width="162"
-     height="32"
+  <text
      class="terminal"
+     x="235"
+     y="263"
+     id="text15">sql_motion_row_max</text>
+  <rect
+     x="227"
+     y="289"
+     width="176"
+     height="32"
      rx="10"
      id="rect16" />
-  <text
-     class="terminal"
-     x="365"
-     y="65"
-     id="text16">VTABLE_MAX_ROWS</text>
   <rect
-     x="356.76944"
-     y="91"
-     width="162.7878"
-     height="32"
-     rx="10"
-     id="rect17"
-     style="stroke-width:1"
-     ry="10" />
-  <rect
-     x="355"
-     y="89"
-     width="162.7878"
+     x="225"
+     y="287"
+     width="176"
      height="32"
      class="terminal"
      rx="10"
-     id="rect18"
-     ry="10" />
+     id="rect17" />
   <text
      class="terminal"
-     x="373.73666"
-     y="109"
-     id="text18">VDBE_MAX_STEPS</text>
+     x="235"
+     y="307"
+     id="text17">sql_vdbe_opcode_max</text>
   <rect
-     x="581"
-     y="47"
+     x="443"
+     y="245"
      width="30"
      height="32"
+     rx="10"
+     id="rect18" />
+  <rect
+     x="441"
+     y="243"
+     width="30"
+     height="32"
+     class="terminal"
      rx="10"
      id="rect19" />
-  <rect
-     x="579"
-     y="45"
-     width="30"
-     height="32"
-     class="terminal"
-     rx="10"
-     id="rect20" />
   <text
      class="terminal"
-     x="589"
-     y="65"
-     id="text20">=</text>
+     x="451"
+     y="263"
+     id="text19">=</text>
   <a
      xlink:href="../../sql_types#unsigned"
      xlink:title="unsigned"
-     id="a22">
+     id="a21">
     <rect
-       x="631"
-       y="47"
+       x="493"
+       y="245"
        width="78"
        height="32"
-       id="rect21" />
+       id="rect20" />
     <rect
-       x="629"
-       y="45"
+       x="491"
+       y="243"
        width="78"
        height="32"
        class="nonterminal"
-       id="rect22" />
+       id="rect21" />
     <text
        class="nonterminal"
-       x="639"
-       y="65"
-       id="text22">unsigned</text>
+       x="501"
+       y="263"
+       id="text21">unsigned</text>
   </a>
   <rect
-     x="337"
-     y="3"
+     x="207"
+     y="201"
      width="24"
      height="32"
+     rx="10"
+     id="rect22" />
+  <rect
+     x="205"
+     y="199"
+     width="24"
+     height="32"
+     class="terminal"
      rx="10"
      id="rect23" />
-  <rect
-     x="335"
-     y="1"
-     width="24"
-     height="32"
+  <text
      class="terminal"
+     x="215"
+     y="219"
+     id="text23">,</text>
+  <rect
+     x="611"
+     y="245"
+     width="26"
+     height="32"
      rx="10"
      id="rect24" />
-  <text
-     class="terminal"
-     x="345"
-     y="21"
-     id="text24">,</text>
   <rect
-     x="749"
-     y="47"
+     x="609"
+     y="243"
      width="26"
      height="32"
+     class="terminal"
      rx="10"
      id="rect25" />
-  <rect
-     x="747"
-     y="45"
-     width="26"
-     height="32"
-     class="terminal"
-     rx="10"
-     id="rect26" />
   <text
      class="terminal"
-     x="757"
-     y="65"
-     id="text26">)</text>
+     x="619"
+     y="263"
+     id="text25">)</text>
   <path
      class="line"
-     d="m 17,61 h 2 m 20,0 h 10 m 40,0 h 10 m 0,0 h 24 M 19,61 h 20 m 84,0 h 20 M 19,61 c 6.666667,0 10,3.333333 10,10 m 104,0 c 0,-6.666667 3.33333,-10 10,-10 M 29,71 v 24 m 104,0 V 71 M 29,95 c 0,6.66667 3.333333,10 10,10 m 84,0 c 6.66667,0 10,-3.33333 10,-10 m -94,10 h 10 m 60,0 h 10 m 0,0 h 4 M 29,95 v 20 m 104,0 V 95 M 29,115 v 24 m 104,0 V 115 M 29,139 c 0,6.66667 3.333333,10 10,10 m 84,0 c 6.66667,0 10,-3.33333 10,-10 m -94,10 h 10 m 56,0 h 10 m 0,0 h 8 M 29,139 v 20 m 104,0 V 139 M 29,159 v 24 m 104,0 V 159 M 29,183 c 0,6.66667 3.333333,10 10,10 m 84,0 c 6.66667,0 10,-3.33333 10,-10 m -94,10 h 10 m 64,0 h 10 M 163,61 h 10 m 76,0 h 10 m 0,0 h 10 m 26,0 h 10 m 40,0 h 10 m 162,0 h 10 m 0,0 h 22 m -224,0 h 20 m 204,0 h 20 m -244,0 c 6.66667,0 10,3.333333 10,10 m 224,0 c 0,-6.666667 3.33333,-10 10,-10 M 335,71 v 24 m 224,0 V 71 M 335,95 c 0,6.66667 3.33333,10 10,10 m 204,0 c 6.66667,0 10,-3.33333 10,-10 m -214,10 h 10 m 162.709,0 H 549 m 20,-44 h 10 m 30,0 h 10 m 0,0 h 10 m 78,0 h 10 m -412,0 h 20 m -1,0 c -6,0 -9,-3.333333 -9,-10 V 27 c 0,-6.666667 3.33333,-10 10,-10 m 392,44 h 20 m -20,0 c 6.66667,0 10,-3.333333 10,-10 V 27 c 0,-6.666667 -3.33333,-10 -10,-10 m -392,0 h 10 m 24,0 h 10 m 0,0 h 348 m 20,44 h 10 m 26,0 h 10 m -640,0 h 20 m 620,0 h 20 m -660,0 c 6.66667,0 10,3.333333 10,10 m 640,0 c 0,-6.666667 3.33333,-10 10,-10 M 153,71 v 58 m 640,0 V 71 m -640,58 c 0,6.66667 3.33333,10 10,10 m 620,0 c 6.66667,0 10,-3.33333 10,-10 m -630,10 h 10 m 0,0 h 610 m 23,-78 h -3"
-     id="path26"
-     sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccssccccssccccccccccccccccccccccccccccccccc" />
+     d="m19 17 h2 m20 0 h10 m40 0 h10 m0 0 h24 m-104 0 h20 m84 0 h20 m-124 0 q10 0 10 10 m104 0 q0 -10 10 -10 m-114 10 v24 m104 0 v-24 m-104 24 q0 10 10 10 m84 0 q10 0 10 -10 m-94 10 h10 m60 0 h10 m0 0 h4 m-94 -10 v20 m104 0 v-20 m-104 20 v24 m104 0 v-24 m-104 24 q0 10 10 10 m84 0 q10 0 10 -10 m-94 10 h10 m56 0 h10 m0 0 h8 m-94 -10 v20 m104 0 v-20 m-104 20 v24 m104 0 v-24 m-104 24 q0 10 10 10 m84 0 q10 0 10 -10 m-94 10 h10 m64 0 h10 m22 -132 l2 0 m2 0 l2 0 m2 0 l2 0 m-156 242 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m76 0 h10 m0 0 h10 m26 0 h10 m40 0 h10 m168 0 h10 m0 0 h8 m-216 0 h20 m196 0 h20 m-236 0 q10 0 10 10 m216 0 q0 -10 10 -10 m-226 10 v24 m216 0 v-24 m-216 24 q0 10 10 10 m196 0 q10 0 10 -10 m-206 10 h10 m176 0 h10 m20 -44 h10 m30 0 h10 m0 0 h10 m78 0 h10 m-404 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m384 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-384 0 h10 m24 0 h10 m0 0 h340 m20 44 h10 m26 0 h10 m-632 0 h20 m612 0 h20 m-652 0 q10 0 10 10 m632 0 q0 -10 10 -10 m-642 10 v58 m632 0 v-58 m-632 58 q0 10 10 10 m612 0 q10 0 10 -10 m-622 10 h10 m0 0 h602 m23 -78 h-3"
+     id="path25" />
   <polygon
-     points="813 61 821 57 821 65"
+     points="675 259 683 255 683 263"
+     id="polygon25" />
+  <polygon
+     points="675 259 667 255 667 263"
      id="polygon26" />
-  <polygon
-     points="813 61 805 57 805 65"
-     id="polygon27" />
 </svg>
