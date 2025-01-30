@@ -186,10 +186,14 @@ impl Node {
     ///
     /// Returns an error in case of storage failure.
     ///
+    /// If `for_tests` is `true` then the worker fibers are not started. This is
+    /// only used for testing purposes.
+    ///
     /// **This function yields**
     pub fn init(
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
+        for_tests: bool,
     ) -> Result<&'static Self, Error> {
         // SAFETY: only accessed from main thread, and never mutated after
         // initialization (initialization happens later in this function)
@@ -226,22 +230,40 @@ impl Node {
         // so it must be initilized before the main loop starts.
         let guard = crate::util::NoYieldsGuard::new();
 
-        let node = Node {
-            raft_id,
-            main_loop: MainLoop::start(node_impl.clone()),
-            governor_loop: governor::Loop::start(
+        let main_loop = if for_tests {
+            MainLoop::for_tests()
+        } else {
+            MainLoop::start(node_impl.clone())
+        };
+
+        let governor_loop = if for_tests {
+            governor::Loop::for_tests()
+        } else {
+            governor::Loop::start(
                 pool.clone(),
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
-            ),
-            sentinel_loop: sentinel::Loop::start(
+            )
+        };
+
+        let sentinel_loop = if for_tests {
+            sentinel::Loop::for_tests()
+        } else {
+            sentinel::Loop::start(
                 pool.clone(),
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
                 instance_reachability.clone(),
-            ),
+            )
+        };
+
+        let node = Node {
+            raft_id,
+            main_loop,
+            governor_loop,
+            sentinel_loop,
             pool,
             node_impl,
             topology_cache,
@@ -263,6 +285,13 @@ impl Node {
         // Wait for the node to enter the main loop
         node.tick_and_yield(0);
         Ok(node)
+    }
+
+    /// Initializes the global node instance for testing purposes.
+    pub fn for_tests() -> &'static Self {
+        let storage = Clusterwide::for_tests();
+        let raft_storage = RaftSpaceAccess::for_tests();
+        Self::init(storage.clone(), raft_storage, true).unwrap()
     }
 
     #[inline(always)]
@@ -2526,6 +2555,16 @@ impl MainLoop {
         }
     }
 
+    /// Dummy struct instance for when we initialize Node for unit tests.
+    fn for_tests() -> Self {
+        let (loop_waker, _) = watch::channel(());
+        Self {
+            fiber_id: 0,
+            loop_waker,
+        }
+    }
+
+    #[inline(always)]
     pub fn wakeup(&self) {
         let _ = self.loop_waker.send(());
     }

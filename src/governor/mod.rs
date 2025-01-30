@@ -959,6 +959,20 @@ impl Loop {
         }
     }
 
+    pub fn for_tests() -> Self {
+        let (waker, _) = watch::channel(());
+        let (_, status) = watch::channel(GovernorStatus {
+            governor_loop_status: "uninitialized",
+            step_counter: 0,
+        });
+        Self {
+            fiber_id: 0,
+            waker,
+            status,
+        }
+    }
+
+    #[inline(always)]
     pub fn wakeup(&self) -> Result<()> {
         self.waker.send(()).map_err(|_| Error::GovernorStopped)
     }

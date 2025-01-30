@@ -204,6 +204,15 @@ impl Loop {
         }
     }
 
+    #[inline]
+    pub fn for_tests() -> Self {
+        let (status, _) = watch::channel(SentinelStatus::Initial);
+        Self {
+            fiber_id: 0,
+            status,
+        }
+    }
+
     pub fn on_shut_down(&self) {
         self.status
             .send(SentinelStatus::ShuttingDown)

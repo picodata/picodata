@@ -12,6 +12,7 @@
 #![allow(clippy::vec_init_then_push)]
 #![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
+#![allow(clippy::field_reassign_with_default)]
 use config::apply_parameter;
 use info::PICODATA_VERSION;
 use serde::{Deserialize, Serialize};
@@ -995,7 +996,7 @@ fn postjoin(
     tarantool::set_cfg_field("replication_connect_quorum", 0)
         .expect("changing replication_connect_quorum shouldn't fail");
 
-    let node = traft::node::Node::init(storage.clone(), raft_storage.clone());
+    let node = traft::node::Node::init(storage.clone(), raft_storage.clone(), false);
     let node = node.expect("failed initializing raft node");
     let raft_id = node.raft_id();
 

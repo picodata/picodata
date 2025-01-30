@@ -4,6 +4,7 @@ use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::{Space, SpaceId, SpaceType};
+use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::ToTupleBuffer;
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
@@ -71,6 +72,37 @@ impl RaftSpaceAccess {
             space_raft_log,
             space_raft_state,
         })
+    }
+
+    /// Initializes the raft state system spaces for testing purposes.
+    pub fn for_tests() -> Self {
+        let raft_storage = Self::new().unwrap();
+
+        if raft_storage.raft_id().unwrap().is_some() {
+            return raft_storage;
+        }
+
+        transaction(|| -> Result<(), ()> {
+            let raft_id = 1;
+            raft_storage.persist_raft_id(raft_id).unwrap();
+            raft_storage
+                .persist_instance_name(&InstanceName::from("default_1_1"))
+                .unwrap();
+            raft_storage.persist_tier("default").unwrap();
+            raft_storage.persist_cluster_name("test_cluster").unwrap();
+
+            let mut cs = raft::ConfState::default();
+            cs.voters = vec![raft_id];
+            raft_storage.persist_conf_state(&cs).unwrap();
+
+            let hs = raft::HardState::default();
+            raft_storage.persist_hard_state(&hs).unwrap();
+
+            Ok(())
+        })
+        .unwrap();
+
+        raft_storage
     }
 
     #[inline(always)]

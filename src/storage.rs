@@ -528,7 +528,12 @@ impl Clusterwide {
     ///
     /// Should only be used in tests.
     pub(crate) fn for_tests() -> Self {
-        let storage = Self::initialize().unwrap();
+        let storage = Self::try_get(true).unwrap();
+
+        if storage.tables.space.len().unwrap() != 0 {
+            // Already initialized by other tests.
+            return storage.clone();
+        }
 
         // Add system tables
         for (table, index_defs) in crate::schema::system_table_definitions() {
@@ -538,7 +543,7 @@ impl Clusterwide {
             }
         }
 
-        storage
+        storage.clone()
     }
 
     fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
