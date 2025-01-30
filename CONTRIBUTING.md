@@ -169,6 +169,19 @@ poetry run pytest -k test_sql_acl
 poetry run pytest -n 20
 ```
 
+#### Running tests without rebuilding the binary
+
+By default pytest in the beginning of the test run invokes cargo build
+to ensure the binary is fresh with all recent changes. This may not be
+convenient for your workflow and result in extra unnecessary rebuilds.
+Moreover there can be situations when you want to build binary with
+custom options and proxying all cargo args through pytest doesnt really
+make sense.
+
+For our CI and people who want to avoid builds through pytest there is
+special handling of `CI` environment variable. When it is passed pytest
+will not invoke `cargo build`. You can use this form: `CI=1 pytest ...`
+
 #### Debugging tests
 
 There are a few tricks that help in debugging python tests.
