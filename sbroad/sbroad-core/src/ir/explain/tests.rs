@@ -14,16 +14,13 @@ fn simple_query_without_cond_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
-    scan "hash_testing" -> "t"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+        scan "hash_testing" -> "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -36,17 +33,14 @@ fn simple_query_with_cond_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
-    selection ROW("t"."identification_number"::integer) = ROW(1::unsigned) and ROW("t"."product_code"::string) = ROW('222'::string)
-        scan "hash_testing" -> "t"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+        selection ROW("t"."identification_number"::integer) = ROW(1::unsigned) and ROW("t"."product_code"::string) = ROW('222'::string)
+            scan "hash_testing" -> "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -89,22 +83,21 @@ WHERE "id" = 1"#;
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(r#"projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("t"."id"::unsigned) = ROW(1::unsigned)
-        scan "t"
-            union all
-                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
-                        scan "test_space"
-                projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
-                        scan "test_space_hist"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#);
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("t"."id"::unsigned) = ROW(1::unsigned)
+            scan "t"
+                union all
+                    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                            scan "test_space"
+                    projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                            scan "test_space_hist"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -129,34 +122,33 @@ WHERE "id" IN (SELECT "id"
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(r#"projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("t"."id"::unsigned) in ROW($0)
-        scan "t"
-            union all
-                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
-                        scan "test_space"
-                projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
-                        scan "test_space_hist"
-subquery $0:
-scan
-            projection ("t2"."id"::unsigned -> "id")
-                selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
-                    scan "t2"
-                        union all
-                            projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
-                                    scan "test_space"
-                            projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                                selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
-                                    scan "test_space_hist"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#);
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("t"."id"::unsigned) in ROW($0)
+            scan "t"
+                union all
+                    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                            scan "test_space"
+                    projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                            scan "test_space_hist"
+    subquery $0:
+    scan
+                projection ("t2"."id"::unsigned -> "id")
+                    selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
+                        scan "t2"
+                            union all
+                                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
+                                        scan "test_space"
+                                projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
+                                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                                        scan "test_space_hist"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -212,40 +204,39 @@ fn motion_subquery_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(r#"projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("t"."id"::unsigned) in ROW($1) or ROW("t"."id"::unsigned) in ROW($0)
-        scan "t"
-            union all
-                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
-                        scan "test_space"
-                projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
-                        scan "test_space_hist"
-subquery $0:
-motion [policy: segment([ref("identification_number")])]
-            scan
-                projection ("hash_testing"."identification_number"::integer -> "identification_number")
-                    selection ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('123'::string)
-                        scan "hash_testing"
-subquery $1:
-scan
-            projection ("t2"."id"::unsigned -> "id")
-                selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
-                    scan "t2"
-                        union all
-                            projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
-                                    scan "test_space"
-                            projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                                selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
-                                    scan "test_space_hist"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#);
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("t"."id"::unsigned) in ROW($1) or ROW("t"."id"::unsigned) in ROW($0)
+            scan "t"
+                union all
+                    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                            scan "test_space"
+                    projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                            scan "test_space_hist"
+    subquery $0:
+    motion [policy: segment([ref("identification_number")])]
+                scan
+                    projection ("hash_testing"."identification_number"::integer -> "identification_number")
+                        selection ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('123'::string)
+                            scan "hash_testing"
+    subquery $1:
+    scan
+                projection ("t2"."id"::unsigned -> "id")
+                    selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
+                        scan "t2"
+                            union all
+                                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
+                                        scan "test_space"
+                                projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
+                                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                                        scan "test_space_hist"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -261,23 +252,22 @@ WHERE "t2"."product_code" = '123'"#;
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(r#"projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("t2"."product_code"::string) = ROW('123'::string)
-        join on ROW("t1"."id"::unsigned) = ROW("t2"."identification_number"::integer)
-            scan "t1"
-                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
-                        scan "test_space"
-            motion [policy: segment([ref("identification_number")])]
-                scan "t2"
-                    projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
-                        scan "hash_testing"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#);
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("t2"."product_code"::string) = ROW('123'::string)
+            join on ROW("t1"."id"::unsigned) = ROW("t2"."identification_number"::integer)
+                scan "t1"
+                    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                        selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
+                            scan "test_space"
+                motion [policy: segment([ref("identification_number")])]
+                    scan "t2"
+                        projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
+                            scan "hash_testing"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -292,27 +282,26 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(r#"projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-    join on ROW("t1"."id"::unsigned) = ROW($0)
-        scan "t1"
-            projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
-                    scan "test_space"
-        motion [policy: full]
-            scan "hash_testing"
-                projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op")
-                    scan "hash_testing"
-subquery $0:
-motion [policy: segment([ref("identification_number")])]
-            scan
-                projection ("hash_testing"."identification_number"::integer -> "identification_number")
-                    scan "hash_testing"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#);
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
+        join on ROW("t1"."id"::unsigned) = ROW($0)
+            scan "t1"
+                projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+                    selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
+                        scan "test_space"
+            motion [policy: full]
+                scan "hash_testing"
+                    projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op")
+                        scan "hash_testing"
+    subquery $0:
+    motion [policy: segment([ref("identification_number")])]
+                scan
+                    projection ("hash_testing"."identification_number"::integer -> "identification_number")
+                        scan "hash_testing"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -325,17 +314,14 @@ fn unary_condition_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("test_space"."id"::unsigned) is null and not ROW("test_space"."FIRST_NAME"::string) is null
-        scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("test_space"."id"::unsigned) is null and not ROW("test_space"."FIRST_NAME"::string) is null
+            scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -423,18 +409,15 @@ fn select_value_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-    scan
-        values
-            value row (data=ROW(1::unsigned))
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("COLUMN_1"::unsigned -> "COLUMN_1")
+        scan
+            values
+                value row (data=ROW(1::unsigned))
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -447,16 +430,13 @@ fn select_cast_plan1() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("test_space"."id"::unsigned::unsigned -> "b")
-    scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("test_space"."id"::unsigned::unsigned -> "b")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -469,17 +449,14 @@ fn select_cast_plan2() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-    selection ROW("test_space"."id"::unsigned::int) = ROW(1::unsigned)
-        scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ROW("test_space"."id"::unsigned::int) = ROW(1::unsigned)
+            scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -492,16 +469,13 @@ fn select_cast_plan_nested() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     let mut actual_explain = String::new();
-    actual_explain.push_str(
-        r#"projection ("func"(("test_space"."id"::unsigned))::integer::string -> "col_1")
-    scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(actual_explain, explain_tree.to_string());
+    insta::assert_snapshot!(explain_tree.to_string(), @r#"
+    projection ("func"(("test_space"."id"::unsigned))::integer::string -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -548,13 +522,6 @@ execution options:
     );
 
     assert_eq!(actual_explain, explain_tree.to_string());
-}
-
-pub(crate) fn explain_check(sql: &str, explain: &str) {
-    let plan = sql_to_optimized_ir(sql, vec![]);
-    let top = &plan.get_top().unwrap();
-    let explain_tree = FullExplain::new(&plan, *top).unwrap();
-    assert_eq!(explain, explain_tree.to_string());
 }
 
 #[test]

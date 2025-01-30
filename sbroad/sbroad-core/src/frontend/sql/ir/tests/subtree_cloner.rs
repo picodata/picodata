@@ -100,25 +100,23 @@ fn except_transform_with_dag_plan() {
     let input = r#"select 1 from (values (1)) except select e from t2 where e = 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    let expected_explain = String::from(
-        r#"except
-    projection (1::unsigned -> "col_1")
-        scan
-            values
-                value row (data=ROW(1::unsigned))
-    motion [policy: full]
-        intersect
-            projection ("t2"."e"::unsigned -> "e")
-                selection ROW("t2"."e"::unsigned) = ROW(1::unsigned)
-                    scan "t2"
-            projection (1::unsigned -> "col_1")
-                scan
-                    values
-                        value row (data=ROW(1::unsigned))
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    except
+        projection (1::unsigned -> "col_1")
+            scan
+                values
+                    value row (data=ROW(1::unsigned))
+        motion [policy: full]
+            intersect
+                projection ("t2"."e"::unsigned -> "e")
+                    selection ROW("t2"."e"::unsigned) = ROW(1::unsigned)
+                        scan "t2"
+                projection (1::unsigned -> "col_1")
+                    scan
+                        values
+                            value row (data=ROW(1::unsigned))
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }

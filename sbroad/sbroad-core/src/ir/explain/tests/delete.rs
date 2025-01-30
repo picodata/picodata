@@ -2,55 +2,55 @@ use super::*;
 
 #[test]
 fn delete1_test() {
-    explain_check(
-        r#"DELETE FROM "t1""#,
-        &format!(
-            "{}\n{}\n{}\n{}\n",
-            r#"delete "t1""#,
-            r#"execution options:"#,
-            r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    sql_motion_row_max = 5000"#,
-        ),
-    );
+    let sql = r#"DELETE FROM "t1""#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let top = &plan.get_top().unwrap();
+    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    delete "t1"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
 fn delete2_test() {
-    explain_check(
-        r#"DELETE FROM "t1" where "a" > 3"#,
-        &format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-            r#"delete "t1""#,
-            r#"    motion [policy: local]"#,
-            r#"        projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::integer -> "pk_col_1")"#,
-            r#"            selection ROW("t1"."a"::string) > ROW(3::unsigned)"#,
-            r#"                scan "t1""#,
-            r#"execution options:"#,
-            r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    sql_motion_row_max = 5000"#,
-        ),
-    );
+    let sql = r#"DELETE FROM "t1" where "a" > 3"#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let top = &plan.get_top().unwrap();
+    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    delete "t1"
+        motion [policy: local]
+            projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::integer -> "pk_col_1")
+                selection ROW("t1"."a"::string) > ROW(3::unsigned)
+                    scan "t1"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
 fn delete3_test() {
-    explain_check(
-        r#"DELETE FROM "t1" where "a" in (SELECT "b" from "t1")"#,
-        &format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-            r#"delete "t1""#,
-            r#"    motion [policy: local]"#,
-            r#"        projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::integer -> "pk_col_1")"#,
-            r#"            selection ROW("t1"."a"::string) in ROW($0)"#,
-            r#"                scan "t1""#,
-            r#"subquery $0:"#,
-            r#"motion [policy: full]"#,
-            r#"                    scan"#,
-            r#"                        projection ("t1"."b"::integer -> "b")"#,
-            r#"                            scan "t1""#,
-            r#"execution options:"#,
-            r#"    sql_vdbe_opcode_max = 45000"#,
-            r#"    sql_motion_row_max = 5000"#,
-        ),
-    );
+    let sql = r#"DELETE FROM "t1" where "a" in (SELECT "b" from "t1")"#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let top = &plan.get_top().unwrap();
+    let explain_tree = FullExplain::new(&plan, *top).unwrap();
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    delete "t1"
+        motion [policy: local]
+            projection ("t1"."a"::string -> "pk_col_0", "t1"."b"::integer -> "pk_col_1")
+                selection ROW("t1"."a"::string) in ROW($0)
+                    scan "t1"
+    subquery $0:
+    motion [policy: full]
+                        scan
+                            projection ("t1"."b"::integer -> "b")
+                                scan "t1"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }

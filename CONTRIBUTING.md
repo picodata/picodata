@@ -339,3 +339,27 @@ Tarantool protocol support is used.
   make k6
   ```
   Performance summary can then be found in the `test/manual/sql/` directory.
+
+## Testing with cargo-insta (Rust snapshot tests)
+
+We use `cargo insta` for snapshot testing in the Rust codebase, particularly within the `sbroad` module. Follow these steps to run and review tests:
+
+- Install `cargo-insta` if you haven't already:
+  ```bash
+  cargo install cargo-insta
+  ```
+
+- Navigate to the sbroad directory:
+  ```bash
+  cd sbroad/
+  ```
+
+- Run the tests with the mock feature to generate or update snapshots:
+  ```bash
+  cargo insta test --features mock
+  ```
+
+- Review the snapshots and accept or reject changes interactively:
+  ```bash
+  cargo insta review
+  ```

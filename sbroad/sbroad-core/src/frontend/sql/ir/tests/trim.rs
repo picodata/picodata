@@ -6,16 +6,13 @@ fn trim() {
     let sql = r#"SELECT TRIM("FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    let expected_explain = String::from(
-        r#"projection (TRIM("test_space"."FIRST_NAME"::string) -> "col_1")
-    scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (TRIM("test_space"."FIRST_NAME"::string) -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -23,16 +20,13 @@ fn trim_leading_from() {
     let sql = r#"SELECT TRIM(LEADING FROM "FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    let expected_explain = String::from(
-        r#"projection (TRIM(leading from "test_space"."FIRST_NAME"::string) -> "col_1")
-    scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (TRIM(leading from "test_space"."FIRST_NAME"::string) -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]
@@ -40,16 +34,13 @@ fn trim_both_space_from() {
     let sql = r#"SELECT TRIM(BOTH ' ' FROM "FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    let expected_explain = String::from(
-        r#"projection (TRIM(both ' '::string from "test_space"."FIRST_NAME"::string) -> "col_1")
-    scan "test_space"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (TRIM(both ' '::string from "test_space"."FIRST_NAME"::string) -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }
 
 #[test]

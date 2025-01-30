@@ -211,30 +211,27 @@ fn test_slices_1() {
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    let expected_explain = String::from(
-        r#"projection ("t2"."e"::unsigned -> "e")
-    join on true::boolean
-        scan
-            projection ("t2"."f"::unsigned -> "f")
-                join on true::boolean
-                    scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                            scan "t2"
-                    motion [policy: full]
-                        scan "t3"
-                            projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
-                                scan "t2" -> "t3"
-        motion [policy: full]
-            scan "t2"
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                    scan "t2"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("t2"."e"::unsigned -> "e")
+        join on true::boolean
+            scan
+                projection ("t2"."f"::unsigned -> "f")
+                    join on true::boolean
+                        scan "t2"
+                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                                scan "t2"
+                        motion [policy: full]
+                            scan "t3"
+                                projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
+                                    scan "t2" -> "t3"
+            motion [policy: full]
+                scan "t2"
+                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                        scan "t2"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 
     // check both motions are in the same slice
     let t3_mid = *get_motion_id(&plan, 0, 0).unwrap();
@@ -251,32 +248,29 @@ fn test_slices_2() {
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    let expected_explain = String::from(
-        r#"projection (sum(("count_5596"::unsigned))::unsigned -> "col_1")
-    motion [policy: full]
-        projection (count(("t2"."e"::unsigned))::unsigned -> "count_5596")
-            join on true::boolean
-                scan
-                    projection ("t2"."f"::unsigned -> "f")
-                        join on true::boolean
-                            scan "t2"
-                                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                                    scan "t2"
-                            motion [policy: full]
-                                scan "t3"
-                                    projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
-                                        scan "t2" -> "t3"
-                motion [policy: full]
-                    scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                            scan "t2"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-"#,
-    );
-
-    assert_eq!(expected_explain, plan.as_explain().unwrap());
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (sum(("count_5596"::unsigned))::unsigned -> "col_1")
+        motion [policy: full]
+            projection (count(("t2"."e"::unsigned))::unsigned -> "count_5596")
+                join on true::boolean
+                    scan
+                        projection ("t2"."f"::unsigned -> "f")
+                            join on true::boolean
+                                scan "t2"
+                                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                                        scan "t2"
+                                motion [policy: full]
+                                    scan "t3"
+                                        projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
+                                            scan "t2" -> "t3"
+                    motion [policy: full]
+                        scan "t2"
+                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                                scan "t2"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 
     // check both motions are in the same slice
     let t3_mid = *get_motion_id(&plan, 0, 0).unwrap();

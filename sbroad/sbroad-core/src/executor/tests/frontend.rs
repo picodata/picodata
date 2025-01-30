@@ -70,18 +70,15 @@ fn front_explain_select_sql1() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
 
-    let expected_explain = SmolStr::from(
-        r#"projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
-    scan "hash_testing" -> "t"
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
-buckets = [1-10000]
-"#,
-    );
-
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        assert_eq!(expected_explain, *actual_explain);
+        insta::assert_snapshot!(*actual_explain, @r#"
+        projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+            scan "hash_testing" -> "t"
+        execution options:
+            sql_vdbe_opcode_max = 45000
+            sql_motion_row_max = 5000
+        buckets = [1-10000]
+        "#);
     } else {
         panic!("Explain must be string")
     }
@@ -96,21 +93,18 @@ fn front_explain_select_sql2() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
 
-    let expected_explain: SmolStr = format_smolstr!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        r#"union all"#,
-        r#"    projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")"#,
-        r#"        scan "hash_testing" -> "t""#,
-        r#"    projection ("t2"."identification_number"::integer -> "identification_number", "t2"."product_code"::string -> "product_code")"#,
-        r#"        scan "hash_testing_hist" -> "t2""#,
-        r#"execution options:"#,
-        r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    sql_motion_row_max = 5000"#,
-        r#"buckets = [1-10000]"#,
-    );
-
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        assert_eq!(expected_explain, *actual_explain);
+        insta::assert_snapshot!(*actual_explain, @r#"
+        union all
+            projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+                scan "hash_testing" -> "t"
+            projection ("t2"."identification_number"::integer -> "identification_number", "t2"."product_code"::string -> "product_code")
+                scan "hash_testing_hist" -> "t2"
+        execution options:
+            sql_vdbe_opcode_max = 45000
+            sql_motion_row_max = 5000
+        buckets = [1-10000]
+        "#);
     } else {
         panic!("Explain must be string")
     }
@@ -125,24 +119,21 @@ fn front_explain_select_sql3() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
 
-    let expected_explain: SmolStr = format_smolstr!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        r#"projection ("q1"."a"::string -> "a")"#,
-        r#"    join on ROW("q1"."a"::string) = ROW("q2"."a2"::string)"#,
-        r#"        scan "q1""#,
-        r#"            projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")"#,
-        r#"                scan "t3" -> "q1""#,
-        r#"        scan "q2""#,
-        r#"            projection ("t3"."a"::string -> "a2", "t3"."b"::integer -> "b2")"#,
-        r#"                scan "t3""#,
-        r#"execution options:"#,
-        r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    sql_motion_row_max = 5000"#,
-        r#"buckets = [1-10000]"#,
-    );
-
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        assert_eq!(expected_explain, *actual_explain);
+        insta::assert_snapshot!(*actual_explain, @r#"
+        projection ("q1"."a"::string -> "a")
+            join on ROW("q1"."a"::string) = ROW("q2"."a2"::string)
+                scan "q1"
+                    projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
+                        scan "t3" -> "q1"
+                scan "q2"
+                    projection ("t3"."a"::string -> "a2", "t3"."b"::integer -> "b2")
+                        scan "t3"
+        execution options:
+            sql_vdbe_opcode_max = 45000
+            sql_motion_row_max = 5000
+        buckets = [1-10000]
+        "#);
     } else {
         panic!("explain must be string")
     }
@@ -157,24 +148,21 @@ fn front_explain_select_sql4() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
 
-    let expected_explain: SmolStr = format_smolstr!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        r#"projection ("q2"."a"::string -> "a")"#,
-        r#"    join on ROW("q1"."a"::string) = ROW("q2"."a"::string)"#,
-        r#"        scan "q1""#,
-        r#"            projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")"#,
-        r#"                scan "t3" -> "q1""#,
-        r#"        scan "q2""#,
-        r#"            projection ("q2"."a"::string -> "a", "q2"."b"::integer -> "b")"#,
-        r#"                scan "t3" -> "q2""#,
-        r#"execution options:"#,
-        r#"    sql_vdbe_opcode_max = 45000"#,
-        r#"    sql_motion_row_max = 5000"#,
-        r#"buckets = [1-10000]"#,
-    );
-
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        assert_eq!(expected_explain, *actual_explain);
+        insta::assert_snapshot!(*actual_explain, @r#"
+        projection ("q2"."a"::string -> "a")
+            join on ROW("q1"."a"::string) = ROW("q2"."a"::string)
+                scan "q1"
+                    projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
+                        scan "t3" -> "q1"
+                scan "q2"
+                    projection ("q2"."a"::string -> "a", "q2"."b"::integer -> "b")
+                        scan "t3" -> "q2"
+        execution options:
+            sql_vdbe_opcode_max = 45000
+            sql_motion_row_max = 5000
+        buckets = [1-10000]
+        "#);
     } else {
         panic!("explain must be string")
     }
