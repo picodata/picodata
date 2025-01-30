@@ -28,12 +28,29 @@ with the `YY.MINOR.MICRO` scheme.
   instance.share_dir)
 
 - The following parameters has been moved from configuration file to `_pico_db_config` system table:
-
   - checkpoint_interval
   - checkpoint_count
   - max_concurrent_messages
 
-- `max_concurrent_messages` parameter is renamed to `net_msg_max`
+- `max_heartbeat_period` removed from `_pico_db_config`
+
+- Major renaming of parameters from _pico_db_config:
+ - `max_concurrent_messages` renamed to `iproto_net_msg_max`
+ - `password_min_length` renamed to `auth_password_length_min`
+ - `password_enforce_uppercase` renamed to `auth_password_enforce_uppercase`
+ - `password_enforce_lowercase` renamed to `auth_password_enforce_lowercase`
+ - `password_enforce_digits` renamed to `auth_password_enforce_digits`
+ - `password_enforce_specialchars` renamed to `auth_password_enforce_specialchars`
+ - `max_login_attempts` renamed to `auth_login_attempt_max`
+ - `auto_offline_timeout` renamed to `governor_auto_offline_timeout`
+ - `max_pg_statements` renamed to `pg_statement_max`
+ - `max_pg_portals` renamed to `pg_portal_max`
+ - `snapshot_chunk_max_size` renamed to `raft_snapshot_chunk_size_max`
+ - `snapshot_read_view_close_timeout` renamed to `raft_snapshot_read_view_close_timeout`
+ - `cluster_wal_max_size` renamed to `raft_wal_size_max`
+ - `cluster_wal_max_count` renamed to `raft_wal_count_max`
+
+- `listen`, `advertise` parameters are renamed to `iproto_listen`, `iproto_advertise`
 
 ### CLI
 
