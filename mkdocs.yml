@@ -137,6 +137,7 @@ nav:
     - architecture/fibers.md
     - architecture/plugins.md
   - Плагины:
+    - plugins/argus.md
     - plugins/radix.md
     - plugins/synapse.md
     - plugins/uroboros.md

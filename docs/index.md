@@ -82,6 +82,7 @@ Picodata — это распределенная система промышле
 
 ### Плагины {: #plugins }
 
+* [Argus](plugins/argus.md)
 * [Radix](plugins/radix.md)
 * [Synapse](plugins/synapse.md)
 * [Uroboros](plugins/uroboros.md)

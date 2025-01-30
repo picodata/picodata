@@ -18,47 +18,35 @@
 - перенос кластера на новую площадку без простоя
 - обеспечение отказоустойчивости путем репликации одного кластера в другой
 
-<!--
-## Сборка и подготовка файлов плагина {: #local_build }
+## Ограничения {: #limitations }
 
-Склонируйте репозиторий с исходным кодом Uroboros:
+1. Источником может быть только кластер Tarantool Cartridge, где
+   развернуты роли-сайдкары, включенные в поставку.
+2. Роли надо развернуть на всех Vshard-группах, которые планируется
+   реплицировать.
+3. Источник должен быть запущен на форке Tarantool от компании Picodata,
+   для которого должно быть включено расширение для
+   [WAL](../overview/glossary.md#wal):
 
-```bash
-git clone https://git.picodata.io/picodata/plugin/uroboros.git
+```lua
+local ok, err = cartridge.cfg({}, {
+    wal_ext = { new_old = true },
+})
 ```
-
-Соберите разделяемые библиотеки Uroboros (требуется актуальные версии Rust, Cargo, GNU Make):
-
-```bash
-cd uroboros
-make build
-```
-
-Результатом сборки будут следующие библиотеки в директории `target/debug`:
-
-- liburoboros_config.so
-- liburoboros.so
-- liburoboros_utils.so
-
--->
 
 ## Состав плагина {: #plugin_files }
-
-<!--
-Загрузите плагин для нужной операционной системы по адресу:
-
-[https://git.picodata.io/picodata/plugin/argus/-/releases/permalink/latest](https://git.picodata.io/picodata/plugin/argus/-/releases/permalink/latest)
- -->
 
 Внутри архива с плагином находится структура вложенных директорий,
 включающая имя и версию плагина, а также его файлы:
 
 ```
-└── argus
+└── uroboros
     └── 1.0.0
         ├── liburoboros.so
         ├── manifest.yaml
         └── migrations
+            ├── 0001_state.db
+            └── 0002_uroboros_state.db
 ```
 
 Основная логика плагина обеспечивается разделяемой библиотекой
@@ -67,48 +55,6 @@ make build
 [миграций].
 
 [миграций]: ../overview/glossary.md#migration
-
-<!--  ## Проверка плагина вручную {: #manual_test }
-
-Скопируйте библиотеки Uruboros, файл манифеста и файлы миграций в директорию
-плагина. Выполните следующий набор команд из основной директории
-репозитория:
-
-```bash
-mkdir -p plugins/uroboros
-cp ./target/debug/liburoboros*.so ./plugins/uroboros/<версия>/
-cp manifest.yml ./plugins/uroboros/<версия>/manifest.yaml
-cp -r migrations/* plugins/uroboros/<версия>
-```
-
-Запустите плагин согласно руководству [Управление плагинами](../tutorial/plugins.md)
-
-## Проверка в локальном тестовом окружении {: #docker_test }
-
-Локальное тестовое окружение использует Docker-образ с ОС Rocky Linux 8
-и предоставляет два кластера (источник и назначение) для проверки работы
-плагина Uroboros. Файлы тестового окружения находятся в директории
-`local-dev-clusters`.
-
-Для запуска локального тестового окружения требуется запущенная
-системная служба Docker. Выполните следующий набор команд из основной
-директории репозитория:
-
-```bash title="Сборка образа для поднятия тестовых кластеров"
-make build_docker_cluster
-```
-
-```bash title="Запуск образов"
-make run_docker_clusters
-```
-
-Перед запуском тестов убедитесь, что в системе установлены Python-модули
-`pytest` и `tarantool`. После этого выполните команду:
-
-```bash title="Запуск интеграционных тестов"
-TEST_RUN_CLUSTERS=docker make test
-```
--->
 
 ## Подключение плагина {: #plugin_enable }
 
@@ -135,9 +81,10 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN uroboros 1.0.0;
-ALTER PLUGIN uroboros 1.0.0 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN uroboros 1.0.0 ENABLE;
+CREATE PLUGIN uroboros 0.4.1;
+ALTER PLUGIN uroboros MIGRATE TO 0.4.1;
+ALTER PLUGIN uroboros 0.4.1 ADD SERVICE uroboros TO TIER default;
+ALTER PLUGIN uroboros 0.4.1 ENABLE;
 ```
 
 [административной консоли]: ../tutorial/connecting.md#admin_console
@@ -146,14 +93,13 @@ ALTER PLUGIN uroboros 1.0.0 ENABLE;
 
 ### Подготовка {: #preparation }
 
-1. Изучите [документацию по развертыванию кластера пикодаты](https://docs.picodata.io/picodata/24.6/tutorial/deploy_ansible/). Выполнить инструкции по установке роли.
-2. Скачайте нужную версию плагина `uroboros` и положить пакет в рабочий каталог.
+1. Изучите [документацию по развертыванию кластера Picodata](https://docs.picodata.io/picodata/stable/tutorial/deploy_ansible/). Выполнить инструкции по установке роли.
+2. Скачайте нужную версию плагина `uroboros` и положите пакет в рабочую директорию.
 3. Проверьте наличие конфигурационного файла для плагина `uroboros-config.yml`, проверьте настройки в нем (см. ниже).
 
 !!! note "Примечание"
     На сервере, с которого будет происходить установка,
     необходим Ansible и доступ на серверы кластера с повышением привилегий.
-
 
 ### Установка окружения {: #setting_env }
 
@@ -234,17 +180,12 @@ uroboros:
       user_url: "http://<destination_address>/uroboros/api/v1/user"
       topology_url: "http://<destination_address>/uroboros/api/v1/topology"
   enabled_groups: # vshard-группы, которые следует реплицировать
-    - index
-    - kafka
     - storage
-  disabled_spaces: # спейсы из указанных выше vshard-group, которые реплицировать НЕ следует
-    - notify_storage_vinyl
-    - distributed_index_queue_vinyl
-    - distributed_index_queue_memtx
-    - _repair_queue_v2
-    - _tmp_event_storage
-    - notify_storage_memtx
-    - event_storage
+    - group_1
+    - group_2
+  disabled_spaces: # таблицы из указанных выше vshard-group, которые реплицировать НЕ следует
+    - ignored_space_1
+    - ignored_space_2
   buckets_per_writer: 300 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
   reconnect_delay: 10 # задержка перед восстановлением коннекта к источнику
 ```
@@ -253,7 +194,7 @@ uroboros:
 
 ```yaml
 ---
-- name: Deploy picodata cluster
+- name: Deploy Picodata cluster
   hosts: all
   become: true
 
@@ -275,3 +216,73 @@ uroboros:
 ```bash
 ansible-playbook -i uroboros.yml picodata.yml
 ```
+
+См. также:
+
+- [Управление плагинами](../tutorial/plugins.md)
+
+<!--
+## Сборка и подготовка файлов плагина {: #local_build }
+
+Склонируйте репозиторий с исходным кодом Uroboros:
+
+```bash
+git clone https://git.picodata.io/picodata/plugin/uroboros.git
+```
+
+Соберите разделяемые библиотеки Uroboros (требуется актуальные версии Rust, Cargo, GNU Make):
+
+```bash
+cd uroboros
+make build
+```
+
+Результатом сборки будут следующие библиотеки в директории `target/debug`:
+
+- liburoboros_config.so
+- liburoboros.so
+- liburoboros_utils.so
+
+-->
+
+<!--  ## Проверка плагина вручную {: #manual_test }
+
+Скопируйте библиотеки Uruboros, файл манифеста и файлы миграций в директорию
+плагина. Выполните следующий набор команд из основной директории
+репозитория:
+
+```bash
+mkdir -p plugins/uroboros
+cp ./target/debug/liburoboros*.so ./plugins/uroboros/<версия>/
+cp manifest.yml ./plugins/uroboros/<версия>/manifest.yaml
+cp -r migrations/* plugins/uroboros/<версия>
+```
+
+Запустите плагин согласно руководству [Управление плагинами](../tutorial/plugins.md)
+
+## Проверка в локальном тестовом окружении {: #docker_test }
+
+Локальное тестовое окружение использует Docker-образ с ОС Rocky Linux 8
+и предоставляет два кластера (источник и назначение) для проверки работы
+плагина Uroboros. Файлы тестового окружения находятся в директории
+`local-dev-clusters`.
+
+Для запуска локального тестового окружения требуется запущенная
+системная служба Docker. Выполните следующий набор команд из основной
+директории репозитория:
+
+```bash title="Сборка образа для поднятия тестовых кластеров"
+make build_docker_cluster
+```
+
+```bash title="Запуск образов"
+make run_docker_clusters
+```
+
+Перед запуском тестов убедитесь, что в системе установлены Python-модули
+`pytest` и `tarantool`. После этого выполните команду:
+
+```bash title="Запуск интеграционных тестов"
+TEST_RUN_CLUSTERS=docker make test
+```
+-->
