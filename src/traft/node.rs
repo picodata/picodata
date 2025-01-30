@@ -77,7 +77,6 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::{Decode, Tuple};
 use protobuf::Message as _;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::ControlFlow;
@@ -2498,16 +2497,15 @@ enum ApplyEntryResult {
 }
 
 pub(crate) struct MainLoop {
-    _loop: Option<fiber::JoinHandle<'static, ()>>,
+    #[allow(dead_code)]
+    fiber_id: fiber::FiberId,
     loop_waker: watch::Sender<()>,
-    stop_flag: Rc<Cell<bool>>,
 }
 
 struct MainLoopState {
     node_impl: Rc<Mutex<NodeImpl>>,
     next_tick: Instant,
     loop_waker: watch::Receiver<()>,
-    stop_flag: Rc<Cell<bool>>,
 }
 
 impl MainLoop {
@@ -2515,19 +2513,16 @@ impl MainLoop {
 
     fn start(node_impl: Rc<Mutex<NodeImpl>>) -> Self {
         let (loop_waker_tx, loop_waker_rx) = watch::channel(());
-        let stop_flag: Rc<Cell<bool>> = Default::default();
 
         let state = MainLoopState {
             node_impl,
             next_tick: Instant::now_fiber(),
             loop_waker: loop_waker_rx,
-            stop_flag: stop_flag.clone(),
         };
 
         Self {
-            _loop: loop_start!("raft_main_loop", Self::iter_fn, state),
+            fiber_id: loop_start!("raft_main_loop", Self::iter_fn, state),
             loop_waker: loop_waker_tx,
-            stop_flag,
         }
     }
 
@@ -2537,15 +2532,9 @@ impl MainLoop {
 
     async fn iter_fn(state: &mut MainLoopState) -> ControlFlow<()> {
         let _ = state.loop_waker.changed().timeout(Self::TICK).await;
-        if state.stop_flag.take() {
-            return ControlFlow::Break(());
-        }
 
         // FIXME: potential deadlock - can't use sync mutex in async fn
         let mut node_impl = state.node_impl.lock(); // yields
-        if state.stop_flag.take() {
-            return ControlFlow::Break(());
-        }
 
         node_impl
             .read_state_wakers
@@ -2559,9 +2548,6 @@ impl MainLoop {
 
         let res = node_impl.advance(); // yields
         drop(node_impl);
-        if state.stop_flag.take() {
-            return ControlFlow::Break(());
-        }
 
         match res {
             Err(e @ Error::Expelled) => {
@@ -2575,14 +2561,6 @@ impl MainLoop {
         }
 
         ControlFlow::Continue(())
-    }
-}
-
-impl Drop for MainLoop {
-    fn drop(&mut self) {
-        self.stop_flag.set(true);
-        let _ = self.loop_waker.send(());
-        self._loop.take().unwrap().join(); // yields
     }
 }
 

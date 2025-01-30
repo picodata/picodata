@@ -953,7 +953,7 @@ impl Loop {
         };
 
         Self {
-            _loop: crate::loop_start!("governor_loop", Self::iter_fn, state),
+            fiber_id: crate::loop_start!("governor_loop", Self::iter_fn, state),
             waker: waker_tx,
             status: governor_status_rx,
         }
@@ -977,7 +977,8 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
 }
 
 pub struct Loop {
-    _loop: Option<fiber::JoinHandle<'static, ()>>,
+    #[allow(dead_code)]
+    fiber_id: fiber::FiberId,
     waker: watch::Sender<()>,
 
     /// Current status of governor loop.

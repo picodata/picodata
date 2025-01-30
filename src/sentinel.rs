@@ -199,7 +199,7 @@ impl Loop {
         };
 
         Self {
-            _loop: crate::loop_start!("sentinel_loop", Self::iter_fn, state),
+            fiber_id: crate::loop_start!("sentinel_loop", Self::iter_fn, state),
             status: status_tx,
         }
     }
@@ -218,7 +218,8 @@ impl Loop {
 }
 
 pub struct Loop {
-    _loop: Option<fiber::JoinHandle<'static, ()>>,
+    #[allow(dead_code)]
+    fiber_id: fiber::FiberId,
     status: watch::Sender<SentinelStatus>,
 }
 

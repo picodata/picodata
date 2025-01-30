@@ -16,9 +16,8 @@ macro_rules! loop_start {
                     }
                 })
             })
-            // FIXME: use defer_non_joinable instead
-            .defer()
-            .unwrap()
-            .into()
+            .defer_non_joinable()
+            .expect("starting a fiber shouldn't fail")
+            .expect("fiber id is supported")
     };
 }
