@@ -8,14 +8,16 @@ dql         ::= (with? select | values)
 with        ::= 'WITH'
                 cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')'
                 (',' cte ('(' column (',' column)* ')')? 'AS' '(' (select | values) ')')*
-select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* ('FROM' scan
+select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* from?
+                ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
+from        ::= 'FROM' scan
                 (( 'INNER' | 'LEFT' 'OUTER'? )? 'JOIN' scan 'ON' expression)*
                 ('WHERE' expression)?
                 ('GROUP' 'BY' expression (',' expression)*)?
                 ('HAVING' expression)?
                 ('WINDOW' name 'AS' '(' partition ')')?
                 ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
-                (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?)?
+                (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
 projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window
 scan        ::= (table | '(' dql ')') ('AS'? name)?
