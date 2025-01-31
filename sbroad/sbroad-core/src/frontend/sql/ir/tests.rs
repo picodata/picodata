@@ -1,6 +1,7 @@
 use crate::errors::SbroadError;
 use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::frontend::sql::ast::{AbstractSyntaxTree, ParseTree, Rule};
+use crate::frontend::sql::ParsingPairsMap;
 use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
@@ -8,8 +9,10 @@ use crate::ir::transformation::helpers::{sql_to_ir, sql_to_optimized_ir};
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
 use crate::ir::{Plan, Positions};
+use itertools::Itertools;
 use pest::Parser;
 use pretty_assertions::assert_eq;
+use std::collections::HashMap;
 use time::{format_description, OffsetDateTime, Time};
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
@@ -3934,6 +3937,81 @@ fn front_sql_whitespaces_are_not_ignored() {
             }
             assert!(res.is_err())
         }
+    }
+}
+
+mod multi_queries {
+    use super::*;
+    use std::iter;
+
+    const GOOD_QUERIES: &[&str] = &[
+        r#"select * from foobar"#,
+        r#"create user "emir" with password 'vildanov' using md5"#,
+        r#"set value to key"#,
+        r#"set transaction isolation level read commited"#,
+        r#"grant create on user vasya to emir option(timeout=1)"#,
+        r#"alter plugin "abc" 0.1.0 remove service "svc1" from tier "tier1" option(timeout=11)"#,
+        r#"create table if not exists t(a int primary key,b int) using memtx distributed by(a,b) wait applied locally option(timeout=1)"#,
+        r#"create procedure if not exists name(int,int,varchar(1)) language sql as $$insert into t values(1,2)$$ wait applied globally"#,
+        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b order by a union all select * from t"#,
+        r#"select cast(1 as int) or not exists (values(true)) and 1+1 and true or (a in (select * from t)) and i is not null"#,
+    ];
+
+    // Rustfmt would put everything on one line,
+    // giving a confusing mess of whitespace and punctuation.
+    #[rustfmt::skip]
+    const TRAILERS: &[&str] = &[
+        ";",
+        "     ;",
+        ";    ",
+        "  ;   ",
+    ];
+
+    fn parse(query: &str) -> Result<(), SbroadError> {
+        let mut map1 = ParsingPairsMap::new();
+        let mut map2 = HashMap::new();
+        let mut map3 = HashMap::new();
+        let mut standard_parse = AbstractSyntaxTree::empty();
+        standard_parse.fill(query, &mut map1, &mut map2, &mut map3)
+    }
+
+    #[test]
+    fn trailing_semicolon_parses() {
+        for query in GOOD_QUERIES {
+            for trailer in TRAILERS {
+                let modified_query = format!("{query}{trailer}");
+                parse(&modified_query).unwrap_or_else(syntax_error(&modified_query));
+            }
+        }
+    }
+
+    #[test]
+    fn multiple_empty_statements_allowed() {
+        for query in GOOD_QUERIES {
+            for (t1, t2) in iter::zip(TRAILERS, TRAILERS) {
+                let modified_query = format!("{query}{t1}{t2}");
+                parse(&modified_query).unwrap_or_else(syntax_error(&modified_query));
+            }
+        }
+    }
+
+    #[test]
+    fn multistatement_queries_not_allowed() {
+        for (start, end) in GOOD_QUERIES.iter().tuples() {
+            for trailer in TRAILERS {
+                let bad_query = format!("{start}{trailer}{end}");
+                assert!(parse(&bad_query).is_err());
+            }
+        }
+    }
+}
+
+#[track_caller]
+fn syntax_error(query: &str) -> impl '_ + FnOnce(SbroadError) {
+    move |err| {
+        eprintln!("{err}");
+        eprintln!("QUERY[[{query}]]END QUERY");
+        panic!("syntax error");
     }
 }
 

@@ -452,4 +452,4 @@ NotFlag = { ^"not" }
 WHITESPACE = _{ " " | "\t" | "\n" | "\r\n" }
 W  = _{ WHITESPACE+ }
 WO = _{ WHITESPACE* }
-EOF = { EOI | ";" }
+EOF = { (";" ~ WO)* ~ EOI }
