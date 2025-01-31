@@ -678,5 +678,6 @@ pub fn merge_histograms<T: Scalar>(
 }
 
 pub mod normalization;
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;

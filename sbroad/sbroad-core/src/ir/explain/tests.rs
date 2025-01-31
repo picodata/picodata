@@ -577,14 +577,7 @@ fn check_buckets_repr() {
     assert_eq!("[]", buckets_repr(&Buckets::Filtered(collection!()), bc));
 }
 
-#[cfg(test)]
-mod concat;
-
-#[cfg(test)]
-mod delete;
-
-#[cfg(test)]
-mod query_explain;
-
-#[cfg(test)]
 mod cast_constants;
+mod concat;
+mod delete;
+mod query_explain;

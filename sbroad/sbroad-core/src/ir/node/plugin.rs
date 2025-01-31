@@ -258,6 +258,7 @@ impl Plan {
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod test {
     use super::{

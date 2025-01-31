@@ -533,5 +533,6 @@ impl SubtreeCloner {
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;

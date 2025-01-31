@@ -117,5 +117,6 @@ impl Plan {
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;

@@ -1,11 +1,14 @@
 use super::*;
-use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::ir::tests::{column_integer_user_non_null, vcolumn_integer_user_non_null};
-use crate::ir::transformation::redistribution::{MotionKey, Target};
 use pretty_assertions::assert_eq;
-use std::collections::HashMap;
 use tarantool::decimal;
 use tarantool::decimal::Decimal;
+#[cfg(feature = "mock")]
+use {
+    crate::executor::engine::mock::RouterRuntimeMock,
+    crate::ir::transformation::redistribution::{MotionKey, Target},
+    std::collections::HashMap,
+};
 
 /// Test initialisation of the virtual table.
 #[test]
@@ -30,6 +33,7 @@ fn virtual_table_1() {
 }
 
 /// Test resharding.
+#[cfg(feature = "mock")]
 #[test]
 fn virtual_table_2() {
     let mut vtable = VirtualTable::new();
@@ -64,6 +68,7 @@ fn virtual_table_2() {
 }
 
 /// Test resharding virtual table with a primary key.
+#[cfg(feature = "mock")]
 #[test]
 fn virtual_table_3() {
     let mut vtable = VirtualTable::new();
@@ -98,6 +103,7 @@ fn virtual_table_3() {
     assert_eq!(expected, vtable);
 }
 
+#[cfg(feature = "mock")]
 #[test]
 fn vtable_rearrange_for_update() {
     let mut vtable = VirtualTable::new();

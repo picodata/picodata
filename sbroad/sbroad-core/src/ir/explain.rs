@@ -1476,6 +1476,7 @@ impl<'a, C: Router> Query<'a, C> {
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;
 

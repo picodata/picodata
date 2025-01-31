@@ -34,20 +34,9 @@ fn check_sql_with_snapshot(
     assert_eq!(expected, sql,);
 }
 
-#[cfg(test)]
 mod except;
-
-#[cfg(test)]
-mod projection;
-
-#[cfg(test)]
 mod inner_join;
-
-#[cfg(test)]
+mod projection;
 mod selection;
-
-#[cfg(test)]
 mod sub_query;
-
-#[cfg(test)]
 mod union_all;

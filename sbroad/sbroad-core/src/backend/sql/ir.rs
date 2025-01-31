@@ -553,5 +553,6 @@ impl ExecutionPlan {
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;

@@ -4342,33 +4342,18 @@ fn front_sql_whitespaces_are_not_ignored() {
     }
 }
 
-#[cfg(test)]
 mod coalesce;
-#[cfg(test)]
 mod cte;
-#[cfg(test)]
 mod ddl;
-#[cfg(test)]
 mod funcs;
-#[cfg(test)]
 mod global;
-#[cfg(test)]
 mod insert;
-#[cfg(test)]
 mod join;
-#[cfg(test)]
 mod like;
-#[cfg(test)]
 mod limit;
-#[cfg(test)]
 mod params;
-#[cfg(test)]
 mod single;
-#[cfg(test)]
 mod subtree_cloner;
-#[cfg(test)]
 mod trim;
-#[cfg(test)]
 mod union;
-#[cfg(test)]
 mod update;

@@ -356,14 +356,7 @@ fn test_slices_3() {
     assert_eq!(slices, expected);
 }
 
-#[cfg(test)]
 mod between;
-
-#[cfg(test)]
 mod except;
-
-#[cfg(test)]
 mod not_in;
-
-#[cfg(test)]
 mod segment;

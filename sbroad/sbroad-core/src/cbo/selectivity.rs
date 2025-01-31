@@ -432,5 +432,6 @@ pub fn calculate_condition_selectivity(
     }
 }
 
+#[cfg(feature = "mock")]
 #[cfg(test)]
 mod tests;

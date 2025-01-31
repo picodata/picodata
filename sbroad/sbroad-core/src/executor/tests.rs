@@ -897,32 +897,13 @@ fn groupby_linker_test() {
     assert_eq!(expected, result);
 }
 
-#[cfg(test)]
 mod between;
-
-#[cfg(test)]
 mod bucket_id;
-
-#[cfg(test)]
 mod cast;
-
-#[cfg(test)]
 mod concat;
-
-#[cfg(test)]
-mod like;
-
-#[cfg(test)]
 mod empty_motion;
-
-#[cfg(test)]
-mod frontend;
-
-#[cfg(test)]
-mod not_in;
-
-#[cfg(test)]
-mod not_eq;
-
-#[cfg(test)]
 mod exec_plan;
+mod frontend;
+mod like;
+mod not_eq;
+mod not_in;
