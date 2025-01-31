@@ -99,9 +99,11 @@ nav:
         - reference/sql/update.md
         - reference/sql/values.md
       - Синтаксис:
+        - reference/sql/window.md
         - reference/sql/with.md
         - reference/sql/join.md
       - Функции и выражения:
+        - reference/sql/window_builtin.md
         - reference/sql/aggregate.md
         - reference/sql/case.md
         - reference/sql/cast.md
