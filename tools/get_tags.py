@@ -7,8 +7,10 @@ import os
 import time
 
 
-SUBMODULES_TO_FETCH_TAGS = os.environ.get('SUBMODULES_TO_FETCH_TAGS', ".,tarantool-sys,\
-                                          tarantool-sys/third_party/luajit").split(",")
+SUBMODULES_TO_FETCH_TAGS = os.environ.get('SUBMODULES_TO_FETCH_TAGS', ['.',
+                                          'tarantool-sys', 'tarantool-sys/third_party/luajit'])
+if type(SUBMODULES_TO_FETCH_TAGS) is str:
+    SUBMODULES_TO_FETCH_TAGS = SUBMODULES_TO_FETCH_TAGS.split(",")
 GET_SOURCES_ATTEMPTS = int(os.environ.get('GET_SOURCES_ATTEMPTS', 3))
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
 
