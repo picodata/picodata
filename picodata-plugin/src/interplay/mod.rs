@@ -94,13 +94,11 @@
 //! This function will open a file, parse data, and send a result using an unbounded channel.
 //!
 //! ```no_run
-//! use std::fs::read_to_string;
-//! use std::path::Path;
+//! use std::{fs, path::Path};
 //! use picodata_plugin::interplay::cbus;
-//! use serde_json;
 //!
 //! fn parse(file: &Path, tx: cbus::unbounded::Sender<serde_json::Value>) {
-//!     let raw_json = read_to_string(file).unwrap();
+//!     let raw_json = fs::read_to_string(file).unwrap();
 //!     let object = serde_json::from_str(&raw_json).unwrap();
 //!     tx.send(object).unwrap();
 //! }
@@ -109,16 +107,26 @@
 //! Second, lets create a function for parse a list of files that may be used in `picodata` runtime.
 //!
 //! ```no_run
-//! use std::path::PathBuf;
+//! # use std::{fs, path::Path};
+//! # fn parse(file: &Path, tx: unbounded::Sender<serde_json::Value>) {
+//! #     let raw_json = fs::read_to_string(file).unwrap();
+//! #     let object = serde_json::from_str(&raw_json).unwrap();
+//! #     tx.send(object).unwrap();
+//! # }
+//! use std::{path::PathBuf, sync::OnceLock};
 //! use picodata_plugin::interplay::channel::unbounded;
 //! use threadpool::ThreadPool;
 //!
-//! static THREAD_POOL: ThreadPool = ThreadPool::new(16);
+//! static THREAD_POOL: OnceLock<ThreadPool> = OnceLock::new();
 //!
 //! fn parse_files(files: &[PathBuf]) -> Vec<serde_json::Value> {
 //!     let (tx, rx) = unbounded::channel();
 //!     for file in files {
-//!         THREAD_POOL.execute(parse(file, tx.clone()));
+//!         let file = file.clone();
+//!         let tx = tx.clone();
+//!         THREAD_POOL
+//!             .get_or_init(|| ThreadPool::new(16))
+//!             .execute(move || parse(&file, tx));
 //!     }
 //!
 //!     let mut result = Vec::with_capacity(files.len());

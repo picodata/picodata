@@ -489,8 +489,6 @@ mod tests {
             tokio::spawn(async move { send_logs(args, lines, receiver).await })
         };
 
-        const EXPECTED_LINES: usize = 13;
-
         ttime::sleep(time::Duration::from_secs(3)).await;
 
         let _ = sender.send(Ok(()));
@@ -513,6 +511,7 @@ mod tests {
             };
         }
 
+        const EXPECTED_LINES: usize = 13;
         assert_eq!(counter, EXPECTED_LINES);
     }
 
@@ -548,8 +547,6 @@ mod tests {
             tokio::spawn(async move { send_logs(args, lines, receiver).await })
         };
 
-        const EXPECTED_LINES: usize = 13;
-
         ttime::sleep(time::Duration::from_secs(3)).await;
 
         let _ = sender.send(Ok(()));
@@ -572,6 +569,7 @@ mod tests {
             };
         }
 
+        const EXPECTED_LINES: usize = 13;
         assert_eq!(counter, EXPECTED_LINES);
     }
 

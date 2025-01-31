@@ -74,9 +74,6 @@ build-asan-dev: build
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary is reused
 # can be reused for python tests without recompilation
 # Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata
-# Note: gostech-audit-log and picodata-plugin tests simply do not pass:
-#	https://git.picodata.io/picodata/picodata/picodata/-/issues/1084
-#	https://git.picodata.io/picodata/picodata/picodata/-/issues/1085
 # Note: non-doc tests and doc tests are run separately. This is intended to prevent excessive
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
@@ -84,16 +81,12 @@ build-asan-dev: build
 .PHONY: test
 test:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
-	  --exclude gostech-audit-log \
-	  --exclude picodata-plugin \
 	  --exclude sbroad-core \
 	  --exclude tarantool \
 	  --exclude tlua \
 	  --tests
 
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
-	  --exclude gostech-audit-log \
-	  --exclude picodata-plugin \
 	  --exclude sbroad-core \
 	  --exclude tarantool \
 	  --exclude tlua \
