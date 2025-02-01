@@ -31,7 +31,7 @@ picodata run --config <PATH>
 
 ## Описание файла конфигурации {: #config_file_description }
 
-<!-- Описание соответствует версии Picodata `24.7.0-1130-gc5067f6c`. -->
+<!-- Описание соответствует версии Picodata `24.7.0-1144-gc2ae3ade`. -->
 
 Результатом выполнения команды `picodata config default -o picodata.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
@@ -47,45 +47,41 @@ cluster:
   default_replication_factor: 1 # (1)!
 instance:
   instance_dir: . # (10)!
-  service_password_file: null # (25)!
-  name: null # (19)!
-  replicaset_name: null # (24)!
-  tier: default # (27)!
+  service_password_file: null # (22)!
+  name: null # (16)!
+  replicaset_name: null # (21)!
+  tier: default # (24)!
   failure_domain: {} # (8)!
-  peer: # (20)!
+  peer: # (17)!
   - 127.0.0.1:3301
-  listen: 127.0.0.1:3301 # (12)!
+  listen: 127.0.0.1:3301 # (11)!
   advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (9)!
   admin_socket: ./admin.sock # (5)!
-  share_dir: null # (23)!
+  share_dir: null # (20)!
   audit: null # (7)!
-  shredding: false # (26)!
+  shredding: false # (23)!
   log:
-    level: info # (15)!
-    destination: null # (13)!
-    format: plain # (14)!
+    level: info # (14)!
+    destination: null # (12)!
+    format: plain # (13)!
   memtx:
-    memory: 64M # (18)!
-    checkpoint_count: 2 # (16)!
-    checkpoint_interval: 3600.0 # (17)!
+    memory: 64M # (15)!
   vinyl:
-    memory: 128M # (29)!
-    cache: 128M # (28)!
-    bloom_fpr: 0.05 # (30)!
-    max_tuple_size: 1M # (31)!
-    page_size: 8K # (32)!
-    range_size: 1G # (33)!
-    run_count_per_level: 2 # (34)!
-    run_size_ratio: 3.5 # (35)!
-    read_threads: 1 # (36)!
-    write_threads: 4 # (37)!
-    timeout: 60.0 # (38)!
-  iproto:
-    max_concurrent_messages: 768 # (11)!
+    memory: 128M # (26)!
+    cache: 128M # (25)!
+    bloom_fpr: 0.05 # (27)!
+    max_tuple_size: 1M # (28)!
+    page_size: 8K # (29)!
+    range_size: 1G # (30)!
+    run_count_per_level: 2 # (31)!
+    run_size_ratio: 3.5 # (32)!
+    read_threads: 1 # (33)!
+    write_threads: 4 # (34)!
+    timeout: 60.0 # (35)!
   pg:
-    listen: 127.0.0.1:4327 # (21)!
-    ssl: false # (22)!
+    listen: 127.0.0.1:4327 # (18)!
+    ssl: false # (19)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -98,34 +94,31 @@ instance:
 8. [instance.failure_domain](#instance_failure_domain)
 9. [instance.http_listen](#instance_http_listen)
 10. [instance.instance_dir](#instance_instance_dir)
-11. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
-12. [instance.listen](#instance_listen)
-13. [instance.log.destination](#instance_log_destination)
-14. [instance.log.format](#instance_log_format)
-15. [instance.log.level](#instance_log_level)
-16. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
-17. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
-18. [instance.memtx.memory](#instance_memtx_memory)
-19. [instance.name](#instance_name)
-20. [instance.peer](#instance_peer)
-21. [instance.pg.listen](#instance_pg_listen)
-22. [instance.pg.ssl](#instance_pg_ssl)
-23. [instance.share_dir](#instance_share_dir)
-24. [instance.replicaset_name](#instance_replicaset_name)
-25. [instance.service_password_file](#instance_service_password_file)
-26. [instance.shredding](#instance_shredding)
-27. [instance.tier](#instance_tier)
-28. [instance.vinyl.cache](#instance_vinyl_cache)
-29. [instance.vinyl.memory](#instance_vinyl_memory)
-30. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-31. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-32. [instance.vinyl.page_size](#instance_vinyl_page_size)
-33. [instance.vinyl.range_size](#instance_vinyl_range_size)
-34. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-35. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-36. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-37. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-38. [instance.vinyl.timeout](#instance_vinyl_timeout)
+11. [instance.listen](#instance_listen)
+12. [instance.log.destination](#instance_log_destination)
+13. [instance.log.format](#instance_log_format)
+14. [instance.log.level](#instance_log_level)
+15. [instance.memtx.memory](#instance_memtx_memory)
+16. [instance.name](#instance_name)
+17. [instance.peer](#instance_peer)
+18. [instance.pg.listen](#instance_pg_listen)
+19. [instance.pg.ssl](#instance_pg_ssl)
+20. [instance.share_dir](#instance_share_dir)
+21. [instance.replicaset_name](#instance_replicaset_name)
+22. [instance.service_password_file](#instance_service_password_file)
+23. [instance.shredding](#instance_shredding)
+24. [instance.tier](#instance_tier)
+25. [instance.vinyl.cache](#instance_vinyl_cache)
+26. [instance.vinyl.memory](#instance_vinyl_memory)
+27. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+28. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+29. [instance.vinyl.page_size](#instance_vinyl_page_size)
+30. [instance.vinyl.range_size](#instance_vinyl_range_size)
+31. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+32. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+33. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+34. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+35. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -302,47 +295,6 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
 
-### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
-
-Максимальное количество сообщений, которое Picodata обрабатывает параллельно.
-
-Для обработки сообщений Picodata использует файберы. Чтобы загруженность
-файберов не влияла на производительность всей системы, Picodata ограничивает
-количество сообщений, обрабатываемых файберами, блокируя некоторые ожидающие
-запросы.
-
-На мощных системах можно *увеличить* значение `max_concurrent_messages`,
-тогда планировщик немедленно начнет обрабатывать ожидающие запросы.
-
-На слабых системах можно *уменьшить* значение `max_concurrent_messages`,
-тогда загруженность файберов может снизиться, хотя может потребоваться
-некоторое время, пока планировщик дождется завершения уже обрабатываемых
-запросов.
-
-Когда количество сообщений достигает `max_concurrent_messages`, Picodata
-приостанавливает обработку входящих пакетов, пока не обработает предыдущие
-сообщения. Это не прямое ограничение количества файберов, обрабатывающих
-сетевые сообщения — скорее, это общесистемное ограничение пропускной
-способности канала. В свою очередь, это приводит к ограничению количества
-входящих сетевых сообщений, которые обрабатывает поток процессора транзакций,
-и, как следствие, косвенно влияет на файберы, обрабатывающие сетевые сообщения.
-
-<!-- The number of fibers is smaller than the number of messages because messages
-can be released as soon as they are delivered, while incoming requests might
-not be processed until some time after delivery. -->
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `768`
-
-Аналогичная команда — [`picodata run --config-parameter`]. Пример:
-
-```bash
-picodata run -c instance.iproto.max_concurrent_messages=1536
-```
-
 ### instance.listen {: #instance_listen }
 
 Сетевой адрес инстанса.
@@ -412,45 +364,6 @@ picodata run -c instance.log.format=json
 Аналогичная команда: [`picodata run --log-level`]
 
 [`picodata run --log-level`]: cli.md#run_log_level
-
-### instance.memtx.checkpoint_count {: #instance_memtx_checkpoint_count }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->
-
-Максимальное количество снапшотов, хранящихся в директории *memtx_dir*.
-Если после создания нового снапшота их общее количество превысит значение
-этого параметра, старые снапшоты будут удалены. Если значение параметра
-равно `0`, старые снапшоты останутся нетронутыми.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `2`
-
-Аналогичная команда — [`picodata run --config-parameter`]. Пример:
-
-```bash
-picodata run -c instance.memtx.checkpoint_count=5
-```
-
-### instance.memtx.checkpoint_interval {: #instance_memtx_checkpoint_interval }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-interval -->
-
-Период активности службы создания снапшотов (checkpoint daemon) *в секундах*.
-Если значение параметра больше нуля и произошло изменение в базе данных, служба
-создания снапшотов периодически вызывает функцию, которая
-создает новый снапшот. Если значение параметра равно `0.0`, служба создания
-снапшотов отключается.
-
-Данные:
-
-* Тип: *float*
-* Значение по умолчанию: `3600.0` (1 час)
-
-Аналогичная команда — [`picodata run --config-parameter`]. Пример:
-
-```bash
-picodata run -c instance.memtx.checkpoint_interval=7200.0
-```
 
 ### instance.memtx.memory {: #instance_memtx_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
