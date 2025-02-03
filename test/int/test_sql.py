@@ -2205,7 +2205,10 @@ def test_values(cluster: Cluster):
     # Initially test scenarios (presented below) were described in the issue:
     # https://git.picodata.io/core/picodata/-/issues/1278.
     cluster.deploy(instance_count=2)
-    i1, _ = cluster.instances
+    i1, i2 = cluster.instances
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
     ddl = i1.sql(""" create table t (a int primary key, b text) """)
     assert ddl["row_count"] == 1
@@ -6319,3 +6322,70 @@ def test_delete_with_filter(cluster: Cluster):
 
     dml = i1.sql("""delete from t where true""")
     assert dml["row_count"] == 1
+
+
+def test_groupby_with_column_positions(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1 = cluster.instances[0]
+    i2 = cluster.instances[1]
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    ddl = i1.sql("CREATE TABLE t (a INT PRIMARY KEY, b INT)")
+    assert ddl["row_count"] == 1
+    ddl = i1.sql("CREATE TABLE s (c INT PRIMARY KEY, d INT)")
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("""INSERT INTO t VALUES (1, 2), (3, 4), (5, 6), (7, 8)""")
+    assert dml["row_count"] == 4
+
+    i1.sql("""INSERT INTO s VALUES (2, 1), (4, 3), (6, 5), (8, 7)""")
+    assert dml["row_count"] == 4
+
+    dql = i1.sql("""SELECT * FROM t GROUP BY 2, 1 ORDER BY 1""")
+    assert dql == [[1, 2], [3, 4], [5, 6], [7, 8]]
+
+    dql = i1.sql("""SELECT b FROM t GROUP BY 1 ORDER BY 1""")
+    assert dql == [[2], [4], [6], [8]]
+
+    error_message = "sbroad: invalid query: " + "GROUP BY position 7 is not in select list"
+    error_message = re.escape(error_message)
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM t GROUP BY 7""")
+
+    error_message = "sbroad: invalid query: " + "GROUP BY position 3 is not in select list"
+    error_message = re.escape(error_message)
+
+    with pytest.raises(
+        TarantoolError,
+        match=error_message,
+    ):
+        i1.sql("""SELECT * FROM t GROUP BY 1, 2, 3, 4, 5""")
+
+    dql = i1.sql("""SELECT * FROM t GROUP BY a, 2 ORDER BY 1""")
+    assert dql == [[1, 2], [3, 4], [5, 6], [7, 8]]
+
+    dql = i1.sql("""SELECT * FROM t JOIN s ON TRUE GROUP BY a, 2, c, 4""")
+    assert sorted(dql) == [
+        [1, 2, 2, 1],
+        [1, 2, 4, 3],
+        [1, 2, 6, 5],
+        [1, 2, 8, 7],
+        [3, 4, 2, 1],
+        [3, 4, 4, 3],
+        [3, 4, 6, 5],
+        [3, 4, 8, 7],
+        [5, 6, 2, 1],
+        [5, 6, 4, 3],
+        [5, 6, 6, 5],
+        [5, 6, 8, 7],
+        [7, 8, 2, 1],
+        [7, 8, 4, 3],
+        [7, 8, 6, 5],
+        [7, 8, 8, 7],
+    ]

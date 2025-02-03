@@ -2547,9 +2547,11 @@ impl Plan {
                     self.create_motion_nodes(strategy)?;
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
 
-                    let first_child_id = self.get_relational_child(id, 0)?;
-                    let child_dist =
-                        self.get_distribution(self.get_relational_output(first_child_id)?)?;
+                    self.adjust_grouping_exprs(id)?;
+
+                    let child_dist = self.get_distribution(
+                        self.get_relational_output(self.get_relational_child(id, 0)?)?,
+                    )?;
                     if matches!(child_dist, Distribution::Single | Distribution::Global) {
                         // The data is already on the current node, let's just set the
                         // distribution.
