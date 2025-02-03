@@ -400,6 +400,7 @@ def test_picodata_default_config(cluster: Cluster):
     default_config_dict = yaml.safe_load(default_config)
     assert "listen" not in default_config_dict["instance"]
     assert "advertise" not in default_config_dict["instance"]
+    assert "plugin_dir" not in default_config_dict["instance"]
 
     # Explicit filename
     subprocess.call(

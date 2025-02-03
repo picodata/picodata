@@ -1143,6 +1143,7 @@ pub struct InstanceConfig {
     pub admin_socket: Option<PathBuf>,
 
     #[deprecated = "use share_dir instead"]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_dir: Option<PathBuf>,
 
     #[introspection(config_default = "/usr/share/picodata/")]
