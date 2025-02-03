@@ -21,6 +21,7 @@ version = ">=4.0"
 features = ["picodata"]
 
 [dev-dependencies]
+clap = { version = "4", features = ["default"] }
 criterion = "0.5.1"
 rand = "0.8"
 
