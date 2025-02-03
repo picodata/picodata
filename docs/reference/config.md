@@ -31,7 +31,7 @@ picodata run --config <PATH>
 
 ## Описание файла конфигурации {: #config_file_description }
 
-<!-- Описание соответствует версии Picodata `24.3.0-179-gaf8647c7`. -->
+<!-- Описание соответствует версии Picodata `24.6.0-162-g0ddb88db`. -->
 
 Результатом выполнения команды `picodata config default -o picodata.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
@@ -66,12 +66,12 @@ instance:
     destination: null # (13)!
     format: plain # (14)!
   memtx:
-    memory: 67108864 # (18)!
+    memory: 64M # (18)!
     checkpoint_count: 2 # (16)!
     checkpoint_interval: 3600.0 # (17)!
   vinyl:
-    memory: 134217728 # (29)!
-    cache: 134217728 # (28)!
+    memory: 128M # (29)!
+    cache: 128M # (28)!
     bloom_fpr: 0.05 # (30)!
     max_tuple_size: 1M # (31)!
     page_size: 8K # (32)!
@@ -466,7 +466,7 @@ picodata run -c instance.memtx.checkpoint_interval=7200.0
 Данные:
 
 * Тип: *int*
-* Значение по умолчанию: `67108864` (64 МБ)
+* Значение по умолчанию: `64M` (67108864 Б)
 
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
@@ -676,7 +676,7 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 Данные:
 
 * Тип: *int*
-* Значение по умолчанию: `134217728` (128 МБ)
+* Значение по умолчанию: `128M` (134217728 Б)
 
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
@@ -715,7 +715,7 @@ picodata run -c instance.vinyl.max_tuple_size=2M
 Данные:
 
 * Тип: *int*
-* Значение по умолчанию: `134217728` (128 МБ)
+* Значение по умолчанию: `128M` (134217728 Б)
 
 Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
