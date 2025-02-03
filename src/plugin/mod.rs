@@ -1127,6 +1127,12 @@ pub fn change_config_atom(
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
     let make_op = || {
+        let plugin_def = node.storage.plugins.get(ident)?;
+        if plugin_def.is_none() {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::PluginError, format!("no such plugin `{ident}`")).into());
+        }
+
         let mut service_config_part = Vec::with_capacity(kv.len());
         let mut ranges = Vec::with_capacity(kv.len());
         for (service, kv) in kv {
@@ -1155,6 +1161,13 @@ pub fn change_config_atom(
             if service == &migration::CONTEXT_ENTITY {
                 service_config_part.push((service.to_string(), kv));
                 continue;
+            }
+
+            let service_def = node.storage.services.get(ident, service)?;
+            if service_def.is_none() {
+                let service_id = ServiceId::new(&ident.name, *service, &ident.version);
+                #[rustfmt::skip]
+                return Err(BoxError::new(ErrorCode::NoSuchService, format!("no such service `{service_id}`")).into());
             }
 
             let current_cfg = node

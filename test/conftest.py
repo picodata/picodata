@@ -76,6 +76,11 @@ class ErrorCode:
     CasEntryTermMismatch = 10008
     CasTableNotAllowed = 10009
     CasInvalidOpKind = 10010
+    NoSuchService = 10011
+    ServiceNotStarted = 10012
+    ServicePoisoned = 10013
+    ServiceNotAvailable = 10014
+    WrongPluginVersion = 10015
     NoSuchInstance = 10016
     NoSuchReplicaset = 10017
     LeaderUnknown = 10018
@@ -84,6 +89,7 @@ class ErrorCode:
     ReplicasetExpelled = 10021
     InstanceUnavaliable = 10022
     CasTableNotOperable = 10023
+    Uninitialized = 10024
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas

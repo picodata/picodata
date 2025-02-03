@@ -2987,20 +2987,47 @@ def test_sql_interface_update_config(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     plugin_ref = PluginReflection.default(i1, i2)
 
-    i1.sql(f'CREATE PLUGIN "{_PLUGIN}" 0.1.0')
+    plugin = _PLUGIN
+
+    # Error: Wrong plugin name
+    with pytest.raises(TarantoolError) as e:
+        i1.sql("ALTER PLUGIN no_such_plugin 0.1.0 SET testservice_1.foo = 'false'")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        "no such plugin `no_such_plugin:0.1.0`",
+    )
+
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+
+    # Error: Wrong plugin version
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"ALTER PLUGIN {plugin} 1.2.3 SET testservice_1.foo = 'false'")
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"no such plugin `{plugin}:1.2.3`",
+    )
+
+    # Error: Wrong service name
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 SET no_such_service.foo = 'false'")
+    assert e.value.args[:2] == (
+        ErrorCode.NoSuchService,
+        f"no such service `{plugin}.no_such_service:v0.1.0`",
+    )
+
     i1.sql(
-        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_1" TO TIER "{_DEFAULT_TIER}"'
+        f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_1 TO TIER {_DEFAULT_TIER}"
     )
     i1.sql(
-        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_2" TO TIER "{_DEFAULT_TIER}"'
+        f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE testservice_2 TO TIER {_DEFAULT_TIER}"
     )
-    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ENABLE')
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 ENABLE")
 
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
     plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
 
-    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 SET "testservice_1"."foo" = \'false\'')
+    i1.sql(f"ALTER PLUGIN {plugin} 0.1.0 SET testservice_1.foo = 'false'")
 
     # retrying, cause new service configuration callback call asynchronously
     Retriable(timeout=3, rps=5).call(
@@ -3012,10 +3039,10 @@ def test_sql_interface_update_config(cluster: Cluster):
         )
     )
     new_cfg = (
-        '"testservice_1"."foo" = \'true\', "testservice_1"."bar"= \'102\', '
-        '"testservice_1"."baz" = \'["one"]\', "testservice_2"."foo" = \'5\''
+        "testservice_1.foo = 'true', testservice_1.bar= '102', "
+        "testservice_1.baz = '[\"one\"]', testservice_2.foo = '5'"
     )
-    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 SET {new_cfg}')
+    i1.sql(f'ALTER PLUGIN "{plugin}" 0.1.0 SET {new_cfg}')
 
     # retrying, cause new service configuration callback call asynchronously
     Retriable(timeout=3, rps=5).call(
