@@ -562,20 +562,6 @@ SSL-сертификаты:
 picodata run -c instance.pg.ssl=true
 ```
 
-### instance.share_dir {: #instance_share_dir }
-
-Путь к директории, содержащей файлы плагинов.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `null`
-
-Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
-Аналогичная команда: [`picodata run --share-dir`]
-
-[`picodata run --share-dir`]: cli.md#run_share_dir
-
 ### instance.replicaset_name {: #instance_replicaset_name }
 
 Имя репликасета. Используется при инициализации кластера и присоединении
@@ -609,6 +595,20 @@ picodata run -c instance.pg.ssl=true
 Аналогичная команда: [`picodata run --service-password-file`]
 
 [`picodata run --service-password-file`]: cli.md#run_service_password_file
+
+### instance.share_dir {: #instance_share_dir }
+
+Путь к директории, содержащей файлы плагинов.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
+Аналогичная команда: [`picodata run --share-dir`]
+
+[`picodata run --share-dir`]: cli.md#run_share_dir
 
 ### instance.shredding {: #instance_shredding }
 
