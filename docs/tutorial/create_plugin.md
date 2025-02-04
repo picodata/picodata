@@ -178,8 +178,8 @@ cargo build
 Теперь нужно правильно организовать размещение файлов плагина и
 манифеста. Picodata выполняет поиск плагина в [plugin_path] с учетом его
 имени и версии, используя следующую структуру пути:
-`<plugin-dir>/<plugin-name>/<plugin-version>`. Для нашего плагина это
-будет выглядеть как `<plugin-dir>/weather_cache/0.1.0`.
+`<share-dir>/<plugin-name>/<plugin-version>`. Для нашего плагина это
+будет выглядеть как `<share-dir>/weather_cache/0.1.0`.
 
 ```shell
 mkdir -p build/weather_cache/0.1.0
@@ -203,7 +203,7 @@ build
 Запуск Picodata:
 
 ```shell
-picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 --http-listen 127.0.0.1:8081 --instance-dir i1 --plugin-dir build
+picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 --http-listen 127.0.0.1:8081 --instance-dir i1 --share-dir build
 ```
 
 Запуск плагина:

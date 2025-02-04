@@ -19,13 +19,13 @@ Picodata. Плагин имеет собственный жизненный ци
 ## Запуск Picodata с поддержкой плагинов {: #run_picodata_with_plugins }
 
 Для использования плагинов запустите Picodata c параметром
-[`picodata run --plugin-dir`](../reference/cli.md#run_plugin_dir)
+[`picodata run --share-dir`](../reference/cli.md#run_plugin_dir)
 
 В этой директории Picodata будет искать плагины. Требуется, чтобы
 структура директорий плагина соответствовали схеме:
 
 ```
-корень plugin-dir
+корень share-dir
     └── имя_плагина
         └── версия_плагина
 ```

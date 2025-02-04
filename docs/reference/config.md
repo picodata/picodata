@@ -31,7 +31,7 @@ picodata run --config <PATH>
 
 ## Описание файла конфигурации {: #config_file_description }
 
-<!-- Описание соответствует версии Picodata `24.6.0-162-g0ddb88db`. -->
+<!-- Описание соответствует версии Picodata `24.7.0-1130-gc5067f6c`. -->
 
 Результатом выполнения команды `picodata config default -o picodata.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
@@ -572,9 +572,9 @@ picodata run -c instance.pg.ssl=true
 * Значение по умолчанию: `null`
 
 Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
-Аналогичная команда: [`picodata run --plugin-dir`]
+Аналогичная команда: [`picodata run --share-dir`]
 
-[`picodata run --plugin-dir`]: cli.md#run_plugin_dir
+[`picodata run --share-dir`]: cli.md#run_plugin_dir
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 

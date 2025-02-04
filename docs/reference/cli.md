@@ -33,7 +33,7 @@ SUBCOMMANDS:
 ## picodata run {: #run }
 <!-- ********************************************************************** -->
 
-<!-- Описание соответствует версии Picodata `24.4.0-57-g8a306f0e`. -->
+<!-- Описание соответствует версии Picodata `24.7.0-1130-gc5067f6c`. -->
 
 Запускает инстанс Picodata, см. [Запуск Picodata](../tutorial/run.md).
 
@@ -333,9 +333,9 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 
 [`instance.pg.listen`]: config.md#instance_pg_listen
 
-### --plugin-dir {: #run_plugin_dir }
+### --share-dir {: #run_plugin_dir }
 
-`--plugin-dir <PATH>`
+`--share-dir <PATH>`
 
 Путь к директории, содержащей файлы плагинов.
 
@@ -343,7 +343,7 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 структура директорий плагина соответствовали схеме:
 
 ```
-корень plugin-dir
+корень share-dir
     └── имя_плагина
         └── версия_плагина
 ```
