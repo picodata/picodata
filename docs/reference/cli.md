@@ -333,26 +333,6 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 
 [`instance.pg.listen`]: config.md#instance_pg_listen
 
-### --share-dir {: #run_share_dir }
-
-`--share-dir <PATH>`
-
-Путь к директории, содержащей файлы плагинов.
-
-В этой директории Picodata будет искать плагины. Требуется, чтобы
-структура директорий плагина соответствовали схеме:
-
-```
-корень share-dir
-    └── имя_плагина
-        └── версия_плагина
-```
-
-Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
-Аналогичный параметр файла конфигурации: [`instance.share_dir`]
-
-[`instance.share_dir`]: config.md#instance_share_dir
-
 ### --replicaset-name {: #run_replicaset_name }
 
 `--replicaset-name <NAME>`
@@ -395,6 +375,26 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
 
 [`instance.service_password_file`]: config.md#instance_service_password_file
+
+### --share-dir {: #run_share_dir }
+
+`--share-dir <PATH>`
+
+Путь к директории, содержащей файлы плагинов.
+
+В этой директории Picodata будет искать плагины. Требуется, чтобы
+структура директорий плагина соответствовали схеме:
+
+```
+корень share-dir
+    └── имя_плагина
+        └── версия_плагина
+```
+
+Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
+Аналогичный параметр файла конфигурации: [`instance.share_dir`]
+
+[`instance.share_dir`]: config.md#instance_share_dir
 
 ### --shredding {: #run_shredding }
 
