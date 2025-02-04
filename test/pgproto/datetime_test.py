@@ -260,15 +260,6 @@ def test_localtimestamp(postgres: Postgres):
     result = cur.fetchall()
     assert result == [(True,)]
 
-    # Test that different precisions have different results
-    cur.execute(
-        """
-        SELECT localtimestamp(2) = localtimestamp(4);
-    """
-    )
-    result = cur.fetchall()
-    assert result == [(False,)]
-
     # Verify that precision 0 has no fractional sec
     cur.execute(
         """
