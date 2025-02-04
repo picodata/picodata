@@ -770,12 +770,10 @@ def test_file_shredding(cluster: Cluster, class_tmp_dir):
 
 
 def test_pico_service_password_security_warning(cluster: Cluster):
-    password_file = f"{cluster.instance_dir}/service-password.txt"
-    with open(password_file, "w") as f:
-        print("secret", file=f)
-
     i1 = cluster.add_instance(wait_online=False)
-    i1.service_password_file = password_file
+
+    assert i1.service_password_file
+    os.chmod(i1.service_password_file, 0o644)
 
     message = "service password file's permissions are too open, this is a security risk"  # noqa: E501
     lc = log_crawler(i1, message)
@@ -784,9 +782,10 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     assert lc.matched
 
     i1.terminate()
-    i1.remove_data()
 
-    os.chmod(password_file, 0o600)
+    # after removing instance data
+    # file with pico-service password .picodata.cookie also will be deleted
+    i1.remove_data()
 
     lc.matched = False
     i1.start()

@@ -259,10 +259,6 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.instance_dir = Some(instance_dir);
         }
 
-        if let Some(service_password_file) = args.service_password_file {
-            config_from_args.instance.service_password_file = Some(service_password_file);
-        }
-
         if let Some(cluster_name) = args.cluster_name {
             config_from_args.cluster.name = Some(cluster_name.clone());
             config_from_args.instance.cluster_name = Some(cluster_name);
@@ -1103,7 +1099,6 @@ impl ClusterConfig {
 pub struct InstanceConfig {
     #[introspection(config_default = PathBuf::from("."))]
     pub instance_dir: Option<PathBuf>,
-    pub service_password_file: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain this option,
     // which isn't allowed to be set from file.

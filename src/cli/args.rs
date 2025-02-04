@@ -301,16 +301,6 @@ pub struct Run {
     /// By default, 64 MiB is used.
     pub memtx_memory: Option<ByteSize>,
 
-    #[clap(
-        long = "service-password-file",
-        value_name = "PATH",
-        env = "PICODATA_SERVICE_PASSWORD_FILE"
-    )]
-    /// Path to a plain-text file with a password for the system user "pico_service".
-    /// This password will be used for internal communication among instances of
-    /// picodata, so it must be the same on all instances.
-    pub service_password_file: Option<PathBuf>,
-
     #[clap(hide = true, long = "entrypoint-fd")]
     /// A pipe file descriptor from which picodata reads the entrypoint info
     /// when doing a rebootstrap during the cluster initialization.

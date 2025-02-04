@@ -650,14 +650,10 @@ Bye
 
 
 def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
-    password_file = f"{cluster.instance_dir}/service-password.txt"
-    with open(password_file, "w") as f:
-        print("secret", file=f)
-
-    os.chmod(password_file, 0o600)
+    password = "secret"
+    cluster.set_service_password(password)
 
     i1 = cluster.add_instance(wait_online=False)
-    i1.service_password_file = password_file
 
     admin_banned_lc = log_crawler(i1, "Maximum number of login attempts exceeded; user blocked")
     i1.start()
@@ -669,8 +665,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
             i1.sql("try to auth", user="pico_service", password="wrong_password")
 
     # pico_service is not banned
-    data = i1.sql("SELECT name FROM _pico_tier ", user="pico_service", password="secret")
-
+    data = i1.sql("SELECT name FROM _pico_tier ", user="pico_service", password=password)
     assert data[0][0] == "default"
 
     # auth via admin until ban
@@ -948,10 +943,6 @@ def strip(s: str) -> str:
 def test_picodata_status_basic(cluster: Cluster):
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
-
-    password_file = cluster.service_password_file
-    assert password_file
-
     cluster.deploy(instance_count=3)
     cluster.wait_online()
     i1, i2, i3 = sorted(cluster.instances, key=lambda i: i.name or "")
@@ -968,6 +959,8 @@ def test_picodata_status_basic(cluster: Cluster):
     i2_replicaset_uuid = i2.replicaset_uuid()
     i3_replicaset_uuid = i3.replicaset_uuid()
 
+    assert i1.service_password_file is not None
+
     data = subprocess.check_output(
         [
             cluster.binary_path,
@@ -975,7 +968,7 @@ def test_picodata_status_basic(cluster: Cluster):
             "--peer",
             f"{i1_address}",
             "--service-password-file",
-            password_file,
+            i1.service_password_file,
         ],
     )
 
@@ -1009,7 +1002,7 @@ CLUSTER NAME: {i1.cluster_name}
             "--peer",
             i1_address,
             "--service-password-file",
-            password_file,
+            i1.service_password_file,
         ],
     )
 
@@ -1043,7 +1036,7 @@ CLUSTER NAME: {i1.cluster_name}
             "--peer",
             i1_address,
             "--service-password-file",
-            password_file,
+            i1.service_password_file,
         ],
     )
 
@@ -1077,6 +1070,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     i1 = cluster.add_instance(wait_online=False)
     i1_address = f"{i1.host}:{i1.port}"
+    assert i1.service_password_file is not None
 
     process = subprocess.run(
         [
@@ -1085,7 +1079,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
             "--peer",
             f"{i1_address}",
             "--service-password-file",
-            password_file,
+            i1.service_password_file,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1106,7 +1100,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
             "--peer",
             f"{i1_address}",
             "--service-password-file",
-            password_file,
+            i1.service_password_file,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

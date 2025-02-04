@@ -16,6 +16,8 @@ use tarantool::error::Error as TntError;
 #[cfg(feature = "error_injection")]
 use crate::error_injection;
 
+const PICODATA_COOKIE: &'static str = ".picodata-cookie";
+
 pub fn main(mut args: args::Run) -> ! {
     // Save the argv before entering tarantool, because tarantool will fuss about with them
     let copied_argv: Vec<OsString> = std::env::args_os().skip(1).collect();
@@ -51,8 +53,9 @@ pub fn main(mut args: args::Run) -> ! {
         let config = PicodataConfig::init(args)?;
         config.log_config_params();
 
-        if let Some(filename) = &config.instance.service_password_file {
-            crate::pico_service::read_pico_service_password_from_file(filename)?;
+        let cookie_path = config.instance.instance_dir().join(PICODATA_COOKIE);
+        if cookie_path.exists() {
+            crate::pico_service::read_pico_service_password_from_file(cookie_path)?;
         }
 
         let entrypoint = maybe_read_entrypoint_from_pipe(input_entrypoint_pipe)?;

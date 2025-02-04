@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `max_heartbeat_period` removed from `_pico_db_config`
 
+- CLI parameter `service_password_file` removed from arguments. To set a password for connecting to the cluster, create a file named `.picodata-cookie` in the instance's directory and store the password there.
+
 - Major renaming of parameters from _pico_db_config:
  - `max_concurrent_messages` renamed to `iproto_net_msg_max`
  - `password_min_length` renamed to `auth_password_length_min`

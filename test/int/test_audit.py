@@ -347,6 +347,8 @@ def test_index(instance_with_audit_file: Instance):
 
 
 def test_join_expel_instance(cluster: Cluster):
+    password = "s3cr3t"
+    cluster.set_service_password(password)
     cluster.deploy(instance_count=0)
     audit = os.path.join(cluster.instance_dir, "audit.log")
     i1 = cluster.add_instance(audit=audit, replicaset_name="default_1")

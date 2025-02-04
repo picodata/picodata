@@ -245,6 +245,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
 def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     cluster: Cluster,
 ):
+    cluster.set_service_password("s3cr3t")
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3)
     # These are being tested.
@@ -299,6 +300,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
 def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     cluster: Cluster,
 ):
+    cluster.set_service_password("s3cr3t")
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     # These are being tested.

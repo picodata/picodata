@@ -58,6 +58,7 @@ METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
+PICO_SERVICE_PASSWORD = "T3stP4ssword"
 
 CLI_TIMEOUT = 10  # seconds
 
@@ -582,6 +583,7 @@ class Instance:
     name: str | None = None
     replicaset_name: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
+    _service_password: str | None = None
     service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
@@ -640,7 +642,6 @@ class Instance:
     @property
     def command(self):
         audit = self.audit_flag_value
-        service_password = self.service_password_file
 
         # fmt: off
         return [
@@ -660,7 +661,6 @@ class Instance:
             *(["--config", self.config_path] if self.config_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
             *(["--audit", audit] if audit else []),
-            *(["--service-password-file", service_password] if service_password else []),
         ]
         # fmt: on
 
@@ -1549,9 +1549,25 @@ class Instance:
         self.start()
         self.wait_online()
 
+    def set_service_password(self, password: str):
+        if not self.instance_dir:
+            raise ValueError("instance_dir must be set before setting the service password")
+
+        self._service_password = password
+        self.service_password_file = os.path.join(self.instance_dir, ".picodata-cookie")
+        if isinstance(self.service_password_file, str):
+            if os.path.exists(self.service_password_file):
+                os.remove(self.service_password_file)
+
+            with open(self.service_password_file, "w") as f:
+                print(self._service_password, file=f)
+            os.chmod(self.service_password_file, 0o600)
+
     @property
     def service_password(self) -> Optional[str]:
         if self.service_password_file is None:
+            return None
+        if not os.path.exists(self.service_password_file):
             return None
         with open(self.service_password_file, "r") as f:
             password = f.readline()
@@ -1671,6 +1687,7 @@ class Cluster:
     port_distributor: PortDistributor
     instances: list[Instance] = field(default_factory=list)
     config_path: str | None = None
+    service_password: str | None = None
     service_password_file: str | None = None
     share_dir: str | None = None
 
@@ -1736,7 +1753,8 @@ class Cluster:
             yaml_file.write(yaml)
 
     def set_service_password(self, service_password: str):
-        self.service_password_file = self.instance_dir + "/password.txt"
+        self.service_password = service_password
+        self.service_password_file = os.path.join(self.instance_dir, ".picodata-cookie")
         with open(self.service_password_file, "w") as f:
             print(service_password, file=f)
         os.chmod(self.service_password_file, 0o600)
@@ -1753,6 +1771,7 @@ class Cluster:
         audit: bool | str = True,
         enable_http: bool = False,
         pg_port: int | None = None,
+        service_password: str | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1804,8 +1823,18 @@ class Cluster:
             config_path=self.config_path,
             audit=audit,
         )
-        if self.service_password_file:
-            instance.service_password_file = self.service_password_file
+
+        if service_password:
+            instance._service_password = service_password
+        elif self.service_password:
+            instance._service_password = self.service_password
+
+        cookie_file = os.path.join(instance.instance_dir, ".picodata-cookie")
+        instance.service_password_file = cookie_file
+        os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+        with open(cookie_file, "w") as f:
+            print(instance._service_password, file=f)
+        os.chmod(cookie_file, 0o600)
 
         if enable_http:
             listen = f"{self.base_host}:{self.port_distributor.get()}"
@@ -2572,7 +2601,7 @@ class Postgres:
 
         ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
         instance_dir = Path(self.cluster.instance_dir) / "i1"
-        instance_dir.mkdir()
+        instance_dir.mkdir(exist_ok=True)
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
 
