@@ -255,7 +255,7 @@ test-linux:
     - |
       ci-log-section start "test" Test
       make test \
-        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST" \
+        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10" \
         CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
       ci-log-section end "test"
 
