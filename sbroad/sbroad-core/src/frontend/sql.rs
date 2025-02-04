@@ -680,66 +680,57 @@ fn parse_create_table(
             Rule::Columns => {
                 let columns_node = ast.nodes.get_node(*child_id)?;
                 for col_id in &columns_node.children {
-                    let mut column_def = ColumnDef::default();
                     let column_def_node = ast.nodes.get_node(*col_id)?;
-                    for def_child_id in &column_def_node.children {
+                    let column_def_children = &column_def_node.children;
+
+                    let name_node_id = column_def_children
+                        .first()
+                        .expect("ColumnDef should have a name child node");
+                    let name = parse_identifier(ast, *name_node_id)?;
+
+                    let column_ty_node_id = column_def_children
+                        .get(1)
+                        .expect("ColumnDef should have a type child node");
+                    let column_ty_node = ast.nodes.get_node(*column_ty_node_id)?;
+                    let ty_node_id = column_ty_node
+                        .children
+                        .first()
+                        .expect("ColumnDefType must have a type child");
+                    let ty_node = ast.nodes.get_node(*ty_node_id)?;
+                    let data_type = match ty_node.rule {
+                        Rule::TypeBool => RelationType::Boolean,
+                        Rule::TypeDatetime => RelationType::Datetime,
+                        Rule::TypeDecimal => RelationType::Decimal,
+                        Rule::TypeDouble => RelationType::Double,
+                        Rule::TypeInt => RelationType::Integer,
+                        Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => {
+                            RelationType::String
+                        }
+                        Rule::TypeUnsigned => RelationType::Unsigned,
+                        Rule::TypeUuid => RelationType::Uuid,
+                        _ => {
+                            panic!("Met unexpected rule under ColumnDef: {:?}.", ty_node.rule);
+                        }
+                    };
+                    let mut is_nullable = true;
+
+                    for def_child_id in column_def_children.iter().skip(2) {
                         let def_child_node = ast.nodes.get_node(*def_child_id)?;
                         match def_child_node.rule {
-                            Rule::Identifier => {
-                                column_def.name = parse_identifier(ast, *def_child_id)?;
-                            }
-                            Rule::ColumnDefType => {
-                                let type_id_child = def_child_node
-                                    .children
-                                    .first()
-                                    .expect("ColumnDefType must have a type child");
-                                let type_node = ast.nodes.get_node(*type_id_child)?;
-                                match type_node.rule {
-                                    Rule::TypeBool => {
-                                        column_def.data_type = RelationType::Boolean;
-                                    }
-                                    Rule::TypeDatetime => {
-                                        column_def.data_type = RelationType::Datetime;
-                                    }
-                                    Rule::TypeDecimal => {
-                                        column_def.data_type = RelationType::Decimal;
-                                    }
-                                    Rule::TypeDouble => {
-                                        column_def.data_type = RelationType::Double;
-                                    }
-                                    Rule::TypeInt => {
-                                        column_def.data_type = RelationType::Integer;
-                                    }
-                                    Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => {
-                                        column_def.data_type = RelationType::String;
-                                    }
-                                    Rule::TypeUnsigned => {
-                                        column_def.data_type = RelationType::Unsigned;
-                                    }
-                                    Rule::TypeUuid => {
-                                        column_def.data_type = RelationType::Uuid;
-                                    }
-                                    _ => {
-                                        panic!(
-                                            "Met unexpected rule under ColumnDef: {:?}.",
-                                            type_node.rule
-                                        );
-                                    }
-                                }
-                            }
                             Rule::ColumnDefIsNull => {
                                 match (
                                     def_child_node.children.first(),
                                     def_child_node.children.get(1),
                                 ) {
                                     (None, None) => {
-                                        explicit_null_columns.insert(column_def.name.clone());
-                                        column_def.is_nullable = true;
+                                        let name = name.clone();
+                                        explicit_null_columns.insert(name);
+                                        is_nullable = true;
                                     }
                                     (Some(child_id), None) => {
                                         let not_flag_node = ast.nodes.get_node(*child_id)?;
                                         if let Rule::NotFlag = not_flag_node.rule {
-                                            column_def.is_nullable = false;
+                                            is_nullable = false;
                                         } else {
                                             panic!(
                                                 "Expected NotFlag rule, got: {:?}.",
@@ -754,18 +745,23 @@ fn parse_create_table(
                                 if !pk_keys.is_empty() {
                                     return primary_key_already_declared_error;
                                 }
-                                if column_def.is_nullable
-                                    && explicit_null_columns.contains(&column_def.name)
-                                {
+
+                                let name = name.clone();
+                                if is_nullable && explicit_null_columns.contains(&name) {
                                     return nullable_primary_key_column_error;
                                 }
                                 // Infer not null on primary key column
-                                column_def.is_nullable = false;
-                                pk_keys.push(column_def.name.clone());
+                                is_nullable = false;
+                                pk_keys.push(name);
                             }
                             _ => panic!("Unexpected rules met under ColumnDef."),
                         }
                     }
+                    let column_def = ColumnDef {
+                        name,
+                        data_type,
+                        is_nullable,
+                    };
                     columns.push(column_def);
                 }
             }
