@@ -257,7 +257,7 @@ def test_gostech_join_expel_instance(cluster: Cluster, port_distributor: PortDis
 
     i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.binary_path))
     counter = i1.governor_step_counter()
-    cluster.expel(i2)
+    cluster.expel(i2, force=True)
     timeout = 60 if sys.platform == "darwin" else 30
     Retriable(timeout=timeout).call(lambda: cluster.assert_expelled(i2))
     i1.wait_governor_status("idle", old_step_counter=counter, timeout=timeout)

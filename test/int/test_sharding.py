@@ -376,7 +376,7 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
 
     # Expel one of the instances
-    cluster.expel(i3)
+    cluster.expel(i3, force=True)
     Retriable(timeout=30).call(i3.assert_process_dead)
 
     # We now have 2 replicasets 1 replica each

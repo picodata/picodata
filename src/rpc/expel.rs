@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::error_code::ErrorCode;
 use crate::has_states;
 use crate::instance::StateVariant::*;
 use crate::rpc;
@@ -41,6 +42,17 @@ crate::define_rpc_request! {
             return Ok(Response {});
         }
 
+        if !req.force && !has_states!(instance, Offline -> Offline) {
+            let current = instance.current_state.variant;
+            let target = instance.target_state.variant;
+            let state_repr = if current != target {
+                format!("{current} -> {target}")
+            } else {
+                current.to_string()
+            };
+            return Err(BoxError::new(ErrorCode::ExpelOnlineInstance, format!("attempt to expel instance which is not Offline, but {state_repr}")).into());
+        }
+
         let timeout = req.timeout;
         let req = rpc::update_instance::Request::new(instance.name.clone(), req.cluster_name)
             .with_target_state(Expelled);
@@ -59,6 +71,7 @@ crate::define_rpc_request! {
     pub struct Request {
         pub cluster_name: String,
         pub instance_uuid: String,
+        pub force: bool,
         pub timeout: Duration,
     }
 

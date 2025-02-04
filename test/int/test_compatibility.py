@@ -124,7 +124,7 @@ def test_instances_of_different_versions_in_cluster(cluster: Cluster):
 
     # expel instance so remaining instances will have new version
     # and governor should update _cluster_version in _pico_property
-    cluster.expel(i1, timeout=5)
+    cluster.expel(i1, timeout=5, force=True)
 
     # After all instances in the cluster has a new version, _cluster_version should be changed
     # new version is the same on all instances since _pico_property is a global table

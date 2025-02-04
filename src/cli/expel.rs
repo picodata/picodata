@@ -1,10 +1,12 @@
 use crate::cli::args;
 use crate::cli::connect::determine_credentials_and_connect;
+use crate::error_code::ErrorCode;
 use crate::rpc::expel::redirect::proc_expel_redirect;
 use crate::rpc::expel::Request as ExpelRequest;
 use crate::tlog;
 use crate::traft::error::Error;
 use std::time::Duration;
+use tarantool::error::IntoBoxError;
 use tarantool::fiber;
 use tarantool::network::client::AsClient;
 
@@ -20,13 +22,22 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     )?;
 
     let timeout = deadline.duration_since(fiber::clock());
+    let force = args.force;
     let req = ExpelRequest {
         cluster_name: args.cluster_name,
         instance_uuid: args.instance_uuid.clone(),
+        force,
         timeout,
     };
-    fiber::block_on(client.call(crate::proc_name!(proc_expel_redirect), &req))
-        .map_err(|e| Error::other(format!("Failed to expel instance: {e}")))?;
+    let res = fiber::block_on(client.call(crate::proc_name!(proc_expel_redirect), &req));
+    if let Err(e) = res {
+        if error_code_from_client_error(&e) == ErrorCode::ExpelOnlineInstance as u32 {
+            let error_message =
+                format!("{e}\nrerun with --force if you still want to expel the instance");
+            return Err(Error::other(error_message));
+        }
+        return Err(Error::other(format!("Failed to expel instance: {e}")));
+    }
 
     tlog!(
         Info,
@@ -35,6 +46,17 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     );
 
     Ok(())
+}
+
+// TODO ClientError should implement IntoBoxError
+fn error_code_from_client_error(e: &tarantool::network::client::ClientError) -> u32 {
+    use tarantool::network::client::ClientError::*;
+    match e {
+        ConnectionClosed(e) => e.error_code(),
+        RequestEncode(e) => e.error_code(),
+        ResponseDecode(e) => e.error_code(),
+        ErrorResponse(e) => e.error_code(),
+    }
 }
 
 pub fn main(args: args::Expel) -> ! {

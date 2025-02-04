@@ -718,6 +718,7 @@ pub(crate) fn setup() {
             1. instance_name (string)
             2. opts (table)
                 - timeout (number)
+                - force (bool)
 
         Returns:
 
@@ -728,9 +729,13 @@ pub(crate) fn setup() {
         tlua::Function::new(
             |instance_name: InstanceName, opts: Option<PicoExpelOptions>| -> traft::Result<bool> {
                 let mut timeout = Duration::from_secs(3600);
+                let mut force = false;
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = Duration::from_secs_f64(t);
+                    }
+                    if let Some(true) = opts.force {
+                        force = true;
                     }
                 }
 
@@ -743,6 +748,7 @@ pub(crate) fn setup() {
                     &rpc::expel::Request {
                         instance_uuid: instance.uuid,
                         cluster_name,
+                        force,
                         timeout,
                     },
                 ))?;
@@ -753,6 +759,7 @@ pub(crate) fn setup() {
     #[derive(tlua::LuaRead)]
     struct PicoExpelOptions {
         timeout: Option<f64>,
+        force: Option<bool>,
     }
 
     ///////////////////////////////////////////////////////////////////////////

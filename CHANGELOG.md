@@ -70,6 +70,10 @@ Parameters with scope `global` are the same on each instance.
 
 - `picodata expel` takes instance uuid instead of instance name.
 
+- `picodata expel` now doesn't allow expelling Online instances by default.
+  New `--force` flag can be used to forcefully expel an Online instance which
+  will shutdown once it finds out it got Expelled.
+
 - String cells are now output without double quotes during SELECT.
 
 - `picodata connect` and `picodata admin` return a non-zero exit code for file inputs with errors.

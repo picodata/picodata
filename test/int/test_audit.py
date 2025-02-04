@@ -374,7 +374,7 @@ def test_join_expel_instance(cluster: Cluster):
     assert create_db["severity"] == "low"
     assert create_db["initiator"] == "admin"
 
-    cluster.expel(i2)
+    cluster.expel(i2, force=True)
     Retriable(timeout=30).call(lambda: cluster.assert_expelled(i2))
 
     expel_instance = take_until_title(events, "expel_instance")

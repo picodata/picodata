@@ -494,7 +494,7 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
             assert lc.matched
     assert sole_survivor
 
-    cluster.expel(sole_survivor, leader)
+    cluster.expel(sole_survivor, leader, force=True)
 
     #
     # After the instance got expelled it's ok to join a new one with the same name

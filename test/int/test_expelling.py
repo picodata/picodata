@@ -35,7 +35,16 @@ def test_expel_follower(cluster: Cluster):
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster.expel(i3, i1)
+    # Expelling an Online instance doesn't work without --force flag
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(i3, peer=i1, force=False)
+    assert (
+        """attempt to expel instance which is not Offline, but Online
+rerun with --force if you still want to expel the instance"""
+        in e.value.stderr
+    )
+
+    cluster.expel(i3, i1, force=True)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
@@ -60,7 +69,7 @@ def test_expel_leader(cluster: Cluster):
 
     i1.assert_raft_status("Leader")
 
-    cluster.expel(i1)
+    cluster.expel(i1, force=True)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i1, i2))
     Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
@@ -85,7 +94,7 @@ def test_expel_by_follower(cluster: Cluster):
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster.expel(i3, i2)
+    cluster.expel(i3, i2, force=True)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
@@ -106,7 +115,7 @@ def test_raft_id_after_expel(cluster: Cluster):
     i3 = cluster.add_instance()
     assert i3.raft_id == 3
 
-    cluster.expel(i3)
+    cluster.expel(i3, force=True)
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
 
     i4 = cluster.add_instance()
@@ -140,7 +149,7 @@ cluster:
     i1.wait_governor_status("idle", old_step_counter=counter)
 
     # Check expelling offline replicas, this should be ok because no data loss
-    cluster.expel(i4, peer=i1)
+    cluster.expel(i4, peer=i1, force=False)
     [i4_state] = i1.sql(
         "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
         i4.name,
@@ -149,7 +158,7 @@ cluster:
     i4_state = [variant for [variant, incarnation] in i4_state]
     assert i4_state == ["Expelled", "Expelled"]
 
-    cluster.expel(i5, peer=i1)
+    cluster.expel(i5, peer=i1, force=False)
     [i5_state] = i1.sql(
         "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
         i5.name,
@@ -216,7 +225,7 @@ cluster:
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
-    cluster.expel(storage2, peer=leader)
+    cluster.expel(storage2, peer=leader, force=True)
     leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Check `picodata expel` idempotency

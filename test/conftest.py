@@ -1881,6 +1881,7 @@ class Cluster:
         self,
         target: Instance,
         peer: Instance | None = None,
+        force: bool = False,
         timeout: int = 30,
     ):
         peer = peer if peer else target
@@ -1895,6 +1896,7 @@ class Cluster:
             "--cluster-name", target.cluster_name or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",
+            *(["--force"] if force else []),
             "--timeout", str(timeout),
             target_uuid,
         ]

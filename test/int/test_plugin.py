@@ -2526,7 +2526,7 @@ cluster:
     # Check RPC after expel
     counter = i1.governor_step_counter()
     # Start expel and wait until governor performs all necessary steps
-    cluster.expel(i3, peer=i1)
+    cluster.expel(i3, peer=i1, force=True)
     i1.wait_governor_status("idle", old_step_counter=counter)
 
     # Check RPC directly to expelled instance
@@ -2561,7 +2561,7 @@ cluster:
 
     counter = i1.governor_step_counter()
     # Expell the whole replicaset
-    cluster.expel(i4, peer=i1)
+    cluster.expel(i4, peer=i1, force=True)
     i1.wait_governor_status("idle", old_step_counter=counter, timeout=60)
 
     [[r2_uuid]] = i1.sql(""" SELECT "uuid" FROM _pico_replicaset WHERE name = 'r2' """)

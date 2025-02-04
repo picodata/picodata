@@ -426,6 +426,10 @@ pub struct Expel {
     /// The preferred authentication method.
     pub auth_method: AuthMethod,
 
+    #[clap(short = 'f', long = "force")]
+    /// Expel instance even if it is currently online.
+    pub force: bool,
+
     #[clap(
         short = 't',
         long = "timeout",
