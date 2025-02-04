@@ -58,7 +58,7 @@ instance:
   advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (9)!
   admin_socket: ./admin.sock # (5)!
-  plugin_dir: null # (23)!
+  share_dir: null # (23)!
   audit: null # (7)!
   shredding: false # (26)!
   log:
@@ -110,7 +110,7 @@ instance:
 20. [instance.peer](#instance_peer)
 21. [instance.pg.listen](#instance_pg_listen)
 22. [instance.pg.ssl](#instance_pg_ssl)
-23. [instance.plugin_dir](#instance_plugin_dir)
+23. [instance.share_dir](#instance_share_dir)
 24. [instance.replicaset_name](#instance_replicaset_name)
 25. [instance.service_password_file](#instance_service_password_file)
 26. [instance.shredding](#instance_shredding)
@@ -562,7 +562,7 @@ SSL-сертификаты:
 picodata run -c instance.pg.ssl=true
 ```
 
-### instance.plugin_dir {: #instance_plugin_dir }
+### instance.share_dir {: #instance_share_dir }
 
 Путь к директории, содержащей файлы плагинов.
 
@@ -571,10 +571,10 @@ picodata run -c instance.pg.ssl=true
 * Тип: *str*
 * Значение по умолчанию: `null`
 
-Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
+Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
 Аналогичная команда: [`picodata run --share-dir`]
 
-[`picodata run --share-dir`]: cli.md#run_plugin_dir
+[`picodata run --share-dir`]: cli.md#run_share_dir
 
 ### instance.replicaset_name {: #instance_replicaset_name }
 

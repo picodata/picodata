@@ -333,7 +333,7 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 
 [`instance.pg.listen`]: config.md#instance_pg_listen
 
-### --share-dir {: #run_plugin_dir }
+### --share-dir {: #run_share_dir }
 
 `--share-dir <PATH>`
 
@@ -348,10 +348,10 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
         └── версия_плагина
 ```
 
-Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
-Аналогичный параметр файла конфигурации: [`instance.plugin_dir`]
+Аналогичная переменная окружения: `PICODATA_SHARE_DIR`<br>
+Аналогичный параметр файла конфигурации: [`instance.share_dir`]
 
-[`instance.plugin_dir`]: config.md#instance_plugin_dir
+[`instance.share_dir`]: config.md#instance_share_dir
 
 ### --replicaset-name {: #run_replicaset_name }
 
