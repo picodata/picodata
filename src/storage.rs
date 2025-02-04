@@ -815,7 +815,8 @@ impl PropertyName {
     /// being set (or not being unset).
     #[inline(always)]
     fn must_not_delete(&self) -> bool {
-        matches!(self, |Self::GlobalSchemaVersion| Self::NextSchemaVersion)
+        matches!(self, |Self::GlobalSchemaVersion| Self::NextSchemaVersion
+            | Self::ClusterVersion)
     }
 
     /// Verify type of the property value being inserted (or replaced) in the
