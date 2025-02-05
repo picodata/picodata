@@ -211,21 +211,6 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 [`picodata run --admin-sock`]: cli.md#run_admin_sock
 
-### instance.iproto_advertise {: #instance_iproto_advertise }
-
-Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
-инстанса и используется для подключения к нему других инстансов.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `127.0.0.1:3301`
-
-Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
-Аналогичная команда: [`picodata run --iproto-advertise`]
-
-[`picodata run --iproto-advertise`]: cli.md#run_iproto_advertise
-
 ### instance.audit {: #instance_audit }
 
 Конфигурация журнала аудита. Доступны следующие варианты:
@@ -294,6 +279,21 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная команда: [`picodata run --instance-dir`]
 
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
+
+### instance.iproto_advertise {: #instance_iproto_advertise }
+
+Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
+инстанса и используется для подключения к нему других инстансов.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `127.0.0.1:3301`
+
+Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
+Аналогичная команда: [`picodata run --iproto-advertise`]
+
+[`picodata run --iproto-advertise`]: cli.md#run_iproto_advertise
 
 ### instance.iproto_listen {: #instance_iproto_listen }
 
