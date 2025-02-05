@@ -59,26 +59,6 @@ picodata run [OPTIONS]
 
 [`instance.admin_socket`]: config.md#instance_admin_socket
 
-### --iproto-advertise {: #run_iproto_advertise }
-
-`--iproto-advertise <[HOST][:PORT]>`
-
-Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
-инстанса и используется для подключения к нему других инстансов.
-
-По умолчанию используется значение параметра [`--iproto-listen`](#run_iproto_listen), и
-в большинстве случаев его не требуется менять. Но, например, в случае
-`--iproto-listen 0.0.0.0` его придется указать явно:
-
-```shell
-picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
-```
-
-Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
-Аналогичный параметр файла конфигурации: [`instance.iproto_advertise`]
-
-[`instance.iproto_advertise`]: config.md#instance_iproto_advertise
-
 ### --audit {: #run_audit }
 
 `--audit <PATH>`
@@ -223,6 +203,26 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 Аналогичный параметр файла конфигурации: [`instance.name`]
 
 [`instance.name`]: config.md#instance_name
+
+### --iproto-advertise {: #run_iproto_advertise }
+
+`--iproto-advertise <[HOST][:PORT]>`
+
+Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
+инстанса и используется для подключения к нему других инстансов.
+
+По умолчанию используется значение параметра [`--iproto-listen`](#run_iproto_listen), и
+в большинстве случаев его не требуется менять. Но, например, в случае
+`--iproto-listen 0.0.0.0` его придется указать явно:
+
+```shell
+picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
+```
+
+Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
+Аналогичный параметр файла конфигурации: [`instance.iproto_advertise`]
+
+[`instance.iproto_advertise`]: config.md#instance_iproto_advertise
 
 ### --iproto-listen {: #run_iproto_listen }
 
