@@ -888,7 +888,9 @@ pub(super) fn action_plan<'i>(
         .into());
     }
 
-    let mut new_cluster_version_candidate: Option<String> = None;
+    ////////////////////////////////////////////////////////////////////////////
+    // upgrade _pico_property.cluster_version
+    let mut new_cluster_version_candidate = None;
     let mut new_candidate_counter = 0;
     let mut expelled_instances = 0;
     for instance in instances {
@@ -897,8 +899,8 @@ pub(super) fn action_plan<'i>(
             continue;
         }
 
-        let instance_version = instance.picodata_version.clone();
-        match rpc::join::compare_picodata_versions(&global_cluster_version, &instance_version) {
+        let instance_version = &instance.picodata_version;
+        match rpc::join::compare_picodata_versions(&global_cluster_version, instance_version) {
             Ok(0) => {
                 // if at least one version is equal to global_cluster_version
                 // don't upgrade the global_cluster_version
@@ -928,7 +930,7 @@ pub(super) fn action_plan<'i>(
 
     // If all instances have new version, update the cluster version
     if new_candidate_counter == retained_instances {
-        if let Some(new_version) = &new_cluster_version_candidate {
+        if let Some(new_version) = new_cluster_version_candidate {
             let mut ops = UpdateOps::new();
             ops.assign("value", new_version)?;
 
