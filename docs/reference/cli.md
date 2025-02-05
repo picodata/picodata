@@ -233,9 +233,9 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 По умолчанию используется значение `127.0.0.1:3301`.
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_LISTEN`<br>
-Аналогичный параметр файла конфигурации: [`instance.listen`]
+Аналогичный параметр файла конфигурации: [`instance.iproto_listen`]
 
-[`instance.listen`]: config.md#instance_listen
+[`instance.iproto_listen`]: config.md#instance_iproto_listen
 
 ### --log {: #run_log }
 

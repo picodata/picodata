@@ -148,7 +148,7 @@ shell-скриптов, индивидуальных для каждого ин�
     instance:
       instance_dir:
         ./mini1
-      listen:
+      iproto_listen:
         127.0.0.1:3308
     ```
 !!! note "Примечание"
@@ -183,7 +183,7 @@ cluster:
 instance:
   instance_dir:
     ./mini1
-  listen:
+  iproto_listen:
     127.0.0.1:3302
 
 export PICODATA_IPROTO_LISTEN="127.0.0.1:3303"

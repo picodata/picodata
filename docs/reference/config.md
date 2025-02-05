@@ -54,7 +54,7 @@ instance:
   failure_domain: {} # (8)!
   peer: # (17)!
   - 127.0.0.1:3301
-  listen: 127.0.0.1:3301 # (11)!
+  iproto_listen: 127.0.0.1:3301 # (11)!
   advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (9)!
   admin_socket: ./admin.sock # (5)!
@@ -94,7 +94,7 @@ instance:
 8. [instance.failure_domain](#instance_failure_domain)
 9. [instance.http_listen](#instance_http_listen)
 10. [instance.instance_dir](#instance_instance_dir)
-11. [instance.listen](#instance_listen)
+11. [instance.iproto_listen](#instance_iproto_listen)
 12. [instance.log.destination](#instance_log_destination)
 13. [instance.log.format](#instance_log_format)
 14. [instance.log.level](#instance_log_level)
@@ -295,7 +295,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 [`picodata run --instance-dir`]: cli.md#run_instance_dir
 
-### instance.listen {: #instance_listen }
+### instance.iproto_listen {: #instance_iproto_listen }
 
 Сетевой адрес инстанса.
 
