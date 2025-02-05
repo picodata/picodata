@@ -203,7 +203,7 @@ build
 Запуск Picodata:
 
 ```shell
-picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 --http-listen 127.0.0.1:8081 --instance-dir i1 --share-dir build
+picodata run --iproto-listen 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 --http-listen 127.0.0.1:8081 --instance-dir i1 --share-dir build
 ```
 
 Запуск плагина:

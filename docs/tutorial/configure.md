@@ -89,7 +89,7 @@
 Пример использования аргументов командной строки:
 
 ```shell
-picodata run --instance-dir ./data/i1 --listen 127.0.0.1:3301
+picodata run --instance-dir ./data/i1 --iproto-listen 127.0.0.1:3301
 ```
 
 Читайте далее:
@@ -107,7 +107,7 @@ picodata run --instance-dir ./data/i1 --listen 127.0.0.1:3301
 
 ```shell
 export PICODATA_INSTANCE_DIR="./data/i1"
-export PICODATA_LISTEN="127.0.0.1:3301"
+export PICODATA_IPROTO_LISTEN="127.0.0.1:3301"
 picodata run
 ```
 
@@ -186,8 +186,8 @@ instance:
   listen:
     127.0.0.1:3302
 
-export PICODATA_LISTEN="127.0.0.1:3303"
-picodata run --listen 127.0.0.1:3304 --config my_cluster.yaml
+export PICODATA_IPROTO_LISTEN="127.0.0.1:3303"
+picodata run --iproto-listen 127.0.0.1:3304 --config my_cluster.yaml
 ```
 
 После запуска сетевой адрес инстанса будет `127.0.0.1:3304`.

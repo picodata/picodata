@@ -83,7 +83,7 @@ UNIX:
 
     export PICODATA_INSTANCE_NAME="i1"
     export PICODATA_INSTANCE_DIR="./data/my_cluster/i1"
-    export PICODATA_LISTEN="127.0.0.1:3301"
+    export PICODATA_IPROTO_LISTEN="127.0.0.1:3301"
     export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
     export PICODATA_PG_LISTEN="127.0.0.1:5432"
     export TT_LDAP_URL="ldap://127.0.0.1:1389"

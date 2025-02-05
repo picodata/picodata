@@ -62,7 +62,7 @@
 
 [instance_name]: ../reference/cli.md#run_instance_name
 [рабочую директорию]: ../reference/cli.md#run_instance_dir
-[сетевой адрес]: ../reference/cli.md#run_listen
+[сетевой адрес]: ../reference/cli.md#run_iproto_listen
 
 Имя используется для удобства и быстрой идентификации инстанса. Если имя
 не дать, то оно будет сгенерировано автоматически в момент добавления в
@@ -104,7 +104,7 @@
 
     export PICODATA_INSTANCE_NAME="storage_3"
     export PICODATA_INSTANCE_DIR="./data/multi_tier_cluster/storage_3"
-    export PICODATA_LISTEN="127.0.0.1:3304"
+    export PICODATA_IPROTO_LISTEN="127.0.0.1:3304"
     export PICODATA_PG_LISTEN="127.0.0.1:5435"
 
     picodata run

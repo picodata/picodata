@@ -31,7 +31,7 @@ picodata run --config <PATH>
 
 ## Описание файла конфигурации {: #config_file_description }
 
-<!-- Описание соответствует версии Picodata `24.7.0-1144-gc2ae3ade`. -->
+<!-- Описание соответствует версии Picodata `24.7.0-1152-g27f3c263`. -->
 
 Результатом выполнения команды `picodata config default -o picodata.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
@@ -304,10 +304,10 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Тип: *str*
 * Значение по умолчанию: `127.0.0.1:3301`
 
-Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
-Аналогичная команда: [`picodata run --listen`]
+Аналогичная переменная окружения: `PICODATA_IPROTO_LISTEN`<br>
+Аналогичная команда: [`picodata run --iproto-listen`]
 
-[`picodata run --listen`]: cli.md#run_listen
+[`picodata run --iproto-listen`]: cli.md#run_iproto_listen
 
 ### instance.log.destination {: #instance_log_destination }
 

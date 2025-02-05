@@ -30,7 +30,7 @@ SUBCOMMANDS:
 
 ## picodata run {: #run }
 
-<!-- Описание соответствует версии Picodata `24.7.0-1130-gc5067f6c`. -->
+<!-- Описание соответствует версии Picodata `24.7.0-1152-g27f3c263`. -->
 
 Запускает инстанс Picodata, см. [Запуск Picodata](../tutorial/run.md).
 
@@ -66,12 +66,12 @@ picodata run [OPTIONS]
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
 
-По умолчанию используется значение параметра [`--listen`](#run_listen), и
+По умолчанию используется значение параметра [`--iproto-listen`](#run_iproto_listen), и
 в большинстве случаев его не требуется менять. Но, например, в случае
-`--listen 0.0.0.0` его придется указать явно:
+`--iproto-listen 0.0.0.0` его придется указать явно:
 
 ```shell
-picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
+picodata run --iproto-listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 ```
 
 Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
@@ -224,15 +224,15 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 
 [`instance.name`]: config.md#instance_name
 
-### --listen {: #run_listen }
+### --iproto-listen {: #run_iproto_listen }
 
-`-l, --listen <[HOST][:PORT]>`
+`--iproto-listen <[HOST][:PORT]>`
 
 Сетевой адрес инстанса.
 
 По умолчанию используется значение `127.0.0.1:3301`.
 
-Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
+Аналогичная переменная окружения: `PICODATA_IPROTO_LISTEN`<br>
 Аналогичный параметр файла конфигурации: [`instance.listen`]
 
 [`instance.listen`]: config.md#instance_listen
