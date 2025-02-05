@@ -266,7 +266,7 @@ function instance_info(instance)
 
 - (_table_):
     - `raft_id `(_number_)
-    - `advertise_address` (_string_)
+    - `iproto_advertise` (_string_)
     - `name` (_string_)
     - `uuid` (_string_)
     - `replicaset_name` (_string_)
@@ -287,7 +287,7 @@ function instance_info(instance)
     variant: Online
     incarnation: 1
   uuid: 97048f02-e1d5-4062-b079-a2e2c674cb01
-  advertise_address: 127.0.0.1:3301
+  iproto_advertise: 127.0.0.1:3301
   tier: default
   raft_id: 1
   replicaset_uuid: 29d45b4e-8e1a-4973-b8cb-062881bacb11

@@ -75,9 +75,9 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 ```
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
-Аналогичный параметр файла конфигурации: [`instance.advertise_address`]
+Аналогичный параметр файла конфигурации: [`instance.iproto_advertise`]
 
-[`instance.advertise_address`]: config.md#instance_advertise_address
+[`instance.iproto_advertise`]: config.md#instance_iproto_advertise
 
 ### --audit {: #run_audit }
 

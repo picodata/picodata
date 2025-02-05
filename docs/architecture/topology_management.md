@@ -52,7 +52,7 @@
   из параметра [`picodata run --peer`] и определяет адрес текущего
   raft-лидера
 - Инстанс отправляет raft-лидеру запрос [`.proc_raft_join`], содержащий
-    - его сетевой адрес `advertise_address`
+    - его сетевой адрес `iproto_advertise`
     - домен отказа `failure_domain`
     - [тир][tier] `tier`
     - также, опционально можно явно передать `instance_name`, `replicaset_name`

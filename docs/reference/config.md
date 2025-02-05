@@ -55,7 +55,7 @@ instance:
   peer: # (17)!
   - 127.0.0.1:3301
   iproto_listen: 127.0.0.1:3301 # (11)!
-  advertise_address: 127.0.0.1:3301 # (6)!
+  iproto_advertise: 127.0.0.1:3301 # (6)!
   http_listen: null # (9)!
   admin_socket: ./admin.sock # (5)!
   share_dir: null # (20)!
@@ -89,7 +89,7 @@ instance:
 3. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 4. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
 5. [instance.admin_socket](#instance_admin_socket)
-6. [instance.advertise_address](#instance_advertise_address)
+6. [instance.iproto_advertise](#instance_iproto_advertise)
 7. [instance.audit](#instance_audit)
 8. [instance.failure_domain](#instance_failure_domain)
 9. [instance.http_listen](#instance_http_listen)
@@ -211,7 +211,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 [`picodata run --admin-sock`]: cli.md#run_admin_sock
 
-### instance.advertise_address {: #instance_advertise_address }
+### instance.iproto_advertise {: #instance_iproto_advertise }
 
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.

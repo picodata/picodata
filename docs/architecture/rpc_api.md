@@ -347,7 +347,7 @@ fn proc_instance_info(instance_name) -> InstanceInfo
 
 - (MP_MAP `InstanceInfo`):
     - `raft_id`: (MP_UINT)
-    - `advertise_address`: (MP_STR)
+    - `iproto_advertise`: (MP_STR)
     - `name`: (MP_STR)
     - `uuid`: (MP_STR)
     - `replicaset_name`: (MP_STR)
