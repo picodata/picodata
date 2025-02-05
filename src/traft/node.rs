@@ -616,11 +616,9 @@ impl NodeImpl {
         let entry = context.to_raft_entry();
         let tuple_size = traft::Entry::tuple_size(index_before + 1, term, &[], &entry.context);
         if tuple_size > PicodataConfig::max_tuple_size() {
-            return Err(BoxError::new(
-                TarantoolErrorCode::MemtxMaxTupleSize,
-                format!("tuple size {tuple_size} exceeds the allowed limit"),
-            )
-            .into());
+            let message = format!("tuple size {tuple_size} exceeds the allowed limit");
+            tlog!(Warning, "{message}");
+            return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, message).into());
         }
 
         // Copy-pasted from `raft::raw_node::RawNode::propose`
