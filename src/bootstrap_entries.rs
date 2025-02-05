@@ -114,7 +114,7 @@ pub(super) fn prepare(
     ops.push(
         op::Dml::insert(
             ClusterwideTable::Property,
-            &(PropertyName::SystemCatalogVersion, 1),
+            &(PropertyName::SystemCatalogVersion, "25.1.0".to_owned()),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),

@@ -842,8 +842,7 @@ impl PropertyName {
             #[rustfmt::skip]
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
-            | Self::GlobalSchemaVersion
-            | Self::SystemCatalogVersion => {
+            | Self::GlobalSchemaVersion => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
             }
@@ -855,7 +854,7 @@ impl PropertyName {
                 // Check it decodes into `PluginOp`.
                 _ = new.field::<PluginOp>(1).map_err(map_err)?;
             }
-            Self::ClusterVersion => {
+            Self::ClusterVersion | Self::SystemCatalogVersion => {
                 // Check it's a String
                 _ = new.field::<String>(1).map_err(map_err)?;
             }

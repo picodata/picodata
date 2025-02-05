@@ -52,6 +52,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `listen`, `advertise` parameters are renamed to `iproto_listen`, `iproto_advertise`
 
+- New field `_pico_property.system_catalog_version` representing version of a system catalog.
+  It may not be changed at every release, so this is not autoincrementing value.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.
