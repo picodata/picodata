@@ -31,7 +31,8 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     };
     let res = fiber::block_on(client.call(crate::proc_name!(proc_expel_redirect), &req));
     if let Err(e) = res {
-        if error_code_from_client_error(&e) == ErrorCode::ExpelOnlineInstance as u32 {
+        let error_code = error_code_from_client_error(&e);
+        if error_code == ErrorCode::ExpelNotAllowed as u32 {
             let error_message =
                 format!("{e}\nrerun with --force if you still want to expel the instance");
             return Err(Error::other(error_message));

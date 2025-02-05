@@ -396,6 +396,11 @@ impl TopologyCacheMutable {
         })
     }
 
+    #[inline(always)]
+    pub fn all_instances(&self) -> impl Iterator<Item = &Instance> {
+        self.instances_by_name.values()
+    }
+
     pub fn instance_by_name(&self, name: &str) -> Result<&Instance> {
         let this_instance = self
             .this_instance
@@ -426,6 +431,11 @@ impl TopologyCacheMutable {
         };
 
         self.instance_by_name(name)
+    }
+
+    #[inline(always)]
+    pub fn all_replicasets(&self) -> impl Iterator<Item = &Replicaset> {
+        self.replicasets_by_uuid.values()
     }
 
     pub fn replicaset_by_name(&self, name: &str) -> Result<&Replicaset> {
@@ -460,6 +470,11 @@ impl TopologyCacheMutable {
         };
 
         Ok(replicaset)
+    }
+
+    #[inline(always)]
+    pub fn all_tiers(&self) -> impl Iterator<Item = &Tier> {
+        self.tiers_by_name.values()
     }
 
     pub fn tier_by_name(&self, name: &str) -> Result<&Tier> {

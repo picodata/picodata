@@ -35,15 +35,6 @@ def test_expel_follower(cluster: Cluster):
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    # Expelling an Online instance doesn't work without --force flag
-    with pytest.raises(CommandFailed) as e:
-        cluster.expel(i3, peer=i1, force=False)
-    assert (
-        """attempt to expel instance which is not Offline, but Online
-rerun with --force if you still want to expel the instance"""
-        in e.value.stderr
-    )
-
     cluster.expel(i3, i1, force=True)
 
     Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
@@ -103,6 +94,19 @@ def test_expel_by_follower(cluster: Cluster):
     Retriable(timeout=10).call(i3.assert_process_dead)
 
 
+def get_state_from_storage(peer: Instance, target: Instance) -> tuple[str, str]:
+    [row] = peer.sql(
+        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
+        target.name,
+    )
+    # ignore incarnation
+    [
+        [current_state, current_state_incarnation],
+        [target_state, target_state_incarnation],
+    ] = row
+    return current_state, target_state
+
+
 def test_raft_id_after_expel(cluster: Cluster):
     # Scenario: join just right after expel should give completely new raft_id for the instance
     #   Given a cluster
@@ -129,43 +133,72 @@ def test_expel_offline_ro_replica(cluster: Cluster):
 cluster:
     name: test
     tier:
+        raft:
+            can_vote: true
         storage:
+            can_vote: false
             replication_factor: 5
 """
     )
-    i1 = cluster.add_instance(tier="storage", wait_online=False)
-    cluster.add_instance(tier="storage", wait_online=False)
-    cluster.add_instance(tier="storage", wait_online=False)
-    i4 = cluster.add_instance(tier="storage", wait_online=False)
-    i5 = cluster.add_instance(tier="storage", wait_online=False)
+    leader = cluster.add_instance(tier="raft", wait_online=True)
+    storage_1 = cluster.add_instance(tier="storage", wait_online=True)
+    storage_2 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_3 = cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
 
-    counter = i1.wait_governor_status("idle")
+    counter = leader.wait_governor_status("idle")
 
-    i4.terminate()
-    i5.terminate()
+    [[current_master, target_master]] = leader.sql(
+        "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?",
+        storage_1.replicaset_name,
+    )
+    assert current_master == target_master == storage_1.name
+
+    # Expelling an Online instance doesn't work without --force flag
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage_2, peer=leader, force=False)
+    assert (
+        f"""attempt to expel instance '{storage_2.name}' which is not Offline, but Online
+rerun with --force if you still want to expel the instance"""
+        in e.value.stderr
+    )
+
+    storage_2.terminate()
+    storage_3.terminate()
 
     # Synchronization: make sure governor does all it wanted
-    i1.wait_governor_status("idle", old_step_counter=counter)
+    leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Check expelling offline replicas, this should be ok because no data loss
-    cluster.expel(i4, peer=i1, force=False)
-    [i4_state] = i1.sql(
-        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
-        i4.name,
-    )
-    # ignore incarnation
-    i4_state = [variant for [variant, incarnation] in i4_state]
-    assert i4_state == ["Expelled", "Expelled"]
+    cluster.expel(storage_2, peer=leader, force=False)
+    storage_2_state = get_state_from_storage(peer=leader, target=storage_2)
+    assert storage_2_state == ("Expelled", "Expelled")
 
-    cluster.expel(i5, peer=i1, force=False)
-    [i5_state] = i1.sql(
-        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
-        i5.name,
+    cluster.expel(storage_3, peer=leader, force=False)
+    storage_3_state = get_state_from_storage(peer=leader, target=storage_3)
+    assert storage_3_state == ("Expelled", "Expelled")
+
+    # Terminate the last replica (master)
+    storage_1.terminate()
+
+    # Expelling a replicaset master doesn't work without --force flag
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage_1, peer=leader, force=False)
+    assert (
+        f"""attempt to expel replicaset master '{storage_1.name}'
+rerun with --force if you still want to expel the instance"""
+        in e.value.stderr
     )
-    # ignore incarnation
-    i5_state = [variant for [variant, incarnation] in i5_state]
-    assert i5_state == ["Expelled", "Expelled"]
+
+    # Adding --force makes it so the target_state changes to Expel, but the
+    # expel still doesn't work because it is blocked by bucket rebalancing,
+    # which will never happen, because instance is Offline.
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage_1, peer=leader, force=True, timeout=3)
+    assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
+
+    storage_1_state = get_state_from_storage(peer=leader, target=storage_1)
+    assert storage_1_state == ("Offline", "Expelled")
 
 
 def test_expel_timeout(cluster: Cluster):
@@ -238,7 +271,16 @@ cluster:
     # Attempt to expel an offline replicaset
     storage3.terminate()
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage3, peer=leader, timeout=1)
+        cluster.expel(storage3, peer=leader, timeout=1, force=False)
+    assert (
+        f"""attempt to expel replicaset master '{storage3.name}'
+rerun with --force if you still want to expel the instance"""
+        in e.value.stderr
+    )
+
+    # Only works with `--force` flag
+    with pytest.raises(CommandFailed) as e:
+        cluster.expel(storage3, peer=leader, timeout=1, force=True)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Check `picodata expel` idempotency

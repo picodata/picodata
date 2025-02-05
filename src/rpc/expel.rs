@@ -41,6 +41,7 @@ crate::define_rpc_request! {
             // Idempotency
             return Ok(Response {});
         }
+        let instance_name = &instance.name;
 
         if !req.force && !has_states!(instance, Offline -> Offline) {
             let current = instance.current_state.variant;
@@ -50,7 +51,16 @@ crate::define_rpc_request! {
             } else {
                 current.to_string()
             };
-            return Err(BoxError::new(ErrorCode::ExpelOnlineInstance, format!("attempt to expel instance which is not Offline, but {state_repr}")).into());
+            return Err(BoxError::new(ErrorCode::ExpelNotAllowed, format!("attempt to expel instance '{instance_name}' which is not Offline, but {state_repr}")).into());
+        }
+
+        if !req.force {
+            let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
+            if instance.name == replicaset.current_master_name
+                || instance.name == replicaset.target_master_name
+            {
+                return Err(BoxError::new(ErrorCode::ExpelNotAllowed, format!("attempt to expel replicaset master '{instance_name}'")).into());
+            }
         }
 
         let timeout = req.timeout;

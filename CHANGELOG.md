@@ -70,7 +70,8 @@ Parameters with scope `global` are the same on each instance.
 
 - `picodata expel` takes instance uuid instead of instance name.
 
-- `picodata expel` now doesn't allow expelling Online instances by default.
+- `picodata expel` now doesn't allow expelling Online instances and replicaset
+  masters by default.
   New `--force` flag can be used to forcefully expel an Online instance which
   will shutdown once it finds out it got Expelled.
 
