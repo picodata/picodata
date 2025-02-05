@@ -59,9 +59,9 @@ picodata run [OPTIONS]
 
 [`instance.admin_socket`]: config.md#instance_admin_socket
 
-### --advertise {: #run_advertise }
+### --iproto-advertise {: #run_iproto_advertise }
 
-`--advertise <[HOST][:PORT]>`
+`--iproto-advertise <[HOST][:PORT]>`
 
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
@@ -71,10 +71,10 @@ picodata run [OPTIONS]
 `--iproto-listen 0.0.0.0` его придется указать явно:
 
 ```shell
-picodata run --iproto-listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
+picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 ```
 
-Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
+Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
 Аналогичный параметр файла конфигурации: [`instance.advertise_address`]
 
 [`instance.advertise_address`]: config.md#instance_advertise_address
@@ -310,7 +310,7 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 ```
 
-По умолчанию используется значение параметра [`--advertise`](#run_advertise),
+По умолчанию используется значение параметра [`--iproto-advertise`](#run_iproto_advertise),
 таким образом по умолчанию создается новый кластер.
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
@@ -483,7 +483,7 @@ picodata connect [OPTIONS] <ADDRESS>
 ```
 
 - `ADDRESS`: Адрес инстанса Picodata в формате `[user@][host][:port]`,
-  соответствующий опции [`picodata run --advertise`](#run_advertise)
+  соответствующий опции [`picodata run --iproto-advertise`](#run_iproto_advertise)
 
 **Пример**
 

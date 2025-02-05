@@ -221,10 +221,10 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 * Тип: *str*
 * Значение по умолчанию: `127.0.0.1:3301`
 
-Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
-Аналогичная команда: [`picodata run --advertise`]
+Аналогичная переменная окружения: `PICODATA_IPROTO_ADVERTISE`<br>
+Аналогичная команда: [`picodata run --iproto-advertise`]
 
-[`picodata run --advertise`]: cli.md#run_advertise
+[`picodata run --iproto-advertise`]: cli.md#run_iproto_advertise
 
 ### instance.audit {: #instance_audit }
 
