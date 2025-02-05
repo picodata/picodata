@@ -76,7 +76,10 @@ to 2 and 3.
 
 - New special command `\set delimiter enter` to change the default delimiter to EOL (End Of Line). Introduced a new inner prompt prefix to indicate when input is waiting for a delimiter. EOF is now treated as a delimiter when reading files.
 
-- Now, for instance to join a cluster, its version must equal to the cluster's version or one minor version greater. For example, if the cluster's version is 24.7, only instances with versions 24.7 or 24.8 can join the cluster.
+- From now on, when joining a cluster, an instance's version must be the same as the cluster's version or one minor version higher. For example, if the cluster's version is 25.1, only instances with versions 25.1 or 25.2 can join.
+  - In the `_pico_property` table, there is a new field called `cluster_version`, which shows the global version of the cluster.
+  - In the `_pico_instance` table, there is a new field called `picodata_version` that displays the version of the executable running on the instance.
+  - The global `cluster_version` is updated by the governor only when every instance in the cluster has been upgraded to the new minor version.
 
 - Global rename
   - Config File Changes:
