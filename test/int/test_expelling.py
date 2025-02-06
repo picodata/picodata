@@ -249,43 +249,49 @@ cluster:
     [leader] = cluster.deploy(instance_count=1, tier="raft")
 
     # Deploy a cluster with at least one full replicaset
-    storage1 = cluster.add_instance(name="storage1", wait_online=True, tier="storage")
-    assert storage1.replicaset_name == "storage_1"
-    storage2 = cluster.add_instance(name="storage2", wait_online=True, tier="storage")
-    assert storage2.replicaset_name == "storage_1"
-    storage3 = cluster.add_instance(name="storage3", wait_online=True, tier="storage")
-    assert storage3.replicaset_name == "storage_2"
+    storage_1_1 = cluster.add_instance(
+        name="storage_1_1", wait_online=True, tier="storage"
+    )
+    assert storage_1_1.replicaset_name == "storage_1"
+    storage_1_2 = cluster.add_instance(
+        name="storage_1_2", wait_online=True, tier="storage"
+    )
+    assert storage_1_2.replicaset_name == "storage_1"
+    storage_2_1 = cluster.add_instance(
+        name="storage_2_1", wait_online=True, tier="storage"
+    )
+    assert storage_2_1.replicaset_name == "storage_2"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
-    cluster.expel(storage2, peer=leader, force=True)
+    cluster.expel(storage_1_2, peer=leader, force=True)
     leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Check `picodata expel` idempotency
-    cluster.expel(storage2, peer=leader, timeout=1)
+    cluster.expel(storage_1_2, peer=leader, timeout=1)
 
     # Add another instance, it should be assigned to the no longer filled replicaset
     storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
     assert storage4.replicaset_name == "storage_1"
 
     # Attempt to expel an offline replicaset
-    storage3.terminate()
+    storage_2_1.terminate()
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage3, peer=leader, timeout=1, force=False)
+        cluster.expel(storage_2_1, peer=leader, timeout=1, force=False)
     assert (
-        f"""attempt to expel replicaset master '{storage3.name}'
+        f"""attempt to expel replicaset master '{storage_2_1.name}'
 rerun with --force if you still want to expel the instance"""
         in e.value.stderr
     )
 
     # Only works with `--force` flag
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage3, peer=leader, timeout=1, force=True)
+        cluster.expel(storage_2_1, peer=leader, timeout=1, force=True)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Check `picodata expel` idempotency
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage3, peer=leader, timeout=1)
+        cluster.expel(storage_2_1, peer=leader, timeout=1)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Offline replicasets aren't allowed to be expelled,
@@ -317,7 +323,7 @@ rerun with --force if you still want to expel the instance"""
     lc.wait_matched()
 
     # Wake up the instance expelled instance so that replicaset is finally expelled
-    storage3.start()
+    storage_2_1.start()
 
     # The buckets are finally able to be rebalanced
     leader.wait_governor_status("idle")
