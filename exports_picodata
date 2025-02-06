@@ -8,6 +8,7 @@ pico_ffi_rpc_version
 pico_ffi_sql_query
 pico_ffi_version
 pico_ffi_wait_index
+pico_internal_initialize_dummy
 proc_apply_schema_change
 proc_cas
 proc_disable_service

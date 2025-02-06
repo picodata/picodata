@@ -17,6 +17,7 @@ use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
 use crate::util::INFINITY;
+use ::tarantool::error::BoxError;
 use ::tarantool::fiber;
 use ::tarantool::msgpack::ViaMsgpack;
 use ::tarantool::session;
@@ -1742,4 +1743,22 @@ pub(crate) fn setup() {
             })
         },
     );
+}
+
+#[no_mangle]
+pub extern "C" fn pico_internal_initialize_dummy() -> i32 {
+    if !crate::tarantool::is_box_configured() {
+        tlog!(Error, "run box.cfg {{ ... }} first");
+        BoxError::new(
+            crate::error_code::ErrorCode::Uninitialized,
+            "run box.cfg { ... } first",
+        )
+        .set_last();
+        return -1;
+    }
+
+    node::Node::for_tests();
+    setup();
+
+    0
 }
