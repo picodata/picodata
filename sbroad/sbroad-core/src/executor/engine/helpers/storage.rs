@@ -12,7 +12,7 @@ use tarantool::tuple::{Tuple, TupleBuffer};
 use crate::backend::sql::space::ADMIN_ID;
 use crate::error;
 use crate::errors::SbroadError;
-use crate::executor::engine::helpers::proxy::sql_cache_proxy;
+use crate::executor::engine::helpers::proxy::SQL_CACHE_PROXY;
 use crate::executor::engine::helpers::table_name;
 use crate::executor::lru::DEFAULT_CAPACITY;
 use crate::ir::node::NodeId;
@@ -84,11 +84,12 @@ impl StorageMetadata {
 }
 
 pub fn prepare(pattern: String) -> Result<Statement, SbroadError> {
-    let proxy = sql_cache_proxy();
-    let stmt = proxy.prepare(pattern).map_err(|e| {
-        error!(Option::from("prepare"), &format!("{e:?}"));
-        SbroadError::from(e)
-    })?;
+    let stmt = SQL_CACHE_PROXY
+        .with(|proxy| proxy.prepare(pattern))
+        .map_err(|e| {
+            error!(Option::from("prepare"), &format!("{e:?}"));
+            SbroadError::from(e)
+        })?;
     Ok(stmt)
 }
 
@@ -99,11 +100,12 @@ pub fn unprepare(
     let (stmt, table_ids) = std::mem::take(entry);
 
     // Remove the statement from the instance cache.
-    let proxy = sql_cache_proxy();
-    proxy.unprepare(stmt).map_err(|e| {
-        error!(Option::from("unprepare"), &format!("{e:?}"));
-        SbroadError::from(e)
-    })?;
+    SQL_CACHE_PROXY
+        .with(|proxy| proxy.unprepare(stmt))
+        .map_err(|e| {
+            error!(Option::from("unprepare"), &format!("{e:?}"));
+            SbroadError::from(e)
+        })?;
 
     // Remove temporary tables from the instance.
     for node_id in table_ids {

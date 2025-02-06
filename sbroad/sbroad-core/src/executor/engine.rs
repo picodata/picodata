@@ -73,20 +73,18 @@ pub trait Metadata: Sized {
 
 pub fn get_builtin_functions() -> &'static [Function] {
     // Once lock is used because of concurrent access in tests.
-    static mut BUILTINS: OnceLock<Vec<Function>> = OnceLock::new();
+    static BUILTINS: OnceLock<Vec<Function>> = OnceLock::new();
 
-    unsafe {
-        BUILTINS.get_or_init(|| {
-            vec![
-                Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
-                Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
-                Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
-                Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
-                Function::new_stable("upper".into(), DerivedType::new(Type::String), true),
-                Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
-            ]
-        })
-    }
+    BUILTINS.get_or_init(|| {
+        vec![
+            Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
+            Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
+            Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
+            Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
+            Function::new_stable("upper".into(), DerivedType::new(Type::String), true),
+            Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
+        ]
+    })
 }
 
 pub trait StorageCache {

@@ -1,4 +1,3 @@
-use std::cell::OnceCell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -34,6 +33,10 @@ pub(crate) struct SqlCacheProxy {
     pub(crate) id: fiber::FiberId,
     request: Rc<Channel<CacheRequest>>,
     response: Rc<Channel<CacheResponse>>,
+}
+
+thread_local! {
+    pub(crate) static SQL_CACHE_PROXY: SqlCacheProxy = SqlCacheProxy::new();
 }
 
 fn proxy_start(rq: Rc<Channel<CacheRequest>>, rsp: Rc<Channel<CacheResponse>>) -> fiber::FiberId {
@@ -98,7 +101,8 @@ impl SqlCacheProxy {
     }
 
     fn send(&self, request: CacheRequest) -> Result<(), Error> {
-        fiber::wakeup(sql_cache_proxy().id);
+        let id = SQL_CACHE_PROXY.with(|proxy| proxy.id);
+        fiber::wakeup(id);
         if self.request.send(request).is_err() {
             if fiber::is_cancelled() {
                 return Err(Error::Other("current fiber is cancelled".into()));
@@ -137,9 +141,4 @@ impl SqlCacheProxy {
             CacheResponse::UnPrepared(resp) => resp,
         }
     }
-}
-
-pub(crate) fn sql_cache_proxy() -> &'static SqlCacheProxy {
-    static mut PROXY: OnceCell<SqlCacheProxy> = OnceCell::new();
-    unsafe { PROXY.get_or_init(SqlCacheProxy::new) }
 }

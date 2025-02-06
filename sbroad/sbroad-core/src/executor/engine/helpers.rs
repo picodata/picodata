@@ -1760,9 +1760,9 @@ pub struct UpdateArgs<'vtable_tuple> {
 
 pub fn eq_op() -> &'static Value {
     // Once lock is used because of concurrent access in tests.
-    static mut EQ: OnceLock<Value> = OnceLock::new();
+    static EQ: OnceLock<Value> = OnceLock::new();
 
-    unsafe { EQ.get_or_init(|| Value::String("=".into())) }
+    EQ.get_or_init(|| Value::String("=".into()))
 }
 
 /// Convert vtable tuple to tuple
