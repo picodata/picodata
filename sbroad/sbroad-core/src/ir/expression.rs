@@ -945,7 +945,7 @@ impl<'source> NewColumnsSource<'source> {
         }
     }
 
-    fn iter(&'source self) -> NewColumnSourceIterator {
+    fn iter(&'source self) -> NewColumnSourceIterator<'source> {
         <&Self as IntoIterator>::into_iter(self)
     }
 }
