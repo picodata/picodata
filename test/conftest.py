@@ -120,9 +120,7 @@ def assert_starts_with(actual_string: str | bytes, expected_prefix: str | bytes)
 
 
 def pytest_addoption(parser: pytest.Parser):
-    parser.addoption(
-        "--seed", action="store", default=None, help="Seed for randomized tests"
-    )
+    parser.addoption("--seed", action="store", default=None, help="Seed for randomized tests")
     parser.addoption(
         "--delay",
         action="store",
@@ -289,9 +287,7 @@ def normalize_net_box_result(func):
                     error_info = tnt_strerror(code)
                     match error_info:
                         case (str(error_type), _):
-                            raise TarantoolError(
-                                error_type, arg, source_location
-                            ) from exc
+                            raise TarantoolError(error_type, arg, source_location) from exc
                         case "UNDEFINED":
                             raise TarantoolError(code, arg, source_location) from exc
                         case _:
@@ -329,9 +325,7 @@ class KeyPart:
     is_nullable: bool = False
 
     def __str__(self):
-        return """{{ fieldno = {}, type = "{}", is_nullable = {} }}""".format(
-            self.fieldno, self.type, self.is_nullable
-        )
+        return """{{ fieldno = {}, type = "{}", is_nullable = {} }}""".format(self.fieldno, self.type, self.is_nullable)
 
 
 @dataclass
@@ -680,9 +674,7 @@ class Instance:
         return hash((self.cluster_name, self.name))
 
     @contextmanager
-    def connect(
-        self, timeout: int | float, user: str | None = None, password: str | None = None
-    ):
+    def connect(self, timeout: int | float, user: str | None = None, password: str | None = None):
         if user is None:
             user = "pico_service"
             if password is None:
@@ -758,9 +750,7 @@ class Instance:
         tup_str = "{{ {} }}".format(", ".join(str(x) for x in tup))
         lua = """
             return require("key_def").new({kd}):hash(box.tuple.new({t}))
-        """.format(
-            t=tup_str, kd=str(key_def)
-        )
+        """.format(t=tup_str, kd=str(key_def))
         return self.eval(lua)
 
     def replicaset_master_name(self, timeout: int | float = 10) -> str:
@@ -848,9 +838,7 @@ class Instance:
             if attempt > 1:
                 print(f"retrying SQL query `{sql}` ({attempt=})", file=sys.stderr)
 
-            return self.sql(
-                sql, *params, sudo=sudo, user=user, password=password, timeout=timeout
-            )
+            return self.sql(sql, *params, sudo=sudo, user=user, password=password, timeout=timeout)
 
         return Retriable(
             timeout=retry_timeout,
@@ -1177,9 +1165,7 @@ class Instance:
         else:
             eprint(f"  {dml=}")
 
-        return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)[
-            "index"
-        ]
+        return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)["index"]
 
     def pico_property(self, key: str):
         tup = self.call("box.space._pico_property:get", key)
@@ -1217,10 +1203,7 @@ class Instance:
         elif params["distribution"] == "sharded":
             distribution = f"BY ({sharding_key})"
         else:
-            raise Exception(
-                f'Wrong distribution: {params["distribution"]}. '
-                "Possible options: global, sharded"
-            )
+            raise Exception(f"Wrong distribution: {params['distribution']}.Possible options: global, sharded")
 
         if engine:
             engine = f"USING {engine}"
@@ -1259,9 +1242,7 @@ class Instance:
         index = self.call("pico.abort_ddl", timeout, timeout=timeout + 0.5)
         return index
 
-    def propose_create_space(
-        self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 10
-    ) -> int:
+    def propose_create_space(self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 10) -> int:
         """
         Proposes a space creation ddl prepare operation. Returns the index of
         the corresponding finalizing ddl commit or ddl abort entry.
@@ -1347,9 +1328,7 @@ class Instance:
 
         return info
 
-    def wait_online(
-        self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None
-    ):
+    def wait_online(self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None):
         """Wait until instance attains Online grade.
 
         This function will periodically check the current instance's grade and
@@ -1544,9 +1523,7 @@ class Instance:
         Retriable(timeout=10, rps=1).call(make_attempt, timeout=1, rps=10)
         eprint(f"{self} is a leader now")
 
-    def grant_privilege(
-        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
-    ):
+    def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         if privilege == "execute" and object_type == "role":
             self.sql(f'GRANT "{object_name}" TO "{user}"', sudo=True)
         elif object_name:
@@ -1557,9 +1534,7 @@ class Instance:
         else:
             self.sql(f'GRANT {privilege} {object_type} TO "{user}"', sudo=True)
 
-    def revoke_privilege(
-        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
-    ):
+    def revoke_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         if privilege == "execute" and object_type == "role":
             self.sql(f'REVOKE "{object_name}" FROM "{user}"', sudo=True)
         elif object_name:
@@ -1982,9 +1957,7 @@ class Cluster:
         )
 
         eprint(f"batch CaS:\n  {predicate=}\n  {ops=}")
-        return instance.call(
-            "pico.batch_cas", dict(ops=ops), predicate, user=user, password=password
-        )
+        return instance.call("pico.batch_cas", dict(ops=ops), predicate, user=user, password=password)
 
     def assert_expelled(self, target: Instance):
         leader = self.leader()
@@ -2016,9 +1989,7 @@ class Cluster:
         assert instance
         raft_info = instance.call(".proc_raft_info")
         leader_id = raft_info["leader_id"]
-        [[leader_address]] = instance.sql(
-            """ SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id
-        )
+        [[leader_address]] = instance.sql(""" SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id)
         return self.get_instance_by_address(leader_address)
 
     def cas(
@@ -2050,9 +2021,7 @@ class Cluster:
         # ADMIN by default
         user_id = 1
         if user:
-            [[user_id]] = instance.sql(
-                """ SELECT id FROM _pico_user WHERE name = ? """, user
-            )
+            [[user_id]] = instance.sql(""" SELECT id FROM _pico_user WHERE name = ? """, user)
             user_id = int(user_id)
 
         return self.leader(instance).cas(
@@ -2097,9 +2066,7 @@ class Cluster:
                 """
                 )
 
-            actual_active = Retriable(timeout=10, rps=4).call(
-                lambda: i.call("vshard.storage.info")["bucket"]["active"]
-            )
+            actual_active = Retriable(timeout=10, rps=4).call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
             if actual_active == expected:
                 return
 
@@ -2129,9 +2096,7 @@ class Cluster:
 
         return ret
 
-    def grant_box_privilege(
-        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
-    ):
+    def grant_box_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         """
         Sometimes in our tests we go beyond picodata privilege model and need
         to grant priveleges on something that is not part of the picodata access control model.
@@ -2184,9 +2149,7 @@ class PgStorage:
             for name in self.portals(id)["available"]:
                 self.close_portal(id, name)
 
-    def parse(
-        self, id: int, name: str, sql: str, param_oids: list[int] | None = None
-    ) -> int:
+    def parse(self, id: int, name: str, sql: str, param_oids: list[int] | None = None) -> int:
         param_oids = param_oids if param_oids is not None else []
         return self.instance.call("pico.pg_parse", id, name, sql, param_oids)
 
@@ -2251,9 +2214,7 @@ def target() -> str:
         if line.startswith("host:"):
             return line.split()[1]
 
-    raise Exception(
-        f"cannot deduce target using rustc, version output: {rustc_version}"
-    )
+    raise Exception(f"cannot deduce target using rustc, version output: {rustc_version}")
 
 
 @pytest.fixture(scope="session")
@@ -2320,9 +2281,7 @@ def binary_path() -> str:
     return binary_path
 
 
-def copy_plugin_library(
-    binary_path: Path | str, share_dir: Path | str, file_name: str = "libtestplug"
-):
+def copy_plugin_library(binary_path: Path | str, share_dir: Path | str, file_name: str = "libtestplug"):
     ext = dynamic_library_extension()
     lib_name = f"{file_name}.{ext}"
     source = Path(binary_path).parent / lib_name
@@ -2391,9 +2350,7 @@ def class_tmp_dir(tmpdir_factory):
 
 
 @pytest.fixture(scope="class")
-def cluster(
-    binary_path_fixt, class_tmp_dir, cluster_names, port_distributor
-) -> Generator[Cluster, None, None]:
+def cluster(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
     # see how it's done in def binary_path()
@@ -2692,10 +2649,7 @@ class Compatibility:
         processed_versions = [Version(version) for version in semver_versions]
 
         if processed_versions or len(processed_versions) < 2:
-            self.tags = [
-                (version, Path(f"{root_path}/test/compat/{str(version)}"))
-                for version in processed_versions
-            ]
+            self.tags = [(version, Path(f"{root_path}/test/compat/{str(version)}")) for version in processed_versions]
         else:
             print("too few tags retrieved from git were correct SemVers")
             sys.exit(-1)
@@ -2718,18 +2672,14 @@ class Compatibility:
 
         minor_versions_diff = curr_tag.micro - prev_tag.micro
         if minor_versions_diff > 1:
-            print(
-                "diffs of the two latest tags are more than one minor and are not bumped majors"
-            )  # noqa: E501
+            print("diffs of the two latest tags are more than one minor and are not bumped majors")  # noqa: E501
             sys.exit(-1)
         else:
             return (prev_tag, prev_path)
 
 
 @pytest.fixture
-def ldap_server(
-    cluster: Cluster, port_distributor: PortDistributor
-) -> Generator[ldap.LdapServer, None, None]:
+def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
     server = ldap.configure_ldap_server(
         username="ldapuser",
         password="ldappass",

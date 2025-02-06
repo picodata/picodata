@@ -19,9 +19,7 @@ from conftest import (
 
 @pytest.fixture
 def instance_with_audit_file(unstarted_instance: Instance):
-    unstarted_instance.audit = os.path.join(
-        unstarted_instance.instance_dir, "audit.log"
-    )
+    unstarted_instance.audit = os.path.join(unstarted_instance.instance_dir, "audit.log")
     unstarted_instance.start()
     unstarted_instance.wait_online()
     yield unstarted_instance
@@ -77,10 +75,7 @@ def test_startup(instance_with_audit_file: Instance):
     assert event["new_state"] == "Offline(0)"
     assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
-    assert (
-        event["message"]
-        == f"target state of instance `{event['instance_name']}` changed to {event['new_state']}"
-    )
+    assert event["message"] == f"target state of instance `{event['instance_name']}` changed to {event['new_state']}"
     assert event["severity"] == "low"
     assert event["initiator"] == "admin"
 
@@ -89,10 +84,7 @@ def test_startup(instance_with_audit_file: Instance):
     assert event["new_state"] == "Offline(0)"
     assert event["instance_name"] == "default_1_1"
     assert event["raft_id"] == "1"
-    assert (
-        event["message"]
-        == f"current state of instance `{event['instance_name']}` changed to {event['new_state']}"
-    )
+    assert event["message"] == f"current state of instance `{event['instance_name']}` changed to {event['new_state']}"
     assert event["severity"] == "medium"
     assert event["initiator"] == "admin"
 
@@ -129,10 +121,7 @@ def test_integrity_violation(instance_with_audit_file: Instance):
     assert event is not None
     assert event["message"] == "integrity violation detected"
     assert event["severity"] == "high"
-    assert (
-        event["error"]
-        == "XlogError: Unexpected end of file, run with 'force_recovery = true'"
-    )
+    assert event["error"] == "XlogError: Unexpected end of file, run with 'force_recovery = true'"
 
 
 def test_recover_database(instance_with_audit_file: Instance):
@@ -237,10 +226,7 @@ def test_user(instance_with_audit_file: Instance):
     assert change_password is not None
     assert change_password["user"] == "ymir"
     assert change_password["auth_type"] == "chap-sha1"
-    assert (
-        change_password["message"]
-        == f"password of user `{change_password['user']}` was changed"
-    )
+    assert change_password["message"] == f"password of user `{change_password['user']}` was changed"
     assert change_password["severity"] == "high"
     assert change_password["initiator"] == "admin"
 
@@ -309,10 +295,7 @@ def test_role(instance_with_audit_file: Instance):
     assert grant_role["role"] == "dummy"
     assert grant_role["grantee"] == "skibidi"
     assert grant_role["grantee_type"] == "role"
-    assert (
-        grant_role["message"]
-        == f"granted role `{grant_role['role']}` to role `{grant_role['grantee']}`"
-    )
+    assert grant_role["message"] == f"granted role `{grant_role['role']}` to role `{grant_role['grantee']}`"
     assert grant_role["severity"] == "high"
     assert grant_role["initiator"] == "bubba"
 
@@ -321,10 +304,7 @@ def test_role(instance_with_audit_file: Instance):
     assert revoke_role["role"] == "dummy"
     assert revoke_role["grantee"] == "skibidi"
     assert revoke_role["grantee_type"] == "role"
-    assert (
-        revoke_role["message"]
-        == f"revoked role `{grant_role['role']}` from role `{revoke_role['grantee']}`"
-    )
+    assert revoke_role["message"] == f"revoked role `{grant_role['role']}` from role `{revoke_role['grantee']}`"
     assert revoke_role["severity"] == "high"
     assert revoke_role["initiator"] == "bubba"
 
@@ -482,9 +462,7 @@ def test_auth(instance_with_audit_file: Instance):
     assert auth_ok["verdict"] == "user is not blocked"
 
     for _ in range(MAX_LOGIN_ATTEMPTS):
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             with instance.connect(4, user="ymir", password="wrong_pwd"):
                 pass
 
@@ -504,9 +482,7 @@ def test_auth(instance_with_audit_file: Instance):
     assert auth_fail is not None
     assert auth_fail["message"] == "failed to authenticate user `ymir`"
     assert auth_fail["severity"] == "high"
-    assert auth_fail["verdict"] == (
-        "Maximum number of login attempts exceeded; user blocked"
-    )
+    assert auth_fail["verdict"] == ("Maximum number of login attempts exceeded; user blocked")
     assert auth_fail["user"] == "ymir"
     assert auth_fail["initiator"] == "ymir"
 
@@ -515,9 +491,7 @@ def test_access_denied(instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
-    instance.create_user(
-        with_name="ymir", with_password="T0psecret", with_auth="chap-sha1"
-    )
+    instance.create_user(with_name="ymir", with_password="T0psecret", with_auth="chap-sha1")
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
@@ -567,10 +541,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert (
-        grant_privilege["message"]
-        == "granted privilege create on table `*` to user `ymir`"
-    )
+    assert grant_privilege["message"] == "granted privilege create on table `*` to user `ymir`"
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "create"
     assert grant_privilege["object"] == "*"
@@ -584,10 +555,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
-    assert (
-        revoke_privilege["message"]
-        == f"revoked privilege create on table `*` from user `{user}`"
-    )
+    assert revoke_privilege["message"] == f"revoked privilege create on table `*` from user `{user}`"
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "create"
     assert revoke_privilege["object"] == "*"
@@ -602,10 +570,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert (
-        grant_privilege["message"]
-        == f"granted privilege read on table `_pico_tier` to user `{user}`"
-    )
+    assert grant_privilege["message"] == f"granted privilege read on table `_pico_tier` to user `{user}`"
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "read"
     assert grant_privilege["object_type"] == "table"
@@ -619,10 +584,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
-    assert (
-        revoke_privilege["message"]
-        == f"revoked privilege read on table `_pico_tier` from user `{user}`"
-    )
+    assert revoke_privilege["message"] == f"revoked privilege read on table `_pico_tier` from user `{user}`"
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "read"
     assert revoke_privilege["object_type"] == "table"
@@ -639,10 +601,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert (
-        grant_privilege["message"]
-        == "granted privilege create on table `*` to role `R`"
-    )
+    assert grant_privilege["message"] == "granted privilege create on table `*` to role `R`"
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "create"
     assert grant_privilege["object"] == "*"
@@ -656,10 +615,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
-    assert (
-        revoke_privilege["message"]
-        == "revoked privilege create on table `*` from role `R`"
-    )
+    assert revoke_privilege["message"] == "revoked privilege create on table `*` from role `R`"
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "create"
     assert grant_privilege["object"] == "*"
@@ -674,10 +630,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert (
-        grant_privilege["message"]
-        == "granted privilege read on table `_pico_user` to role `R`"
-    )
+    assert grant_privilege["message"] == "granted privilege read on table `_pico_user` to role `R`"
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "read"
     assert grant_privilege["object_type"] == "table"
@@ -691,10 +644,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
-    assert (
-        revoke_privilege["message"]
-        == "revoked privilege read on table `_pico_user` from role `R`"
-    )
+    assert revoke_privilege["message"] == "revoked privilege read on table `_pico_user` from role `R`"
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "read"
     assert revoke_privilege["object_type"] == "table"

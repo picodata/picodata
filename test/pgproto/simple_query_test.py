@@ -15,9 +15,7 @@ def test_simple_query_flow_errors(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -42,9 +40,7 @@ def test_simple_flow_session(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -95,9 +91,7 @@ def test_explain(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -158,9 +152,7 @@ def test_aggregates(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -258,9 +250,7 @@ def test_empty_queries(postgres: Postgres):
 
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("  ", prepare=False)
@@ -278,16 +268,12 @@ def test_deallocate(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg2.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg2.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
 
     # Remove unprepared statement
     statement_name = "not_existing_name"
-    with pytest.raises(
-        DatabaseError, match=f"prepared statement {statement_name} does not exist."
-    ):
+    with pytest.raises(DatabaseError, match=f"prepared statement {statement_name} does not exist."):
         conn.run(f"DEALLOCATE {statement_name}")
 
     # Remove statement with .close()
@@ -340,17 +326,13 @@ def test_tcl(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     # With autocommit
     conn.autocommit = True
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
@@ -367,9 +349,7 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
@@ -391,9 +371,7 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("COMMIT;", prepare=False)
     assert cur.pgresult is not None
@@ -413,9 +391,7 @@ def test_create_schema(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("CREATE SCHEMA test_schema;", prepare=False)
@@ -431,9 +407,7 @@ def test_drop_schema(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("DROP SCHEMA test_schema;", prepare=False)

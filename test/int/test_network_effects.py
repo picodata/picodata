@@ -110,9 +110,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Help i2 to become a new leader
     i2.promote_or_fail()
-    Retriable(timeout=10, rps=5).call(
-        lambda: i3.assert_raft_status("Follower", i2.raft_id)
-    )
+    Retriable(timeout=10, rps=5).call(lambda: i3.assert_raft_status("Follower", i2.raft_id))
 
     print(i2.call("pico.raft_log", dict(return_string=True)))
     print(i2.call("box.space._raft_state:select"))
@@ -120,9 +118,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
     fix_picodata_procs(i1)
-    Retriable(timeout=10, rps=5).call(
-        lambda: i1.assert_raft_status("Follower", i2.raft_id)
-    )
+    Retriable(timeout=10, rps=5).call(lambda: i1.assert_raft_status("Follower", i2.raft_id))
 
     propose_state_change(i1, "i1 is alive again")
 
@@ -167,9 +163,7 @@ def test_leader_disruption(cluster3: Cluster):
     )
 
     # i3 should become the follower again without disrupting i1
-    Retriable(timeout=10, rps=5).call(
-        lambda: i3.assert_raft_status("Follower", i1.raft_id)
-    )
+    Retriable(timeout=10, rps=5).call(lambda: i3.assert_raft_status("Follower", i1.raft_id))
 
 
 def get_instance_states(peer: Instance, instance_name) -> tuple[str, str]:

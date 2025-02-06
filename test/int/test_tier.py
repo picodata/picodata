@@ -34,9 +34,7 @@ cluster:
         return tier
 
     # Create sharded table in unexistent tier failed.
-    with pytest.raises(
-        TarantoolError, match="specified tier 'unexistent_tier' doesn't exist"
-    ):
+    with pytest.raises(TarantoolError, match="specified tier 'unexistent_tier' doesn't exist"):
         i1.sql(
             """
             CREATE TABLE "table_in_unexistent_tier" (a INT NOT NULL, b INT, PRIMARY KEY (a))
@@ -117,10 +115,7 @@ cluster:
         """
     )
     assert ddl["row_count"] == 1
-    assert (
-        get_tier_from_distribution_field_from_pico_table("sharded_table_in_default")
-        == "default"
-    )
+    assert get_tier_from_distribution_field_from_pico_table("sharded_table_in_default") == "default"
 
     # Create sharded table in existing tier.
     ddl = i1.sql(
@@ -132,10 +127,7 @@ cluster:
         """
     )
     assert ddl["row_count"] == 1
-    assert (
-        get_tier_from_distribution_field_from_pico_table("sharded_table_in_router")
-        == "router"
-    )
+    assert get_tier_from_distribution_field_from_pico_table("sharded_table_in_router") == "router"
 
     # It's ok to use global tables with sharded in single tier.
     dql = i1.retriable_sql(
@@ -149,9 +141,7 @@ cluster:
     assert len(dql) > 0
 
     # Query with tables from different tier is aborted.
-    with pytest.raises(
-        TarantoolError, match="Query cannot use tables from different tiers"
-    ):
+    with pytest.raises(TarantoolError, match="Query cannot use tables from different tiers"):
         i1.sql(
             """
             SELECT * FROM "sharded_table_in_router"
@@ -161,9 +151,7 @@ cluster:
         )
 
     # Query with tables from different tier is aborted.
-    with pytest.raises(
-        TarantoolError, match="Query cannot use tables from different tiers"
-    ):
+    with pytest.raises(TarantoolError, match="Query cannot use tables from different tiers"):
         i1.sql(
             """
             SELECT a FROM "sharded_table_in_router"
@@ -175,9 +163,7 @@ cluster:
         )
 
     # Query with tables from different tier is aborted.
-    with pytest.raises(
-        TarantoolError, match="Query cannot use tables from different tiers"
-    ):
+    with pytest.raises(TarantoolError, match="Query cannot use tables from different tiers"):
         i1.sql(
             """
             INSERT INTO "sharded_table_in_router" SELECT * FROM "sharded_table_in_default"
@@ -378,9 +364,7 @@ cluster:
     content = storage_follower.eval("return box.space.table_in_storage:select()")
     assert sorted(select_first_column(content)) == [1, 2, 3]
 
-    r2_uuid = router_instance.eval(
-        "return box.space._pico_replicaset:get('storage_1').uuid"
-    )
+    r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('storage_1').uuid")
 
     # if we kill master of replicaset data will be unavailiable temporarily, until
     # governor make it right: consistent master switchower + deliver changed vshard
@@ -388,10 +372,7 @@ cluster:
     first_master_of_storage.terminate()
 
     def wait_until_governor_deliver_vshard_configuration():
-
-        replicaset_masters = get_vshards_opinion_about_replicaset_masters(
-            router_instance, "storage"
-        )
+        replicaset_masters = get_vshards_opinion_about_replicaset_masters(router_instance, "storage")
         assert replicaset_masters[r2_uuid] == storage_follower.name
 
     Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration)
@@ -455,18 +436,12 @@ cluster:
             assert table_size(instance, table_name) == 0
 
     # insert to global tables from different tiers
-    data = storage_instance_1.sql(
-        """INSERT INTO "global_table_via_storage" VALUES(1) """
-    )
+    data = storage_instance_1.sql("""INSERT INTO "global_table_via_storage" VALUES(1) """)
     assert data["row_count"] == 1
-    data = storage_instance_1.sql(
-        """INSERT INTO "global_table_via_router" VALUES(1) """
-    )
+    data = storage_instance_1.sql("""INSERT INTO "global_table_via_router" VALUES(1) """)
     assert data["row_count"] == 1
 
-    data = router_instance_1.sql(
-        """INSERT INTO "global_table_via_storage" VALUES(2) """
-    )
+    data = router_instance_1.sql("""INSERT INTO "global_table_via_storage" VALUES(2) """)
     assert data["row_count"] == 1
     data = router_instance_1.sql("""INSERT INTO "global_table_via_router" VALUES(2) """)
     assert data["row_count"] == 1
@@ -556,17 +531,11 @@ cluster:
     replicaset_2_i1.kill()
 
     def wait_until_governor_deliver_vshard_configuration(instance: Instance, r_uuid):
-        replicaset_masters = get_vshards_opinion_about_replicaset_masters(
-            router_instance, "storage"
-        )
+        replicaset_masters = get_vshards_opinion_about_replicaset_masters(router_instance, "storage")
         assert replicaset_masters[r_uuid] == instance.name
 
-    Retriable(timeout=10, rps=5).call(
-        wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid
-    )
-    Retriable(timeout=10, rps=5).call(
-        wait_until_governor_deliver_vshard_configuration, replicaset_2_i2, r3_uuid
-    )
+    Retriable(timeout=10, rps=5).call(wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid)
+    Retriable(timeout=10, rps=5).call(wait_until_governor_deliver_vshard_configuration, replicaset_2_i2, r3_uuid)
 
     # to second replicaset
     data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(2) """)

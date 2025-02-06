@@ -202,9 +202,7 @@ def test_connect_auth_type_md5(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -279,9 +277,7 @@ def test_admin_enoent(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(
-        "Connection via unix socket by path 'wrong/path/t.sock' is not established"
-    )
+    cli.expect_exact("Connection via unix socket by path 'wrong/path/t.sock' is not established")
     cli.expect_exact("No such file or directory (os error 2)")
     cli.expect_exact(pexpect.EOF)
 
@@ -296,9 +292,7 @@ def test_admin_econnrefused(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(
-        "Connection via unix socket by path '/dev/null' is not established"
-    )
+    cli.expect_exact("Connection via unix socket by path '/dev/null' is not established")
 
     if sys.platform == "darwin":
         cli.expect_exact("Socket operation on non-socket (os error 38)")
@@ -426,10 +420,7 @@ def test_connect_with_empty_password_path(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(
-        'can\'t read password from password file by "", '
-        "reason: No such file or directory (os error 2)"
-    )
+    cli.expect_exact('can\'t read password from password file by "", reason: No such file or directory (os error 2)')
     cli.expect_exact(pexpect.EOF)
 
 
@@ -497,9 +488,7 @@ def test_connect_connection_info_and_help(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -558,27 +547,19 @@ def test_connect_with_incorrect_url(cluster: Cluster):
 
     # GL685
     cli = connect_to("unix:/tmp/sock")
-    cli.expect_exact(
-        "Error while parsing instance port '/tmp/sock': invalid digit found in string"
-    )
+    cli.expect_exact("Error while parsing instance port '/tmp/sock': invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("trash:not_a_port")
-    cli.expect_exact(
-        "Error while parsing instance port 'not_a_port': invalid digit found in string"
-    )
+    cli.expect_exact("Error while parsing instance port 'not_a_port': invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:999999999")
-    cli.expect_exact(
-        "Error while parsing instance port '999999999': number too large to fit in target type"
-    )
+    cli.expect_exact("Error while parsing instance port '999999999': number too large to fit in target type")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:-1")
-    cli.expect_exact(
-        "Error while parsing instance port '-1': invalid digit found in string"
-    )
+    cli.expect_exact("Error while parsing instance port '-1': invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
 

@@ -30,13 +30,9 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
 def test_max_login_attempts(cluster: Cluster):
     i1, i2, _ = cluster.deploy(instance_count=3)
 
-    i1.sql(
-        """ CREATE USER "foo" WITH PASSWORD 'T0psecret' USING chap-sha1 OPTION (timeout = 3) """
-    )
+    i1.sql(""" CREATE USER "foo" WITH PASSWORD 'T0psecret' USING chap-sha1 OPTION (timeout = 3) """)
 
-    def connect(
-        i: Instance, user: str | None = None, password: str | None = None
-    ) -> Connection:
+    def connect(i: Instance, user: str | None = None, password: str | None = None) -> Connection:
         return Connection(
             i.host,
             i.port,
@@ -52,9 +48,7 @@ def test_max_login_attempts(cluster: Cluster):
 
     # Several failed login attempts but one less than maximum
     for _ in range(MAX_LOGIN_ATTEMPTS - 1):
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             # incorrect password
             connect(i1, user="foo", password="baz")
 
@@ -68,9 +62,7 @@ def test_max_login_attempts(cluster: Cluster):
 
     # Maximum failed login attempts
     for _ in range(MAX_LOGIN_ATTEMPTS):
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             # incorrect password
             connect(i1, user="foo", password="baz")
 
@@ -148,15 +140,12 @@ def test_acl_basic(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._pico_property:get", "global_schema_version")[1] == v
         assert i.call("box.space._user:get", user_id) is not None
-        assert (
-            i.eval(
-                """return box.execute([[
+        assert i.eval(
+            """return box.execute([[
                 select count(*) from "_priv" where "grantee" = ?
             ]], {...}).rows""",
-                user_id,
-            )
-            != [[0]]
-        )
+            user_id,
+        ) != [[0]]
 
     # Find replicasets masters.
     # TODO: use picodata's routing facilities.
@@ -181,9 +170,7 @@ def test_acl_basic(cluster: Cluster):
 
     # Try reading from table on behalf of the user.
     for i in cluster.instances:
-        assert (
-            i.call("box.space.money:select", user=user, password=VALID_PASSWORD) == []
-        )
+        assert i.call("box.space.money:select", user=user, password=VALID_PASSWORD) == []
 
     #
     #
@@ -199,10 +186,7 @@ def test_acl_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space 'money' is denied for user 'Bobby'",
         ):
-            assert (
-                i.call("box.space.money:select", user=user, password=VALID_PASSWORD)
-                == []
-            )
+            assert i.call("box.space.money:select", user=user, password=VALID_PASSWORD) == []
 
     #
     #
@@ -216,9 +200,7 @@ def test_acl_basic(cluster: Cluster):
 
     # Old password doesn't work.
     for i in cluster.instances:
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             i.eval("return 1", user=user, password=old_password)
 
     # New password works.
@@ -239,21 +221,16 @@ def test_acl_basic(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._pico_property:get", "global_schema_version")[1] == v
         assert i.call("box.space._user:get", user_id) is None
-        assert (
-            i.eval(
-                """return box.execute([[
+        assert i.eval(
+            """return box.execute([[
                 select count(*) from "_priv" where "grantee" = ?
             ]], {...}).rows""",
-                user_id,
-            )
-            == [[0]]
-        )
+            user_id,
+        ) == [[0]]
 
     # User was actually dropped.
     for i in cluster.instances:
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             i.eval("return 1", user=user, password=new_password)
 
 
@@ -277,9 +254,7 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call(
-                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
-            )
+            i.call("box.space._pico_property:select", user=user, password=VALID_PASSWORD)
 
     #
     #
@@ -301,9 +276,7 @@ def test_acl_roles_basic(cluster: Cluster):
 
     # Try reading from table on behalf of the user again. Now succeed.
     for i in cluster.instances:
-        rows = i.call(
-            "box.space._pico_property:select", user=user, password=VALID_PASSWORD
-        )
+        rows = i.call("box.space._pico_property:select", user=user, password=VALID_PASSWORD)
         assert len(rows) > 0
 
     # Revoke read access from the role.
@@ -317,9 +290,7 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call(
-                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
-            )
+            i.call("box.space._pico_property:select", user=user, password=VALID_PASSWORD)
 
     # Drop the role.
     i1.sql(f'DROP ROLE "{role}"')
@@ -332,9 +303,7 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call(
-                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
-            )
+            i.call("box.space._pico_property:select", user=user, password=VALID_PASSWORD)
 
 
 def test_cas_permissions(cluster: Cluster):
@@ -755,9 +724,7 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
 
     password = "Validpa55word"
 
-    acl = i1.sql(
-        f"create user \"alice\" with password '{password}' using chap-sha1", sudo=True
-    )
+    acl = i1.sql(f"create user \"alice\" with password '{password}' using chap-sha1", sudo=True)
     assert acl["row_count"] == 1
 
     acl = i1.sql('grant create table to "alice"', sudo=True)

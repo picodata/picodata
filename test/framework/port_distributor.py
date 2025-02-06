@@ -25,6 +25,4 @@ class PortDistributor:
             if can_bind(port):
                 return port
 
-        raise Exception(
-            "No more free ports left in configured range, consider enlarging it"
-        )
+        raise Exception("No more free ports left in configured range, consider enlarging it")

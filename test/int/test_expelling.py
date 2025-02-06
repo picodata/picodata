@@ -183,10 +183,7 @@ def test_expel_timeout(cluster: Cluster):
     cli.sendline("wrong_password")
 
     if sys.platform == "darwin":
-        cli.expect_exact(
-            "CRITICAL: failed to connect to address '10001:3301': "
-            "No route to host (os error 65)"
-        )
+        cli.expect_exact("CRITICAL: failed to connect to address '10001:3301': No route to host (os error 65)")
     else:
         cli.expect_exact("CRITICAL: connect timeout")
 
@@ -255,9 +252,7 @@ cluster:
     storage5.start()
 
     # NOTE: wait_online doesn't work because bucket rebalancing has higher priortiy
-    leader.wait_governor_status(
-        "transfer buckets from replicaset", old_step_counter=counter
-    )
+    leader.wait_governor_status("transfer buckets from replicaset", old_step_counter=counter)
 
     # Update the fields on the object
     Retriable().call(storage5.instance_info)
@@ -265,9 +260,7 @@ cluster:
     assert storage5.replicaset_name == "storage_3"
 
     # Try adding an instance to 'storage_2' directly, which is not allowed
-    storage6 = cluster.add_instance(
-        name="storage6", replicaset_name="storage_2", tier="storage", wait_online=False
-    )
+    storage6 = cluster.add_instance(name="storage6", replicaset_name="storage_2", tier="storage", wait_online=False)
     lc = log_crawler(storage6, "cannot join replicaset which is being expelled")
     storage6.fail_to_start()
     lc.wait_matched()
@@ -279,9 +272,7 @@ cluster:
     leader.wait_governor_status("idle")
 
     # The replicaset is finally expelled
-    [[storage_2_state]] = leader.sql(
-        """ SELECT state FROM _pico_replicaset WHERE name = 'storage_2' """
-    )
+    [[storage_2_state]] = leader.sql(""" SELECT state FROM _pico_replicaset WHERE name = 'storage_2' """)
     assert storage_2_state == "expelled"
 
     # Now it's ok to reuse the 'r3' replicaset name, but it will be a different replicaset

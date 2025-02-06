@@ -22,9 +22,7 @@ def test_extended_query(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
 
     ps = conn.prepare(
         """
@@ -103,9 +101,7 @@ def test_parameterized_queries(postgres: Postgres):
 
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     conn.execute(
@@ -176,9 +172,7 @@ def test_params_specified_via_cast(postgres: Postgres):
     postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
 
     conn.run(
         """
@@ -196,9 +190,7 @@ def test_params_specified_via_cast(postgres: Postgres):
 
     # Types were not specified, so the default type text is used,
     # but parameters binding failed because the right type was integer.
-    with pytest.raises(
-        DatabaseError, match="could not determine data type of parameter"
-    ):
+    with pytest.raises(DatabaseError, match="could not determine data type of parameter"):
         conn.run(
             """
             INSERT INTO "tall" VALUES (:p1, :p2, :p3, :p4);
@@ -242,9 +234,7 @@ def test_params_specified_via_cast(postgres: Postgres):
     assert rows == [[-2, "string", True, 3.141592]]
 
     # Parameter can be cast to the same type in several places.
-    rows = conn.run(
-        """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::integer; """, p1=-1
-    )
+    rows = conn.run(""" SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::integer; """, p1=-1)
     assert rows == [[-2]]
 
     # It's OK to cast parameter only once and then use it without any cast.
@@ -270,9 +260,7 @@ def test_empty_queries(postgres: Postgres):
 
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("  ", prepare=True)
@@ -290,17 +278,13 @@ def test_deallocate(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
 
     # Remove unprepared statement
     statement_name = "not_existing_name"
     ps = conn.prepare(f"DEALLOCATE {statement_name}")
-    with pytest.raises(
-        DatabaseError, match=f"prepared statement {statement_name} does not exist."
-    ):
+    with pytest.raises(DatabaseError, match=f"prepared statement {statement_name} does not exist."):
         ps.run()
 
     # Remove statement with .close()
@@ -363,17 +347,13 @@ def test_tcl(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     # With autocommit
     conn.autocommit = True
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
@@ -390,9 +370,7 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
@@ -414,9 +392,7 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
 
-    cur = conn.execute(
-        "INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');"
-    )
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
 
     cur = conn.execute("COMMIT;", prepare=True)
     assert cur.pgresult is not None
@@ -436,9 +412,7 @@ def test_create_schema(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("CREATE SCHEMA test_schema;", prepare=True)
@@ -454,9 +428,7 @@ def test_drop_schema(postgres: Postgres):
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
-    conn = psycopg.connect(
-        f"user={user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     cur = conn.execute("DROP SCHEMA test_schema;", prepare=True)

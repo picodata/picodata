@@ -558,9 +558,7 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
     with pytest.raises(TarantoolError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
-    entry, *_ = i1.call(
-        "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
-    )
+    entry, *_ = i1.call("box.space._raft_log:select", None, dict(iterator="lt", limit=1))
     # Has not yet been finalized
     assert entry[4][0] == "ddl_prepare"
 
@@ -885,9 +883,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
         i1.drop_table(table_name)
 
     # Has not yet been finalized
-    pending_schema_change = i1.call(
-        "box.space._pico_property:get", "pending_schema_change"
-    )
+    pending_schema_change = i1.call("box.space._pico_property:get", "pending_schema_change")
     assert pending_schema_change[1][0] == "drop_table"
     assert pending_schema_change[1][1] == table_id
 
@@ -916,9 +912,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.wait_online()
 
     def check_no_pending_schema_change(i: Instance):
-        rows = i.sql(
-            """select count(*) from "_pico_property" where "key" = 'pending_schema_change'"""
-        )
+        rows = i.sql("""select count(*) from "_pico_property" where "key" = 'pending_schema_change'""")
         assert rows == [[0]]
 
     # Wait until the schema change is finalized
@@ -1250,10 +1244,7 @@ def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
     assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1025
 
     i1.call("box.execute", 'create table "another space" ("id" unsigned primary key)')
-    assert (
-        i1.eval("return box.space._space.index.name:get(...).id", "another space")
-        == 1026
-    )
+    assert i1.eval("return box.space._space.index.name:get(...).id", "another space") == 1026
 
     cluster.create_table(
         dict(
@@ -1263,10 +1254,7 @@ def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
             distribution="global",
         )
     )
-    assert (
-        i1.eval("return box.space._space.index.name:get(...).id", "one more space")
-        == 1027
-    )
+    assert i1.eval("return box.space._space.index.name:get(...).id", "one more space") == 1027
 
 
 ################################################################################
@@ -1287,16 +1275,10 @@ def test_pico_create_table_doesnt_conflict_with_local_spaces(cluster: Cluster):
             distribution="global",
         )
     )
-    assert (
-        i1.eval("return box.space._space.index.name:get(...).id", "another space")
-        == 1026
-    )
+    assert i1.eval("return box.space._space.index.name:get(...).id", "another space") == 1026
 
     i1.call("box.execute", 'create table "one more space" ("id" unsigned primary key)')
-    assert (
-        i1.eval("return box.space._space.index.name:get(...).id", "one more space")
-        == 1027
-    )
+    assert i1.eval("return box.space._space.index.name:get(...).id", "one more space") == 1027
 
 
 ################################################################################
@@ -1482,8 +1464,7 @@ def test_wait_applied_options(cluster: Cluster):
     # option results in an error.
     with pytest.raises(
         TarantoolError,
-        match="ddl operation committed, "
-        "but failed to receive acknowledgements from all replicasets",
+        match="ddl operation committed, but failed to receive acknowledgements from all replicasets",
     ):
         i1.sql(
             """
@@ -1594,8 +1575,7 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
         )
     assert err.value.args[:2] == (
         ErrorCode.CasTableNotOperable,
-        "TableNotOperable: "
-        + f"table {table_name} cannot be modified now as DDL operation is in progress",
+        "TableNotOperable: " + f"table {table_name} cannot be modified now as DDL operation is in progress",
     )
     lc.wait_matched()
 
@@ -1622,8 +1602,7 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
         )
     assert err.value.args[:2] == (
         ErrorCode.CasTableNotOperable,
-        "TableNotOperable: "
-        + f"table {table_name} cannot be modified now as DDL operation is in progress",
+        "TableNotOperable: " + f"table {table_name} cannot be modified now as DDL operation is in progress",
     )
     lc.wait_matched()
 

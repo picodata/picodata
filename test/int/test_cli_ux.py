@@ -34,9 +34,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("Enter password for andy: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -60,9 +58,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("sql> ")
 
     # ensure that server responds on correct query
-    cli.sendline(
-        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
-    )
+    cli.sendline("CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);")
     cli.expect_exact("1")
     cli.expect_exact("sql> ")
 
@@ -364,9 +360,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('insert "assets" on conflict: fail')
     cli.expect_exact('motion [policy: segment([ref("COLUMN_1")])]')
     cli.expect_exact("values")
-    cli.expect_exact(
-        "value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))"
-    )
+    cli.expect_exact("value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))")
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("sql_motion_row_max = 5000")
@@ -377,26 +371,21 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('update "characters')
     cli.expect_exact('"year" = "col_0"')
     cli.expect_exact("motion [policy: local]")
-    cli.expect_exact(
-        'projection (2010::unsigned -> "col_0", "characters"."id"::integer -> "col_1")'
-    )
+    cli.expect_exact('projection (2010::unsigned -> "col_0", "characters"."id"::integer -> "col_1")')
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("sql_motion_row_max = 5000")
     cli.expect_exact("buckets = [1-3000]")
 
-    cli.sendline(
-        """EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;"""
-    )
+    cli.sendline("""EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;""")
 
     cli.expect_exact('update "characters"')
     cli.expect_exact('"name" = "col_0"')
     cli.expect_exact('"year" = "col_1"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        'projection (\'Etch\'::string -> "col_0", 2010::unsigned -> "col_1", '
-        '"characters"."id"::integer -> "col_2")'
+        'projection (\'Etch\'::string -> "col_0", 2010::unsigned -> "col_1", "characters"."id"::integer -> "col_2")'
     )
     cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
     cli.expect_exact('scan "characters"')
@@ -450,9 +439,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -495,9 +482,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("Enter password for andy: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -512,7 +497,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact("1")
     cli.expect_exact("1")
 
-    cli.sendline("SELECT * FROM" " ids;")
+    cli.sendline("SELECT * FROM ids;")
 
     cli.expect_exact("+----+")
     cli.expect_exact("| id |")
@@ -617,9 +602,7 @@ Bye
 
     cli.expect_exact("Enter password for alice: ")
     cli.sendline("T0psecret")
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -676,9 +659,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.service_password_file = password_file
 
-    admin_banned_lc = log_crawler(
-        i1, "Maximum number of login attempts exceeded; user blocked"
-    )
+    admin_banned_lc = log_crawler(i1, "Maximum number of login attempts exceeded; user blocked")
     i1.start()
     i1.wait_online()
 
@@ -688,9 +669,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
             i1.sql("try to auth", user="pico_service", password="wrong_password")
 
     # pico_service is not banned
-    data = i1.sql(
-        "SELECT name FROM _pico_tier ", user="pico_service", password="secret"
-    )
+    data = i1.sql("SELECT name FROM _pico_tier ", user="pico_service", password="secret")
 
     assert data[0][0] == "default"
 
@@ -760,9 +739,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
     cli.expect_exact("Enter password for andy: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
-    )
+    cli.expect_exact(f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("sql> ")
 
@@ -839,9 +816,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
 
     assert process.stderr.find("- null\n") != -1
     assert process.stderr.find('GRANT_SYNTAX_ERROR READ TABLE TO "alice"') != -1
-    assert (
-        process.returncode != 0
-    ), f"Process failed with exit code {process.returncode}\n"
+    assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
     # Test the exit code when a duplicate values error occurs
     insert_sql = f"{cluster.instance_dir}/insert.sql"
@@ -869,9 +844,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
 
     assert process.stderr.find("- null\n") != -1
     assert process.stderr.find("transaction: RolledBack") != -1
-    assert (
-        process.returncode != 0
-    ), f"Process failed with exit code {process.returncode}\n"
+    assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
     # Test the exit code when attempting to drop non-existent plugins
     plugin_sql = f"{cluster.instance_dir}/plugin.sql"
@@ -893,9 +866,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
 
     assert process.stderr.find("- null\n") != -1
     assert process.stderr.find("no such plugin") != -1
-    assert (
-        process.returncode != 0
-    ), f"Process failed with exit code {process.returncode}\n"
+    assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
 
 def test_connect_cli_exit_code(cluster: Cluster):
@@ -926,9 +897,7 @@ def test_connect_cli_exit_code(cluster: Cluster):
 
     assert process.stderr.find("rule parsing error") != -1
     assert process.stderr.find("SELECT_WITH_SYNTAX_ERROR * FROM index") != -1
-    assert (
-        process.returncode != 0
-    ), f"Process failed with exit code {process.returncode}\n"
+    assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
 
 def test_admin_cli_with_ignore_errors(cluster: Cluster):
@@ -957,9 +926,7 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
 
     assert process.stdout.find("rule parsing error") != -1
     assert process.stdout.find('GRANT_SYNTAX_ERROR READ TABLE TO "alice"') != -1
-    assert (
-        process.returncode == 0
-    ), f"Process failed with exit code {process.returncode}\n"
+    assert process.returncode == 0, f"Process failed with exit code {process.returncode}\n"
 
 
 def strip(s: str) -> str:

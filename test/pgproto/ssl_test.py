@@ -13,9 +13,7 @@ def test_ssl_refuse(postgres: Postgres):
 
     # disable: only try a non-SSL connection
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.close()
 
     # prefer: first try an SSL connection; if that fails,
@@ -23,9 +21,7 @@ def test_ssl_refuse(postgres: Postgres):
     # As ssl is not supported, server will respond to SslRequest with
     # SslRefuse and client will try a non-SSL connection.
     os.environ["PGSSLMODE"] = "prefer"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.close()
 
     # require: only try an SSL connection.
@@ -34,12 +30,8 @@ def test_ssl_refuse(postgres: Postgres):
     # Client we will see: server does not support SSL, but SSL was required,
     # but client doesn't have to inform the server.
     os.environ["PGSSLMODE"] = "require"
-    with pytest.raises(
-        pg.DatabaseError, match=f"authentication failed for user '{user}'"
-    ):
-        pg.Connection(
-            user, password="wrong password", host=postgres.host, port=postgres.port
-        )
+    with pytest.raises(pg.DatabaseError, match=f"authentication failed for user '{user}'"):
+        pg.Connection(user, password="wrong password", host=postgres.host, port=postgres.port)
 
 
 def test_ssl_accept(postgres_with_tls: Postgres):

@@ -67,14 +67,10 @@ def test_access_global_table(cluster: Cluster):
         i1.sql("""select * from "friends_of_peppa" """, **as_bob)
 
     # Alice can grant a read privilege to Bob
-    assert i1.sql(
-        """grant read on table "friends_of_peppa" to "bob";""", **as_alice
-    ) == {"row_count": 1}
+    assert i1.sql("""grant read on table "friends_of_peppa" to "bob";""", **as_alice) == {"row_count": 1}
 
     # Now bob can read it
-    assert i1.sql(
-        """select * from "friends_of_peppa" where "name" = 'Zoe';""", **as_bob
-    ) == [["Zoe", "Zebra"]]
+    assert i1.sql("""select * from "friends_of_peppa" where "name" = 'Zoe';""", **as_bob) == [["Zoe", "Zebra"]]
 
     # But Bob still can't write it
     with pytest.raises(TarantoolError) as e:
@@ -129,14 +125,10 @@ def test_access_sharded_table(cluster: Cluster):
         i1.sql("""select * from "wonderland" """, **as_bob)
 
     # Alice can grant a read privilege to Bob
-    assert i1.sql("""grant read on table "wonderland" to "bob";""", **as_alice) == {
-        "row_count": 1
-    }
+    assert i1.sql("""grant read on table "wonderland" to "bob";""", **as_alice) == {"row_count": 1}
 
     # Now bob can read it
-    assert i1.sql(
-        """select * from "wonderland" where "creature" = 'unicorn';""", **as_bob
-    ) == [["unicorn", 4]]
+    assert i1.sql("""select * from "wonderland" where "creature" = 'unicorn';""", **as_bob) == [["unicorn", 4]]
 
     # But Bob still can't write it
     with pytest.raises(

@@ -27,9 +27,7 @@ def test_failover(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.promote_or_fail()
 
-    Retriable(timeout=2, rps=10).call(
-        i2.assert_raft_status, "Follower", leader_id=i1.raft_id
-    )
+    Retriable(timeout=2, rps=10).call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
 
     def do_test():
         i2.eval("pico.raft_tick(20)")

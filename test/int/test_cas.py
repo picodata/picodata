@@ -84,7 +84,7 @@ def test_cas_errors(instance: Instance):
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args[:2] == (
         ErrorCode.RaftLogCompacted,
-        f"Compacted: raft index {index-1} is compacted at {index}",
+        f"Compacted: raft index {index - 1} is compacted at {index}",
     )
 
     # Prohibited tables for all users, even for admin
@@ -191,7 +191,7 @@ def test_cas_predicate(instance: Instance):
         instance.cas("insert", "_pico_property", ["fruit", "orange"], index=read_index)
     assert e1.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # CaS rejected via the implicit predicate, even though there's an explicit one
@@ -205,7 +205,7 @@ def test_cas_predicate(instance: Instance):
         )
     assert e2.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # CaS rejected via the implicit predicate, different kind of operation
@@ -213,7 +213,7 @@ def test_cas_predicate(instance: Instance):
         instance.cas("replace", "_pico_property", ["fruit", "orange"], index=read_index)
     assert e3.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # CaS rejected via the implicit predicate, different kind of operation
@@ -221,7 +221,7 @@ def test_cas_predicate(instance: Instance):
         instance.cas("delete", "_pico_property", key=["fruit"], index=read_index)
     assert e4.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # CaS rejected via the implicit predicate, different kind of operation
@@ -235,7 +235,7 @@ def test_cas_predicate(instance: Instance):
         )
     assert e5.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # CaS rejected via the explicit predicate, even though implicit range doesn't match
@@ -249,7 +249,7 @@ def test_cas_predicate(instance: Instance):
         )
     assert e6.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
     # Stale index, yet successful insert of another key
@@ -352,12 +352,7 @@ def test_cas_batch(cluster: Cluster):
     assert ret > read_index + 1
     cluster.raft_wait_index(ret, _3_SEC)
     assert cluster.instances[0].raft_read_index(_3_SEC) == ret
-    assert (
-        cluster.instances[0].eval(
-            'return box.execute([[select * from "some_space"]]).rows'
-        )
-        == []
-    )
+    assert cluster.instances[0].eval('return box.execute([[select * from "some_space"]]).rows') == []
     assert value("_pico_property", "raft_entry_max_size") == 150
 
     with pytest.raises(ReturnError) as err:
@@ -382,9 +377,7 @@ def test_cas_batch(cluster: Cluster):
             index=ret1,
             ranges=[CasRange(table="some_space", eq="car")],
         )
-    assert err.value.args[:2] == (
-        f"ConflictFound: found a conflicting entry at index {ret1+1}",
-    )
+    assert err.value.args[:2] == (f"ConflictFound: found a conflicting entry at index {ret1 + 1}",)
 
 
 # Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead
@@ -435,7 +428,7 @@ def test_cas_lua_api(cluster: Cluster):
         )
     assert e.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index + 1}",
     )
 
 
@@ -462,6 +455,5 @@ def test_cas_operable_table(cluster: Cluster):
         )
     assert e1.value.args[:2] == (
         ErrorCode.CasTableNotOperable,
-        "TableNotOperable: "
-        + "table warehouse cannot be modified now as DDL operation is in progress",
+        "TableNotOperable: " + "table warehouse cannot be modified now as DDL operation is in progress",
     )

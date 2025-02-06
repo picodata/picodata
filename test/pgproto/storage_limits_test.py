@@ -50,9 +50,7 @@ def test_statement_storage_config_limit(postgres: Postgres):
     statements = []
     # make the storage full
     for _ in range(max_pg_statements):
-        statements.append(
-            conn.prepare(""" insert into "t" values (cast (:p as int)) """)
-        )
+        statements.append(conn.prepare(""" insert into "t" values (cast (:p as int)) """))
 
     # test that an insertion in a full storage fails
     with pytest.raises(
@@ -61,9 +59,7 @@ def test_statement_storage_config_limit(postgres: Postgres):
 Please, increase storage limit using: \
 ALTER SYSTEM SET "pg_statement_max" TO <new-limit>',
     ):
-        statements.append(
-            conn.prepare(""" insert into "t" values (cast (:p as int)) """)
-        )
+        statements.append(conn.prepare(""" insert into "t" values (cast (:p as int)) """))
 
     # increase storage capacity
     postgres.instance.sql(

@@ -135,10 +135,7 @@ def test_master_auto_switchover(cluster: Cluster):
     i5.terminate()
     # FIXME: wait until governor handles all pending events
     time.sleep(0.5)
-    assert (
-        i1.eval("return box.space._pico_replicaset:get(...).current_master_name", "r99")
-        == i5.name
-    )
+    assert i1.eval("return box.space._pico_replicaset:get(...).current_master_name", "r99") == i5.name
 
     # Wake the master back up, check it's not read only.
     i5.start()
@@ -195,9 +192,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Make sure i5 will not be able to synchronize before promoting
-    i5.call(
-        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", True
-    )
+    i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", True)
 
     # Do some storage modifications, which will need to be replicated.
     i4.eval(
@@ -236,9 +231,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.eval("return box.info.ro") is True
 
     # Uninject the error, so it's able to continue synching.
-    i5.call(
-        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False
-    )
+    i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
 
     # Wait until governor finishes with all the needed changes.
     i1.wait_governor_status("idle")
@@ -259,14 +252,10 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Make sure i5 will not be able to synchronize before promoting
-    i5.call(
-        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", True
-    )
+    i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", True)
 
     # Do some storage modifications, which will need to be replicated.
-    i4.sql(
-        """ CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
-    )
+    i4.sql(""" CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """)
     i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
 
     # Make sure i1 is leader.
@@ -290,9 +279,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     assert info["target_state"]["variant"] == "Expelled"
 
     # Uninject the error, so it's able to continue synching.
-    i5.call(
-        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False
-    )
+    i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
 
     # Wait until governor finishes with all the needed changes.
     i1.wait_governor_status("idle")
@@ -329,9 +316,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i5.terminate()
 
     # Do some storage modifications, which will need to be replicated.
-    i4.sql(
-        """ CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
-    )
+    i4.sql(""" CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """)
     i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
 
     # Make sure i1 is leader.

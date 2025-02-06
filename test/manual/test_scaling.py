@@ -25,7 +25,7 @@ def test_instant(cluster: Cluster):
     wait_longer(cluster)
     t2 = time.time()
 
-    eprint(f"It took {t2-t1} seconds")
+    eprint(f"It took {t2 - t1} seconds")
     eprint("=" * 80)
 
     while True:
@@ -53,7 +53,7 @@ def test_chunked(cluster: Cluster):
         t2 = time.time()
         eprint("=" * 80)
         eprint(f"Deployed {len(cluster.instances)} instances so far")
-        eprint(f"It took {t2-t1} seconds")
+        eprint(f"It took {t2 - t1} seconds")
         eprint("=" * 80)
         time.sleep(1)
 

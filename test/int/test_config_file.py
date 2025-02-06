@@ -92,12 +92,8 @@ instance:
             replicaset_name=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
             share_dir=dict(value="/usr/share/picodata/", source="default"),
-            audit=dict(
-                value=f"{instance_dir}/audit.log", source="commandline_or_environment"
-            ),
-            config_file=dict(
-                value=f"{instance.config_path}", source="commandline_or_environment"
-            ),
+            audit=dict(value=f"{instance_dir}/audit.log", source="commandline_or_environment"),
+            config_file=dict(value=f"{instance.config_path}", source="commandline_or_environment"),
             instance_dir=dict(value=instance_dir, source="config_file"),
             iproto_listen=dict(value=f"{host}:{port}", source="config_file"),
             log=dict(

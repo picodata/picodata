@@ -51,18 +51,14 @@ def raft_join(
 
 
 def replicaset_name(instance: Instance):
-    return instance.eval(
-        "return box.space._pico_instance:get(...).replicaset_name", instance.name
-    )
+    return instance.eval("return box.space._pico_instance:get(...).replicaset_name", instance.name)
 
 
 def test_request_follower(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i2.assert_raft_status("Follower")
 
-    actual = raft_join(
-        instance=i2, cluster_name=cluster2.id, instance_name="fake-0", timeout_seconds=1
-    )
+    actual = raft_join(instance=i2, cluster_name=cluster2.id, instance_name="fake-0", timeout_seconds=1)
     # Even though a follower is called new instance is joined successfully
     assert actual["instance"]["raft_id"] == 3
 
@@ -119,16 +115,12 @@ def test_parallel(cluster3: Cluster):
     i3.assert_raft_status("Follower", leader_id=i2.raft_id)
 
     # Add instance with the first instance being i1
-    i4 = cluster3.add_instance(
-        peers=[i1.iproto_listen, i2.iproto_listen, i3.iproto_listen]
-    )
+    i4 = cluster3.add_instance(peers=[i1.iproto_listen, i2.iproto_listen, i3.iproto_listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
 def test_replication(cluster: Cluster):
-    cluster.deploy(
-        instance_count=2, init_replication_factor=2, service_password="secret"
-    )
+    cluster.deploy(instance_count=2, init_replication_factor=2, service_password="secret")
     i1, i2 = cluster.instances
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
@@ -136,16 +128,11 @@ def test_replication(cluster: Cluster):
     def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(
-            (
-                f"pico_service:secret@{addr}"
-                for addr in [i1.iproto_listen, i2.iproto_listen]
-            )
+            (f"pico_service:secret@{addr}" for addr in [i1.iproto_listen, i2.iproto_listen])
         ), instance
 
     for instance in cluster.instances:
-        raft_instance = instance.eval(
-            "return box.space._pico_instance:get(...):tomap()", instance.name
-        )
+        raft_instance = instance.eval("return box.space._pico_instance:get(...):tomap()", instance.name)
         space_cluster = instance.call("box.space._cluster:select")
 
         expected = {
@@ -303,9 +290,7 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
 
 
 def test_failure_domains(cluster: Cluster):
-    i1 = cluster.add_instance(
-        failure_domain=dict(planet="Earth"), init_replication_factor=2
-    )
+    i1 = cluster.add_instance(failure_domain=dict(planet="Earth"), init_replication_factor=2)
     i1.assert_raft_status("Leader")
     assert replicaset_name(i1) == "default_1"
 
@@ -338,9 +323,7 @@ def test_failure_domains(cluster: Cluster):
 
 
 def test_reconfigure_failure_domains(cluster: Cluster):
-    i1 = cluster.add_instance(
-        failure_domain=dict(planet="Earth"), init_replication_factor=2
-    )
+    i1 = cluster.add_instance(failure_domain=dict(planet="Earth"), init_replication_factor=2)
     i1.assert_raft_status("Leader")
     assert replicaset_name(i1) == "default_1"
 
@@ -454,36 +437,28 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
     with open(password_file, "w") as f:
         print("\n", file=f)
     i1.service_password_file = password_file
-    lc = log_crawler(
-        i1, "CRITICAL: service password cannot start with a newline character"
-    )
+    lc = log_crawler(i1, "CRITICAL: service password cannot start with a newline character")
     i1.fail_to_start()
     lc.wait_matched()
 
     with open(password_file, "w") as f:
         print("\nnothing", file=f)
     i1.service_password_file = password_file
-    lc = log_crawler(
-        i1, "CRITICAL: service password cannot start with a newline character"
-    )
+    lc = log_crawler(i1, "CRITICAL: service password cannot start with a newline character")
     i1.fail_to_start()
     lc.wait_matched()
 
     with open(password_file, "w") as f:
         print("hello\nworld", file=f)
     i1.service_password_file = password_file
-    lc = log_crawler(
-        i1, "CRITICAL: service password cannot be split into multiple lines"
-    )
+    lc = log_crawler(i1, "CRITICAL: service password cannot be split into multiple lines")
     i1.fail_to_start()
     lc.wait_matched()
 
     with open(password_file, "w") as f:
         print("€", file=f)
     i1.service_password_file = password_file
-    lc = log_crawler(
-        i1, "CRITICAL: service password characters must be within ascii range"
-    )
+    lc = log_crawler(i1, "CRITICAL: service password characters must be within ascii range")
     i1.fail_to_start()
     lc.wait_matched()
 
@@ -576,9 +551,7 @@ cluster:
     _ = cluster.add_instance(replicaset_name="r1")
     _ = cluster.add_instance(replicaset_name="r2")
 
-    instance = cluster.add_instance(
-        replicaset_name="r2", tier="router", wait_online=False
-    )
+    instance = cluster.add_instance(replicaset_name="r2", tier="router", wait_online=False)
 
     msg = "tier mismatch: requested replicaset 'r2' is from tier 'default', but specified tier is 'router'"  # noqa E501
 

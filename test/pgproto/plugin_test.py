@@ -17,9 +17,7 @@ SERVICE_2 = "testservice_2"
 
 def cursor(postgres: Postgres, user: str, password: str):
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(
-        user, password=password, host=postgres.host, port=postgres.port
-    )
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
     return conn.cursor()
 

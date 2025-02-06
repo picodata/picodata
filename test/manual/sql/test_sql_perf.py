@@ -75,7 +75,5 @@ def test_projection(cluster: Cluster):
         i2_host=i2.host,
         i2_port=i2.port,
     )
-    k6 = K6(
-        concurrency=10, duration="10s", name="projection", path=path, program=k6_script
-    )
+    k6 = K6(concurrency=10, duration="10s", name="projection", path=path, program=k6_script)
     k6.run()

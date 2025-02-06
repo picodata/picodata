@@ -15,9 +15,7 @@ def check_start_dir():
 
     if not_in_test_directory:
         hint_path = os.path.relpath(script_dir, current_dir)
-        print(
-            f"Run this script from a directory where it is located.\nHint: `cd {hint_path}/`"
-        )
+        print(f"Run this script from a directory where it is located.\nHint: `cd {hint_path}/`")
         sys.exit(-1)
 
 
@@ -45,9 +43,9 @@ if __name__ == "__main__":
         version, path = compat.current_tag()
 
         snapshot = inst.latest_snapshot(path)
-        assert (
-            snapshot
-        ), f'Should\'ve found the snapshot at "{path}". Current version is {version}. Something unexpected happened!'  # noqa: E501
+        assert snapshot, (
+            f'Should\'ve found the snapshot at "{path}". Current version is {version}. Something unexpected happened!'
+        )
 
         cluster.terminate()
         print("A short wait to ensure the instance has completed successfully...")
@@ -55,8 +53,6 @@ if __name__ == "__main__":
 
         copy_path = f"{os.getcwd()}/compat/{str(version)}"
         shutil.copy2(snapshot, copy_path)
-        print(
-            f'Successfully generated snapshot of version {version}, copied into "{copy_path}".'
-        )
+        print(f'Successfully generated snapshot of version {version}, copied into "{copy_path}".')
     finally:
         shutil.rmtree(tmpdir)

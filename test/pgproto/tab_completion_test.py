@@ -91,9 +91,7 @@ def test_completion_query_15_plus(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = psycopg.connect(
-        f"user={user} password={password} host={postgres.host} port={postgres.port}"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={postgres.host} port={postgres.port}")
     conn.autocommit = True
 
     conn.execute("create table kek(id int primary key)")
@@ -125,9 +123,7 @@ def test_completion_query_picodata(postgres: Postgres):
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = psycopg.connect(
-        f"user={user} password={password} host={postgres.host} port={postgres.port}"
-    )
+    conn = psycopg.connect(f"user={user} password={password} host={postgres.host} port={postgres.port}")
     conn.autocommit = True
 
     conn.execute("create table kek(id int primary key)")

@@ -20,9 +20,7 @@ def vshard_router_info(instance: Instance):
 
 
 def vshard_bootstrapped(instance: Instance):
-    result = instance.sql(
-        """SELECT "vshard_bootstrapped" FROM "_pico_tier" where "name" = 'default' """
-    )
+    result = instance.sql("""SELECT "vshard_bootstrapped" FROM "_pico_tier" where "name" = 'default' """)
     return result[0][0]
 
 
@@ -191,9 +189,7 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
 
 def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
     def impl():
-        rows = peer.sql(
-            """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
-        )
+        rows = peer.sql(""" SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """)
         new_version = rows[0][0]
         assert new_version != old_version
 
@@ -217,9 +213,7 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
 
     old_step_counter = i1.governor_step_counter()
 
-    rows = i1.sql(
-        """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
-    )
+    rows = i1.sql(""" SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """)
     old_vshard_config_version = rows[0][0]
 
     update_target_master = """
@@ -332,8 +326,7 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
     batch_size = 1000
     for start in range(1, table_size, batch_size):
         response = i1.sql(
-            "INSERT INTO sharded_table VALUES "
-            + (", ".join([f"({i})" for i in range(start, start + batch_size)]))
+            "INSERT INTO sharded_table VALUES " + (", ".join([f"({i})" for i in range(start, start + batch_size)]))
         )
         assert response["row_count"] == batch_size
 
@@ -357,9 +350,7 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
 
     # wait until vshard rebalancing done
     for instance in others:
-        cluster.wait_until_instance_has_this_many_active_buckets(
-            instance, 300, max_retries=100
-        )
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 300, max_retries=100)
 
     for instance in others:
         assert get_table_size(instance, "sharded_table") > 0

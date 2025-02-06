@@ -67,9 +67,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
     def get_raft_log_count_and_size(instance: Instance) -> tuple[int, int]:
-        [count, size] = instance.eval(
-            "return { box.space._raft_log:len(), box.space._raft_log:bsize() }"
-        )
+        [count, size] = instance.eval("return { box.space._raft_log:len(), box.space._raft_log:bsize() }")
         return count, size
 
     count, size = get_raft_log_count_and_size(i1)

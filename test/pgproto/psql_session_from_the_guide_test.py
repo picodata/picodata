@@ -15,9 +15,7 @@ def test_psql_session_from_the_guide(postgres: Postgres):
 
     # connect to the server and enable autocommit as we
     # don't support interactive transactions
-    conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=disable"
-    )
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
     conn.autocommit = True
 
     conn.execute(

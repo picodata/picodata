@@ -116,9 +116,7 @@ def test_process_management(instance: Instance):
 
 def test_graceful_stop(instance: Instance):
     instance.terminate()
-    *_, last_xlog = sorted(
-        [f for f in os.listdir(instance.instance_dir) if f.endswith(".xlog")]
-    )
+    *_, last_xlog = sorted([f for f in os.listdir(instance.instance_dir) if f.endswith(".xlog")])
     with open(os.path.join(instance.instance_dir, last_xlog), "rb") as f:
         assert f.read()[-4:] == b"\xd5\x10\xad\xed"
 
@@ -643,9 +641,7 @@ cluster:
     space_bucket_id = storage_instance.eval("return box.space._bucket.id")
     total_bucket_count = 3000
 
-    storage_vshard_config_explicit = storage_instance.call(
-        ".proc_get_vshard_config", "storage"
-    )
+    storage_vshard_config_explicit = storage_instance.call(".proc_get_vshard_config", "storage")
     assert storage_vshard_config_explicit == dict(
         discovery_mode="on",
         sharding=storage_sharding,
@@ -653,14 +649,10 @@ cluster:
         bucket_count=total_bucket_count,
     )
 
-    storage_vshard_config_implicit = storage_instance.call(
-        ".proc_get_vshard_config", None
-    )
+    storage_vshard_config_implicit = storage_instance.call(".proc_get_vshard_config", None)
     assert storage_vshard_config_explicit == storage_vshard_config_implicit
 
-    router_vshard_config_explicit = router_instance_1.call(
-        ".proc_get_vshard_config", "router"
-    )
+    router_vshard_config_explicit = router_instance_1.call(".proc_get_vshard_config", "router")
     assert router_vshard_config_explicit == dict(
         discovery_mode="on",
         sharding=router_sharding,
@@ -668,18 +660,16 @@ cluster:
         bucket_count=total_bucket_count,
     )
 
-    router_vshard_config_implicit = router_instance_1.call(
-        ".proc_get_vshard_config", None
-    )
+    router_vshard_config_implicit = router_instance_1.call(".proc_get_vshard_config", None)
     assert router_vshard_config_explicit == router_vshard_config_implicit
 
-    assert router_instance_1.call(
+    assert router_instance_1.call(".proc_get_vshard_config", "router") == storage_instance.call(
         ".proc_get_vshard_config", "router"
-    ) == storage_instance.call(".proc_get_vshard_config", "router")
+    )
 
-    assert router_instance_1.call(
+    assert router_instance_1.call(".proc_get_vshard_config", "storage") == storage_instance.call(
         ".proc_get_vshard_config", "storage"
-    ) == storage_instance.call(".proc_get_vshard_config", "storage")
+    )
 
     with pytest.raises(TarantoolError, match='tier with name "default" not found'):
         router_instance_1.call(".proc_get_vshard_config", "default")
@@ -808,17 +798,13 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True)
     i2 = cluster.add_instance(wait_online=True)
 
-    injection_hit = log_crawler(
-        i1, "ERROR INJECTION 'BLOCK_REPLICATION_RPC_ON_CLIENT': BLOCKING"
-    )
+    injection_hit = log_crawler(i1, "ERROR INJECTION 'BLOCK_REPLICATION_RPC_ON_CLIENT': BLOCKING")
     different_term_error = log_crawler(
         i1,
         "failed calling rpc::replication: server responded with error: "
         "box error #10003: operation request from different term",
     )
-    i3_replication_configured = log_crawler(
-        i2, "configured replication with instance, instance_name: default_3_1"
-    )
+    i3_replication_configured = log_crawler(i2, "configured replication with instance, instance_name: default_3_1")
 
     i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", True)
 
@@ -851,9 +837,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     # enable an error to block the demotion of the master instance
     i1.call("pico._inject_error", "BLOCK_REPLICATION_DEMOTE", True)
 
-    injection_hit = log_crawler(
-        i1, "ERROR INJECTION 'BLOCK_REPLICATION_DEMOTE': BLOCKING"
-    )
+    injection_hit = log_crawler(i1, "ERROR INJECTION 'BLOCK_REPLICATION_DEMOTE': BLOCKING")
 
     term_error = log_crawler(
         i1,
@@ -864,9 +848,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     old_step_counter = i1.governor_step_counter()
 
     # update the replicaset configuration to set i2 as the new target master
-    i1.sql(
-        "UPDATE _pico_replicaset SET target_master_name = ? WHERE name = 'r1'", i2.name
-    )
+    i1.sql("UPDATE _pico_replicaset SET target_master_name = ? WHERE name = 'r1'", i2.name)
 
     # wait for the error injection to block the demotion process
     injection_hit.wait_matched()

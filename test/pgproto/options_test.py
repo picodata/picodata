@@ -31,9 +31,7 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
         psycopg.InternalError,
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
-        conn.execute(
-            "SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)"
-        )
+        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
 
     # Specify "sql_motion_row_max" in a query so the default is not used.
     conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 2)")
@@ -54,17 +52,14 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
         psycopg.InternalError,
         match="Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
-        conn.execute(
-            "SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 1000)"
-        )
+        conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_motion_row_max = 1000)")
 
     # Specify "sql_vdbe_opcode_max" in a query so the default is not used.
     conn.execute("SELECT * FROM (VALUES (1), (2)) OPTION (sql_vdbe_opcode_max = 1000)")
 
     # Set both options and reach "sql_vdbe_opcode_max" limit.
     conn = psycopg.connect(
-        f"postgres://{user}:{password}@{host}:{port}?"
-        "options=sql_motion_row_max%3D1,sql_vdbe_opcode_max%3D1",
+        f"postgres://{user}:{password}@{host}:{port}?options=sql_motion_row_max%3D1,sql_vdbe_opcode_max%3D1",
         autocommit=True,
     )
     with pytest.raises(
@@ -75,8 +70,7 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
 
     # Set both options and reach "sql_motion_row_max" limit.
     conn = psycopg.connect(
-        f"postgres://{user}:{password}@{host}:{port}?"
-        "options=sql_motion_row_max%3D1,sql_vdbe_opcode_max%3D1000",
+        f"postgres://{user}:{password}@{host}:{port}?options=sql_motion_row_max%3D1,sql_vdbe_opcode_max%3D1000",
         autocommit=True,
     )
     with pytest.raises(
@@ -87,8 +81,7 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
 
     # Session values has higher priority than `ALTER SYSTEM`
     conn = psycopg.connect(
-        f"postgres://admin:{admin_password}@{host}:{port}?"
-        "options=sql_motion_row_max%3D1",
+        f"postgres://admin:{admin_password}@{host}:{port}?options=sql_motion_row_max%3D1",
         autocommit=True,
     )
 

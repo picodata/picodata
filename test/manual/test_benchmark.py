@@ -143,9 +143,7 @@ def test_benchmark_iproto_execute(instance: Instance, tmpdir, capsys, with_flame
         execute_select_time = bench(execute_select, select_duration, instance, capsys)()
 
         diff_select_time = execute_select_time - sql_select_time
-        table.add_row(
-            ["select", sql_select_time, execute_select_time, diff_select_time]
-        )
+        table.add_row(["select", sql_select_time, execute_select_time, diff_select_time])
 
     update_amount = 500  # we have got a lot of rows already
     update_query = """
@@ -172,9 +170,7 @@ def test_benchmark_iproto_execute(instance: Instance, tmpdir, capsys, with_flame
         execute_update_time = bench(execute_update, update_duration, instance, capsys)()
 
         diff_update_time = execute_update_time - sql_update_time
-        table.add_row(
-            ["update", sql_update_time, execute_update_time, diff_update_time]
-        )
+        table.add_row(["update", sql_update_time, execute_update_time, diff_update_time])
 
     if not with_flamegraph:
         with capsys.disabled():
@@ -254,16 +250,12 @@ class Flamegraph:
         self.process.wait()
 
     def gather(self):
-        subprocess.run(
-            ["perf", "script", "-i", self.perf_data], stdout=open(self.perf_out, "wb")
-        )
+        subprocess.run(["perf", "script", "-i", self.perf_data], stdout=open(self.perf_out, "wb"))
         subprocess.run(
             [self.stackcollapse_perf_pl, self.perf_out],
             stdout=open(self.perf_folded, "wb"),
         )
-        subprocess.run(
-            [self.flamegraph_pl, self.perf_folded], stdout=open(self.perf_svg, "wb")
-        )
+        subprocess.run([self.flamegraph_pl, self.perf_folded], stdout=open(self.perf_svg, "wb"))
 
     def gather_multiple(flamegraphs):
         with ThreadPool() as pool:

@@ -219,9 +219,7 @@ def test_updates_with_named(pg_client: PgClient):
         pg_client.parse(name, sql)
 
     pg_client.bind(name, name, [], [])
-    with pytest.raises(
-        ReturnError, match=f"Portal '{name}' for client {pg_client.id} already exists"
-    ):
+    with pytest.raises(ReturnError, match=f"Portal '{name}' for client {pg_client.id} already exists"):
         pg_client.bind(name, name, [], [])
 
 
@@ -421,9 +419,7 @@ def test_interactive_portals(pg_client: PgClient):
     pg_client.bind("", "", [], [])
     data = pg_client.execute("", 1)
     assert len(data["rows"]) == 1
-    assert [
-        """projection ("t"."key"::integer -> "key", "t"."value"::string -> "value")"""
-    ] == data["rows"][0]
+    assert ["""projection ("t"."key"::integer -> "key", "t"."value"::string -> "value")"""] == data["rows"][0]
     assert data["is_finished"] is False
     data = pg_client.execute("", -1)
     assert len(data["rows"]) == 5

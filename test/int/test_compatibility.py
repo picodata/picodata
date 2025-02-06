@@ -19,9 +19,9 @@ def test_upgrade_major(cluster: Cluster):
 
     version, path = Compatibility().previous_tag()
     snapshot = get_tt_snapshot_by_path(path)
-    assert (
-        snapshot
-    ), f"Snapshot of the previous MAJOR version was not found. Generate one using `make generate` on a previous MAJOR version. {version} is current version."  # noqa: E501
+    assert snapshot, (
+        f"Snapshot of the previous MAJOR version was not found. Generate one using `make generate` on a previous MAJOR version. {version} is current version."
+    )  # noqa: E501
 
     shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()
@@ -34,15 +34,13 @@ def test_upgrade_minor(cluster: Cluster):
     os.makedirs(inst.instance_dir, exist_ok=True)
 
     tag = Compatibility().previous_minor_tag()
-    assert (
-        tag
-    ), "Current MINOR version is after MAJOR bump, so snapshot check with previous MINOR is not possible."  # noqa: E501
+    assert tag, "Current MINOR version is after MAJOR bump, so snapshot check with previous MINOR is not possible."  # noqa: E501
     version, path = tag
 
     snapshot = get_tt_snapshot_by_path(path)
-    assert (
-        snapshot
-    ), f"Snapshot of the previous MINOR version was not found. Generate one using `make generate` on a previous MINOR version. {version} is current version."  # noqa: E501
+    assert snapshot, (
+        f"Snapshot of the previous MINOR version was not found. Generate one using `make generate` on a previous MINOR version. {version} is current version."
+    )  # noqa: E501
 
     shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()

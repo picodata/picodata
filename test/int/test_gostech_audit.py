@@ -31,7 +31,7 @@ def instance_with_gostech_audit(
 
 
 def test_gostech_startup(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     _, audit = instance_with_gostech_audit
 
@@ -73,7 +73,7 @@ def test_gostech_startup(
 
 
 def test_gostech_recover_database(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
@@ -103,7 +103,7 @@ def test_gostech_recover_database(
 
 
 def test_gostech_create_drop_table(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     instance, audit = instance_with_gostech_audit
     instance.sql(
@@ -134,7 +134,7 @@ def test_gostech_create_drop_table(
 
 
 def test_gostech_user(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
@@ -178,7 +178,7 @@ def test_gostech_user(
 
 
 def test_gostech_role(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
@@ -249,9 +249,7 @@ def test_gostech_role(
     assert event["userLogin"] == "bubba"
 
 
-def test_gostech_join_expel_instance(
-    cluster: Cluster, port_distributor: PortDistributor
-) -> None:
+def test_gostech_join_expel_instance(cluster: Cluster, port_distributor: PortDistributor) -> None:
     audit_server = AuditServer(port_distributor.get())
     audit_server.start()
 
@@ -295,9 +293,7 @@ def test_gostech_auth(
         pass
 
     for _ in range(MAX_LOGIN_ATTEMPTS):
-        with pytest.raises(
-            NetworkError, match="User not found or supplied credentials are invalid"
-        ):
+        with pytest.raises(NetworkError, match="User not found or supplied credentials are invalid"):
             with instance.connect(4, user="ymir", password="wrong_pwd"):
                 pass
 
@@ -323,9 +319,7 @@ def test_gostech_access_denied(
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
-    instance.create_user(
-        with_name="ymir", with_password="T0psecret", with_auth="chap-sha1"
-    )
+    instance.create_user(with_name="ymir", with_password="T0psecret", with_auth="chap-sha1")
 
     expected_error = "Create access to role 'R' is denied for user 'ymir'"
 
@@ -399,7 +393,7 @@ def test_gostech_grant_revoke(
 
 
 def test_gostech_rename_user(
-    instance_with_gostech_audit: Tuple[Instance, AuditServer]
+    instance_with_gostech_audit: Tuple[Instance, AuditServer],
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
