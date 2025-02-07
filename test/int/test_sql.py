@@ -5940,3 +5940,21 @@ def test_forbid_order_by_with_array(cluster: Cluster):
         match=error_message,
     ):
         i1.sql("""SELECT * FROM _pico_instance ORDER BY 7""")
+
+
+def test_delete_with_filter(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table t (a int, b int, c int, d int, e int, primary key (c, e))
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("""insert into t values (1, 2, 3, 4, 5)""")
+    assert dml["row_count"] == 1
+
+    dml = i1.sql("""delete from t where true""")
+    assert dml["row_count"] == 1

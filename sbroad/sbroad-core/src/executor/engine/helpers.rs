@@ -555,8 +555,11 @@ pub fn init_delete_tuple_builder(
 ) -> Result<TupleBuilderPattern, SbroadError> {
     let table = plan.dml_node_table(delete_id)?;
     let mut commands = Vec::with_capacity(table.primary_key.positions.len());
-    for pos in &table.primary_key.positions {
-        commands.push(TupleBuilderCommand::TakePosition(*pos));
+    // For each query that contains delete we create Projection node
+    // which includes only primary keys of table. Consult
+    // `resolve_metadata` for more info.
+    for pos in 0..table.primary_key.positions.len() {
+        commands.push(TupleBuilderCommand::TakePosition(pos));
     }
     Ok(commands)
 }
