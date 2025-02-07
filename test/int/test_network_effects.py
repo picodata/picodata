@@ -74,7 +74,7 @@ def test_log_rollback(cluster3: Cluster):
                     "insert",
                     "_pico_property",
                     (f"check{key}", value),
-                    instance=srv,
+                    peer=srv,
                 )
                 srv.raft_wait_index(index)
                 break

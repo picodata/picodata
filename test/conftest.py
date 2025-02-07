@@ -586,7 +586,6 @@ class Instance:
     service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
-    expelled: bool = False
     raft_id: int = INVALID_RAFT_ID
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
@@ -607,10 +606,13 @@ class Instance:
             return None
         return f"{self.pg_host}:{self.pg_port}"
 
-    def current_state(self, instance_name=None):
-        if instance_name is None:
-            instance_name = self.name
-        return self.call(".proc_instance_info", instance_name)["current_state"]
+    def current_state(self, target: "Instance | None" = None) -> dict[str, str | int]:
+        return self.instance_info(target)["current_state"]
+
+    def states(self, target: "Instance | None" = None) -> tuple[str, str]:
+        """Returns a pairs (current_state, target_state) but without the incarnation parts."""
+        info = self.instance_info(target)
+        return info["current_state"]["variant"], info["target_state"]["variant"]
 
     def get_tier(self):
         return "default" if self.tier is None else self.tier
@@ -665,9 +667,9 @@ class Instance:
 
     def __repr__(self):
         if self.process:
-            return f"Instance({self.name}, iproto_listen={self.iproto_listen} cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
+            return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
         else:
-            return f"Instance({self.name}, iproto_listen={self.iproto_listen} cluster={self.cluster_name})"  # noqa: E501
+            return f"Instance({self.name}, iproto_listen={self.iproto_listen}, cluster={self.cluster_name})"  # noqa: E501
 
     def __hash__(self):
         return hash((self.cluster_name, self.name))
@@ -889,7 +891,7 @@ class Instance:
 
         def make_prefix():
             id = self.name or f":{self.port}"
-            prefix = f"{id:<3} | "
+            prefix = f"{id:<11} | "
 
             if is_a_tty:
                 prefix = self.color_code + prefix + ColorCode.Reset
@@ -1308,26 +1310,34 @@ class Instance:
             # Make it so we can call Instance.start later
             self.process = None
 
-    def instance_info(self, timeout: int | float = 10) -> dict[str, Any]:
+    def instance_info(self, target: "Instance | None" = None, timeout: int | float = 10) -> dict[str, Any]:
         """Call .proc_instance_info on the instance
-        and update the related properties on this object.
+        and update the related properties on the object.
         """
+        if not target:
+            # Normalize the arguments
+            target = self
 
-        info = self.call(".proc_instance_info", timeout=timeout)
+        info = self.call(".proc_instance_info", target.name, timeout=timeout)
         assert isinstance(info, dict)
 
         assert isinstance(info["raft_id"], int)
-        self.raft_id = info["raft_id"]
+        target.raft_id = info["raft_id"]
 
         assert isinstance(info["name"], str)
-        self.name = info["name"]
+        target.name = info["name"]
 
         assert isinstance(info["replicaset_name"], str)
-        self.replicaset_name = info["replicaset_name"]
+        target.replicaset_name = info["replicaset_name"]
 
         return info
 
-    def wait_online(self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None):
+    def wait_online(
+        self,
+        timeout: int | float = 30,
+        rps: int | float = 5,
+        expected_incarnation: int | None = None,
+    ):
         """Wait until instance attains Online grade.
 
         This function will periodically check the current instance's grade and
@@ -1344,15 +1354,6 @@ class Instance:
         if self.process is None:
             raise ProcessDead("process was not started")
 
-        def fetch_current_state() -> Tuple[str, int]:
-            myself = self.instance_info()
-
-            assert isinstance(myself["current_state"], dict)
-            return (
-                myself["current_state"]["variant"],
-                myself["current_state"]["incarnation"],
-            )
-
         start = time.monotonic()
         deadline = start + timeout
         next_retry = start
@@ -1368,16 +1369,15 @@ class Instance:
 
             try:
                 # Fetch state
-                state = fetch_current_state()
+                state = self.current_state()
                 if state != last_state:
                     last_state = state
                     deadline = time.monotonic() + timeout
 
                 # Check state
-                variant, incarnation = state
-                assert variant == "Online"
+                assert state["variant"] == "Online"
                 if expected_incarnation is not None:
-                    assert incarnation == expected_incarnation
+                    assert state["incarnation"] == expected_incarnation
 
                 # Success!
                 break
@@ -1688,6 +1688,11 @@ class Cluster:
     service_password_file: str | None = None
     share_dir: str | None = None
 
+    # Instance which can be used for interaction with the cluster. It is cached
+    # so that we don't have to do expensive RPC to figure out an instance to
+    # connect to
+    peer: Instance | None = None
+
     def __repr__(self):
         return f'Cluster("{self.base_host}", n={len(self.instances)})'
 
@@ -1884,9 +1889,9 @@ class Cluster:
         force: bool = False,
         timeout: int = 30,
     ):
-        peer = peer if peer else target
+        peer = self.leader(peer)
         assert self.service_password_file, "cannot expel without pico_service password"
-        target_info = peer.call(".proc_instance_info", target.name)
+        target_info = peer.instance_info(target)
         target_uuid = target_info["uuid"]
 
         # fmt: off
@@ -1911,7 +1916,6 @@ class Cluster:
             )
         except subprocess.CalledProcessError as e:
             raise CommandFailed(e.stdout, e.stderr) from e
-        target.expelled = True
 
     def raft_wait_index(self, index: int, timeout: float = 10):
         """
@@ -1930,21 +1934,21 @@ class Cluster:
         """
         Creates a table. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].create_table(params, timeout)
+        index = self.leader().create_table(params, timeout)
         self.raft_wait_index(index, timeout)
 
     def drop_table(self, space: int | str, timeout: float = 3.0):
         """
         Drops the space. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].drop_table(space, timeout)
+        index = self.leader().drop_table(space, timeout)
         self.raft_wait_index(index, timeout)
 
     def abort_ddl(self, timeout: float = 3.0):
         """
         Aborts a pending ddl. Waits for all peers to be aware of it.
         """
-        index = self.instances[0].abort_ddl(timeout)
+        index = self.leader().abort_ddl(timeout)
         self.raft_wait_index(index, timeout)
 
     def batch_cas(
@@ -1957,8 +1961,7 @@ class Cluster:
         user: str | None = None,
         password: str | None = None,
     ) -> int:
-        if instance is None:
-            instance = self.online_instances()[0]
+        instance = self.leader(instance)
 
         predicate_ranges = []
         if ranges is not None:
@@ -1984,34 +1987,36 @@ class Cluster:
         leader = self.leader()
         assert leader != target
 
-        info = leader.call(".proc_instance_info", target.name)
-        states = (info["current_state"]["variant"], info["target_state"]["variant"])
-        assert states == ("Expelled", "Expelled")
+        assert leader.states(target) == ("Expelled", "Expelled")
 
-    def online_instances(self) -> List[Instance]:
-        online = []
-        for i in self.instances:
-            if i.expelled:
-                continue
-            try:
-                i.check_process_alive()
-            except ProcessDead:
-                continue
-            info = i.call(".proc_instance_info", i.name)
-            cstate = info["current_state"]["variant"]
-            tstate = info["target_state"]["variant"]
-            if (cstate, tstate) == ("Online", "Online"):
-                online.append(i)
-        return online
+    def leader(self, peer: Instance | None = None) -> Instance:
+        raft_info = None
+        if peer:
+            raft_info = peer.call(".proc_raft_info")
+            self.peer = peer
 
-    def leader(self, instance: Instance | None = None) -> Instance:
-        if instance is None:
-            instance = self.online_instances()[0]
-        assert instance
-        raft_info = instance.call(".proc_raft_info")
+        if not raft_info and self.peer:
+            raft_info = self.peer.call(".proc_raft_info")
+
+        if not raft_info:
+            for instance in self.instances:
+                try:
+                    raft_info = instance.call(".proc_raft_info")
+                    self.peer = instance
+                    break
+                except ProcessDead:
+                    pass
+
+        assert raft_info, "no instances alive, are you sure the cluster is deployed?"
+
+        assert self.peer
+        if raft_info["state"] == "Leader":
+            return self.peer
+
         leader_id = raft_info["leader_id"]
-        [[leader_address]] = instance.sql(""" SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id)
-        return self.get_instance_by_address(leader_address)
+        [[leader_address]] = self.peer.sql("SELECT address FROM _pico_peer_address WHERE raft_id = ?", leader_id)
+        self.peer = self.get_instance_by_address(leader_address)
+        return self.peer
 
     def cas(
         self,
@@ -2025,7 +2030,7 @@ class Cluster:
         term: int | None = None,
         ranges: List[CasRange] | None = None,
         # If specified find leader via this instance
-        instance: Instance | None = None,
+        peer: Instance | None = None,
         user: str | None = None,
     ) -> int:
         """
@@ -2037,15 +2042,15 @@ class Cluster:
         Calling this operation will route CaS request to a leader.
         """
 
-        if instance is None:
-            instance = self.online_instances()[0]
+        leader = self.leader(peer)
+
         # ADMIN by default
         user_id = 1
         if user:
-            [[user_id]] = instance.sql(""" SELECT id FROM _pico_user WHERE name = ? """, user)
+            [[user_id]] = leader.sql("SELECT id FROM _pico_user WHERE name = ?", user)
             user_id = int(user_id)
 
-        return self.leader(instance).cas(
+        return leader.cas(
             op_kind,
             table,
             tuple,

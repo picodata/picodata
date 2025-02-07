@@ -156,8 +156,8 @@ pub fn proc_instance_info(request: InstanceInfoRequest) -> Result<InstanceInfo, 
     let node = node::global()?;
 
     let instance_name = match &request {
-        InstanceInfoRequest::CurrentInstance(_) => None,
-        InstanceInfoRequest::ByInstanceName([instance_name]) => Some(instance_name),
+        InstanceInfoRequest::OneArgument([Some(instance_name)]) => Some(instance_name),
+        _ => None,
     };
     InstanceInfo::try_get(node, instance_name)
 }
@@ -168,8 +168,27 @@ enum InstanceInfoRequest {
     // FIXME: this is the simplest way I found to support a single optional
     // parameter to the stored procedure. We should probably do something about
     // it in our custom `Encode`/`Decode` traits.
-    CurrentInstance([(); 0]),
-    ByInstanceName([InstanceName; 1]),
+    /// For example in lua:
+    /// ```lua
+    /// net_box:call('.proc_instance_info') -- current instance
+    /// ```
+    /// or in python:
+    /// ```python
+    /// instance.call('.proc_instance_info') # current instance
+    /// ```
+    NoArguments([(); 0]),
+
+    /// For example in lua:
+    /// ```lua
+    /// net_box:call('.proc_instance_info', {instance_name}) -- given instance
+    /// net_box:call('.proc_instance_info', {box.NULL})      -- current instance
+    /// ```
+    /// or in python:
+    /// ```python
+    /// instance.call('.proc_instance_info', instance_name) # given instance
+    /// instance.call('.proc_instance_info', None)          # current instance
+    /// ```
+    OneArgument([Option<InstanceName>; 1]),
 }
 
 impl ::tarantool::tuple::Encode for InstanceInfoRequest {}

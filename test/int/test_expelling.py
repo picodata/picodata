@@ -249,17 +249,11 @@ cluster:
     [leader] = cluster.deploy(instance_count=1, tier="raft")
 
     # Deploy a cluster with at least one full replicaset
-    storage_1_1 = cluster.add_instance(
-        name="storage_1_1", wait_online=True, tier="storage"
-    )
+    storage_1_1 = cluster.add_instance(name="storage_1_1", wait_online=True, tier="storage")
     assert storage_1_1.replicaset_name == "storage_1"
-    storage_1_2 = cluster.add_instance(
-        name="storage_1_2", wait_online=True, tier="storage"
-    )
+    storage_1_2 = cluster.add_instance(name="storage_1_2", wait_online=True, tier="storage")
     assert storage_1_2.replicaset_name == "storage_1"
-    storage_2_1 = cluster.add_instance(
-        name="storage_2_1", wait_online=True, tier="storage"
-    )
+    storage_2_1 = cluster.add_instance(name="storage_2_1", wait_online=True, tier="storage")
     assert storage_2_1.replicaset_name == "storage_2"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
