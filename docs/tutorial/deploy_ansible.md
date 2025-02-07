@@ -4,14 +4,14 @@
 из нескольких инстансов, запущенных на разных серверах посредством роли
 [picodata-ansible].
 
-[picodata-ansible]: https://git.picodata.io/picodata/picodata/picodata-ansible
+[picodata-ansible]: https://git.picodata.io/core/picodata-ansible
 
 ## Установка роли {: #install_role }
 
 Установите роль из репозитория через `ansible-galaxy`:
 
 ```shell
-ansible-galaxy install -f git+https://git.picodata.io/picodata/picodata/picodata-ansible.git
+ansible-galaxy install -f git+https://git.picodata.io/core/picodata-ansible.git
 ```
 
 ## Создание директорий {: #make_dirs }
@@ -123,7 +123,7 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 Более подробно о доступных переменных в инвентарном файле можно узнать в
 [git-репозитории
-роли](https://git.picodata.io/picodata/picodata/picodata-ansible/-/blob/main/docs/variables.md).
+роли](https://git.picodata.io/core/picodata-ansible/-/blob/main/docs/variables.md).
 
 См. также:
 
