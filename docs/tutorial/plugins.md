@@ -107,9 +107,9 @@ OpenWeather).
 
 	CREATE TABLE "weather" (
 		id UUID NOT NULL,
-		latitude NUMBER NOT NULL,
-		longitude NUMBER NOT NULL,
-		temperature NUMBER NOT NULL,
+		latitude INTEGER NOT NULL,
+		longitude INTEGER NOT NULL,
+		temperature INTEGER NOT NULL,
 		PRIMARY KEY (id)
 	)
 	USING memtx

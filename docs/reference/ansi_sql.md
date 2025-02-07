@@ -978,13 +978,6 @@ td.td3 ul {
             <td class="td3 center"></td>
             <td></td>
         </tr>
-<!-- F471 Scalar subquery values -->
-        <tr class="tr-header">
-            <td class="center"><span class="full">**F471**</span></td>
-            <td>**Скалярные значения подзапросов**</td>
-            <td class="td3 center">[SCALAR](sql_types.md#scalar)</td>
-            <td></td>
-        </tr>
 <!-- F481 Expanded NULL predicate -->
         <tr class="tr-header">
             <td class="center"><span class="absent">**F481**</span></td>
@@ -1096,12 +1089,6 @@ td.td3 ul {
         </tr>
     </thead>
     <tbody>
-        <tr>
-            <td class="center"><span class="full">—</span></td>
-            <td>Тип данных NUMBER</td>
-            <td class="td3 center">[NUMBER](sql_types.md#number)</td>
-            <td></td>
-        </tr>
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>Тип данных TEXT</td>

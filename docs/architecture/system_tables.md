@@ -48,8 +48,8 @@
 * `format`: (_array_, `[{"name": ..., "field_type": ..., "is_nullable": ...}]`)
   массив словарей с описанием формата полей таблицы:
     - `name`: (_string_) название поля
-    - `field_type`: (_string_, `"any" | "unsigned" | "string" | "number" |
-      "double" | "integer" | "boolean" | "varbinary" | "scalar" |
+    - `field_type`: (_string_, `"any" | "unsigned" | "string" |
+      "double" | "integer" | "boolean" | "varbinary" |
       "decimal" | "uuid" | "datetime" | "interval" | "array" |
       "map"`) тип хранимого значения
     - `is_nullable`: (_boolean_) возможность хранить значение `NULL`

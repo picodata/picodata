@@ -123,10 +123,6 @@ article.md-typeset.md-typeset ul {
 * [MIN](reference/sql/aggregate.md#functions)
 * [motion](reference/sql/explain.md#data_motion_types)
 
-<b>N</b>
-
-* [NUMBER](reference/sql_types.md#number)
-
 <b>O</b>
 
 * [object](reference/sql/object.md)
@@ -145,7 +141,6 @@ article.md-typeset.md-typeset ul {
 
 <b>S</b>
 
-* [SCALAR](reference/sql_types.md#scalar)
 * [scan](reference/sql/explain.md#plan_structure)
 * [SELECT](reference/sql/select.md)
 * [sharding key](overview/glossary.md#sharding_key)
