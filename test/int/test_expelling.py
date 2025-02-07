@@ -11,12 +11,6 @@ from conftest import (
 )
 
 
-def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
-    info = instance.call(".proc_instance_info", expelled_instance.name)
-    states = (info["current_state"]["variant"], info["target_state"]["variant"])
-    assert states == ("Expelled", "Expelled")
-
-
 def assert_voters(voters: list[Instance], instance: Instance):
     expected_voters = list(map(lambda i: i.raft_id, voters))
     actual_voters = instance.eval("return box.space._raft_state:get('voters').value")
@@ -37,7 +31,7 @@ def test_expel_follower(cluster: Cluster):
 
     cluster.expel(i3, i1, force=True)
 
-    Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
+    cluster.wait_has_states(i3, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
@@ -60,9 +54,9 @@ def test_expel_leader(cluster: Cluster):
 
     i1.assert_raft_status("Leader")
 
-    cluster.expel(i1, force=True)
+    cluster.expel(i1, peer=i3, force=True)
 
-    Retriable(timeout=30).call(lambda: assert_instance_expelled(i1, i2))
+    cluster.wait_has_states(i1, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
@@ -85,26 +79,13 @@ def test_expel_by_follower(cluster: Cluster):
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster.expel(i3, i2, force=True)
+    cluster.expel(i3, force=True)
 
-    Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
+    cluster.wait_has_states(i3, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
     Retriable(timeout=10).call(i3.assert_process_dead)
-
-
-def get_state_from_storage(peer: Instance, target: Instance) -> tuple[str, str]:
-    [row] = peer.sql(
-        "SELECT current_state, target_state FROM _pico_instance WHERE name = ?",
-        target.name,
-    )
-    # ignore incarnation
-    [
-        [current_state, current_state_incarnation],
-        [target_state, target_state_incarnation],
-    ] = row
-    return current_state, target_state
 
 
 def test_raft_id_after_expel(cluster: Cluster):
@@ -120,7 +101,7 @@ def test_raft_id_after_expel(cluster: Cluster):
     assert i3.raft_id == 3
 
     cluster.expel(i3, force=True)
-    Retriable(timeout=30).call(lambda: assert_instance_expelled(i3, i1))
+    cluster.wait_has_states(i3, "Expelled", "Expelled")
 
     i4 = cluster.add_instance()
     assert i4.raft_id == 4
@@ -156,7 +137,7 @@ cluster:
 
     # Expelling an Online instance doesn't work without --force flag
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_2, peer=leader, force=False)
+        cluster.expel(storage_2, force=False)
     assert (
         f"""attempt to expel instance '{storage_2.name}' which is not Offline, but Online
 rerun with --force if you still want to expel the instance"""
@@ -170,20 +151,18 @@ rerun with --force if you still want to expel the instance"""
     leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Check expelling offline replicas, this should be ok because no data loss
-    cluster.expel(storage_2, peer=leader, force=False)
-    storage_2_state = get_state_from_storage(peer=leader, target=storage_2)
-    assert storage_2_state == ("Expelled", "Expelled")
+    cluster.expel(storage_2, force=False)
+    cluster.wait_has_states(storage_2, "Expelled", "Expelled")
 
-    cluster.expel(storage_3, peer=leader, force=False)
-    storage_3_state = get_state_from_storage(peer=leader, target=storage_3)
-    assert storage_3_state == ("Expelled", "Expelled")
+    cluster.expel(storage_3, force=False)
+    cluster.wait_has_states(storage_3, "Expelled", "Expelled")
 
     # Terminate the last replica (master)
     storage_1.terminate()
 
     # Expelling a replicaset master doesn't work without --force flag
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_1, peer=leader, force=False)
+        cluster.expel(storage_1, force=False)
     assert (
         f"""attempt to expel replicaset master '{storage_1.name}'
 rerun with --force if you still want to expel the instance"""
@@ -194,11 +173,10 @@ rerun with --force if you still want to expel the instance"""
     # expel still doesn't work because it is blocked by bucket rebalancing,
     # which will never happen, because instance is Offline.
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_1, peer=leader, force=True, timeout=3)
+        cluster.expel(storage_1, force=True, timeout=3)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
-    storage_1_state = get_state_from_storage(peer=leader, target=storage_1)
-    assert storage_1_state == ("Offline", "Expelled")
+    cluster.wait_has_states(storage_1, "Offline", "Expelled")
 
 
 def test_expel_timeout(cluster: Cluster):
@@ -258,11 +236,11 @@ cluster:
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
-    cluster.expel(storage_1_2, peer=leader, force=True)
+    cluster.expel(storage_1_2, force=True)
     leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Check `picodata expel` idempotency
-    cluster.expel(storage_1_2, peer=leader, timeout=1)
+    cluster.expel(storage_1_2, timeout=1)
 
     # Add another instance, it should be assigned to the no longer filled replicaset
     storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
@@ -271,7 +249,7 @@ cluster:
     # Attempt to expel an offline replicaset
     storage_2_1.terminate()
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_2_1, peer=leader, timeout=1, force=False)
+        cluster.expel(storage_2_1, timeout=1, force=False)
     assert (
         f"""attempt to expel replicaset master '{storage_2_1.name}'
 rerun with --force if you still want to expel the instance"""
@@ -280,12 +258,12 @@ rerun with --force if you still want to expel the instance"""
 
     # Only works with `--force` flag
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_2_1, peer=leader, timeout=1, force=True)
+        cluster.expel(storage_2_1, timeout=1, force=True)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Check `picodata expel` idempotency
     with pytest.raises(CommandFailed) as e:
-        cluster.expel(storage_2_1, peer=leader, timeout=1)
+        cluster.expel(storage_2_1, timeout=1)
     assert "Timeout: expel confirmation didn't arrive in time" in e.value.stderr
 
     # Offline replicasets aren't allowed to be expelled,

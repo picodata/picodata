@@ -1401,6 +1401,28 @@ class Instance:
 
         eprint(f"{self} is online")
 
+    def wait_has_states(
+        self,
+        current_state: str,
+        target_state: str,
+        target: "Instance | None" = None,
+        timeout: int | float = 30,
+        rps: int | float = 5,
+    ):
+        """Block until instance has the given states.
+        Note that this seems similar to Instance.wait_online, but is a little bit
+        different.
+        """
+        assert not (
+            target == self and current_state == "Online" and target_state == "Online"
+        ), "use Instance.wait_online() instead"
+
+        def check():
+            states = self.states(target)
+            assert states == (current_state, target_state)
+
+        Retriable(timeout, rps, fatal=ProcessDead).call(check)
+
     def raft_term(self) -> int:
         """Get current raft `term`"""
 
@@ -1983,20 +2005,20 @@ class Cluster:
         eprint(f"batch CaS:\n  {predicate=}\n  {ops=}")
         return instance.call("pico.batch_cas", dict(ops=ops), predicate, user=user, password=password)
 
-    def assert_expelled(self, target: Instance):
-        leader = self.leader()
-        assert leader != target
-
-        assert leader.states(target) == ("Expelled", "Expelled")
-
     def leader(self, peer: Instance | None = None) -> Instance:
         raft_info = None
         if peer:
-            raft_info = peer.call(".proc_raft_info")
-            self.peer = peer
+            try:
+                raft_info = peer.call(".proc_raft_info")
+                self.peer = peer
+            except ProcessDead:
+                pass
 
         if not raft_info and self.peer:
-            raft_info = self.peer.call(".proc_raft_info")
+            try:
+                raft_info = self.peer.call(".proc_raft_info")
+            except ProcessDead:
+                self.peer = None
 
         if not raft_info:
             for instance in self.instances:
@@ -2113,6 +2135,19 @@ class Cluster:
             previous_active = actual_active
 
             time.sleep(0.5)
+
+    def wait_has_states(
+        self,
+        target: "Instance | None",
+        current_state: str,
+        target_state: str,
+        timeout: int | float = 30,
+        rps: int | float = 5,
+    ):
+        leader = self.leader()
+        leader.wait_has_states(
+            current_state, target_state, target=target, timeout=timeout, rps=rps
+        )
 
     def masters(self) -> List[Instance]:
         leader = self.leader()

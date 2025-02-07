@@ -274,9 +274,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     i1.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
-    info = i4.call(".proc_instance_info")
-    assert info["current_state"]["variant"] == "Online"
-    assert info["target_state"]["variant"] == "Expelled"
+    cluster.wait_has_states(i4, "Online", "Expelled")
 
     # Uninject the error, so it's able to continue synching.
     i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
@@ -286,8 +284,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
 
     # Only now the instance gets expelled and shuts down
     i4.assert_process_dead()
-    info = i1.call(".proc_instance_info", i4.name)
-    assert info["current_state"]["variant"] == "Expelled"
+    cluster.wait_has_states(i4, "Expelled", "Expelled")
 
     # i5 is the master
     assert i5.eval("return box.info.ro") is False
@@ -334,9 +331,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i1.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
-    info = i4.call(".proc_instance_info")
-    assert info["current_state"]["variant"] == "Online"
-    assert info["target_state"]["variant"] == "Expelled"
+    cluster.wait_has_states(i4, "Online", "Expelled")
 
     # Restart i5 so it's able to become the new master.
     i5.start()
@@ -346,8 +341,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
 
     # Only now the instance gets expelled and shuts down
     i4.assert_process_dead()
-    info = i1.call(".proc_instance_info", i4.name)
-    assert info["current_state"]["variant"] == "Expelled"
+    cluster.wait_has_states(i4, "Expelled", "Expelled")
 
     # i5 is the master
     assert i5.eval("return box.info.ro") is False

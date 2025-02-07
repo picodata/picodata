@@ -13,7 +13,6 @@ from conftest import (
     Cluster,
     AuditServer,
     PortDistributor,
-    Retriable,
 )
 
 
@@ -259,7 +258,7 @@ def test_gostech_join_expel_instance(cluster: Cluster, port_distributor: PortDis
     counter = i1.governor_step_counter()
     cluster.expel(i2, force=True)
     timeout = 60 if sys.platform == "darwin" else 30
-    Retriable(timeout=timeout).call(lambda: cluster.assert_expelled(i2))
+    cluster.wait_has_states(i2, "Expelled", "Expelled", timeout=timeout)
     i1.wait_governor_status("idle", old_step_counter=counter, timeout=timeout)
     cluster.terminate()
     audit_server.stop()
