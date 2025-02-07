@@ -1,5 +1,28 @@
 # Change Log
 
+# [?.?.?] Unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+- `network::protocol::codec::Header::encode` will not truncate to `u8` an
+  `network::protocol::codec::IProtoType` integer from an outside stream at decoding.
+
+### Deprecated
+
+### Breaking changes
+
+### Added (picodata)
+
+### Changed (picodata)
+
+### Fixed (picodata)
+
+### Breaking changes (picodata)
+
+
 # [6.1.0] Dec 10 2024
 
 ### Added
@@ -13,8 +36,6 @@
 
 ### Fixed
 - `network::client::tcp::TcpStream` does not close underlying fd anymore. Now fd will be closed only when the last copy of tcp stream is dropped.
-- `network::protocol::codec::Header::encode` will not truncate to `u8` an
-  `network::protocol::codec::IProtoType` integer from an outside stream at decoding.
 
 ### Deprecated
 - `network::client::tcp::UnsafeSendSyncTcpStream` is now deprected. `network::client::tcp::TcpStream` should be used instead.
