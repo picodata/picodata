@@ -1404,7 +1404,7 @@ class Instance:
     def raft_term(self) -> int:
         """Get current raft `term`"""
 
-        return self.eval("return box.space._raft_state:get('term').value")
+        return self.call(".proc_raft_info")["term"]
 
     def raft_term_by_index(self, index: int) -> int:
         """Get raft `term` for entry with supplied `index`"""
@@ -1459,7 +1459,7 @@ class Instance:
     def get_vclock(self) -> int:
         """Get current vclock"""
 
-        return self.call("pico.get_vclock")
+        return self.call(".proc_get_vclock")
 
     def wait_vclock(self, target: int, timeout: int | float = 10) -> int:
         """
@@ -2110,9 +2110,12 @@ class Cluster:
             time.sleep(0.5)
 
     def masters(self) -> List[Instance]:
+        leader = self.leader()
+        master_names = leader.sql("SELECT current_master_name FROM _pico_replicaset")
+        master_names = set(name for [name] in master_names)
         ret = []
         for instance in self.instances:
-            if not instance.eval("return box.info.ro"):
+            if instance.name in master_names:
                 ret.append(instance)
 
         return ret
