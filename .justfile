@@ -8,7 +8,6 @@ set quiet
 default:
 	{{ JUST_EXEC }} --list --unsorted --no-aliases
 
-
 #***************#
 # settings: ENV #
 #***************#
@@ -77,9 +76,13 @@ test-rust *ARGS:
 
 alias tp := test-python
 [group("test")]
-[doc("`tp`: python tests")]
+[doc("`tp`: python tests, use PYTEST_PATTERN env to pass parameters to `-k` flag")]
 test-python:
-	poetry run pytest {{ PYTEST_JOBS }}
+  if [ -z "${PYTEST_PATTERN:-}" ]; then \
+    poetry run pytest {{PYTEST_JOBS}}; \
+  else \
+    poetry run pytest -k "${PYTEST_PATTERN}" {{PYTEST_JOBS}}; \
+  fi
 
 #*************#
 # group: LINT #
