@@ -8,8 +8,6 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.10"
-black = "^24.10.0"
-flake8 = "^7.1.1"
 funcy = "^2.0"
 msgpack = "^1.1.0"
 mypy = "^1.13.0"
@@ -31,6 +29,10 @@ types-requests = "^2.32.0.20241016"
 gitpython = "^3.1.43"
 tqdm = "^4.67.0"
 ipdb = "^0.13.13"
+ruff = "^0.9.4"
+
+[tool.ruff]
+line-length = 120
 
 [build-system]
 requires = ["poetry-core"]

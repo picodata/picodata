@@ -122,14 +122,14 @@ lint:
 			--workspace --no-deps --document-private-items \
 			--exclude=tlua --exclude=sbroad-core --exclude=tarantool
 
-	poetry run flake8 ./test
-	poetry run black ./test --check --diff
+	poetry run ruff check ./test
+	poetry run ruff format ./test --check --diff
 	poetry run mypy ./test
 
 .PHONY: fmt
 fmt:
 	cargo fmt
-	poetry run black ./test
+	poetry run ruff format ./test
 
 .PHONY: clean
 clean:

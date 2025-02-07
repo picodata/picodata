@@ -113,9 +113,9 @@ alias lp := lint-python
 [group("lint")]
 [doc("`lp`: python lints")]
 lint-python:
-	poetry run flake8 ./test
-	poetry run black ./test --check --diff
-	poetry run mypy ./test
+  poetry run ruff check ./test
+  poetry run ruff format ./test --check --diff
+  poetry run mypy ./test
 
 #************#
 # group: FMT #
@@ -138,7 +138,7 @@ alias fp := fmt-python
 [group("fmt")]
 [doc("`fp`: python format")]
 fmt-python:
-	poetry run black ./test
+  poetry run ruff format ./test
 
 #**************#
 # group: STATS #
