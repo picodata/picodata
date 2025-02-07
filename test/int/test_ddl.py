@@ -1692,6 +1692,12 @@ cluster:
         """
     )
 
+    # Note: WAIT APPLIED GLOBALLY only ensures application on replicaset masters,
+    # so we need to wait for index to be applied on replicas.
+    # (https://git.picodata.io/core/picodata/-/issues/1367)
+    raft_index = max([i.raft_get_index() for i in cluster.instances])
+    cluster.raft_wait_index(raft_index)
+
     # All 3 tables exist on all instances
     table_ids = {}
     for i in cluster.instances:
