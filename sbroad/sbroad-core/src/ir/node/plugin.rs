@@ -182,7 +182,7 @@ pub enum Plugin<'a> {
     ChangeConfig(&'a ChangeConfig),
 }
 
-impl<'a> Plugin<'a> {
+impl Plugin<'_> {
     #[must_use]
     pub fn get_plugin_owned(&self) -> PluginOwned {
         match self {

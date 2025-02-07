@@ -100,6 +100,28 @@ macro_rules! lua_preload {
     };
 }
 
+/// Exists to optimize code burden with access to mutable statics.
+/// It is pretty much a `addr_of*`/`&raw` wrapper without warnings,
+/// so it is developer responsibility to use it correctly, but it
+/// is not marked as unsafe in an expansion to prevent silly mistakes
+/// and to have an opportunity for reviewers to blame someone easily.
+///
+/// Expects `mut` or `const` as a second parameter, to state whether
+/// you want mutable (exclusive) or constant (shared) reference to
+/// the provided mutable static variable as a first parameter.
+///
+/// NOTE: this macro is not that useful if you need a shared reference
+/// to an immutable static, as it is considered safe by default.
+#[macro_export]
+macro_rules! static_ref {
+    ($var:ident mut) => {
+        &mut *&raw mut $var
+    };
+    ($var:ident const) => {
+        &*&raw const $var
+    };
+}
+
 fn preload_vshard() {
     let lua = ::tarantool::lua_state();
 
@@ -931,8 +953,8 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
 
     let req = rpc::join::Request {
         cluster_name: config.cluster_name().into(),
-        instance_name: config.instance.name().map(From::from),
-        replicaset_name: config.instance.replicaset_name().map(From::from),
+        instance_name: config.instance.name(),
+        replicaset_name: config.instance.replicaset_name(),
         advertise_address: config.instance.iproto_advertise().to_host_port(),
         pgproto_advertise_address: config.instance.pg.listen().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),

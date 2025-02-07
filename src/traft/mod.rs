@@ -296,7 +296,7 @@ pub enum EntryPayload<'a> {
     ConfChangeV2(raft::ConfChangeV2),
 }
 
-impl<'a> std::fmt::Display for EntryPayload<'a> {
+impl std::fmt::Display for EntryPayload<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             EntryPayload::NormalEmpty => f.write_str("-"),

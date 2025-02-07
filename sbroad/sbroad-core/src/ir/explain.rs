@@ -1773,7 +1773,7 @@ impl Plan {
     }
 }
 
-impl<'a, C: Router> Query<'a, C> {
+impl<C: Router> Query<'_, C> {
     pub fn as_explain(&mut self) -> Result<SmolStr, SbroadError> {
         let plan = self.get_exec_plan().get_ir_plan();
         let top_id = plan.get_top()?;

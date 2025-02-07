@@ -173,7 +173,7 @@ struct LocalExecutionQueryInfo<'sn> {
     schema_info: SchemaInfo,
 }
 
-impl<'sn> RequiredPlanInfo for LocalExecutionQueryInfo<'sn> {
+impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
     fn id(&self) -> &SmolStr {
         &self.plan_id
     }

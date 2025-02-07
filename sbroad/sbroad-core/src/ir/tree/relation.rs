@@ -53,7 +53,7 @@ impl<'nodes> TreeIterator<'nodes> for RelationalIterator<'nodes> {
 
 impl<'nodes> RelationalTreeIterator<'nodes> for RelationalIterator<'nodes> {}
 
-impl<'n> Iterator for RelationalIterator<'n> {
+impl Iterator for RelationalIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {

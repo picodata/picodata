@@ -342,7 +342,7 @@ pub struct OneRSResult<'lua> {
     pub cache_miss: bool,
 }
 
-impl<'lua> OneRSResult<'lua> {
+impl OneRSResult<'_> {
     fn to_start_and_size(&self) -> (*const u8, usize) {
         unsafe {
             // SAFETY: ibuf_ptr points to correctly intialized Ibuf
@@ -370,7 +370,7 @@ impl<'lua> OneRSResult<'lua> {
     }
 }
 
-impl<'lua> TryFrom<OneRSResult<'lua>> for ProducerResult {
+impl TryFrom<OneRSResult<'_>> for ProducerResult {
     type Error = SbroadError;
 
     fn try_from(res: OneRSResult) -> Result<Self, Self::Error> {
@@ -387,7 +387,7 @@ impl<'lua> TryFrom<OneRSResult<'lua>> for ProducerResult {
     }
 }
 
-impl<'lua> TryFrom<OneRSResult<'lua>> for Tuple {
+impl TryFrom<OneRSResult<'_>> for Tuple {
     type Error = SbroadError;
 
     fn try_from(res: OneRSResult) -> Result<Self, Self::Error> {
@@ -399,7 +399,7 @@ impl<'lua> TryFrom<OneRSResult<'lua>> for Tuple {
     }
 }
 
-impl<'lua> Drop for OneRSResult<'lua> {
+impl Drop for OneRSResult<'_> {
     fn drop(&mut self) {
         // Don't wait for lua garbage collector,
         // free buffer memory as soon it is not needed.

@@ -19,7 +19,7 @@ struct RaftConf<'a> {
     learners: BTreeSet<RaftId>,
 }
 
-impl<'a> RaftConf<'a> {
+impl RaftConf<'_> {
     fn change_single(
         &mut self,
         change_type: raft::ConfChangeType,

@@ -184,7 +184,7 @@ install DEST:
 [doc("install appropriate rust toolchain version")]
 toolchain:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.76.0
+		sh -s -- -y --profile default --default-toolchain 1.85
 
 [group("misc")]
 [doc("reset git submodules to initial state and update")]

@@ -126,7 +126,7 @@ impl ExecutionPlan {
 
     pub fn contains_vtable_for_motion(&self, motion_id: NodeId) -> bool {
         self.get_vtables()
-            .map_or(false, |map| map.contains_key(&motion_id))
+            .is_some_and(|map| map.contains_key(&motion_id))
     }
 
     /// Get motion virtual table
@@ -231,7 +231,7 @@ impl ExecutionPlan {
 
     #[must_use]
     pub fn has_segmented_tables(&self) -> bool {
-        self.vtables.as_ref().map_or(false, |vtable_map| {
+        self.vtables.as_ref().is_some_and(|vtable_map| {
             vtable_map
                 .map()
                 .values()
@@ -922,7 +922,7 @@ impl ExecutionPlan {
     }
 
     pub fn vtables_empty(&self) -> bool {
-        self.get_vtables().map_or(true, HashMap::is_empty)
+        self.get_vtables().is_none_or(HashMap::is_empty)
     }
 
     /// Calculates an engine for the virtual tables in the plan.

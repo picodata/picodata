@@ -28,6 +28,7 @@ use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, IndexOption, TableDef};
 use crate::sentinel;
+use crate::static_ref;
 use crate::storage::cached_key_def;
 use crate::storage::schema::acl;
 use crate::storage::schema::ddl_abort_on_master;
@@ -81,7 +82,6 @@ use protobuf::Message as _;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::ControlFlow;
-use std::ptr::addr_of;
 use std::rc::Rc;
 use std::time::Duration;
 use ApplyEntryResult::*;
@@ -198,7 +198,7 @@ impl Node {
     ) -> Result<&'static Self, Error> {
         // SAFETY: only accessed from main thread, and never mutated after
         // initialization (initialization happens later in this function)
-        if unsafe { (*addr_of!(RAFT_NODE)).is_some() } {
+        if unsafe { static_ref!(RAFT_NODE const).is_some() } {
             return Err(Error::other("raft node is already initialized"));
         }
 
@@ -2639,7 +2639,7 @@ pub fn global() -> Result<&'static Node, BoxError> {
     // can't use it because it doesn't implement Sync, and we don't want to use
     // std::sync::OnceLock, because we don't want to pay for the atomic read
     // which we don't need.
-    unsafe { (*addr_of!(RAFT_NODE)).as_deref() }
+    unsafe { static_ref!(RAFT_NODE const).as_deref() }
         .ok_or(BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
 }
 

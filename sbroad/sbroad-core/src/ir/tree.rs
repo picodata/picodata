@@ -112,21 +112,21 @@ trait TreeIterator<'nodes> {
         }
 
         let when_blocks_index = child_step / 2;
-        let index_reminder = child_step % 2;
-        return if when_blocks_index < when_blocks.len() {
+        let index_remainder = child_step % 2;
+        if when_blocks_index < when_blocks.len() {
             let (cond_expr, res_expr) = when_blocks
                 .get(when_blocks_index)
-                .expect("When block must have been found.");
-            return match index_reminder {
+                .expect("block must have been found");
+            match index_remainder {
                 0 => Some(*cond_expr),
                 1 => Some(*res_expr),
-                _ => unreachable!("Impossible reminder"),
-            };
-        } else if when_blocks_index == when_blocks.len() && index_reminder == 0 {
+                other => unreachable!("remainder {other} should not be possible"),
+            }
+        } else if when_blocks_index == when_blocks.len() && index_remainder == 0 {
             else_expr.as_ref().copied()
         } else {
             None
-        };
+        }
     }
 
     fn handle_window_iter(&mut self, expr: Expression) -> Option<NodeId> {

@@ -954,7 +954,7 @@ pub enum EncodedValue<'v> {
     Owned(LuaValue),
 }
 
-impl<'v> EncodedValue<'v> {
+impl EncodedValue<'_> {
     /// Try to convert to double underlying value.
     pub fn double(&self) -> Option<f64> {
         match &self {

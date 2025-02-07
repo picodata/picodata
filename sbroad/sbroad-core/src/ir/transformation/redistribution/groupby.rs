@@ -88,7 +88,7 @@ struct AggregateSignature<'plan, 'args> {
     pub local_alias: Option<Rc<String>>,
 }
 
-impl<'plan, 'args> AggregateSignature<'plan, 'args> {
+impl AggregateSignature<'_, '_> {
     pub fn get_alias(&self) -> Result<Rc<String>, SbroadError> {
         let r = self
             .local_alias
@@ -104,7 +104,7 @@ impl<'plan, 'args> AggregateSignature<'plan, 'args> {
     }
 }
 
-impl<'plan, 'args> Hash for AggregateSignature<'plan, 'args> {
+impl Hash for AggregateSignature<'_, '_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         let mut comp = Comparator::new(self.plan);
@@ -115,7 +115,7 @@ impl<'plan, 'args> Hash for AggregateSignature<'plan, 'args> {
     }
 }
 
-impl<'plan, 'args> PartialEq<Self> for AggregateSignature<'plan, 'args> {
+impl PartialEq<Self> for AggregateSignature<'_, '_> {
     fn eq(&self, other: &Self) -> bool {
         let comparator = Comparator::new(self.plan);
         self.kind == other.kind
@@ -127,7 +127,7 @@ impl<'plan, 'args> PartialEq<Self> for AggregateSignature<'plan, 'args> {
     }
 }
 
-impl<'plan, 'args> Eq for AggregateSignature<'plan, 'args> {}
+impl Eq for AggregateSignature<'_, '_> {}
 
 #[derive(Debug, Clone)]
 struct GroupingExpression<'plan> {
@@ -141,7 +141,7 @@ impl<'plan> GroupingExpression<'plan> {
     }
 }
 
-impl<'plan> Hash for GroupingExpression<'plan> {
+impl Hash for GroupingExpression<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let mut comp = Comparator::new(self.plan);
         comp.set_hasher(state);
@@ -149,14 +149,14 @@ impl<'plan> Hash for GroupingExpression<'plan> {
     }
 }
 
-impl<'plan> PartialEq for GroupingExpression<'plan> {
+impl PartialEq for GroupingExpression<'_> {
     fn eq(&self, other: &Self) -> bool {
         let comp = Comparator::new(self.plan);
         comp.are_subtrees_equal(self.id, other.id).unwrap_or(false)
     }
 }
 
-impl<'plan> Eq for GroupingExpression<'plan> {}
+impl Eq for GroupingExpression<'_> {}
 
 impl<'plan> AggrCollector<'plan> {
     pub fn with_capacity(plan: &'plan Plan, capacity: usize) -> AggrCollector<'plan> {

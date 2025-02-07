@@ -6,7 +6,6 @@ use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::RegionBuffer;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
@@ -131,7 +130,7 @@ pub(crate) fn init_handlers() {
 }
 
 unsafe fn handlers_mut() -> &'static mut RpcHandlerMap {
-    (*addr_of_mut!(HANDLERS))
+    crate::static_ref!(HANDLERS mut)
         .as_mut()
         .expect("should be initialized at startup")
 }

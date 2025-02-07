@@ -230,7 +230,7 @@ impl<'a> From<&'a RoutineDef> for FunctionMetadata<'a> {
     }
 }
 
-impl<'a> Encode for FunctionMetadata<'a> {}
+impl Encode for FunctionMetadata<'_> {}
 
 /// Create tarantool function which throws an error if it's called.
 /// It's safe to call this rust function multiple times.

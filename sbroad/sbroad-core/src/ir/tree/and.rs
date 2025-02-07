@@ -46,7 +46,7 @@ impl<'n> Nodes {
     }
 }
 
-impl<'n> Iterator for AndIterator<'n> {
+impl Iterator for AndIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {

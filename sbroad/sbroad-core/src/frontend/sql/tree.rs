@@ -11,7 +11,7 @@ pub struct AstIterator<'n> {
     nodes: &'n ParseNodes,
 }
 
-impl<'n> Iterator for AstIterator<'n> {
+impl Iterator for AstIterator<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {

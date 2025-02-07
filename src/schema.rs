@@ -681,7 +681,7 @@ pub struct ServiceRouteKey<'a> {
     pub service_name: &'a str,
     pub instance_name: &'a str,
 }
-impl<'a> Encode for ServiceRouteKey<'a> {}
+impl Encode for ServiceRouteKey<'_> {}
 
 impl<'a> ServiceRouteKey<'a> {
     #[inline(always)]

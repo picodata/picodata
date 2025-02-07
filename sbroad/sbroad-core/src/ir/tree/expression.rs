@@ -81,7 +81,7 @@ impl<'nodes> ExpressionTreeIterator<'nodes> for ExpressionIterator<'nodes> {
     }
 }
 
-impl<'n> Iterator for ExpressionIterator<'n> {
+impl Iterator for ExpressionIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -89,7 +89,7 @@ impl<'n> Iterator for ExpressionIterator<'n> {
     }
 }
 
-impl<'n> Iterator for AggregateIterator<'n> {
+impl Iterator for AggregateIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {

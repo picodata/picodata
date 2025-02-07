@@ -22,7 +22,7 @@ struct Bytes<'bytes> {
     inner: &'bytes [u8],
 }
 
-impl<'bytes> Bytes<'bytes> {
+impl Bytes<'_> {
     /// Len of `inner` sequence.
     fn len(&self) -> usize {
         self.inner.len()
@@ -199,7 +199,7 @@ struct Iter<'bytes_vec> {
     index: usize,
 }
 
-impl<'bytes_vec> Iterator for Iter<'bytes_vec> {
+impl Iterator for Iter<'_> {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {

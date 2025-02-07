@@ -8,10 +8,10 @@ use either::{Either, Left, Right};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error as StdError;
-use std::ptr::addr_of;
 use std::time::{Duration, Instant};
 
 use crate::proc_name;
+use crate::static_ref;
 use crate::traft;
 
 type Address = String;
@@ -165,7 +165,9 @@ fn discovery() -> Option<MutexGuard<'static, Discovery>> {
     // SAFETY:
     // - only called from main thread
     // - never mutated after initialization
-    unsafe { (*addr_of!(DISCOVERY)).as_ref() }.map(|d| d.lock())
+    unsafe { static_ref!(DISCOVERY const) }
+        .as_ref()
+        .map(|d| d.lock())
 }
 
 pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
@@ -173,8 +175,10 @@ pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
     // SAFETY:
     // - only called from main thread
     // - never mutated after initialization
-    unsafe { assert!((*addr_of!(DISCOVERY)).is_none()) }
-    unsafe { DISCOVERY = Some(Box::new(Mutex::new(d))) }
+    unsafe {
+        assert!(static_ref!(DISCOVERY const).is_none());
+        DISCOVERY = Some(Box::new(Mutex::new(d)));
+    }
 }
 
 #[inline(always)]

@@ -31,6 +31,7 @@ use crate::schema::ServiceRouteKey;
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
+use crate::static_ref;
 use crate::storage::snapshot::SnapshotCache;
 use crate::system_parameter_name;
 use crate::tarantool::box_schema_version;
@@ -51,8 +52,6 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
-use std::ptr::addr_of;
-use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -221,13 +220,13 @@ impl Catalog {
 
         // SAFETY: this is safe as long as we only use it in tx thread.
         unsafe {
-            if (*addr_of!(STORAGE)).is_none() {
+            if static_ref!(STORAGE const).is_none() {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
                 STORAGE = Some(Self::initialize()?);
             }
-            Ok((*addr_of!(STORAGE)).as_ref().unwrap())
+            Ok(static_ref!(STORAGE const).as_ref().unwrap())
         }
     }
 
@@ -315,7 +314,7 @@ fn cached_key_def_impl(
     // it only lives for a short time during this function call which is only
     // called from main thread, and we know for a fact that the fiber doesn't
     // yield while holding this reference, because of the NoYieldsGuard above.
-    let system_key_defs: &'static mut _ = unsafe { &mut *addr_of_mut!(SYSTEM_KEY_DEFS) };
+    let system_key_defs: &'static mut _ = unsafe { static_ref!(SYSTEM_KEY_DEFS mut) };
     let system_key_defs = system_key_defs.get_or_insert_with(HashMap::new);
     if SYSTEM_TABLES_ID_RANGE.contains(&space_id) {
         // System table definition's never change during a single
@@ -329,7 +328,7 @@ fn cached_key_def_impl(
     // it only lives for a short time during this function call which is only
     // called from main thread, and we know for a fact that the fiber doesn't
     // yield while holding this reference, because of the NoYieldsGuard above.
-    let user_key_defs: &'static mut _ = unsafe { &mut *addr_of_mut!(USER_KEY_DEFS) };
+    let user_key_defs: &'static mut _ = unsafe { static_ref!(USER_KEY_DEFS mut) };
     let (schema_version, user_key_defs) = user_key_defs.get_or_insert_with(|| (0, HashMap::new()));
     let box_schema_version = box_schema_version();
     if *schema_version != box_schema_version {

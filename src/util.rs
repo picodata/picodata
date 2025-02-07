@@ -259,7 +259,6 @@ impl std::borrow::Borrow<str> for Uppercase {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compare string literals at compile time.
-
 #[allow(dead_code)] // suppress the warning since it's only used at compile time
 pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
     let lhs = lhs.as_bytes();
@@ -430,7 +429,8 @@ pub fn validate_and_complete_unix_socket_path(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// IsSameType
+// IsSameType
+////////////////////////////////////////////////////////////////////////////////
 
 pub trait IsSameType<L, R> {
     type Void;

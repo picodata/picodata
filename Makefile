@@ -185,7 +185,7 @@ reset-submodules:
 .PHONY: install-cargo
 install-cargo:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.76.0
+		sh -s -- -y --profile default --default-toolchain 1.85
 
 .PHONY: centos7-cmake3
 centos7-cmake3:

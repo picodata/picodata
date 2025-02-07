@@ -234,7 +234,7 @@ pub struct EncodedRowsIter<'e> {
     position: usize,
 }
 
-impl<'e> Iterator for EncodedRowsIter<'e> {
+impl Iterator for EncodedRowsIter<'_> {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {

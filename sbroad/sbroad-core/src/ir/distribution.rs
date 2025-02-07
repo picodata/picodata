@@ -526,7 +526,7 @@ impl Plan {
             let sk = tbl.get_sk()?;
             let mut new_key: Key = Key::new(Vec::with_capacity(sk.len()));
             let all_found = sk.iter().all(|pos| {
-                table_map.get(pos).map_or(false, |v| {
+                table_map.get(pos).is_some_and(|v| {
                     new_key.positions.push(*v);
                     true
                 })

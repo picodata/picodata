@@ -57,7 +57,7 @@ impl<'plan> SubtreePlanIterator<'plan> for SubtreeIterator<'plan> {
     }
 }
 
-impl<'plan> Iterator for SubtreeIterator<'plan> {
+impl Iterator for SubtreeIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -118,7 +118,7 @@ impl<'plan> SubtreePlanIterator<'plan> for FlashbackSubtreeIterator<'plan> {
     }
 }
 
-impl<'plan> Iterator for FlashbackSubtreeIterator<'plan> {
+impl Iterator for FlashbackSubtreeIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -175,7 +175,7 @@ impl<'plan> SubtreePlanIterator<'plan> for ExecPlanSubtreeIterator<'plan> {
     }
 }
 
-impl<'plan> Iterator for ExecPlanSubtreeIterator<'plan> {
+impl Iterator for ExecPlanSubtreeIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {

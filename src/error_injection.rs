@@ -8,9 +8,8 @@ static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
 #[inline(always)]
 pub fn enable(error: &str, enable: bool) {
     // SAFETY: safe as long as only called from tx thread
-    let injected_errors = unsafe { ptr::addr_of_mut!(INJECTED_ERRORS).as_mut() }
-        .unwrap()
-        .get_or_insert_with(Default::default);
+    let injected_errors =
+        unsafe { crate::static_ref!(INJECTED_ERRORS mut).get_or_insert_default() };
 
     // DO NOT LOG "ERROR INJECTION '{error}'" HERE!!!
     // We check this error message in tests to catch the moment the injected error happens
@@ -25,7 +24,7 @@ pub fn enable(error: &str, enable: bool) {
 pub fn is_enabled(error: &str) -> bool {
     // SAFETY: safe as long as only called from tx thread
     #[cfg(feature = "error_injection")]
-    if let Some(injected_errors) = unsafe { &*ptr::addr_of!(INJECTED_ERRORS) } {
+    if let Some(injected_errors) = unsafe { crate::static_ref!(INJECTED_ERRORS const) } {
         return injected_errors.contains(error);
     }
 

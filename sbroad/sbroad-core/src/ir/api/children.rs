@@ -10,7 +10,7 @@ pub enum Children<'r> {
     Many(&'r [NodeId]),
 }
 
-impl<'r> Index<usize> for Children<'r> {
+impl Index<usize> for Children<'_> {
     type Output = NodeId;
 
     fn index(&self, idx: usize) -> &Self::Output {
@@ -30,7 +30,7 @@ impl<'r> Index<usize> for Children<'r> {
     }
 }
 
-impl<'r> Index<Range<usize>> for Children<'r> {
+impl Index<Range<usize>> for Children<'_> {
     type Output = [NodeId];
 
     fn index(&self, range: Range<usize>) -> &Self::Output {
@@ -41,7 +41,7 @@ impl<'r> Index<Range<usize>> for Children<'r> {
     }
 }
 
-impl<'r> Index<RangeFrom<usize>> for Children<'r> {
+impl Index<RangeFrom<usize>> for Children<'_> {
     type Output = [NodeId];
 
     fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
@@ -49,7 +49,7 @@ impl<'r> Index<RangeFrom<usize>> for Children<'r> {
     }
 }
 
-impl<'r> Index<RangeFull> for Children<'r> {
+impl Index<RangeFull> for Children<'_> {
     type Output = [NodeId];
 
     fn index(&self, _: RangeFull) -> &Self::Output {
@@ -139,7 +139,7 @@ impl<'c> Iterator for ChildrenIter<'c> {
     }
 }
 
-impl<'r> Children<'r> {
+impl Children<'_> {
     #[must_use]
     pub fn iter(&self) -> ChildrenIter<'_> {
         ChildrenIter {

@@ -31,6 +31,10 @@ with the `YY.MINOR.MICRO` scheme.
 ### SQL
 - SQL supports `TRUNCATE` operation.
 
+### Configuration
+
+- Minimal supported Rust version has been bumped from `1.76.0` to `1.85`.
+
 ## [25.1.1] - 2025-02-21
 
 ### Configuration

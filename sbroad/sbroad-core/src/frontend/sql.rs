@@ -1504,7 +1504,7 @@ enum ParameterSource<'parameter> {
     },
 }
 
-impl<'parameter> ParameterSource<'parameter> {
+impl ParameterSource<'_> {
     fn get_param_index(&self) -> Result<Option<usize>, SbroadError> {
         let param_index = match self {
             ParameterSource::AstNode { ast, ast_node_id } => {

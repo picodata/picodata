@@ -9,6 +9,7 @@ use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
 use crate::sql::value_type_str;
+use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
 use crate::system_parameter_name;
 use crate::tarantool::set_cfg_field;
@@ -32,8 +33,6 @@ use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::ptr::addr_of;
-use std::ptr::addr_of_mut;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tarantool::log::SayLevel;
@@ -162,8 +161,8 @@ Using configuration file '{args_path}'.");
 
         // Safe, because we only initialize config once in a single thread.
         let config_ref = unsafe {
-            assert!((*addr_of!(GLOBAL_CONFIG)).is_none());
-            (*addr_of_mut!(GLOBAL_CONFIG)).insert(config)
+            assert!(static_ref!(GLOBAL_CONFIG const).is_none());
+            static_ref!(GLOBAL_CONFIG mut).insert(config)
         };
 
         Ok(config_ref)
@@ -175,7 +174,7 @@ Using configuration file '{args_path}'.");
         // - only called from main thread
         // - never mutated after initialization
         unsafe {
-            (*addr_of!(GLOBAL_CONFIG))
+            static_ref!(GLOBAL_CONFIG const)
                 .as_ref()
                 .expect("shouldn't be called before config is initialized")
         }
@@ -814,8 +813,8 @@ Using configuration file '{args_path}'.");
         let config = Box::new(Self::with_defaults());
         // Safe, because we only initialize config once in a single thread.
         unsafe {
-            assert!((*addr_of!(GLOBAL_CONFIG)).is_none());
-            let _ = (*addr_of_mut!(GLOBAL_CONFIG)).insert(config);
+            assert!(static_ref!(GLOBAL_CONFIG const).is_none());
+            GLOBAL_CONFIG = Some(config);
         };
     }
 }
@@ -2055,7 +2054,7 @@ macro_rules! config_parameter_path {
         const _: () = unsafe {
             let dummy = std::mem::MaybeUninit::<$crate::config::PicodataConfig>::uninit();
             let dummy_ptr = dummy.as_ptr();
-            let _field_ptr = std::ptr::addr_of!((*dummy_ptr).$head $(.$tail)*);
+            let _field_ptr = &raw const (*dummy_ptr).$head $(.$tail)*;
         };
         concat!(stringify!($head), $(".", stringify!($tail),)*)
     }}

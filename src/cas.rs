@@ -2,6 +2,7 @@ use crate::access_control;
 use crate::config;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
+use crate::static_ref;
 use crate::storage;
 use crate::storage::Catalog;
 use crate::storage::Properties;
@@ -18,7 +19,6 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
-use std::ptr::addr_of;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -756,7 +756,7 @@ fn schema_related_property_keys() -> &'static [Tuple] {
     // - only called from main thread
     // - never mutated after initialization
     unsafe {
-        if (*addr_of!(DATA)).is_none() {
+        if static_ref!(DATA const).is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
                 let t = Tuple::new(&(key,)).expect("keys should convert to tuple");
@@ -765,7 +765,7 @@ fn schema_related_property_keys() -> &'static [Tuple] {
             DATA = Some(data);
         }
 
-        (*addr_of!(DATA)).as_ref().unwrap()
+        static_ref!(DATA const).as_ref().unwrap()
     }
 }
 
@@ -776,13 +776,13 @@ fn pending_plugin_operation_key() -> &'static Tuple {
     // - only called from main thread
     // - never mutated after initialization
     unsafe {
-        if (*addr_of!(TUPLE)).is_none() {
+        if static_ref!(TUPLE const).is_none() {
             let tuple =
                 Tuple::new(&[storage::PropertyName::PendingPluginOperation]).expect("cannot fail");
             TUPLE = Some(tuple);
         }
 
-        (*addr_of!(TUPLE)).as_ref().unwrap()
+        static_ref!(TUPLE const).as_ref().unwrap()
     }
 }
 
@@ -795,7 +795,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
     // - only called from main thread
     // - never mutated after initialization
     unsafe {
-        if (*addr_of!(DATA)).is_none() {
+        if static_ref!(DATA const).is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
                 let r = Range::new(storage::Properties::TABLE_ID).eq((key,));
@@ -804,7 +804,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
             DATA = Some(data);
         }
 
-        (*addr_of!(DATA)).as_ref().unwrap()
+        static_ref!(DATA const).as_ref().unwrap()
     }
 }
 

@@ -82,7 +82,7 @@ impl Buckets {
     }
 }
 
-impl<'a, T> Query<'a, T>
+impl<T> Query<'_, T>
 where
     T: Router,
 {

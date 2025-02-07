@@ -1,3 +1,5 @@
+#![allow(non_local_definitions)] // `#[sabi_trait]` problem
+
 use abi_stable::{rstr, std_types::RStr};
 
 pub mod background;

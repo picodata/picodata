@@ -12,6 +12,7 @@ use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::static_ref;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::{node, ConnectionType, Result};
@@ -19,7 +20,6 @@ use crate::traft::{node, ConnectionType, Result};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io;
-use std::ptr::addr_of;
 
 use serde::de::DeserializeOwned;
 use std::collections::HashSet;
@@ -78,7 +78,7 @@ pub fn init_static_proc_set() {
 
     // SAFETY: only called from main thread + never mutated after initialization
     unsafe {
-        assert!((*addr_of!(STATIC_PROCS)).is_none());
+        assert!(static_ref!(STATIC_PROCS const).is_none());
         STATIC_PROCS = Some(map);
     }
 }
@@ -87,7 +87,7 @@ pub fn init_static_proc_set() {
 pub fn to_static_proc_name(name: &str) -> Option<&'static str> {
     // SAFETY: only called from main thread + never mutated after initialization
     let name_ref = unsafe {
-        (*addr_of!(STATIC_PROCS))
+        static_ref!(STATIC_PROCS const)
             .as_ref()
             .expect("should be initialized at startup")
             .get(name)?

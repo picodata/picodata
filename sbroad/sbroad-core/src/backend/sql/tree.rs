@@ -509,7 +509,7 @@ impl<'n> SyntaxNodes {
     }
 }
 
-impl<'n> Iterator for SyntaxIterator<'n> {
+impl Iterator for SyntaxIterator<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {

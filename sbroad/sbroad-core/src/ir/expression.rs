@@ -203,7 +203,7 @@ impl<'plan> PlanExpr<'plan> {
     }
 }
 
-impl<'plan> Hash for PlanExpr<'plan> {
+impl Hash for PlanExpr<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let mut comp = Comparator::new(self.plan);
         comp.set_hasher(state);
@@ -211,14 +211,14 @@ impl<'plan> Hash for PlanExpr<'plan> {
     }
 }
 
-impl<'plan> PartialEq for PlanExpr<'plan> {
+impl PartialEq for PlanExpr<'_> {
     fn eq(&self, other: &Self) -> bool {
         let comp = Comparator::new(self.plan);
         comp.are_subtrees_equal(self.id, other.id).unwrap_or(false)
     }
 }
 
-impl<'plan> Eq for PlanExpr<'plan> {}
+impl Eq for PlanExpr<'_> {}
 
 /// Helper struct for comparing plan expression subtrees.
 pub struct Comparator<'plan> {
@@ -1093,7 +1093,7 @@ pub struct NewColumnSourceIterator<'iter> {
     index: usize,
 }
 
-impl<'targets> Iterator for NewColumnSourceIterator<'targets> {
+impl Iterator for NewColumnSourceIterator<'_> {
     // Pair of (relational node id, target id)
     type Item = (NodeId, usize);
 
