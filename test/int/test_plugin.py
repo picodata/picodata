@@ -1247,13 +1247,8 @@ def test_migration_lock(cluster: Cluster):
     assert i2.process
     os.killpg(i2.process.pid, signal.SIGSTOP)
 
-    def check_instance_is_offline(peer: Instance, instance_name):
-        instance_info = peer.call(".proc_instance_info", instance_name)
-        assert instance_info["current_state"]["variant"] == "Offline"
-        assert instance_info["target_state"]["variant"] == "Offline"
-
     # sentinel has noticed that i2 is offline and changed it's state
-    Retriable(timeout=10).call(check_instance_is_offline, i1, i2.name)
+    cluster.wait_has_states(i2, "Offline", "Offline")
 
     #
     # i3 can now apply the migrations, because the lock holder is not online

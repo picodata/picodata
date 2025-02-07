@@ -166,34 +166,23 @@ def test_leader_disruption(cluster3: Cluster):
     Retriable(timeout=10, rps=5).call(lambda: i3.assert_raft_status("Follower", i1.raft_id))
 
 
-def get_instance_states(peer: Instance, instance_name) -> tuple[str, str]:
-    instance_info = peer.call(".proc_instance_info", instance_name)
-    return (
-        instance_info["current_state"]["variant"],
-        instance_info["target_state"]["variant"],
-    )
-
-
 def test_instance_automatic_offline_detection(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
     dml = i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout=0.5")
     assert dml["row_count"] == 1
 
-    assert get_instance_states(i1, i3.name) == ("Online", "Online")
+    cluster.wait_has_states(i3, "Online", "Online")
 
     i3.kill()
 
     # Give the sentinel some time to detect the problem and act accordingly.
     time.sleep(2)
 
-    assert get_instance_states(i1, i3.name) == ("Offline", "Offline")
+    cluster.wait_has_states(i3, "Offline", "Offline")
 
     i3.start()
 
-    def assert_online(peer, instance_name):
-        assert get_instance_states(peer, instance_name) == ("Online", "Online")
-
-    Retriable(timeout=10, rps=5).call(lambda: assert_online(i1, i3.name))
+    cluster.wait_has_states(i3, "Online", "Online")
 
 
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
