@@ -2,6 +2,7 @@ use super::conf_change::raft_conf_change;
 use crate::cas;
 use crate::column_name;
 use crate::has_states;
+use crate::instance::state::State;
 use crate::instance::state::StateVariant;
 use crate::instance::{Instance, InstanceName};
 use crate::plugin::PluginIdentifier;
@@ -441,8 +442,7 @@ pub(super) fn action_plan<'i>(
     if let Some((master, replicaset, tier)) =
         get_replicaset_being_expelled(instances, replicasets, tiers)
     {
-        #[rustfmt::skip]
-        debug_assert!(has_states!(master, not Expelled -> Expelled), "{} -> {}", master.current_state, master.target_state);
+        debug_assert_eq!(replicaset.state, ReplicasetState::ToBeExpelled);
 
         let master_name = &master.name;
         let target = &replicaset.current_master_name;
@@ -458,8 +458,25 @@ pub(super) fn action_plan<'i>(
         };
 
         // Mark last instance as expelled
-        let req = rpc::update_instance::Request::new(master_name.clone(), cluster_name)
-            .with_current_state(master.target_state);
+        let mut req = rpc::update_instance::Request::new(master_name.clone(), cluster_name);
+
+        if has_states!(master, * -> Expelled) {
+            req = req.with_current_state(master.target_state);
+        } else {
+            // Replicaset's state is ToBeExpelled, this could only happen if
+            // the last Instance in it had it's target state Expelled (and no
+            // instances can join such a replicaset). But now the instance's target
+            // state is not Expelled. This could happen if instance goes Offline
+            // while the replicaset is being expelled, or something else.
+            // The solution is to change the state back to Expelled. It is safe
+            // to do so, because the replicaset is already in a state of being
+            // expelled.
+            let incarnation = master.target_state.incarnation;
+            req = req
+                .with_target_state(StateVariant::Expelled)
+                .with_current_state(State::new(StateVariant::Expelled, incarnation));
+        }
+
         let update_instance = prepare_update_instance_cas_request(
             &req,
             master,
@@ -1527,7 +1544,6 @@ pub fn get_replicaset_being_expelled<'r>(
         if has_states!(master, * -> not Expelled) {
             let master_state = master.target_state.variant;
             tlog!(Warning, "replicaset '{replicaset_name}' was going to be expelled, but it's master '{master_name}' is no longer going to be expelled (target state = {master_state})");
-            continue;
         }
 
         let Some(tier) = tiers.get(&**tier_id) else {

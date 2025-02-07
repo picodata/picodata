@@ -270,7 +270,10 @@ rerun with --force if you still want to expel the instance"""
     # so the cluster is blocked attempting to rebalance
     counter = leader.wait_governor_status("transfer buckets from replicaset")
 
-    # The replicaset is in progress of being expelled
+    # Instance's target state changed to Offline, but it is still offline
+    cluster.wait_has_states(storage_2_1, "Offline", "Expelled")
+
+    # And the replicaset is in progress of being expelled
     [[storage_2_state, storage_2_old_uuid]] = leader.sql(
         """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'storage_2' """
     )
@@ -294,11 +297,26 @@ rerun with --force if you still want to expel the instance"""
     storage6.fail_to_start()
     lc.wait_matched()
 
+    # Block bucket rebalancing, so that we can check what happens when master of
+    # replicaset being expelled has it's state changed from Expelled to something else
+    storage_2_1.env["PICODATA_ERROR_INJECTION_TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT"] = "1"
     # Wake up the instance expelled instance so that replicaset is finally expelled
     storage_2_1.start()
 
+    # Now the instance's target state changed from Expelled to Online.
+    # NOTE: that the instance is still getting expelled, but there's no
+    # information about it in it's state. Instead this information is save in
+    # _pico_replicaset.state
+    cluster.wait_has_states(storage_2_1, "Offline", "Online")
+
+    # Unblock bucket rebalancing
+    storage_2_1.call("pico._inject_error", "TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT", False)
+
     # The buckets are finally able to be rebalanced
     leader.wait_governor_status("idle")
+
+    # The instance's state (both current and target) automatically changes to Expelled
+    cluster.wait_has_states(storage_2_1, "Expelled", "Expelled")
 
     # The replicaset is finally expelled
     [[storage_2_state]] = leader.sql(""" SELECT state FROM _pico_replicaset WHERE name = 'storage_2' """)

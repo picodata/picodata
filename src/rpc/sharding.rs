@@ -213,6 +213,8 @@ crate::define_rpc_request! {
 
         let index_status = space_bucket.index("status").expect("space _bucket should have a 'status' index");
 
+        crate::error_injection!("TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT" => return Err(Error::Timeout));
+
         loop {
             let total_count = space_bucket.len()?;
             // After sending a bucket to another instance vshard first marks the
