@@ -301,6 +301,12 @@ pub struct Run {
     /// By default, 64 MiB is used.
     pub memtx_memory: Option<ByteSize>,
 
+    #[clap(long = "memtx-max-tuple-size", env = "PICODATA_MEMTX_MAX_TUPLE_SIZE")]
+    /// Size of the largest allocation unit, for the memtx storage engine
+    ///
+    /// By default, 1 MiB is used.
+    pub memtx_max_tuple_size: Option<ByteSize>,
+
     #[clap(hide = true, long = "entrypoint-fd")]
     /// A pipe file descriptor from which picodata reads the entrypoint info
     /// when doing a rebootstrap during the cluster initialization.

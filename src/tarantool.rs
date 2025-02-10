@@ -322,6 +322,7 @@ impl Cfg {
         #[rustfmt::skip]
         const BYTESIZE_FIELDS: &[(&str, &str)] = &[
             ("memtx_memory",                config_parameter_path!(instance.memtx.memory)),
+            ("memtx_max_tuple_size",        config_parameter_path!(instance.memtx.max_tuple_size)),
             ("vinyl_memory",                config_parameter_path!(instance.vinyl.memory)),
             ("vinyl_cache",                 config_parameter_path!(instance.vinyl.cache)),
             ("vinyl_max_tuple_size",        config_parameter_path!(instance.vinyl.max_tuple_size)),

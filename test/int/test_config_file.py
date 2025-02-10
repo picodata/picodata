@@ -18,6 +18,7 @@ instance:
 
     memtx:
         memory: 42069
+        max_tuple_size: 10485760
 """
     )
     instance = cluster.add_instance(wait_online=False)
@@ -29,6 +30,7 @@ instance:
     assert info["replicaset_name"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
+    assert instance.eval("return box.cfg.memtx_max_tuple_size") == 10485760
 
 
 def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
@@ -103,6 +105,7 @@ instance:
             peer=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
                 memory=dict(value="64M", source="default"),
+                max_tuple_size=dict(value="1M", source="default"),
             ),
             vinyl=dict(
                 memory=dict(value="128M", source="default"),

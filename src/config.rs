@@ -350,6 +350,10 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.memtx.memory = Some(memtx_memory);
         }
 
+        if let Some(memtx_max_tuple_size) = args.memtx_max_tuple_size {
+            config_from_args.instance.memtx.max_tuple_size = Some(memtx_max_tuple_size);
+        }
+
         // --config-parameter has higher priority than other command line
         // arguments as a side effect of the fact that clap doesn't tell us
         // where the value came from: cli or env. Because we want
@@ -1382,6 +1386,12 @@ pub struct MemtxSection {
     /// Corresponds to `box.cfg.memtx_memory`.
     #[introspection(config_default = "64M")]
     pub memory: Option<ByteSize>,
+
+    /// Memory limit for one tuple.
+    ///
+    /// Corresponds to `box.cfg.memtx_max_tuple_size`.
+    #[introspection(config_default = "1M")]
+    pub max_tuple_size: Option<ByteSize>,
 }
 
 tarantool::define_str_enum! {
@@ -2470,11 +2480,13 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.log .level =debug  ",
                 "--config-parameter", "instance. memtx . memory=  999",
+                "--config-parameter", "instance. memtx . max_tuple_size=  998",
             ]).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.name.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx.memory.unwrap().to_string(), String::from("999B"));
+            assert_eq!(config.instance.memtx.max_tuple_size.unwrap().to_string(), String::from("998B"));
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
             assert_eq!(config.instance.instance_dir.unwrap(), PathBuf::from("."));
 
