@@ -53,10 +53,19 @@ def test_instances_of_incompatible_versions(cluster: Cluster):
 
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
+    i1.wait_online()
+
+    def upgrade_to_old_version(version):
+        major = int(version.split(".")[0])
+        minor = int(version.split(".")[1]) - 2
+        return f"{major}.{minor}.0-xxxx"
+
+    picodata_version = i1.call("box.space._pico_property:get", "cluster_version")[1]
+    old_version = upgrade_to_old_version(picodata_version)
 
     i2 = cluster.add_instance(wait_online=False)
     i2.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
-    i2.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = "24.5.0-82-g79a5b6f0"
+    i2.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = old_version
     lc = log_crawler(i2, injection_log)
 
     i2.start()
@@ -76,9 +85,17 @@ def test_instances_of_different_versions_in_cluster(cluster: Cluster):
     i1.start()
     i1.wait_online()
 
+    def upgrade_to_next_minor_version(version):
+        major = int(version.split(".")[0])
+        minor = int(version.split(".")[1]) + 1
+        return f"{major}.{minor}.0-xxxx"
+
+    picodata_version = i1.call("box.space._pico_property:get", "cluster_version")[1]
+    next_minor_version = upgrade_to_next_minor_version(picodata_version)
+
     i2 = cluster.add_instance(wait_online=False)
     i2.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
-    i2.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = "24.8.0-82-g79a5b6f0"
+    i2.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = next_minor_version
     lc = log_crawler(i2, injection_log)
 
     i2.start()
@@ -87,7 +104,7 @@ def test_instances_of_different_versions_in_cluster(cluster: Cluster):
 
     i3 = cluster.add_instance(wait_online=False)
     i3.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
-    i3.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = "24.8.0-82-g79a5b6f0"
+    i3.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = next_minor_version
     lc = log_crawler(i3, injection_log)
 
     i3.start()
