@@ -138,7 +138,7 @@ pub type lua_Writer = extern "C" fn(
     ud: *mut libc::c_void,
 ) -> libc::c_int;
 
-extern "C" {
+extern "C-unwind" {
     // Lua C API functions.
     pub fn lua_newstate(f: lua_Alloc, ud: *mut libc::c_void) -> *mut lua_State;
     pub fn lua_close(l: *mut lua_State);
@@ -658,7 +658,7 @@ pub const CTID_P_CCHAR: CTypeID = 19;
 pub const CTID_A_CCHAR: CTypeID = 20;
 pub const CTID_CTYPEID: CTypeID = 21;
 
-extern "C" {
+extern "C-unwind" {
     /// Push `u64` onto the stack
     /// *[-0, +1, -]*
     pub fn luaL_pushuint64(l: *mut lua_State, val: u64);
@@ -730,7 +730,7 @@ pub unsafe fn luaL_hasmetafield(l: *mut lua_State, index: i32, field: *const c_c
     }
 }
 
-extern "C" {
+extern "C-unwind" {
     /// Convert the value at `idx` to string using `__tostring` metamethod if
     /// other measures didn't work and return it. Sets the `len` if it's not
     /// `NULL`. The newly created string is left on top of the stack.

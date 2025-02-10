@@ -13,6 +13,8 @@
 ### Deprecated
 
 ### Breaking changes
+- Use `extern "C-unwind"` instead of `extern "C"` for lua ffi functions, which
+  seems to help with lua_error!() in release builds on recent versions of rust.
 
 ### Added (picodata)
 

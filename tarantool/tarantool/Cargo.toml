@@ -1,7 +1,7 @@
 [package]
 name = "tarantool"
 description = "Tarantool rust bindings"
-version = "6.1.1"
+version = "7.0.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Georgy Moshkin <gmoshkin@picodata.io>",
@@ -26,7 +26,7 @@ thiserror = "1.0.30"
 libc = { version = "0.2", features = ["extra_traits"] }
 log = "0.4"
 once_cell = "1.4.0"
-tlua = { path = "../tlua", version = "4.0.0" }
+tlua = { path = "../tlua", version = "5.0.0" }
 refpool = { version = "0.4.3", optional = true }
 rmp = "0.8.11"
 rmp-serde = "1.1"
