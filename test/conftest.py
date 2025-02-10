@@ -2014,8 +2014,13 @@ class Cluster:
         if raft_info["state"] == "Leader":
             return self.peer
 
+        connection_type = "iproto"
         leader_id = raft_info["leader_id"]
-        [[leader_address]] = self.peer.sql("SELECT address FROM _pico_peer_address WHERE raft_id = ?", leader_id)
+        [[leader_address]] = self.peer.sql(
+            "SELECT address FROM _pico_peer_address WHERE raft_id = ? and connection_type = ?",
+            leader_id,
+            connection_type,
+        )
         self.peer = self.get_instance_by_address(leader_address)
         return self.peer
 

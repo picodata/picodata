@@ -335,7 +335,8 @@ def test_raft_log(instance: Instance):
 |index|term|contents|
 +-----+----+--------+
 |  0  | 1  |BatchDml(
-Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
+Replace(_pico_peer_address, [1,"127.0.0.1:{p}","iproto"]),
+Replace(_pico_peer_address, [1,"127.0.0.1:{pg_port}","pgproto"]),
 Insert(_pico_instance, ["default_1_1","{i1_uuid}",1,"default_1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default","{picodata_version}"]),
 Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","default",0.0,"auto","not-ready",0,0,{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false,3000]))|
@@ -401,8 +402,8 @@ Insert(_pico_index, [{_pico_table},2,"_pico_table_owner_id","tree",[{{"unique":f
 Insert(_pico_table, [{_pico_index},"_pico_index",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"table_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"type"}},{{"field_type":"array","is_nullable":false,"name":"opts"}},{{"field_type":"array","is_nullable":false,"name":"parts"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}],[["table_id","unsigned",null,false,null],["id","unsigned",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
-Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}},{{"field_type":"string","is_nullable":false,"name":"connection_type"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null],["connection_type","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_name"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"string","is_nullable":false,"name":"picodata_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_instance},0,"_pico_instance_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},1,"_pico_instance_uuid","tree",[{{"unique":true}}],[["uuid","string",null,false,null]],true,0]),
@@ -455,6 +456,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,
+        pg_port=instance.pg_port,
         b="{}",
         i1_uuid=instance.uuid(),
         r1_uuid=instance.replicaset_uuid(),
@@ -798,3 +800,15 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     i1.start()
     i1.wait_online()
     assert not lc.matched
+
+
+def test_peer_connection_type(cluster: Cluster):
+    i1, _ = cluster.deploy(instance_count=2)
+
+    iproto = "iproto"
+    pgproto = "pgproto"
+    addr_list = i1.sql(""" SELECT address FROM _pico_peer_address WHERE connection_type = ? """, iproto)
+    pg_addr_list = i1.sql(""" SELECT address FROM _pico_peer_address WHERE connection_type = ? """, pgproto)
+
+    # each instance has one iproto address and one pg adress, their length should be equal
+    assert len(addr_list) == len(pg_addr_list)

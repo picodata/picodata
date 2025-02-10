@@ -14,8 +14,7 @@ use crate::replicaset::ReplicasetName;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::node;
-use crate::traft::Result;
+use crate::traft::{node, ConnectionType, Result};
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -182,7 +181,10 @@ where
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
-    let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
+    let leader_address = node
+        .storage
+        .peer_addresses
+        .try_get(leader_id, &ConnectionType::Iproto)?;
     let resp = network_call(&leader_address, proc_name, request).await?;
     Ok(resp)
 }

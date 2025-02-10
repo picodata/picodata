@@ -3,6 +3,7 @@ use crate::instance::InstanceName;
 use crate::instance::State;
 use crate::replicaset::ReplicasetName;
 use crate::tlua;
+use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::RaftId;
@@ -126,7 +127,7 @@ impl InstanceInfo {
         let peer_address = node
             .storage
             .peer_addresses
-            .get(instance.raft_id)?
+            .get(instance.raft_id, &traft::ConnectionType::Iproto)?
             .unwrap_or_else(|| "<unknown>".into());
 
         let cluster_name = node.raft_storage.cluster_name()?;

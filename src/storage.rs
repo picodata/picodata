@@ -734,6 +734,7 @@ impl TClusterwideTable for PeerAddresses {
         vec![
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("address", FieldType::String)),
+            Field::from(("connection_type", FieldType::String)),
         ]
     }
 
@@ -745,7 +746,10 @@ impl TClusterwideTable for PeerAddresses {
             name: "_pico_peer_address_raft_id".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
+            parts: vec![
+                Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false),
+                Part::from(("connection_type", IndexFieldType::String)).is_nullable(false),
+            ],
             operable: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -766,6 +770,7 @@ impl PeerAddresses {
             .index_builder("_pico_peer_address_raft_id")
             .unique(true)
             .part("raft_id")
+            .part("connection_type")
             .if_not_exists(true)
             .create()?;
 
@@ -773,29 +778,46 @@ impl PeerAddresses {
     }
 
     #[inline]
-    pub fn put(&self, raft_id: RaftId, address: &traft::Address) -> tarantool::Result<()> {
-        self.space.replace(&(raft_id, address))?;
+    pub fn put(
+        &self,
+        raft_id: RaftId,
+        address: &traft::Address,
+        connection_type: &traft::ConnectionType,
+    ) -> tarantool::Result<()> {
+        self.space.replace(&(raft_id, address, connection_type))?;
         Ok(())
     }
 
     #[allow(dead_code)]
     #[inline]
-    pub fn delete(&self, raft_id: RaftId) -> tarantool::Result<()> {
-        self.space.delete(&[raft_id])?;
+    pub fn delete(
+        &self,
+        raft_id: RaftId,
+        connection_type: &traft::ConnectionType,
+    ) -> tarantool::Result<()> {
+        self.space.delete(&(raft_id, connection_type))?;
         Ok(())
     }
 
     #[inline(always)]
-    pub fn get(&self, raft_id: RaftId) -> Result<Option<traft::Address>> {
-        let Some(tuple) = self.space.get(&[raft_id])? else {
+    pub fn get(
+        &self,
+        raft_id: RaftId,
+        connection_type: &traft::ConnectionType,
+    ) -> Result<Option<traft::Address>> {
+        let Some(tuple) = self.space.get(&(raft_id, connection_type))? else {
             return Ok(None);
         };
         tuple.field(1).map_err(Into::into)
     }
 
     #[inline(always)]
-    pub fn try_get(&self, raft_id: RaftId) -> Result<traft::Address> {
-        self.get(raft_id)?
+    pub fn try_get(
+        &self,
+        raft_id: RaftId,
+        connection_type: &traft::ConnectionType,
+    ) -> Result<traft::Address> {
+        self.get(raft_id, connection_type)?
             .ok_or(Error::AddressUnknownForRaftId(raft_id))
     }
 
@@ -804,7 +826,9 @@ impl PeerAddresses {
         &self,
         ids: impl IntoIterator<Item = RaftId>,
     ) -> Result<HashSet<traft::Address>> {
-        ids.into_iter().map(|id| self.try_get(id)).collect()
+        ids.into_iter()
+            .map(|id| self.try_get(id, &traft::ConnectionType::Iproto))
+            .collect()
     }
 }
 
@@ -3361,7 +3385,7 @@ mod tests {
         ] {
             space_by_name(Instances::TABLE_NAME).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
-            space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
+            space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"), &traft::ConnectionType::Iproto)).unwrap();
         }
 
         let instance = storage.instances.all_instances().unwrap();
@@ -3400,8 +3424,8 @@ mod tests {
         {
             // Ensure traft storage doesn't impose restrictions
             // on peer_address uniqueness.
-            storage_peer_addresses.put(10, &traft::Address::from("addr:collision")).unwrap();
-            storage_peer_addresses.put(11, &traft::Address::from("addr:collision")).unwrap();
+            storage_peer_addresses.put(10, &traft::Address::from("addr:collision"), &traft::ConnectionType::Iproto).unwrap();
+            storage_peer_addresses.put(11, &traft::Address::from("addr:collision"), &traft::ConnectionType::Iproto).unwrap();
         }
 
         {
@@ -3429,7 +3453,7 @@ mod tests {
 
         let box_replication = |replicaset_name: &str| -> Vec<traft::Address> {
             storage.instances.replicaset_instances(replicaset_name).unwrap()
-                .map(|instance| storage_peer_addresses.try_get(instance.raft_id).unwrap())
+                .map(|instance| storage_peer_addresses.try_get(instance.raft_id, &traft::ConnectionType::Iproto).unwrap())
                 .collect::<Vec<_>>()
         };
 
@@ -3458,15 +3482,29 @@ mod tests {
 
         space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
-            .insert(&(1, "foo"))
+            .insert(&(1, "foo", &traft::ConnectionType::Iproto))
             .unwrap();
         space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
-            .insert(&(2, "bar"))
+            .insert(&(2, "bar", &traft::ConnectionType::Pgproto))
             .unwrap();
 
-        assert_eq!(storage.peer_addresses.get(1).unwrap().unwrap(), "foo");
-        assert_eq!(storage.peer_addresses.get(2).unwrap().unwrap(), "bar");
+        assert_eq!(
+            storage
+                .peer_addresses
+                .get(1, &traft::ConnectionType::Iproto)
+                .unwrap()
+                .unwrap(),
+            "foo"
+        );
+        assert_eq!(
+            storage
+                .peer_addresses
+                .get(2, &traft::ConnectionType::Pgproto)
+                .unwrap()
+                .unwrap(),
+            "bar"
+        );
 
         let inst = |raft_id, instance_name: &str| Instance {
             raft_id,

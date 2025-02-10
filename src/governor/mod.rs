@@ -41,7 +41,7 @@ use crate::traft::node::Status;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
-use crate::traft::Result;
+use crate::traft::{ConnectionType, Result};
 use crate::unwrap_ok_or;
 use futures::future::try_join;
 use futures::future::try_join_all;
@@ -100,6 +100,7 @@ impl Loop {
             .peer_addresses
             .iter()
             .unwrap()
+            .filter(|peer| peer.connection_type == ConnectionType::Iproto)
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
         let voters = raft_storage.voters().expect("storage should never fail");

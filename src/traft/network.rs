@@ -132,7 +132,7 @@ impl PoolWorker {
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (inbox_ready_sender, inbox_ready_receiver) = watch::channel(());
         let instance_name = instance_name.into();
-        let full_address = storage.try_get(raft_id)?;
+        let full_address = storage.try_get(raft_id, &traft::ConnectionType::Iproto)?;
         let (address, port) = full_address
             .rsplit_once(':')
             .ok_or_else(|| Error::AddressParseFailure(full_address.clone()))?;
@@ -450,7 +450,9 @@ impl ConnectionPool {
         // Check if address of this peer is known.
         // No need to store the result,
         // because it will be updated in the loop
-        let _ = self.peer_addresses.try_get(raft_id)?;
+        let _ = self
+            .peer_addresses
+            .try_get(raft_id, &traft::ConnectionType::Iproto)?;
         let worker = PoolWorker::run(
             raft_id,
             instance_name.clone(),
@@ -666,7 +668,7 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen)
+            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
 
         let result: u32 = fiber::block_on(
@@ -716,7 +718,7 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen)
+            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
         tlog!(Info, "TEST: connecting {listen}");
         // pool.connect(1337, listen);
@@ -802,7 +804,7 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen)
+            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
         tlog!(Info, "TEST: connecting {listen}");
 
@@ -880,7 +882,7 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen)
+            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
         tlog!(Info, "TEST: connecting {listen}");
 

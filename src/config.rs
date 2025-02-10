@@ -6,7 +6,6 @@ use crate::instance::InstanceName;
 use crate::introspection::leaf_field_paths;
 use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
-use crate::pgproto;
 use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
 use crate::sql::value_type_str;
@@ -23,6 +22,7 @@ use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
 use crate::{config_parameter_path, sql};
+use crate::{pgproto, traft};
 use sbroad::ir::relation::DerivedType;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
@@ -629,8 +629,7 @@ Using configuration file '{args_path}'.");
         todo!()
     }
 
-    /// Does validation of configuration parameters which are persisted in the
-    /// storage.
+    /// Does validation of configuration parameters which are persisted in the storage.
     pub fn validate_storage(
         &self,
         storage: &storage::Clusterwide,
@@ -646,7 +645,7 @@ Using configuration file '{args_path}'.");
             _ => {}
         }
 
-        // Instance id
+        // Instance name
         let mut instance_name = None;
         match (raft_storage.instance_name()?, &self.instance.name) {
             (Some(from_storage), Some(from_config)) if from_storage != from_config => {
@@ -660,7 +659,7 @@ Using configuration file '{args_path}'.");
             _ => {}
         }
 
-        // Replicaset id
+        // Replicaset name
         if let Some(instance_name) = &instance_name {
             if let Ok(instance_info) = storage.instances.get(instance_name) {
                 match (
@@ -690,7 +689,9 @@ Using configuration file '{args_path}'.");
         // Advertise address
         if let Some(raft_id) = raft_storage.raft_id()? {
             match (
-                storage.peer_addresses.get(raft_id)?,
+                storage
+                    .peer_addresses
+                    .get(raft_id, &traft::ConnectionType::Iproto)?,
                 &self.instance.iproto_advertise,
             ) {
                 (Some(from_storage), Some(from_config))

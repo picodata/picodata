@@ -31,6 +31,14 @@ pub const INIT_RAFT_TERM: RaftTerm = 1;
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
+::tarantool::define_str_enum! {
+    /// An enumeration of all connection types that picodata supports.
+    pub enum ConnectionType {
+        Iproto = "iproto",
+        Pgproto = "pgproto",
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // RaftEntryId
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -132,6 +140,10 @@ pub struct PeerAddress {
     /// Inbound address used for communication with the node.
     /// Not to be confused with listen address.
     pub address: Address,
+
+    /// Used for identifying the connection type.
+    /// For example "iproto", "pgproto".
+    pub connection_type: ConnectionType,
 }
 impl Encode for PeerAddress {}
 

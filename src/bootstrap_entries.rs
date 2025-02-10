@@ -41,6 +41,19 @@ pub(super) fn prepare(
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
                 address: config.instance.iproto_advertise().to_host_port(),
+                connection_type: traft::ConnectionType::Iproto,
+            },
+            ADMIN_ID,
+        )
+        .expect("serialization cannot fail"),
+    );
+    ops.push(
+        op::Dml::replace(
+            storage::PeerAddresses::TABLE_ID,
+            &traft::PeerAddress {
+                raft_id: instance.raft_id,
+                address: config.instance.pg.listen().to_host_port(),
+                connection_type: traft::ConnectionType::Pgproto,
             },
             ADMIN_ID,
         )

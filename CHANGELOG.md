@@ -56,9 +56,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `listen`, `advertise` parameters are renamed to `iproto_listen`, `iproto_advertise`
 
-- New field `_pico_property.system_catalog_version` representing version of a system catalog.
-  It may not be changed at every release, so this is not autoincrementing value.
-
 - Added scopes to all parameters from `_pico_db_config`. There are two scopesright now - `tier`
 and `global`. Parameters with scope `tier`
 can be different on different tiers.
@@ -97,10 +94,15 @@ to 2 and 3.
 
 - New special command `\set delimiter enter` to change the default delimiter to EOL (End Of Line). Introduced a new inner prompt prefix to indicate when input is waiting for a delimiter. EOF is now treated as a delimiter when reading files.
 
+- New field `_pico_property.system_catalog_version` representing version of a system catalog.
+  It may not be changed at every release, so this is not autoincrementing value.
+
 - From now on, when joining a cluster, an instance's version must be the same as the cluster's version or one minor version higher. For example, if the cluster's version is 25.1, only instances with versions 25.1 or 25.2 can join.
   - In the `_pico_property` table, there is a new field called `cluster_version`, which shows the global version of the cluster.
   - In the `_pico_instance` table, there is a new field called `picodata_version` that displays the version of the executable running on the instance.
   - The global `cluster_version` is updated by the governor only when every instance in the cluster has been upgraded to the new minor version.
+
+- System table `_pico_peer_address` has a new column `conncetion_type` that indicates the connection type of the peer. It can be `iproto` or `pgproto`.
 
 - Global rename
   - Config File Changes:

@@ -5,7 +5,7 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
-use crate::traft::Result;
+use crate::traft::{ConnectionType, Result};
 use crate::util::Uppercase;
 use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
@@ -174,7 +174,10 @@ fn get_peer_addresses(
         })
         .map(|item| (item.raft_id, true))
         .collect();
-    let i = storage.peer_addresses.iter()?;
+    let i = storage
+        .peer_addresses
+        .iter()?
+        .filter(|peer| peer.connection_type == ConnectionType::Iproto);
     Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true))
         .map(|pa| (pa.raft_id, pa.address))
         .collect())

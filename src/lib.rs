@@ -925,6 +925,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         instance_name: config.instance.name().map(From::from),
         replicaset_name: config.instance.replicaset_name().map(From::from),
         advertise_address: config.instance.iproto_advertise().to_host_port(),
+        pgproto_advertise_address: config.instance.pg.listen().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),
         tier: config.instance.tier().into(),
         picodata_version: version,
@@ -975,8 +976,16 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {
         storage.instances.put(&resp.instance).unwrap();
-        for traft::PeerAddress { raft_id, address } in resp.peer_addresses {
-            storage.peer_addresses.put(raft_id, &address).unwrap();
+        for traft::PeerAddress {
+            raft_id,
+            address,
+            connection_type,
+        } in resp.peer_addresses
+        {
+            storage
+                .peer_addresses
+                .put(raft_id, &address, &connection_type)
+                .unwrap();
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage
@@ -1126,7 +1135,12 @@ fn postjoin(
             .expect("storage should never fail");
         // Doesn't have to be leader - can be any online peer
         let leader_id = node.status().leader_id;
-        let leader_address = leader_id.and_then(|id| storage.peer_addresses.try_get(id).ok());
+        let leader_address = leader_id.and_then(|id| {
+            storage
+                .peer_addresses
+                .try_get(id, &traft::ConnectionType::Iproto)
+                .ok()
+        });
         let Some(leader_address) = leader_address else {
             // FIXME: don't hard code timeout
             let timeout = Duration::from_millis(250);

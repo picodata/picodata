@@ -225,7 +225,7 @@ fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, 
             .map(|leader_id| (&node.storage.peer_addresses, leader_id, status.id))
     });
     if let Some((peers_addresses, leader_id, id)) = ready_ids {
-        let leader_address = peers_addresses.try_get(leader_id)?;
+        let leader_address = peers_addresses.try_get(leader_id, &traft::ConnectionType::Iproto)?;
         Ok(Response::Done(Role::new(leader_address, leader_id == id)))
     } else {
         let mut discovery = discovery();

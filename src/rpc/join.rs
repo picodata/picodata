@@ -48,6 +48,7 @@ crate::define_rpc_request! {
         pub instance_name: Option<InstanceName>,
         pub replicaset_name: Option<ReplicasetName>,
         pub advertise_address: String,
+        pub pgproto_advertise_address: String,
         pub failure_domain: FailureDomain,
         pub tier: String,
         pub picodata_version: String,
@@ -131,12 +132,26 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
+            connection_type: traft::ConnectionType::Iproto,
+        };
+        let pgproto_peer_address = traft::PeerAddress {
+            raft_id: instance.raft_id,
+            address: req.pgproto_advertise_address.clone(),
+            connection_type: traft::ConnectionType::Pgproto,
         };
 
-        let mut ops = Vec::with_capacity(3);
+        let mut ops = Vec::with_capacity(4);
         ops.push(
             Dml::replace(storage::PeerAddresses::TABLE_ID, &peer_address, ADMIN_ID)
                 .expect("encoding should not fail"),
+        );
+        ops.push(
+            Dml::replace(
+                storage::PeerAddresses::TABLE_ID,
+                &pgproto_peer_address,
+                ADMIN_ID,
+            )
+            .expect("encoding should not fail"),
         );
         ops.push(
             Dml::replace(storage::Instances::TABLE_ID, &instance, ADMIN_ID)
@@ -178,7 +193,12 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
         // A joined instance needs to communicate with other nodes.
         // TODO: limit the number of entries sent to reduce response size.
-        let peer_addresses = node.storage.peer_addresses.iter()?.collect();
+        let peer_addresses = node
+            .storage
+            .peer_addresses
+            .iter()?
+            .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+            .collect();
         let replicas = storage
             .instances
             .replicaset_instances(&instance.replicaset_name)

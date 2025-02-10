@@ -870,7 +870,12 @@ mod tests {
             tuples,
         });
 
-        let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
+        let tuples = [
+            (1, "google.com", traft::ConnectionType::Iproto),
+            (2, "ya.ru", traft::ConnectionType::Pgproto),
+        ]
+        .to_tuple_buffer()
+        .unwrap();
         data.space_dumps.push(SpaceDump {
             space_id: PeerAddresses::TABLE_ID,
             tuples,
@@ -902,10 +907,18 @@ mod tests {
         assert_eq!(instance, i);
 
         assert_eq!(storage.peer_addresses.space.len().unwrap(), 2);
-        let addr = storage.peer_addresses.get(1).unwrap().unwrap();
-        assert_eq!(addr, "google.com");
-        let addr = storage.peer_addresses.get(2).unwrap().unwrap();
-        assert_eq!(addr, "ya.ru");
+        let addr = storage
+            .peer_addresses
+            .get(1, &traft::ConnectionType::Iproto)
+            .unwrap()
+            .unwrap();
+        assert_eq!(addr, "google.com", "iproto");
+        let addr = storage
+            .peer_addresses
+            .get(2, &traft::ConnectionType::Pgproto)
+            .unwrap()
+            .unwrap();
+        assert_eq!(addr, "ya.ru", "pgproto");
 
         assert_eq!(storage.replicasets.space.len().unwrap(), 1);
         let replicaset = storage.replicasets.get("r1").unwrap().unwrap();
@@ -926,9 +939,13 @@ mod tests {
         storage
             .peer_addresses
             .space
-            .insert(&(1, "google.com"))
+            .insert(&(1, "google.com", traft::ConnectionType::Iproto))
             .unwrap();
-        storage.peer_addresses.space.insert(&(2, "ya.ru")).unwrap();
+        storage
+            .peer_addresses
+            .space
+            .insert(&(2, "ya.ru", traft::ConnectionType::Pgproto))
+            .unwrap();
 
         storage.properties.space.insert(&("foo", "bar")).unwrap();
 
@@ -955,11 +972,11 @@ mod tests {
                 }
 
                 s if s == PeerAddresses::TABLE_ID => {
-                    let addrs: [(i32, String); 2] =
+                    let addrs: [(i32, &str, &str); 2] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(
                         addrs,
-                        [(1, "google.com".to_string()), (2, "ya.ru".to_string())]
+                        [(1, "google.com", "iproto"), (2, "ya.ru", "pgproto")]
                     );
                 }
 

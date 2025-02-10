@@ -4523,6 +4523,7 @@ def test_order_by(cluster: Cluster):
                             PI.tier
                         FROM _pico_peer_address PA
                         JOIN _pico_instance PI ON PA.raft_id = PI.raft_id
+                        WHERE connection_type = 'iproto'
                         ORDER BY instance_name
  """
     )

@@ -297,7 +297,7 @@ mod tests {
         storage.instances.put(&instance).unwrap();
         storage
             .peer_addresses
-            .put(instance.raft_id, &listen)
+            .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
         crate::init_handlers();
 

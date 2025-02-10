@@ -11,6 +11,7 @@ use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
 use crate::traft::error::Error;
 use crate::traft::node;
+use crate::traft::ConnectionType;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use sbroad::executor::engine::Vshard;
@@ -139,6 +140,7 @@ impl VshardConfig {
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
             .iter()?
+            .filter(|peer| peer.connection_type == ConnectionType::Iproto)
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
         let replicasets: Vec<_> = storage.replicasets.iter()?.collect();

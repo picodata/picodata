@@ -101,7 +101,8 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
                        PI.replicaset_uuid,
                        PI.tier, PA.address uri
                 FROM _pico_peer_address PA
-                JOIN _pico_instance PI ON PA.raft_id = PI.raft_id)
+                JOIN _pico_instance PI ON PA.raft_id = PI.raft_id
+                WHERE connection_type = 'iproto')
             ORDER BY instance_name"#,
             Vec::<()>::new(),
         ),
