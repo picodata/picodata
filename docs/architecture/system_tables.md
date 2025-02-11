@@ -6,7 +6,7 @@
 По умолчанию [доступ к системным таблицам][a] запрещен всем [пользователям
 СУБД][u], кроме `admin` и `pico_service`.
 
-Описание соответствует версии Picodata `24.7.0-1112-g17d205fc`.
+Описание соответствует версии Picodata `24.7.0-1191-ga3b5134d`.
 
 [t]: ../overview/glossary.md#table
 [a]: ../tutorial/access_control.md#tables_access
@@ -192,6 +192,7 @@ SYSTEM].
 * `target_state`: (_array_)
 * `failure_domain`: (_map_)
 * `tier`: (_string_)
+* `picodata_version`: (_string_)
 
 Индексы:
 

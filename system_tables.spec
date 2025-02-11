@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.7.0-1112-g17d205fc`.
+Описание соответствует версии Picodata `24.7.0-1191-ga3b5134d`.
 
 ### _pico_table
 
@@ -106,6 +106,7 @@
 * `target_state`: (_array_)
 * `failure_domain`: (_map_)
 * `tier`: (_string_)
+* `picodata_version`: (_string_)
 
 Индексы:
 
