@@ -358,6 +358,7 @@ fn proc_instance_info(instance_name) -> InstanceInfo
       <br>возможные значения `variant`: `Offline`, `Online`, `Expelled`
     - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)) — целевое состояние инстанса
     - `tier`: (MP_STR)
+    - `picodata_version`: (MP_STR) версия инстанса
 
 ### .proc_raft_info {: #proc_raft_info }
 
@@ -394,7 +395,7 @@ fn proc_raft_interact(raft_messages)
 ### .proc_raft_join {: #proc_raft_join }
 
 ```rust
-fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier) -> Result
+fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier, picodata_version) -> Result
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
@@ -415,6 +416,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 - `advertise_address`: (MP_STR)
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
 - `tier`: (MP_STR) идентификатор [тира]
+- `picodata_version`: (MP_STR) версия инстанса
 
 Возвращаемое значение:
 
