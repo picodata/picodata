@@ -596,7 +596,7 @@ impl Admin {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Parser)]
-#[clap(about = "Connect to the Admin console of a Picodata instance")]
+#[clap(about = "Display the status of all instances in the cluster")]
 pub struct Status {
     #[clap(
         long = "peer",
