@@ -66,6 +66,10 @@ pub enum Op {
     /// Commit the pending DDL operation.
     ///
     /// Only one pending DDL operation can exist at the same time.
+    ///
+    /// If `tier` is specified, ddl should be applied only for
+    /// instances of given tier. Otherwise only local_schema_version
+    /// should be raised.
     DdlCommit,
     /// Abort the pending DDL operation.
     ///
@@ -403,7 +407,7 @@ impl Op {
             Self::Nop
             | Self::Dml(_)
             | Self::DdlAbort { .. }
-            | Self::DdlCommit
+            | Self::DdlCommit { .. }
             | Self::BatchDml { .. }
             | Self::Plugin { .. } => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
@@ -415,7 +419,7 @@ impl Op {
     /// For plugin operations see [`Self::is_plugin_op_finalizer`].
     #[inline(always)]
     pub fn is_ddl_finalizer(&self) -> bool {
-        matches!(self, Self::DdlCommit | Self::DdlAbort { .. })
+        matches!(self, Self::DdlCommit { .. } | Self::DdlAbort { .. })
     }
 
     /// Returns `true` if this op finalizes a multi-phase plugin operation.

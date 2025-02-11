@@ -654,11 +654,6 @@ pub(super) fn action_plan<'i>(
     if let Some(ddl) = pending_schema_change {
         let targets: Vec<(&InstanceName, &String)> =
             rpc::replicasets_masters(replicasets, instances);
-        let rpc = rpc::ddl_apply::Request {
-            term,
-            applied,
-            timeout: sync_timeout,
-        };
 
         let tier = if let Ddl::TruncateTable { id, .. } = ddl {
             let space = tables.get(&id).expect("failed to get space");
@@ -669,6 +664,13 @@ pub(super) fn action_plan<'i>(
             }
         } else {
             None
+        };
+
+        let rpc = rpc::ddl_apply::Request {
+            tier: tier.cloned(),
+            term,
+            applied,
+            timeout: sync_timeout,
         };
 
         return Ok(ApplySchemaChange { tier, rpc, targets }.into());
@@ -1213,6 +1215,9 @@ pub mod stage {
         }
 
         pub struct ApplySchemaChange<'i> {
+            /// Tier name on which schema change should be applied.
+            /// If specified, change application should be skipped
+            /// for other tiers.
             pub tier: Option<&'i String>,
             /// These are masters of all the replicasets in the cluster
             /// (their instance names with corresponding tier names).

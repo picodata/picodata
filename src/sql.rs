@@ -37,7 +37,6 @@ use sbroad::ir::node::block::Block;
 use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
-use sbroad::ir::node::NodeId;
 use sbroad::ir::node::{
     AlterSystem, AlterUser, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser,
     Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,

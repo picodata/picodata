@@ -1086,7 +1086,7 @@ impl Instances {
         Ok(())
     }
 
-    /// Finds an instance by `name` (see trait [`InstanceName`]).
+    /// Finds an instance by `name` or `raft_id` (see trait [`InstanceName`]).
     #[inline(always)]
     pub fn get(&self, name: &impl InstanceName) -> Result<Instance> {
         let res = name
@@ -1096,7 +1096,7 @@ impl Instances {
         Ok(res)
     }
 
-    /// Finds an instance by `name` (see trait [`InstanceName`]).
+    /// Finds an instance by `name` or `raft_id` (see trait [`InstanceName`]).
     #[inline(always)]
     pub fn try_get(&self, name: &impl InstanceName) -> Result<Option<Instance>> {
         let res = name.find_in(self);

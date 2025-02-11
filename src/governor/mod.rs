@@ -10,6 +10,7 @@ use ::tarantool::space::UpdateOps;
 
 use crate::cas;
 use crate::column_name;
+use crate::instance::InstanceName;
 use crate::op::Op;
 use crate::proc_name;
 use crate::replicaset::Replicaset;
@@ -34,6 +35,7 @@ use crate::storage::ToEntryIter as _;
 use crate::sync::proc_get_vclock;
 use crate::tlog;
 use crate::traft::error::Error;
+use crate::traft::error::Error as TraftError;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
@@ -612,9 +614,65 @@ impl Loop {
                 governor_step! {
                     "applying pending schema change"
                     async {
+                        // TODO: 1.) Passed not by reference, because I don't know how to specify
+                        //           returning type and fix problems with lifetimes.
+                        //       2.) Async closure is unstable so I can't use common await part inside.
+                        let collect_proc_apply = |targets: Vec<(InstanceName, String)>| {
+                            let mut fs = vec![];
+                            for (instance_name, _) in targets {
+                                tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
+                                let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                                fs.push(async move {
+                                    match resp.await {
+                                        Ok(rpc::ddl_apply::Response::Ok) => {
+                                            tlog!(Info, "applied schema change on instance";
+                                                "instance_name" => %instance_name,
+                                            );
+                                            Ok(())
+                                        }
+                                        Ok(rpc::ddl_apply::Response::Abort { cause }) => {
+                                            tlog!(Error, "failed to apply schema change on instance: {cause}";
+                                                "instance_name" => %instance_name,
+                                            );
+                                            Err(OnError::Abort(cause))
+                                        }
+                                        Err(e) => {
+                                            tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
+                                                "instance_name" => %instance_name
+                                            );
+                                            Err(OnError::Retry(e))
+                                        }
+                                    }
+                                });
+                            }
+
+                            Ok::<_, TraftError>(fs)
+                        };
+
                         if let Some(tier) = tier {
-                            // Case of TRUNCATE on sharded tables.
-                            let map_callrw_res = vshard::ddl_map_callrw(tier, proc_name!(proc_apply_schema_change), rpc_timeout, rpc);
+                            // DDL should be applied only on a specific tier
+                            // (e.g. case of TRUNCATE on sharded tables).
+                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
+
+                            // `ddl_map_callrw` sends requests to all replicaset masters in
+                            // the tier to which ddl table belongs but we should update
+                            // local_schema_change on all masters. That's why we make additional
+                            // rpc calls via custom connection pool.
+                            let other_targets: Vec<_> = targets
+                                .iter()
+                                .cloned()
+                                .filter(|(_, tier_name)| tier_name != &tier)
+                                .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
+                                .collect();
+                            let other_fs = collect_proc_apply(other_targets)?;
+
+                            let res = try_join_all(other_fs).await;
+                            if let Err(OnError::Abort(cause)) = res {
+                                next_op = Op::DdlAbort { cause };
+                                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                                return Ok(());
+                            }
+                            res?;
 
                             let proc_rpc_res_vec = match map_callrw_res {
                                 Ok(proc_rpc_res_vec) => proc_rpc_res_vec,
@@ -644,40 +702,19 @@ impl Loop {
                                 match res.response {
                                     rpc::ddl_apply::Response::Ok => {},
                                     rpc::ddl_apply::Response::Abort { .. } => {
-                                        panic!("TRUNCATE can't cause Abort on `proc_apply_schema_change` call")
+                                        unreachable!("TRUNCATE can't cause Abort on `proc_apply_schema_change` call")
                                     },
                                 }
                             }
                         } else {
-                            let mut fs = vec![];
-                            for (instance_name, _) in targets {
-                                tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                                let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
-                                fs.push(async move {
-                                    match resp.await {
-                                        Ok(rpc::ddl_apply::Response::Ok) => {
-                                            tlog!(Info, "applied schema change on instance";
-                                                "instance_name" => %instance_name,
-                                            );
-                                            Ok(())
-                                        }
-                                        Ok(rpc::ddl_apply::Response::Abort { cause }) => {
-                                            tlog!(Error, "failed to apply schema change on instance: {cause}";
-                                                "instance_name" => %instance_name,
-                                            );
-                                            Err(OnError::Abort(cause))
-                                        }
-                                        Err(e) => {
-                                            tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
-                                                "instance_name" => %instance_name
-                                            );
-                                            Err(OnError::Retry(e))
-                                        }
-                                    }
-                                });
-                            }
+                            let targets_cloned: Vec<_> = targets
+                                .iter()
+                                .cloned()
+                                .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
+                                .collect();
+                            let fs = collect_proc_apply(targets_cloned)?;
 
-                        let res = try_join_all(fs).await;
+                            let res = try_join_all(fs).await;
                             if let Err(OnError::Abort(cause)) = res {
                                 next_op = Op::DdlAbort { cause };
                                 crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");

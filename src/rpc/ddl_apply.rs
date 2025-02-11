@@ -102,6 +102,7 @@ crate::define_rpc_request! {
         pub term: RaftTerm,
         pub applied: RaftIndex,
         pub timeout: Duration,
+        pub tier: Option<String>,
     }
 
     pub enum Response {
@@ -176,9 +177,29 @@ pub fn apply_schema_change(
         }
 
         Ddl::TruncateTable { id, .. } => {
-            let abort_reason = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
-            if let Some(e) = abort_reason {
-                return Err(Error::Aborted(e.into()));
+            let space = storage
+                .tables
+                .get(id)
+                .map_err(|e| Error::Aborted(e.into()))?
+                .expect("failed to get space");
+            // We have to skip truncate application in case it should be applied
+            // only on a specific tier (case of sharded table).
+            let should_apply = match &space.distribution {
+                crate::schema::Distribution::Global => true,
+                crate::schema::Distribution::ShardedImplicitly { tier: tier_ddl, .. }
+                | crate::schema::Distribution::ShardedByField { tier: tier_ddl, .. } => {
+                    let node = node::global().map_err(|e| Error::Aborted(e.into()))?;
+                    let tier_node = node.topology_cache.my_tier_name();
+
+                    tier_node == tier_ddl.as_str()
+                }
+            };
+
+            if should_apply {
+                let abort_reason = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
+                if let Some(e) = abort_reason {
+                    return Err(Error::Aborted(e.into()));
+                }
             }
         }
 

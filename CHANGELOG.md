@@ -22,6 +22,9 @@ with the `YY.MINOR.MICRO` scheme.
 - `.proc_enable_all_plugins` is renamed into `.proc_before_online` due to added step of
   initialization of a PostgreSQL protocol at it's call.
 
+### SQL
+- SQL supports `TRUNCATE` operation.
+
 ## [25.1.1] - 2025-02-21
 
 ### Configuration
@@ -141,9 +144,6 @@ to 2 and 3.
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.
-
-### SQL
-- SQL supports `TRUNCATE` operation.
 
 ### Fixes
 

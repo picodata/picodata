@@ -403,7 +403,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     )
 
     # Schema change is blocked.
-    with pytest.raises(TimeoutError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
     # Space is created but is not operable.
@@ -847,9 +847,7 @@ def test_ddl_drop_table_normal(cluster: Cluster):
 
 ################################################################################
 def check_no_pending_schema_change(i: Instance):
-    rows = i.sql(
-        """select count(*) from "_pico_property" where "key" = 'pending_schema_change'"""
-    )
+    rows = i.sql("select count(*) from _pico_property where key = 'pending_schema_change'")
     assert rows == [[0]]
 
 
@@ -1722,9 +1720,9 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
 
     # Check that all buckets are stored on the r1.
     # Disable rebalancing on the first replicaset.
-    r1_active_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
-    )["rows"][0][0]
+    r1_active_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'active'""")[
+        "rows"
+    ][0][0]
     assert r1_active_buckets_count == 3000
 
     # Pause buckets receiving during rebalancing on a r2.
@@ -1733,9 +1731,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     # Rebalancer fiber works on a replicaset master with the smallest uuid.
     rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
 
-    lc = log_crawler(
-        rebalancer_r, "Some buckets are not active, retry rebalancing later"
-    )
+    lc = log_crawler(rebalancer_r, "Some buckets are not active, retry rebalancing later")
     # Enable rebalancing and wakeup it forcibly on the r1.
     r1.call("vshard.storage.rebalancer_enable")
     r1.call("vshard.storage.rebalancer_wakeup")
@@ -1746,13 +1742,13 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     # `rebalancer_max_sending` parameter defines the number of rebalancer workers that
     # may work in parallel. By default it equals to 1, so buckets should be sending
     # one by one.
-    r1_active_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
-    )["rows"][0][0]
+    r1_active_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'active'""")[
+        "rows"
+    ][0][0]
     assert r1_active_buckets_count == 2999
-    r1_sending_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'sending'"""
-    )["rows"][0][0]
+    r1_sending_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'sending'""")[
+        "rows"
+    ][0][0]
     assert r1_sending_buckets_count == 1
 
     # Resume DDL (TRUNCATE) execution.
@@ -1786,29 +1782,27 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
 
     r2 = cluster.add_instance(wait_online=True)
 
-    r1_active_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
-    )["rows"][0][0]
+    r1_active_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'active'""")[
+        "rows"
+    ][0][0]
     assert r1_active_buckets_count == 3000
 
     r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = true")
 
     rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
 
-    lc = log_crawler(
-        rebalancer_r, "Some buckets are not active, retry rebalancing later"
-    )
+    lc = log_crawler(rebalancer_r, "Some buckets are not active, retry rebalancing later")
     r1.call("vshard.storage.rebalancer_enable")
     r1.call("vshard.storage.rebalancer_wakeup")
     lc.wait_matched(timeout=30)
 
-    r1_active_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'active'"""
-    )["rows"][0][0]
+    r1_active_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'active'""")[
+        "rows"
+    ][0][0]
     assert r1_active_buckets_count == 2999
-    r1_sending_buckets_count = r1.call(
-        "box.execute", """select count(*) from "_bucket" where "status" = 'sending'"""
-    )["rows"][0][0]
+    r1_sending_buckets_count = r1.call("box.execute", """select count(*) from "_bucket" where "status" = 'sending'""")[
+        "rows"
+    ][0][0]
     assert r1_sending_buckets_count == 1
 
     with pytest.raises(TimeoutError):
@@ -2031,3 +2025,39 @@ def test_truncate_is_applied_from_snapshot_for_global_table(cluster: Cluster):
 
     dql = i1.sql("SELECT * FROM gt")
     assert dql == []
+
+
+def test_truncate_raises_local_schema_version_several_tiers(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        tier_1:
+            replication_factor: 2
+            can_vote: true
+        tier_2:
+            replication_factor: 2
+            can_vote: true
+"""
+    )
+
+    # We need each replicaset to contain 2 instances because DDL application
+    # differs on master and replica -- we want to check both cases here.
+    i1 = cluster.add_instance(tier="tier_1", wait_online=False)
+    cluster.add_instance(tier="tier_1", wait_online=False)
+    i2 = cluster.add_instance(tier="tier_2", wait_online=False)
+    cluster.add_instance(tier="tier_2", wait_online=False)
+    cluster.wait_online()
+
+    ddl = i1.sql("CREATE TABLE t1(a int primary key) distributed by (a) in tier tier_1")
+    assert ddl["row_count"] == 1
+
+    # TRUNCATE should be applied only on the tier_1. On tier_2 it should only
+    # raise local_schema_version so that consequitive operations (like creation
+    # of new table below) are not broken.
+    ddl = i1.sql("TRUNCATE TABLE t1 WAIT APPLIED GLOBALLY")
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql("CREATE TABLE t2(a int primary key) distributed by (a) in tier tier_2")
+    assert ddl["row_count"] == 1

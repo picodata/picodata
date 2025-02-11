@@ -940,6 +940,7 @@ mod tests {
         // truncate can be executed only with WRITE privilege
         {
             let e = access_check_ddl(
+                &storage,
                 &Ddl::TruncateTable {
                     id: space.id(),
                     initiator: user_id,
@@ -963,6 +964,7 @@ mod tests {
             );
 
             access_check_ddl(
+                &storage,
                 &Ddl::TruncateTable {
                     id: space.id(),
                     initiator: user_id,

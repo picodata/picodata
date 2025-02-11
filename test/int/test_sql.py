@@ -2291,9 +2291,7 @@ def test_truncate_simple_flow(cluster: Cluster):
 
     username = "vasya"
     password = "Passw0rd"
-    acl = i1.sql(
-        f"""create user "{username}" with password '{password}' using chap-sha1"""
-    )
+    acl = i1.sql(f"""create user "{username}" with password '{password}' using chap-sha1""")
     assert acl["row_count"] == 1
 
     # TRUNCATE is denied without WRITE privilege.

@@ -8,7 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows, Over, Reference,
-    ReferenceAsteriskSource, Window, TruncateTable};
+    ReferenceAsteriskSource, TruncateTable, Window,
+};
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
 use core::panic;

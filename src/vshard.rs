@@ -16,8 +16,8 @@ use crate::traft::ConnectionType;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use ::tarantool::msgpack::ViaMsgpack;
-use serde::{Deserialize, Serialize};
 use sbroad::executor::engine::Vshard;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::space::SpaceId;
@@ -36,7 +36,7 @@ pub fn ddl_map_callrw(
     tier: &str,
     function_name: &str,
     rpc_timeout: Duration,
-    req: Request,
+    req: &Request,
 ) -> Result<Vec<DdlMapCallRwRes>, Error> {
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
@@ -44,10 +44,10 @@ pub fn ddl_map_callrw(
         .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
     let func: tlua::LuaFunction<_> = pico.try_get("_ddl_map_callrw")?;
-    let args = Tuple::new(&req)?;
+    let args = Tuple::new(req)?;
 
     let res_raw = func
-        .call_with_args::<HashMap<String, HashMap<usize, ViaMsgpack<Response>>>, _>((
+        .call_with_args::<HashMap<String, [ViaMsgpack<Response>; 1]>, _>((
             tier,
             rpc_timeout.as_secs_f64(),
             function_name,
@@ -56,14 +56,8 @@ pub fn ddl_map_callrw(
         .map_err(|e| Error::from(tlua::LuaError::from(e)))?;
     let res = res_raw
         .into_iter()
-        .map(|(uuid, response_map)| {
-            // `response_map` key is an index in lua table which we should ignore.
-            let response = response_map
-                .into_iter()
-                .next()
-                .expect("Single deserialized map_callrw response should be present")
-                .1
-                 .0;
+        .map(|(uuid, response_arr)| {
+            let [ViaMsgpack(response)] = response_arr;
             DdlMapCallRwRes { uuid, response }
         })
         .collect();
