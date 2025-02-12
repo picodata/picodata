@@ -1,5 +1,6 @@
 use crate::error_code::ErrorCode;
 use crate::tlog;
+use crate::util::on_scope_exit;
 use picodata_plugin::transport::context::FfiSafeContext;
 use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::RegionBuffer;
@@ -79,10 +80,17 @@ pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntE
 
     // TODO: check service is not poisoned
 
+    let old_name = fiber::name();
+    // NOTE: we use the scope guard for catch_unwind safety
+    let _guard = on_scope_exit(move || fiber::set_name(&old_name));
     fiber::set_name(handler.identifier.route_repr());
-    let output = handler
-        .call(input, &context)
-        .map_err(|()| BoxError::last())?;
+
+    let result = handler.call(input, &context);
+
+    // Change the name back in case the RPC is executed locally.
+    drop(_guard);
+
+    let output = result.map_err(|()| BoxError::last())?;
 
     let mut buffer = RegionBuffer::new();
     rmp::encode::write_bin(&mut buffer, output)?;

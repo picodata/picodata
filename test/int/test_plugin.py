@@ -2279,6 +2279,9 @@ cluster:
     for s in services:
         router_instance.call("pico.service_append_tier", plugin_name, version, s, "router")
 
+    # Run test test_fiber_name_after_local_RPC
+    i1.call(".proc_rpc_dispatch", "/test_fiber_name_after_local_RPC", b"", make_context())
+
     # Call simple RPC endpoint, check context is passed correctly
     context = make_context(
         dict(

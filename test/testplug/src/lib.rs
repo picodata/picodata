@@ -638,6 +638,58 @@ impl Service for ServiceWithRpcTests {
             })
             .unwrap();
 
+        rpc::RouteBuilder::from(context)
+            .path("/get_fiber_name")
+            .register(|_, _| {
+                let fiber_name = fiber::name();
+                rpc::Response::from_bytes(fiber_name.as_bytes())
+            })
+            .unwrap();
+
+        rpc::RouteBuilder::from(context)
+            .path("/test_fiber_name_after_local_RPC")
+            .register(move |_, context| {
+                let plugin = context.plugin_name();
+                let service = context.service_name();
+
+                let info = internal::instance_info().unwrap();
+                let my_name = info.name();
+
+                let old_csw = fiber::csw();
+                let old_name = "my_super_cool_fiber_name";
+                fiber::set_name(old_name);
+
+                let target = rpc::RequestTarget::InstanceName(my_name);
+                let response = rpc::RequestBuilder::new(target)
+                    .path("/get_fiber_name")
+                    .plugin_service(plugin, service)
+                    .plugin_version(context.plugin_version())
+                    .input(rpc::Request::from_bytes(b""))
+                    .timeout(Duration::from_secs(1))
+                    .send()?;
+
+                // handler invoked locally and hence no yields
+                assert_eq!(fiber::csw(), old_csw);
+
+                let response_bytes = response.as_bytes();
+                let fiber_name_in_rpc = String::from_utf8(response_bytes.into()).unwrap();
+
+                // handler changed the fiber name for the time handler ran
+                assert_eq!(
+                    fiber_name_in_rpc,
+                    format!("{plugin}.{service}/get_fiber_name")
+                );
+
+                // and the current fiber's name is changed back
+                assert_eq!(fiber::name(), old_name);
+
+                // just a sanity check
+                assert_ne!(fiber_name_in_rpc, old_name);
+
+                Ok(rpc::Response::empty())
+            })
+            .unwrap();
+
         Ok(())
     }
 }
