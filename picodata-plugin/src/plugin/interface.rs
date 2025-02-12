@@ -153,6 +153,11 @@ pub trait Service {
 
     /// Callback to handle service configuration change once instance receives it.
     ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    ///
     /// # Poison
     ///
     /// Return an error here to poison current instance.
@@ -182,6 +187,12 @@ pub trait Service {
 
     /// Called at service start on every instance.
     ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row (without
+    /// any calls to [`Self::on_stop`]). It is the responsibility of the plugin
+    /// author to make this function idempotent.
+    ///
     /// An error returned here abort plugin load clusterwide thus forcing
     /// `on_stop` callback execution on every instance.
     ///
@@ -198,6 +209,11 @@ pub trait Service {
     /// Called on instance shutdown, plugin removal or failure of the initial load.
     /// Returned error will only be logged causing no effects on plugin lifecycle.
     ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    ///
     /// # Arguments
     ///
     /// * `context`: instance context
@@ -208,6 +224,11 @@ pub trait Service {
 
     /// Called when replicaset leader is changed.
     /// This callback will be called exactly on two instances - the old leader and the new one.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
     ///
     /// # Poison
     ///
@@ -230,6 +251,11 @@ pub trait Service {
     /// `on_healthcheck` is a callback
     /// that should be called to determine if the service is functioning properly
     /// On an error instance will be poisoned
+    ///
+    /// # Unimplemented
+    ///
+    /// **WARNING** This feature is not yet implemented.
+    /// The callback is never called.
     /// TODO.
     fn on_health_check(&self, context: &PicoContext) -> CallbackResult<()> {
         _ = context;
@@ -370,6 +396,13 @@ type ServiceIdent = RTuple!(RString, RString);
 /// closures.
 #[sabi_trait]
 pub trait Validator {
+    /// Validate plugin configuration.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    ///
     fn validate(&self, config: RSlice<u8>) -> RResult<(), ()>;
 }
 
