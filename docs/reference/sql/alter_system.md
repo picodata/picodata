@@ -2,7 +2,7 @@
 
 [DDL](ddl.md)-команда `ALTER SYSTEM` используется для изменения
 [параметров конфигурации СУБД](../../reference/db_config.md). Команда требует
-привилегий [Администратора СУБД](../../tutorial/access_control.md#admin)
+привилегий [Администратора СУБД](../../admin/access_control.md#admin)
 (`admin`).
 
 ## Синтаксис {: #syntax }

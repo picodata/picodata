@@ -41,21 +41,21 @@ Picodata — это распределенная система промышле
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
 
-#### Администрирование кластера {: #administration }
-
-* [Конфигурирование](tutorial/configure.md)
-* [Мониторинг](tutorial/monitoring.md)
-* [Резервное копирование](tutorial/backup.md)
-* [Управление доступом](tutorial/access_control.md)
-* [Аутентификация с помощью LDAP](tutorial/ldap.md)
-* [Использование журнала аудита](tutorial/audit_log.md)
-* [Рекомендации по сайзингу](tutorial/sizing.md)
-
 #### Разработка приложений {: #app_development }
 
 * [Создание плагина](tutorial/create_plugin.md)
 * [Управление плагинами](tutorial/plugins.md)
 * [Использование внешних коннекторов к Picodata](connectors_index.md)
+
+### Администрирование кластера {: #administration }
+
+* [Конфигурирование](admin/configure.md)
+* [Мониторинг](admin/monitoring.md)
+* [Резервное копирование](admin/backup.md)
+* [Управление доступом](admin/access_control.md)
+* [Аутентификация с помощью LDAP](admin/ldap.md)
+* [Использование журнала аудита](admin/audit_log.md)
+* [Рекомендации по сайзингу](admin/sizing.md)
 
 ### Справочные материалы {: #reference }
 

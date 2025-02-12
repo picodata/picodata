@@ -1,7 +1,7 @@
 # DROP ROLE
 
 [DCL](dcl.md)-команда `DROP ROLE` используется для удаления существующей
-[роли](../../tutorial/access_control.md#roles).
+[роли](../../admin/access_control.md#roles).
 
 ## Синтаксис {: #syntax }
 

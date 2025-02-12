@@ -17,7 +17,7 @@ Picodata хранит в рабочей директории инстанса [`
 
 См. также:
 
-- [Резервное копирование](../tutorial/backup.md)
+- [Резервное копирование](../admin/backup.md)
 - [Глоссарий — WAL](../overview/glossary.md#wal)
 - [Глоссарий — Персистентность](../overview/glossary.md#persistence)
 - [Глоссарий — Движок хранения](../overview/glossary.md#db_engine)

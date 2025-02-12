@@ -94,7 +94,7 @@ Picodata, когда в рабочей директории присутству
 [integrity_violation](../reference/audit_events.md#integrity_violation)
 
 Для настройки информирования см. [Оповещения о событиях
-безопасности](../tutorial/audit_log.md#notifications)
+безопасности](../admin/audit_log.md#notifications)
 
 Событие неуспешного запуска инстанса также фиксируется в стандартном
 выводе (stdout) в виде ошибок `ER_INVALID_XLOG`,`ER_INVALID_XLOG_NAME`,
@@ -117,5 +117,5 @@ Picodata, когда в рабочей директории присутству
 блокируется за исключением Администратора СУБД. Для восстановления
 целостности следует восстановить рабочие файлы инстанса из резервной
 копии, см. [Восстановление из резервной
-копии](../tutorial/backup.md#local_restore) и перезапустить инстанс
+копии](../admin/backup.md#local_restore) и перезапустить инстанс
 командой [`picodata run`](../reference/cli.md).

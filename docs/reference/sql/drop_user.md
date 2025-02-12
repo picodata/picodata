@@ -1,7 +1,7 @@
 # DROP USER
 
 [DCL](dcl.md)-команда `DROP USER` используется для удаления
-существующего [пользователя](../../tutorial/access_control.md#users).
+существующего [пользователя](../../admin/access_control.md#users).
 
 ## Синтаксис {: #syntax }
 

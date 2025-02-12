@@ -1,7 +1,7 @@
 # CREATE ROLE
 
 [DCL](dcl.md)-команда `CREATE ROLE` используется для создания новой
-[роли](../../tutorial/access_control.md#roles).
+[роли](../../admin/access_control.md#roles).
 
 ## Синтаксис {: #syntax }
 

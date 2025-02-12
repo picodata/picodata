@@ -52,7 +52,7 @@
 
 См. также:
 
-- [Использование журнала аудита](../tutorial/audit_log.md)
+- [Использование журнала аудита](../admin/audit_log.md)
 - [Регистрируемые события безопасности](../reference/audit_events.md)
 
 ### Web UI {: #webui }
@@ -77,13 +77,13 @@
 
 Для управления доступом в Picodata используются дискреционный и ролевой методы. Ниже приведены основные понятия, относящиеся к ролевой модели.
 
-См. [Управление доступом](../tutorial/access_control.md)
+См. [Управление доступом](../admin/access_control.md)
 
 ### Объекты доступа {: #access_objects }
 
 Объектами доступа являются:
 
-<!-- Keep in sync with tutorial/access_control.md#role_model -->
+<!-- Keep in sync with admin/access_control.md#role_model -->
 - `table` – [таблица БД](#table)
 - `user` – учетная запись [пользователя СУБД](#user)
 - `role` – [роль](#role)
@@ -100,7 +100,7 @@
 ### Привилегия {: #privilege }
 
 Привилегия – это явное разрешение на выполнение указанных действий, см.
-[Управление доступом](../tutorial/access_control.md#privileges).
+[Управление доступом](../admin/access_control.md#privileges).
 
 ### Роль пользователя {: #role }
 

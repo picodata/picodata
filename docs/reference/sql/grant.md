@@ -1,7 +1,7 @@
 # GRANT
 
 [DCL](dcl.md)-команда `GRANT` используется для выдачи
-[привилегий](../../tutorial/access_control.md#privileges) пользователю
+[привилегий](../../admin/access_control.md#privileges) пользователю
 или роли на различные объекты.
 
 ## Синтаксис {: #syntax }

@@ -6,7 +6,7 @@
 !!! note "Примечание"
     Пользователь может создавать и затем управлять
     своими процедурами при наличии [соответствующей
-    привилегии](../../tutorial/access_control.md#proc_access).
+    привилегии](../../admin/access_control.md#proc_access).
 
 Созданная процедура хранится в системной таблице
 [`_pico_routine`](../../architecture/system_tables.md#_pico_routine).

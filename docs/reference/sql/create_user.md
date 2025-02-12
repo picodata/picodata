@@ -1,7 +1,7 @@
 # CREATE USER
 
 [DCL](dcl.md)-команда `CREATE USER` используется для создания нового
-[пользователя](../../tutorial/access_control.md#users).
+[пользователя](../../admin/access_control.md#users).
 
 ## Синтаксис {: #syntax }
 
@@ -18,7 +18,7 @@
   препинания из [таблицы
   ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойства_таблицы).
   Действуют [требования к
-  паролю](../../tutorial/access_control.md#allowed_passwords).
+  паролю](../../admin/access_control.md#allowed_passwords).
 * **CHAP-SHA1** — аутентификация пользователя с помощью `chap-sha1`.
   Требуется использовать пароль не короче 8 символов
 * **LDAP** — аутентификация пользователя с помощью `ldap`. Пароль не

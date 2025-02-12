@@ -9,8 +9,8 @@
 Описание соответствует версии Picodata `24.7.0-1245-g08156497`.
 
 [t]: ../overview/glossary.md#table
-[a]: ../tutorial/access_control.md#tables_access
-[u]: ../tutorial/access_control.md#users
+[a]: ../admin/access_control.md#tables_access
+[u]: ../admin/access_control.md#users
 
 ## Описание схемы данных {: #schema }
 

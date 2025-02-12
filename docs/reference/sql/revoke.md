@@ -1,7 +1,7 @@
 # REVOKE
 
 [DCL](dcl.md)-команда `REVOKE` используется для изъятия
-[привилегий](../../tutorial/access_control.md#privileges) у пользователя
+[привилегий](../../admin/access_control.md#privileges) у пользователя
 или группы.
 
 ## Синтаксис {: #syntax }

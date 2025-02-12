@@ -45,14 +45,6 @@ nav:
       - tutorial/connecting.md
       - tutorial/sql_examples.md
       - tutorial/webui.md
-    - Администрирование кластера:
-      - tutorial/configure.md
-      - tutorial/monitoring.md
-      - tutorial/backup.md
-      - tutorial/access_control.md
-      - tutorial/ldap.md
-      - tutorial/audit_log.md
-      - tutorial/sizing.md
     - Разработка приложений:
       - tutorial/create_plugin.md
       - tutorial/plugins.md
@@ -60,6 +52,14 @@ nav:
         - Оглавление: connectors_index.md
         - tutorial/connectors/java.md
         - tutorial/connectors/jdbc.md
+  - Администрирование кластера:
+      - admin/configure.md
+      - admin/monitoring.md
+      - admin/backup.md
+      - admin/access_control.md
+      - admin/ldap.md
+      - admin/audit_log.md
+      - admin/sizing.md
   - Справочные материалы:
     - Язык SQL:
       - Команды и термины SQL: sql_index.md

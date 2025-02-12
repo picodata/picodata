@@ -15,7 +15,7 @@
 ![](../images/gostech_audit_log.svg)
 
 Задача модуля `gostech-audit-log` — разбор [журнала
-аудита](../tutorial/audit_log.md) Picodata и отправка его на указанный
+аудита](../admin/audit_log.md) Picodata и отправка его на указанный
 пользователем адрес.
 
 ### Запуск модуля {: #run }

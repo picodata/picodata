@@ -132,13 +132,13 @@ article.md-typeset.md-typeset ul {
 <b>P</b>
 
 * [plugin](architecture/plugins.md)
-* [procedure](tutorial/access_control.md#proc_access)
+* [procedure](admin/access_control.md#proc_access)
 * [projection](reference/sql/explain.md#plan_structure)
 
 <b>R</b>
 
 * [REVOKE](reference/sql/revoke.md)
-* [role](tutorial/access_control.md#role_model)
+* [role](admin/access_control.md#role_model)
 
 <b>S</b>
 
@@ -167,7 +167,7 @@ article.md-typeset.md-typeset ul {
 * [UNSIGNED](reference/sql_types.md#unsigned)
 * [UPDATE](reference/sql/update.md)
 * [UPPER](reference/sql/lower.md)
-* [user](tutorial/access_control.md#users)
+* [user](admin/access_control.md#users)
 * [UUID](reference/sql_types.md#uuid)
 
 <b>V</b>

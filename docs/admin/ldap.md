@@ -72,8 +72,8 @@ UNIX:
   подставлено фактическое имя пользователя Picodata (производится только
   для первого упоминания `$USER`).
 
-Пример [скрипта инстанса](deploy.md#simple_cluster_scripts) с указанием переменных среды для
-использования LDAP-сервера:
+Пример [скрипта инстанса](../tutorial/deploy.md#simple_cluster_scripts)
+с указанием переменных среды для использования LDAP-сервера:
 
 ???+ example "instance1"
     ```shell
@@ -128,7 +128,7 @@ ALTER USER "username" WITH PASSWORD '' USING ldap;
 при взаимодействии с сервером LDAP. Также, рекомендуется [включить SSL]
 для передачи пароля по сети в зашифрованном виде.
 
-[включить SSL]: connecting.md#enable_ssl
+[включить SSL]: ../tutorial/connecting.md#enable_ssl
 
 См. также:
 
