@@ -3,7 +3,6 @@ import sys
 import pexpect  # type: ignore
 from conftest import (
     CLI_TIMEOUT,
-    PICO_SERVICE_PASSWORD,
     Cluster,
     Instance,
     Retriable,
@@ -31,7 +30,6 @@ def test_expel_follower(cluster: Cluster):
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
@@ -57,7 +55,6 @@ def test_expel_leader(cluster: Cluster):
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
@@ -82,7 +79,6 @@ def test_expel_by_follower(cluster: Cluster):
     #   When instance which is not a Leader receives expel CLI command
     #   Then expelling instance is expelled
 
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
@@ -105,7 +101,6 @@ def test_raft_id_after_expel(cluster: Cluster):
     #   And a new instance joined
     #   Then raft_id of joined instance should be more than raft_id of the expelled instance
 
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
     cluster.deploy(instance_count=2)
     i1, _ = cluster.instances
     i3 = cluster.add_instance()
@@ -119,7 +114,7 @@ def test_raft_id_after_expel(cluster: Cluster):
 
 
 def test_expel_offline_ro_replica(cluster: Cluster):
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
+    cluster.set_service_password("secret")
     cluster.set_config_file(
         yaml="""
 cluster:
@@ -207,8 +202,8 @@ cluster:
             replication_factor: 2
 """
     )
+    cluster.set_service_password("secret")
 
-    cluster.set_service_password(PICO_SERVICE_PASSWORD)
     [leader] = cluster.deploy(instance_count=1, tier="raft")
 
     # Deploy a cluster with at least one full replicaset
@@ -216,11 +211,7 @@ cluster:
     assert storage1.replicaset_name == "storage_1"
     storage2 = cluster.add_instance(name="storage2", wait_online=True, tier="storage")
     assert storage2.replicaset_name == "storage_1"
-    storage3 = cluster.add_instance(
-        name="storage3",
-        wait_online=True,
-        tier="storage",
-    )
+    storage3 = cluster.add_instance(name="storage3", wait_online=True, tier="storage")
     assert storage3.replicaset_name == "storage_2"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
@@ -232,11 +223,7 @@ cluster:
     cluster.expel(storage2, peer=leader, timeout=1)
 
     # Add another instance, it should be assigned to the no longer filled replicaset
-    storage4 = cluster.add_instance(
-        name="storage4",
-        wait_online=True,
-        tier="storage",
-    )
+    storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
     assert storage4.replicaset_name == "storage_1"
 
     # Attempt to expel an offline replicaset
@@ -261,11 +248,7 @@ cluster:
     assert storage_2_state == "to-be-expelled"
 
     # Add another instance
-    storage5 = cluster.add_instance(
-        name="storage5",
-        tier="storage",
-        wait_online=False,
-    )
+    storage5 = cluster.add_instance(name="storage5", tier="storage", wait_online=False)
     storage5.start()
 
     # NOTE: wait_online doesn't work because bucket rebalancing has higher priortiy
@@ -278,7 +261,6 @@ cluster:
 
     # Try adding an instance to 'storage_2' directly, which is not allowed
     storage6 = cluster.add_instance(name="storage6", replicaset_name="storage_2", tier="storage", wait_online=False)
-
     lc = log_crawler(storage6, "cannot join replicaset which is being expelled")
     storage6.fail_to_start()
     lc.wait_matched()
@@ -294,11 +276,7 @@ cluster:
     assert storage_2_state == "expelled"
 
     # Now it's ok to reuse the 'r3' replicaset name, but it will be a different replicaset
-    cluster.add_instance(
-        replicaset_name="storage_2",
-        tier="storage",
-        wait_online=True,
-    )
+    cluster.add_instance(replicaset_name="storage_2", tier="storage", wait_online=True)
 
     # The new replicaset is created
     [[storage_2_state, storage_2_new_uuid]] = leader.sql(

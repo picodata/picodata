@@ -771,8 +771,10 @@ def test_file_shredding(cluster: Cluster, class_tmp_dir):
 
 def test_pico_service_password_security_warning(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
-
+    i1.set_service_password("secret")
     assert i1.service_password_file
+
+    # change permissions to make sure the warning from pico-service is triggered
     os.chmod(i1.service_password_file, 0o644)
 
     message = "service password file's permissions are too open, this is a security risk"  # noqa: E501
@@ -786,6 +788,7 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     # after removing instance data
     # file with pico-service password .picodata.cookie also will be deleted
     i1.remove_data()
+    i1.set_service_password("secret")
 
     lc.matched = False
     i1.start()

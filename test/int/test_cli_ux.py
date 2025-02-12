@@ -959,7 +959,7 @@ def test_picodata_status_basic(cluster: Cluster):
     i2_replicaset_uuid = i2.replicaset_uuid()
     i3_replicaset_uuid = i3.replicaset_uuid()
 
-    assert i1.service_password_file is not None
+    assert i1.service_password_file
 
     data = subprocess.check_output(
         [
@@ -1070,7 +1070,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     i1 = cluster.add_instance(wait_online=False)
     i1_address = f"{i1.host}:{i1.port}"
-    assert i1.service_password_file is not None
+    assert i1.service_password_file
 
     process = subprocess.run(
         [

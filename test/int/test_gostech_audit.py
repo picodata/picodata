@@ -253,7 +253,6 @@ def test_gostech_join_expel_instance(cluster: Cluster, port_distributor: PortDis
     audit_server = AuditServer(port_distributor.get())
     audit_server.start()
 
-    cluster.set_service_password("s3cr3t")
     [i1] = cluster.deploy(instance_count=1, audit=audit_server.cmd(cluster.binary_path))
 
     i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.binary_path))

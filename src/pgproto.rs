@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{
     os::fd::{AsRawFd, BorrowedFd},
-    path::{Path, PathBuf},
+    path::Path,
 };
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
@@ -157,10 +157,10 @@ impl Context {
 /// Start a postgres server fiber.
 pub fn start(
     config: &Config,
-    instance_dir: PathBuf,
+    instance_dir: &Path,
     storage: &'static Clusterwide,
 ) -> Result<(), Error> {
-    let context = Context::new(config, &instance_dir, storage)?;
+    let context = Context::new(config, instance_dir, storage)?;
 
     tarantool::fiber::Builder::new()
         .name("pgproto")

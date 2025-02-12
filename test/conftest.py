@@ -58,7 +58,6 @@ METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
-PICO_SERVICE_PASSWORD = "T3stP4ssword"
 
 CLI_TIMEOUT = 10  # seconds
 
@@ -1553,15 +1552,13 @@ class Instance:
         if not self.instance_dir:
             raise ValueError("instance_dir must be set before setting the service password")
 
+        cookie_file = os.path.join(self.instance_dir, ".picodata-cookie")
         self._service_password = password
-        self.service_password_file = os.path.join(self.instance_dir, ".picodata-cookie")
-        if isinstance(self.service_password_file, str):
-            if os.path.exists(self.service_password_file):
-                os.remove(self.service_password_file)
-
-            with open(self.service_password_file, "w") as f:
-                print(self._service_password, file=f)
-            os.chmod(self.service_password_file, 0o600)
+        self.service_password_file = cookie_file
+        os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+        with open(self.service_password_file, "w") as f:
+            f.write(self._service_password)
+        os.chmod(self.service_password_file, 0o600)
 
     @property
     def service_password(self) -> Optional[str]:
@@ -1756,7 +1753,7 @@ class Cluster:
         self.service_password = service_password
         self.service_password_file = os.path.join(self.instance_dir, ".picodata-cookie")
         with open(self.service_password_file, "w") as f:
-            print(service_password, file=f)
+            f.write(service_password)
         os.chmod(self.service_password_file, 0o600)
 
     def add_instance(
@@ -1825,16 +1822,9 @@ class Cluster:
         )
 
         if service_password:
-            instance._service_password = service_password
+            instance.set_service_password(service_password)
         elif self.service_password:
-            instance._service_password = self.service_password
-
-        cookie_file = os.path.join(instance.instance_dir, ".picodata-cookie")
-        instance.service_password_file = cookie_file
-        os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
-        with open(cookie_file, "w") as f:
-            print(instance._service_password, file=f)
-        os.chmod(cookie_file, 0o600)
+            instance.set_service_password(self.service_password)
 
         if enable_http:
             listen = f"{self.base_host}:{self.port_distributor.get()}"

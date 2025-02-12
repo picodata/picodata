@@ -785,7 +785,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         current_state: instance::State::new(Offline, 0),
         target_state: instance::State::new(Offline, 0),
-        failure_domain: config.instance.failure_domain(),
+        failure_domain: config.instance.failure_domain().clone(),
         tier: my_tier_name.into(),
         picodata_version: PICODATA_VERSION.to_string(),
     };
@@ -860,7 +860,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         instance_name: config.instance.name().map(From::from),
         replicaset_name: config.instance.replicaset_name().map(From::from),
         advertise_address: config.instance.iproto_advertise().to_host_port(),
-        failure_domain: config.instance.failure_domain(),
+        failure_domain: config.instance.failure_domain().clone(),
         tier: config.instance.tier().into(),
         picodata_version: version,
     };
@@ -1080,7 +1080,7 @@ fn postjoin(
         tlog!(Info, "initiating self-activation of {}", instance.name);
         let req = rpc::update_instance::Request::new(instance.name, cluster_name)
             .with_target_state(Online)
-            .with_failure_domain(config.instance.failure_domain())
+            .with_failure_domain(config.instance.failure_domain().clone())
             .with_picodata_version(version);
         let fut = rpc::network_call(
             &leader_address,

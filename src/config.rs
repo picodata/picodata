@@ -1187,12 +1187,11 @@ pub struct InstanceConfig {
     pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
-// TODO: remove all of the .clone() calls from these methods
 impl InstanceConfig {
     #[inline]
-    pub fn instance_dir(&self) -> PathBuf {
+    pub fn instance_dir(&self) -> &PathBuf {
         self.instance_dir
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
@@ -1214,37 +1213,37 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn failure_domain(&self) -> FailureDomain {
+    pub fn failure_domain(&self) -> &FailureDomain {
         self.failure_domain
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn peers(&self) -> Vec<IprotoAddress> {
+    pub fn peers(&self) -> &Vec<IprotoAddress> {
         self.peer
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn iproto_advertise(&self) -> IprotoAddress {
+    pub fn iproto_advertise(&self) -> &IprotoAddress {
         self.iproto_advertise
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn iproto_listen(&self) -> IprotoAddress {
+    pub fn iproto_listen(&self) -> &IprotoAddress {
         self.iproto_listen
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn admin_socket(&self) -> PathBuf {
+    pub fn admin_socket(&self) -> &PathBuf {
         self.admin_socket
-            .clone()
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
@@ -2198,7 +2197,7 @@ instance:
             let config = setup_for_tests(None, &["run"]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.name(), None);
@@ -2257,7 +2256,7 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![IprotoAddress::default()]
             );
 
@@ -2271,7 +2270,7 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![
                     IprotoAddress {
                         user: None,
@@ -2291,7 +2290,7 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![
                     IprotoAddress {
                         user: None,
@@ -2313,7 +2312,7 @@ instance:
             ]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![
                     IprotoAddress {
                         user: None,
@@ -2349,7 +2348,7 @@ instance:
             ]).unwrap();
 
             assert_eq!(
-                config.instance.peers(),
+                *config.instance.peers(),
                 vec![
                     IprotoAddress {
                         user: None,
@@ -2410,7 +2409,7 @@ instance:
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
             assert_eq!(
-                config.instance.failure_domain(),
+                *config.instance.failure_domain(),
                 FailureDomain::from([("KCONF1", "VCONF1"), ("KCONF2", "VCONF2-REPLACED")])
             );
 
@@ -2418,14 +2417,14 @@ instance:
             std::env::set_var("PICODATA_FAILURE_DOMAIN", "kenv1=venv1,kenv2=venv2,kenv2=venv2-replaced");
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
             assert_eq!(
-                config.instance.failure_domain(),
+                *config.instance.failure_domain(),
                 FailureDomain::from([("KENV1", "VENV1"), ("KENV2", "VENV2-REPLACED")])
             );
 
             // command line
             let config = setup_for_tests(Some(yaml), &["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"]).unwrap();
             assert_eq!(
-                config.instance.failure_domain(),
+                *config.instance.failure_domain(),
                 FailureDomain::from([("KARG1", "VARG1-REPLACED")])
             );
 
@@ -2435,7 +2434,7 @@ instance:
                 "--failure-domain", "bar=2,baz=3"
             ]).unwrap();
             assert_eq!(
-                config.instance.failure_domain(),
+                *config.instance.failure_domain(),
                 FailureDomain::from([
                     ("FOO", "1"),
                     ("BAR", "2"),
@@ -2448,7 +2447,7 @@ instance:
                 "-c", "instance.failure_domain={foo: '11', bar: '22'}"
             ]).unwrap();
             assert_eq!(
-                config.instance.failure_domain(),
+                *config.instance.failure_domain(),
                 FailureDomain::from([
                     ("FOO", "11"),
                     ("BAR", "22"),
