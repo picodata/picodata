@@ -416,7 +416,7 @@ impl CancellationCallbackState {
         } else if next_status == JobFinished as u64 {
             debug_assert_eq!(self.status.get(), JobCancelled);
             self.finish_channel.recv_timeout(timeout).map_err(|e| {
-                BoxError::new(TarantoolErrorCode::Timeout, stupid_recv_error_to_string(e))
+                BoxError::new(TarantoolErrorCode::Timeout, i_wish_this_was_simpler_and_im_sad_that_i_have_created_this_problem_for_my_self_recv_error_to_string(e))
             })?;
 
             self.status.set(JobFinished);
@@ -432,7 +432,9 @@ impl CancellationCallbackState {
 }
 
 #[inline]
-fn stupid_recv_error_to_string(e: fiber::channel::RecvError) -> &'static str {
+fn i_wish_this_was_simpler_and_im_sad_that_i_have_created_this_problem_for_my_self_recv_error_to_string(
+    e: fiber::channel::RecvError,
+) -> &'static str {
     match e {
         fiber::channel::RecvError::Timeout => "timeout",
         fiber::channel::RecvError::Disconnected => "disconnected",
