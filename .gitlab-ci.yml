@@ -754,6 +754,7 @@ deploy-luarocks:
         exit 1
       fi
   script:
+    - cd sbroad
     - make release_rock
     - echo "Deploying luarocks..."
     - scp -o stricthostkeychecking=no sbroad*rock luarocks@94.26.239.246:/data/nginx/www/packrepo/luarocks
