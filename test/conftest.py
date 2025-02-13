@@ -1413,9 +1413,9 @@ class Instance:
         Note that this seems similar to Instance.wait_online, but is a little bit
         different.
         """
-        assert not (
-            target == self and current_state == "Online" and target_state == "Online"
-        ), "use Instance.wait_online() instead"
+        assert not (target == self and current_state == "Online" and target_state == "Online"), (
+            "use Instance.wait_online() instead"
+        )
 
         def check():
             states = self.states(target)
@@ -2145,9 +2145,7 @@ class Cluster:
         rps: int | float = 5,
     ):
         leader = self.leader()
-        leader.wait_has_states(
-            current_state, target_state, target=target, timeout=timeout, rps=rps
-        )
+        leader.wait_has_states(current_state, target_state, target=target, timeout=timeout, rps=rps)
 
     def masters(self) -> List[Instance]:
         leader = self.leader()
