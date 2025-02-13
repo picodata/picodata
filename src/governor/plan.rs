@@ -1400,6 +1400,7 @@ fn get_replicaset_state_change<'i>(
 
         // TODO: set replicaset.state = NotReady if it was Ready but is no
         // longer full
+        // See <https://git.picodata.io/core/picodata/-/issues/188>
         if *replicaset_size < tier_info.replication_factor {
             continue;
         }
