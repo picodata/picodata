@@ -1,7 +1,7 @@
 # DROP PLUGIN
 
 [DCL](dcl.md)-команда `DROP PLUGIN` используется для удаления существующего
-[плагина](../../admin/access_control.md#roles) из кластера.
+[плагина](../../overview/glossary.md#plugin) из кластера.
 
 ## Синтаксис {: #syntax }
 

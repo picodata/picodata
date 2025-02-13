@@ -128,13 +128,11 @@ ALTER USER "username" WITH PASSWORD '' USING ldap;
 при взаимодействии с сервером LDAP. Также, рекомендуется [включить SSL]
 для передачи пароля по сети в зашифрованном виде.
 
-[включить SSL]: ../tutorial/connecting.md#enable_ssl
+[включить SSL]: ssl.md
 
 См. также:
 
 - [Управление доступом](access_control.md)
-
-
 
 ### Устранение неполадок {: #troubleshooting }
 

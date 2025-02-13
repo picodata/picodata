@@ -110,7 +110,7 @@ ALTER PLUGIN synapse 1.0.0 ENABLE;
 
 Для диагностики работы плагина обратитесь к [отладочному журналу] инстанса Picodata.
 
-[отладочному журналу]: ../tutorial/monitoring.md#reading_log
+[отладочному журналу]: ../admin/monitoring.md#reading_log
 [административной консоли]: ../tutorial/connecting.md#admin_console
 
 ## Проверка с помощью Ansible {: #ansible_test }

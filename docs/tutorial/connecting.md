@@ -242,28 +242,10 @@ psql postgres://alice:T0psecret@127.0.0.1:5432
 
 [psql]: https://www.postgresql.org/docs/current/app-psql.html
 
-### Включение протокола SSL {: #enable_ssl }
+См. также:
 
-При подключении по протоколу PostgreSQL будет автоматически задействовано
-безопасное соединение (SSL) если оно поддерживается (и настроено) на
-стороне сервера.
+- [Включение протокола SSL](../admin/ssl.md)
 
-Чтобы настроить использование SSL при подключении к Picodata по
-протоколу PostgreSQL, сделайте следующее:
-
-1. Задайте в [файле конфигурации](../reference/config.md#instance_pg_ssl)
-    параметр `instance.pg.ssl: true`
-
-1. Добавьте в [рабочую директорию инстанса](../reference/cli.md#run_instance_dir)
-    `<DATA_DIR>` SSL-сертификат и ключ `server.crt`, `server.key`
-
-1. (опционально) Для включения [mTLS] добавьте в
-    [рабочую директорию инстанса](../reference/cli.md#run_instance_dir) `<DATA_DIR>`
-    SSL-сертификат `ca.crt`. В результате PostgreSQL-сервер в Picodata будет
-    принимать подключения только в том случае, если клиент предоставит сертификат,
-    подписанный с помощью `ca.crt`.
-
-[mTLS]: https://en.wikipedia.org/wiki/Mutual_authentication
 
 ### Примеры запросов {: #examples }
 

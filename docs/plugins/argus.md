@@ -14,7 +14,7 @@ Picodata.
 сервером LDAP и Picodata. Синхронизация происходит однонаправленно и
 позволяет импортировать данные пользователей и групп с сервера LDAP в
 Picodata, для которой перед этим была настроена авторизация с помощью
-[LDAP](../tutorial/ldap.md).
+[LDAP](../admin/ldap.md).
 
 ## Состав плагина {: #plugin_files }
 
@@ -50,9 +50,9 @@ Picodata, для которой перед этим была настроена 
   LDAP), и ролям выданы нужные [привилегии]
 - настроено [подключение] к серверу LDAP
 
-[роли]: ../tutorial/access_control.md#roles
-[привилегии]: ../tutorial/access_control.md#privileges
-[подключение]: ../tutorial/ldap.md
+[роли]: ../admin/access_control.md#roles
+[привилегии]: ../admin/access_control.md#privileges
+[подключение]: ../admin/ldap.md
 
 ## Подключение плагина {: #plugin_enable }
 
@@ -86,7 +86,7 @@ ALTER PLUGIN argus 1.0.0 ENABLE;
 
 Для диагностики работы плагина обратитесь к [отладочному журналу] инстанса Picodata.
 
-[отладочному журналу]: ../tutorial/monitoring.md#reading_log
+[отладочному журналу]: ../admin/monitoring.md#reading_log
 [административной консоли]: ../tutorial/connecting.md#admin_console
 
 ## Проверка с помощью Ansible {: #ansible_test }
@@ -213,7 +213,7 @@ ansible-playbook -i argus.yml picodata.yml
 
 См. также:
 
-- [Управление плагинами](../tutorial/plugins.md)
+- [Управление плагинами](../architecture/plugins.md)
 
 <!--  Информация о сборке из исходного кода:
 

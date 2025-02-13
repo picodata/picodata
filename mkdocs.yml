@@ -58,6 +58,7 @@ nav:
       - admin/backup.md
       - admin/access_control.md
       - admin/ldap.md
+      - admin/ssl.md
       - admin/audit_log.md
       - admin/sizing.md
   - Справочные материалы:
