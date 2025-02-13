@@ -57,6 +57,7 @@ fn insert_build_metadata() {
 }
 
 fn generate_git_version() {
+    cargo::rerun_if_env_changed("GIT_DESCRIBE");
     rustc::env(
         "GIT_DESCRIBE",
         git_version::git_version!(
