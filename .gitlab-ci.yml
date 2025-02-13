@@ -608,11 +608,16 @@ downstream-front-deploy:
 
 publish-picodata-plugin:
   stage: pack
-  when: manual
   rules:
     - <<: *if-build-base-changes-on-dev-branch
+      when: manual
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - when: manual
+      allow_failure: true
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+
   script:
     - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
     - make publish-picodata-plugin
