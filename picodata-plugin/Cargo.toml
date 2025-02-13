@@ -1,6 +1,6 @@
 [package]
 name = "picodata-plugin"
-version = "24.7.0"
+version = "25.1.1-rc1"
 edition = "2021"
 license-file = "./../LICENSE"
 description = "Toolkit to build plugins for picodata.io DBMS"
@@ -12,7 +12,7 @@ crate-type = ["lib"]
 abi_stable = "0.11"
 gensym = "0.1"
 log = "0.4"
-picodata-plugin-proc-macro = { path = "../picodata-plugin-proc-macro", version = "24.7" }
+picodata-plugin-proc-macro = { path = "../picodata-plugin-proc-macro", version = "25.1.1-rc1" }
 rmp = "0.8"
 rmp-serde = "1.1"
 rmpv = { version = "1.0", features = ["with-serde"] }
