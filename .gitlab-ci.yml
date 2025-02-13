@@ -754,6 +754,7 @@ deploy-luarocks:
         exit 1
       fi
   script:
+    - find . -maxdepth 1 -mindepth 1 -not -name 'sbroad' -exec rm -rf {} +
     - cd sbroad
     - make release_rock
     - echo "Deploying luarocks..."
