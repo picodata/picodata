@@ -242,13 +242,13 @@ fn resolve_rpc_target(
     let mut by_bucket_id = None;
     let mut tier_and_replicaset_uuid = None;
     let replicaset_uuid_owned;
-    if let Some((tier, bucket_id)) = tier_and_bucket_id {
+    if let Some((tier_name, bucket_id)) = tier_and_bucket_id {
         // This call must be done here, because this function may yield
         // but later we take a volatile reference to TopologyCache which can't be held across yields
-        replicaset_uuid_owned = vshard::get_replicaset_uuid_by_bucket_id(tier, bucket_id)?;
+        replicaset_uuid_owned = vshard::get_replicaset_uuid_by_bucket_id(tier_name, bucket_id)?;
         let uuid = &*replicaset_uuid_owned;
-        by_bucket_id = Some((tier, bucket_id, uuid));
-        tier_and_replicaset_uuid = Some((tier, uuid));
+        by_bucket_id = Some((tier_name, bucket_id, uuid));
+        tier_and_replicaset_uuid = Some((tier_name, uuid));
     }
 
     let topology_ref = topology.get();

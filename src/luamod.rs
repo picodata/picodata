@@ -13,6 +13,7 @@ use crate::schema::{self, ADMIN_ID};
 use crate::sync;
 #[allow(unused_imports)]
 use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
@@ -158,7 +159,15 @@ pub(crate) fn setup() {
                 .raft_storage
                 .tier()?
                 .expect("tier for instance should exists");
-            let config = crate::vshard::VshardConfig::from_storage(&node.storage, &tier)?;
+
+            let Some(tier) = node.storage.tiers.by_name(&tier)? else {
+                return Err(Error::NoSuchTier(tier));
+            };
+            let config = crate::vshard::VshardConfig::from_storage(
+                &node.storage,
+                &tier.name,
+                tier.bucket_count,
+            )?;
             Ok(config)
         }),
     );

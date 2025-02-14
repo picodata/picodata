@@ -347,19 +347,17 @@ pub fn proc_get_config() -> Result<rmpv::Value, Error> {
 pub fn proc_get_vshard_config(tier_name: Option<String>) -> Result<RawByteBuf, Error> {
     let node = node::global()?;
     let tier_name = if let Some(tier_name) = tier_name {
-        let tier = node.storage.tiers.by_name(&tier_name)?;
-        if tier.is_none() {
-            return Err(Error::NoSuchTier(tier_name));
-        };
-
         tier_name
     } else {
         node.raft_storage
             .tier()?
             .expect("tier for instance should exists")
     };
+    let Some(tier) = node.storage.tiers.by_name(&tier_name)? else {
+        return Err(Error::NoSuchTier(tier_name));
+    };
 
-    let config = VshardConfig::from_storage(&node.storage, &tier_name)?;
+    let config = VshardConfig::from_storage(&node.storage, &tier.name, tier.bucket_count)?;
     let data = rmp_serde::to_vec_named(&config).map_err(Error::other)?;
     Ok(RawByteBuf::from(data))
 }

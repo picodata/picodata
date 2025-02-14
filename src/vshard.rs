@@ -1,4 +1,3 @@
-use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
@@ -6,6 +5,7 @@ use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::sql::router;
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
@@ -13,6 +13,7 @@ use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::RaftId;
 use crate::traft::Result;
+use sbroad::executor::engine::Vshard;
 use std::collections::HashMap;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
@@ -48,7 +49,9 @@ pub fn get_replicaset_priority_list(
 ///
 /// This function **may yield** if vshard needs to update it's bucket mapping.
 pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<String, Error> {
-    let max_bucket_id = PicodataConfig::total_bucket_count();
+    let info = router::get_tier_info(tier)?;
+
+    let max_bucket_id = info.bucket_count();
     if bucket_id < 1 || bucket_id > max_bucket_id {
         #[rustfmt::skip]
         return Err(Error::other(format!("invalid bucket id: must be within 1..{max_bucket_id}, got {bucket_id}")));
@@ -127,7 +130,11 @@ tarantool::define_str_enum! {
 }
 
 impl VshardConfig {
-    pub fn from_storage(storage: &Clusterwide, tier_name: &str) -> Result<Self, Error> {
+    pub fn from_storage(
+        storage: &Clusterwide,
+        tier_name: &str,
+        bucket_count: u64,
+    ) -> Result<Self, Error> {
         let instances = storage.instances.all_instances()?;
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
@@ -137,7 +144,13 @@ impl VshardConfig {
         let replicasets: Vec<_> = storage.replicasets.iter()?.collect();
         let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
 
-        let result = Self::new(&instances, &peer_addresses, &replicasets, tier_name);
+        let result = Self::new(
+            &instances,
+            &peer_addresses,
+            &replicasets,
+            tier_name,
+            bucket_count,
+        );
         Ok(result)
     }
 
@@ -146,6 +159,7 @@ impl VshardConfig {
         peer_addresses: &HashMap<RaftId, String>,
         replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
+        bucket_count: u64,
     ) -> Self {
         let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
         for peer in instances {
@@ -187,7 +201,7 @@ impl VshardConfig {
             sharding,
             discovery_mode: DiscoveryMode::On,
             space_bucket_id: TABLE_ID_BUCKET,
-            bucket_count: PicodataConfig::total_bucket_count(),
+            bucket_count,
         }
     }
 

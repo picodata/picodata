@@ -82,6 +82,7 @@ instance:
                 value=dict(deluxe=dict(can_vote=True)),
                 source="config_file",
             ),
+            default_bucket_count=dict(value=3000, source="default"),
             default_replication_factor=dict(value=1, source="default"),
         ),
         instance=dict(

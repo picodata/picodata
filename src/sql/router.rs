@@ -29,8 +29,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::sql::DEFAULT_BUCKET_COUNT;
-
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
 use crate::storage::{self, Clusterwide};
 
@@ -51,7 +49,7 @@ thread_local! {
         Mutex::new(PicoRouterCache::new(DEFAULT_CAPACITY).unwrap()));
 }
 
-fn get_tier_info(tier_name: &SmolStr) -> Result<Tier, SbroadError> {
+pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
@@ -59,7 +57,7 @@ fn get_tier_info(tier_name: &SmolStr) -> Result<Tier, SbroadError> {
     let tier = with_su(ADMIN_ID, || {
         node.storage
             .tiers
-            .by_name(tier_name.as_str())
+            .by_name(tier_name)
             .map_err(|e| {
                 SbroadError::FailedTo(
                     Action::Get,
@@ -69,12 +67,12 @@ fn get_tier_info(tier_name: &SmolStr) -> Result<Tier, SbroadError> {
             })?
             .ok_or(SbroadError::NotFound(
                 Entity::Metadata,
-                format_smolstr!("tier with tier_name `{tier_name}` not found"),
+                format_smolstr!("tier with name `{tier_name}` not found"),
             ))
     })??;
 
     Ok(Tier {
-        bucket_count: DEFAULT_BUCKET_COUNT,
+        bucket_count: tier.bucket_count,
         name: tier.name,
     })
 }

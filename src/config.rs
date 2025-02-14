@@ -1,7 +1,6 @@
 use crate::address::{HttpAddress, IprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
-use crate::config_parameter_path;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceName;
 use crate::introspection::leaf_field_paths;
@@ -21,6 +20,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
+use crate::{config_parameter_path, sql};
 use sbroad::ir::relation::DerivedType;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
@@ -197,6 +197,7 @@ Using configuration file '{args_path}'.");
             TierConfig {
                 replication_factor: Some(1),
                 can_vote: true,
+                bucket_count: Some(sql::DEFAULT_BUCKET_COUNT),
                 ..Default::default()
             },
         )]));
@@ -793,14 +794,6 @@ Using configuration file '{args_path}'.");
         1048576
     }
 
-    #[inline]
-    pub fn total_bucket_count() -> u64 {
-        // This is value is not configurable at the moment, but this may change
-        // in the future. At that point this function will probably also want to
-        // accept a `&self` parameter, but for now it's not necessary.
-        3000
-    }
-
     pub fn log_config_params(&self) {
         for path in &leaf_field_paths::<PicodataConfig>() {
             let value = self
@@ -1051,6 +1044,11 @@ pub struct ClusterConfig {
     #[introspection(config_default = 1)]
     pub default_replication_factor: Option<u8>,
 
+    /// Bucket count which is used for tiers which didn't specify one
+    /// explicitly. For default value see [`Self::default_bucket_count()`].
+    #[introspection(config_default = sql::DEFAULT_BUCKET_COUNT)]
+    pub default_bucket_count: Option<u64>,
+
     #[serde(flatten)]
     #[introspection(ignore)]
     pub unknown_parameters: HashMap<String, YamlValue>,
@@ -1065,6 +1063,7 @@ impl ClusterConfig {
                 Tier {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
+                    bucket_count: self.default_bucket_count(),
                     can_vote: true,
                     ..Default::default()
                 },
@@ -1077,10 +1076,15 @@ impl ClusterConfig {
                 .replication_factor
                 .unwrap_or_else(|| self.default_replication_factor());
 
+            let bucket_count = info
+                .bucket_count
+                .unwrap_or_else(|| self.default_bucket_count());
+
             let tier_def = Tier {
                 name: name.into(),
                 replication_factor,
                 can_vote: info.can_vote,
+                bucket_count,
                 ..Default::default()
             };
             tier_defs.insert(name.into(), tier_def);
@@ -1091,6 +1095,12 @@ impl ClusterConfig {
     #[inline]
     pub fn default_replication_factor(&self) -> u8 {
         self.default_replication_factor
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
+    pub fn default_bucket_count(&self) -> u64 {
+        self.default_bucket_count
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
@@ -2008,6 +2018,9 @@ cluster:
             replication_factor: 2
             can_vote: false
 
+        radix:
+            bucket_count: 16384
+
 instance:
     instance_name: voter1
 
@@ -2097,16 +2110,20 @@ cluster:
         let yaml = r###"
 cluster:
     default_replication_factor: 3
+    default_bucket_count: 5000
     name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         config.validate_from_file().expect("");
 
         let tiers = config.cluster.tiers();
+        assert_eq!(tiers.len(), 1);
+
         let default_tier = tiers
             .get("default")
             .expect("default replication factor should applied to default tier configuration");
         assert_eq!(default_tier.replication_factor, 3);
+        assert_eq!(default_tier.bucket_count, 5000);
     }
 
     #[test]
@@ -2148,6 +2165,44 @@ instance:
         let listen = config.instance.http_listen.unwrap();
         assert_eq!(listen.host, "127.0.0.1");
         assert_eq!(listen.port, "8080");
+    }
+
+    #[test]
+    fn default_bucket_count_replication_factor() {
+        let yaml = r###"
+cluster:
+    tier:
+        non-default:
+            replication_factor: 2
+            bucket_count: 1000
+        default:
+        default-rf:
+            bucket_count: 10000
+        default-bc:
+            replication_factor: 4
+    default_replication_factor: 3
+    default_bucket_count: 5000
+    name: test
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        config.validate_from_file().expect("");
+
+        let tiers = config.cluster.tiers();
+        assert_eq!(tiers.len(), 4);
+
+        let assert_tier = |name: &str, rf: u8, bc: u64| {
+            let tier: &Tier = tiers
+                .get(name)
+                .expect("default replication factor should applied to default tier configuration");
+
+            assert_eq!(tier.replication_factor, rf);
+            assert_eq!(tier.bucket_count, bc);
+        };
+
+        assert_tier("default", 3, 5000);
+        assert_tier("non-default", 2, 1000);
+        assert_tier("default-rf", 3, 10000);
+        assert_tier("default-bc", 4, 5000);
     }
 
     #[track_caller]

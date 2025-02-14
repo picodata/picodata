@@ -388,3 +388,88 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     ]
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+
+def assert_tier_bucket_count(cluster: Cluster, name: str, bucket_count: int, *instances: Instance):
+    assert len(instances) > 0
+
+    i1 = instances[0]
+    # default `bucket_count` is 3000
+    rows = i1.sql(""" SELECT name, bucket_count FROM _pico_tier WHERE name = ?""", name)
+    assert rows == [
+        [name, bucket_count],
+    ]
+
+    # 3000 bucket counts, 3 replicasets
+    for x in instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(x, int(bucket_count / len(instances)))
+
+
+def test_default_bucket_count(cluster: Cluster):
+    cluster.set_service_password("secret")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        storage:
+            replication_factor: 1
+"""
+    )
+    i1 = cluster.add_instance(tier="storage", wait_online=False)
+    i2 = cluster.add_instance(tier="storage", wait_online=False)
+    i3 = cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    assert_tier_bucket_count(cluster, "storage", 3000, i1, i2, i3)
+
+
+def test_bucket_count_custom(cluster: Cluster):
+    cluster.set_service_password("secret")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        radix:
+            replication_factor: 1
+            bucket_count: 16384
+        storage:
+            replication_factor: 1
+"""
+    )
+    i1 = cluster.add_instance(tier="storage", wait_online=False)
+    i2 = cluster.add_instance(tier="storage", wait_online=False)
+    i3 = cluster.add_instance(tier="storage", wait_online=False)
+    i4 = cluster.add_instance(tier="radix", wait_online=False)
+    i5 = cluster.add_instance(tier="radix", wait_online=False)
+    cluster.wait_online()
+
+    assert_tier_bucket_count(cluster, "storage", 3000, i1, i2, i3)
+    assert_tier_bucket_count(cluster, "radix", 16384, i4, i5)
+
+
+def test_bucket_count_custom_and_default(cluster: Cluster):
+    cluster.set_service_password("secret")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    default_bucket_count: 6000
+    tier:
+        radix:
+            replication_factor: 1
+            bucket_count: 16384
+        storage:
+            replication_factor: 1
+"""
+    )
+    i1 = cluster.add_instance(tier="storage", wait_online=False)
+    i2 = cluster.add_instance(tier="storage", wait_online=False)
+    i3 = cluster.add_instance(tier="storage", wait_online=False)
+    i4 = cluster.add_instance(tier="radix", wait_online=False)
+    i5 = cluster.add_instance(tier="radix", wait_online=False)
+    cluster.wait_online()
+
+    assert_tier_bucket_count(cluster, "storage", 6000, i1, i2, i3)
+    assert_tier_bucket_count(cluster, "radix", 16384, i4, i5)
