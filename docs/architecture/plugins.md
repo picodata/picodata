@@ -202,51 +202,14 @@ CREATE TABLE T (A INT) ON TIER @_plugin_config.red_tier;
 
 #### Трейт Service {: #service_trait }
 
-Ниже представлен код трейта, который необходимо реализовать для создания
-сервиса. Большинство методов являются необязательными. Для реализации
+Для создания сервиса плагин должен реализовать трейт `Service`.
+Большинство методов в нем являются необязательными. Для реализации
 трейта пользователю необходимо, как минимум, реализовать метод `name` и
 указать тип для конфигурации (если конфигурация не нужна — следует
 указать пустой кортеж `()`).
 
-```
-pub type ErrorBox = Box<dyn Error + Send + Sync>;
-pub type CallbackResult<T> = std::result::Result<T, ErrorBox>;
-pub trait ServiceFacade {
-   type CFG: DeserializeOwned;
-
-
-   /// Called on the governor before the new configuration on THIS plugin
-   /// is committed/applied.
-   /// If an error is returned, then ALTER command is aborted.
-   fn on_cfg_validate(&self, configuration: Self::CFG) -> CallbackResult<()>;
-
-
-   /// Invoked on every instance after SET OPTION is committed to Raft.
-   fn on_config_change(
-       &mut self,
-       ctx: &PicoContext,
-       new_cfg: Self::CFG,
-       old_cfg: Self::CFG,
-   ) -> CallbackResult<()>;
-
-
-   /// Called on healthcheck, if error is returned,
-   /// healthcheck will be considered as failed.
-   fn on_health_check(&self, context: &PicoContext) -> CallbackResult<()>;
-
-
-   /// Called at instance start for an enabled plugin or on ALTER PLUGIN ENABLE
-   fn on_start(&mut self, context: &PicoContext) -> CallbackResult<()>;
-
-
-   /// Called on instance stop or ALTER PLUGIN DISABLE
-   fn on_stop(&mut self, context: &PicoContext) -> CallbackResult<()>;
-
-
-   /// Called after replicaset master is changed
-   fn on_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()>;
-}
-```
+Код трейта доступен по
+[ссылке](https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html).
 
 #### Регистрация сервиса {: #service_registration }
 
@@ -276,9 +239,7 @@ fn my_registrar(registry: &mut ServiceRegistry) {
 Топология сервисов хранится в глобальной системной таблице
 [`_pico_service`].
 
-Настроить сервис можно двумя способами:
-
-1.&nbsp;С помощью SQL-запроса. Пример:
+Настроить сервис можно c помощью SQL-запроса. Пример:
 
 ```sql
 ALTER PLUGIN <plugin_name> <version>
@@ -286,19 +247,6 @@ ADD SERVICE <service_name>
 TO TIER ‘red’
 OPTION(timeout=...);
 ```
-
-2.&nbsp;Через [RPC]-вызов:
-
-```
-proc_service_configure(
-  plugin_name: string,
-  service_name:string,
-  key: string,
-  value: rmpv::Value
-)
-```
-
-[RPC]: rpc_api.md
 
 Конфигурация сервисов плагина хранится в глобальной служебной таблице
 `_pico_plugin_config` как набор `key`/`value`, где `key` — всегда
