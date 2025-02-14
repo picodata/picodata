@@ -72,6 +72,9 @@ export const instances = {
       rf: {
         label: "RF",
       },
+      bucket_count: {
+        label: "Buckets",
+      },
       canVote: {
         label: "Can vote",
       },

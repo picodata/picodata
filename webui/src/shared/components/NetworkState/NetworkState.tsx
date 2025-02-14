@@ -4,7 +4,7 @@ import { useTranslation } from "shared/intl";
 import { TextInFrame } from "shared/ui/typography/TextInFrame/TextInFrame";
 
 type NetworkStateProps = {
-  state: "Online" | "Offline";
+  state: "Online" | "Offline" | "Expelled";
 };
 
 export const NetworkState: React.FC<NetworkStateProps> = (props) => {

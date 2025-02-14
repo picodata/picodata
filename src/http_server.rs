@@ -114,6 +114,7 @@ pub(crate) struct TierInfo {
     replicasets: Vec<ReplicasetInfo>,
     replicaset_count: usize,
     rf: u8,
+    bucket_count: u64,
     instance_count: usize,
     #[serde(rename = "can_vote")] // for compatibility with lua version
     can_vote: bool,
@@ -200,7 +201,7 @@ async fn get_instances_data(
         // we have to add timeout directly to future due
         // to the bug in connection pool that does not consider
         // timeout when establishing TCP connection
-        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/943 
+        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/943
         ).timeout(DEFAULT_TIMEOUT);
         fs.push({
             async move {
@@ -382,6 +383,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
                     replicasets: Vec::new(),
                     replicaset_count: 0,
                     rf: item.replication_factor,
+                    bucket_count: item.bucket_count,
                     instance_count: 0,
                     can_vote: true,
                     name: item.name.clone(),

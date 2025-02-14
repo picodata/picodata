@@ -19,7 +19,7 @@ export type TReplicaset = {
   instanceCount: number;
   instances: InstanceType[];
   version: string;
-  state: "Online" | "Offline";
+  state: "Online" | "Offline" | "Expelled";
   capacityUsage: number;
   memory: {
     usable: number;

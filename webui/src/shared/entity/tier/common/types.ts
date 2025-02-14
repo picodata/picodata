@@ -10,6 +10,7 @@ export type ServerTierType = {
   replicasetCount: number;
   instanceCount: number;
   rf: number;
+  bucketCount: number;
   can_vote: boolean;
   replicasets: ServerReplicasetType[];
 };

@@ -67,6 +67,7 @@ def test_webui_basic(instance: Instance):
                 ],
                 "replicasetCount": 1,
                 "rf": 1,
+                "bucketCount": 3000,
                 "instanceCount": 1,
                 "can_vote": True,
                 "name": "default",
@@ -202,6 +203,7 @@ def test_webui_with_plugin(cluster: Cluster):
     tier_template = {
         "replicasetCount": 1,
         "rf": 1,
+        "bucketCount": 3000,
         "instanceCount": 1,
         "can_vote": True,
     }
