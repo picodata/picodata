@@ -6,7 +6,9 @@
 use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
-use crate::ir::node::{Alias, LocalTimestamp, Reference, ReferenceAsteriskSource};
+use crate::ir::node::{
+    Alias, AlterSystemTierPart, LocalTimestamp, Reference, ReferenceAsteriskSource,
+};
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
 use core::panic;
@@ -394,13 +396,16 @@ fn parse_alter_system<M: Metadata>(
             .expect("Expected mandatory child node under AlterSystemTier.");
         let tier_node_child = ast.nodes.get_node(*tier_node_child_id)?;
         match tier_node_child.rule {
-            Rule::AlterSystemTiersAll => None,
+            Rule::AlterSystemTiersAll => Some(AlterSystemTierPart::AllTiers),
             Rule::AlterSystemTierSingle => {
                 let node_child_id = tier_node_child
                     .children
                     .first()
                     .expect("Child node expected under AlterSystemTierSingle.");
-                Some(parse_identifier(ast, *node_child_id)?)
+                Some(AlterSystemTierPart::Tier(parse_identifier(
+                    ast,
+                    *node_child_id,
+                )?))
             }
             _ => panic!("Unexpected rule met under AlterSystemTier."),
         }
@@ -410,7 +415,7 @@ fn parse_alter_system<M: Metadata>(
 
     Ok(AlterSystem {
         ty,
-        tier_name,
+        tier_part: tier_name,
         timeout: get_default_timeout(),
     })
 }

@@ -36,9 +36,9 @@ use crate::storage::schema::ddl_meta_drop_space;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
+use crate::storage::DbConfig;
 use crate::storage::{self, Clusterwide, PropertyName, TClusterwideTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
-use crate::system_parameter_name;
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
 use crate::traft;
@@ -725,7 +725,7 @@ impl NodeImpl {
                 }
             };
 
-            let mut apply_entry_result = EntryApplied(None);
+            let mut apply_entry_result = EntryApplied(vec![]);
             let mut new_applied = None;
             transaction(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
@@ -769,14 +769,17 @@ impl NodeImpl {
                     fiber::sleep(timeout);
                     continue;
                 }
-                EntryApplied(None) => {
+                EntryApplied(dmls) if dmls.is_empty() => {
                     // Actually advance the iterator.
                     let _ = entries.next();
                 }
-                EntryApplied(Some(AppliedDml { table, new_tuple })) => {
+                EntryApplied(dmls) => {
+                    let current_tier = self.topology_cache.my_tier_name();
                     // currently only parameters from _pico_db_config processed outside of transaction (here)
-                    debug_assert!(table == storage::DbConfig::TABLE_ID);
-                    apply_parameter(new_tuple);
+                    for AppliedDml { table, new_tuple } in dmls {
+                        debug_assert!(table == DbConfig::TABLE_ID);
+                        apply_parameter(new_tuple, current_tier);
+                    }
 
                     // Actually advance the iterator.
                     let _ = entries.next();
@@ -967,21 +970,25 @@ impl NodeImpl {
         self.wake_governor_if_needed(&op);
 
         let storage_properties = &self.storage.properties;
-        let mut res = ApplyEntryResult::EntryApplied(None);
+        let mut res = ApplyEntryResult::EntryApplied(vec![]);
 
         // apply the operation
         match op {
             Op::Nop => {}
-            Op::BatchDml { ref ops } => {
-                for op in ops {
-                    match self.handle_dml_entry(op, expelled) {
-                        Ok(applied_dml) => res = EntryApplied(applied_dml),
+            Op::BatchDml { ops } => {
+                let mut applied_dmls = Vec::with_capacity(ops.len());
+                for op in ops.into_iter() {
+                    match self.handle_dml_entry(&op, expelled) {
+                        Ok(Some(applied_dml)) => applied_dmls.push(applied_dml),
                         Err(()) => return SleepAndRetry,
+                        _ => (),
                     }
                 }
+
+                res = EntryApplied(applied_dmls);
             }
             Op::Dml(op) => match self.handle_dml_entry(&op, expelled) {
-                Ok(applied_dml) => res = EntryApplied(applied_dml),
+                Ok(applied_dml) => res = EntryApplied(Vec::from_iter(applied_dml)),
                 Err(()) => return SleepAndRetry,
             },
             Op::DdlPrepare {
@@ -1345,7 +1352,7 @@ impl NodeImpl {
                 if let Some(plugin) = maybe_plugin {
                     if plugin.enabled {
                         warn_or_panic!("Op::DropPlugin for an enabled plugin");
-                        return EntryApplied(None);
+                        return EntryApplied(Vec::new());
                     }
 
                     let services = self
@@ -2170,6 +2177,7 @@ impl NodeImpl {
         // Persist stuff raft wants us to persist.
         let hard_state = ready.hs();
         let entries_to_persist = ready.entries();
+
         if hard_state.is_some() || !entries_to_persist.is_empty() || snapshot_data.is_some() {
             let mut new_term = None;
             let mut new_applied = None;
@@ -2250,11 +2258,6 @@ impl NodeImpl {
             }
 
             if received_snapshot {
-                // apply changed dynamic parameters
-                for changed_parameter in changed_parameters {
-                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?);
-                }
-
                 // Need to reload the whole topology cache. We could be more
                 // clever about it and only update the records which changed,
                 // but at the moment this would require doing a full scan and
@@ -2265,6 +2268,13 @@ impl NodeImpl {
                 self.topology_cache
                     .full_reload(&self.storage)
                     .expect("schema upgrade not supported yet");
+
+                let current_tier = self.topology_cache.my_tier_name();
+
+                // apply changed dynamic parameters
+                for changed_parameter in changed_parameters {
+                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?, current_tier);
+                }
             }
 
             if hard_state.is_some() {
@@ -2397,10 +2407,7 @@ impl NodeImpl {
     fn do_raft_log_auto_compaction(&self, old_last_index: RaftIndex) -> traft::Result<()> {
         let mut compaction_needed = false;
 
-        let max_size: u64 = self
-            .storage
-            .db_config
-            .get_or_default(system_parameter_name!(raft_wal_size_max))?;
+        let max_size: u64 = self.storage.db_config.raft_wal_size_max()?;
         let current_size = self.raft_storage.raft_log_bsize()?;
         if current_size > max_size {
             #[rustfmt::skip]
@@ -2408,10 +2415,7 @@ impl NodeImpl {
             compaction_needed = true;
         }
 
-        let max_count: u64 = self
-            .storage
-            .db_config
-            .get_or_default(system_parameter_name!(raft_wal_count_max))?;
+        let max_count: u64 = self.storage.db_config.raft_wal_count_max()?;
         let current_count = self.raft_storage.raft_log_count()?;
         if current_count > max_count {
             #[rustfmt::skip]
@@ -2516,7 +2520,7 @@ enum ApplyEntryResult {
 
     /// Entry applied to persistent storage successfully and should be
     /// applied to non-persistent outside of transaction, proceed to next entry.
-    EntryApplied(Option<AppliedDml>),
+    EntryApplied(Vec<AppliedDml>),
 }
 
 pub(crate) struct MainLoop {

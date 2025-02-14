@@ -14,7 +14,7 @@ use tarantool::tuple::KeyDef;
 use tarantool::tuple::{RawBytes, Tuple};
 use tarantool::util::NumOrStr;
 
-use crate::config;
+use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
 use crate::info::PICODATA_VERSION;
 use crate::instance::{self, Instance};
@@ -2939,7 +2939,8 @@ impl PluginConfig {
 #[derive(Debug, Clone)]
 pub struct DbConfig {
     pub space: Space,
-    pub index: Index,
+    pub primary: Index,   // by key + scope
+    pub secondary: Index, // by key
 }
 
 impl TClusterwideTable for DbConfig {
@@ -2950,26 +2951,45 @@ impl TClusterwideTable for DbConfig {
         use tarantool::space::Field;
         vec![
             Field::from(("key", FieldType::String)),
+            Field::from(("scope", FieldType::String)),
             Field::from(("value", FieldType::Any)),
         ]
     }
 
     fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_db_config_key".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
-            operable: true,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "_pico_db_config_pk".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![
+                    Part::from(("key", IndexFieldType::String)).is_nullable(false),
+                    Part::from(("scope", IndexFieldType::String)).is_nullable(false),
+                ],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "_pico_db_config_key".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+        ]
     }
 }
 impl DbConfig {
+    pub const GLOBAL_SCOPE: &str = "";
+
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
@@ -2978,27 +2998,57 @@ impl DbConfig {
             .if_not_exists(true)
             .create()?;
 
-        let index = space
-            .index_builder("_pico_db_config_key")
+        let primary = space
+            .index_builder("_pico_db_config_pk")
             .unique(true)
+            .part("key")
+            .part("scope")
+            .if_not_exists(true)
+            .create()?;
+
+        let secondary = space
+            .index_builder("_pico_db_config_key")
+            .unique(false)
             .part("key")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index })
+        Ok(Self {
+            space,
+            primary,
+            secondary,
+        })
     }
 
     #[inline]
-    pub fn get_or_default<T>(&self, key: &'static str) -> tarantool::Result<T>
+    pub fn get_or_default<T>(&self, key: &'static str, target_scope: &str) -> tarantool::Result<T>
     where
         T: DecodeOwned,
         T: serde::de::DeserializeOwned,
     {
-        if let Some(t) = self.space.get(&[key])? {
-            if let Some(res) = t.field(1)? {
+        let global_scope = AlterSystemParameters::has_scope_global(key)
+            .map_err(|err| ::tarantool::error::Error::other(err.to_string()))?;
+
+        for (index, tuple) in self.by_key(key)?.enumerate() {
+            // parameters with global scope are unique by it's name
+            if cfg!(debug_assertions) && global_scope {
+                assert!(index < 1);
+            }
+
+            let res: T = tuple.field(AlterSystemParameters::FIELD_VALUE)?.expect("");
+
+            if global_scope {
+                return Ok(res);
+            }
+
+            let current_scope: &str = tuple.field(AlterSystemParameters::FIELD_SCOPE)?.expect("");
+
+            if target_scope == current_scope {
                 return Ok(res);
             }
         }
+
+        // it's not unreachable since some of parameters may be needed before filling _pico_db_config
 
         let value = config::get_default_value_of_alter_system_parameter(key)
             .expect("parameter name is validated using system_parameter_name! macro");
@@ -3006,45 +3056,58 @@ impl DbConfig {
         Ok(res)
     }
 
-    #[inline]
-    pub fn get<T>(&self, key: &'static str) -> tarantool::Result<Option<T>>
-    where
-        T: DecodeOwned,
-    {
-        match self.space.get(&[key])? {
-            Some(t) => t.field(1),
-            None => Ok(None),
-        }
+    #[inline(always)]
+    pub fn by_key(&self, key: &str) -> tarantool::Result<EntryIter<Tuple, MP_SERDE>> {
+        let iter = self.secondary.select(IteratorType::Eq, &[key])?;
+        Ok(EntryIter::new(iter))
     }
 
     #[inline]
     pub fn auth_password_length_min(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(auth_password_length_min))
+        self.get_or_default(
+            system_parameter_name!(auth_password_length_min),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn auth_password_enforce_uppercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(auth_password_enforce_uppercase))
+        self.get_or_default(
+            system_parameter_name!(auth_password_enforce_uppercase),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn auth_password_enforce_lowercase(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(auth_password_enforce_lowercase))
+        self.get_or_default(
+            system_parameter_name!(auth_password_enforce_lowercase),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn auth_password_enforce_digits(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(auth_password_enforce_digits))
+        self.get_or_default(
+            system_parameter_name!(auth_password_enforce_digits),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn auth_password_enforce_specialchars(&self) -> tarantool::Result<bool> {
-        self.get_or_default(system_parameter_name!(auth_password_enforce_specialchars))
+        self.get_or_default(
+            system_parameter_name!(auth_password_enforce_specialchars),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn auth_login_attempt_max(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(auth_login_attempt_max))
+        self.get_or_default(
+            system_parameter_name!(auth_login_attempt_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
@@ -3054,7 +3117,8 @@ impl DbConfig {
             return Ok(cached);
         }
 
-        let res = self.get_or_default(system_parameter_name!(pg_statement_max))?;
+        let res =
+            self.get_or_default(system_parameter_name!(pg_statement_max), Self::GLOBAL_SCOPE)?;
 
         // Cache the value.
         config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
@@ -3068,7 +3132,7 @@ impl DbConfig {
             return Ok(cached);
         }
 
-        let res = self.get_or_default(system_parameter_name!(pg_portal_max))?;
+        let res = self.get_or_default(system_parameter_name!(pg_portal_max), Self::GLOBAL_SCOPE)?;
 
         // Cache the value.
         config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
@@ -3077,46 +3141,80 @@ impl DbConfig {
 
     #[inline]
     pub fn raft_snapshot_chunk_size_max(&self) -> tarantool::Result<usize> {
-        self.get_or_default(system_parameter_name!(raft_snapshot_chunk_size_max))
+        self.get_or_default(
+            system_parameter_name!(raft_snapshot_chunk_size_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn raft_snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
         #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(raft_snapshot_read_view_close_timeout))?;
+        let res: f64 = self.get_or_default(system_parameter_name!(raft_snapshot_read_view_close_timeout), Self::GLOBAL_SCOPE)?;
         Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
     pub fn governor_auto_offline_timeout(&self) -> tarantool::Result<Duration> {
         #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(governor_auto_offline_timeout))?;
+        let res: f64 = self.get_or_default(system_parameter_name!(governor_auto_offline_timeout), Self::GLOBAL_SCOPE)?;
         Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
     pub fn sql_motion_row_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(system_parameter_name!(sql_motion_row_max))
+        self.get_or_default(
+            system_parameter_name!(sql_motion_row_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
     pub fn sql_vdbe_opcode_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(system_parameter_name!(sql_vdbe_opcode_max))
+        self.get_or_default(
+            system_parameter_name!(sql_vdbe_opcode_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
-    pub fn memtx_checkpoint_count(&self) -> tarantool::Result<u64> {
-        self.get_or_default(system_parameter_name!(memtx_checkpoint_count))
+    pub fn raft_wal_size_max(&self) -> tarantool::Result<u64> {
+        self.get_or_default(
+            system_parameter_name!(raft_wal_size_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
-    pub fn memtx_checkpoint_interval(&self) -> tarantool::Result<u64> {
-        self.get_or_default(system_parameter_name!(memtx_checkpoint_interval))
+    pub fn raft_wal_count_max(&self) -> tarantool::Result<u64> {
+        self.get_or_default(
+            system_parameter_name!(raft_wal_count_max),
+            Self::GLOBAL_SCOPE,
+        )
     }
 
     #[inline]
-    pub fn iproto_net_msg_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(system_parameter_name!(iproto_net_msg_max))
+    pub fn governor_raft_op_timeout(&self) -> tarantool::Result<f64> {
+        self.get_or_default(
+            system_parameter_name!(governor_raft_op_timeout),
+            Self::GLOBAL_SCOPE,
+        )
+    }
+
+    #[inline]
+    pub fn governor_common_rpc_timeout(&self) -> tarantool::Result<f64> {
+        self.get_or_default(
+            system_parameter_name!(governor_common_rpc_timeout),
+            Self::GLOBAL_SCOPE,
+        )
+    }
+
+    #[inline]
+    pub fn governor_plugin_rpc_timeout(&self) -> tarantool::Result<f64> {
+        self.get_or_default(
+            system_parameter_name!(governor_plugin_rpc_timeout),
+            Self::GLOBAL_SCOPE,
+        )
     }
 }
 

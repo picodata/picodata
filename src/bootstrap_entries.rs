@@ -5,19 +5,20 @@ use ::tarantool::msgpack;
 
 use crate::access_control::validate_password;
 use crate::config::PicodataConfig;
+use crate::config::{self};
 use crate::info::PICODATA_VERSION;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::{ADMIN_ID, GUEST_ID};
 use crate::storage::PropertyName;
+use crate::storage::{self};
 use crate::storage::{Clusterwide, TClusterwideTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op;
-use crate::{config, storage};
 use std::collections::HashMap;
 use std::env;
 use tarantool::auth::{AuthData, AuthDef, AuthMethod};
@@ -128,19 +129,14 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
     );
 
+    let tier_names = tiers.keys().map(AsRef::as_ref).collect::<Vec<_>>();
+
     //
     // Populate "_pico_db_config" with initial values for cluster-wide properties
     //
-    for (name, default) in config::get_defaults_for_all_alter_system_parameters() {
-        #[rustfmt::skip]
-        ops.push(
-            op::Dml::insert(
-                storage::DbConfig::TABLE_ID,
-                &(name, default),
-                ADMIN_ID,
-            )
-        .expect("serialization cannot fail"));
-    }
+    let db_config_entries = config::get_defaults_for_all_alter_system_parameters(&tier_names)?;
+
+    ops.extend(db_config_entries);
 
     let context = traft::EntryContext::Op(op::Op::BatchDml { ops });
     init_entries.push(

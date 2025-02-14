@@ -237,12 +237,14 @@ pub trait Introspection {
 #[derive(PartialEq, Eq, Hash)]
 pub struct FieldInfo {
     pub name: &'static str,
+    pub scope: Option<&'static str>,
     pub nested_fields: &'static [FieldInfo],
 }
 
 impl std::fmt::Debug for FieldInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.name)?;
+        write!(f, "{:?}", self.scope)?;
         if !self.nested_fields.is_empty() {
             write!(f, ": {:?}", self.nested_fields)?;
         }
@@ -427,6 +429,7 @@ mod test {
         s: String,
         #[introspection(config_default = &["this", "also", "works"])]
         #[introspection(sbroad_type = SbroadType::Array)]
+        #[introspection(scope = tier)]
         v: Vec<String>,
         #[introspection(nested)]
         #[introspection(sbroad_type = SbroadType::Map)]
@@ -442,6 +445,7 @@ mod test {
         #[introspection(sbroad_type = SbroadType::String)]
         a: String,
         #[introspection(config_default = format!("{}, but type safety is missing unfortunately", self.a))]
+        #[introspection(scope = tier)]
         b: i64,
         #[introspection(nested)]
         empty: Empty,
@@ -737,33 +741,41 @@ mod test {
             &[
                 FieldInfo {
                     name: "x",
+                    scope: None,
                     nested_fields: &[]
                 },
                 FieldInfo {
                     name: "y",
+                    scope: None,
                     nested_fields: &[]
                 },
                 FieldInfo {
                     name: "s",
+                    scope: None,
                     nested_fields: &[]
                 },
                 FieldInfo {
                     name: "v",
+                    scope: Some("tier"),
                     nested_fields: &[]
                 },
                 FieldInfo {
                     name: "struct",
+                    scope: None,
                     nested_fields: &[
                         FieldInfo {
                             name: "a",
+                            scope: None,
                             nested_fields: &[]
                         },
                         FieldInfo {
                             name: "b",
+                            scope: Some("tier"),
                             nested_fields: &[]
                         },
                         FieldInfo {
                             name: "empty",
+                            scope: None,
                             nested_fields: &[]
                         },
                     ]

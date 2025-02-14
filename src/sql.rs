@@ -3,6 +3,7 @@
 use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
+use crate::config::AlterSystemParameters;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DistributionParam,
     Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
@@ -11,9 +12,9 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::{space_by_name, TClusterwideTable};
+use crate::storage::{space_by_name, DbConfig, TClusterwideTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
-use crate::traft::error::{self, Error, Unsupported};
+use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -36,13 +37,13 @@ use sbroad::ir::node::block::Block;
 use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
-use sbroad::ir::node::NodeId;
 use sbroad::ir::node::{
     AlterSystem, AlterUser, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser,
     Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
     Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
     Update,
 };
+use sbroad::ir::node::{AlterSystemTierPart, NodeId};
 use tarantool::decimal::Decimal;
 
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
@@ -1131,55 +1132,101 @@ fn acl_ir_node_to_op_or_result(
     }
 }
 
+#[rustfmt::skip]
 fn alter_system_ir_node_to_op_or_result(
+    storage: &Clusterwide,
     ty: &AlterSystemType,
-    tier_name: Option<&str>,
+    tier_part: Option<&AlterSystemTierPart>,
     current_user: UserId,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
-    if tier_name.is_some() {
-        // TODO: Should be resolved as a part of
-        //       https://git.picodata.io/picodata/picodata/picodata/-/issues/867.
-        return Err(Error::Unsupported(Unsupported::new(
-            String::from("specifying tier name in alter system"),
-            Some(String::from("use 'all tiers' instead")),
-        )));
-    }
-
     let table = crate::storage::DbConfig::TABLE_ID;
     let initiator = current_user;
+
     match ty {
         AlterSystemType::AlterSystemSet {
             param_name,
             param_value,
         } => {
-            let casted_value =
-                crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
+            let casted_value = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
 
-            let dml = Dml::replace(table, &(param_name, casted_value), initiator)?;
+            let mut dmls = Vec::new();
 
-            Ok(Continue(Op::Dml(dml)))
+            if AlterSystemParameters::has_scope_tier(param_name)? {
+                let Some(tier_part) = tier_part else {
+                    return Err(Error::other("can't set tiered parameter without specifing tier"));
+                };
+
+                let tiers = storage.tiers.iter()?.collect::<Vec<_>>();
+
+                match tier_part {
+                    AlterSystemTierPart::AllTiers => {
+                        for tier in tiers.iter() {
+                            dmls.push(Dml::replace(table,&(param_name, &tier.name, &casted_value), initiator)?);
+                        }
+                    }
+                    AlterSystemTierPart::Tier(tier_name) => {
+                        let Some(tier) = tiers.iter().find(|tier| tier.name == *tier_name) else {
+                            return Err(Error::other(format!("specified tier '{tier_name}' doesn't exist")));
+                        };
+
+                        dmls.push(Dml::replace(table,&(param_name, &tier.name, &casted_value), initiator)?);
+                    }
+                }
+            } else {
+                if let Some(AlterSystemTierPart::Tier(tier)) = tier_part {
+                    return Err(Error::other(format!("can't set parameter with global scope for tier '{tier}'")));
+                };
+
+                dmls.push(Dml::replace(table,&(param_name, DbConfig::GLOBAL_SCOPE, casted_value), initiator)?);
+            }
+
+            Ok(Continue(Op::BatchDml{ ops: dmls }))
         }
         AlterSystemType::AlterSystemReset { param_name } => {
             match param_name {
+                // reset one
                 Some(param_name) => {
-                    // reset one
-                    let Some(default_value) =
-                        crate::config::get_default_value_of_alter_system_parameter(param_name)
-                    else {
+                    let Some(default_value) = crate::config::get_default_value_of_alter_system_parameter(param_name) else {
                         return Err(Error::other(format!("unknown parameter: '{param_name}'")));
                     };
-                    let dml = Dml::replace(table, &(param_name, default_value), initiator)?;
 
-                    Ok(Continue(Op::Dml(dml)))
-                }
-                None => {
-                    // reset all
-                    let defaults = crate::config::get_defaults_for_all_alter_system_parameters();
-                    let mut dmls = Vec::with_capacity(defaults.len());
-                    for (param_name, default_value) in defaults {
-                        let dml = Dml::replace(table, &(param_name, default_value), initiator)?;
-                        dmls.push(dml);
+                    let mut dmls = Vec::new();
+
+                    if AlterSystemParameters::has_scope_tier(param_name)? {
+                        let Some(tier_part) = tier_part else {
+                            return Err(Error::other("can't reset tiered parameter without specifing tier"));
+                        };
+
+                        let tiers = storage.tiers.iter()?.collect::<Vec<_>>();
+
+                        match tier_part {
+                            AlterSystemTierPart::AllTiers => {
+                                for tier in tiers.iter() {
+                                    dmls.push(Dml::replace(table,&(param_name, &tier.name, &default_value), initiator)?);
+                                }
+                            }
+                            AlterSystemTierPart::Tier(tier_name) => {
+                                let Some(tier) = tiers.iter().find(|tier| tier.name == *tier_name) else {
+                                    return Err(Error::other(format!("specified tier '{tier_name}' doesn't exist")));
+                                };
+
+                                dmls.push(Dml::replace(table,&(param_name, &tier.name, &default_value), initiator)?);
+                            }
+                        }
+                    } else {
+                        if let Some(AlterSystemTierPart::Tier(tier)) = tier_part {
+                            return Err(Error::other(format!("can't reset parameter with global scope for tier '{tier}'")));
+                        };
+
+                        dmls.push(Dml::replace(table,&(param_name, DbConfig::GLOBAL_SCOPE, default_value), initiator)?);
                     }
+
+                    Ok(Continue(Op::BatchDml { ops: dmls }))
+                }
+                // reset all
+                None => {
+                    let tiers = storage.tiers.iter()?.map(|tier| tier.name).collect::<Vec<_>>();
+                    let dmls = crate::config::get_defaults_for_all_alter_system_parameters(&tiers.iter().map(String::as_str).collect::<Vec<_>>())?;
                     Ok(Continue(Op::BatchDml { ops: dmls }))
                 }
             }
@@ -1195,12 +1242,8 @@ fn ddl_ir_node_to_op_or_result(
     storage: &Clusterwide,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
-        DdlOwned::AlterSystem(AlterSystem { ty, tier_name, .. }) => {
-            alter_system_ir_node_to_op_or_result(
-                ty,
-                tier_name.as_ref().map(|s| s.as_str()),
-                current_user,
-            )
+        DdlOwned::AlterSystem(AlterSystem { ty, tier_part, .. }) => {
+            alter_system_ir_node_to_op_or_result(storage, ty, tier_part.as_ref(), current_user)
         }
         DdlOwned::CreateTable(CreateTable {
             name,

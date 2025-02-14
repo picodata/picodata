@@ -72,19 +72,19 @@ impl Loop {
 
         let v: f64 = storage
             .db_config
-            .get_or_default(crate::system_parameter_name!(governor_raft_op_timeout))
+            .governor_raft_op_timeout()
             .expect("storage should never ever fail");
         let raft_op_timeout = Duration::from_secs_f64(v);
 
         let v: f64 = storage
             .db_config
-            .get_or_default(crate::system_parameter_name!(governor_common_rpc_timeout))
+            .governor_common_rpc_timeout()
             .expect("storage should never ever fail");
         let rpc_timeout = Duration::from_secs_f64(v);
 
         let v: f64 = storage
             .db_config
-            .get_or_default(crate::system_parameter_name!(governor_plugin_rpc_timeout))
+            .governor_plugin_rpc_timeout()
             .expect("storage should never ever fail");
         let plugin_rpc_timeout = Duration::from_secs_f64(v);
 

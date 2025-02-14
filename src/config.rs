@@ -8,8 +8,9 @@ use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::pgproto;
 use crate::replicaset::ReplicasetName;
+use crate::schema::ADMIN_ID;
 use crate::sql::value_type_str;
-use crate::storage;
+use crate::storage::{self, DbConfig, TClusterwideTable};
 use crate::system_parameter_name;
 use crate::tarantool::set_cfg_field;
 use crate::tier::Tier;
@@ -17,6 +18,7 @@ use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
 use crate::tlog;
 use crate::traft::error::Error;
+use crate::traft::op::Dml;
 use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
@@ -1661,6 +1663,7 @@ pub struct AlterSystemParameters {
     /// Corresponds to `box.cfg.checkpoint_count`.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 2)]
+    #[introspection(scope = tier)]
     pub memtx_checkpoint_count: u64,
 
     /// The interval in seconds between actions by the checkpoint daemon. If the
@@ -1673,6 +1676,7 @@ pub struct AlterSystemParameters {
     /// Corresponds to `box.cfg.checkpoint_interval`.
     #[introspection(config_default = 3600)]
     #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(scope = tier)]
     pub memtx_checkpoint_interval: u64,
 
     /// To handle messages, Tarantool allocates fibers. To prevent fiber
@@ -1702,7 +1706,37 @@ pub struct AlterSystemParameters {
     /// Corresponds to `box.cfg.net_msg_max`
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 0x300)]
+    #[introspection(scope = tier)]
     pub iproto_net_msg_max: u64,
+}
+
+impl AlterSystemParameters {
+    pub const FIELD_NAME: u32 = 0;
+    pub const FIELD_SCOPE: u32 = 1;
+    pub const FIELD_VALUE: u32 = 2;
+
+    /// Returns error in case of `parameter_name` not in existing parameters.
+    fn has_scope(parameter_name: &str, scope: &str) -> Result<bool, Error> {
+        for field_info in Self::FIELD_INFOS {
+            if field_info.name == parameter_name {
+                let scope_value = field_info.scope.unwrap_or(DbConfig::GLOBAL_SCOPE);
+                return Ok(scope_value == scope);
+            }
+        }
+
+        Err(Error::other(format!(
+            "No such parameter with name '{}'",
+            parameter_name
+        )))
+    }
+
+    pub fn has_scope_global(parameter_name: &str) -> Result<bool, Error> {
+        Self::has_scope(parameter_name, "")
+    }
+
+    pub fn has_scope_tier(parameter_name: &str) -> Result<bool, Error> {
+        Self::has_scope(parameter_name, "tier")
+    }
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout
@@ -1741,9 +1775,8 @@ pub fn validate_alter_system_parameter_value<'v>(
     let expected_type = DerivedType::new(expected_type);
     let Ok(casted_value) = value.cast_and_encode(&expected_type) else {
         let actual_type = value_type_str(value);
-        return Err(Error::other(format!(
-            "invalid value for '{name}' expected {expected_type}, got {actual_type}",
-        )));
+        #[rustfmt::skip]
+        return Err(Error::other(format!("invalid value for '{name}' expected {expected_type}, got {actual_type}",)));
     };
 
     // Not sure how I feel about this...
@@ -1794,8 +1827,12 @@ pub fn get_default_value_of_alter_system_parameter(name: &str) -> Option<rmpv::V
     Some(default)
 }
 
-/// Returns an array of pairs (parameter name, default value).
-pub fn get_defaults_for_all_alter_system_parameters() -> Vec<(String, rmpv::Value)> {
+/// `tiers` is a list of names of all tiers in cluster.
+/// Returns an array of dmls that replacing all entries in _pico_db_config
+/// with default values for every possible scope.
+pub fn get_defaults_for_all_alter_system_parameters(
+    tier_names: &[&str],
+) -> Result<Vec<Dml>, Error> {
     // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
     // works. We allow default values to refer to other fields of the struct
     // which were actuall provided (see `InstanceConfig::advertise_address` for example).
@@ -1810,15 +1847,33 @@ pub fn get_defaults_for_all_alter_system_parameters() -> Vec<(String, rmpv::Valu
     // the system table change.
     let parameters = AlterSystemParameters::default();
 
-    let mut result = Vec::with_capacity(AlterSystemParameters::FIELD_INFOS.len());
+    let mut dmls = vec![];
+
+    let global_scope = vec![DbConfig::GLOBAL_SCOPE];
+
+    // This function called from two places: persisting bootstrap entries - `start_boot`, where
+    // initiator is ADMIN, and ALTER SYSTEM which allowed only for ADMIN.
+    let initiator = ADMIN_ID;
+
     for name in &leaf_field_paths::<AlterSystemParameters>() {
         let default = parameters
             .get_field_default_value_as_rmpv(name)
             .expect("paths are correct");
         let default = default.expect("default must be specified explicitly for all parameters");
-        result.push((name.clone(), default));
+
+        let scope_values = if AlterSystemParameters::has_scope_tier(&name)? {
+            tier_names
+        } else {
+            &global_scope
+        };
+
+        for scope_value in scope_values {
+            #[rustfmt::skip]
+            dmls.push(Dml::replace(DbConfig::TABLE_ID, &(&name, scope_value, &default), initiator,)?);
+        }
     }
-    result
+
+    Ok(dmls)
 }
 
 /// Non-persistent apply of parameter from _pico_db_config
@@ -1829,46 +1884,61 @@ pub fn get_defaults_for_all_alter_system_parameters() -> Vec<(String, rmpv::Valu
 /// Panic in following cases:
 ///   - tuple is not key-value with predefined schema
 ///   - while applying via box.cfg
-pub fn apply_parameter(tuple: Tuple) {
+pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
     let name = tuple
-        .field::<&str>(0)
-        .expect("there is always 2 fields in _pico_db_config tuple")
+        .field::<&str>(AlterSystemParameters::FIELD_NAME)
+        .expect("there is always 3 fields in _pico_db_config tuple")
         .expect("key is always present and it's type string");
 
-    // set dynamic parameters
-    if name == system_parameter_name!(memtx_checkpoint_count) {
-        let value = tuple
-            .field::<u64>(1)
-            .expect("there is always 2 fields in _pico_db_config tuple")
-            .expect("type already checked");
+    if AlterSystemParameters::has_scope_tier(name)
+        .expect("apply_parameter called only with existing names")
+    {
+        // There is only two scopes: clusterwide(global) and tier.
+        // Clusterwide represented as empty string, and scope tier represented by it's name.
+        let target_tier_name = tuple
+            .field::<&str>(AlterSystemParameters::FIELD_SCOPE)
+            .expect("there is always 3 fields in _pico_db_config tuple")
+            .expect("key is always present and it's type string");
 
-        set_cfg_field("checkpoint_count", value).expect("changing checkpoint_count shouldn't fail");
-    } else if name == system_parameter_name!(memtx_checkpoint_interval) {
-        let value = tuple
-            .field::<f64>(1)
-            .expect("there is always 2 fields in _pico_db_config tuple")
-            .expect("type already checked");
+        if target_tier_name != current_tier {
+            return;
+        }
 
-        set_cfg_field("checkpoint_interval", value)
-            .expect("changing checkpoint_interval shouldn't fail");
-    } else if name == system_parameter_name!(iproto_net_msg_max) {
-        let value = tuple
-            .field::<u64>(1)
-            .expect("there is always 2 fields in _pico_db_config tuple")
-            .expect("type already checked");
+        if name == system_parameter_name!(memtx_checkpoint_count) {
+            let value = tuple
+                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
+                .expect("there is always 3 fields in _pico_db_config tuple")
+                .expect("type already checked");
 
-        set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
+            set_cfg_field("checkpoint_count", value)
+                .expect("changing checkpoint_count shouldn't fail");
+        } else if name == system_parameter_name!(memtx_checkpoint_interval) {
+            let value = tuple
+                .field::<f64>(AlterSystemParameters::FIELD_VALUE)
+                .expect("there is always 3 fields in _pico_db_config tuple")
+                .expect("type already checked");
+
+            set_cfg_field("checkpoint_interval", value)
+                .expect("changing checkpoint_interval shouldn't fail");
+        } else if name == system_parameter_name!(iproto_net_msg_max) {
+            let value = tuple
+                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
+                .expect("there is always 3 fields in _pico_db_config tuple")
+                .expect("type already checked");
+
+            set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
+        }
     } else if name == system_parameter_name!(pg_portal_max) {
         let value = tuple
-            .field::<usize>(1)
-            .expect("there is always 2 fields in _pico_db_config tuple")
+            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
+            .expect("there is always 3 fields in _pico_db_config tuple")
             .expect("type already checked");
         // Cache the value.
         MAX_PG_PORTALS.store(value, Ordering::Relaxed);
     } else if name == system_parameter_name!(pg_statement_max) {
         let value = tuple
-            .field::<usize>(1)
-            .expect("there is always 2 fields in _pico_db_config tuple")
+            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
+            .expect("there is always 3 fields in _pico_db_config tuple")
             .expect("type already checked");
         // Cache the value.
         MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);

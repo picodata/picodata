@@ -628,9 +628,9 @@ fn set_on_access_denied_audit_trigger() {
 }
 
 /// Apply all dynamic parameters from `_pico_db_config` via box.cfg
-fn reapply_dynamic_parameters(storage: &Clusterwide) -> Result<()> {
+fn reapply_dynamic_parameters(storage: &Clusterwide, current_tier: &str) -> Result<()> {
     for parameter in storage.db_config.iter()? {
-        apply_parameter(parameter);
+        apply_parameter(parameter, current_tier);
     }
 
     Ok(())
@@ -1020,7 +1020,11 @@ fn postjoin(
 
     config.validate_storage(&storage, &raft_storage)?;
 
-    reapply_dynamic_parameters(&storage)?;
+    let current_tier_name = raft_storage
+        .tier()?
+        .expect("tier for instance should exists");
+
+    reapply_dynamic_parameters(&storage, &current_tier_name)?;
 
     if let Some(config) = &config.instance.audit {
         let raft_id = raft_storage

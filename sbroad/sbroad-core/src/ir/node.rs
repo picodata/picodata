@@ -985,10 +985,14 @@ pub struct SetParam {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct AlterSystem {
     pub ty: AlterSystemType,
-    /// In case of None, ALTER is supposed
-    /// to be executed on all tiers.
-    pub tier_name: Option<SmolStr>,
+    pub tier_part: Option<AlterSystemTierPart>,
     pub timeout: Decimal,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum AlterSystemTierPart {
+    AllTiers,
+    Tier(SmolStr),
 }
 
 impl From<AlterSystem> for NodeAligned {

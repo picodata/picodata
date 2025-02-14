@@ -59,6 +59,13 @@ with the `YY.MINOR.MICRO` scheme.
 - New field `_pico_property.system_catalog_version` representing version of a system catalog.
   It may not be changed at every release, so this is not autoincrementing value.
 
+- Added scopes to all parameters from `_pico_db_config`. There are two scopesright now - `tier`
+and `global`. Parameters with scope `tier`
+can be different on different tiers.
+For example `ALTER SYSTEM SET parameter_with_scope_tier FOR ALL TIERS` or
+`ALTER SYSTEM SET parameter_with_scope_tier FOR TIER default`.
+Parameters with scope `global` are the same on each instance.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

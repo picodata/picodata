@@ -1,4 +1,5 @@
 use quote::quote;
+use syn::LitStr;
 
 macro_rules! unwrap_or_compile_error {
     ($expr:expr) => {
@@ -146,6 +147,12 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
 
     for field in &context.fields {
         let name = &field.name;
+        let mut scope = quote! { None };
+        if let Some(s) = &field.attrs.scope {
+            let lit = LitStr::new(s, proc_macro2::Span::call_site());
+            scope = quote! { Some(#lit) }
+        }
+
         #[allow(non_snake_case)]
         let Type = &field.field.ty;
 
@@ -153,6 +160,7 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
             code.extend(quote! {
                 #crate_::introspection::FieldInfo {
                     name: #name,
+                    scope: #scope,
                     nested_fields: &[],
                 },
             });
@@ -160,6 +168,7 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
             code.extend(quote! {
                 #crate_::introspection::FieldInfo {
                     name: #name,
+                    scope: #scope,
                     nested_fields: #Type::FIELD_INFOS,
                 },
             });
@@ -697,6 +706,12 @@ struct FieldAttrs {
     /// The provided expression must have type `picodata::config::SbroadType`.
     /// The user must make sure that `config_default` is not conflicting with `sbroad_type`.
     sbroad_type: Option<syn::Expr>,
+
+    /// Scope of parameter. There is only two scopes - Tier and Global.
+    ///
+    /// Parameters with Tier scope can be set for specific tier with `FOR TIER 'tier_name'`
+    /// syntax.
+    scope: Option<String>,
 }
 
 impl FieldAttrs {
@@ -734,10 +749,18 @@ impl FieldAttrs {
                         input.parse::<syn::Token![=]>()?;
 
                         result.sbroad_type = Some(input.parse::<syn::Expr>()?);
+                    } else if ident == "scope" {
+                        if result.scope.is_some() {
+                            return Err(syn::Error::new(ident.span(), "duplicate `scope` specified"));
+                        }
+
+                        input.parse::<syn::Token![=]>()?;
+                        let scope = input.parse::<syn::Ident>()?;
+                        result.scope = Some(scope.to_string());
                     } else {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`, `sbroad_type`"),
+                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`, `sbroad_type`, `scope`"),
                         ));
                     }
 

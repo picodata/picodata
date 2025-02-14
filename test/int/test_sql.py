@@ -267,6 +267,7 @@ def test_read_from_system_tables(cluster: Cluster):
     )
     assert data["metadata"] == [
         {"name": "key", "type": "string"},
+        {"name": "scope", "type": "string"},
         {"name": "value", "type": "any"},
     ]
     # Ignore values for the sake of stability
@@ -5252,69 +5253,69 @@ def test_alter_system_property(cluster: Cluster):
     i1 = cluster.instances[0]
 
     non_default_prop = [
-        ("auth_password_length_min", 10),
-        ("auth_password_enforce_digits", True),
-        ("auth_password_enforce_uppercase", True),
-        ("auth_password_enforce_lowercase", True),
-        ("auth_password_enforce_specialchars", False),
-        ("governor_auto_offline_timeout", 12),
-        ("auth_login_attempt_max", 4),
-        ("pg_statement_max", 1024),
-        ("pg_portal_max", 1024),
-        ("raft_snapshot_chunk_size_max", 1500),
-        ("raft_snapshot_read_view_close_timeout", 12312.4),
-        ("auth_password_enforce_uppercase", False),
-        ("auth_password_enforce_lowercase", False),
-        ("auth_password_enforce_specialchars", True),
-        ("auth_login_attempt_max", 8),
-        ("pg_statement_max", 4096),
-        ("pg_portal_max", 2048),
-        ("governor_raft_op_timeout", 10),
-        ("governor_common_rpc_timeout", 10),
-        ("governor_plugin_rpc_timeout", 20),
+        ("auth_password_length_min", "", 10),
+        ("auth_password_enforce_digits", "", True),
+        ("auth_password_enforce_uppercase", "", True),
+        ("auth_password_enforce_lowercase", "", True),
+        ("auth_password_enforce_specialchars", "", False),
+        ("governor_auto_offline_timeout", "", 12),
+        ("auth_login_attempt_max", "", 4),
+        ("pg_statement_max", "", 1024),
+        ("pg_portal_max", "", 1024),
+        ("raft_snapshot_chunk_size_max", "", 1500),
+        ("raft_snapshot_read_view_close_timeout", "", 12312.4),
+        ("auth_password_enforce_uppercase", "", False),
+        ("auth_password_enforce_lowercase", "", False),
+        ("auth_password_enforce_specialchars", "", True),
+        ("auth_login_attempt_max", "", 8),
+        ("pg_statement_max", "", 4096),
+        ("pg_portal_max", "", 2048),
+        ("governor_raft_op_timeout", "", 10),
+        ("governor_common_rpc_timeout", "", 10),
+        ("governor_plugin_rpc_timeout", "", 20),
     ]
 
     default_prop = []
-    for index, (prop, value) in enumerate(non_default_prop):
+    for index, (prop, scope, value) in enumerate(non_default_prop):
         data = i1.sql(f""" select * from "_pico_db_config" where "key" = '{prop}' """)
-        default_prop.append(data[0][1])
+        default_prop.append(data[0][2])
 
         # check simple setting
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == value
+        assert data[0][2] == value
 
         # change back to non default value for check of reset
         data = i1.sql(f""" alter system set "{prop}" to default """)
         assert data["row_count"] == 1
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == default_prop[index]
+        assert data[0][2] == default_prop[index]
 
         # change back to
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == value
+        assert data[0][2] == value
 
         # check reset to default
         data = i1.sql(f""" alter system reset "{prop}" """)
         assert data["row_count"] == 1
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == default_prop[-1]
+        assert data[0][2] == default_prop[-1]
 
         # change back to non default value for later check of reset all
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == value
+        assert data[0][2] == value
 
     # check reset all
     data = i1.sql(""" alter system reset all """)
     assert data["row_count"] == 1
-    for (prop, _), default in zip(non_default_prop, default_prop):
+    for (prop, _, _), default in zip(non_default_prop, default_prop):
         data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
-        assert data[0][1] == default
+        assert data[0][2] == default
 
 
 def test_alter_system_property_errors(cluster: Cluster):
@@ -5323,33 +5324,33 @@ def test_alter_system_property_errors(cluster: Cluster):
 
     # check valid insertion (int)
     data = i1.sql(""" select * from "_pico_db_config" where "key" = 'governor_auto_offline_timeout' """)
-    assert data == [["governor_auto_offline_timeout", 30]]
+    assert data == [["governor_auto_offline_timeout", "", 30]]
     dml = i1.sql(
         """
-        alter system set "governor_auto_offline_timeout" to 3
+        alter system set "governor_auto_offline_timeout" to 3 for all tiers
         """
     )
     assert dml["row_count"] == 1
     data = i1.sql(""" select * from "_pico_db_config" where "key" = 'governor_auto_offline_timeout' """)
-    assert data == [["governor_auto_offline_timeout", 3]]
+    assert data == [["governor_auto_offline_timeout", "", 3]]
 
     # check valid insertion (bool)
     data = i1.sql(""" select * from "_pico_db_config" where "key" = 'auth_password_enforce_digits' """)
-    assert data == [["auth_password_enforce_digits", True]]
+    assert data == [["auth_password_enforce_digits", "", True]]
     dml = i1.sql(
         """
-        alter system set "auth_password_enforce_digits" to false
+        alter system set "auth_password_enforce_digits" to false for all tiers
         """
     )
     assert dml["row_count"] == 1
     data = i1.sql(""" select * from "_pico_db_config" where "key" = 'auth_password_enforce_digits' """)
-    assert data == [["auth_password_enforce_digits", False]]
+    assert data == [["auth_password_enforce_digits", "", False]]
 
     # such property does not exist
     with pytest.raises(TarantoolError, match="unknown parameter: 'invalid_parameter_name'"):
         dml = i1.sql(
             """
-            alter system set "invalid_parameter_name" to 3
+            alter system set "invalid_parameter_name" to 3 for all tiers
             """
         )
 
@@ -5360,7 +5361,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     ):
         dml = i1.sql(
             """
-            alter system set "auth_password_enforce_digits" to 3
+            alter system set "auth_password_enforce_digits" to 3 for all tiers
             """
         )
 
@@ -5368,18 +5369,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     with pytest.raises(TarantoolError, match="unknown parameter: 'next_schema_version'"):
         dml = i1.sql(
             """
-            alter system set "next_schema_version" to 3
-            """
-        )
-
-    # properties may be changed only globally yet
-    with pytest.raises(
-        TarantoolError,
-        match="unsupported action/entity: specifying tier name in alter system, use 'all tiers' instead",
-    ):
-        dml = i1.sql(
-            """
-            alter system set "auto_offline_timeout" to true for tier foo
+            alter system set "next_schema_version" to 3 for all tiers
             """
         )
 
