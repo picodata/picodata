@@ -940,6 +940,11 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         picodata_version: version,
     };
 
+    const INITIAL_DELAY: Duration = Duration::from_millis(100);
+    const MAX_DELAY: Duration = Duration::from_secs(60);
+
+    let mut current_delay = INITIAL_DELAY;
+
     // Arch memo.
     // - There must be no timeouts. Retrying may lead to flooding the
     //   topology with phantom instances. No worry, specifying a
@@ -947,9 +952,6 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     //   flood.
     // - It's fine to retry "connection refused" errors.
     let resp: rpc::join::Response = loop {
-        let now = Instant::now_fiber();
-        // TODO: exponential delay
-        let timeout = Duration::from_secs(1);
         match fiber::block_on(rpc::network_call(
             &instance_address,
             proc_name!(rpc::join::proc_raft_join),
@@ -959,13 +961,23 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
                 break resp;
             }
             Err(TntError::ConnectionClosed(e)) => {
-                tlog!(Warning, "join request failed: {e}, retrying...");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                tlog!(
+                    Warning,
+                    "join request failed: {e}, retrying in {:?}...",
+                    current_delay
+                );
+                fiber::sleep(current_delay);
+                current_delay = std::cmp::min(current_delay * 2, MAX_DELAY);
                 continue;
             }
             Err(TntError::IO(e)) => {
-                tlog!(Warning, "join request failed: {e}, retrying...");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                tlog!(
+                    Warning,
+                    "join request failed: {e}, retrying in {:?}...",
+                    current_delay
+                );
+                fiber::sleep(current_delay);
+                current_delay = std::cmp::min(current_delay * 2, MAX_DELAY);
                 continue;
             }
             Err(e) => {
