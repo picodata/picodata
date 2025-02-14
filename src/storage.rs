@@ -3520,4 +3520,17 @@ mod tests {
             }
         }
     }
+
+    #[::tarantool::test]
+    fn system_space_name_by_id() {
+        // Make sure storage is initialized
+        let storage = Clusterwide::for_tests();
+
+        for table in storage.tables.iter().unwrap() {
+            assert_eq!(
+                SYSTEM_TABLES_ID_RANGE.contains(&table.id),
+                Clusterwide::system_space_name_by_id(table.id).is_some()
+            )
+        }
+    }
 }
