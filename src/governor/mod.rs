@@ -473,7 +473,7 @@ impl Loop {
                                         Ok(())
                                     }
                                     Err(e) => {
-                                        tlog!(Warning, "failed calling rpc::replication: {e}";
+                                        tlog!(Warning, "failed calling proc_replication: {e}";
                                             "instance_name" => %instance_name
                                         );
                                         Err(e)
