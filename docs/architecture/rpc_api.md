@@ -639,7 +639,7 @@ fn proc_sharding(term, applied, timeout)
  - [Governor — централизованное управление кластером](./topology_management.md#governor)
 
 В системной таблице [`_pico_tier`](system_tables.md#_pico_tier) хранятся две версии конфигурации
-распределения [бакетов](../overview/glossary.md#bucket): текущая и
+распределения [бакетов](../overview/glossary.md#segment): текущая и
 целевая (target). Этим версиям соответствуют колонки
 `current_vshard_config_version` и `target_vshard_config_version`.
 
@@ -659,7 +659,7 @@ fn proc_sharding_bootstrap(term, applied, timeout, tier)
 делать что-то еще, чтобы синхронизовать состояние [глобальных системных
 таблиц](./system_tables.md). Возвращает ошибку, если времени не хватило.
 
-Инициирует распределение [бакетов](../overview/glossary.md#bucket)
+Инициирует распределение [бакетов](../overview/glossary.md#segment)
 между [репликасетами](../overview/glossary.md#replicaset).
 
 Эту хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)

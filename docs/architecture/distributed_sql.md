@@ -59,7 +59,7 @@ Vshard заключается в разделении функций:
 - Picodata SQL работает с шардированными
   [таблицами](../overview/glossary.md#table), отдельные строки (кортежи)
   которых распределяются по разным
-  [бакетам](../overview/glossary.md#bucket)
+  [бакетам](../overview/glossary.md#segment)
 - Vshard работает с распределением бакетов по
   [репликасетам](../overview/glossary.md#replicaset)
 
