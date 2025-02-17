@@ -688,6 +688,7 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
 fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
+    shredding: bool,
 ) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
@@ -734,7 +735,7 @@ fn init_common(
     #[cfg(debug_assertions)]
     tlog::init_thread_safe_logger();
 
-    if config.instance.shredding() {
+    if shredding {
         tarantool::xlog_set_remove_file_impl();
     }
 
@@ -771,7 +772,7 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_discovery(config)?;
-    let (storage, raft_storage) = init_common(config, &cfg)?;
+    let (storage, raft_storage) = init_common(config, &cfg, false)?;
     discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
     if let Some(raft_id) = raft_storage.raft_id()? {
@@ -865,7 +866,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance)?;
-    let (storage, raft_storage) = init_common(config, &cfg)?;
+    let (storage, raft_storage) = init_common(config, &cfg, config.cluster.shredding())?;
 
     let cs = raft::ConfState {
         voters: vec![raft_id],
@@ -969,7 +970,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_instance_join(config, &resp)?;
-    let (storage, raft_storage) = init_common(config, &cfg)?;
+    let (storage, raft_storage) = init_common(config, &cfg, resp.shredding)?;
 
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {

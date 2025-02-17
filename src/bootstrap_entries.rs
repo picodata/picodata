@@ -151,6 +151,29 @@ pub(super) fn prepare(
     );
 
     //
+    // Unchangeable configs with cluster scope
+    //
+    {
+        let mut ops = vec![];
+        for config_tuple in config.cluster.bootstrap_configs() {
+            ops.push(
+                op::Dml::insert(storage::DbConfig::TABLE_ID, &config_tuple, ADMIN_ID)
+                    .expect("serialization can't fail"),
+            );
+        }
+        let context = traft::EntryContext::Op(op::Op::BatchDml { ops });
+        init_entries.push(
+            traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: (init_entries.len() + 1) as _,
+                term: traft::INIT_RAFT_TERM,
+                data: vec![],
+                context,
+            }
+            .into(),
+        );
+    }
+
     // Populate "_pico_user" and "_pico_priv" to match tarantool ones
     //
     // Note: op::Dml is used instead of op::Acl because with Acl

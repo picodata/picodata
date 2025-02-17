@@ -267,6 +267,10 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.cluster_name = Some(cluster_name);
         }
 
+        if args.shredding {
+            config_from_args.cluster.shredding = Some(true);
+        }
+
         if let Some(instance_name) = args.instance_name {
             config_from_args.instance.name = Some(instance_name);
         }
@@ -343,10 +347,6 @@ Using configuration file '{args_path}'.");
 
         if let Some(script) = args.script {
             config_from_args.instance.deprecated_script = Some(script);
-        }
-
-        if args.shredding {
-            config_from_args.instance.shredding = Some(true);
         }
 
         if let Some(memtx_memory) = args.memtx_memory {
@@ -1051,6 +1051,11 @@ pub struct ClusterConfig {
     #[introspection(config_default = sql::DEFAULT_SHARD_COUNT)]
     pub default_shard_count: Option<u64>,
 
+    /// Determines wether the .xlog & .snap files should be shredded when
+    /// deleting.
+    #[introspection(config_default = false)]
+    pub shredding: Option<bool>,
+
     #[serde(flatten)]
     #[introspection(ignore)]
     pub unknown_parameters: HashMap<String, YamlValue>,
@@ -1092,6 +1097,17 @@ impl ClusterConfig {
             tier_defs.insert(name.into(), tier_def);
         }
         tier_defs
+    }
+
+    pub fn shredding(&self) -> bool {
+        self.shredding.unwrap_or(false)
+    }
+
+    pub fn bootstrap_configs(&self) -> Vec<(String, rmpv::Value)> {
+        vec![(
+            SHREDDING_PARAM_NAME.into(),
+            rmpv::Value::Boolean(self.shredding()),
+        )]
     }
 
     #[inline]
@@ -1173,13 +1189,6 @@ pub struct InstanceConfig {
 
     // box.cfg.background currently doesn't work with our supervisor/child implementation
     // pub background: Option<bool>,
-
-    //
-    /// Determines wether the .xlog & .snap files should be shredded when
-    /// deleting.
-    #[introspection(config_default = false)]
-    pub shredding: Option<bool>,
-
     #[serde(default)]
     #[introspection(nested)]
     pub log: LogSection,
@@ -1269,12 +1278,6 @@ impl InstanceConfig {
             .level
             .expect("is set in PicodataConfig::set_defaults_explicitly")
             .into()
-    }
-
-    #[inline]
-    pub fn shredding(&self) -> bool {
-        self.shredding
-            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
@@ -1755,6 +1758,8 @@ macro_rules! system_parameter_name {
         ::std::stringify!($name)
     }};
 }
+
+pub static SHREDDING_PARAM_NAME: &str = "shredding";
 
 /// Cached value of "pg_max_statements" option from "_pico_property".
 /// 0 means that the value must be read from the table.

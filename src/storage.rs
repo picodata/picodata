@@ -3216,6 +3216,11 @@ impl DbConfig {
             Self::GLOBAL_SCOPE,
         )
     }
+
+    #[inline]
+    pub fn shredding(&self) -> tarantool::Result<Option<bool>> {
+        self.get(config::SHREDDING_PARAM_NAME)
+    }
 }
 
 impl ToEntryIter<MP_SERDE> for DbConfig {

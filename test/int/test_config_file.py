@@ -84,12 +84,12 @@ instance:
             ),
             default_shard_count=dict(value=3000, source="default"),
             default_replication_factor=dict(value=1, source="default"),
+            shredding=dict(value=False, source="default"),
         ),
         instance=dict(
             admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
             iproto_advertise=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
-            shredding=dict(value=False, source="default"),
             cluster_name=dict(value="my-cluster", source="config_file"),
             name=dict(value="my-instance", source="config_file"),
             replicaset_name=dict(value="my-replicaset", source="config_file"),
@@ -471,6 +471,7 @@ def test_output_config_parameters(cluster: Cluster):
     output_params = """'cluster.name':
         'cluster.tier':
         'cluster.default_replication_factor':
+        'cluster.shredding':
         'instance.instance_dir':
         'instance.config_file':
         'instance.cluster_name':
@@ -484,7 +485,6 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.admin_socket':
         'instance.share_dir':
         'instance.audit':
-        'instance.shredding': false
         'instance.log.level': "verbose"
         'instance.log.format': "plain"
         'instance.memtx.memory': \"42069B\""""

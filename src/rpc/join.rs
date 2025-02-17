@@ -62,6 +62,7 @@ crate::define_rpc_request! {
         /// Replication sources in a replica set that the joining instance will belong to.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         pub box_replication: Vec<Address>,
+        pub shredding: bool,
     }
 }
 
@@ -193,6 +194,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             instance: instance.into(),
             peer_addresses,
             box_replication: replication_addresses.into_iter().collect(),
+            shredding: storage.db_config.shredding()?.expect("should be set"),
         });
     }
 }
