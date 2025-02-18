@@ -605,13 +605,16 @@ pub struct Status {
 
     #[clap(
         long = "service-password-file",
-        value_name = "SERVICE_PASSWORD_FILE",
+        value_name = "PATH",
         env = "PICODATA_SERVICE_PASSWORD_FILE"
     )]
     /// Path to a plain-text file with a password for the
     /// system user "pico_service". This password is used
     /// for the internal communication among instances of
     /// picodata, so it is the same on all instances.
+    /// If passwords don't match, error message
+    /// is printed to a user. If the password isn't provided,
+    /// it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
 
     #[clap(
@@ -706,13 +709,17 @@ pub struct ServiceConfigUpdate {
 
     #[clap(
         long = "service-password-file",
-        value_name = "SERVICE_PASSWORD_FILE",
+        value_name = "PATH",
         env = "PICODATA_SERVICE_PASSWORD_FILE"
     )]
     /// Path to a plain-text file with a password for the
     /// system user "pico_service". This password is used
     /// for the internal communication among instances of
     /// picodata, so it is the same on all instances.
+    /// If passwords don't match, error message
+    /// is printed to a user. If the password isn't provided,
+    /// it will be prompted from the terminal.
+
     pub password_file: Option<PathBuf>,
 
     #[clap(
