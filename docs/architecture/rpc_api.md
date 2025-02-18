@@ -70,7 +70,7 @@ fn proc_version_info() -> VersionInfo
 Возвращаемое значение:
 
 - (MP_MAP `VersionInfo`):
-    - `picodata_version`: (MP_STR) версия Picodata
+    - `picodata_version`: (MP_STR) версия инстанса
       <!-- TODO ссылка на политику версионирования -->
     - `rpc_api_version`: (MP_STR) версия RPC API согласно семантическому
       версионированию [Semantic Versioning][semver]
@@ -638,9 +638,10 @@ fn proc_sharding(term, applied, timeout)
 
  - [Governor — централизованное управление кластером](./topology_management.md#governor)
 
-В системной таблице [`_pico_tier`](system_tables.md#_pico_tier) хранятся две версии конфигурации
-распределения [бакетов](../overview/glossary.md#segment): текущая и
-целевая (target). Этим версиям соответствуют колонки
+В системной таблице [`_pico_tier`](system_tables.md#_pico_tier) хранятся
+две версии конфигурации распределения
+[сегментов](../overview/glossary.md#segment): текущая и целевая
+(target). Этим версиям соответствуют колонки
 `current_vshard_config_version` и `target_vshard_config_version`.
 
 Параметры:
@@ -659,7 +660,7 @@ fn proc_sharding_bootstrap(term, applied, timeout, tier)
 делать что-то еще, чтобы синхронизовать состояние [глобальных системных
 таблиц](./system_tables.md). Возвращает ошибку, если времени не хватило.
 
-Инициирует распределение [бакетов](../overview/glossary.md#segment)
+Инициирует распределение [сегментов](../overview/glossary.md#segment)
 между [репликасетами](../overview/glossary.md#replicaset).
 
 Эту хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
@@ -709,7 +710,7 @@ fn proc_sql_execute(..) -> Result
 ### .proc_update_instance {: #proc_update_instance }
 
 ```rust
-fn proc_update_instance(instance_name, cluster_name, current_state, target_state, failure_domain, dont_retry)
+fn proc_update_instance(instance_name, cluster_name, current_state, target_state, failure_domain, dont_retry, picodata_version)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -737,6 +738,7 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 - `target_state`: (MP_STR `StateVariant` | MP_NIL), целевое состояние инстанса
 - `failure_domain`: (MP_MAP | MP_NIL) [домен отказа](../overview/glossary.md#failure_domain)
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
+- `picodata_version`: (MP_STR), версия инстанса
 
 ### .proc_wait_bucket_count {: #proc_wait_bucket_count }
 
@@ -744,8 +746,8 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 fn proc_wait_bucket_count(term, applied, timeout, expected_bucket_count)
 ```
 
-Обеспечивает перенос бакетов из исключаемого репликасета, пока число
-бакетов в репликасете не станет равным нулю.
+Обеспечивает перенос сегментов из исключаемого репликасета, пока их
+число в репликасете не станет равным нулю.
 
 Параметры:
 
