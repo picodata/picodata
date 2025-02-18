@@ -31,7 +31,7 @@ use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
+use super::{router::calculate_bucket_id, DEFAULT_SHARD_COUNT};
 
 thread_local!(
     static STATEMENT_CACHE: Rc<Mutex<PicoStorageCache>> = Rc::new(
@@ -42,7 +42,7 @@ thread_local!(
 #[allow(clippy::module_name_repetitions)]
 pub struct StorageRuntime {
     pub metadata: RefCell<StorageMetadata>,
-    bucket_count: u64,
+    shard_count: u64,
     cache: Rc<Mutex<PicoStorageCache>>,
 }
 
@@ -209,7 +209,7 @@ impl PlanInfo for LocalExecutionQueryInfo<'_> {
 
 impl Vshard for StorageRuntime {
     fn bucket_count(&self) -> u64 {
-        self.bucket_count
+        self.shard_count
     }
 
     fn get_random_bucket(&self) -> Buckets {
@@ -297,7 +297,7 @@ impl StorageRuntime {
     pub fn new() -> Result<Self, SbroadError> {
         let runtime = STATEMENT_CACHE.with(|cache| StorageRuntime {
             metadata: RefCell::new(StorageMetadata::new()),
-            bucket_count: DEFAULT_BUCKET_COUNT,
+            shard_count: DEFAULT_SHARD_COUNT,
             cache: cache.clone(),
         });
         Ok(runtime)

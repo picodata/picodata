@@ -72,8 +72,8 @@ export const instances = {
       rf: {
         label: "RF",
       },
-      bucket_count: {
-        label: "Buckets",
+      shard_count: {
+        label: "Shards",
       },
       canVote: {
         label: "Can vote",

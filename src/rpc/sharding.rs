@@ -66,7 +66,7 @@ crate::define_rpc_request! {
                 continue;
             }
 
-            let mut config = VshardConfig::from_storage(storage, &tier.name, tier.bucket_count)?;
+            let mut config = VshardConfig::from_storage(storage, &tier.name, tier.shard_count)?;
 
             config.listen = Some(lua.eval("return box.info.listen")?);
             config.set_password_in_uris();

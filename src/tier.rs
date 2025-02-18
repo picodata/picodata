@@ -23,7 +23,7 @@ pub struct Tier {
     pub current_vshard_config_version: u64,
     pub target_vshard_config_version: u64,
     pub vshard_bootstrapped: bool,
-    pub bucket_count: u64,
+    pub shard_count: u64,
 }
 
 impl Encode for Tier {}
@@ -40,7 +40,7 @@ impl Tier {
             Field::from(("current_vshard_config_version", FieldType::Unsigned)),
             Field::from(("target_vshard_config_version", FieldType::Unsigned)),
             Field::from(("vshard_bootstrapped", FieldType::Boolean)),
-            Field::from(("bucket_count", FieldType::Unsigned)),
+            Field::from(("shard_count", FieldType::Unsigned)),
         ]
     }
 
@@ -68,7 +68,7 @@ impl Default for Tier {
             name: DEFAULT_TIER.into(),
             replication_factor: 1,
             can_vote: true,
-            bucket_count: sql::DEFAULT_BUCKET_COUNT,
+            shard_count: sql::DEFAULT_SHARD_COUNT,
             current_vshard_config_version: 0,
             target_vshard_config_version: 0,
             vshard_bootstrapped: false,
@@ -96,7 +96,7 @@ pub struct TierConfig {
     pub replication_factor: Option<u8>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bucket_count: Option<u64>,
+    pub shard_count: Option<u64>,
 
     #[serde(default = "default_can_vote")]
     pub can_vote: bool,

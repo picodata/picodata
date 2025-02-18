@@ -133,7 +133,7 @@ impl VshardConfig {
     pub fn from_storage(
         storage: &Clusterwide,
         tier_name: &str,
-        bucket_count: u64,
+        shard_count: u64,
     ) -> Result<Self, Error> {
         let instances = storage.instances.all_instances()?;
         let peer_addresses: HashMap<_, _> = storage
@@ -149,7 +149,7 @@ impl VshardConfig {
             &peer_addresses,
             &replicasets,
             tier_name,
-            bucket_count,
+            shard_count,
         );
         Ok(result)
     }
@@ -159,7 +159,7 @@ impl VshardConfig {
         peer_addresses: &HashMap<RaftId, String>,
         replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
-        bucket_count: u64,
+        shard_count: u64,
     ) -> Self {
         let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
         for peer in instances {
@@ -201,7 +201,7 @@ impl VshardConfig {
             sharding,
             discovery_mode: DiscoveryMode::On,
             space_bucket_id: TABLE_ID_BUCKET,
-            bucket_count,
+            bucket_count: shard_count,
         }
     }
 

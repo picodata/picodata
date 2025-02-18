@@ -166,7 +166,7 @@ pub(crate) fn setup() {
             let config = crate::vshard::VshardConfig::from_storage(
                 &node.storage,
                 &tier.name,
-                tier.bucket_count,
+                tier.shard_count,
             )?;
             Ok(config)
         }),

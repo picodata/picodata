@@ -114,7 +114,7 @@ pub(crate) struct TierInfo {
     replicasets: Vec<ReplicasetInfo>,
     replicaset_count: usize,
     rf: u8,
-    bucket_count: u64,
+    shard_count: u64,
     instance_count: usize,
     #[serde(rename = "can_vote")] // for compatibility with lua version
     can_vote: bool,
@@ -383,7 +383,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
                     replicasets: Vec::new(),
                     replicaset_count: 0,
                     rf: item.replication_factor,
-                    bucket_count: item.bucket_count,
+                    shard_count: item.shard_count,
                     instance_count: 0,
                     can_vote: true,
                     name: item.name.clone(),

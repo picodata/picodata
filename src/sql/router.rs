@@ -72,7 +72,7 @@ pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
     })??;
 
     Ok(Tier {
-        bucket_count: tier.bucket_count,
+        shard_count: tier.shard_count,
         name: tier.name,
     })
 }
@@ -99,7 +99,7 @@ fn get_current_tier_name() -> Result<String, SbroadError> {
 
 #[derive(Default)]
 pub struct Tier {
-    bucket_count: u64,
+    shard_count: u64,
     name: String,
 }
 
@@ -329,7 +329,7 @@ impl Router for RouterRuntime {
     }
 }
 
-pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result<u64, SbroadError> {
+pub(crate) fn calculate_bucket_id(tuple: &[&Value], shard_count: u64) -> Result<u64, SbroadError> {
     let wrapped_tuple = tuple
         .iter()
         .map(|v| MsgPackValue::from(*v))
@@ -359,7 +359,7 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
             format_smolstr!("{e:?}"),
         )
     })?;
-    Ok(u64::from(key.hash(&tnt_tuple)) % bucket_count + 1)
+    Ok(u64::from(key.hash(&tnt_tuple)) % shard_count + 1)
 }
 
 impl Vshard for Tier {
@@ -381,7 +381,7 @@ impl Vshard for Tier {
     }
 
     fn bucket_count(&self) -> u64 {
-        self.bucket_count
+        self.shard_count
     }
 
     fn get_random_bucket(&self) -> Buckets {
@@ -404,7 +404,7 @@ impl Vshard for Tier {
 
 impl Vshard for &Tier {
     fn bucket_count(&self) -> u64 {
-        self.bucket_count
+        self.shard_count
     }
 
     fn get_random_bucket(&self) -> Buckets {
