@@ -37,7 +37,7 @@ Picodata. Плагин имеет собственный жизненный ци
 OpenWeather и возвращает температуру в градусах Цельсия. Данные
 кэшируются: при повторных запросах они будут прочитаны из Picodata.
 
-[weather_cache]: https://git.picodata.io/picodata/plugin/example
+[weather_cache]: https://git.picodata.io/picodata/core/plugin-example
 
 !!! note "Примечание"
 	Здесь и далее приведен список шагов для создания плагина вручную. Эти
