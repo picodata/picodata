@@ -86,6 +86,9 @@ tarantool::define_enum_with_introspection! {
         /// some reason. The most often solution is to use `picodata expel --force`.
         ExpelNotAllowed = 10025,
 
+        /// TableNotOperable: table {table} is prohibited for use in a predicate
+        CasConfigNotAllowed = 10026,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range

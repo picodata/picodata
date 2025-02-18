@@ -96,6 +96,14 @@ def test_cas_errors(instance: Instance):
             f"TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly",
         )
 
+    # Config prohibited for modification
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas("insert", "_pico_db_config", ["shredding", "", True], ranges=[CasRange(eq=0)], user=1)
+    assert e5.value.args[:2] == (
+        ErrorCode.CasConfigNotAllowed,
+        "ConfigNotAllowed: config shredding cannot be modified",
+    )
+
     # Field type error
     with pytest.raises(TarantoolError) as error:
         instance.cas(

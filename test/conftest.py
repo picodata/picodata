@@ -90,6 +90,7 @@ class ErrorCode:
     InstanceUnavaliable = 10022
     CasTableNotOperable = 10023
     Uninitialized = 10024
+    CasConfigNotAllowed = 10026
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas

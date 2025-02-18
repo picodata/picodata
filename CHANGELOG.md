@@ -66,6 +66,8 @@ For example `ALTER SYSTEM SET parameter_with_scope_tier FOR ALL TIERS` or
 `ALTER SYSTEM SET parameter_with_scope_tier FOR TIER default`.
 Parameters with scope `global` are the same on each instance.
 
+- `instance.shredding` moved to `cluster` section and is now defined at bootstrap only.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

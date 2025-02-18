@@ -2988,7 +2988,7 @@ impl TClusterwideTable for DbConfig {
     }
 }
 impl DbConfig {
-    pub const GLOBAL_SCOPE: &str = "";
+    pub const GLOBAL_SCOPE: &'static str = "";
 
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -3219,7 +3219,15 @@ impl DbConfig {
 
     #[inline]
     pub fn shredding(&self) -> tarantool::Result<Option<bool>> {
-        self.get(config::SHREDDING_PARAM_NAME)
+        if let Some(shredding) = self.by_key(config::SHREDDING_PARAM_NAME)?.next() {
+            Ok(Some(
+                shredding
+                    .field(AlterSystemParameters::FIELD_VALUE)?
+                    .expect("field value exists"),
+            ))
+        } else {
+            Ok(None)
+        }
     }
 }
 

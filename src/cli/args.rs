@@ -723,7 +723,6 @@ pub struct ServiceConfigUpdate {
     /// If passwords don't match, error message
     /// is printed to a user. If the password isn't provided,
     /// it will be prompted from the terminal.
-
     pub password_file: Option<PathBuf>,
 
     #[clap(

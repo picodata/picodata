@@ -366,7 +366,7 @@ Replace(_pico_db_config, ["memtx_checkpoint_count","default",2]),
 Replace(_pico_db_config, ["memtx_checkpoint_interval","default",3600]),
 Replace(_pico_db_config, ["iproto_net_msg_max","default",768]))|
 |  0  | 1  |BatchDml(
-Insert(_pico_db_config, ["shredding",false])
+Insert(_pico_db_config, ["shredding","",false])
 )|
 |  0  | 1  |BatchDml(
 Insert(_pico_user, [0,"guest",0,["md5","md5084e0343a0486ff05530df6c705c8bb4"],1,"user"]),

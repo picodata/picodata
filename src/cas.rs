@@ -1,4 +1,5 @@
 use crate::access_control;
+use crate::config;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
 use crate::storage;
@@ -27,7 +28,12 @@ use tarantool::space::{Space, SpaceId};
 use tarantool::time::Instant;
 use tarantool::tlua;
 use tarantool::transaction;
+use tarantool::tuple::Decode;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
+
+/// These configs are defined once at cluster bootstrap
+/// and they cannot be modified afterwards
+const PROHIBITED_CONFIGS: &[&str] = &[config::SHREDDING_PARAM_NAME];
 
 /// These tables cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these tables
@@ -54,16 +60,42 @@ pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::
     Ok(())
 }
 
-pub fn check_dml_prohibited(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
-    if PROHIBITED_TABLES.contains(&space_id) {
+pub fn check_dml_prohibited(storage: &Clusterwide, dml: &Dml) -> traft::Result<()> {
+    if PROHIBITED_TABLES.contains(&dml.table_id()) {
         return Err(Error::TableNotAllowed {
             table: storage
                 .tables
-                .get(space_id)?
+                .get(dml.table_id())?
                 .expect("system tables exist")
                 .name,
         }
         .into());
+    }
+
+    let check_config_prohibited = |config_name| {
+        if PROHIBITED_CONFIGS.contains(&config_name) {
+            Err(Error::ConfigNotAllowed {
+                config: config_name.to_string(),
+            })
+        } else {
+            Ok(())
+        }
+    };
+    if dml.table_id() == storage::DbConfig::TABLE_ID {
+        match dml {
+            Dml::Insert { tuple, .. } => {
+                let (key, _scope, _value) =
+                    <(String, String, rmpv::Value)>::decode(tuple.as_ref())?;
+                check_config_prohibited(&key)?
+            }
+            Dml::Replace { tuple, .. } => {
+                let (key, _scope, _value) =
+                    <(String, String, rmpv::Value)>::decode(tuple.as_ref())?;
+                check_config_prohibited(&key)?
+            }
+            Dml::Update { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
+            Dml::Delete { key, .. } => check_config_prohibited(&String::decode(key.as_ref())?)?,
+        };
     }
 
     Ok(())
@@ -295,12 +327,12 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     match &req.op {
         Op::Dml(dml) => {
             check_table_operable(storage, dml.space())?;
-            check_dml_prohibited(storage, dml.space())?;
+            check_dml_prohibited(storage, dml)?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
                 check_table_operable(storage, dml.space())?;
-                check_dml_prohibited(storage, dml.space())?;
+                check_dml_prohibited(storage, dml)?;
             }
         }
         Op::Acl(acl) => {
@@ -505,6 +537,9 @@ pub enum Error {
     #[error("TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly")]
     TableNotAllowed { table: String },
 
+    #[error("ConfigNotAllowed: config {config} cannot be modified")]
+    ConfigNotAllowed { config: String },
+
     #[error(
         "TableNotOperable: table {table} cannot be modified now as DDL operation is in progress"
     )]
@@ -528,6 +563,7 @@ impl Error {
             Self::ConflictFound { .. } => ErrorCode::CasConflictFound as _,
             Self::EntryTermMismatch { .. } => ErrorCode::CasEntryTermMismatch as _,
             Self::TableNotAllowed { .. } => ErrorCode::CasTableNotAllowed as _,
+            Self::ConfigNotAllowed { .. } => ErrorCode::CasConfigNotAllowed as _,
             Self::TableNotOperable { .. } => ErrorCode::CasTableNotOperable as _,
             Self::KeyTypeMismatch { .. } => ErrorCode::StorageCorrupted as _,
             Self::EmptyBatch => TarantoolErrorCode::IllegalParams as _,

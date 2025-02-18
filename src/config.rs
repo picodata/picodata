@@ -1103,9 +1103,12 @@ impl ClusterConfig {
         self.shredding.unwrap_or(false)
     }
 
-    pub fn bootstrap_configs(&self) -> Vec<(String, rmpv::Value)> {
+    /// These configs are defined once at cluster bootstrap
+    /// and they cannot be modified afterwards
+    pub fn bootstrap_configs(&self) -> Vec<(String, String, rmpv::Value)> {
         vec![(
             SHREDDING_PARAM_NAME.into(),
+            storage::DbConfig::GLOBAL_SCOPE.into(),
             rmpv::Value::Boolean(self.shredding()),
         )]
     }
@@ -1759,7 +1762,7 @@ macro_rules! system_parameter_name {
     }};
 }
 
-pub static SHREDDING_PARAM_NAME: &str = "shredding";
+pub const SHREDDING_PARAM_NAME: &str = "shredding";
 
 /// Cached value of "pg_max_statements" option from "_pico_property".
 /// 0 means that the value must be read from the table.
@@ -1894,6 +1897,11 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
         .field::<&str>(AlterSystemParameters::FIELD_NAME)
         .expect("there is always 3 fields in _pico_db_config tuple")
         .expect("key is always present and it's type string");
+
+    if name == SHREDDING_PARAM_NAME {
+        // shredding is set up in init_common
+        return;
+    }
 
     if AlterSystemParameters::has_scope_tier(name)
         .expect("apply_parameter called only with existing names")
