@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display};
 use std::time::Duration;
 
 use tarantool::auth::AuthMethod;
+use tarantool::fiber;
 use tarantool::network::{AsClient, Client, Config};
 
 use crate::address::IprotoAddress;
@@ -153,7 +154,8 @@ impl Display for ResultSet {
 /// The password for the connection is determined in the following way:
 /// - if resulting user is `DEFAULT_USERNAME`, the password is empty (!?!??), else
 /// - if `password_file` is not `None`, it is used to read the password from, else
-/// - prompts the user for the password on the tty.
+/// - prompts the user for the password on the tty (the thread is blocked until
+///   the password is available or timeout is exceeded).
 ///
 /// On success returns the connection object and the chosen username.
 pub fn determine_credentials_and_connect(
@@ -163,6 +165,7 @@ pub fn determine_credentials_and_connect(
     auth_method: AuthMethod,
     timeout: Duration,
 ) -> Result<(Client, String), Error> {
+    let deadline = fiber::clock().saturating_add(timeout);
     let user = if let Some(user) = &address.user {
         user
     } else if let Some(user) = user {
@@ -171,15 +174,35 @@ pub fn determine_credentials_and_connect(
         DEFAULT_USERNAME
     };
 
-    let password = if user == DEFAULT_USERNAME {
-        String::new()
+    let password;
+    if user == DEFAULT_USERNAME {
+        password = String::new();
     } else if let Some(path) = password_file {
-        get_password_from_file(path)?
+        password = get_password_from_file(path)?;
     } else {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
         let prompt = format!("Enter password for {user}: ");
-        prompt_password(&prompt)
-            .map_err(|err| Error::other(format!("Failed to prompt for a password: {err}")))?
-    };
+        let jh = std::thread::spawn(move || {
+            _ = tx.send(prompt_password(&prompt));
+        });
+
+        let timeout = deadline.duration_since(fiber::clock());
+        // NOTE: we're blocking the whole thread here
+        let res = rx.recv_timeout(timeout);
+        let Ok(password_result) = res else {
+            #[rustfmt::skip]
+            return Err(Error::other("Failed to prompt for a password: timeout"));
+        };
+        _ = jh.join();
+
+        match password_result {
+            Ok(v) => password = v,
+            Err(e) => {
+                #[rustfmt::skip]
+                return Err(Error::other(format!("Failed to prompt for a password: {e}")));
+            }
+        }
+    }
 
     let mut config = Config::default();
     config.creds = Some((user.into(), password));
