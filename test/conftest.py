@@ -745,7 +745,7 @@ class Instance:
             os.killpg(pid, signal.SIGKILL)
             with suppress(ChildProcessError):
                 os.waitpid(pid, 0)
-            eprint(f"{self} killed")
+            log.info(f"{self} killed")
         self.process = None
 
     def hash(self, tup: tuple, key_def: KeyDef) -> int:
@@ -882,7 +882,7 @@ class Instance:
 
         try:
             rc = self.process.wait(timeout=kill_after_seconds)
-            eprint(f"{self} terminated: rc = {rc}")
+            log.info(f"{self} terminated: rc = {rc}")
             self.process = None
             return rc
         finally:
@@ -935,7 +935,7 @@ class Instance:
             # Be idempotent
             return
 
-        eprint(f"{self} starting...")
+        log.info(f"{self} starting...")
 
         if peers is not None:
             self.peers = list(map(lambda i: i.iproto_listen, peers))
@@ -1160,13 +1160,13 @@ class Instance:
         as_user = user if user is not None else 1
         dml["initiator"] = as_user
 
-        eprint(f"CaS:\n  {predicate=}")
+        log.info(f"CaS:\n  {predicate=}")
         if len(dml.get("tuple") or []) > 512:  # type: ignore
             op_to_display = {k: v for k, v in dml.items()}
             op_to_display["tuple"] = "<too-big-to-display>"
-            eprint(f"  dml={op_to_display}")
+            log.info(f"  dml={op_to_display}")
         else:
-            eprint(f"  {dml=}")
+            log.info(f"  {dml=}")
 
         return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)["index"]
 
@@ -1401,7 +1401,7 @@ class Instance:
                         if time.monotonic() > deadline:
                             raise e from e
 
-        eprint(f"{self} is online")
+        log.info(f"{self} is online")
 
     def wait_has_states(
         self,
@@ -1535,7 +1535,7 @@ class Instance:
         def make_attempt(timeout, rps):
             nonlocal attempt
             attempt = attempt + 1
-            eprint(f"{self} is trying to become a leader, {attempt=}")
+            log.info(f"{self} is trying to become a leader, {attempt=}")
 
             # 1. Force the node to campaign.
             self.call(".proc_raft_promote")
@@ -1544,7 +1544,7 @@ class Instance:
             Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
 
         Retriable(timeout=10, rps=1).call(make_attempt, timeout=1, rps=10)
-        eprint(f"{self} is a leader now")
+        log.info(f"{self} is a leader now")
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         if privilege == "execute" and object_type == "role":
@@ -1762,7 +1762,7 @@ class Cluster:
         for instance in self.instances:
             instance.wait_online()
 
-        eprint(f" {self} deployed ".center(80, "="))
+        log.info(f" {self} deployed ".center(80, "="))
         return self.instances
 
     def set_config_file(self, config: dict | None = None, yaml: str | None = None):
@@ -1981,7 +1981,7 @@ class Cluster:
             ranges=predicate_ranges,
         )
 
-        eprint(f"batch CaS:\n  {predicate=}\n  {ops=}")
+        log.info(f"batch CaS:\n  {predicate=}\n  {ops=}")
         return instance.call("pico.batch_cas", dict(ops=ops), predicate, user=user, password=password)
 
     def leader(self, peer: Instance | None = None) -> Instance:
@@ -2102,7 +2102,7 @@ class Cluster:
             if actual_active == expected:
                 return
 
-            print(
+            log.warning(
                 f"\x1b[33mwaiting for bucket rebalancing, was: {previous_active}, became: {actual_active} (#{attempt})\x1b[0m"  # noqa: E501
             )
 
@@ -2110,7 +2110,7 @@ class Cluster:
                 if attempt < max_retries:
                     attempt += 1
                 else:
-                    print("vshard.storage.info.bucket.active stopped changing")
+                    log.error("vshard.storage.info.bucket.active stopped changing")
                     assert actual_active == expected
             else:
                 # Something changed -> reset retry counter
@@ -2186,7 +2186,7 @@ def picodata_expel(
     ]
     # fmt: on
 
-    print(f"executing: {command}")
+    log.info(f"executing: {command}")
     try:
         subprocess.check_output(
             command,
@@ -2379,7 +2379,7 @@ def copy_plugin_library(binary_path: Path | str, share_dir: Path | str, file_nam
     destination = Path(share_dir) / lib_name
     if os.path.exists(destination) and filecmp.cmp(source, destination):
         return
-    eprint(f"Copying '{source}' to '{destination}'")
+    log.info(f"Copying '{source}' to '{destination}'")
     shutil.copyfile(source, destination)
 
 
@@ -2405,7 +2405,7 @@ def cargo_build(with_webui: bool = False) -> None:
     eprint("")
 
     if os.environ.get("CI") is not None:
-        eprint("Skipping cargo build")
+        log.info("Skipping cargo build")
         return
 
     features = ["error_injection"]
@@ -2419,13 +2419,13 @@ def cargo_build(with_webui: bool = False) -> None:
         "--features", ",".join(features),
     ]
     # fmt: on
-    eprint(f"Running {cmd}")
+    log.info(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build failed"
 
     crates = ["gostech-audit-log", "testplug", "plug_wrong_version"]
     for crate in crates:
         cmd = ["cargo", "build", "-p", crate, "--profile", build_profile()]
-        eprint(f"Running {cmd}")
+        log.info(f"Running {cmd}")
         assert subprocess.call(cmd) == 0, f"cargo build {crate} failed"
 
 
