@@ -24,9 +24,9 @@ use std::ptr::addr_of;
 use serde::de::DeserializeOwned;
 use std::collections::HashSet;
 
+pub mod before_online;
 pub mod ddl_apply;
 pub mod disable_service;
-pub mod enable_all_plugins;
 pub mod enable_plugin;
 pub mod enable_service;
 pub mod expel;

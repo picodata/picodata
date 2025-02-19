@@ -614,7 +614,7 @@ pub(super) fn action_plan<'i>(
             .get(&*instance.tier)
             .expect("tier info is always present");
 
-        let plugin_rpc = rpc::enable_all_plugins::Request {
+        let plugin_rpc = rpc::before_online::Request {
             term,
             applied,
             timeout: sync_timeout,
@@ -1187,9 +1187,9 @@ pub mod stage {
             pub target: &'i InstanceName,
             /// This is going to be the new current state of the instance. Only used for logging.
             pub new_current_state: &'i str,
-            /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
+            /// Request to call [`rpc::before_online::proc_before_online`] on `target`.
             /// It is not optional, although it probably should be.
-            pub plugin_rpc: rpc::enable_all_plugins::Request,
+            pub plugin_rpc: rpc::before_online::Request,
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Online` in table `_pico_instance` for a given instance.
             pub cas: cas::Request,

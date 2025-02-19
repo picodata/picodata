@@ -14,6 +14,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed panic when dropping system user pico_service.
 
+- PostgreSQL protocol initialization now happens at the stage of instance becoming online,
+  preventing possible problems in UX.
+
+### RPC API
+
+- `.proc_enable_all_plugins` is renamed into `.proc_before_online` due to added step of
+  initialization of a PostgreSQL protocol at it's call.
+
 ## [25.1.1] - 2025-02-21
 
 ### Configuration
@@ -70,6 +78,8 @@ For example `ALTER SYSTEM SET parameter_with_scope_tier FOR ALL TIERS` or
 Parameters with scope `global` are the same on each instance.
 
 - `instance.shredding` moved to `cluster` section and is now defined at bootstrap only.
+
+>>>>>>> d4b6ad1f (feat(pgproto): pgproto is now initalizes at become online plan stage)
 
 ### CLI
 

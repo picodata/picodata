@@ -14,9 +14,9 @@ use crate::op::Op;
 use crate::proc_name;
 use crate::replicaset::Replicaset;
 use crate::rpc;
+use crate::rpc::before_online::proc_before_online;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
 use crate::rpc::disable_service::proc_disable_service;
-use crate::rpc::enable_all_plugins::proc_enable_all_plugins;
 use crate::rpc::enable_plugin::proc_enable_plugin;
 use crate::rpc::enable_service::proc_enable_service;
 use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
@@ -583,7 +583,7 @@ impl Loop {
                         "instance_name" => %target,
                     ]
                     async {
-                        pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
+                        pool.call(target, proc_name!(proc_before_online), &plugin_rpc, plugin_rpc_timeout)?.await?
                     }
                 }
 

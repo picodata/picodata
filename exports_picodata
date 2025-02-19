@@ -13,10 +13,10 @@ pico_ffi_version
 pico_ffi_wait_index
 pico_internal_initialize_dummy
 proc_apply_schema_change
+proc_before_online
 proc_cas
 proc_disable_service
 proc_discover
-proc_enable_all_plugins
 proc_enable_plugin
 proc_enable_service
 proc_expel
