@@ -1913,31 +1913,8 @@ class Cluster:
     ):
         peer = self.leader(peer)
         assert self.service_password_file, "cannot expel without pico_service password"
-        target_info = peer.instance_info(target)
-        target_uuid = target_info["uuid"]
 
-        # fmt: off
-        command: list[str] = [
-            self.binary_path, "expel",
-            "--peer", f"pico_service@{peer.iproto_listen}",
-            "--cluster-name", target.cluster_name or "",
-            "--password-file", self.service_password_file,
-            "--auth-type", "chap-sha1",
-            *(["--force"] if force else []),
-            "--timeout", str(timeout),
-            target_uuid,
-        ]
-        # fmt: on
-
-        print(f"executing: {command}")
-        try:
-            subprocess.check_output(
-                command,
-                stdin=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-        except subprocess.CalledProcessError as e:
-            raise CommandFailed(e.stdout, e.stderr) from e
+        picodata_expel(peer=peer, target=target, password_file=self.service_password_file, force=force, timeout=timeout)
 
     def raft_wait_index(self, index: int, timeout: float = 10):
         """
@@ -2173,6 +2150,51 @@ class Cluster:
                 """,
                 [user, privilege, object_type, object_name],
             )
+
+
+def picodata_expel(
+    *, peer: Instance, target: Instance, password_file: str | None, force: bool = False, timeout: int = 30
+):
+    """Run `picodata expel` with specified parameters.
+    This function is only needed for a couple of tests which explicitly check
+    what happens based on different peer/target combinations.
+
+    In general using `Cluster.expel` is nicer.
+    """
+    target_info = peer.instance_info(target)
+    target_uuid = target_info["uuid"]
+
+    assert password_file, "service password file is needed for expel to work"
+
+    # fmt: off
+    command: list[str] = [
+        peer.binary_path, "expel",
+        "--peer", f"pico_service@{peer.iproto_listen}",
+        "--cluster-name", target.cluster_name or "",
+        "--password-file", password_file,
+        "--auth-type", "chap-sha1",
+        *(["--force"] if force else []),
+        "--timeout", str(timeout),
+        target_uuid,
+    ]
+    # fmt: on
+
+    print(f"executing: {command}")
+    try:
+        subprocess.check_output(
+            command,
+            # NOTE: even though we're redirecting stdin, picodata will still
+            # attempt to read the password from the tty (this is a feature, not
+            # a bug). For this reason we must provide the serivce password file.
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            # Increase the timeout so that we have a chance of receiving the
+            # timeout error from picodata
+            cwd=peer.cwd,
+            timeout=timeout + 10,
+        )
+    except subprocess.CalledProcessError as e:
+        raise CommandFailed(e.stdout, e.stderr) from e
 
 
 class PgStorage:

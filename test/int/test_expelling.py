@@ -8,6 +8,7 @@ from conftest import (
     Retriable,
     log_crawler,
     CommandFailed,
+    picodata_expel,
 )
 
 
@@ -24,12 +25,13 @@ def test_expel_follower(cluster: Cluster):
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
+    cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster.expel(i3, i1, force=True)
+    picodata_expel(peer=i1, target=i3, force=True, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i3, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
@@ -49,12 +51,13 @@ def test_expel_leader(cluster: Cluster):
     #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
+    cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i1.assert_raft_status("Leader")
 
-    cluster.expel(i1, peer=i3, force=True)
+    picodata_expel(peer=i1, target=i1, force=True, timeout=5, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i1, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
@@ -73,13 +76,14 @@ def test_expel_by_follower(cluster: Cluster):
     #   When instance which is not a Leader receives expel CLI command
     #   Then expelling instance is expelled
 
+    cluster.set_service_password("secret")
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     i1.promote_or_fail()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    cluster.expel(i3, force=True)
+    picodata_expel(peer=i2, target=i3, force=True, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i3, "Expelled", "Expelled")
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
