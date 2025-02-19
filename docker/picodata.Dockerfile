@@ -11,7 +11,7 @@ RUN dnf -y install dnf-plugins-core epel-release \
     && dnf module -y enable nodejs:20 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
-    && dnf install -y \
+    && dnf install -y --nobest \
                 openssl-devel libunwind libunwind-devel \
                 gcc gcc-c++ make cmake git libstdc++-static libtool \
                 nodejs yarn \
