@@ -2736,6 +2736,8 @@ class Compatibility:
             self.tags = [(version, Path(f"{root_path}/test/compat/{str(version)}")) for version in processed_versions]
         else:
             print("too few tags retrieved from git were correct SemVers")
+            # FIXME should through an exception instead, doing this will likely
+            # leave picodata instances unkilled
             sys.exit(-1)
 
     def current_tag(self) -> tuple[Version, Path]:
@@ -2757,6 +2759,8 @@ class Compatibility:
         minor_versions_diff = curr_tag.micro - prev_tag.micro
         if minor_versions_diff > 1:
             print("diffs of the two latest tags are more than one minor and are not bumped majors")  # noqa: E501
+            # FIXME should through an exception instead, doing this will likely
+            # leave picodata instances unkilled
             sys.exit(-1)
         else:
             return (prev_tag, prev_path)
