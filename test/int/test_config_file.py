@@ -37,7 +37,7 @@ def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     host = cluster.base_host
     port = port_distributor.get()
     listen = f"{host}:{port}"
-    instance_dir = f"{cluster.instance_dir}/my-instance"
+    instance_dir = f"{cluster.data_dir}/my-instance"
     cluster.set_config_file(
         yaml=f"""
 cluster:
@@ -58,7 +58,7 @@ instance:
     )
     instance = Instance(
         binary_path=cluster.binary_path,
-        cwd=cluster.instance_dir,
+        cwd=cluster.data_dir,
         color_code=ColorCode.Cyan,
         config_path=cluster.config_path,
         audit=f"{instance_dir}/audit.log",
@@ -134,7 +134,7 @@ def test_default_path_to_config_file(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
 
     # By default ./picodata.yaml will be used in the instance's current working directory
-    work_dir = cluster.instance_dir + "/work-dir"
+    work_dir = cluster.data_dir + "/work-dir"
     os.mkdir(work_dir)
     with open(work_dir + "/picodata.yaml", "w") as f:
         f.write(
@@ -155,7 +155,7 @@ instance:
     instance.terminate()
 
     # But if a config is specified explicitly, it will be used instead
-    config_path = cluster.instance_dir + "/explicit-picodata.yaml"
+    config_path = cluster.data_dir + "/explicit-picodata.yaml"
     with open(config_path, "w") as f:
         f.write(
             """
@@ -200,7 +200,7 @@ def test_config_file_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
     err = f"""\
-can't read from '{cluster.instance_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
+can't read from '{cluster.data_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
 """  # noqa: E501
     crawler = log_crawler(i1, err)
 
@@ -405,9 +405,9 @@ def test_picodata_default_config(cluster: Cluster):
     # Explicit filename
     subprocess.call(
         [cluster.binary_path, "config", "default", "-o", "filename.yaml"],
-        cwd=cluster.instance_dir,
+        cwd=cluster.data_dir,
     )
-    with open(f"{cluster.instance_dir}/filename.yaml", "r") as f:
+    with open(f"{cluster.data_dir}/filename.yaml", "r") as f:
         default_config_2 = f.read()
     assert default_config.strip() == default_config_2.strip()
 
@@ -508,7 +508,7 @@ def test_output_config_parameters(cluster: Cluster):
 
 
 def test_logger_configuration(cluster: Cluster):
-    log_file = f"{cluster.instance_dir}/i1.log"
+    log_file = f"{cluster.data_dir}/i1.log"
     cluster.set_config_file(
         yaml=f"""
 cluster:
@@ -529,7 +529,7 @@ instance:
     i1.terminate()
     os.remove(log_file)
 
-    other_log_file = f"{cluster.instance_dir}/other-i1.log"
+    other_log_file = f"{cluster.data_dir}/other-i1.log"
     assert not os.path.exists(other_log_file)
 
     i1.env["PICODATA_LOG"] = other_log_file

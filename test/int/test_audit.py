@@ -348,7 +348,7 @@ def test_index(instance_with_audit_file: Instance):
 
 def test_join_expel_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.instance_dir, "audit.log")
+    audit = os.path.join(cluster.data_dir, "audit.log")
     i1 = cluster.add_instance(audit=audit, replicaset_name="default_1")
 
     audit_i1 = AuditFile(i1.audit_flag_value)
@@ -356,7 +356,7 @@ def test_join_expel_instance(cluster: Cluster):
         pass
     events = audit_i1.events()
 
-    audit = os.path.join(cluster.instance_dir, "audit.log")
+    audit = os.path.join(cluster.data_dir, "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit, replicaset_name="default_1")
 
     join_instance = take_until_title(events, "join_instance")
@@ -395,10 +395,10 @@ def test_join_expel_instance(cluster: Cluster):
 
 def test_join_connect_instance(cluster: Cluster):
     cluster.deploy(instance_count=0)
-    audit = os.path.join(cluster.instance_dir, "audit.log")
+    audit = os.path.join(cluster.data_dir, "audit.log")
     i1 = cluster.add_instance(audit=audit)
 
-    audit = os.path.join(cluster.instance_dir, "audit.log")
+    audit = os.path.join(cluster.data_dir, "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit)
     i2.terminate()
 

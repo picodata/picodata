@@ -690,7 +690,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
 
 def test_picodata_tarantool(cluster: Cluster):
-    test_lua = os.path.join(cluster.instance_dir, "test.lua")
+    test_lua = os.path.join(cluster.data_dir, "test.lua")
     with open(test_lua, "w") as f:
         print(
             """
@@ -705,11 +705,11 @@ def test_picodata_tarantool(cluster: Cluster):
 
     stdout = subprocess.check_output(
         [cluster.binary_path, "tarantool", "--", test_lua],
-        cwd=cluster.instance_dir,
+        cwd=cluster.data_dir,
     )
     assert stdout == b"stdout check\n"
 
-    output_txt = os.path.join(cluster.instance_dir, "output.txt")
+    output_txt = os.path.join(cluster.data_dir, "output.txt")
     with open(output_txt, "r") as f:
         result = f.read()
 
@@ -785,7 +785,7 @@ def test_picodata_version(cluster: Cluster):
 
 def test_admin_cli_exit_code(cluster: Cluster):
     # Test the exit code for SQL statements with syntax errors
-    setup_sql = f"{cluster.instance_dir}/setup.sql"
+    setup_sql = f"{cluster.data_dir}/setup.sql"
     with open(setup_sql, "w") as f:
         f.write(
             """
@@ -814,7 +814,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
     # Test the exit code when a duplicate values error occurs
-    insert_sql = f"{cluster.instance_dir}/insert.sql"
+    insert_sql = f"{cluster.data_dir}/insert.sql"
     with open(insert_sql, "w") as f:
         f.write(
             """
@@ -842,7 +842,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
     # Test the exit code when attempting to drop non-existent plugins
-    plugin_sql = f"{cluster.instance_dir}/plugin.sql"
+    plugin_sql = f"{cluster.data_dir}/plugin.sql"
     with open(plugin_sql, "w") as f:
         f.write("DROP PLUGIN weather_cache 0.1.0;")
 
@@ -865,7 +865,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
 
 
 def test_connect_cli_exit_code(cluster: Cluster):
-    connect_sql = f"{cluster.instance_dir}/connect.sql"
+    connect_sql = f"{cluster.data_dir}/connect.sql"
     with open(connect_sql, "w") as f:
         f.write(
             """
@@ -896,7 +896,7 @@ def test_connect_cli_exit_code(cluster: Cluster):
 
 
 def test_admin_cli_with_ignore_errors(cluster: Cluster):
-    setup_sql = f"{cluster.instance_dir}/setup.sql"
+    setup_sql = f"{cluster.data_dir}/setup.sql"
     with open(setup_sql, "w") as f:
         f.write(
             """

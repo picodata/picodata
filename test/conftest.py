@@ -1701,7 +1701,7 @@ CLUSTER_COLORS = (
 class Cluster:
     binary_path: str
     id: str
-    instance_dir: str
+    data_dir: str
     base_host: str
     port_distributor: PortDistributor
     instances: list[Instance] = field(default_factory=list)
@@ -1767,7 +1767,7 @@ class Cluster:
         assert config or yaml
         assert self.config_path is None
 
-        self.config_path = self.instance_dir + "/picodata.yaml"
+        self.config_path = self.data_dir + "/picodata.yaml"
 
         if config:
             yaml = yaml_lib.dump(config, default_flow_style=False)
@@ -1778,7 +1778,7 @@ class Cluster:
 
     def set_service_password(self, service_password: str):
         self.service_password = service_password
-        self.service_password_file = os.path.join(self.instance_dir, ".picodata-cookie")
+        self.service_password_file = os.path.join(self.data_dir, ".picodata-cookie")
         with open(self.service_password_file, "w") as f:
             f.write(service_password)
         os.chmod(self.service_password_file, 0o600)
@@ -1829,11 +1829,11 @@ class Cluster:
 
         instance = Instance(
             binary_path=self.binary_path,
-            cwd=self.instance_dir,
+            cwd=self.data_dir,
             cluster_name=self.id,
             name=name,
             replicaset_name=replicaset_name,
-            _instance_dir=f"{self.instance_dir}/i{i}",
+            _instance_dir=f"{self.data_dir}/i{i}",
             share_dir=self.share_dir,
             host=self.base_host,
             port=port,
@@ -1902,7 +1902,7 @@ class Cluster:
             raise Exception(errors)
 
     def remove_data(self):
-        shutil.rmtree(self.instance_dir)
+        shutil.rmtree(self.data_dir)
 
     def expel(
         self,
@@ -2420,7 +2420,7 @@ def cluster(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor) ->
     cluster = Cluster(
         binary_path=binary_path_fixt,
         id=next(cluster_names),
-        instance_dir=class_tmp_dir,
+        data_dir=class_tmp_dir,
         share_dir=share_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
@@ -2633,7 +2633,7 @@ class Postgres:
         i1.pg_ssl = self.ssl
 
         ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
-        instance_dir = Path(self.cluster.instance_dir) / "i1"
+        instance_dir = Path(self.cluster.data_dir) / "i1"
         instance_dir.mkdir(exist_ok=True)
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
@@ -2745,7 +2745,7 @@ def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generato
     server = ldap.configure_ldap_server(
         username="ldapuser",
         password="ldappass",
-        instance_dir=cluster.instance_dir,
+        data_dir=cluster.data_dir,
         port=port_distributor.get(),
     )
 

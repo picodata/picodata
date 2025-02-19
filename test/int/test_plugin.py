@@ -391,7 +391,7 @@ def init_dummy_plugin(
     Does *NOT* create migration files, you have to do it yourself.
 
     """
-    cluster.share_dir = cluster.instance_dir
+    cluster.share_dir = cluster.data_dir
     # Initialize the plugin directory
     plugin_dir = Path(cluster.share_dir) / plugin / version
     os.makedirs(plugin_dir)
@@ -419,7 +419,7 @@ def init_dummy_plugin(
 
 def test_invalid_manifest_plugin(cluster: Cluster):
     # This must be set before any instances start up
-    cluster.share_dir = cluster.instance_dir
+    cluster.share_dir = cluster.data_dir
 
     i1, i2 = cluster.deploy(instance_count=2)
 
@@ -2632,7 +2632,7 @@ def test_panic_in_plugin(cluster: Cluster):
     init_dummy_plugin(cluster, plugin_name, "0.1.0", services=[service_name])
 
     # Set the log configuration
-    log_file = Path(cluster.instance_dir) / "test.log"
+    log_file = Path(cluster.data_dir) / "test.log"
     cluster.set_config_file(
         yaml=f"""
 cluster:

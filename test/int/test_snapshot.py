@@ -106,7 +106,7 @@ def test_large_snapshot(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
 
     # TODO: rewrite using clusterwide settings when we implement those
-    script_path = f"{cluster.instance_dir}/postjoin.lua"
+    script_path = f"{cluster.data_dir}/postjoin.lua"
     with open(script_path, "w") as f:
         f.write(
             """\

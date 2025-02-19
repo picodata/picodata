@@ -23,12 +23,12 @@ def is_glauth_available():
     return True
 
 
-def configure_ldap_server(username: str, password: str, instance_dir: str, port: int) -> LdapServer:
+def configure_ldap_server(username: str, password: str, data_dir: str, port: int) -> LdapServer:
     subprocess.Popen(["glauth", "--version"])
 
     LDAP_SERVER_HOST = "127.0.0.1"
 
-    ldap_cfg_path = f"{instance_dir}/ldap.cfg"
+    ldap_cfg_path = f"{data_dir}/ldap.cfg"
     with open(ldap_cfg_path, "x") as f:
         password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
         f.write(
