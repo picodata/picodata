@@ -74,8 +74,8 @@ export const instances: TPages["instances"] = {
       rf: {
         label: "Фактор репликации",
       },
-      shard_count: {
-        label: "Сегменты",
+      bucket_count: {
+        label: "Бакеты",
       },
       canVote: {
         label: "Голосует?",

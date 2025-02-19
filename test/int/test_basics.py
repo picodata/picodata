@@ -421,7 +421,7 @@ Insert(_pico_index, [{_pico_user},2,"_pico_user_owner_id","tree",[{{"unique":fal
 Insert(_pico_table, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id","unsigned",null,false,null],["object_type","string",null,false,null],["object_id","integer",null,false,null],["privilege","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type","string",null,false,null],["object_id","integer",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}},{{"field_type":"unsigned","is_nullable":false,"name":"current_vshard_config_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"target_vshard_config_version"}},{{"field_type":"boolean","is_nullable":false,"name":"vshard_bootstrapped"}},{{"field_type":"unsigned","is_nullable":false,"name":"shard_count"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}},{{"field_type":"unsigned","is_nullable":false,"name":"current_vshard_config_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"target_vshard_config_version"}},{{"field_type":"boolean","is_nullable":false,"name":"vshard_bootstrapped"}},{{"field_type":"unsigned","is_nullable":false,"name":"bucket_count"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_tier},0,"_pico_tier_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_routine},"_pico_routine",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"array","is_nullable":false,"name":"params"}},{{"field_type":"array","is_nullable":false,"name":"returns"}},{{"field_type":"string","is_nullable":false,"name":"language"}},{{"field_type":"string","is_nullable":false,"name":"body"}},{{"field_type":"string","is_nullable":false,"name":"security"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
@@ -645,14 +645,14 @@ cluster:
     }
 
     space_bucket_id = storage_instance.eval("return box.space._bucket.id")
-    total_shard_count = 3000
+    total_bucket_count = 3000
 
     storage_vshard_config_explicit = storage_instance.call(".proc_get_vshard_config", "storage")
     assert storage_vshard_config_explicit == dict(
         discovery_mode="on",
         sharding=storage_sharding,
         space_bucket_id=space_bucket_id,
-        bucket_count=total_shard_count,
+        bucket_count=total_bucket_count,
     )
 
     storage_vshard_config_implicit = storage_instance.call(".proc_get_vshard_config", None)
@@ -663,7 +663,7 @@ cluster:
         discovery_mode="on",
         sharding=router_sharding,
         space_bucket_id=space_bucket_id,
-        bucket_count=total_shard_count,
+        bucket_count=total_bucket_count,
     )
 
     router_vshard_config_implicit = router_instance_1.call(".proc_get_vshard_config", None)

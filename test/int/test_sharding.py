@@ -390,30 +390,32 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
 
-def assert_tier_shard_count(cluster: Cluster, name: str, shard_count: int, *instances: Instance):
+def assert_tier_bucket_count(cluster: Cluster, name: str, bucket_count: int, *instances: Instance):
     assert len(instances) > 0
 
     i1 = instances[0]
-    rows = i1.sql(""" SELECT name, shard_count FROM _pico_tier WHERE name = ?""", name)
+    # default `bucket_count` is 3000
+    rows = i1.sql(""" SELECT name, bucket_count FROM _pico_tier WHERE name = ?""", name)
     assert rows == [
-        [name, shard_count],
+        [name, bucket_count],
     ]
 
+    # 3000 bucket counts, 3 replicasets
     for x in instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(x, int(shard_count / len(instances)))
+        cluster.wait_until_instance_has_this_many_active_buckets(x, int(bucket_count / len(instances)))
 
 
-def test_shard_count_custom_and_default(cluster: Cluster):
+def test_bucket_count_custom_and_default(cluster: Cluster):
     cluster.set_service_password("secret")
     cluster.set_config_file(
         yaml="""
 cluster:
     name: test
-    default_shard_count: 6000
+    default_bucket_count: 6000
     tier:
         radix:
             replication_factor: 1
-            shard_count: 16384
+            bucket_count: 16384
         storage:
             replication_factor: 1
 """
@@ -425,5 +427,5 @@ cluster:
     i5 = cluster.add_instance(tier="radix", wait_online=False)
     cluster.wait_online()
 
-    assert_tier_shard_count(cluster, "storage", 6000, i1, i2, i3)
-    assert_tier_shard_count(cluster, "radix", 16384, i4, i5)
+    assert_tier_bucket_count(cluster, "storage", 6000, i1, i2, i3)
+    assert_tier_bucket_count(cluster, "radix", 16384, i4, i5)

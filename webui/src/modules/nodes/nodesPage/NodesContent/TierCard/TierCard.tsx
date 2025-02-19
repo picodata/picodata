@@ -92,7 +92,7 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
         </div>
         <div className={cn(styles.infoColumn, styles.bucketCountColumn)}>
           <div className={styles.label}>
-            {tierTranslations.shard_count.label}
+            {tierTranslations.bucket_count.label}
           </div>
           <div className={styles.infoValue}>{tier.bucketCount}</div>
         </div>

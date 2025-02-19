@@ -199,7 +199,7 @@ Using configuration file '{args_path}'.");
             TierConfig {
                 replication_factor: Some(1),
                 can_vote: true,
-                shard_count: Some(sql::DEFAULT_SHARD_COUNT),
+                bucket_count: Some(sql::DEFAULT_BUCKET_COUNT),
                 ..Default::default()
             },
         )]));
@@ -1047,10 +1047,10 @@ pub struct ClusterConfig {
     #[introspection(config_default = 1)]
     pub default_replication_factor: Option<u8>,
 
-    /// Shard count which is used for tiers which didn't specify one
-    /// explicitly. For default value see [`Self::default_shard_count()`].
-    #[introspection(config_default = sql::DEFAULT_SHARD_COUNT)]
-    pub default_shard_count: Option<u64>,
+    /// Bucket count which is used for tiers which didn't specify one
+    /// explicitly. For default value see [`Self::default_bucket_count()`].
+    #[introspection(config_default = sql::DEFAULT_BUCKET_COUNT)]
+    pub default_bucket_count: Option<u64>,
 
     /// Determines wether the .xlog & .snap files should be shredded when
     /// deleting.
@@ -1071,7 +1071,7 @@ impl ClusterConfig {
                 Tier {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
-                    shard_count: self.default_shard_count(),
+                    bucket_count: self.default_bucket_count(),
                     can_vote: true,
                     ..Default::default()
                 },
@@ -1084,15 +1084,15 @@ impl ClusterConfig {
                 .replication_factor
                 .unwrap_or_else(|| self.default_replication_factor());
 
-            let shard_count = info
-                .shard_count
-                .unwrap_or_else(|| self.default_shard_count());
+            let bucket_count = info
+                .bucket_count
+                .unwrap_or_else(|| self.default_bucket_count());
 
             let tier_def = Tier {
                 name: name.into(),
                 replication_factor,
                 can_vote: info.can_vote,
-                shard_count,
+                bucket_count,
                 ..Default::default()
             };
             tier_defs.insert(name.into(), tier_def);
@@ -1121,8 +1121,8 @@ impl ClusterConfig {
     }
 
     #[inline]
-    pub fn default_shard_count(&self) -> u64 {
-        self.default_shard_count
+    pub fn default_bucket_count(&self) -> u64 {
+        self.default_bucket_count
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
@@ -2103,7 +2103,7 @@ cluster:
             can_vote: false
 
         radix:
-            shard_count: 16384
+            bucket_count: 16384
 
 instance:
     instance_name: voter1
@@ -2194,7 +2194,7 @@ cluster:
         let yaml = r###"
 cluster:
     default_replication_factor: 3
-    default_shard_count: 5000
+    default_bucket_count: 5000
     name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
@@ -2207,7 +2207,7 @@ cluster:
             .get("default")
             .expect("default replication factor should applied to default tier configuration");
         assert_eq!(default_tier.replication_factor, 3);
-        assert_eq!(default_tier.shard_count, 5000);
+        assert_eq!(default_tier.bucket_count, 5000);
     }
 
     #[test]
@@ -2252,20 +2252,20 @@ instance:
     }
 
     #[test]
-    fn default_shard_count_replication_factor() {
+    fn default_bucket_count_replication_factor() {
         let yaml = r###"
 cluster:
     tier:
         non-default:
             replication_factor: 2
-            shard_count: 1000
+            bucket_count: 1000
         default:
         default-rf:
-            shard_count: 10000
+            bucket_count: 10000
         default-bc:
             replication_factor: 4
     default_replication_factor: 3
-    default_shard_count: 5000
+    default_bucket_count: 5000
     name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
@@ -2280,7 +2280,7 @@ cluster:
                 .expect("default replication factor should applied to default tier configuration");
 
             assert_eq!(tier.replication_factor, rf);
-            assert_eq!(tier.shard_count, bc);
+            assert_eq!(tier.bucket_count, bc);
         };
 
         assert_tier("default", 3, 5000);

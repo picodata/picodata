@@ -84,7 +84,7 @@ pub mod storage;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use serde::Serialize;
 
-pub const DEFAULT_SHARD_COUNT: u64 = 3000;
+pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
 enum Privileges {
     Read,

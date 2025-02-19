@@ -1854,13 +1854,13 @@ def test_hash(cluster: Cluster):
     tup = (1,)
     key_def = KeyDef([KeyPart(1, "integer", True)])
     lua_hash = i1.hash(tup, key_def)
-    shard_count = 3000
+    bucket_count = 3000
 
     # Compare SQL and Lua bucket_id
     data = i1.sql("""insert into t values(?);""", 1)
     assert data["row_count"] == 1
     data = i1.sql(""" select "bucket_id" from t where a = ?""", 1)
-    assert data == [[lua_hash % shard_count + 1]]
+    assert data == [[lua_hash % bucket_count + 1]]
 
 
 def test_select_lowercase_name(cluster: Cluster):
