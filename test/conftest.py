@@ -799,6 +799,7 @@ class Instance:
             If the response instead contains just the "row_count" field, this
             parameter is ignored.
         """
+        log.info(f"exec sql on instance {self.name}: {sql}")
         try:
             with self.connect(timeout=timeout, user=user, password=password) as conn:
                 result = conn.sql(sql, sudo=sudo, *params, options=options)
@@ -838,7 +839,7 @@ class Instance:
             nonlocal attempt
             attempt += 1
             if attempt > 1:
-                print(f"retrying SQL query `{sql}` ({attempt=})", file=sys.stderr)
+                log.warning(f"retrying SQL query `{sql}` ({attempt=})")
 
             return self.sql(sql, *params, sudo=sudo, user=user, password=password, timeout=timeout)
 
