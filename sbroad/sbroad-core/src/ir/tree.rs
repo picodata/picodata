@@ -151,7 +151,7 @@ trait TreeIterator<'nodes> {
         }
 
         if let Some(ordering) = ordering {
-            if step < ordering.len() {
+            while step < ordering.len() {
                 if let OrderByElement {
                     entity: OrderByEntity::Expression { expr_id },
                     ..
@@ -159,6 +159,9 @@ trait TreeIterator<'nodes> {
                 {
                     return Some(expr_id);
                 }
+
+                *self.get_child().borrow_mut() += 1;
+                step += 1;
             }
             step -= ordering.len();
         }
