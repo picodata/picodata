@@ -3722,19 +3722,28 @@ impl AbstractSyntaxTree {
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<(), SbroadError> {
         let node = self.nodes.get_node(node_id)?;
-        let (rel_child_id, mut other_children_ids) = node
-            .children
-            .split_first()
-            .expect("More than one child expected under Projection");
+        let Some((rel_child_id, mut other_children_ids)) = node.children.split_first() else {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some("Projection must have some children".into()),
+            ));
+        };
         let mut is_distinct: bool = false;
-        let first_col_ast_id = other_children_ids
-            .first()
-            .expect("At least one child expected under Projection");
+        let Some(first_col_ast_id) = other_children_ids.first() else {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some("Projection must have at least a single column".into()),
+            ));
+        };
         if let Rule::Distinct = self.nodes.get_node(*first_col_ast_id)?.rule {
             is_distinct = true;
-            (_, other_children_ids) = other_children_ids
-                .split_first()
-                .expect("Projection must have some columns children");
+            let Some((_, ids)) = other_children_ids.split_first() else {
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some("Projection with distinct must have at least a single column".into()),
+                ));
+            };
+            other_children_ids = ids;
         }
 
         let plan_rel_child_id = map.get(*rel_child_id)?;
