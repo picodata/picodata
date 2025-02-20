@@ -59,18 +59,18 @@ INSERT INTO t1 VALUES   (1, 'A', 'one'  ),
 ```sql
 SELECT c, a, b, group_concat(b, '.') FILTER (WHERE c!='two') OVER (
   ORDER BY a
-) AS group_concat
+)
 FROM t1 ORDER BY a;
 
-  c     | a | b | group_concat
----------------------------------
-  one   | 1 | A | A
-  two   | 2 | B | A
-  three | 3 | C | A.C
-  one   | 4 | D | A.C.D
-  two   | 5 | E | A.C.D
-  three | 6 | F | A.C.D.F
-  one   | 7 | G | A.C.D.F.G
+   c   | a | b |    col_1
+-------+---+---+-------------
+ one   | 1 | A | "A"
+ two   | 2 | B | "A"
+ three | 3 | C | "A.C"
+ one   | 4 | D | "A.C.D"
+ two   | 5 | E | "A.C.D"
+ three | 6 | F | "A.C.D.F"
+ one   | 7 | G | "A.C.D.F.G"
 ```
 
 В этом запросе `FILTER (WHERE c!='two')` исключает кортежи, в которых `c = 'two'`,
@@ -98,19 +98,19 @@ FROM t1 ORDER BY a;
 SELECT c, a, b, group_concat(b, '.') OVER (
   PARTITION BY c ORDER BY a
   RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-) AS group_concat
+)
 FROM t1
 ORDER BY c, a;
 
-  c     | a | b | group_concat
----------------------------------
-  one   | 1 | A | A.D.G
-  one   | 4 | D | D.G
-  one   | 7 | G | G
-  three | 3 | C | C.F
-  three | 6 | F | F
-  two   | 2 | B | B.E
-  two   | 5 | E | E
+   c   | a | b |  col_1
+-------+---+---+---------
+ one   | 1 | A | "A.D.G"
+ one   | 4 | D | "D.G"
+ one   | 7 | G | "G"
+ three | 3 | C | "C.F"
+ three | 6 | F | "F"
+ two   | 2 | B | "B.E"
+ two   | 5 | E | "E"
 ```
 
 В этом запросе выражение `PARTITION BY c` разбивает результирующий набор на
@@ -128,19 +128,19 @@ ORDER BY c, a;
 SELECT c, a, b, group_concat(b, '.') OVER (
   PARTITION BY c ORDER BY a
   RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-) AS group_concat
+)
 FROM t1
 ORDER BY a;
 
-  c     | a | b | group_concat
----------------------------------
-  one   | 1 | A | A.D.G
-  two   | 2 | B | B.E
-  three | 3 | C | C.F
-  one   | 4 | D | D.G
-  two   | 5 | E | E
-  three | 6 | F | F
-  one   | 7 | G | G
+   c   | a | b |  col_1
+-------+---+---+---------
+ one   | 1 | A | "A.D.G"
+ two   | 2 | B | "B.E"
+ three | 3 | C | "C.F"
+ one   | 4 | D | "D.G"
+ two   | 5 | E | "E"
+ three | 6 | F | "F"
+ one   | 7 | G | "G"
 ```
 
 В этом случае кортежи сортируются по `a`, но разделы остаются неизменными,
@@ -177,19 +177,18 @@ RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE NO OTHERS
 
 ```sql
 SELECT a, b, c,
-       group_concat(b, '.') OVER (ORDER BY c) AS group_concat
+       group_concat(b, '.') OVER (ORDER BY c)
 FROM t1 ORDER BY a;
 
-
-  a | b | c     | group_concat
------------------------------
-  1 | A | one   | A.D.G
-  2 | B | two   | A.D.G.C.F.B.E
-  3 | C | three | A.D.G.C.F
-  4 | D | one   | A.D.G
-  5 | E | two   | A.D.G.C.F.B.E
-  6 | F | three | A.D.G.C.F
-  7 | G | one   | A.D.G
+ a | b |   c   |      col_1
+---+---+-------+-----------------
+ 1 | A | one   | "A.D.G"
+ 2 | B | two   | "A.D.G.C.F.B.E"
+ 3 | C | three | "A.D.G.C.F"
+ 4 | D | one   | "A.D.G"
+ 5 | E | two   | "A.D.G.C.F.B.E"
+ 6 | F | three | "A.D.G.C.F"
+ 7 | G | one   | "A.D.G"
 ```
 
 #### Тип рамки {: #frame_type }
@@ -262,18 +261,18 @@ FROM t1 ORDER BY a;
 ```sql
 SELECT c, a, b, group_concat(b, '.') OVER (
   ORDER BY c, a ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-) AS group_concat
+)
 FROM t1 ORDER BY c, a;
 
-  c     | a | b | group_concat
----------------------------------
-  one   | 1 | A | A.D.G.C.F.B.E
-  one   | 4 | D | D.G.C.F.B.E
-  one   | 7 | G | G.C.F.B.E
-  three | 3 | C | C.F.B.E
-  three | 6 | F | F.B.E
-  two   | 2 | B | B.E
-  two   | 5 | E | E
+   c   | a | b |      col_1
+-------+---+---+-----------------
+ one   | 1 | A | "A.D.G.C.F.B.E"
+ one   | 4 | D | "D.G.C.F.B.E"
+ one   | 7 | G | "G.C.F.B.E"
+ three | 3 | C | "C.F.B.E"
+ three | 6 | F | "F.B.E"
+ two   | 2 | B | "B.E"
+ two   | 5 | E | "E"
 ```
 
 В этом примере `ORDER BY c, a` сортирует кортежи, а
@@ -301,17 +300,16 @@ FROM t1 ORDER BY c, a;
 ```sql
 SELECT a, b, group_concat(b, '.') OVER (
   ORDER BY a ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
-) AS group_concat FROM t1;
-
-  a | b | group_concat
-----------------------
-  1 | A | A.B
-  2 | B | A.B.C
-  3 | C | B.C.D
-  4 | D | C.D.E
-  5 | E | D.E.F
-  6 | F | E.F.G
-  7 | G | F.G
+) FROM t1;
+ a | b |  col_1
+---+---+---------
+ 1 | A | "A.B"
+ 2 | B | "A.B.C"
+ 3 | C | "B.C.D"
+ 4 | D | "C.D.E"
+ 5 | E | "D.E.F"
+ 6 | F | "E.F.G"
+ 7 | G | "F.G"
 ```
 
 В этом примере рамки окна включают все кортежи между предыдущей
@@ -338,18 +336,15 @@ SELECT a, b, group_concat(b, '.') OVER (
 можно объявить его один раз с `WINDOW`:
 
 ```sql
-SELECT row_number() OVER w AS row_num,
-       SUM(a) OVER w AS total_sum
-FROM t1
-WINDOW w AS ();
+SELECT row_number() OVER w, SUM(a) OVER w FROM t1 WINDOW w AS ();
 
-row_number | total_sum
--------------------
-1          | 28
-2          | 28
-3          | 28
-4          | 28
-5          | 28
-6          | 28
-7          | 28
+ col_1 | col_2
+-------+-------
+ 1     | 28
+ 2     | 28
+ 3     | 28
+ 4     | 28
+ 5     | 28
+ 6     | 28
+ 7     | 28
 ```

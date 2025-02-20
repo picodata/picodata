@@ -19,15 +19,13 @@
 CREATE TABLE t0(x INTEGER PRIMARY KEY, y TEXT);
 INSERT INTO t0 VALUES (1, 'aaa'), (2, 'ccc'), (3, 'bbb');
 
-SELECT x, y, row_number() OVER (ORDER BY y) AS row_number
-FROM t0
-ORDER BY x;
+SELECT x, y, row_number() OVER (ORDER BY y) FROM t0 ORDER BY x;
 
-  x | y   | row_number
-----------------------
-  1 | aaa | 1
-  2 | ccc | 3
-  3 | bbb | 2
+ x |  y  | col_1
+---+-----+-------
+ 1 | aaa | 1
+ 2 | ccc | 3
+ 3 | bbb | 2
 ```
 
 Функция `row_number()` присваивает каждой строке номер в порядке,

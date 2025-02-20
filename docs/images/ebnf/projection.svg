@@ -85,7 +85,7 @@
       <text class="nonterminal" x="59" y="205">aggregate</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../window_builtin"
+      xlink:href="../window"
       xlink:title="window">
       <rect x="51" y="231" width="66" height="32"/>
       <rect x="49" y="229" width="66" height="32" class="nonterminal"/>
