@@ -217,7 +217,6 @@ impl<'binder> ParamsBinder<'binder> {
     fn cover_params_with_rows(&mut self) -> Result<(), SbroadError> {
         // Len of `value_ids` - `param_index` = param index we are currently binding.
         let mut param_index = self.value_ids.len();
-
         let mut row_ids = HashMap::with_hasher(RandomState::new());
 
         for LevelNode(_, id) in &self.nodes {
@@ -274,39 +273,33 @@ impl<'binder> ParamsBinder<'binder> {
                         }
                         if let Some(frame) = frame {
                             let mut bound_types = [None, None];
-                            match frame.bound {
-                                Bound::Single(
-                                    BoundType::PrecedingOffset(start)
-                                    | BoundType::FollowingOffset(start),
-                                ) => {
+                            match &frame.bound {
+                                Bound::Single(start) => {
                                     bound_types[0] = Some(start);
                                 }
-                                Bound::Between(
-                                    BoundType::PrecedingOffset(start)
-                                    | BoundType::FollowingOffset(start),
-                                    BoundType::FollowingOffset(end)
-                                    | BoundType::PrecedingOffset(end),
-                                ) => {
+                                Bound::Between(start, end) => {
                                     bound_types[0] = Some(start);
                                     bound_types[1] = Some(end);
                                 }
-                                _ => {}
                             }
-                            for id in bound_types.iter().flatten() {
-                                self.cover_param_with_row(
-                                    *id,
-                                    false,
-                                    &mut param_index,
-                                    &mut row_ids,
-                                );
+                            for b_type in bound_types.iter().flatten() {
+                                match b_type {
+                                    BoundType::PrecedingOffset(id)
+                                    | BoundType::FollowingOffset(id) => {
+                                        self.cover_param_with_row(
+                                            *id,
+                                            false,
+                                            &mut param_index,
+                                            &mut row_ids,
+                                        );
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }
                     Expression::Over(Over {
-                        func_args,
-                        filter,
-                        window,
-                        ..
+                        func_args, filter, ..
                     }) => {
                         for param_id in func_args {
                             self.cover_param_with_row(
@@ -324,7 +317,6 @@ impl<'binder> ParamsBinder<'binder> {
                                 &mut row_ids,
                             );
                         }
-                        self.cover_param_with_row(*window, false, &mut param_index, &mut row_ids);
                     }
                     Expression::Alias(Alias {
                         child: ref param_id,
@@ -619,9 +611,26 @@ impl<'binder> ParamsBinder<'binder> {
                         frame,
                         ..
                     }) => {
-                        if let Some(param_id) = partition {
-                            for param_id in param_id {
-                                bind_param(param_id, true, &mut param_index);
+                        if let Some(frame) = frame {
+                            match frame.bound {
+                                Bound::Single(
+                                    BoundType::PrecedingOffset(mut id)
+                                    | BoundType::FollowingOffset(mut id),
+                                ) => {
+                                    bind_param(&mut id, false, &mut param_index);
+                                }
+                                Bound::Between(ref mut start, ref mut end) => {
+                                    for b_type in [start, end].iter_mut() {
+                                        match b_type {
+                                            BoundType::PrecedingOffset(ref mut id)
+                                            | BoundType::FollowingOffset(ref mut id) => {
+                                                bind_param(id, false, &mut param_index);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         if let Some(ordering) = ordering {
@@ -631,40 +640,37 @@ impl<'binder> ParamsBinder<'binder> {
                                 }
                             }
                         }
-                        if let Some(frame) = frame {
-                            match frame.bound {
-                                Bound::Single(
-                                    BoundType::PrecedingOffset(mut start)
-                                    | BoundType::FollowingOffset(mut start),
-                                ) => {
-                                    bind_param(&mut start, false, &mut param_index);
-                                }
-                                Bound::Between(
-                                    BoundType::PrecedingOffset(mut start)
-                                    | BoundType::FollowingOffset(mut start),
-                                    BoundType::FollowingOffset(mut end)
-                                    | BoundType::PrecedingOffset(mut end),
-                                ) => {
-                                    bind_param(&mut start, false, &mut param_index);
-                                    bind_param(&mut end, false, &mut param_index);
-                                }
-                                _ => {}
+                        if let Some(param_id) = partition {
+                            for param_id in param_id {
+                                bind_param(param_id, false, &mut param_index);
                             }
                         }
                     }
                     MutExpression::Over(Over {
-                        func_args,
-                        filter,
-                        window,
-                        ..
+                        func_args, filter, ..
                     }) => {
-                        for param_id in func_args {
-                            bind_param(param_id, false, &mut param_index);
-                        }
+                        // TODO: we need to refactor Over and Window nodes to make them
+                        // more traversal friendly.
                         if let Some(param_id) = filter {
-                            bind_param(param_id, false, &mut param_index);
+                            if self.param_node_ids.contains(param_id) {
+                                return Err(SbroadError::Invalid(
+                                    Entity::Query,
+                                    Some(format_smolstr!(
+                                        "Parameter binding error: windo filter parameter is not allowed."
+                                    )),
+                                ));
+                            }
                         }
-                        bind_param(window, false, &mut param_index);
+                        for param_id in func_args {
+                            if self.param_node_ids.contains(param_id) {
+                                return Err(SbroadError::Invalid(
+                                    Entity::Query,
+                                    Some(format_smolstr!(
+                                        "Parameter binding error: window function argument parameters are not allowed."
+                                    )),
+                                ));
+                            }
+                        }
                     }
                     MutExpression::Case(Case {
                         ref mut search_expr,

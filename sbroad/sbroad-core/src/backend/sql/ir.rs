@@ -566,8 +566,6 @@ impl ExecutionPlan {
                 }
             }
         }
-        println!("SQL: {sql}");
-        println!("Params: {params:?}");
         // MUST be constructed out of the `syntax.ordered.sql` context scope.
         Ok((PatternWithParams::new(sql, params), guard))
     }

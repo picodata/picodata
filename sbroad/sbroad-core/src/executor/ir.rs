@@ -787,12 +787,11 @@ impl ExecutionPlan {
                         ref mut window,
                         ..
                     }) => {
-                        for arg in func_args {
-                            *arg = subtree_map.get_id(*arg);
-                        }
-
                         if let Some(filter) = filter {
                             *filter = subtree_map.get_id(*filter)
+                        }
+                        for arg in func_args {
+                            *arg = subtree_map.get_id(*arg);
                         }
                         *window = subtree_map.get_id(*window);
                     }

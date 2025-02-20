@@ -210,28 +210,22 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Over expression expected");
         };
-        let child_step = *self.get_child().borrow();
+        let mut step = *self.get_child().borrow();
         *self.get_child().borrow_mut() += 1;
 
-        let func_args_len = func_args.len();
-
-        if child_step < func_args_len {
-            return Some(func_args[child_step]);
+        if step < func_args.len() {
+            return Some(func_args[step]);
         }
+        step -= func_args.len();
 
         if let Some(filter) = filter {
-            if child_step == func_args_len {
+            if step == 0 {
                 return Some(*filter);
             }
+            step -= 1;
         }
 
-        let is_window_step = if filter.is_some() {
-            child_step == func_args_len + 1
-        } else {
-            child_step == func_args_len
-        };
-
-        if is_window_step {
+        if step == 0 {
             // We iterate over windows without names in Projection. All named windows are
             // iterated in NamedWindows node to keep the bind order for parameters.
             return Some(*window);
