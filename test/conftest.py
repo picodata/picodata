@@ -53,7 +53,7 @@ pytest_plugins = "framework.sqltester"
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
-PORT_RANGE = 400
+PORT_RANGE = 800
 METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
