@@ -3877,7 +3877,13 @@ impl AbstractSyntaxTree {
                     let over_plan_id = plan.nodes.push(over.into());
 
                     unnamed_col_pos += 1;
-                    let alias_name = get_unnamed_column_alias(unnamed_col_pos);
+                    let alias_name = if let Some(alias_node_id) = over_children.get(4) {
+                        let window_alias = self.nodes.get_node(*alias_node_id)?;
+                        let identifier = window_alias.children[0];
+                        parse_normalized_identifier(self, identifier)?
+                    } else {
+                        get_unnamed_column_alias(unnamed_col_pos)
+                    };
                     let plan_alias_id = plan.nodes.add_alias(&alias_name, over_plan_id)?;
                     proj_columns.push(plan_alias_id);
                 }
