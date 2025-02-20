@@ -718,6 +718,12 @@ def test_alter_system_user(cluster: Cluster):
     ):
         i1.sql('drop user "admin"')
 
+    with pytest.raises(
+        TarantoolError,
+        match="dropping system user is not allowed",
+    ):
+        i1.sql('drop user "pico_service"')
+
 
 def test_submit_sql_after_revoke_login(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)

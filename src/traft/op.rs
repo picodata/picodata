@@ -1,7 +1,7 @@
 use crate::plugin::PluginIdentifier;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
-    UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
+    UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
 };
 use crate::storage::{self, Clusterwide};
 use crate::storage::{space_by_name, RoutineId};
@@ -849,7 +849,7 @@ impl Acl {
             }
             Self::DropUser { user_id, .. } => {
                 // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
-                if *user_id == GUEST_ID || *user_id == ADMIN_ID {
+                if *user_id == GUEST_ID || *user_id == ADMIN_ID || *user_id == PICO_SERVICE_ID {
                     return Err(TRaftError::other("dropping system user is not allowed"));
                 }
 
