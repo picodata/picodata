@@ -92,6 +92,8 @@ Parameters with scope `global` are the same on each instance.
 
 - `instance.shredding` moved to `cluster` section and is now defined at bootstrap only.
 
+- Added box `sql_cache_size` to _pico_db_config under `sql_cache_size_max` alias.
+
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.

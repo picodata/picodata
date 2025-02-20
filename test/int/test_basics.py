@@ -365,7 +365,8 @@ Replace(_pico_db_config, ["sql_vdbe_opcode_max","",45000]),
 Replace(_pico_db_config, ["sql_motion_row_max","",5000]),
 Replace(_pico_db_config, ["memtx_checkpoint_count","default",2]),
 Replace(_pico_db_config, ["memtx_checkpoint_interval","default",3600]),
-Replace(_pico_db_config, ["iproto_net_msg_max","default",768]))|
+Replace(_pico_db_config, ["iproto_net_msg_max","default",768]),
+Replace(_pico_db_config, ["sql_cache_size_max","default",5242880]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_db_config, ["shredding","",false])
 )|

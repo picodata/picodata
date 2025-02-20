@@ -1714,6 +1714,14 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 0x300)]
     #[introspection(scope = tier)]
     pub iproto_net_msg_max: u64,
+
+    /// Tarantool statement cache size capacity in bytes.
+    ///
+    /// Corresponds to `box.cfg.sql_cache_size`
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 5242880)]
+    #[introspection(scope = tier)]
+    pub sql_cache_size_max: u64,
 }
 
 impl AlterSystemParameters {
@@ -1940,6 +1948,13 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
                 .expect("type already checked");
 
             set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
+        } else if name == system_parameter_name!(sql_cache_size_max) {
+            let value = tuple
+                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
+                .expect("there is always 3 fields in _pico_db_config tuple")
+                .expect("type already checked");
+
+            set_cfg_field("sql_cache_size", value).expect("changing sql_cache_size shouldn't fail");
         }
     } else if name == system_parameter_name!(pg_portal_max) {
         let value = tuple
