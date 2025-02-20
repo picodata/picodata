@@ -4116,7 +4116,11 @@ impl AbstractSyntaxTree {
 
                         let output = plan.get_row_list(output_id)?;
                         let output_len = output.len();
-                        if let Some(alias_node_id) = output.get(index_usize - 1) {
+                        let output_idx = index_usize.checked_sub(1).ok_or(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(format_smolstr!("ORDER BY position 0 is not in select list"))
+                            ))?;
+                        if let Some(alias_node_id) = output.get(output_idx) {
                             let alias_node = plan.get_expression_node(*alias_node_id)?;
                             if let Expression::Alias(Alias { child, .. }) = alias_node {
                                 if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
