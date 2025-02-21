@@ -139,9 +139,7 @@ psql postgres://admin@127.0.0.1:55432?sslmode=disable
 
 Для обеспечения мер безопасности рекомендуется организовать хранение
 пароля для внутреннего системного пользователя `pico_service` в
-отдельном файле. При запуске инстанса путь к этому файлу передайте в
-параметре [`--service-password-file`].
-
+отдельном файле.
 Дополнительно, в опции [`--audit`] явно укажите указать способ вывода
 [журнала аудита](../tutorial/audit_log.md).
 
@@ -156,7 +154,6 @@ chmod 600 secret.txt
 picodata run --service-password-file secret.txt --audit audit.log --shredding
 ```
 
-[`--service-password-file`]: ../reference/cli.md#run_service_password_file
 [`--audit`]: ../reference/cli.md#run_audit
 [`--shredding`]: ../reference/cli.md#run_shredding
 

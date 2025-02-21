@@ -358,21 +358,6 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 
 Аналогичная переменная окружения: `PICODATA_SCRIPT`
 
-### --service-password-file {: #run_service_password_file }
-
-`--service-password-file <PATH>`
-
-Путь к файлу с паролем для системного пользователя `pico_service`. Этот
-пароль будет использован для взаимодействия с другими инстансами
-кластера. При несовпадении пароля присоединение инстанса к кластеру
-невозможно. При отсутствии параметра в качестве пароля используется
-пустая строка, см. [Безопасный запуск](../tutorial/run.md#secure_run).
-
-Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
-
-[`instance.service_password_file`]: config.md#instance_service_password_file
-
 ### --share-dir {: #run_share_dir }
 
 `--share-dir <PATH>`
@@ -402,10 +387,10 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 [Безопасный запуск](../tutorial/run.md#secure_run).
 
 Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
-Аналогичный параметр файла конфигурации: [`instance.shredding`]
+Аналогичный параметр файла конфигурации: [`cluster.shredding`]
 
 [runfiles]: ../architecture/instance_runtime_files.md
-[`instance.shredding`]: config.md#instance_shredding
+[`cluster.shredding`]: config.md#cluster_shredding
 
 ### --tier {: #run_tier }
 
@@ -678,7 +663,6 @@ picodata plugin configure --service-names service_1,service_2
 интерактивном режиме, см. [Безопасный запуск](../tutorial/run.md#secure_run).
 
 Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
 
 ## picodata status {: #status }
 
@@ -749,7 +733,6 @@ CLUSTER NAME: demo
 интерактивном режиме, см. [Безопасный запуск](../tutorial/run.md#secure_run).
 
 Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичный параметр файла конфигурации: [`instance.service_password_file`]
 
 ### --timeout {: #status_timeout }
 

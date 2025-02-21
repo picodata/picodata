@@ -39,34 +39,34 @@ picodata run --config <PATH>
 
 ``` yaml title="picodata.yaml"
 cluster:
-  name: demo # (2)!
+  name: demo # (3)!
   tier:
     default:
-      replication_factor: 1 # (4)!
-      can_vote: true # (3)!
+      replication_factor: 1 # (5)!
+      can_vote: true # (4)!
   default_replication_factor: 1 # (1)!
+  default_shard_count: 3000 # (2)!
+  shredding: false # (4)!
 instance:
-  instance_dir: . # (10)!
-  service_password_file: null # (22)!
-  name: null # (16)!
-  replicaset_name: null # (21)!
+  instance_dir: . # (12)!
+  name: null # (18)!
+  replicaset_name: null # (23)!
   tier: default # (24)!
-  failure_domain: {} # (8)!
-  peer: # (17)!
+  failure_domain: {} # (10)!
+  peer: # (19)!
   - 127.0.0.1:3301
-  iproto_listen: 127.0.0.1:3301 # (11)!
-  iproto_advertise: 127.0.0.1:3301 # (6)!
-  http_listen: null # (9)!
-  admin_socket: ./admin.sock # (5)!
-  share_dir: null # (20)!
-  audit: null # (7)!
-  shredding: false # (23)!
+  iproto_listen: 127.0.0.1:3301 # (13)!
+  iproto_advertise: 127.0.0.1:3301 # (8)!
+  http_listen: null # (11)!
+  admin_socket: ./admin.sock # (7)!
+  share_dir: null # (22!
+  audit: null # (9)!
   log:
-    level: info # (14)!
-    destination: null # (12)!
-    format: plain # (13)!
+    level: info # (16)!
+    destination: null # (14)!
+    format: plain # (15)!
   memtx:
-    memory: 64M # (15)!
+    memory: 64M # (17)!
   vinyl:
     memory: 128M # (26)!
     cache: 128M # (25)!
@@ -80,33 +80,33 @@ instance:
     write_threads: 4 # (34)!
     timeout: 60.0 # (35)!
   pg:
-    listen: 127.0.0.1:4327 # (18)!
-    ssl: false # (19)!
+    listen: 127.0.0.1:4327 # (20)!
+    ssl: false # (21)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
-2. [cluster.name](#cluster_name)
-3. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
-4. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-5. [instance.admin_socket](#instance_admin_socket)
-6. [instance.iproto_advertise](#instance_iproto_advertise)
-7. [instance.audit](#instance_audit)
-8. [instance.failure_domain](#instance_failure_domain)
-9. [instance.http_listen](#instance_http_listen)
-10. [instance.instance_dir](#instance_instance_dir)
-11. [instance.iproto_listen](#instance_iproto_listen)
-12. [instance.log.destination](#instance_log_destination)
-13. [instance.log.format](#instance_log_format)
-14. [instance.log.level](#instance_log_level)
-15. [instance.memtx.memory](#instance_memtx_memory)
-16. [instance.name](#instance_name)
-17. [instance.peer](#instance_peer)
-18. [instance.pg.listen](#instance_pg_listen)
-19. [instance.pg.ssl](#instance_pg_ssl)
-20. [instance.share_dir](#instance_share_dir)
-21. [instance.replicaset_name](#instance_replicaset_name)
-22. [instance.service_password_file](#instance_service_password_file)
-23. [instance.shredding](#instance_shredding)
+2. [cluster.default_shard_count](#cluster_default_shard_count)
+3. [cluster.name](#cluster_name)
+4. [cluster.shredding](#cluster_shredding)
+5. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
+6. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
+7. [instance.admin_socket](#instance_admin_socket)
+8. [instance.iproto_advertise](#instance_iproto_advertise)
+9. [instance.audit](#instance_audit)
+10. [instance.failure_domain](#instance_failure_domain)
+11. [instance.http_listen](#instance_http_listen)
+12. [instance.instance_dir](#instance_instance_dir)
+13. [instance.iproto_listen](#instance_iproto_listen)
+14. [instance.log.destination](#instance_log_destination)
+15. [instance.log.format](#instance_log_format)
+16. [instance.log.level](#instance_log_level)
+17. [instance.memtx.memory](#instance_memtx_memory)
+18. [instance.name](#instance_name)
+19. [instance.peer](#instance_peer)
+20. [instance.pg.listen](#instance_pg_listen)
+21. [instance.pg.ssl](#instance_pg_ssl)
+22. [instance.share_dir](#instance_share_dir)
+23. [instance.replicaset_name](#instance_replicaset_name)
 24. [instance.tier](#instance_tier)
 25. [instance.vinyl.cache](#instance_vinyl_cache)
 26. [instance.vinyl.memory](#instance_vinyl_memory)
@@ -141,6 +141,17 @@ instance:
 
 [`picodata run --init-replication-factor`]: cli.md#run_init_replication_factor
 
+### cluster.default_shard_count {: #cluster_default_shard_count }
+
+Число сегментов в кластере по умолчанию.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `3000`
+
+Данный параметр задается только в файле конфигурации.
+
 ### cluster.name {: #cluster_name }
 
 Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
@@ -154,6 +165,24 @@ instance:
 Аналогичная команда: [`picodata run --cluster-name`]
 
 [`picodata run --cluster-name`]: cli.md#run_cluster_name
+
+### cluster.shredding {: #cluster_shredding }
+
+Режим безопасного удаления [рабочих файлов][runfiles] путем
+многократной перезаписи специальными битовыми последовательностями, см.
+[Безопасный запуск](../tutorial/run.md#secure_run).
+
+[runfiles]: ../architecture/instance_runtime_files.md
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
+Аналогичная команда: [`picodata run --shredding`]
+
+[`picodata run --shredding`]: cli.md#run_shredding
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
@@ -495,20 +524,6 @@ picodata run -c instance.pg.ssl=true
 
 [`picodata run --replicaset-name`]: cli.md#run_replicaset_name
 
-### instance.service_password_file {: #instance_service_password_file }
-
-Путь к файлу с паролем для системного пользователя `pico_service`.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `null`
-
-Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
-Аналогичная команда: [`picodata run --service-password-file`]
-
-[`picodata run --service-password-file`]: cli.md#run_service_password_file
-
 ### instance.share_dir {: #instance_share_dir }
 
 Путь к директории, содержащей файлы плагинов.
@@ -522,24 +537,6 @@ picodata run -c instance.pg.ssl=true
 Аналогичная команда: [`picodata run --share-dir`]
 
 [`picodata run --share-dir`]: cli.md#run_share_dir
-
-### instance.shredding {: #instance_shredding }
-
-Режим безопасного удаления [рабочих файлов инстанса][runfiles] путем
-многократной перезаписи специальными битовыми последовательностями, см.
-[Безопасный запуск](../tutorial/run.md#secure_run).
-
-[runfiles]: ../architecture/instance_runtime_files.md
-
-Данные:
-
-* Тип: *bool*
-* Значение по умолчанию: `false`
-
-Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
-Аналогичная команда: [`picodata run --shredding`]
-
-[`picodata run --shredding`]: cli.md#run_shredding
 
 ### instance.tier {: #instance_tier }
 
