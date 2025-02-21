@@ -112,7 +112,7 @@ impl<'binder> ParamsBinder<'binder> {
             // than once in order to get the same hash.
             // See https://git.picodata.io/picodata/picodata/sbroad/-/issues/583
             let mut used_values = vec![false; self.values.len()];
-            let values_len = self.values.len();
+            let initial_len = self.values.len();
             let invalid_idx = |value_idx: usize| {
                 Err(SbroadError::Invalid(
                     Entity::Query,
@@ -120,7 +120,7 @@ impl<'binder> ParamsBinder<'binder> {
                         format!(
                             "Parameter binding error: Index {} out of bounds. Valid range: 1..{}.",
                             value_idx + 1,
-                            values_len,
+                            initial_len,
                         )
                         .into(),
                     ),
@@ -139,9 +139,13 @@ impl<'binder> ParamsBinder<'binder> {
                 });
                 if used_values.get(value_idx).copied().unwrap_or(true) {
                     let Some(value) = self.values.get(value_idx) else {
-                        invalid_idx(value_idx)?
+                        invalid_idx(value_idx - (self.values.len() - initial_len))?
                     };
                     self.values.push(value.clone());
+                    self.pg_params_map
+                        .values_mut()
+                        .filter(|value| **value >= self.values.len() - 1)
+                        .for_each(|value| *value += 1);
                     self.pg_params_map
                         .entry(*param_id)
                         .and_modify(|value_idx| *value_idx = self.values.len() - 1);

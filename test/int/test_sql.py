@@ -218,6 +218,43 @@ def test_pg_params(cluster: Cluster):
     ):
         i1.sql("select $1, $2, $3333", 1, 2)
 
+    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+        i1.sql(
+            """
+        with cte  as (select $1, $2, $2, $3, $4, $5) select $1, * from cte
+        """,
+            True,
+        )
+
+    with pytest.raises(TarantoolError, match="Parameter binding error: Index 5 out of bounds."):
+        i1.sql(
+            """
+        with cte  as (select $1, $1, $2, $2, $1, $5) select * from cte
+        """,
+            True,
+            True,
+        )
+
+    with pytest.raises(TarantoolError, match="Parameter binding error: Index 3 out of bounds."):
+        i1.sql(
+            """
+        with cte  as (select $1, $1, $2, $2, $1, $3) select $1, (select (select $1)), * from cte
+        """,
+            True,
+            True,
+        )
+
+    data = i1.sql("""select $1, *, * from (select $1, (select $1))""", True)
+    assert data == [[True] * 5]
+
+    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+        i1.sql(
+            """
+        select $1, *, * from (select $1, (select $2))
+        """,
+            True,
+        )
+
 
 def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)
@@ -4687,6 +4724,14 @@ def test_cte(cluster: Cluster):
         3,
     )
     assert data == [[4], [5]]
+
+    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+        i1.sql(
+            """
+        with cte (t, kek) as (select $1, $2) select $1, * from cte
+        """,
+            True,
+        )
 
     # join sharded table with CTE
     data = i1.sql(
