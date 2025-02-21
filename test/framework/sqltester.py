@@ -102,8 +102,12 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.fixture(scope="class")
-def cluster_2(cluster):
-    yield init_cluster(cluster, 2)
+def cluster_2(cluster: Cluster):
+    init_cluster(cluster, 2)
+    assert len(cluster.instances) == 2
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+    yield cluster
     cluster.kill()
 
 
