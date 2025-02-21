@@ -113,10 +113,12 @@ nav:
         - reference/sql/like.md
         - reference/sql/lower.md
         - reference/sql/substr.md
+        - reference/sql/substring.md
         - reference/sql/trim.md
         - reference/sql/upper.md
         - Дата и время:
           - reference/sql/current_date.md
+          - reference/sql/localtimestamp.md
           - reference/sql/to_char.md
           - reference/sql/to_date.md
     - reference/cli.md

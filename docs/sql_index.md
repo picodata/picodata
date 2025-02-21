@@ -115,6 +115,7 @@ article.md-typeset.md-typeset ul {
 * [LIMIT](reference/sql/select.md#params)
 * [LIMIT ALL](reference/sql/select.md#params)
 * [LIMIT NULL](reference/sql/select.md#params)
+* [LOCALTIMESTAMP](reference/sql/localtimestamp.md)
 * [LOWER](reference/sql/lower.md)
 
 <b>M</b>
@@ -146,6 +147,7 @@ article.md-typeset.md-typeset ul {
 * [sharding key](overview/glossary.md#sharding_key)
 * [stored procedure](overview/glossary.md#stored_procedure)
 * [SUBSTR](reference/sql/substr.md)
+* [SUBSTRING](reference/sql/substring.md)
 * [SUM](reference/sql/aggregate.md#functions)
 
 <b>T</b>

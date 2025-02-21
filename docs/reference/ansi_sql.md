@@ -187,8 +187,12 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="partly">E021-06</span></td>
             <td>Функция SUBSTRING</td>
-            <td class="td3 center">[SUBSTR](sql/substr.md)</td>
-            <td>Функция SUBSTRING не поддерживается, но есть SUBSTR</td>
+            <td class="td3 center"></td>
+            <td class="td3 center"><ul>
+                                   <li>[SUBSTR](sql/substr.md)</li>
+                                   <li>[SUBSTRING](sql/substring.md)</li>
+                                   </ul></td>
+            <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">E021-07</span></td>
@@ -845,9 +849,9 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">F051-08</span></td>
+            <td class="center"><span class="full">F051-08</span></td>
             <td>LOCALTIMESTAMP</td>
-            <td class="td3 center"></td>
+            <td class="td3 center">[LOCALTIMESTAMP](sql/localtimestamp.md)</td>
             <td></td>
         </tr>
 <!-- F081 UNION and EXCEPT in views -->

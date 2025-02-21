@@ -28,7 +28,7 @@
 
 ## Примеры {: #examples }
 
-```title="Запрос VALUES с функцией SUBSTR и параметром <i>from</i>"
+```sql title="Запрос VALUES с функцией SUBSTR и параметром <i>from</i>"
 sql> VALUES ( SUBSTR('picodata', 3) );
 +----------+
 | COLUMN_1 |
@@ -36,10 +36,9 @@ sql> VALUES ( SUBSTR('picodata', 3) );
 | "codata" |
 +----------+
 (1 rows)
-
 ```
 
-```title="Запрос VALUES с функцией SUBSTR и параметрами <i>from</i> и <i>count</i>"
+```sql title="Запрос VALUES с функцией SUBSTR и параметрами <i>from</i> и <i>count</i>"
 sql> VALUES ( SUBSTR('picodata', 3, 4) );
 +----------+
 | COLUMN_1 |
