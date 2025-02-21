@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.7.0-1243-gd62d7394`.
+Описание соответствует версии Picodata `24.7.0-1245-g08156497`.
 
 ### _pico_table
 
@@ -90,10 +90,11 @@
 
 * `raft_id`: (_unsigned_)
 * `address`: (_string_)
+* `connection_type`: (_string_)
 
 Индексы:
 
-* `_pico_peer_address_raft_id` (unique), parts: `[raft_id]`
+* `_pico_peer_address_raft_id` (unique), parts: `[raft_id, connection_type]`
 
 ### _pico_instance
 
@@ -148,7 +149,7 @@
 * `current_vshard_config_version`: (_unsigned_)
 * `target_vshard_config_version`: (_unsigned_)
 * `vshard_bootstrapped`: (_boolean_)
-* `shard_count`: (_unsigned_)
+* `bucket_count`: (_unsigned_)
 
 Индексы:
 
