@@ -19,7 +19,7 @@ from        ::= 'FROM' scan
                 ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
                 (('UNION' 'ALL'? | 'EXCEPT' 'DISTINCT'?) select)?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
-projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window
+projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window (('AS')? name)?
 scan        ::= (table | '(' dql ')') ('AS'? name)?
 expression  ::= ('NOT'* (
                     (table '.')? column
