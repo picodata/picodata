@@ -7,8 +7,8 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterSystemTierPart, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows, Over, Reference,
-    ReferenceAsteriskSource, Window,
+    Alias, AlterSystemTierPart, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows,
+    Over, Reference, ReferenceAsteriskSource, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};

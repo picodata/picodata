@@ -146,6 +146,7 @@ to 2 and 3.
 ### SQL
 
 - SQL support `SUBSTRING` function
+- SQL support window functions
 
 ## [24.6.1] - 2024-10-28
 
