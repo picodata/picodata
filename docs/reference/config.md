@@ -45,7 +45,7 @@ cluster:
       replication_factor: 1 # (5)!
       can_vote: true # (4)!
   default_replication_factor: 1 # (1)!
-  default_shard_count: 3000 # (2)!
+  default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
   instance_dir: . # (12)!
@@ -85,7 +85,7 @@ instance:
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
-2. [cluster.default_shard_count](#cluster_default_shard_count)
+2. [cluster.default_bucket_count](#cluster_default_bucket_count)
 3. [cluster.name](#cluster_name)
 4. [cluster.shredding](#cluster_shredding)
 5. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
@@ -126,6 +126,17 @@ instance:
 
 ## Параметры файла конфигурации {: #config_file_parameters }
 
+### cluster.default_bucket_count {: #cluster_default_bucket_count }
+
+Число сегментов в кластере по умолчанию.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `3000`
+
+Данный параметр задается только в файле конфигурации.
+
 ### cluster.default_replication_factor {: #cluster_default_replication_factor }
 
 Число реплик — инстансов с одинаковым набором хранимых данных — для каждого
@@ -140,17 +151,6 @@ instance:
 Аналогичная команда: [`picodata run --init-replication-factor`]
 
 [`picodata run --init-replication-factor`]: cli.md#run_init_replication_factor
-
-### cluster.default_shard_count {: #cluster_default_shard_count }
-
-Число сегментов в кластере по умолчанию.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `3000`
-
-Данный параметр задается только в файле конфигурации.
 
 ### cluster.name {: #cluster_name }
 
