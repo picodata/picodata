@@ -36,9 +36,9 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${CI_REGISTRY_IMAGE}/picodata-build-base
-  BASE_IMAGE_LATEST: latest
+  BASE_IMAGE_LATEST: "25.1"
   BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  MAIN_BRANCH: &main-branch master
+  MAIN_BRANCH: &main-branch "25.1"
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
