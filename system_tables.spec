@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.7.0-1191-ga3b5134d`.
+Описание соответствует версии Picodata `24.7.0-1243-gd62d7394`.
 
 ### _pico_table
 
@@ -76,11 +76,13 @@
 Поля:
 
 * `key`: (_string_)
+* `scope`: (_string_)
 * `value`: (_any_)
 
 Индексы:
 
-* `_pico_db_config_key` (unique), parts: `[key]`
+* `_pico_db_config_pk` (unique), parts: `[key, scope]`
+* `_pico_db_config_key` (non-unique), parts: `[key]`
 
 ### _pico_peer_address
 
@@ -146,6 +148,7 @@
 * `current_vshard_config_version`: (_unsigned_)
 * `target_vshard_config_version`: (_unsigned_)
 * `vshard_bootstrapped`: (_boolean_)
+* `shard_count`: (_unsigned_)
 
 Индексы:
 

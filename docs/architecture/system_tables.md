@@ -6,7 +6,7 @@
 По умолчанию [доступ к системным таблицам][a] запрещен всем [пользователям
 СУБД][u], кроме `admin` и `pico_service`.
 
-Описание соответствует версии Picodata `24.7.0-1191-ga3b5134d`.
+Описание соответствует версии Picodata `24.7.0-1243-gd62d7394`.
 
 [t]: ../overview/glossary.md#table
 [a]: ../tutorial/access_control.md#tables_access
@@ -153,11 +153,13 @@ SYSTEM].
 Поля:
 
 * `key`: (_string_)
+* `scope`: (_string_)
 * `value`: (_any_)
 
 Индексы:
 
-* `_pico_db_config_key` (unique), parts: `[key]`
+* `_pico_db_config_pk` (unique), parts: `[key, scope]`
+* `_pico_db_config_key` (non-unique), parts: `[key]`
 
 [ALTER SYSTEM]: ../reference/sql/alter_system.md
 
@@ -235,6 +237,7 @@ SYSTEM].
 * `current_vshard_config_version`: (_unsigned_)
 * `target_vshard_config_version`: (_unsigned_)
 * `vshard_bootstrapped`: (_boolean_)
+* `shard_count`: (_unsigned_)
 
 Индексы:
 
