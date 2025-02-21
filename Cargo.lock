@@ -2678,7 +2678,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "24.7.0"
+version = "25.1.1"
 dependencies = [
  "abi_stable",
  "ahash 0.8.11",
@@ -2701,7 +2701,7 @@ dependencies = [
  "openssl",
  "pgwire",
  "pico_proc_macro",
- "picodata-plugin 24.7.0",
+ "picodata-plugin 25.1.1",
  "postgres-types",
  "pretty_assertions",
  "protobuf",
@@ -2758,12 +2758,12 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
-version = "24.7.0"
+version = "25.1.1"
 dependencies = [
  "abi_stable",
  "gensym",
  "log",
- "picodata-plugin-proc-macro 24.7.0",
+ "picodata-plugin-proc-macro 25.1.1",
  "reqwest",
  "rmp",
  "rmp-serde",
@@ -2792,7 +2792,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin-proc-macro"
-version = "24.7.0"
+version = "25.1.1"
 dependencies = [
  "proc-macro2 1.0.89",
  "quote 1.0.37",
@@ -4249,7 +4249,7 @@ dependencies = [
 name = "testplug"
 version = "0.0.0"
 dependencies = [
- "picodata-plugin 24.7.0",
+ "picodata-plugin 25.1.1",
  "serde",
  "serde_bytes",
  "time",
