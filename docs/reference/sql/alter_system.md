@@ -17,18 +17,22 @@
 
 * **RESET ALL** — сброс всех параметров до их значений по умолчанию.
 
+* **FOR TIER** / **FOR ALL TIERS** — применение действия для конкретного
+  тира, или глобально для всех тиров. По умолчанию параметры
+  устанавливаются глобально.
+
 ## Примеры {: #examples }
 
 Установка параметра:
 
 ```sql
-ALTER SYSTEM SET password_enforce_digits to false;
+ALTER SYSTEM SET auth_password_enforce_digits to false;
 ```
 
 Сброс параметра:
 
 ```sql
-ALTER SYSTEM RESET password_enforce_digits;
+ALTER SYSTEM RESET auth_password_enforce_digits;
 ```
 
 Сброс всех параметров:
@@ -40,5 +44,5 @@ ALTER SYSTEM RESET all;
 Получить текущее значение параметра:
 
 ```sql
-SELECT * FROM _pico_property WHERE key = 'password_enforce_digits';
+SELECT * FROM _pico_db_config WHERE key = 'auth_password_enforce_digits';
 ```

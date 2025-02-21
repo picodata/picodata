@@ -59,7 +59,7 @@ instance:
   iproto_advertise: 127.0.0.1:3301 # (8)!
   http_listen: null # (11)!
   admin_socket: ./admin.sock # (7)!
-  share_dir: null # (22!
+  share_dir: null # (22!)
   audit: null # (9)!
   log:
     level: info # (16)!
