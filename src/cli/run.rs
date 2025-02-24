@@ -51,6 +51,11 @@ pub fn main(mut args: args::Run) -> ! {
         // (This wouldn't be a problem if we just skipped the deinitialization for the main cord, because we don't actually need it
         // as the OS will cleanup all the resources anyway, but this is a different story altogether)
         let config = PicodataConfig::init(args)?;
+
+        let info = crate::info::VersionInfo::current();
+        #[rustfmt::skip]
+        tlog!(Info, "Picodata {} {} {}", info.picodata_version, info.build_type, info.build_profile);
+
         config.log_config_params();
 
         let cookie_path = config.instance.instance_dir().join(PICODATA_COOKIE);

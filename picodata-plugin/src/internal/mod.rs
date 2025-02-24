@@ -48,9 +48,13 @@ pub fn set_panic_hook() {
     // Even if `say` isn't properly initialized yet, we
     // still should be able to print a simplified line to stderr.
     std::panic::set_hook(Box::new(|info| {
+        let version = crate::internal::picodata_version();
+
         // Capture a backtrace regardless of RUST_BACKTRACE and such.
         let backtrace = std::backtrace::Backtrace::force_capture();
-        let message = format!("{info}\n\nbacktrace:\n{backtrace}\naborting due to panic");
+        let message = format!(
+            "Picodata {version}\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic"
+        );
         tarantool::say_crit!("\n\n{message}");
 
         // Dump the backtrace to file for easier debugging experience.
