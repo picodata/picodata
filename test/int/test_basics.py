@@ -441,6 +441,8 @@ Insert(_pico_table, [{_pico_db_config},"_pico_db_config",{{"Global":null}},[{{"f
 Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_pk","tree",[{{"unique":true}}],[["key","string",null,false,null],["scope","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_db_config},1,"_pico_db_config_key","tree",[{{"unique":false}}],[["key","string",null,false,null]],true,0])
 )|
+|69|1|GrantPrivilege(2, 1, 2, table, Some(515), read)|
+|69|1|GrantPrivilege(3, 1, 2, table, Some(514), read)|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |BatchDml(

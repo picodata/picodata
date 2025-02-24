@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.2.0] - Unreleased
 
+### ACL
+
+- For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.
+
 ### Fixes
 
 - Fixed panic when dropping system user pico_service.

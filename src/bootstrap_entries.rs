@@ -10,7 +10,7 @@ use crate::info::PICODATA_VERSION;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
-use crate::schema::{ADMIN_ID, GUEST_ID};
+use crate::schema::{ADMIN_ID, GUEST_ID, INITIAL_SCHEMA_VERSION, PUBLIC_ID};
 use crate::storage::PropertyName;
 use crate::storage::{self};
 use crate::storage::{Catalog, SystemTable};
@@ -31,6 +31,7 @@ pub(super) fn prepare(
 ) -> Result<Vec<raft::Entry>, Error> {
     let mut init_entries = Vec::new();
     let mut ops = vec![];
+    let mut schema_version = INITIAL_SCHEMA_VERSION;
 
     //
     // Populate "_pico_address" and "_pico_instance" with info about the first instance
@@ -112,15 +113,16 @@ pub(super) fn prepare(
     ops.push(
         op::Dml::insert(
             storage::Properties::TABLE_ID,
-            &(PropertyName::GlobalSchemaVersion, 0),
+            &(PropertyName::GlobalSchemaVersion, INITIAL_SCHEMA_VERSION),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
     );
+
     ops.push(
         op::Dml::insert(
             storage::Properties::TABLE_ID,
-            &(PropertyName::NextSchemaVersion, 1),
+            &(PropertyName::NextSchemaVersion, INITIAL_SCHEMA_VERSION + 1),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
@@ -252,11 +254,12 @@ pub(super) fn prepare(
         let data = AuthData::new(&method, name, &password);
         let auth = AuthDef::new(method, data.into_string());
 
+        schema_version += 1;
         let op_elem = op::Op::Acl(op::Acl::ChangeAuth {
             user_id: ADMIN_ID,
             auth,
             initiator: ADMIN_ID,
-            schema_version: 1,
+            schema_version,
         });
 
         let context = traft::EntryContext::Op(op_elem);
@@ -273,6 +276,7 @@ pub(super) fn prepare(
         tlog!(Info, "Password for user=admin has been set successfully");
     }
 
+    schema_version += 1;
     let op_elem = op::Op::Acl(op::Acl::ChangeAuth {
         user_id: GUEST_ID,
         auth: AuthDef::new(
@@ -280,7 +284,7 @@ pub(super) fn prepare(
             AuthData::new(&AuthMethod::Md5, "guest", "").into_string(),
         ),
         initiator: ADMIN_ID,
-        schema_version: 1,
+        schema_version,
     });
 
     let context = traft::EntryContext::Op(op_elem);
@@ -326,6 +330,43 @@ pub(super) fn prepare(
         }
         .into(),
     );
+
+    // Grant bootstrap privileges for role PUBLIC
+    let privileges = [
+        (
+            schema::PrivilegeType::Read,
+            storage::Instances::TABLE_ID as i64,
+        ),
+        (
+            schema::PrivilegeType::Read,
+            storage::PeerAddresses::TABLE_ID as i64,
+        ),
+    ];
+    for (privilege, object_id) in privileges.iter() {
+        schema_version += 1;
+        let priv_def = schema::PrivilegeDef::new(
+            ADMIN_ID,
+            PUBLIC_ID,
+            *privilege,
+            schema::SchemaObjectType::Table,
+            *object_id,
+            schema_version,
+        )
+        .expect("privilege definition should be valid");
+
+        let acl_query = op::Acl::GrantPrivilege { priv_def };
+        let context = traft::EntryContext::Op(op::Op::Acl(acl_query));
+        init_entries.push(
+            traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: (init_entries.len() + 1) as _,
+                term: traft::INIT_RAFT_TERM,
+                data: vec![],
+                context,
+            }
+            .into(),
+        );
+    }
 
     //
     // Initial raft configuration

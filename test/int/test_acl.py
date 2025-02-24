@@ -85,7 +85,7 @@ def test_acl_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     user = "Bobby"
-    v = 1
+    v = 3
 
     # Initial state.
     for i in cluster.instances:
@@ -104,6 +104,13 @@ def test_acl_basic(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._pico_property:get", "global_schema_version")[1] == v
         assert i.call("box.space._user.index.name:get", user) is not None
+
+    # Check that user by default has access to read _pico_instance and _pico_peer_address
+    for i in cluster.instances:
+        data_instances = i.sql("select * from _pico_instance", user=user, password=VALID_PASSWORD)
+        data_peer_addresses = i.sql("select * from _pico_peer_address", user=user, password=VALID_PASSWORD)
+        assert data_instances is not None
+        assert data_peer_addresses is not None
 
     #
     #
