@@ -49,7 +49,7 @@ use crate::{
         PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID,
         PICO_SERVICE_ID, PICO_SERVICE_USER_NAME,
     },
-    storage::{make_routine_not_found, space_by_id, Clusterwide, ToEntryIter},
+    storage::{make_routine_not_found, space_by_id, Catalog, ToEntryIter},
     traft::{
         self,
         op::{self, Op},
@@ -116,7 +116,7 @@ pub fn user_by_id_if_exists(id: UserId) -> tarantool::Result<Option<UserMetadata
 pub fn validate_password(
     password: &str,
     auth_method: &AuthMethod,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> traft::Result<()> {
     if let AuthMethod::Ldap = auth_method {
         // LDAP doesn't need password for authentication
@@ -182,7 +182,7 @@ pub fn validate_password(
     Ok(())
 }
 
-fn forbid_drop_if_system_space(storage: &Clusterwide, space_id: u32) -> tarantool::Result<()> {
+fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::Result<()> {
     if space_id > SPACE_ID_INTERNAL_MAX {
         return Ok(());
     }
@@ -222,7 +222,7 @@ fn box_access_check_ddl_as_user(
     box_access_check_ddl(object_name, object_id, owner_id, object_type, access)
 }
 
-fn access_check_dml(storage: &Clusterwide, dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
     let space_id = dml.space();
     if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
         let table_name = storage
@@ -246,11 +246,7 @@ fn access_check_dml(storage: &Clusterwide, dml: &Dml, as_user: UserId) -> tarant
 
 /// This function performs access control checks that are identical to ones performed in
 /// vanilla tarantool in on_replace_dd_space, on_replace_dd_index and on_replace_dd_func respectively
-fn access_check_ddl(
-    storage: &Clusterwide,
-    ddl: &op::Ddl,
-    as_user: UserId,
-) -> tarantool::Result<()> {
+fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
     match ddl {
         op::Ddl::CreateTable {
             id, name, owner, ..
@@ -362,7 +358,7 @@ fn access_check_ddl(
 fn detect_role_grant_cycles(
     granted_role: &UserMetadata,
     priv_def: &PrivilegeDef,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> tarantool::Result<()> {
     let grantee_id = priv_def.grantee_id();
     let grantee_name = {
@@ -424,7 +420,7 @@ fn detect_role_grant_cycles(
 }
 
 fn access_check_grant_revoke(
-    storage: &Clusterwide,
+    storage: &Catalog,
     priv_def: &PrivilegeDef,
     grantor_id: UserId,
     access: PrivType,
@@ -597,11 +593,7 @@ fn access_check_grant_revoke(
     Ok(())
 }
 
-fn access_check_acl(
-    storage: &Clusterwide,
-    acl: &op::Acl,
-    as_user: UserId,
-) -> tarantool::Result<()> {
+fn access_check_acl(storage: &Catalog, acl: &op::Acl, as_user: UserId) -> tarantool::Result<()> {
     match acl {
         op::Acl::CreateUser { user_def } => {
             assert_eq!(
@@ -699,7 +691,7 @@ fn access_check_acl(
 }
 
 pub(super) fn access_check_op(
-    storage: &Clusterwide,
+    storage: &Catalog,
     op: &Op,
     as_user: UserId,
 ) -> tarantool::Result<()> {
@@ -767,7 +759,7 @@ mod tests {
             Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType, UserDef, ADMIN_ID,
             UNIVERSE_ID,
         },
-        storage::Clusterwide,
+        storage::Catalog,
         traft::op::{Acl, Ddl, Dml, Op},
     };
     use tarantool::{
@@ -827,7 +819,7 @@ mod tests {
 
     #[track_caller]
     fn grant(
-        storage: &Clusterwide,
+        storage: &Catalog,
         privilege: PrivilegeType,
         object_type: SchemaObjectType,
         object_id: i64,
@@ -858,7 +850,7 @@ mod tests {
 
     #[track_caller]
     fn revoke(
-        storage: &Clusterwide,
+        storage: &Catalog,
         grantee_id: UserId,
         privilege: PrivilegeType,
         object_type: SchemaObjectType,
@@ -891,7 +883,7 @@ mod tests {
         let user_name = "box_access_check_space_test_user";
 
         let user_id = make_user(user_name, None);
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         // space
         let space_name = "test_box_access_check_ddl";
@@ -1082,7 +1074,7 @@ mod tests {
         let actor_user_name = "box_access_check_ddl_test_user_actor";
         let user_under_test_name = "box_access_check_ddl_test_user";
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let actor_user_id = make_user(actor_user_name, None);
         let user_under_test_id = make_user(user_under_test_name, None);
@@ -1492,7 +1484,7 @@ mod tests {
         let user_name = "box_access_check_ddl_test_role";
 
         let user_id = make_user(user_name, None);
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let role_name = "box_access_check_ddl_test_role_some_role";
         let role_def = UserDef {
@@ -1689,7 +1681,7 @@ mod tests {
 
     #[tarantool::test]
     fn prohibit_circular_role_grant() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let create_role = |name| {
             let id = next_user_id();
@@ -1765,7 +1757,7 @@ mod tests {
 
     #[tarantool::test]
     fn alter_user_login() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let owner_name = "test_owner";
         let user_name = "test_user";

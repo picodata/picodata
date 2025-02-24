@@ -8,8 +8,8 @@ use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::replicaset::ReplicasetState;
 use crate::schema::ADMIN_ID;
-use crate::storage::TClusterwideTable;
-use crate::storage::{self, Clusterwide, ToEntryIter as _};
+use crate::storage::SystemTable;
+use crate::storage::{self, Catalog, ToEntryIter as _};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
@@ -223,7 +223,7 @@ pub fn build_instance(
     requested_instance_name: Option<&InstanceName>,
     requested_replicaset_name: Option<&ReplicasetName>,
     failure_domain: &FailureDomain,
-    storage: &Clusterwide,
+    storage: &Catalog,
     tier: &str,
     picodata_version: &str,
 ) -> Result<Instance> {
@@ -346,7 +346,7 @@ pub fn build_instance(
 }
 
 /// Choose [`InstanceName`] based on `tier name`.
-fn choose_instance_name(storage: &Clusterwide, replicaset_name: ReplicasetName) -> InstanceName {
+fn choose_instance_name(storage: &Catalog, replicaset_name: ReplicasetName) -> InstanceName {
     let mut instance_number_in_replicaset = 1;
     loop {
         // tier name is already included in replicaset name
@@ -374,7 +374,7 @@ fn choose_instance_name(storage: &Clusterwide, replicaset_name: ReplicasetName) 
 /// and the list of avaliable replicasets and instances in them.
 fn choose_replicaset(
     failure_domain: &FailureDomain,
-    storage: &Clusterwide,
+    storage: &Catalog,
     tier: &Tier,
 ) -> Result<Result<Replicaset, ReplicasetName>> {
     let replication_factor = tier.replication_factor as _;

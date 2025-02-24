@@ -9,7 +9,7 @@ use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
 use crate::sql::value_type_str;
-use crate::storage::{self, DbConfig, TClusterwideTable};
+use crate::storage::{self, DbConfig, SystemTable};
 use crate::system_parameter_name;
 use crate::tarantool::set_cfg_field;
 use crate::tier::Tier;
@@ -632,7 +632,7 @@ Using configuration file '{args_path}'.");
     /// Does validation of configuration parameters which are persisted in the storage.
     pub fn validate_storage(
         &self,
-        storage: &storage::Clusterwide,
+        storage: &storage::Catalog,
         raft_storage: &RaftSpaceAccess,
     ) -> Result<(), Error> {
         // Cluster name

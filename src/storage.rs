@@ -107,11 +107,12 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Clusterwide
+// Catalog
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Top level structure to easily access system tables.
 #[derive(Debug, Clone)]
-pub struct Clusterwide {
+pub struct Catalog {
     pub snapshot_cache: Rc<SnapshotCache>,
     // It's ok to lose this information during restart.
     pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
@@ -140,7 +141,7 @@ pub struct Clusterwide {
 /// The id is reserved because it must be the same on all instances.
 pub const TABLE_ID_BUCKET: SpaceId = 532;
 
-impl Clusterwide {
+impl Catalog {
     /// Initialize the clusterwide storage.
     ///
     /// This function is private because it should only be called once
@@ -150,10 +151,7 @@ impl Clusterwide {
         // SAFETY: safe as long as only called from tx thread.
         static mut WAS_CALLED: bool = false;
         unsafe {
-            assert!(
-                !WAS_CALLED,
-                "Clusterwide storage must only be initialized once"
-            );
+            assert!(!WAS_CALLED, "Catalog must only be initialized once");
             WAS_CALLED = true;
         }
 
@@ -219,7 +217,7 @@ impl Clusterwide {
     pub fn try_get(init: bool) -> Result<&'static Self> {
         // It is trivial to keep track of accesses to this variable, because
         // it can only be accessed via this function
-        static mut STORAGE: Option<Clusterwide> = None;
+        static mut STORAGE: Option<Catalog> = None;
 
         // SAFETY: this is safe as long as we only use it in tx thread.
         unsafe {
@@ -237,7 +235,7 @@ impl Clusterwide {
     ///
     /// # Panicking
     /// Will panic if storage is not initialized before a call to this function.
-    /// Consider using [`Clusterwide::try_get`] if this is a problem.
+    /// Consider using [`Catalog::try_get`] if this is a problem.
     #[inline(always)]
     pub fn get() -> &'static Self {
         Self::try_get(false).expect("shouldn't be calling this until it's initialized")
@@ -385,8 +383,8 @@ fn get_or_create_key_def(cache: &mut KeyDefCache, id: KeyDefId) -> tarantool::Re
     }
 }
 
-/// Types implementing this trait represent clusterwide spaces.
-pub trait TClusterwideTable {
+/// Types implementing this trait represent system tables/spaces.
+pub trait SystemTable {
     const TABLE_NAME: &'static str;
     const TABLE_ID: SpaceId;
     const DESCRIPTION: &'static str = "";
@@ -409,7 +407,7 @@ pub struct Tables {
     pub index_owner_id: Index,
 }
 
-impl TClusterwideTable for Tables {
+impl SystemTable for Tables {
     const TABLE_NAME: &'static str = "_pico_table";
     const TABLE_ID: SpaceId = 512;
     const DESCRIPTION: &'static str = "Stores metadata of all the cluster tables in picodata.";
@@ -582,7 +580,7 @@ pub struct Indexes {
     pub index_name: Index,
 }
 
-impl TClusterwideTable for Indexes {
+impl SystemTable for Indexes {
     const TABLE_NAME: &'static str = "_pico_index";
     const TABLE_ID: SpaceId = 513;
 
@@ -725,7 +723,7 @@ pub struct PeerAddresses {
     pub index: Index,
 }
 
-impl TClusterwideTable for PeerAddresses {
+impl SystemTable for PeerAddresses {
     const TABLE_NAME: &'static str = "_pico_peer_address";
     const TABLE_ID: SpaceId = 514;
 
@@ -846,7 +844,7 @@ impl ToEntryIter<MP_SERDE> for PeerAddresses {
 ////////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
-    /// An enumeration of [`ClusterwideTable::Property`] key names.
+    /// An enumeration of [`SystemTable::Property`] key names.
     pub enum PropertyName {
         /// Pending ddl operation which is to be either committed or aborted.
         ///
@@ -968,7 +966,7 @@ pub struct Instances {
     pub index_replicaset_name: Index,
 }
 
-impl TClusterwideTable for Instances {
+impl SystemTable for Instances {
     const TABLE_NAME: &'static str = "_pico_instance";
     const TABLE_ID: SpaceId = 515;
 
@@ -1233,7 +1231,7 @@ pub struct Properties {
     pub index: Index,
 }
 
-impl TClusterwideTable for Properties {
+impl SystemTable for Properties {
     const TABLE_NAME: &'static str = "_pico_property";
     const TABLE_ID: SpaceId = 516;
 
@@ -1409,7 +1407,7 @@ pub struct Replicasets {
     pub index_replicaset_uuid: Index,
 }
 
-impl TClusterwideTable for Replicasets {
+impl SystemTable for Replicasets {
     const TABLE_NAME: &'static str = "_pico_replicaset";
     const TABLE_ID: SpaceId = 517;
 
@@ -1617,7 +1615,7 @@ pub struct Users {
     pub index_owner_id: Index,
 }
 
-impl TClusterwideTable for Users {
+impl SystemTable for Users {
     const TABLE_NAME: &'static str = "_pico_user";
     // FIXME: gap in ids
     const TABLE_ID: SpaceId = 520;
@@ -1797,7 +1795,7 @@ pub struct Privileges {
     pub object_idx: Index,
 }
 
-impl TClusterwideTable for Privileges {
+impl SystemTable for Privileges {
     const TABLE_NAME: &'static str = "_pico_privilege";
     const TABLE_ID: SpaceId = 521;
 
@@ -2014,7 +2012,7 @@ pub struct Tiers {
     pub index_name: Index,
 }
 
-impl TClusterwideTable for Tiers {
+impl SystemTable for Tiers {
     const TABLE_NAME: &'static str = "_pico_tier";
     const TABLE_ID: SpaceId = 523;
 
@@ -2091,7 +2089,7 @@ pub struct Routines {
     pub index_owner_id: Index,
 }
 
-impl TClusterwideTable for Routines {
+impl SystemTable for Routines {
     const TABLE_NAME: &'static str = "_pico_routine";
     const TABLE_ID: SpaceId = 524;
 
@@ -2256,7 +2254,7 @@ pub struct Plugins {
     pub primary_key: Index,
 }
 
-impl TClusterwideTable for Plugins {
+impl SystemTable for Plugins {
     const TABLE_NAME: &'static str = "_pico_plugin";
     const TABLE_ID: SpaceId = 526;
 
@@ -2374,7 +2372,7 @@ pub struct Services {
     pub index_name: Index,
 }
 
-impl TClusterwideTable for Services {
+impl SystemTable for Services {
     const TABLE_NAME: &'static str = "_pico_service";
     const TABLE_ID: SpaceId = 527;
 
@@ -2517,7 +2515,7 @@ pub struct ServiceRouteTable {
     pub primary_key: Index,
 }
 
-impl TClusterwideTable for ServiceRouteTable {
+impl SystemTable for ServiceRouteTable {
     const TABLE_NAME: &'static str = "_pico_service_route";
     const TABLE_ID: SpaceId = 528;
 
@@ -2659,7 +2657,7 @@ pub struct PluginMigrations {
     pub primary_key: Index,
 }
 
-impl TClusterwideTable for PluginMigrations {
+impl SystemTable for PluginMigrations {
     const TABLE_NAME: &'static str = "_pico_plugin_migration";
     const TABLE_ID: SpaceId = 529;
 
@@ -2728,7 +2726,7 @@ pub struct PluginConfig {
     pub primary: Index,
 }
 
-impl TClusterwideTable for PluginConfig {
+impl SystemTable for PluginConfig {
     const TABLE_NAME: &'static str = "_pico_plugin_config";
     const TABLE_ID: SpaceId = 530;
 
@@ -2967,7 +2965,7 @@ pub struct DbConfig {
     pub secondary: Index, // by key
 }
 
-impl TClusterwideTable for DbConfig {
+impl SystemTable for DbConfig {
     const TABLE_NAME: &'static str = "_pico_db_config";
     const TABLE_ID: SpaceId = 531;
 
@@ -3366,7 +3364,7 @@ mod tests {
         use crate::instance::InstanceName;
         use crate::failure_domain::FailureDomain;
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         let storage_peer_addresses = PeerAddresses::new().unwrap();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
@@ -3478,7 +3476,7 @@ mod tests {
 
     #[::tarantool::test]
     fn clusterwide_space_index() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         space_by_name(PeerAddresses::TABLE_NAME)
             .unwrap()
@@ -3586,7 +3584,7 @@ mod tests {
     #[::tarantool::test]
     fn builtin_clusterwide_schema() {
         // Make sure storage is initialized
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let sys_space = SystemSpace::Space.as_space();
         let sys_index = SystemSpace::Index.as_space();
@@ -3604,7 +3602,7 @@ mod tests {
             assert_eq!(tt_space_def.id, sys_table.id);
             assert_eq!(tt_space_def.name, sys_table.name);
 
-            // Check "_space" agrees with `ClusterwideTable.format`
+            // Check "_space" agrees with `SystemTable.format`
             assert_eq!(tt_space_def.format, fields_to_format(&sys_table.format));
 
             //
@@ -3636,7 +3634,7 @@ mod tests {
                 #[rustfmt::skip]
                 let pico_index_def = storage.indexes.get(index_def.table_id, index_def.id).unwrap().unwrap();
 
-                // Check "_pico_index" agrees with `ClusterwideTable.index_definitions`
+                // Check "_pico_index" agrees with `SystemTable.index_definitions`
                 assert_eq!(pico_index_def, index_def);
 
                 //
@@ -3659,7 +3657,7 @@ mod tests {
                     &sys_table.format,
                 );
 
-                // Check "_index" agrees with `ClusterwideTable.index_definitions`
+                // Check "_index" agrees with `SystemTable.index_definitions`
                 let pico_index_def = index_def.to_index_metadata(&pico_table_def);
                 assert_eq!(pico_index_def.space_id, tt_index_def.space_id);
                 assert_eq!(pico_index_def.index_id, tt_index_def.index_id);
@@ -3673,12 +3671,12 @@ mod tests {
     #[::tarantool::test]
     fn system_space_name_by_id() {
         // Make sure storage is initialized
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         for table in storage.tables.iter().unwrap() {
             assert_eq!(
                 SYSTEM_TABLES_ID_RANGE.contains(&table.id),
-                Clusterwide::system_space_name_by_id(table.id).is_some()
+                Catalog::system_space_name_by_id(table.id).is_some()
             )
         }
     }

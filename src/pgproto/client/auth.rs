@@ -1,7 +1,7 @@
 use crate::pgproto::error::PgError;
 use crate::pgproto::stream::{FeMessage, PgStream};
 use crate::pgproto::{error::PgResult, messages};
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::tlog;
 use pgwire::messages::startup::PasswordMessageFamily;
 use std::{io, os::raw::c_int};
@@ -102,11 +102,7 @@ where
 
 /// Perform exchange of authentication messages and authentication.
 /// Authentication failure is treated as an error.
-pub fn authenticate<S>(
-    stream: &mut PgStream<S>,
-    username: &str,
-    storage: &Clusterwide,
-) -> PgResult<()>
+pub fn authenticate<S>(stream: &mut PgStream<S>, username: &str, storage: &Catalog) -> PgResult<()>
 where
     S: io::Read + io::Write,
 {

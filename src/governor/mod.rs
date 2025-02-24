@@ -28,8 +28,8 @@ use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
 use crate::storage;
-use crate::storage::Clusterwide;
-use crate::storage::TClusterwideTable;
+use crate::storage::Catalog;
+use crate::storage::SystemTable;
 use crate::storage::ToEntryIter as _;
 use crate::sync::proc_get_vclock;
 use crate::tlog;
@@ -936,7 +936,7 @@ impl Loop {
     pub fn start(
         pool: Rc<ConnectionPool>,
         raft_status: watch::Receiver<Status>,
-        storage: Clusterwide,
+        storage: Catalog,
         raft_storage: RaftSpaceAccess,
     ) -> Self {
         let (waker_tx, waker_rx) = watch::channel(());
@@ -1006,7 +1006,7 @@ pub struct Loop {
 
 struct State {
     governor_status: watch::Sender<GovernorStatus>,
-    storage: Clusterwide,
+    storage: Catalog,
     raft_storage: RaftSpaceAccess,
     raft_status: watch::Receiver<Status>,
     waker: watch::Receiver<()>,

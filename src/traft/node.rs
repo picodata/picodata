@@ -37,7 +37,7 @@ use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
 use crate::storage::DbConfig;
-use crate::storage::{self, Clusterwide, PropertyName, TClusterwideTable};
+use crate::storage::{self, Catalog, PropertyName, SystemTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
@@ -153,7 +153,7 @@ pub struct Node {
     pub(crate) raft_id: RaftId,
 
     node_impl: Rc<Mutex<NodeImpl>>,
-    pub(crate) storage: Clusterwide,
+    pub(crate) storage: Catalog,
     pub(crate) topology_cache: Rc<TopologyCache>,
     pub(crate) raft_storage: RaftSpaceAccess,
     pub(crate) main_loop: MainLoop,
@@ -192,7 +192,7 @@ impl Node {
     ///
     /// **This function yields**
     pub fn init(
-        storage: Clusterwide,
+        storage: Catalog,
         raft_storage: RaftSpaceAccess,
         for_tests: bool,
     ) -> Result<&'static Self, Error> {
@@ -290,7 +290,7 @@ impl Node {
 
     /// Initializes the global node instance for testing purposes.
     pub fn for_tests() -> &'static Self {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         let raft_storage = RaftSpaceAccess::for_tests();
         Self::init(storage.clone(), raft_storage, true).unwrap()
     }
@@ -482,7 +482,7 @@ pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
     pub read_state_wakers: HashMap<LogicalClock, oneshot::Sender<RaftIndex>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
-    storage: Clusterwide,
+    storage: Catalog,
     topology_cache: Rc<TopologyCache>,
     raft_storage: RaftSpaceAccess,
     pool: Rc<ConnectionPool>,
@@ -502,7 +502,7 @@ struct AppliedDml {
 impl NodeImpl {
     fn new(
         pool: Rc<ConnectionPool>,
-        storage: Clusterwide,
+        storage: Catalog,
         raft_storage: RaftSpaceAccess,
         plugin_manager: Rc<PluginManager>,
     ) -> traft::Result<Self> {

@@ -3,9 +3,9 @@ use crate::config;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
 use crate::storage;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::Properties;
-use crate::storage::TClusterwideTable;
+use crate::storage::SystemTable;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
@@ -46,7 +46,7 @@ const PROHIBITED_TABLES: &[SpaceId] = &[
     storage::Routines::TABLE_ID,
 ];
 
-pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
+pub fn check_table_operable(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
     if let Some(table) = storage.tables.get(space_id)? {
         if !table.operable {
             tlog!(Warning, "Table is not operable; skipping DML operation");
@@ -60,7 +60,7 @@ pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::
     Ok(())
 }
 
-pub fn check_dml_prohibited(storage: &Clusterwide, dml: &Dml) -> traft::Result<()> {
+pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
     if PROHIBITED_TABLES.contains(&dml.table_id()) {
         return Err(Error::TableNotAllowed {
             table: storage
@@ -101,7 +101,7 @@ pub fn check_dml_prohibited(storage: &Clusterwide, dml: &Dml) -> traft::Result<(
     Ok(())
 }
 
-pub fn check_acl_limits(storage: &Clusterwide, acl: &Acl) -> traft::Result<()> {
+pub fn check_acl_limits(storage: &Catalog, acl: &Acl) -> traft::Result<()> {
     if matches!(acl, Acl::CreateUser { .. } | Acl::CreateRole { .. }) {
         storage.users.check_user_limit()
     } else {
@@ -667,7 +667,7 @@ pub fn check_predicate(
     entry_index: RaftIndex,
     entry_op: &Op,
     predicate_ranges: &[Range],
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> std::result::Result<(), Error> {
     let check_dml = |op: &Dml, space_id: u32, range: &Range| -> std::result::Result<(), Error> {
         match op {
@@ -1108,7 +1108,7 @@ pub struct Bound {
 }
 
 /// Checks if the operation would by its semantics modify `operable` flag of the provided `space`.
-fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
+fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
     let ddl_modifies = |ddl: &Ddl| match ddl {
         Ddl::CreateTable { id, .. } => *id == space,
         Ddl::DropTable { id, .. } => *id == space,
@@ -1143,15 +1143,15 @@ mod tests {
     use tarantool::tuple::ToTupleBuffer;
 
     use crate::schema::{Distribution, IndexOption, TableDef, ADMIN_ID};
-    use crate::storage::TClusterwideTable as _;
-    use crate::storage::{Clusterwide, Properties, PropertyName};
+    use crate::storage::SystemTable as _;
+    use crate::storage::{Catalog, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
 
     use super::*;
 
     #[::tarantool::test]
     fn ddl() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
             check_predicate(2, op, &[range], &storage)
@@ -1272,7 +1272,7 @@ mod tests {
     fn dml() {
         let key = (12,).to_tuple_buffer().unwrap();
         let tuple = (12, "twelve").to_tuple_buffer().unwrap();
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let test =
             |op: &Dml, range: Range| check_predicate(2, &Op::Dml(op.clone()), &[range], &storage);

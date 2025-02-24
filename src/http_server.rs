@@ -1,7 +1,7 @@
 use crate::info::{RuntimeInfo, VersionInfo};
 use crate::instance::{Instance, InstanceName, StateVariant};
 use crate::replicaset::{Replicaset, ReplicasetName};
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
@@ -153,13 +153,13 @@ pub(crate) struct ClusterInfo {
     plugins: Vec<String>,
 }
 
-fn get_replicasets(storage: &Clusterwide) -> Result<HashMap<ReplicasetName, Replicaset>> {
+fn get_replicasets(storage: &Catalog) -> Result<HashMap<ReplicasetName, Replicaset>> {
     let i = storage.replicasets.iter()?;
     Ok(i.map(|item| (item.name.clone(), item)).collect())
 }
 
 fn get_peer_addresses(
-    storage: &Clusterwide,
+    storage: &Catalog,
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
@@ -244,7 +244,7 @@ async fn get_instances_data(
 
 // Collect detailed information from replicasets and instances
 //
-fn get_replicasets_info(storage: &Clusterwide, only_leaders: bool) -> Result<Vec<ReplicasetInfo>> {
+fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<ReplicasetInfo>> {
     let node = crate::traft::node::global()?;
     let instances = storage.instances.all_instances()?;
     let instances_props = fiber::block_on(get_instances_data(&node.pool, &instances));
@@ -326,7 +326,7 @@ fn get_replicasets_info(storage: &Clusterwide, only_leaders: bool) -> Result<Vec
 pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     let version = String::from(VersionInfo::current().picodata_version);
 
-    let storage = Clusterwide::get();
+    let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, true)?;
 
     let plugins = storage
@@ -374,7 +374,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
 }
 
 pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
-    let storage = Clusterwide::get();
+    let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = storage.tiers.iter()?;
 

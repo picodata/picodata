@@ -15,7 +15,7 @@ use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::PluginNotFound;
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
-use crate::storage::{self, PropertyName, TClusterwideTable};
+use crate::storage::{self, PropertyName, SystemTable};
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::node::Node;

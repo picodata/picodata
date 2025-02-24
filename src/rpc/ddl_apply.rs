@@ -6,7 +6,7 @@ use crate::storage::schema::ddl_drop_function_on_master;
 use crate::storage::schema::ddl_drop_index_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::schema::ddl_rename_function_on_master;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
@@ -139,7 +139,7 @@ pub enum Error {
 ///
 /// [`DdlCommit`]: crate::traft::op::Op::DdlCommit
 pub fn apply_schema_change(
-    storage: &Clusterwide,
+    storage: &Catalog,
     ddl: &Ddl,
     version: u64,
     is_commit: bool,

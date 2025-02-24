@@ -6,7 +6,7 @@ use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
 use crate::traft::error::Error;
@@ -132,7 +132,7 @@ tarantool::define_str_enum! {
 
 impl VshardConfig {
     pub fn from_storage(
-        storage: &Clusterwide,
+        storage: &Catalog,
         tier_name: &str,
         bucket_count: u64,
     ) -> Result<Self, Error> {

@@ -5,7 +5,7 @@ use crate::plugin::migration::Error;
 use crate::plugin::{
     reenterable_plugin_cas_request, PluginError, PluginOp, PreconditionCheckResult,
 };
-use crate::storage::{self, PropertyName, TClusterwideTable};
+use crate::storage::{self, PropertyName, SystemTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;

@@ -1,6 +1,6 @@
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::{
-    address::PgprotoAddress, introspection::Introspection, storage::Clusterwide, tlog,
+    address::PgprotoAddress, introspection::Introspection, storage::Catalog, tlog,
     traft::error::Error,
 };
 use std::{
@@ -78,7 +78,7 @@ fn server_start(context: Context) {
 fn handle_client(
     client: PgStream<CoIOStream>,
     tls_acceptor: Option<TlsAcceptor>,
-    storage: &'static Clusterwide,
+    storage: &'static Catalog,
 ) -> tarantool::Result<()> {
     tlog!(Info, "spawning a new fiber for postgres client connection");
 
@@ -98,7 +98,7 @@ fn handle_client(
 fn do_handle_client(
     stream: PgStream<CoIOStream>,
     tls_acceptor: Option<TlsAcceptor>,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> PgResult<()> {
     let mut client = PgClient::accept(stream, tls_acceptor, storage)?;
 
@@ -120,14 +120,14 @@ fn do_handle_client(
 pub struct Context {
     server: CoIOListener,
     tls_acceptor: Option<TlsAcceptor>,
-    storage: &'static Clusterwide,
+    storage: &'static Catalog,
 }
 
 impl Context {
     pub fn new(
         config: &Config,
         instance_dir: &Path,
-        storage: &'static Clusterwide,
+        storage: &'static Catalog,
     ) -> Result<Self, Error> {
         let listen = config.listen();
         let host = listen.host.as_str();
@@ -155,11 +155,7 @@ impl Context {
 }
 
 /// Start a postgres server fiber.
-pub fn start(
-    config: &Config,
-    instance_dir: &Path,
-    storage: &'static Clusterwide,
-) -> Result<(), Error> {
+pub fn start(config: &Config, instance_dir: &Path, storage: &'static Catalog) -> Result<(), Error> {
     let context = Context::new(config, instance_dir, storage)?;
 
     tarantool::fiber::Builder::new()

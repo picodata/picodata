@@ -5,7 +5,7 @@ use crate::plugin::PluginIdentifier;
 use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
 use crate::schema::ADMIN_ID;
-use crate::storage::{self, Clusterwide, TClusterwideTable};
+use crate::storage::{self, Catalog, SystemTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
@@ -235,7 +235,7 @@ impl MigrationInfo {
 fn read_migration_queries_from_file_async(
     mut migration: MigrationInfo,
     plugin_ident: &PluginIdentifier,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> Result<MigrationInfo, Error> {
     tlog!(Info, "parsing migrations file '{}'", migration.shortname());
     let t0 = Instant::now_accurate();
@@ -711,7 +711,7 @@ pub fn apply_down_migrations(
     plugin_ident: &PluginIdentifier,
     migrations: &[String],
     deadline: Instant,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) {
     let iter = migrations.iter().rev().zip(0..);
     for (filename, num) in iter {

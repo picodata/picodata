@@ -2,7 +2,7 @@
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema::ServiceRouteItem;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::ToEntryIter;
 use crate::tier::Tier;
 #[allow(unused_imports)]
@@ -60,7 +60,7 @@ pub struct TopologyCache {
 impl TopologyCache {
     /// Initializes the cache by loading all of the contents from _pico_instance
     /// and _pico_replicaset system tables.
-    pub fn load(storage: &Clusterwide, my_raft_id: RaftId) -> Result<Self> {
+    pub fn load(storage: &Catalog, my_raft_id: RaftId) -> Result<Self> {
         let inner = TopologyCacheMutable::load(storage, my_raft_id)?;
 
         let my_instance_name = OnceCell::new();
@@ -102,7 +102,7 @@ impl TopologyCache {
     /// Drop all cached data and load it all again from the storage.
     ///
     /// This is called from [`NodeImpl::advance`] after receiving a snapshot.
-    pub fn full_reload(&self, storage: &Clusterwide) -> Result<()> {
+    pub fn full_reload(&self, storage: &Catalog) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         // Drop the old data and replace it with new loaded from the storage
         *inner = TopologyCacheMutable::load(storage, self.my_raft_id)?;
@@ -321,7 +321,7 @@ pub struct TopologyCacheMutable {
 }
 
 impl TopologyCacheMutable {
-    pub fn load(storage: &Clusterwide, my_raft_id: RaftId) -> Result<Self> {
+    pub fn load(storage: &Catalog, my_raft_id: RaftId) -> Result<Self> {
         let mut this_instance = None;
         let mut this_replicaset = None;
         let mut this_tier = None;

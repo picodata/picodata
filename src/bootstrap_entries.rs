@@ -13,7 +13,7 @@ use crate::schema;
 use crate::schema::{ADMIN_ID, GUEST_ID};
 use crate::storage::PropertyName;
 use crate::storage::{self};
-use crate::storage::{Clusterwide, TClusterwideTable};
+use crate::storage::{Catalog, SystemTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
@@ -27,7 +27,7 @@ pub(super) fn prepare(
     config: &PicodataConfig,
     instance: &Instance,
     tiers: &HashMap<String, Tier>,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> Result<Vec<raft::Entry>, Error> {
     let mut init_entries = Vec::new();
     let mut ops = vec![];

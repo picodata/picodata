@@ -3,7 +3,7 @@ use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::storage::set_local_schema_version;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::storage::RoutineId;
 use crate::traft;
 use crate::traft::error::Error;
@@ -36,7 +36,7 @@ use tarantool::tuple::Encode;
 ///
 /// This function is called when applying the different ddl operations.
 pub fn ddl_meta_space_update_operable(
-    storage: &Clusterwide,
+    storage: &Catalog,
     space_id: SpaceId,
     operable: bool,
 ) -> traft::Result<()> {
@@ -53,7 +53,7 @@ pub fn ddl_meta_space_update_operable(
 /// Deletes the picodata internal metadata for a space with id `space_id`.
 ///
 /// This function is called when applying the different ddl operations.
-pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
+pub fn ddl_meta_drop_space(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
     storage
         .privileges
         .delete_all_by_object(SchemaObjectType::Table, space_id as i64)?;
@@ -66,7 +66,7 @@ pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::R
 }
 
 /// Deletes the picodata internal metadata for a routine with id `routine_id`.
-pub fn ddl_meta_drop_routine(storage: &Clusterwide, routine_id: RoutineId) -> traft::Result<()> {
+pub fn ddl_meta_drop_routine(storage: &Catalog, routine_id: RoutineId) -> traft::Result<()> {
     storage
         .privileges
         .delete_all_by_object(SchemaObjectType::Routine, routine_id.into())?;
@@ -78,7 +78,7 @@ pub fn ddl_meta_drop_routine(storage: &Clusterwide, routine_id: RoutineId) -> tr
 // ddl
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn ddl_abort_on_master(storage: &Clusterwide, ddl: &Ddl, version: u64) -> traft::Result<()> {
+pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
@@ -130,7 +130,7 @@ pub fn ddl_abort_on_master(storage: &Clusterwide, ddl: &Ddl, version: u64) -> tr
 }
 
 pub fn ddl_create_index_on_master(
-    storage: &Clusterwide,
+    storage: &Catalog,
     space_id: SpaceId,
     index_id: IndexId,
 ) -> traft::Result<()> {
@@ -231,7 +231,7 @@ impl<'a> Encode for FunctionMetadata<'a> {}
 
 /// Create tarantool function which throws an error if it's called.
 /// It's safe to call this rust function multiple times.
-pub fn ddl_create_function_on_master(storage: &Clusterwide, func_id: u32) -> traft::Result<()> {
+pub fn ddl_create_function_on_master(storage: &Catalog, func_id: u32) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
     let routine_def = storage
@@ -245,7 +245,7 @@ pub fn ddl_create_function_on_master(storage: &Clusterwide, func_id: u32) -> tra
 }
 
 pub fn ddl_rename_function_on_master(
-    storage: &Clusterwide,
+    storage: &Catalog,
     id: u32,
     new_name: &str,
 ) -> traft::Result<()> {
@@ -319,7 +319,7 @@ pub fn ddl_drop_function_on_master(func_id: u32) -> traft::Result<Option<TntErro
 // error forwarding code. But this signature is not intuitive, so maybe there's
 // room for improvement.
 pub fn ddl_create_space_on_master(
-    storage: &Clusterwide,
+    storage: &Catalog,
     space_id: SpaceId,
 ) -> traft::Result<Option<TntError>> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
@@ -460,7 +460,7 @@ pub mod acl {
         /// Panics if the storage's invariants do not uphold.
         fn grantee_type_and_name(
             &self,
-            storage: &Clusterwide,
+            storage: &Catalog,
         ) -> tarantool::Result<(&'static str, String)> {
             let user_def = storage.users.by_id(self.grantee_id())?;
             let Some(user_def) = user_def else {
@@ -518,7 +518,7 @@ pub mod acl {
     ////////////////////////////////////////////////////////////////////////////
 
     /// Persist a user definition with it's default privileges in the internal clusterwide storage.
-    pub fn global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
+    pub fn global_create_user(storage: &Catalog, user_def: &UserDef) -> tarantool::Result<()> {
         storage.users.insert(user_def)?;
 
         let owner_def = user_by_id(user_def.owner)?;
@@ -542,7 +542,7 @@ pub mod acl {
 
     /// Change user's auth info in the internal clusterwide storage.
     pub fn global_change_user_auth(
-        storage: &Clusterwide,
+        storage: &Catalog,
         user_id: UserId,
         auth: &AuthDef,
         initiator: UserId,
@@ -568,7 +568,7 @@ pub mod acl {
 
     /// Change user's name in the internal clusterwide storage.
     pub fn global_rename_user(
-        storage: &Clusterwide,
+        storage: &Catalog,
         user_id: UserId,
         new_name: &str,
         initiator: UserId,
@@ -593,7 +593,7 @@ pub mod acl {
 
     /// Remove a user with no dependent objects.
     pub fn global_drop_user(
-        storage: &Clusterwide,
+        storage: &Catalog,
         user_id: UserId,
         initiator: UserId,
     ) -> traft::Result<()> {
@@ -620,7 +620,7 @@ pub mod acl {
     }
 
     /// Persist a role definition in the internal clusterwide storage.
-    pub fn global_create_role(storage: &Clusterwide, role_def: &UserDef) -> tarantool::Result<()> {
+    pub fn global_create_role(storage: &Catalog, role_def: &UserDef) -> tarantool::Result<()> {
         storage.users.insert(role_def)?;
 
         let initiator_def = user_by_id(role_def.owner)?;
@@ -639,11 +639,7 @@ pub mod acl {
 
     /// Remove a role definition and any entities owned by it from the internal
     /// clusterwide storage.
-    pub fn global_drop_role(
-        storage: &Clusterwide,
-        role_id: UserId,
-        initiator: UserId,
-    ) -> Result<()> {
+    pub fn global_drop_role(storage: &Catalog, role_id: UserId, initiator: UserId) -> Result<()> {
         let role_def = storage.users.by_id(role_id)?.expect("role should exist");
         storage.privileges.delete_all_by_grantee_id(role_id)?;
         storage.privileges.delete_all_by_granted_role(role_id)?;
@@ -664,7 +660,7 @@ pub mod acl {
 
     /// Persist a privilege definition in the internal clusterwide storage.
     pub fn global_grant_privilege(
-        storage: &Clusterwide,
+        storage: &Catalog,
         priv_def: &PrivilegeDef,
     ) -> tarantool::Result<()> {
         storage.privileges.insert(priv_def, true)?;
@@ -720,7 +716,7 @@ pub mod acl {
 
     /// Remove a privilege definition from the internal clusterwide storage.
     pub fn global_revoke_privilege(
-        storage: &Clusterwide,
+        storage: &Catalog,
         priv_def: &PrivilegeDef,
         initiator: UserId,
     ) -> tarantool::Result<()> {

@@ -12,7 +12,7 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::{space_by_name, DbConfig, TClusterwideTable, ToEntryIter};
+use crate::storage::{space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
@@ -62,7 +62,7 @@ use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSch
 use tarantool::schema::function::func_next_reserved_id;
 use tarantool::tuple::ToTupleBuffer;
 
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::error::BoxError;
@@ -766,7 +766,7 @@ impl TraftNode {
 }
 
 /// Get grantee (user or role) UserId by its name.
-fn get_grantee_id(storage: &Clusterwide, grantee_name: &str) -> traft::Result<UserId> {
+fn get_grantee_id(storage: &Catalog, grantee_name: &str) -> traft::Result<UserId> {
     if let Some(grantee_user_def) = storage.users.by_name(grantee_name)? {
         Ok(grantee_user_def.id)
     } else {
@@ -846,7 +846,7 @@ fn alter_user_ir_node_to_op_or_result(
     alter_option: &AlterOption,
     current_user: UserId,
     schema_version: u64,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     let user_def = storage.users.by_name(name)?;
     let user_def = match user_def {
@@ -936,7 +936,7 @@ fn acl_ir_node_to_op_or_result(
     current_user: UserId,
     schema_version: u64,
     node: &TraftNode,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match acl {
         AclOwned::DropRole(DropRole {
@@ -1134,7 +1134,7 @@ fn acl_ir_node_to_op_or_result(
 
 #[rustfmt::skip]
 fn alter_system_ir_node_to_op_or_result(
-    storage: &Clusterwide,
+    storage: &Catalog,
     ty: &AlterSystemType,
     tier_part: Option<&AlterSystemTierPart>,
     current_user: UserId,
@@ -1239,7 +1239,7 @@ fn ddl_ir_node_to_op_or_result(
     current_user: UserId,
     schema_version: u64,
     node: &TraftNode,
-    storage: &Clusterwide,
+    storage: &Catalog,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
         DdlOwned::AlterSystem(AlterSystem { ty, tier_part, .. }) => {

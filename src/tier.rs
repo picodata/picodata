@@ -5,7 +5,7 @@ use crate::{
     column_name,
     schema::ADMIN_ID,
     sql,
-    storage::{TClusterwideTable, Tiers},
+    storage::{SystemTable, Tiers},
     traft::{error::Error, op::Dml},
 };
 

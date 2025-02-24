@@ -8,7 +8,7 @@ use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage;
-use crate::storage::TClusterwideTable;
+use crate::storage::SystemTable;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};

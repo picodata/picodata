@@ -743,7 +743,7 @@ impl raft::Storage for RaftSpaceAccess {
 
         let compacted_index = self.compacted_index().cvt_err()?;
 
-        let storage = crate::storage::Clusterwide::get();
+        let storage = crate::storage::Catalog::get();
 
         // NOTE: There's a problem. Ideally we would want to cache the generated
         // snapshots and reuse them when someone else requests the compatible

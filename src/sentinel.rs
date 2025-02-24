@@ -4,7 +4,7 @@ use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::rpc::update_instance::proc_update_instance;
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
@@ -183,7 +183,7 @@ impl Loop {
     pub fn start(
         pool: Rc<ConnectionPool>,
         raft_status: watch::Receiver<node::Status>,
-        storage: Clusterwide,
+        storage: Catalog,
         raft_storage: RaftSpaceAccess,
         instance_reachability: InstanceReachabilityManagerRef,
     ) -> Self {
@@ -252,7 +252,7 @@ enum SentinelStatus {
 
 struct State {
     pool: Rc<ConnectionPool>,
-    storage: Clusterwide,
+    storage: Catalog,
     raft_storage: RaftSpaceAccess,
     raft_status: watch::Receiver<node::Status>,
     status: watch::Receiver<SentinelStatus>,

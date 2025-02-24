@@ -29,7 +29,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
 use std::time::Duration;
-use storage::Clusterwide;
+use storage::Catalog;
 use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
@@ -426,7 +426,7 @@ fn redirect_interactive_sql() {
 /// Checks for user exceeding maximum number of login attempts and if user was blocked.
 ///
 /// Also see [`config::AlterSystemParameters::auth_login_attempt_max`].
-fn set_login_check(storage: Clusterwide) {
+fn set_login_check(storage: Catalog) {
     const MAX_ATTEMPTS_EXCEEDED: &str = "Maximum number of login attempts exceeded";
     const NO_LOGIN_PRIVILEGE: &str = "User does not have login privilege";
 
@@ -628,7 +628,7 @@ fn set_on_access_denied_audit_trigger() {
 }
 
 /// Apply all dynamic parameters from `_pico_db_config` via box.cfg
-fn reapply_dynamic_parameters(storage: &Clusterwide, current_tier: &str) -> Result<()> {
+fn reapply_dynamic_parameters(storage: &Catalog, current_tier: &str) -> Result<()> {
     for parameter in storage.db_config.iter()? {
         apply_parameter(parameter, current_tier);
     }
@@ -689,7 +689,7 @@ fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
     shredding: bool,
-) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
+) -> Result<(Catalog, RaftSpaceAccess), Error> {
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
             "failed creating instance directory {}: {}",
@@ -755,7 +755,7 @@ fn init_common(
     redirect_interactive_sql();
     init_handlers();
 
-    let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
+    let storage = Catalog::try_get(true).expect("storage initialization should never fail");
     schema::init_user_pico_service();
 
     set_login_check(storage.clone());
@@ -1023,7 +1023,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
 
 fn postjoin(
     config: &PicodataConfig,
-    storage: Clusterwide,
+    storage: Catalog,
     raft_storage: RaftSpaceAccess,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");

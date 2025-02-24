@@ -5,7 +5,7 @@ use crate::pico_service::pico_service_password;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::schema::PICO_SERVICE_USER_NAME;
-use crate::storage::{Clusterwide, Instances, PeerAddresses};
+use crate::storage::{Catalog, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -409,7 +409,7 @@ pub struct ConnectionPool {
 
 impl ConnectionPool {
     #[inline(always)]
-    pub fn new(storage: Clusterwide, worker_options: WorkerOptions) -> Self {
+    pub fn new(storage: Catalog, worker_options: WorkerOptions) -> Self {
         Self {
             worker_options,
             workers: Default::default(),
@@ -656,7 +656,7 @@ mod tests {
         )
         .unwrap();
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(storage.clone(), Default::default());
         let listen: String = l.eval("return box.info.listen").unwrap();
@@ -701,7 +701,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
@@ -787,7 +787,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
@@ -865,7 +865,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",

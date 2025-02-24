@@ -18,7 +18,7 @@ use crate::schema::{
 };
 use crate::storage;
 use crate::storage::PropertyName;
-use crate::storage::TClusterwideTable;
+use crate::storage::SystemTable;
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;

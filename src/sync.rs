@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use crate::instance::InstanceName;
 use crate::rpc::RequestArgs;
-use crate::storage::{Clusterwide, ToEntryIter};
+use crate::storage::{Catalog, ToEntryIter};
 use crate::traft::error::Error;
 #[allow(unused_imports)]
 use crate::traft::network::ConnectionPool;
@@ -186,7 +186,7 @@ fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,
 /// Note: The client must ensure that the term remains unchanged, otherwise, the operation on the
 /// index may be changed. It's safe to wait for an index after committing it.
 pub fn wait_for_index_globally(
-    storage: &Clusterwide,
+    storage: &Catalog,
     pool: Rc<ConnectionPool>,
     index: RaftIndex,
     deadline: Instant,
@@ -279,12 +279,12 @@ mod tests {
     use super::*;
 
     use crate::instance::Instance;
-    use crate::storage::Clusterwide;
+    use crate::storage::Catalog;
     use crate::traft::network::ConnectionPool;
 
     #[::tarantool::test]
     async fn vclock_proc() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(storage.clone(), Default::default());
         let l = ::tarantool::lua_state();

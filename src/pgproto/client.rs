@@ -6,7 +6,7 @@ use super::{
     stream::{BeMessage, FeMessage, PgStream},
     tls::TlsAcceptor,
 };
-use crate::{storage::Clusterwide, tlog};
+use crate::{storage::Catalog, tlog};
 use pgwire::messages::startup::*;
 use std::io;
 
@@ -34,7 +34,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
     pub fn accept(
         stream: PgStream<S>,
         tls_acceptor: Option<TlsAcceptor>,
-        storage: &Clusterwide,
+        storage: &Catalog,
     ) -> PgResult<PgClient<S>> {
         let (mut stream, params) = startup::handshake(stream, tls_acceptor.as_ref())?;
         tlog!(Info, "processed startup");

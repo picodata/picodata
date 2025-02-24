@@ -30,7 +30,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
-use crate::storage::{self, Clusterwide};
+use crate::storage::{self, Catalog};
 
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::Metadata;
@@ -490,7 +490,7 @@ impl Metadata for RouterMetadata {
     #[allow(clippy::too_many_lines)]
     fn table(&self, table_name: &str) -> Result<Table, SbroadError> {
         let name = table_name.to_smolstr();
-        let storage = Clusterwide::try_get(false).expect("storage should be initialized");
+        let storage = Catalog::try_get(false).expect("storage should be initialized");
 
         // // Get the space columns and engine of the space from global metatable.
         let table = storage

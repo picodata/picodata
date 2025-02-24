@@ -887,7 +887,7 @@ impl UserDef {
         }
     }
 
-    pub fn ensure_no_dependent_objects(&self, storage: &Clusterwide) -> traft::Result<()> {
+    pub fn ensure_no_dependent_objects(&self, storage: &Catalog) -> traft::Result<()> {
         let tables: Vec<_> = storage
             .tables
             .by_owner_id(self.id)?
@@ -1231,7 +1231,7 @@ impl PrivilegeDef {
     ///
     /// # Panics
     /// 1. On storage failure
-    pub fn resolve_object_name(&self, storage: &Clusterwide) -> Result<Option<String>, Error> {
+    pub fn resolve_object_name(&self, storage: &Catalog) -> Result<Option<String>, Error> {
         let Some(id) = self.object_id() else {
             return Ok(None);
         };
@@ -1870,7 +1870,7 @@ impl CreateIndexParams {
         idx.is_some()
     }
 
-    pub fn table(&self, storage: &Clusterwide) -> traft::Result<TableDef> {
+    pub fn table(&self, storage: &Catalog) -> traft::Result<TableDef> {
         let table = with_su(ADMIN_ID, || storage.tables.by_name(&self.space_name))??;
         let Some(table) = table else {
             return Err(CreateIndexError::TableNotFound {
@@ -1899,7 +1899,7 @@ impl CreateIndexParams {
         Ok(id + 1)
     }
 
-    pub fn parts(&self, storage: &Clusterwide) -> traft::Result<Vec<Part>> {
+    pub fn parts(&self, storage: &Catalog) -> traft::Result<Vec<Part>> {
         let table = self.table(storage)?;
         let mut parts = Vec::with_capacity(self.columns.len());
 
@@ -1928,7 +1928,7 @@ impl CreateIndexParams {
         Ok(parts)
     }
 
-    pub fn into_ddl(&self, storage: &Clusterwide) -> Result<Ddl, Error> {
+    pub fn into_ddl(&self, storage: &Catalog) -> Result<Ddl, Error> {
         let table = self.table(storage)?;
         let by_fields = self.parts(storage)?;
         let index_id = self.next_index_id()?;
@@ -1944,7 +1944,7 @@ impl CreateIndexParams {
         Ok(ddl)
     }
 
-    pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
+    pub fn validate(&self, storage: &Catalog) -> traft::Result<()> {
         let table = self.table(storage)?;
         if !table.operable {
             return Err(CreateIndexError::TableNotOperable {
@@ -2120,7 +2120,7 @@ impl CreateTableParams {
     /// 2) specified tier contains at least one instance
     ///
     /// Checks occur only in case of a sharded table.
-    pub fn check_tier_exists(&self, storage: &Clusterwide) -> traft::Result<()> {
+    pub fn check_tier_exists(&self, storage: &Catalog) -> traft::Result<()> {
         if self.distribution == DistributionParam::Sharded {
             let tier = self.tier.as_deref().unwrap_or(DEFAULT_TIER);
 
@@ -2268,7 +2268,7 @@ impl CreateTableParams {
     /// Create space and then rollback.
     ///
     /// Should be used for checking if a space with these params can be created.
-    pub fn test_create_space(&self, storage: &Clusterwide) -> traft::Result<()> {
+    pub fn test_create_space(&self, storage: &Catalog) -> traft::Result<()> {
         let id = self.id.expect("space id should've been chosen by now");
         let user = storage
             .users
@@ -2508,8 +2508,8 @@ mod tests {
 
     use super::*;
 
-    fn storage() -> Clusterwide {
-        let storage = Clusterwide::for_tests();
+    fn storage() -> Catalog {
+        let storage = Catalog::for_tests();
         storage
             .users
             .insert(&UserDef {

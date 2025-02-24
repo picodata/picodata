@@ -1,4 +1,4 @@
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::traft::RaftId;
 use crate::util::NoYieldsRefCell;
 use std::collections::HashMap;
@@ -16,14 +16,14 @@ use tarantool::time::Instant;
 /// all known instances.
 #[derive(Debug, Default)]
 pub struct InstanceReachabilityManager {
-    storage: Option<Clusterwide>,
+    storage: Option<Catalog>,
     infos: HashMap<RaftId, InstanceReachabilityInfo>,
 }
 
 pub type InstanceReachabilityManagerRef = Rc<NoYieldsRefCell<InstanceReachabilityManager>>;
 
 #[inline(always)]
-pub fn instance_reachability_manager(storage: Clusterwide) -> InstanceReachabilityManagerRef {
+pub fn instance_reachability_manager(storage: Catalog) -> InstanceReachabilityManagerRef {
     Rc::new(NoYieldsRefCell::new(InstanceReachabilityManager::new(
         storage,
     )))
@@ -32,7 +32,7 @@ pub fn instance_reachability_manager(storage: Clusterwide) -> InstanceReachabili
 impl InstanceReachabilityManager {
     const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
 
-    pub fn new(storage: Clusterwide) -> Self {
+    pub fn new(storage: Catalog) -> Self {
         Self {
             storage: Some(storage),
             infos: Default::default(),
@@ -174,7 +174,7 @@ impl InstanceReachabilityManager {
         let storage = self
             .storage
             .as_ref()
-            .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
+            .unwrap_or_else(|| Catalog::try_get(false).expect("should be initialized by now"));
         storage
             .db_config
             .governor_auto_offline_timeout()

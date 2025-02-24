@@ -9,8 +9,8 @@ use crate::storage::schema::ddl_create_space_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::{self, ignore_only_error, space_by_id, Privileges};
 use crate::storage::{local_schema_version, Tables};
-use crate::storage::{set_local_schema_version, TClusterwideTable};
-use crate::storage::{Clusterwide, Indexes};
+use crate::storage::{set_local_schema_version, SystemTable};
+use crate::storage::{Catalog, Indexes};
 use crate::storage::{ToEntryIter, Users};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -38,7 +38,7 @@ use tarantool::tuple::RawBytes;
 use tarantool::tuple::TupleBuffer;
 
 ////////////////////////////////////////////////////////////////////////////////
-// impl Clusterwide
+// impl Catalog
 ////////////////////////////////////////////////////////////////////////////////
 
 // FIXME: this is bad style (impl block in a separate file from struct definition),
@@ -46,7 +46,7 @@ use tarantool::tuple::TupleBuffer;
 // standalone functions, if you want methods, just keep them all in one file and
 // redirect to standalone functions, for example:
 // ```
-// impl Clusterwide {
+// impl Catalog {
 //     #[inline(always)]
 //     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
 //         storage::apply_snapshot_data(self, data, is_master)
@@ -56,7 +56,7 @@ use tarantool::tuple::TupleBuffer;
 // }
 // ```
 // But you don't actually want these functions to be methods, just trust me bro
-impl Clusterwide {
+impl Catalog {
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
         let mut space_indexes = Vec::with_capacity(32);
 
@@ -582,7 +582,7 @@ impl Clusterwide {
 /// (both ddl and acl).
 ///
 /// This trait is currently only used to minimize code duplication in the
-/// [`Clusterwide::apply_snapshot_data`] function.
+/// [`Catalog::apply_snapshot_data`] function.
 trait SchemaDef {
     /// Type of unique key used to identify entities for the purpose of
     /// associating the schema version with.
@@ -605,7 +605,7 @@ trait SchemaDef {
     ///
     /// Should perform the necessary tarantool api calls and or tarantool system
     /// space updates.
-    fn on_insert(&self, storage: &Clusterwide) -> Result<()>;
+    fn on_insert(&self, storage: &Catalog) -> Result<()>;
 
     /// Is called when the entity is being dropped in the local storage.
     /// If the entity is being changed, first `Self::on_delete` is called and
@@ -613,7 +613,7 @@ trait SchemaDef {
     ///
     /// Should perform the necessary tarantool api calls and or tarantool system
     /// space updates.
-    fn on_delete(key: &Self::Key, storage: &Clusterwide) -> Result<()>;
+    fn on_delete(key: &Self::Key, storage: &Catalog) -> Result<()>;
 }
 
 impl SchemaDef for TableDef {
@@ -635,7 +635,7 @@ impl SchemaDef for TableDef {
     }
 
     #[inline(always)]
-    fn on_insert(&self, storage: &Clusterwide) -> Result<()> {
+    fn on_insert(&self, storage: &Catalog) -> Result<()> {
         let space_id = self.id;
         if let Some(abort_reason) = ddl_create_space_on_master(storage, space_id)? {
             return Err(Error::other(format!(
@@ -646,7 +646,7 @@ impl SchemaDef for TableDef {
     }
 
     #[inline(always)]
-    fn on_delete(space_id: &SpaceId, storage: &Clusterwide) -> Result<()> {
+    fn on_delete(space_id: &SpaceId, storage: &Catalog) -> Result<()> {
         _ = storage;
         if let Some(abort_reason) = ddl_drop_space_on_master(*space_id)? {
             return Err(Error::other(format!(
@@ -671,7 +671,7 @@ impl SchemaDef for UserDef {
     }
 
     #[inline(always)]
-    fn on_insert(&self, storage: &Clusterwide) -> Result<()> {
+    fn on_insert(&self, storage: &Catalog) -> Result<()> {
         _ = storage;
         let res = {
             if self.is_role() {
@@ -685,7 +685,7 @@ impl SchemaDef for UserDef {
     }
 
     #[inline(always)]
-    fn on_delete(user_id: &UserId, storage: &Clusterwide) -> Result<()> {
+    fn on_delete(user_id: &UserId, storage: &Catalog) -> Result<()> {
         _ = storage;
 
         let user = user_by_id(*user_id)?;
@@ -712,14 +712,14 @@ impl SchemaDef for PrivilegeDef {
     }
 
     #[inline(always)]
-    fn on_insert(&self, storage: &Clusterwide) -> Result<()> {
+    fn on_insert(&self, storage: &Catalog) -> Result<()> {
         _ = storage;
         acl::on_master_grant_privilege(self)?;
         Ok(())
     }
 
     #[inline(always)]
-    fn on_delete(this: &Self, storage: &Clusterwide) -> Result<()> {
+    fn on_delete(this: &Self, storage: &Catalog) -> Result<()> {
         _ = storage;
         acl::on_master_revoke_privilege(this)?;
         Ok(())
@@ -851,7 +851,7 @@ mod tests {
 
     #[::tarantool::test]
     fn apply_snapshot_data() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let mut data = SnapshotData {
             schema_version: 0,
@@ -927,7 +927,7 @@ mod tests {
 
     #[::tarantool::test]
     fn snapshot_data() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
 
         let i = Instance {
             raft_id: 1,

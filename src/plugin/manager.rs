@@ -10,7 +10,7 @@ use crate::plugin::{
     PluginError, PluginIdentifier, Result,
 };
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
-use crate::storage::Clusterwide;
+use crate::storage::Catalog;
 use crate::traft::network::ConnectionPool;
 use crate::traft::network::WorkerOptions;
 use crate::traft::node;
@@ -125,7 +125,7 @@ pub struct PluginManager {
 
 impl PluginManager {
     /// Create a new plugin manager.
-    pub fn new(storage: Clusterwide) -> Self {
+    pub fn new(storage: Catalog) -> Self {
         let (rx, tx) = fiber::channel::Channel::new(1000).into_clones();
         let plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>> =
             Rc::new(fiber::Mutex::default());

@@ -132,7 +132,7 @@ impl std::fmt::Display for Instance {
 mod tests {
     use std::collections::HashSet;
     use tarantool::space::UpdateOps;
-    use crate::storage::TClusterwideTable;
+    use crate::storage::SystemTable;
     use crate::tier::DEFAULT_TIER;
     use crate::failure_domain::FailureDomain;
     use crate::instance::state::State;
@@ -140,7 +140,7 @@ mod tests {
     use crate::replicaset::Replicaset;
     use crate::replicaset::ReplicasetName;
     use crate::rpc::join::build_instance;
-    use crate::storage::Clusterwide;
+    use crate::storage::Catalog;
     use crate::rpc;
     use crate::rpc::update_instance::update_instance;
     use crate::tier::Tier;
@@ -156,7 +156,7 @@ mod tests {
         }
     }
 
-    fn add_tier(storage: &Clusterwide, name: &str, replication_factor: u8, can_vote: bool) -> tarantool::Result<()> {
+    fn add_tier(storage: &Catalog, name: &str, replication_factor: u8, can_vote: bool) -> tarantool::Result<()> {
         let tier = Tier {
             name: name.into(),
             replication_factor,
@@ -181,7 +181,7 @@ mod tests {
         }
     }
 
-    fn add_instance(storage: &Clusterwide, instance: &Instance) -> tarantool::Result<()> {
+    fn add_instance(storage: &Catalog, instance: &Instance) -> tarantool::Result<()> {
         storage.instances.put(instance)?;
         // Ignore error in case replicaset already exists. Good enough for tests
         _ = storage.replicasets.put(&Replicaset::with_one_instance(instance));
@@ -189,7 +189,7 @@ mod tests {
         Ok(())
     }
 
-    fn replication_names(replicaset_name: &ReplicasetName, storage: &Clusterwide) -> HashSet<RaftId> {
+    fn replication_names(replicaset_name: &ReplicasetName, storage: &Catalog) -> HashSet<RaftId> {
         storage
             .instances
             .replicaset_instances(replicaset_name)
@@ -199,7 +199,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_simple() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
 
         let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
@@ -233,7 +233,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_override() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
         add_instance(&storage, &dummy_instance(1, "i1", "r1", &State::new(Online, 1))).unwrap();
         add_instance(&storage, &dummy_instance(2, "i2", "r2-original", &State::new(Expelled, 0))).unwrap();
@@ -279,7 +279,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_instance_name_collision() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
         add_instance(&storage, &dummy_instance(1, "i1", "r1", &State::new(Online, 1))).unwrap();
         add_instance(&storage, &dummy_instance(2, "i3", "r3", &State::new(Online, 1))).unwrap();
@@ -293,7 +293,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_uuid_randomness() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
         let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION).unwrap();
@@ -308,7 +308,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_replication_factor() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
         add_instance(&storage, &dummy_instance(9, "i9", "default_1", &State::new(Online, 1))).unwrap();
         add_instance(&storage, &dummy_instance(10, "i10", "default_1", &State::new(Online, 1))).unwrap();
@@ -357,7 +357,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_update_state() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let instance = dummy_instance(1, "i1", "r1", &State::new(Online, 1));
         add_instance(&storage, &instance).unwrap();
@@ -474,7 +474,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_update_picodata_version() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let global_cluster_version = PICODATA_VERSION;
         let new_picodata_version = Version::try_from(global_cluster_version).expect("correct picodata version").next_by_minor().to_string();
@@ -529,7 +529,7 @@ mod tests {
 
     #[::tarantool::test]
     fn failure_domain() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
 
         let instance =
@@ -589,7 +589,7 @@ mod tests {
 
     #[::tarantool::test]
     fn reconfigure_failure_domain() {
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
         let global_cluster_version = PICODATA_VERSION.to_string();
 
@@ -687,7 +687,7 @@ mod tests {
         let second_tier = "compute";
         let third_tier = "trash";
 
-        let storage = Clusterwide::for_tests();
+        let storage = Catalog::for_tests();
         add_tier(&storage, first_tier, 3, true).unwrap();
         add_tier(&storage, second_tier, 2, true).unwrap();
         add_tier(&storage, third_tier, 2, true).unwrap();

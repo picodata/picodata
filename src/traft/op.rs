@@ -3,7 +3,7 @@ use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
 };
-use crate::storage::{self, Clusterwide};
+use crate::storage::{self, Catalog};
 use crate::storage::{space_by_name, RoutineId};
 use crate::traft::error::Error as TRaftError;
 use crate::traft::error::ErrorInfo;
@@ -274,7 +274,7 @@ impl std::fmt::Display for Op {
         struct DisplayDml<'a>(&'a Dml);
         impl std::fmt::Display for DisplayDml<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                let table = DisplayClusterwideTable(self.0.table_id());
+                let table = DisplayGlobalTable(self.0.table_id());
                 match self.0 {
                     Dml::Insert { tuple, .. } => {
                         write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
@@ -294,10 +294,10 @@ impl std::fmt::Display for Op {
             }
         }
 
-        struct DisplayClusterwideTable(SpaceId);
-        impl std::fmt::Display for DisplayClusterwideTable {
+        struct DisplayGlobalTable(SpaceId);
+        impl std::fmt::Display for DisplayGlobalTable {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                if let Some(table_name) = storage::Clusterwide::system_space_name_by_id(self.0) {
+                if let Some(table_name) = storage::Catalog::system_space_name_by_id(self.0) {
                     f.write_str(table_name)
                 } else {
                     self.0.fmt(f)
@@ -745,7 +745,7 @@ pub struct DdlBuilder {
 }
 
 impl DdlBuilder {
-    pub fn new(storage: &Clusterwide) -> super::Result<Self> {
+    pub fn new(storage: &Catalog) -> super::Result<Self> {
         let version = storage.properties.next_schema_version()?;
         Ok(Self::with_schema_version(version))
     }
@@ -836,7 +836,7 @@ impl Acl {
     /// Performs preliminary checks on acl so that it will not fail when applied.
     /// These checks do not include authorization checks, which are done separately in
     /// [`crate::access_control::access_check_op`].
-    pub fn validate(&self, storage: &Clusterwide) -> Result<(), TRaftError> {
+    pub fn validate(&self, storage: &Catalog) -> Result<(), TRaftError> {
         // THOUGHT: should we move access_check_* fns here as it's done in tarantool?
         match self {
             Self::ChangeAuth { user_id, .. } => {
