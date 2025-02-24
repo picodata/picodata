@@ -79,8 +79,6 @@ Parameters with scope `global` are the same on each instance.
 
 - `instance.shredding` moved to `cluster` section and is now defined at bootstrap only.
 
->>>>>>> d4b6ad1f (feat(pgproto): pgproto is now initalizes at become online plan stage)
-
 ### CLI
 
 - `picodata expel` takes instance uuid instead of instance name.
