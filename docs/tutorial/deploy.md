@@ -48,20 +48,17 @@
     cluster:
       name: my_cluster
       default_replication_factor: 2
-
+      shredding: false
     instance:
       peer:
       - 127.0.0.1:3301
       audit: null
-      shredding: false
       log:
         level: info
-        format: plain
         destination: null
+        format: plain
       memtx:
         memory: 64M
-        checkpoint_count: 2
-        checkpoint_interval: 3600.0
       vinyl:
         memory: 128M
         cache: 128M
