@@ -37,13 +37,13 @@ use sbroad::ir::node::block::Block;
 use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
+use sbroad::ir::node::NodeId;
 use sbroad::ir::node::{
     AlterSystem, AlterUser, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser,
     Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
     Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
     Update,
 };
-use sbroad::ir::node::{AlterSystemTierPart, NodeId};
 use tarantool::decimal::Decimal;
 
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
@@ -1136,49 +1136,68 @@ fn acl_ir_node_to_op_or_result(
 fn alter_system_ir_node_to_op_or_result(
     storage: &Catalog,
     ty: &AlterSystemType,
-    tier_part: Option<&AlterSystemTierPart>,
+    tier_name: Option<&str>,
     current_user: UserId,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
-    let table = crate::storage::DbConfig::TABLE_ID;
-    let initiator = current_user;
+    fn make_dmls<T>(
+        param_value: &T,
+        param_name: &str,
+        tier_name: Option<&str>,
+        storage: &Catalog,
+        initiator: UserId,
+    ) -> traft::Result<Vec<Dml>>
+    where
+        T: Serialize,
+    {
+        let table = crate::storage::DbConfig::TABLE_ID;
+        let mut dmls = Vec::new();
+        if AlterSystemParameters::has_scope_tier(param_name)? {
+            if let Some(tier_name) = tier_name {
+                let Some(tier) = storage.tiers.iter()?.find(|tier| tier.name == *tier_name) else {
+                    return Err(Error::other(format!(
+                        "specified tier '{tier_name}' doesn't exist"
+                    )));
+                };
+
+                dmls.push(Dml::replace(
+                    table,
+                    &(param_name, &tier.name, &param_value),
+                    initiator,
+                )?);
+            } else {
+                for tier in storage.tiers.iter()? {
+                    dmls.push(Dml::replace(
+                        table,
+                        &(param_name, &tier.name, &param_value),
+                        initiator,
+                    )?);
+                }
+            }
+        } else {
+            if let Some(tier_name) = tier_name {
+                return Err(Error::other(format!(
+                    "parameter with global scope can't be configured for tier '{tier_name}'"
+                )));
+            };
+
+            dmls.push(Dml::replace(
+                table,
+                &(param_name, DbConfig::GLOBAL_SCOPE, &param_value),
+                initiator,
+            )?);
+        }
+
+        Ok(dmls)
+    }
 
     match ty {
         AlterSystemType::AlterSystemSet {
             param_name,
             param_value,
         } => {
-            let casted_value = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
+            let casted_value: sbroad::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
 
-            let mut dmls = Vec::new();
-
-            if AlterSystemParameters::has_scope_tier(param_name)? {
-                let Some(tier_part) = tier_part else {
-                    return Err(Error::other("can't set tiered parameter without specifing tier"));
-                };
-
-                let tiers = storage.tiers.iter()?.collect::<Vec<_>>();
-
-                match tier_part {
-                    AlterSystemTierPart::AllTiers => {
-                        for tier in tiers.iter() {
-                            dmls.push(Dml::replace(table,&(param_name, &tier.name, &casted_value), initiator)?);
-                        }
-                    }
-                    AlterSystemTierPart::Tier(tier_name) => {
-                        let Some(tier) = tiers.iter().find(|tier| tier.name == *tier_name) else {
-                            return Err(Error::other(format!("specified tier '{tier_name}' doesn't exist")));
-                        };
-
-                        dmls.push(Dml::replace(table,&(param_name, &tier.name, &casted_value), initiator)?);
-                    }
-                }
-            } else {
-                if let Some(AlterSystemTierPart::Tier(tier)) = tier_part {
-                    return Err(Error::other(format!("can't set parameter with global scope for tier '{tier}'")));
-                };
-
-                dmls.push(Dml::replace(table,&(param_name, DbConfig::GLOBAL_SCOPE, casted_value), initiator)?);
-            }
+            let dmls = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
 
             Ok(Continue(Op::BatchDml{ ops: dmls }))
         }
@@ -1190,36 +1209,7 @@ fn alter_system_ir_node_to_op_or_result(
                         return Err(Error::other(format!("unknown parameter: '{param_name}'")));
                     };
 
-                    let mut dmls = Vec::new();
-
-                    if AlterSystemParameters::has_scope_tier(param_name)? {
-                        let Some(tier_part) = tier_part else {
-                            return Err(Error::other("can't reset tiered parameter without specifing tier"));
-                        };
-
-                        let tiers = storage.tiers.iter()?.collect::<Vec<_>>();
-
-                        match tier_part {
-                            AlterSystemTierPart::AllTiers => {
-                                for tier in tiers.iter() {
-                                    dmls.push(Dml::replace(table,&(param_name, &tier.name, &default_value), initiator)?);
-                                }
-                            }
-                            AlterSystemTierPart::Tier(tier_name) => {
-                                let Some(tier) = tiers.iter().find(|tier| tier.name == *tier_name) else {
-                                    return Err(Error::other(format!("specified tier '{tier_name}' doesn't exist")));
-                                };
-
-                                dmls.push(Dml::replace(table,&(param_name, &tier.name, &default_value), initiator)?);
-                            }
-                        }
-                    } else {
-                        if let Some(AlterSystemTierPart::Tier(tier)) = tier_part {
-                            return Err(Error::other(format!("can't reset parameter with global scope for tier '{tier}'")));
-                        };
-
-                        dmls.push(Dml::replace(table,&(param_name, DbConfig::GLOBAL_SCOPE, default_value), initiator)?);
-                    }
+                    let dmls = make_dmls(&default_value, param_name, tier_name, storage, current_user)?;
 
                     Ok(Continue(Op::BatchDml { ops: dmls }))
                 }
@@ -1242,8 +1232,8 @@ fn ddl_ir_node_to_op_or_result(
     storage: &Catalog,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
-        DdlOwned::AlterSystem(AlterSystem { ty, tier_part, .. }) => {
-            alter_system_ir_node_to_op_or_result(storage, ty, tier_part.as_ref(), current_user)
+        DdlOwned::AlterSystem(AlterSystem { ty, tier_name, .. }) => {
+            alter_system_ir_node_to_op_or_result(storage, ty, tier_name.as_deref(), current_user)
         }
         DdlOwned::CreateTable(CreateTable {
             name,

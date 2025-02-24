@@ -73,24 +73,17 @@ def test_set_via_alter_system(cluster: Cluster):
     ):
         instance.sql("ALTER SYSTEM SET non_existing_name = -1 FOR ALL TIERS")
 
-    # can't specify no tier for tiered parameter
-    with pytest.raises(
-        TarantoolError,
-        match="""can\'t set tiered parameter without specifing tier""",
-    ):
-        instance.sql("ALTER SYSTEM SET memtx_checkpoint_count = 10")
-
     # can't specify tier for global parameter
     with pytest.raises(
         TarantoolError,
-        match="""can\'t set parameter with global scope for tier \'default\'""",
+        match="""parameter with global scope can\'t be configured for tier \'default\'""",
     ):
         instance.sql("ALTER SYSTEM SET raft_wal_count_max = 10 FOR TIER default")
 
     # can't specify tier for global parameter
     with pytest.raises(
         TarantoolError,
-        match="""can\'t set parameter with global scope for tier \'default\'""",
+        match="""parameter with global scope can\'t be configured for tier \'default\'""",
     ):
         instance.sql("ALTER SYSTEM SET pg_statement_max = 10 FOR TIER default")
 
@@ -99,6 +92,10 @@ def test_set_via_alter_system(cluster: Cluster):
 
     # but it's ok to specify `for all tiers` for parameter with tier scope
     instance.sql("ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR ALL TIERS")
+
+    # but it's ok not to specify `for all tiers` for parameter with tier scope, this
+    # behaviour will be used by default
+    instance.sql("ALTER SYSTEM SET memtx_checkpoint_count = 200")
 
     # can't specify non existent tier
     with pytest.raises(
@@ -112,7 +109,7 @@ def test_set_via_alter_system(cluster: Cluster):
     # can't specify tier for global parameter in reset too
     with pytest.raises(
         TarantoolError,
-        match="""can\'t reset parameter with global scope for tier \'default\'""",
+        match="""parameter with global scope can\'t be configured for tier \'default\'""",
     ):
         instance.sql("ALTER SYSTEM RESET raft_wal_count_max FOR TIER default")
 
@@ -120,14 +117,8 @@ def test_set_via_alter_system(cluster: Cluster):
     instance.sql("ALTER SYSTEM RESET raft_wal_count_max FOR ALL TIERS")
     instance.sql("ALTER SYSTEM RESET raft_wal_count_max")
 
-    # can't specify no tier for tiered parameter in reset too
-    with pytest.raises(
-        TarantoolError,
-        match="""can\'t reset tiered parameter without specifing tier""",
-    ):
-        instance.sql("ALTER SYSTEM RESET memtx_checkpoint_interval")
-
-    # but it's ok to use both `FOR ALL TIERS` and valid tier
+    # any combination valid
+    instance.sql("ALTER SYSTEM RESET memtx_checkpoint_interval")
     instance.sql("ALTER SYSTEM RESET memtx_checkpoint_interval FOR ALL TIERS")
     instance.sql("ALTER SYSTEM RESET memtx_checkpoint_interval FOR TIER default")
 
@@ -195,6 +186,13 @@ cluster:
     assert blue_config["checkpoint_interval"] == 3600
     red_config = red_instance.eval("return box.cfg")
     assert red_config["checkpoint_interval"] == 3600
+
+    # check that set for all tiers works without 'for all tiers' clause works
+    red_instance.sql("ALTER SYSTEM SET memtx_checkpoint_interval TO 3500")
+    blue_config = blue_instance.eval("return box.cfg")
+    assert blue_config["checkpoint_interval"] == 3500
+    red_config = red_instance.eval("return box.cfg")
+    assert red_config["checkpoint_interval"] == 3500
 
     # check that reset all works
     red_instance.sql("ALTER SYSTEM SET memtx_checkpoint_interval TO 10 FOR TIER blue")
