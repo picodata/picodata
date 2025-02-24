@@ -895,6 +895,15 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     })
     .unwrap();
 
+    // TODO: log cluster uuid here
+    tlog!(Info, "created cluster {}", config.cluster_name());
+    tlog!(Info, "raft_id: {}", instance.raft_id);
+    tlog!(Info, "instance name: {}", instance.name);
+    tlog!(Info, "instance uuid: {}", instance.uuid);
+    tlog!(Info, "replicaset name: {}", instance.replicaset_name);
+    tlog!(Info, "replicaset uuid: {}", instance.replicaset_uuid);
+    tlog!(Info, "tier name: {}", instance.tier);
+
     postjoin(config, storage, raft_storage)?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
@@ -998,6 +1007,15 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         Ok(())
     })
     .unwrap();
+
+    // TODO: log cluster uuid here
+    tlog!(Info, "joined cluster {}", config.cluster_name());
+    tlog!(Info, "raft_id: {}", resp.instance.raft_id);
+    tlog!(Info, "instance name: {}", resp.instance.name);
+    tlog!(Info, "instance uuid: {}", resp.instance.uuid);
+    tlog!(Info, "replicaset name: {}", resp.instance.replicaset_name);
+    tlog!(Info, "replicaset uuid: {}", resp.instance.replicaset_uuid);
+    tlog!(Info, "tier name: {}", resp.instance.tier);
 
     let instance_name = resp.instance.name;
     postjoin(config, storage, raft_storage)?;
@@ -1160,7 +1178,12 @@ fn postjoin(
                 .unwrap_or_else(|_| info::PICODATA_VERSION.to_string());
         });
 
-        tlog!(Info, "initiating self-activation of {}", instance.name);
+        tlog!(
+            Info,
+            "initiating self-activation of instance {} ({})",
+            instance.name,
+            instance.uuid
+        );
         let req = rpc::update_instance::Request::new(instance.name, cluster_name)
             .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain().clone())
