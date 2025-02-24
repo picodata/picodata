@@ -2437,25 +2437,22 @@ def test_sql_acl_password_length(cluster: Cluster):
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
-    acl = i1.sql(
-        f"""
-        create user {username} with password '{password_empty}'
-        using ldap option (timeout = 3)
-    """
-    )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
-
-    acl = i1.sql(
-        f"""
-        create user {username} with password '{password_long}'
-        using ldap option (timeout = 3)
-    """
-    )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    with pytest.raises(
+        TarantoolError,
+        match="expected ChapSha1 or Md5",
+    ):
+        i1.sql(
+            f"""
+            create user {username} with password '{password_empty}'
+            using ldap option (timeout = 3)
+        """
+        )
+        i1.sql(
+            f"""
+            create user {username} with password '{password_long}'
+            using ldap option (timeout = 3)
+        """
+        )
 
 
 def test_sql_acl_users_roles(cluster: Cluster):
@@ -2501,7 +2498,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
     acl = i1.sql(
         f"""
-        create user {username} password '' using ldap
+        create user {username} using ldap
     """
     )
     assert acl["row_count"] == 1
@@ -2522,7 +2519,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # (it must be ignored).
     acl = i1.sql(
         f"""
-        create user "{upper_username}" password 'smth' using ldap
+        create user "{upper_username}" using ldap
     """
     )
     assert acl["row_count"] == 1
@@ -2686,7 +2683,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # Create user with auth method in uppercase
-    acl = i1.sql("CREATE USER randy WITH PASSWORD 'Passw0rd' USING LDAP")
+    acl = i1.sql("CREATE USER randy WITH PASSWORD 'Passw0rd' USING MD5")
     assert acl["row_count"] == 1
 
     # Create user with auth method in mixed case

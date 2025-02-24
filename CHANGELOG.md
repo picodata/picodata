@@ -17,6 +17,8 @@ with the `YY.MINOR.MICRO` scheme.
 - PostgreSQL protocol initialization now happens at the stage of instance becoming online,
   preventing possible problems in UX.
 
+- User creation on SQL side with a password and LDAP authentication method is forbidden now.
+
 ### RPC API
 
 - `.proc_enable_all_plugins` is renamed into `.proc_before_online` due to added step of

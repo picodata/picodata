@@ -5263,15 +5263,11 @@ impl AbstractSyntaxTree {
                             Rule::Timeout => {
                                 timeout = get_timeout(self, *child_id)?;
                             }
-                            Rule::AuthMethod => {
-                                let auth_method_node_id = child_node
-                                    .children
-                                    .first()
-                                    .expect("Method expected under AuthMethod node");
-                                auth_method = SmolStr::from(parse_string_value_node(
-                                    self,
-                                    *auth_method_node_id,
-                                )?);
+                            Rule::ChapSha1 | Rule::Md5 | Rule::Ldap => {
+                                auth_method = child_node
+                                    .value
+                                    .clone() // this is relatively cheap
+                                    .expect("Method expected under ChapSha1/Md5/Ldap node");
                             }
                             _ => {
                                 return Err(SbroadError::Invalid(

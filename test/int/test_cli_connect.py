@@ -224,7 +224,7 @@ def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
 
     i1.sql(
         f"""
-            CREATE USER "{ldap_server.user}" PASSWORD '{ldap_server.password}' USING ldap
+            CREATE USER "{ldap_server.user}" USING LDAP
         """
     )
 

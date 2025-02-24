@@ -143,7 +143,7 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
 
     i1.sql(
         f"""
-            CREATE USER "{ldap_server.user}" PASSWORD '{ldap_server.password}' USING ldap
+            CREATE USER "{ldap_server.user}" USING LDAP
         """
     )
 
