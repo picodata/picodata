@@ -2,7 +2,7 @@ version: '3'
 
 services:
   picodata-1-1:
-    image: ${REGISTRY}/picodata:master
+    image: ${REGISTRY:-docker-public.binary.picodata.io}/picodata:master
     container_name: picodata-1-1
     hostname: picodata-1-1
     environment:
@@ -24,7 +24,7 @@ services:
       - "55432:5432"
 
   picodata-1-2:
-    image: ${REGISTRY}/picodata:master
+    image: ${REGISTRY:-docker-public.binary.picodata.io}/picodata:master
     container_name: picodata-1-2
     hostname: picodata-1-2
     environment:
@@ -43,7 +43,7 @@ services:
       - "18302:8001"
 
   picodata-2-1:
-    image: ${REGISTRY}/picodata:master
+    image: ${REGISTRY:-docker-public.binary.picodata.io}/picodata:master
     container_name: picodata-2-1
     hostname: picodata-2-1
     environment:
@@ -62,7 +62,7 @@ services:
       - "18303:8001"
 
   picodata-2-2:
-    image: ${REGISTRY}/picodata:master
+    image: ${REGISTRY:-docker-public.binary.picodata.io}/picodata:master
     container_name: picodata-2-2
     hostname: picodata-2-2
     environment:
