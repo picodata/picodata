@@ -99,9 +99,9 @@ nav:
         - reference/sql/select.md
         - reference/sql/update.md
         - reference/sql/values.md
-      - Синтаксис:
-        - reference/sql/window.md
+      - Использование:
         - reference/sql/with.md
+        - reference/sql/window.md
         - reference/sql/join.md
       - Функции и выражения:
         - reference/sql/window_builtin.md
