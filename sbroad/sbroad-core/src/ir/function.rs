@@ -54,10 +54,6 @@ impl Function {
 
 impl Plan {
     /// Adds a stable function to the plan.
-    ///
-    /// # Errors
-    /// - Function is not stable.
-    /// - Function is not found in the plan.
     pub fn add_stable_function(
         &mut self,
         function: &Function,
@@ -82,12 +78,6 @@ impl Plan {
     }
 
     /// Add aggregate function to plan
-    ///
-    /// # Errors
-    /// - Invalid arguments for given aggregate function
-    ///
-    /// # Panics
-    /// - never
     pub fn add_aggregate_function(
         &mut self,
         function: &str,
@@ -133,7 +123,7 @@ impl Plan {
         };
         let func_expr = StableFunction {
             name: function.to_lowercase().to_smolstr(),
-            func_type: kind.to_type(self, &children)?,
+            func_type: kind.get_type(self, &children)?,
             children,
             feature,
             is_system: true,

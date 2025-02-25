@@ -132,6 +132,10 @@ impl<K: Clone + Hash + Eq, V: Clone, S: BuildHasher> OrderedMap<K, V, S> {
         self.map.get(key)
     }
 
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.map.contains_key(key)
+    }
+
     pub fn remove(&mut self, key: &K) -> Option<V> {
         self.order.retain(|(k, _)| k != key);
         self.map.remove(key)
@@ -165,14 +169,18 @@ impl<'set, V: Clone + Hash + Eq, S: BuildHasher> Iterator for OrderedSetIterator
 }
 
 impl<V: Clone + Hash + Eq, S: BuildHasher> OrderedSet<V, S> {
-    pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
+    pub fn with_hasher(hasher: S) -> Self {
         Self {
-            map: OrderedMap::<V, (), S>::with_capacity_and_hasher(capacity, hasher),
+            map: OrderedMap::<V, (), S>::with_hasher(hasher),
         }
     }
 
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+
+    pub fn contains_key(&self, key: &V) -> bool {
+        self.map.contains_key(key)
     }
 
     pub fn is_empty(&self) -> bool {

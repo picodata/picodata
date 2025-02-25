@@ -1,23 +1,31 @@
+use ahash::AHashMap;
 use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::expression::cast::Type;
+use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{NodeId, Reference, StableFunction};
 use crate::ir::operator::Arithmetic;
 use crate::ir::relation::Type as RelType;
 use crate::ir::Plan;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use super::expression::{ColumnPositionMap, FunctionFeature, Position};
+use super::expression::{
+    ColumnPositionMap, Comparator, FunctionFeature, Position, EXPR_HASH_DEPTH,
+};
+use super::function::{Behavior, Function};
 use super::node::expression::Expression;
+use super::node::relational::Relational;
+use super::node::{Having, Projection};
 use super::relation::DerivedType;
 use crate::frontend::sql::ir::SubtreeCloner;
 
-/// The kind of aggregate function
+/// The kind of aggregate function.
 ///
-/// Examples: avg, sum, count,  ..
+/// Examples: avg, sum, count.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Copy)]
 pub enum AggregateKind {
     COUNT,
@@ -45,23 +53,25 @@ impl Display for AggregateKind {
 }
 
 impl AggregateKind {
+    /// Returns None in case passed function name is not aggregate.
     #[must_use]
-    pub fn new(name: &str) -> Option<AggregateKind> {
-        let normalized = name.to_lowercase();
-        match normalized.as_str() {
-            "count" => Some(AggregateKind::COUNT),
-            "sum" => Some(AggregateKind::SUM),
-            "avg" => Some(AggregateKind::AVG),
-            "total" => Some(AggregateKind::TOTAL),
-            "min" => Some(AggregateKind::MIN),
-            "max" => Some(AggregateKind::MAX),
-            "group_concat" | "string_agg" => Some(AggregateKind::GRCONCAT),
-            _ => None,
-        }
+    pub fn from_name(func_name: &str) -> Option<AggregateKind> {
+        let normalized = func_name.to_lowercase();
+        let kind = match normalized.as_str() {
+            "count" => AggregateKind::COUNT,
+            "sum" => AggregateKind::SUM,
+            "avg" => AggregateKind::AVG,
+            "total" => AggregateKind::TOTAL,
+            "min" => AggregateKind::MIN,
+            "max" => AggregateKind::MAX,
+            "group_concat" | "string_agg" => AggregateKind::GRCONCAT,
+            _ => return None,
+        };
+        Some(kind)
     }
 
-    #[inline(always)]
-    pub fn to_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
+    /// Get type of the corresponding aggregate function.
+    pub fn get_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
         let ty =
             match self {
                 AggregateKind::COUNT => RelType::Unsigned,
@@ -79,6 +89,9 @@ impl AggregateKind {
         Ok(DerivedType::new(ty))
     }
 
+    /// Get aggregate functions that must be present on the local (Map) stage
+    /// of two stage aggregation in order to calculate given aggregate (`self`)
+    /// on the reduce stage.
     #[must_use]
     pub fn get_local_aggregates_kinds(&self) -> Vec<AggregateKind> {
         match self {
@@ -111,10 +124,9 @@ impl AggregateKind {
         expr.calculate_type(plan)
     }
 
-    /// Get final aggregate corresponding to given local aggregate
-    ///
-    /// # Errors
-    /// - Invalid combination of this aggregate and local aggregate
+    /// Get final aggregate corresponding to given local aggregate.
+    /// 1) Checks that `local_aggregate` and final `self` aggregate corresponds to each other
+    /// 2) Gets type of final aggregate
     pub fn get_final_aggregate_kind(
         &self,
         local_aggregate: &AggregateKind,
@@ -139,14 +151,21 @@ impl AggregateKind {
     }
 }
 
-/// Helper struct for adding aggregates to ir
-///
-/// This struct can be used for adding any Tarantool aggregate:
-/// avg, sum, count, min, max, total
-#[derive(Debug, Clone)]
-pub struct SimpleAggregate {
-    /// The aggregate function being added, like COUNT
+/// Pair of (aggregate kind, its position in the output).
+pub(crate) type PositionKind = (Position, AggregateKind);
+
+/// Metadata about aggregates.
+#[derive(Clone, Debug)]
+pub struct Aggregate {
+    /// Id of Relational node in which this aggregate is located.
+    /// It can be located in `Projection`, `Having`, `OrderBy`.
+    pub parent_rel: NodeId,
+    /// Id of parent expression of aggregate function.
+    pub parent_expr: NodeId,
+    /// The aggregate function being added, like COUNT, SUM, etc.
     pub kind: AggregateKind,
+    /// "local aggregate aliases".
+    ///
     /// For non-distinct aggregate maps local aggregate kind to
     /// corresponding local alias. For distinct aggregate maps
     /// its aggregate kind to local alias used for corresponding
@@ -164,79 +183,116 @@ pub struct SimpleAggregate {
     /// original query: `select avg(distinct b) from t`
     /// map query: `select b as l1 from t group by b)`
     /// map will contain: `avg` -> `l1`
-    pub lagg_alias: HashMap<AggregateKind, Rc<String>>,
-    /// id of aggregate function in IR
+    pub lagg_aliases: AHashMap<AggregateKind, Rc<String>>,
+    /// Id of aggregate function in plan.
     pub fun_id: NodeId,
+    /// Whether this aggregate was marked distinct in original user query
+    pub is_distinct: bool,
 }
 
-#[cfg(not(feature = "mock"))]
-#[must_use]
-pub fn generate_local_alias_for_aggr(kind: &AggregateKind, suffix: &str) -> String {
-    format!(
-        "{}_{kind}_{suffix}",
-        uuid::Uuid::new_v4().as_simple().to_string()
-    )
-}
-
-#[cfg(feature = "mock")]
-#[must_use]
-pub fn generate_local_alias_for_aggr(kind: &AggregateKind, suffix: &str) -> String {
-    format!("{kind}_{suffix}")
-}
-
-impl SimpleAggregate {
+impl Aggregate {
     #[must_use]
-    pub fn new(name: &str, fun_id: NodeId) -> Option<SimpleAggregate> {
-        let kind = AggregateKind::new(name)?;
-        let laggr_alias: HashMap<AggregateKind, Rc<String>> = HashMap::new();
-        let aggr = SimpleAggregate {
+    pub fn from_name(
+        name: &str,
+        fun_id: NodeId,
+        parent_rel: NodeId,
+        parent_expr: NodeId,
+        is_distinct: bool,
+    ) -> Option<Self> {
+        let kind = AggregateKind::from_name(name)?;
+        let aggr = Self {
             kind,
             fun_id,
-            lagg_alias: laggr_alias,
+            lagg_aliases: AHashMap::with_capacity(2),
+            parent_rel,
+            parent_expr,
+            is_distinct,
         };
         Some(aggr)
     }
-}
 
-pub(crate) type PositionKind = (Position, AggregateKind);
-
-impl SimpleAggregate {
     pub(crate) fn get_position_kinds(
         &self,
         alias_to_pos: &ColumnPositionMap,
-        is_distinct: bool,
     ) -> Result<Vec<PositionKind>, SbroadError> {
-        if is_distinct {
-            let local_alias = self.lagg_alias.get(&self.kind).ok_or_else(|| {
-                SbroadError::Invalid(
-                    Entity::Aggregate,
-                    Some(format_smolstr!(
-                        "missing local alias for distinct aggregate: {self:?}"
-                    )),
-                )
-            })?;
-            let position = alias_to_pos.get(local_alias)?;
-            Ok(vec![(position, self.kind)])
+        let res = if self.is_distinct {
+            // For distinct aggregates kinds of
+            // local and final aggregates are the same.
+            let local_alias = self
+                .lagg_aliases
+                .get(&self.kind)
+                .expect("missing local alias for distinct aggregate: {self:?}");
+            let pos = alias_to_pos.get(local_alias)?;
+            vec![(pos, self.kind)]
         } else {
             let aggr_kinds = self.kind.get_local_aggregates_kinds();
             let mut res = Vec::with_capacity(aggr_kinds.len());
             for aggr_kind in aggr_kinds {
-                let local_alias = self.lagg_alias.get(&aggr_kind).ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::Aggregate,
-                        Some(format_smolstr!(
-                            "missing local alias for local aggregate ({aggr_kind}): {self:?}"
-                        )),
-                    )
-                })?;
-                let position = alias_to_pos.get(local_alias)?;
-                res.push((position, aggr_kind));
+                let local_alias = self
+                    .lagg_aliases
+                    .get(&aggr_kind)
+                    .expect("missing local alias for local aggregate ({aggr_kind}): {self:?}");
+                let pos = alias_to_pos.get(local_alias)?;
+                res.push((pos, aggr_kind));
             }
-            Ok(res)
-        }
+            res
+        };
+        Ok(res)
     }
 
-    /// Create final aggregate expression and return its id
+    fn create_final_aggr(
+        &self,
+        plan: &mut Plan,
+        position: Position,
+        final_kind: AggregateKind,
+    ) -> Result<NodeId, SbroadError> {
+        let fun_expr = plan.get_expression_node(self.fun_id)?;
+        let col_type = fun_expr.calculate_type(plan)?;
+
+        let ref_node = Reference {
+            parent: Some(self.parent_rel),
+            // Final node has only one required child.
+            targets: Some(vec![0]),
+            position,
+            col_type,
+            asterisk_source: None,
+        };
+        let ref_id = plan.nodes.push(ref_node.into());
+        let children: Vec<NodeId> = match self.kind {
+            AggregateKind::AVG => vec![plan.add_cast(ref_id, Type::Double)?],
+            AggregateKind::GRCONCAT => {
+                let Expression::StableFunction(StableFunction { children, .. }) =
+                    plan.get_expression_node(self.fun_id)?
+                else {
+                    unreachable!("Aggregate should reference expression by fun_id")
+                };
+
+                if let Some(delimiter_id) = children.get(1) {
+                    vec![ref_id, SubtreeCloner::clone_subtree(plan, *delimiter_id)?]
+                } else {
+                    vec![ref_id]
+                }
+            }
+            _ => vec![ref_id],
+        };
+        let feature = if self.is_distinct {
+            Some(FunctionFeature::Distinct)
+        } else {
+            None
+        };
+        let func_type = self.kind.get_type(plan, &children)?;
+        let final_aggr = StableFunction {
+            name: final_kind.to_smolstr(),
+            children,
+            feature,
+            func_type,
+            is_system: true,
+        };
+        let aggr_id = plan.nodes.push(final_aggr.into());
+        Ok(aggr_id)
+    }
+
+    /// Create final aggregate expression and return its id.
     ///
     /// # Examples
     /// Suppose this aggregate is non-distinct `AVG` and at local stage
@@ -256,121 +312,297 @@ impl SimpleAggregate {
     /// ```txt
     /// avg(column_1)
     /// ```
-    ///
-    /// # Errors
-    /// - Invalid aggregate
-    /// - Could not find local alias position in child output
     #[allow(clippy::too_many_lines)]
     pub(crate) fn create_final_aggregate_expr(
         &self,
-        parent: NodeId,
         plan: &mut Plan,
-        fun_type: DerivedType,
-        mut position_kinds: Vec<PositionKind>,
-        is_distinct: bool,
+        position_kinds: Vec<PositionKind>,
     ) -> Result<NodeId, SbroadError> {
-        // map local AggregateKind to finalised expression of that aggregate
-        let mut final_aggregates: HashMap<AggregateKind, NodeId> = HashMap::new();
-        let mut create_final_aggr = |position: Position,
-                                     local_kind: AggregateKind,
-                                     final_func: AggregateKind|
-         -> Result<(), SbroadError> {
-            let ref_node = Reference {
-                parent: Some(parent),
-                // projection has only one child
-                targets: Some(vec![0]),
-                position,
-                col_type: fun_type,
-                asterisk_source: None,
-            };
-            let ref_id = plan.nodes.push(ref_node.into());
-            let children = match self.kind {
-                AggregateKind::AVG => vec![plan.add_cast(ref_id, Type::Double)?],
-                AggregateKind::GRCONCAT => {
-                    if let Expression::StableFunction(StableFunction { children, .. }) =
-                        plan.get_expression_node(self.fun_id)?
-                    {
-                        if children.len() > 1 {
-                            let second_arg = {
-                                let a = *children
-                                    .get(1)
-                                    .ok_or(SbroadError::Invalid(Entity::Aggregate, None))?;
-                                SubtreeCloner::clone_subtree(plan, a)?
-                            };
-                            vec![ref_id, second_arg]
-                        } else {
-                            vec![ref_id]
-                        }
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::Aggregate,
-                            Some(format_smolstr!(
-                                "fun_id ({:?}) points to other expression node",
-                                self.fun_id
-                            )),
-                        ));
-                    }
-                }
-                _ => vec![ref_id],
-            };
-            let feature = if is_distinct {
-                Some(FunctionFeature::Distinct)
-            } else {
-                None
-            };
-            let func_type = self.kind.to_type(plan, &children)?;
-            let final_aggr = StableFunction {
-                name: final_func.to_smolstr(),
-                children,
-                feature,
-                func_type,
-                is_system: true,
-            };
-            let aggr_id = plan.nodes.push(final_aggr.into());
-            final_aggregates.insert(local_kind, aggr_id);
-            Ok(())
-        };
-        if is_distinct {
-            let (position, kind) = position_kinds.drain(..).next().ok_or_else(|| {
-                SbroadError::UnexpectedNumberOfValues("position kinds are empty".to_smolstr())
-            })?;
-            create_final_aggr(position, kind, self.kind)?;
+        // Map of {local AggregateKind -> finalized expression of that aggregate}.
+        let mut final_aggregates: HashMap<AggregateKind, NodeId> =
+            HashMap::with_capacity(AGGR_CAPACITY);
+
+        if self.is_distinct {
+            // For distinct aggregates kinds of local and final aggregates are the same.
+            let (position, local_kind) = position_kinds
+                .first()
+                .expect("Distinct aggregate should have the only position kind");
+            let aggr_id = self.create_final_aggr(plan, *position, self.kind)?;
+            final_aggregates.insert(*local_kind, aggr_id);
         } else {
-            for (position, kind) in position_kinds {
-                let final_aggregate_kind = self.kind.get_final_aggregate_kind(&kind)?;
-                create_final_aggr(position, kind, final_aggregate_kind)?;
+            for (position, local_kind) in position_kinds {
+                let final_aggregate_kind = self.kind.get_final_aggregate_kind(&local_kind)?;
+                let aggr_id = self.create_final_aggr(plan, position, final_aggregate_kind)?;
+                final_aggregates.insert(local_kind, aggr_id);
             }
         }
+
         let final_expr_id = if final_aggregates.len() == 1 {
-            *final_aggregates.values().next().ok_or_else(|| {
-                SbroadError::UnexpectedNumberOfValues("final_aggregates is empty".into())
-            })?
+            *final_aggregates.values().next().unwrap()
         } else {
             match self.kind {
                 AggregateKind::AVG => {
-                    let sum_aggr = *final_aggregates.get(&AggregateKind::SUM).ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "final_aggregates: missing final aggregate for SUM".into(),
-                        )
-                    })?;
-                    let count_aggr =
-                        *final_aggregates.get(&AggregateKind::COUNT).ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                "final_aggregates: missing final aggregate for COUNT".into(),
-                            )
-                        })?;
+                    let sum_aggr = *final_aggregates
+                        .get(&AggregateKind::SUM)
+                        .expect("SUM aggregate expr should exist for final AVG");
+                    let count_aggr = *final_aggregates
+                        .get(&AggregateKind::COUNT)
+                        .expect("COUNT aggregate expr should exist for final AVG");
                     plan.add_arithmetic_to_plan(sum_aggr, Arithmetic::Divide, count_aggr)?
                 }
                 _ => {
-                    return Err(SbroadError::Unsupported(
-                        Entity::Aggregate,
-                        Some(format_smolstr!(
-                            "aggregate with multiple final aggregates: {self:?}"
-                        )),
-                    ))
+                    unreachable!("The only aggregate with multiple final aggregates is AVG")
                 }
             }
         };
         Ok(final_expr_id)
+    }
+}
+
+/// Capacity for the vec of aggregates which we expect to extract
+/// from final nodes like Projection and Having.
+const AGGR_CAPACITY: usize = 10;
+
+/// Helper struct to find aggregates in expressions of finals.
+struct AggrCollector<'plan> {
+    /// Id of final node in which matches are searched.
+    parent_rel: NodeId,
+    /// Collected aggregates.
+    aggrs: Vec<Aggregate>,
+    plan: &'plan Plan,
+}
+
+impl<'plan> AggrCollector<'plan> {
+    pub fn with_capacity(
+        plan: &'plan Plan,
+        capacity: usize,
+        parent_rel: NodeId,
+    ) -> AggrCollector<'plan> {
+        AggrCollector {
+            aggrs: Vec::with_capacity(capacity),
+            parent_rel,
+            plan,
+        }
+    }
+
+    /// Collect aggregates in internal field by traversing expression tree `top`
+    ///
+    /// # Arguments
+    /// * `top` - id of expression root in which to look for aggregates
+    /// * `parent_rel` - id of parent relational node, where `top` is located. It is used to
+    ///   create `AggrInfo`
+    pub fn collect_aggregates(&mut self, top: NodeId) -> Result<Vec<Aggregate>, SbroadError> {
+        self.find(top, None)?;
+        Ok(std::mem::take(&mut self.aggrs))
+    }
+
+    fn find(&mut self, current: NodeId, parent_expr: Option<NodeId>) -> Result<(), SbroadError> {
+        let expr = self.plan.get_expression_node(current)?;
+        if let Expression::StableFunction(StableFunction { name, feature, .. }) = expr {
+            let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
+            let parent_expr = parent_expr.expect(
+                "Aggregate stable function under final relational node should have a parent expr",
+            );
+            if let Some(aggr) =
+                Aggregate::from_name(name, current, self.parent_rel, parent_expr, is_distinct)
+            {
+                self.aggrs.push(aggr);
+                return Ok(());
+            };
+        }
+        for child in self.plan.nodes.expr_iter(current, false) {
+            self.find(child, Some(current))?;
+        }
+        Ok(())
+    }
+}
+
+/// Helper struct to filter duplicate aggregates in local stage.
+///
+/// Consider user query: `select sum(a), avg(a) from t`
+/// at local stage we need to compute `sum(a)` only once.
+///
+/// This struct contains info needed to compute hash and compare aggregates
+/// used at local stage.
+struct AggregateSignature<'plan> {
+    pub kind: AggregateKind,
+    /// Ids of expressions used as arguments to aggregate.
+    pub arguments: Vec<NodeId>,
+    pub plan: &'plan Plan,
+    /// Local alias of this local aggregate.
+    pub local_alias: Rc<String>,
+}
+
+impl<'plan> Hash for AggregateSignature<'plan> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+        let mut comp = Comparator::new(self.plan);
+        comp.set_hasher(state);
+        for arg in &self.arguments {
+            comp.hash_for_expr(*arg, EXPR_HASH_DEPTH);
+        }
+    }
+}
+
+impl<'plan> PartialEq<Self> for AggregateSignature<'plan> {
+    fn eq(&self, other: &Self) -> bool {
+        let comparator = Comparator::new(self.plan);
+        self.kind == other.kind
+            && self
+                .arguments
+                .iter()
+                .zip(other.arguments.iter())
+                .all(|(l, r)| comparator.are_subtrees_equal(*l, *r).unwrap_or(false))
+    }
+}
+
+impl<'plan> Eq for AggregateSignature<'plan> {}
+
+fn aggr_local_alias(kind: AggregateKind, index: usize) -> String {
+    format!("{kind}_{index}")
+}
+
+impl Plan {
+    /// Collect information about aggregates.
+    ///
+    /// Aggregates can appear in `Projection`, `Having`.
+    /// TODO: We should also support OrderBy.
+    ///
+    /// # Arguments
+    /// [`finals`] - ids of nodes in final (reduce stage) before adding two stage aggregation.
+    /// It may contain ids of `Projection`, `Having` or `NamedWindows`.
+    /// Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
+    pub fn collect_aggregates(&self, finals: &Vec<NodeId>) -> Result<Vec<Aggregate>, SbroadError> {
+        let mut aggrs = Vec::with_capacity(AGGR_CAPACITY);
+        for node_id in finals {
+            let node = self.get_relation_node(*node_id)?;
+            match node {
+                Relational::Projection(Projection { output, .. }) => {
+                    let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
+                    for col in self.get_row_list(*output)? {
+                        aggrs.extend(collector.collect_aggregates(*col)?);
+                    }
+                }
+                Relational::Having(Having { filter, .. }) => {
+                    let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
+                    aggrs.extend(collector.collect_aggregates(*filter)?);
+                }
+                _ => {
+                    unreachable!(
+                        "Unexpected {node:?} met as final relational to collect aggregates"
+                    )
+                }
+            }
+        }
+
+        for aggr in &aggrs {
+            let top = aggr.fun_id;
+            if self.contains_aggregates(top, false)? {
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some("aggregate functions inside aggregate function are not allowed.".into()),
+                ));
+            }
+        }
+
+        Ok(aggrs)
+    }
+
+    pub fn create_local_aggregate(
+        &mut self,
+        kind: AggregateKind,
+        arguments: &[NodeId],
+        local_alias: &str,
+    ) -> Result<NodeId, SbroadError> {
+        let fun: Function = Function {
+            name: kind.to_smolstr(),
+            behavior: Behavior::Stable,
+            func_type: kind.get_type(self, arguments)?,
+            is_system: true,
+        };
+        // We can reuse aggregate expression between local aggregates, because
+        // all local aggregates are located inside the same motion subtree and we
+        // assume that each local aggregate does not need to modify its expression
+        let local_fun_id = self.add_stable_function(&fun, arguments.to_vec(), None)?;
+        let alias_id = self.nodes.add_alias(local_alias, local_fun_id)?;
+        Ok(alias_id)
+    }
+
+    /// Adds aggregates columns in `output_cols` for local `Projection`
+    ///
+    /// This function collects local aggregates from each `Aggregate`,
+    /// then it removes duplicates from them using `AggregateSignature`.
+    /// Next, it creates for each unique aggregate local alias and column.
+    #[allow(clippy::mutable_key_type)]
+    pub fn add_local_aggregates(
+        &mut self,
+        aggrs: &mut [Aggregate],
+        output_cols: &mut Vec<NodeId>,
+    ) -> Result<(), SbroadError> {
+        let mut local_alias_index = 1;
+
+        // Aggregate expressions can appear in `Projection`, `Having`, `OrderBy`, if the
+        // same expression appears in different places, we must not calculate it separately:
+        // `select sum(a) from t group by b having sum(a) > 10`
+        // Here `sum(a)` appears both in projection and having, so we need to calculate it only once.
+        let mut unique_local_aggregates: HashSet<AggregateSignature, RepeatableState> =
+            HashSet::with_hasher(RepeatableState);
+        for pos in 0..aggrs.len() {
+            let (final_kind, arguments, aggr_kinds) = {
+                let aggr: &Aggregate = aggrs.get(pos).unwrap();
+                if aggr.is_distinct {
+                    continue;
+                }
+
+                let Expression::StableFunction(StableFunction {
+                    children: arguments,
+                    ..
+                }) = self.get_expression_node(aggr.fun_id)?
+                else {
+                    unreachable!("Aggregate should reference StableFunction by fun_id")
+                };
+
+                (
+                    aggr.kind,
+                    arguments.clone(),
+                    aggr.kind.get_local_aggregates_kinds(),
+                )
+            };
+
+            for kind in aggr_kinds {
+                let local_alias = Rc::new(aggr_local_alias(final_kind, local_alias_index));
+
+                let signature = AggregateSignature {
+                    kind,
+                    arguments: arguments.clone(),
+                    plan: self,
+                    local_alias: local_alias.clone(),
+                };
+                if let Some(sig) = unique_local_aggregates.get(&signature) {
+                    let aggr: &mut Aggregate = aggrs.get_mut(pos).unwrap();
+                    aggr.lagg_aliases.insert(kind, sig.local_alias.clone());
+                } else {
+                    let aggr = aggrs.get_mut(pos).unwrap();
+
+                    // New aggregate was really added.
+                    local_alias_index += 1;
+                    aggr.lagg_aliases.insert(kind, local_alias.clone());
+                    unique_local_aggregates.insert(signature);
+                }
+            }
+        }
+
+        type LocalAggregate = (AggregateKind, Vec<NodeId>, Rc<String>);
+        // Add non-distinct aggregates to local projection.
+        let local_aggregates: Vec<LocalAggregate> = unique_local_aggregates
+            .into_iter()
+            .map(|x| (x.kind, x.arguments.clone(), x.local_alias.clone()))
+            .collect();
+        for (kind, arguments, local_alias) in local_aggregates {
+            let alias_id = self.create_local_aggregate(kind, &arguments, local_alias.as_str())?;
+            output_cols.push(alias_id);
+        }
+
+        Ok(())
     }
 }

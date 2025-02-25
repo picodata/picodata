@@ -86,9 +86,9 @@ fn front_sql_global_tbl_sq1() {
             scan "global_t"
     subquery $0:
     scan
-                projection (sum(("sum_1596"::decimal))::decimal -> "col_1")
+                projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1596")
+                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     motion [policy: full]
@@ -120,9 +120,9 @@ fn front_sql_global_tbl_multiple_sqs1() {
             scan "global_t"
     subquery $0:
     scan
-                projection (sum(("sum_1796"::decimal))::decimal -> "col_1")
+                projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1796")
+                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     scan
@@ -155,9 +155,9 @@ fn front_sql_global_tbl_multiple_sqs2() {
             scan "global_t"
     subquery $0:
     scan
-                projection (sum(("sum_1796"::decimal))::decimal -> "col_1")
+                projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1796")
+                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     motion [policy: full]
@@ -469,9 +469,9 @@ fn front_sql_global_join4() {
     projection ("s"."e"::decimal -> "e")
         left join on true::boolean
             scan "s"
-                projection (sum(("sum_696"::decimal))::decimal -> "e")
+                projection (sum(("sum_1"::decimal))::decimal -> "e")
                     motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_696")
+                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                             scan "t2"
             scan "global_t"
                 projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
@@ -500,9 +500,9 @@ fn front_sql_global_join5() {
                 projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
                     scan "global_t"
             scan "s"
-                projection (sum(("sum_896"::decimal))::decimal -> "e")
+                projection (sum(("sum_1"::decimal))::decimal -> "e")
                     motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_896")
+                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -761,11 +761,11 @@ fn front_sql_global_aggregate5() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("column_1432"::integer -> "col_1", sum(("sum_2896"::decimal))::decimal -> "col_2")
-        having ROW(sum(("sum_2296"::decimal::double))::decimal / sum(("count_2296"::decimal::double))::decimal) > ROW(3::unsigned)
-            group by ("column_1432"::integer) output: ("column_1432"::integer -> "column_1432", "sum_2296"::decimal -> "sum_2296", "count_2296"::unsigned -> "count_2296", "sum_2896"::decimal -> "sum_2896")
-                motion [policy: segment([ref("column_1432")])]
-                    projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "column_1432", sum(("global_t"."b"::integer))::decimal -> "sum_2296", count(("global_t"."b"::integer))::unsigned -> "count_2296", sum(("global_t"."a"::integer))::decimal -> "sum_2896")
+    projection ("gr_expr_1"::integer -> "col_1", sum(("sum_1"::decimal))::decimal -> "col_2")
+        having ROW(sum(("avg_2"::decimal::double))::decimal / sum(("avg_3"::decimal::double))::decimal) > ROW(3::unsigned)
+            group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1", "avg_2"::decimal -> "avg_2", "avg_3"::unsigned -> "avg_3", "sum_1"::decimal -> "sum_1")
+                motion [policy: segment([ref("gr_expr_1")])]
+                    projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "gr_expr_1", sum(("global_t"."b"::integer))::decimal -> "avg_2", count(("global_t"."b"::integer))::unsigned -> "avg_3", sum(("global_t"."a"::integer))::decimal -> "sum_1")
                         group by (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer)) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
                             selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
                                 scan "global_t"
@@ -992,9 +992,9 @@ fn front_sql_global_union_all3() {
                     projection ("global_t"."a"::integer -> "a")
                         scan "global_t"
                     motion [policy: segment([ref("col_1")])]
-                        projection (sum(("sum_996"::decimal))::decimal -> "col_1")
+                        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                             motion [policy: full]
-                                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_996")
+                                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                                     scan "t2"
         motion [policy: local]
             projection ("global_t"."b"::integer -> "b")
@@ -1093,9 +1093,9 @@ fn front_sql_global_union2() {
             projection ("global_t"."a"::integer -> "a")
                 scan "global_t"
             motion [policy: segment([ref("col_1")])]
-                projection (sum(("sum_996"::decimal))::decimal -> "col_1")
+                projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_996")
+                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1232,9 +1232,9 @@ fn check_plan_except_global_vs_single() {
     except
         projection ("global_t"."a"::integer -> "a")
             scan "global_t"
-        projection (sum(("sum_996"::decimal))::decimal -> "col_1")
+        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full]
-                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_996")
+                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1254,9 +1254,9 @@ fn check_plan_except_single_vs_global() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection (sum(("sum_696"::decimal))::decimal -> "col_1")
+        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full]
-                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_696")
+                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
                     scan "t2"
         projection ("global_t"."a"::integer -> "a")
             scan "global_t"

@@ -653,11 +653,14 @@ impl From<Selection> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupBy {
-    /// The first child is a relational operator before group by
+    /// The first child is a
+    /// * Scan in case it's local GroupBy
+    /// * Motion with policy Segment in case two stage aggregation was applied
+    ///
+    /// Other children are subqueries used under grouping expressions.
     pub children: Vec<NodeId>,
     pub gr_exprs: Vec<NodeId>,
     pub output: NodeId,
-    pub is_final: bool,
 }
 
 impl From<GroupBy> for NodeAligned {

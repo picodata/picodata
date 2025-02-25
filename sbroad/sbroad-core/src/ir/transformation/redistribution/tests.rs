@@ -248,9 +248,9 @@ fn test_slices_2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("count_5596"::unsigned))::unsigned -> "col_1")
+    projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
         motion [policy: full]
-            projection (count(("t2"."e"::unsigned))::unsigned -> "count_5596")
+            projection (count(("t2"."e"::unsigned))::unsigned -> "count_1")
                 join on true::boolean
                     scan
                         projection ("t2"."f"::unsigned -> "f")

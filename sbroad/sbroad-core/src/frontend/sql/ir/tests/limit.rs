@@ -51,9 +51,9 @@ fn aggregate() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection (min(("min_696"::unsigned))::unsigned -> "col_1", min(distinct ("column_796"::unsigned))::unsigned -> "col_2")
+        projection (min(("min_1"::unsigned))::unsigned -> "col_1", min(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
             motion [policy: full]
-                projection ("t"."b"::unsigned -> "column_796", min(("t"."b"::unsigned))::unsigned -> "min_696")
+                projection ("t"."b"::unsigned -> "gr_expr_1", min(("t"."b"::unsigned))::unsigned -> "min_1")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
@@ -72,10 +72,10 @@ fn group_by() {
     limit 555
         motion [policy: full]
             limit 555
-                projection (sum(("count_1196"::unsigned))::unsigned -> "col_1", "column_596"::unsigned -> "b")
-                    group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "count_1196"::unsigned -> "count_1196")
-                        motion [policy: segment([ref("column_596")])]
-                            projection ("t"."b"::unsigned -> "column_596", count((*::integer))::unsigned -> "count_1196")
+                projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
+                    group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
+                        motion [policy: segment([ref("gr_expr_1")])]
+                            projection ("t"."b"::unsigned -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
                                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                                     scan "t"
     execution options:

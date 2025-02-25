@@ -2466,7 +2466,7 @@ impl ParseExpression {
                     let arg_plan_id = arg.populate_plan(plan, worker)?;
                     plan_arg_ids.push(arg_plan_id);
                 }
-                if let Some(kind) = AggregateKind::new(name) {
+                if let Some(kind) = AggregateKind::from_name(name) {
                     plan.add_aggregate_function(name, kind, plan_arg_ids, is_distinct)?
                 } else if is_distinct {
                     return Err(SbroadError::Invalid(

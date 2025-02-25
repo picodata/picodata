@@ -153,7 +153,7 @@ impl Expression<'_> {
     #[must_use]
     pub fn is_aggregate_name(name: &str) -> bool {
         // currently we support only simple aggregates
-        AggregateKind::new(name).is_some()
+        AggregateKind::from_name(name).is_some()
     }
 
     #[must_use]

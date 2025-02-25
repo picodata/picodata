@@ -416,7 +416,9 @@ impl From<Error> for SbroadError {
     fn from(error: Error) -> Self {
         SbroadError::Invalid(
             Entity::Tarantool,
-            Some(format_smolstr!("Tarantool module error occurred: {error:?}"),)
+            Some(format_smolstr!(
+                "Tarantool module error occurred: {error:?}"
+            )),
         )
     }
 }

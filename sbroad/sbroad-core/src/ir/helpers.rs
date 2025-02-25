@@ -389,10 +389,8 @@ impl Plan {
                         writeln_with_tabulation(buf, tabulation_number + 1, "Filter")?;
                         self.formatted_arena_node(buf, tabulation_number + 1, *filter)?;
                     }
-                    Relational::GroupBy(GroupBy {
-                        gr_exprs, is_final, ..
-                    }) => {
-                        writeln!(buf, "GroupBy [is_final = {is_final}]")?;
+                    Relational::GroupBy(GroupBy { gr_exprs, .. }) => {
+                        writeln!(buf, "GroupBy")?;
                         writeln_with_tabulation(buf, tabulation_number + 1, "Gr_cols:")?;
                         for expr_id in gr_exprs {
                             let expr = self.get_expression_node(*expr_id);

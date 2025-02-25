@@ -112,7 +112,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "T1"."FIRST_NAME" as "column_596" FROM "test_space" as "T1" GROUP BY "T1"."FIRST_NAME""#
+            r#"SELECT "T1"."FIRST_NAME" as "gr_expr_1" FROM "test_space" as "T1" GROUP BY "T1"."FIRST_NAME""#
                 .to_string(),
             vec![]
         )
@@ -159,9 +159,9 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
         sql,
         PatternWithParams::new(
             f_sql(
-                r#"SELECT "T1"."FIRST_NAME" as "column_596",
-"T1"."sys_op" as "column_696",
-"T1"."sysFrom" as "column_796"
+                r#"SELECT "T1"."FIRST_NAME" as "gr_expr_1",
+"T1"."sys_op" as "gr_expr_2",
+"T1"."sysFrom" as "gr_expr_3"
 FROM "test_space" as "T1"
 GROUP BY "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom""#
             ),
@@ -223,7 +223,7 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "column_596", ("T1"."id") * ("T1"."sys_op") as "column_1632", "T1"."id" as "column_2096", count ("T1"."sysFrom") as "count_1596", sum ("T1"."id") as "sum_1796", count ("T1"."id") as "count_2696", min ("T1"."id") as "min_3096", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496", total ("T1"."id") as "total_2896", max ("T1"."id") as "max_3296" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."id") * ("T1"."sys_op") as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
@@ -260,7 +260,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT ("T1"."id") + ("T1"."sysFrom") as "column_632", count ("T1"."sysFrom") as "count_696" FROM "test_space" as "T1" GROUP BY ("T1"."id") + ("T1"."sysFrom")"#.to_string(),
+            r#"SELECT ("T1"."id") + ("T1"."sysFrom") as "gr_expr_1", count ("T1"."sysFrom") as "count_1" FROM "test_space" as "T1" GROUP BY ("T1"."id") + ("T1"."sysFrom")"#.to_string(),
             vec![]
         ));
 
@@ -419,7 +419,7 @@ fn exec_plan_subtree_count_asterisk() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT count (*) as "count_596" FROM "test_space""#.to_string(),
+            r#"SELECT count (*) as "count_1" FROM "test_space""#.to_string(),
             vec![]
         )
     );
@@ -473,8 +473,8 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT "T1"."sys_op" as "column_596", ("T1"."sys_op") * (?) as "column_2032","#,
-                r#"count (("T1"."sys_op") * (?)) as "count_2296" FROM "test_space" as "T1""#,
+                r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."sys_op") * (?) as "gr_expr_2","#,
+                r#"count (("T1"."sys_op") * (?)) as "count_1" FROM "test_space" as "T1""#,
                 r#"GROUP BY "T1"."sys_op", ("T1"."sys_op") * (?)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
@@ -536,8 +536,8 @@ fn exec_plan_subtree_having_without_groupby() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT ("T1"."sys_op") * (?) as "column_1332","#,
-                r#"count (("T1"."sys_op") * (?)) as "count_1496" FROM "test_space" as "T1""#,
+                r#"SELECT ("T1"."sys_op") * (?) as "gr_expr_1","#,
+                r#"count (("T1"."sys_op") * (?)) as "count_1" FROM "test_space" as "T1""#,
                 r#"GROUP BY ("T1"."sys_op") * (?)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
@@ -699,7 +699,7 @@ fn exec_plan_subquery_as_expression_under_group_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT ("test_space"."id") + (VALUES (?)) as "column_932", count (*) as "count_1496" FROM "test_space" GROUP BY ("test_space"."id") + (VALUES (?))"#.to_string(),
+            r#"SELECT ("test_space"."id") + (VALUES (?)) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY ("test_space"."id") + (VALUES (?))"#.to_string(),
             vec![Value::Unsigned(1u64), Value::Unsigned(1u64)]
         )
     );
@@ -709,7 +709,7 @@ fn exec_plan_subquery_as_expression_under_group_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT sum ("count_1496") as "col_1" FROM (SELECT "COL_1" FROM "TMP_test_0136") GROUP BY "COL_1""#.to_string(),
+            r#"SELECT sum ("count_1") as "col_1" FROM (SELECT "COL_1" FROM "TMP_test_0136") GROUP BY "COL_1""#.to_string(),
             vec![]
         )
     );

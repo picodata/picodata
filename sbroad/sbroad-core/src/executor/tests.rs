@@ -895,9 +895,9 @@ fn groupby_linker_test() {
             LuaValue::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {}",
-                    r#"SELECT "column_596" as "ii" FROM"#,
+                    r#"SELECT "gr_expr_1" as "ii" FROM"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
-                    r#"GROUP BY "column_596""#,
+                    r#"GROUP BY "gr_expr_1""#,
                 ),
                 vec![],
             ))),

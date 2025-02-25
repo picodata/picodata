@@ -259,7 +259,7 @@ fn simple_aggregation_with_group_by() {
 				[id: 432] expression: Alias [name = bucket_id, child = Reference(Reference { parent: Some(NodeId { offset: 1, arena_type: Arena64 }), targets: None, position: 4, col_type: DerivedType(Some(Unsigned)), asterisk_source: None })]
 ---------------------------------------------
 ---------------------------------------------
-[id: 364] relation: GroupBy [is_final = false]
+[id: 364] relation: GroupBy
 	Gr_cols:
 		Gr_col: Reference(Reference { parent: Some(NodeId { offset: 3, arena_type: Arena64 }), targets: Some([0]), position: 1, col_type: DerivedType(Some(String)), asterisk_source: None })
 	Children:
@@ -280,7 +280,7 @@ fn simple_aggregation_with_group_by() {
 	Output_id: 664
 		[id: 664] expression: Row [distribution = Some(Any)]
 			List:
-				[id: 1132] expression: Alias [name = column_596, child = Reference(Reference { parent: Some(NodeId { offset: 3, arena_type: Arena64 }), targets: Some([0]), position: 1, col_type: DerivedType(Some(String)), asterisk_source: None })]
+				[id: 1132] expression: Alias [name = gr_expr_1, child = Reference(Reference { parent: Some(NodeId { offset: 7, arena_type: Arena64 }), targets: Some([0]), position: 1, col_type: DerivedType(Some(String)), asterisk_source: None })]
 ---------------------------------------------
 ---------------------------------------------
 [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = None]
@@ -289,10 +289,10 @@ fn simple_aggregation_with_group_by() {
 	Output_id: 1064
 		[id: 1064] expression: Row [distribution = Some(Segment { keys: KeySet({Key { positions: [0] }}) })]
 			List:
-				[id: 1332] expression: Alias [name = column_596, child = Reference(Reference { parent: Some(NodeId { offset: 0, arena_type: Arena136 }), targets: Some([0]), position: 0, col_type: DerivedType(Some(String)), asterisk_source: None })]
+				[id: 1332] expression: Alias [name = gr_expr_1, child = Reference(Reference { parent: Some(NodeId { offset: 0, arena_type: Arena136 }), targets: Some([0]), position: 0, col_type: DerivedType(Some(String)), asterisk_source: None })]
 ---------------------------------------------
 ---------------------------------------------
-[id: 964] relation: GroupBy [is_final = true]
+[id: 964] relation: GroupBy
 	Gr_cols:
 		Gr_col: Reference(Reference { parent: Some(NodeId { offset: 9, arena_type: Arena64 }), targets: Some([0]), position: 0, col_type: DerivedType(Some(String)), asterisk_source: None })
 	Children:
@@ -300,7 +300,7 @@ fn simple_aggregation_with_group_by() {
 	Output_id: 864
 		[id: 864] expression: Row [distribution = Some(Segment { keys: KeySet({Key { positions: [0] }}) })]
 			List:
-				[id: 1232] expression: Alias [name = column_596, child = Reference(Reference { parent: Some(NodeId { offset: 9, arena_type: Arena64 }), targets: Some([0]), position: 0, col_type: DerivedType(Some(String)), asterisk_source: None })]
+				[id: 1232] expression: Alias [name = gr_expr_1, child = Reference(Reference { parent: Some(NodeId { offset: 9, arena_type: Arena64 }), targets: Some([0]), position: 0, col_type: DerivedType(Some(String)), asterisk_source: None })]
 ---------------------------------------------
 ---------------------------------------------
 [id: 564] relation: Projection

@@ -90,10 +90,10 @@ fn like_explain3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("column_332"::boolean -> "col_1")
-        group by ("column_332"::boolean) output: ("column_332"::boolean -> "column_332")
-            motion [policy: segment([ref("column_332")])]
-                projection (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string) -> "column_332")
+    projection ("gr_expr_1"::boolean -> "col_1")
+        group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
+            motion [policy: segment([ref("gr_expr_1")])]
+                projection (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string) -> "gr_expr_1")
                     group by (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string)) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"
     execution options:
@@ -140,10 +140,10 @@ fn ilike_explain() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("column_332"::boolean -> "col_1")
-        group by ("column_332"::boolean) output: ("column_332"::boolean -> "column_332")
-            motion [policy: segment([ref("column_332")])]
-                projection (ROW(lower(("t1"."a"::string))::string) LIKE ROW(lower(("t1"."a"::string))::string) ESCAPE ROW('x'::string) -> "column_332")
+    projection ("gr_expr_1"::boolean -> "col_1")
+        group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
+            motion [policy: segment([ref("gr_expr_1")])]
+                projection (ROW(lower(("t1"."a"::string))::string) LIKE ROW(lower(("t1"."a"::string))::string) ESCAPE ROW('x'::string) -> "gr_expr_1")
                     group by (ROW(lower(("t1"."a"::string))::string) LIKE ROW(lower(("t1"."a"::string))::string) ESCAPE ROW('x'::string)) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"
     execution options:

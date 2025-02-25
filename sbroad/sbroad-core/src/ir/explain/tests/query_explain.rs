@@ -58,9 +58,9 @@ fn test_query_explain_4() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    projection (sum(("count_596"::unsigned))::unsigned -> "col_1")
+    projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
         motion [policy: full]
-            projection (count((*::integer))::unsigned -> "count_596")
+            projection (count((*::integer))::unsigned -> "count_1")
                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -193,10 +193,10 @@ fn test_query_explain_11() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    projection ("column_3496"::string -> "a", sum(("count_4196"::unsigned))::unsigned -> "col_1")
-        group by ("column_3496"::string) output: ("column_3496"::string -> "column_3496", "count_4196"::unsigned -> "count_4196")
-            motion [policy: segment([ref("column_3496")])]
-                projection ("a"::string -> "column_3496", count(("b"::integer))::unsigned -> "count_4196")
+    projection ("gr_expr_1"::string -> "a", sum(("count_1"::unsigned))::unsigned -> "col_1")
+        group by ("gr_expr_1"::string) output: ("gr_expr_1"::string -> "gr_expr_1", "count_1"::unsigned -> "count_1")
+            motion [policy: segment([ref("gr_expr_1")])]
+                projection ("a"::string -> "gr_expr_1", count(("b"::integer))::unsigned -> "count_1")
                     group by ("a"::string) output: ("e"::unsigned -> "e", "f"::unsigned -> "f", "a"::string -> "a", "b"::integer -> "b")
                         join on ROW("e"::unsigned) = ROW("b"::integer)
                             scan

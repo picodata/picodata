@@ -450,7 +450,6 @@ impl SubtreeCloner {
                 children: _,
                 gr_exprs,
                 output: _,
-                is_final: _,
             }) => {
                 *gr_exprs = self.copy_list(gr_exprs)?;
                 for expr_id in gr_exprs.iter() {
