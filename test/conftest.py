@@ -8,6 +8,7 @@ import shutil
 import sys
 import time
 import threading
+import gitlab
 from packaging.version import Version
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -2818,3 +2819,54 @@ def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generato
     yield server
 
     server.process.kill()
+
+
+GITLAB_URL = "https://git.picodata.io/"
+PICODATA_GITLAB_PROJECT_ID = 58
+
+
+@pytest.hookimpl
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    if not hasattr(item, "execution_count"):  # mypy
+        # reruns are not stamped for all tests blindly, only if global setting is passed or item has `flaky` mark
+        # https://github.com/pytest-dev/pytest-rerunfailures/blob/d0ff1d4337993cb0f74a46e59f1e6bed0857a0a6/src/pytest_rerunfailures.py#L546
+        return
+
+    if item.execution_count == 1:
+        # No retries
+        return
+
+    assert item.execution_count > 1
+
+    if item.get_closest_marker("flaky") is None:
+        # Not marked as flaky
+        return
+
+    gitlab_token = os.getenv("PYTEST_REPORT_GITLAB_TOKEN")
+    if not (os.getenv("CI") and gitlab_token):
+        return
+
+    gl = gitlab.Gitlab(url=GITLAB_URL, private_token=gitlab_token)
+    project = gl.projects.get(id=PICODATA_GITLAB_PROJECT_ID, lazy=True)
+
+    issue_title = f"flaky: {item.nodeid}"
+    issues = project.issues.list(search=issue_title)
+
+    common_error_prefix = "Cant find ticket to report flaky test result."
+    if len(issues) != 1:
+        raise Exception(f"{common_error_prefix} Test name: {item.nodeid}, search result: {issues}")
+
+    assert isinstance(issues, List)  # mypy
+    issue = issues[0]
+    if issue.title != issue_title:
+        raise Exception(
+            f"{common_error_prefix} Found issue with wrong title, expected '{issue_title}' got '{issue.title}.'"
+        )
+
+    job_url = os.getenv("CI_JOB_URL")
+    assert job_url
+    if issue.state == "closed":
+        issue.state_event = "reopen"
+        issue.save()
+
+    issue.discussions.create({"body": f"[AUTOMATIC COMMENT] Failed once again: {job_url}"})
