@@ -293,7 +293,7 @@ OPTION(timeout=...);
   [`_pico_property`] на время установки плагина
 - централизованная проверка наличия `.so`-файлов на всех живых узлах
   [губернатором](../overview/glossary.md#governor) в виде вызова
-  `load_plugin_dry_run`
+  [`.proc_load_plugin_dry_run`]
 - при отсутствии ошибок губернатор заполняет системные таблицы
   [`_pico_plugin`] и [`_pico_service`] данными из манифеста с помощью
   [CaS]-операции
@@ -308,6 +308,7 @@ OPTION(timeout=...);
 [`_pico_plugin`]: system_tables.md#_pico_plugin
 [`_pico_service`]: system_tables.md#_pico_service
 [`_pico_service_route`]: system_tables.md#_pico_service_route
+[`.proc_load_plugin_dry_run`]: rpc_api.md#proc_load_plugin_dry_run
 [CaS]: ../overview/glossary.md#cas
 [migration]: ../overview/glossary.md#migration
 [ansible]: ../tutorial/deploy_ansible.md
@@ -328,12 +329,12 @@ false`. Включение проходит следующим образом:
   таблице [`_pico_property`] с ключом `pending_plugin_enable` и значением
   `{ plugin_name, service_list, on_start_timeout }`
 - губернатор реагирует на появление ключа `pending_plugin_enable` и
-  отправляет всем живым узлам кластера RPC-запрос `enable_plugin`
+  отправляет всем живым узлам кластера RPC-запрос [`.proc_enable_plugin`]
 - плагин включается на узлах кластера, которые используют метаинформацию
   из указанных выше системных таблиц
 - в зависимости от топологии кластера (принадлежности узла к нужному
   [тиру][tier]), на отдельных узлах валидируются и включаются сервисы
-  плагина. Для каждого сервиса запускаются `on_start callbacks`,
+  плагина. Для каждого сервиса запускаются коллбэки [`on_start`],
   результат возвращается губернатору
 - в случае успеха губернатор обновляет системную таблицу [`_pico_plugin`]
   и устанавливает для плагина свойство `enable = true`, а также
@@ -341,6 +342,9 @@ false`. Включение проходит следующим образом:
 - губернатор очищает значение ключа `pending_plugin_enable`
 - узлы кластера ожидают очистки `pending_plugin_enable` и после этого
   проверяют в таблице `_pico_plugin` свойство `enable`
+
+[`.proc_enable_plugin`]: rpc_api.md#proc_enable_plugin
+[`on_start`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_start
 
 ### Отключение {: #plugin_disable }
 
@@ -353,12 +357,14 @@ false`. Включение проходит следующим образом:
   каждом узле кластера
 - узел собирает метаинформацию из таблицы `_pico_plugin` и устанавливает
   для плагина значение `enable=false`
-- узел в асинхронном режиме вызывает функцию `on_stop` для запущенных
+- узел в асинхронном режиме вызывает коллбэк [`on_stop`] для запущенных
   сервисов
 - губернатор удаляет информацию о плагине и его сервисах из таблиц
   `_pico_service_route` и `_pico_property`, очищая, в том числе,
   значение ключа `pending_plugin_disable`
 - узлы кластера ожидают очистки `pending_plugin_disable`
+
+[`on_stop`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_stop
 
 ### Удаление {: #plugin_uninstall }
 
