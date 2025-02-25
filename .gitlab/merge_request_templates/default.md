@@ -4,11 +4,14 @@
 
 ---
 
+<!-- Remove the lines below if not used -->
 - Close #...
-- Cherry-pick to: none / 24.5 / 24.4 / 24.3 / 24.2
-- Staging: https://docs.binary.picodata.io/picodata/
+- Cherry-pick to: `25.1`, `24.6`
+- Staging:
+    - https://docs.binary.picodata.io/picodata/%{source_branch}/
+    <!-- Only letters and underscores allowed in a branch name -->
 
 <!--
-- Follow-up for !...
+- Follow-up for picodata!...
 - See also ...
 -->
