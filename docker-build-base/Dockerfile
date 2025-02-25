@@ -12,7 +12,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && dnf module -y enable nodejs:20 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
-    && dnf install -y \
+    && dnf install -y --nobest \
            bzip2-devel \
            cmake \
            cyrus-sasl-devel \
