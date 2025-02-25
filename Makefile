@@ -70,16 +70,15 @@ build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1 RUSTFLAGS=-Zsanitizer=add
 build-asan-dev: override CARGO_FLAGS += --profile=asan-dev --target=$(DEFAULT_TARGET)
 build-asan-dev: build
 
-
-# XXX: make sure we pass proper flags to cargo test so resulting picodata binary is reused
-# can be reused for python tests without recompilation
+# XXX: make sure we pass proper flags to cargo test so resulting picodata binary can be
+# reused for python tests without recompilation
 # Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata
 # Note: non-doc tests and doc tests are run separately. This is intended to prevent excessive
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
-.PHONY: test
-test:
+.PHONY: test-rs
+test-rs:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
 	  --exclude sbroad-core \
 	  --exclude tarantool \
@@ -92,14 +91,19 @@ test:
 	  --exclude tlua \
 	  --doc -- --test-threads 2
 
+.PHONY: test-py
+test-py:
 	poetry run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
+
+.PHONY: test
+test: test-rs test-py
 
 .PHONY: generate
 generate:
 	poetry run python test/generate_snapshot.py
 
-.PHONY: lint
-lint:
+.PHONY: lint-rs
+lint-rs:
 	cargo version
 
 	cargo fmt --check
@@ -122,9 +126,14 @@ lint:
 			--workspace --no-deps --document-private-items \
 			--exclude=tlua --exclude=sbroad-core --exclude=tarantool
 
+.PHONY: lint-py
+lint-py:
 	poetry run ruff check ./test
 	poetry run ruff format ./test --check --diff
 	poetry run mypy ./test
+
+.PHONY: lint
+lint: lint-rs lint-py
 
 .PHONY: fmt
 fmt:
