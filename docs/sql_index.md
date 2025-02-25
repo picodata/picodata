@@ -179,3 +179,4 @@ article.md-typeset.md-typeset ul {
 <b>W</b>
 
 * [WHERE](reference/sql/select.md#select_with_filter)
+* [window function](reference/sql/window.md)
