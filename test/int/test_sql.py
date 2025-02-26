@@ -2619,8 +2619,8 @@ def test_sql_acl_users_roles(cluster: Cluster):
     users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
-    # * LDAP should ignore password -> update method and hash.
-    acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
+    # * LDAP does not need a password -> update method and hash.
+    acl = i1.sql(f"alter user {username} with password using ldap")
     assert acl["row_count"] == 1
     user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_became = user_def[3]
@@ -2703,11 +2703,11 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # Alter user with auth method in mixed case
-    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING Ldap")
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING Md5")
     assert acl["row_count"] == 1
 
     # Alter the same user with the same password, but auth method is in different case
-    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING ldap")
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING md5")
     assert acl["row_count"] == 0
 
 

@@ -5188,24 +5188,48 @@ impl AbstractSyntaxTree {
                         Rule::AlterLogin => AlterOption::Login,
                         Rule::AlterNoLogin => AlterOption::NoLogin,
                         Rule::AlterPassword => {
-                            let pwd_node_id = alter_option_node
+                            let pwd_or_ldap_node_id = alter_option_node
                                 .children
                                 .first()
                                 .expect("Password expected as a first child");
-                            let password_literal = retrieve_string_literal(self, *pwd_node_id)?;
-                            let password = escape_single_quotes(&password_literal);
+                            let pwd_or_ldap_node = self.nodes.get_node(*pwd_or_ldap_node_id)?;
 
-                            let mut auth_method = get_default_auth_method();
-                            if let Some(auth_method_node_id) = alter_option_node.children.get(1) {
-                                let auth_method_node = self.nodes.get_node(*auth_method_node_id)?;
-                                let auth_method_string_node_id = auth_method_node
-                                    .children
-                                    .first()
-                                    .expect("Method expected under AuthMethod node");
-                                auth_method = SmolStr::from(parse_string_value_node(
-                                    self,
-                                    *auth_method_string_node_id,
-                                )?);
+                            let password;
+                            let mut auth_method;
+                            match pwd_or_ldap_node.rule {
+                                Rule::Ldap => {
+                                    password = SmolStr::default();
+                                    auth_method = "Ldap".to_smolstr();
+                                }
+                                Rule::SingleQuotedString => {
+                                    let password_literal =
+                                        retrieve_string_literal(self, *pwd_or_ldap_node_id)?;
+                                    password = escape_single_quotes(&password_literal);
+
+                                    auth_method = get_default_auth_method();
+                                    if let Some(auth_method_node_id) =
+                                        alter_option_node.children.get(1)
+                                    {
+                                        let auth_method_node =
+                                            self.nodes.get_node(*auth_method_node_id)?;
+                                        let auth_method_string_node_id = auth_method_node
+                                            .children
+                                            .first()
+                                            .expect("Method expected under ChapSha1/Md5 node");
+                                        auth_method = SmolStr::from(parse_string_value_node(
+                                            self,
+                                            *auth_method_string_node_id,
+                                        )?);
+                                    }
+                                }
+                                _ => {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Node,
+                                        Some(format_smolstr!(
+                                            "ACL node contains unexpected child: {pwd_or_ldap_node:?}",
+                                        )),
+                                    ));
+                                }
                             }
 
                             AlterOption::Password {

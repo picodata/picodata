@@ -36,7 +36,7 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
         ^"create" ~ W ~ ^"user" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
         (
             ((^"with" ~ W)? ~ ^"password" ~ W ~ SingleQuotedString ~ (W ~ ^"using" ~ W ~ (ChapSha1 | Md5))? ~ (W ~ TimeoutOption)?) |
-            ((^"using" ~ W ~ (Ldap)) ~ (W ~ TimeoutOption)?)
+            ((^"using" ~ W ~ Ldap) ~ (W ~ TimeoutOption)?)
         )
     }
     AlterUser = ${
@@ -45,9 +45,8 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
         AlterOption = _{ AlterLogin | AlterNoLogin | AlterPassword | AlterRename }
             AlterLogin = { ^"login" }
             AlterNoLogin = { ^"nologin" }
-            AlterPassword = ${ ^"password" ~ W ~ SingleQuotedString ~ (W ~ AuthMethod)? }
+            AlterPassword = ${ (^"password" ~ W ~ ((^"using" ~ W ~ Ldap) | (SingleQuotedString ~ (W ~ ^"using" ~ W ~ (ChapSha1 | Md5))?))) }
             AlterRename = ${ ^"rename" ~ W ~ ^"to" ~ W ~ Identifier }
-	AuthMethod = ${ ^"using" ~ W ~ (ChapSha1 | Md5 | Ldap) }
             ChapSha1 = { ^"chap-sha1" }
             Md5 = { ^"md5" }
             Ldap = { ^"ldap" }
