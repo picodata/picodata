@@ -61,6 +61,8 @@ PICO_SERVICE_ID = 32
 
 CLI_TIMEOUT = 10  # seconds
 
+TOO_LONG_FOR_LOGS = 512
+
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:
@@ -118,6 +120,23 @@ def eprint(*args, **kwargs):
 def assert_starts_with(actual_string: str | bytes, expected_prefix: str | bytes):
     """Using this function results in a better pytest output in case of assertion failure."""
     assert actual_string[: len(expected_prefix)] == expected_prefix
+
+
+def shorten_expr_for_log(expr: str) -> str:
+    expr = expr.strip()
+    head, *tail = expr.split("\n", maxsplit=1)
+    if tail and tail[0].strip():
+        return head + "..."
+
+    return head
+
+
+def clamp_for_logs(*args):
+    args_string = f"{args}"
+    if len(args_string) > TOO_LONG_FOR_LOGS:
+        return args_string[:TOO_LONG_FOR_LOGS] + "..."
+
+    return args_string
 
 
 def pytest_addoption(parser: pytest.Parser):
@@ -712,10 +731,14 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 10,
     ):
+        log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
         try:
             with self.connect(timeout, user=user, password=password) as conn:
-                return conn.call(fn, args)
+                result = conn.call(fn, args)
+                log.info(f"{self.name or self.port} RPC CALL {fn} result: {clamp_for_logs(result)}", stacklevel=2)
+                return result
         except Exception as e:
+            log.error(f"{self.name or self.port} RPC CALL {fn} failed: {e}", stacklevel=2)
             self.check_process_alive()
             raise e from e
 
@@ -727,10 +750,19 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 10,
     ):
+        # NOTE: Not using short_expr at first intentionally
+        log.info(f"{self.name or self.port} RPC EVAL `{expr}` {clamp_for_logs(args)}", stacklevel=2)
+        short_expr = shorten_expr_for_log(expr)
         try:
             with self.connect(timeout, user=user, password=password) as conn:
-                return conn.eval(expr, *args)
+                result = conn.eval(expr, *args)
+                log.info(
+                    f"{self.name or self.port} RPC EVAL `{short_expr}` result: {clamp_for_logs(result)}",
+                    stacklevel=2,
+                )
+                return result
         except Exception as e:
+            log.error(f"{self.name or self.port} RPC EVAL `{short_expr}` failed: {e}", stacklevel=2)
             self.check_process_alive()
             raise e from e
 
@@ -799,14 +831,21 @@ class Instance:
             If the response instead contains just the "row_count" field, this
             parameter is ignored.
         """
-        log.info(f"exec sql on instance {self.name}: {sql}")
+        # NOTE: Not using short_expr at first intentionally
+        log.info(f"{self.name or self.port} RPC SQL `{sql}` {clamp_for_logs(params)} {options}", stacklevel=2)
+        short_sql = shorten_expr_for_log(sql)
         try:
             with self.connect(timeout=timeout, user=user, password=password) as conn:
                 result = conn.sql(sql, sudo=sudo, *params, options=options)
+                log.info(
+                    f"{self.name or self.port} RPC SQL `{short_sql}` result: {clamp_for_logs(result)}",
+                    stacklevel=2,
+                )
             if strip_metadata and "rows" in result:
                 return result["rows"]
             return result
         except Exception as e:
+            log.error(f"{self.name or self.port} RPC SQL to `{short_sql}` failed: {e}", stacklevel=2)
             self.check_process_alive()
             raise e from e
 
@@ -874,6 +913,8 @@ class Instance:
         if self.process is None:
             # Be idempotent
             return None
+
+        log.info(f"termintating instance {self}")
 
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(self.process.pid, signal.SIGCONT)
@@ -1052,6 +1093,7 @@ class Instance:
         self.start()
 
     def remove_data(self):
+        log.info(f"removing instance_dir of {self}")
         shutil.rmtree(self.instance_dir)
 
     def raft_propose_nop(self):
@@ -1159,14 +1201,6 @@ class Instance:
         # to ADMIN_USER_ID on the rust side
         as_user = user if user is not None else 1
         dml["initiator"] = as_user
-
-        log.info(f"CaS:\n  {predicate=}")
-        if len(dml.get("tuple") or []) > 512:  # type: ignore
-            op_to_display = {k: v for k, v in dml.items()}
-            op_to_display["tuple"] = "<too-big-to-display>"
-            log.info(f"  dml={op_to_display}")
-        else:
-            log.info(f"  {dml=}")
 
         return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)["index"]
 
@@ -1981,7 +2015,6 @@ class Cluster:
             ranges=predicate_ranges,
         )
 
-        log.info(f"batch CaS:\n  {predicate=}\n  {ops=}")
         return instance.call("pico.batch_cas", dict(ops=ops), predicate, user=user, password=password)
 
     def leader(self, peer: Instance | None = None) -> Instance:
