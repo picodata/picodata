@@ -115,7 +115,7 @@ pub fn user_by_id_if_exists(id: UserId) -> tarantool::Result<Option<UserMetadata
 
 pub fn validate_password(
     password: &str,
-    auth_method: &AuthMethod,
+    auth_method: &AuthMethod, // reference is taken for easier API interaction
     storage: &Catalog,
 ) -> traft::Result<()> {
     if let AuthMethod::Ldap = auth_method {

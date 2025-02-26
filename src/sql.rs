@@ -64,7 +64,7 @@ use tarantool::tuple::ToTupleBuffer;
 
 use crate::storage::Catalog;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
-use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
+use ::tarantool::auth::{AuthData, AuthDef};
 use ::tarantool::error::BoxError;
 use ::tarantool::error::TarantoolErrorCode;
 use ::tarantool::proc;
@@ -74,7 +74,6 @@ use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
 use std::rc::Rc;
-use std::str::FromStr;
 use std::time::Duration;
 use tarantool::session;
 
@@ -836,11 +835,6 @@ fn check_name_emptyness(name: &str) -> traft::Result<()> {
     Ok(())
 }
 
-fn parse_auth_method(auth_method: &str) -> traft::Result<AuthMethod> {
-    AuthMethod::from_str(&auth_method.to_lowercase())
-        .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))
-}
-
 fn alter_user_ir_node_to_op_or_result(
     name: &SmolStr,
     alter_option: &AlterOption,
@@ -865,10 +859,9 @@ fn alter_user_ir_node_to_op_or_result(
             password,
             auth_method,
         } => {
-            let method = parse_auth_method(auth_method)?;
-            validate_password(password, &method, storage)?;
-            let data = AuthData::new(&method, name, password);
-            let auth = AuthDef::new(method, data.into_string());
+            validate_password(password, auth_method, storage)?;
+            let data = AuthData::new(&auth_method, name, password);
+            let auth = AuthDef::new(*auth_method, data.into_string());
 
             if user_def
                 .auth
@@ -1029,10 +1022,9 @@ fn acl_ir_node_to_op_or_result(
             check_name_emptyness(name)?;
             storage.users.check_user_limit()?;
 
-            let method = parse_auth_method(auth_method)?;
-            validate_password(password, &method, storage)?;
-            let data = AuthData::new(&method, name, password);
-            let auth = AuthDef::new(method, data.into_string());
+            validate_password(password, &auth_method, storage)?;
+            let data = AuthData::new(&auth_method, name, password);
+            let auth = AuthDef::new(*auth_method, data.into_string());
 
             let user_def = storage.users.by_name(name)?;
             if let Some(user_def) = user_def {

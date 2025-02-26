@@ -70,12 +70,15 @@ use crate::ir::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
 use crate::warn;
+use tarantool::auth::AuthMethod;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
 
 // DDL timeout in seconds (1 day).
 const DEFAULT_TIMEOUT_F64: f64 = 24.0 * 60.0 * 60.0;
-const DEFAULT_AUTH_METHOD: &str = "md5";
+// TODO: implement and use `AuthMethod::DEFAULT`
+// when tarantool-module gets Md5 as default one
+const DEFAULT_AUTH_METHOD: AuthMethod = AuthMethod::Md5;
 
 const DEFAULT_IF_EXISTS: bool = false;
 const DEFAULT_IF_NOT_EXISTS: bool = false;
@@ -86,8 +89,16 @@ fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
 }
 
-fn get_default_auth_method() -> SmolStr {
-    SmolStr::from(DEFAULT_AUTH_METHOD)
+/// Matches appropriate [`tarantool::auth::AuthMethod`] with passed `Rule`.
+/// Panics as unreachable code if no appropriate method was found.
+#[inline(always)]
+fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
+    match auth_rule {
+        Rule::ChapSha1 => AuthMethod::ChapSha1,
+        Rule::Ldap => AuthMethod::Ldap,
+        Rule::Md5 => AuthMethod::Md5,
+        _ => unreachable!("got a non-auth parsing rule"),
+    }
 }
 
 // Helper map to store CTE node ids by their names.
@@ -5199,27 +5210,30 @@ impl AbstractSyntaxTree {
                             match pwd_or_ldap_node.rule {
                                 Rule::Ldap => {
                                     password = SmolStr::default();
-                                    auth_method = "Ldap".to_smolstr();
+                                    auth_method = AuthMethod::Ldap;
                                 }
                                 Rule::SingleQuotedString => {
                                     let password_literal =
                                         retrieve_string_literal(self, *pwd_or_ldap_node_id)?;
                                     password = escape_single_quotes(&password_literal);
 
-                                    auth_method = get_default_auth_method();
+                                    auth_method = DEFAULT_AUTH_METHOD;
                                     if let Some(auth_method_node_id) =
                                         alter_option_node.children.get(1)
                                     {
                                         let auth_method_node =
                                             self.nodes.get_node(*auth_method_node_id)?;
-                                        let auth_method_string_node_id = auth_method_node
-                                            .children
-                                            .first()
-                                            .expect("Method expected under ChapSha1/Md5 node");
-                                        auth_method = SmolStr::from(parse_string_value_node(
-                                            self,
-                                            *auth_method_string_node_id,
-                                        )?);
+                                        auth_method = match auth_method_node.rule {
+                                            method @ (Rule::ChapSha1 | Rule::Md5) => auth_method_from_auth_rule(method),
+                                            _ => {
+                                                return Err(SbroadError::Invalid(
+                                                    Entity::Node,
+                                                    Some(format_smolstr!(
+                                                        "ACL node contains unexpected child: {pwd_or_ldap_node:?}",
+                                                    )),
+                                                ))
+                                            }
+                                        };
                                     }
                                 }
                                 _ => {
@@ -5273,7 +5287,7 @@ impl AbstractSyntaxTree {
                     let mut password = None;
                     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
                     let mut timeout = get_default_timeout();
-                    let mut auth_method = get_default_auth_method();
+                    let mut auth_method = DEFAULT_AUTH_METHOD;
                     for child_id in &node.children {
                         let child_node = self.nodes.get_node(*child_id)?;
                         match child_node.rule {
@@ -5287,11 +5301,8 @@ impl AbstractSyntaxTree {
                             Rule::Timeout => {
                                 timeout = get_timeout(self, *child_id)?;
                             }
-                            Rule::ChapSha1 | Rule::Md5 | Rule::Ldap => {
-                                auth_method = child_node
-                                    .value
-                                    .clone() // this is relatively cheap
-                                    .expect("Method expected under ChapSha1/Md5/Ldap node");
+                            method @ (Rule::ChapSha1 | Rule::Md5 | Rule::Ldap) => {
+                                auth_method = auth_method_from_auth_rule(method);
                             }
                             _ => {
                                 return Err(SbroadError::Invalid(

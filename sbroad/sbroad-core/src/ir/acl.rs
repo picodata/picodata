@@ -185,7 +185,7 @@ pub enum AlterOption {
     NoLogin,
     Password {
         password: SmolStr,
-        auth_method: SmolStr,
+        auth_method: tarantool::auth::AuthMethod,
     },
     Rename {
         new_name: SmolStr,

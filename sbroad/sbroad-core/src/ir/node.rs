@@ -797,7 +797,7 @@ pub struct CreateUser {
     pub name: SmolStr,
     pub password: SmolStr,
     pub if_not_exists: bool,
-    pub auth_method: SmolStr,
+    pub auth_method: tarantool::auth::AuthMethod,
     pub timeout: Decimal,
 }
 
