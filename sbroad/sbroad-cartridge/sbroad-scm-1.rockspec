@@ -2,8 +2,7 @@ package = 'sbroad'
 version = 'scm-1'
 
 source  = {
-    url    = 'git+https://git.picodata.io/core/picodata.git';
-    branch = 'master';
+    url    = 'file:///tmp/sbroad.zip';
 }
 
 description = {
