@@ -102,6 +102,24 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.fixture(scope="class")
+def cluster_1(cluster: Cluster):
+    init_cluster(cluster, 1)
+    assert len(cluster.instances) == 1
+    yield cluster
+    cluster.kill()
+
+
+class ClusterSingleInstance:
+    params: list = []
+
+    def test_sql(self, cluster_1: Cluster, query: str, expected: list, error: str):
+        if expected:
+            do_execsql(cluster_1, query, expected)
+        else:
+            do_catchsql(cluster_1, query, error)
+
+
+@pytest.fixture(scope="class")
 def cluster_2(cluster: Cluster):
     init_cluster(cluster, 2)
     assert len(cluster.instances) == 2

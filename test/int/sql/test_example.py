@@ -1,14 +1,14 @@
 from framework.sqltester import (
-    ClusterTwoInstances,
+    ClusterSingleInstance,
     sql_test_file,
 )
 
 
 @sql_test_file("example.sql")
-class TestExample1(ClusterTwoInstances):
+class TestExample1(ClusterSingleInstance):
     pass
 
 
 @sql_test_file("example.sql")
-class TestExample2(ClusterTwoInstances):
+class TestExample2(ClusterSingleInstance):
     pass
