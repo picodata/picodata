@@ -1758,6 +1758,8 @@ cluster:
     # Trigger log compaction
     leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 1")
 
+    leader.sql("ALTER SYSTEM RESET raft_wal_count_max")
+
     # Add a new replicaset, which catches up by raft snapshot
     storage_3_1 = cluster.add_instance(tier="storage", wait_online=True)
     storage_3_2 = cluster.add_instance(tier="storage", wait_online=True)
@@ -2168,4 +2170,91 @@ cluster:
     assert ddl["row_count"] == 1
 
     ddl = i2.sql("CREATE TABLE t2(a int primary key) distributed by (a) in tier tier_2")
+    assert ddl["row_count"] == 1
+
+
+def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
+    leader, i2, _ = cluster.deploy(instance_count=3)
+
+    # -- bad scenario with `ddl finalizer was compacted` in client console --
+    # DDL `create table t1 ...`
+    # reenterable schema change request body | .............
+    #                                        | prepare_index = cas(Prepare)
+    #                                        | wait_for_ddl_commit(prepare_index) | ..........
+    #                                        |                                    | exec of successfull call of proc_apply_schema_change by governor
+    #                                        |                                    | exec iteration of raft main loop without corresponding to t1 DdlCommit
+    #                                        |                                    | returns there and again yields
+    #                                        |                                    | exec iteration of raft main loop with corresponding to t1 DdlCommit and compact log
+    #                                        |                                    | returns there and do not find corresponding to t1 DdlCommit, because it was compacted
+    #                                        |                                    | (another DDL `create table t2`)
+    #                                        |                                    | (`corresponding to second DDL arriving to "empty" log and...`)
+    #                                        |                                    | returns there find corresponding to t2 (Prepare, DdlCommit...) entries
+
+    # following test is repro of situation above
+
+    # Trigger log compaction
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 0")
+
+    # original repro
+
+    # it hangs on wait_index inside reenterable_schema_change_request/wait_for_ddl_commit
+    # because can't find corresponding DdlPrepare, which was compacted
+    # with pytest.raises(TarantoolError, match="timeout"):
+    #     i2.sql(
+    #         """
+    #         CREATE TABLE t1 (id INT PRIMARY KEY)
+    #         OPTION (TIMEOUT = 3)
+    #         """
+    #     )
+
+    # actually it's `not yet applied` case
+    with pytest.raises(
+        TarantoolError,
+        match="Log compaction happened during DDL execution. Table creation is in progress.",
+    ):
+        i2.sql(
+            """
+            CREATE TABLE t1 (id INT PRIMARY KEY)
+            OPTION (TIMEOUT = 3)
+            """
+        )
+
+    # proof that it is `not yet applied`
+    result = leader.sql("SELECT * FROM _pico_table WHERE name = 't1'")
+    assert result != []
+
+    # Create a conflict to force ddl abort.
+    space_name = "conflict"
+    i2.eval("box.schema.space.create(...)", space_name)
+
+    # actually it's `abort` case
+    with pytest.raises(
+        TarantoolError,
+        match="Log compaction happened during DDL execution. Table creation is in progress.",
+    ):
+        leader.sql(
+            """
+            CREATE TABLE conflict (id INT PRIMARY KEY)
+            OPTION (TIMEOUT = 3)
+            """
+        )
+
+    # proof that it is `aborted`
+    result = leader.sql("SELECT * FROM _pico_table WHERE name = 'conflict'")
+    assert result == []
+
+    result = leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
+    assert result == [["next_schema_version", 6]]
+
+    i2.eval("box.space.conflict:drop()")
+
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 1000")
+
+    # normal table creation works fine
+    ddl = leader.sql(
+        """
+        CREATE TABLE t2 (id INT PRIMARY KEY)
+        OPTION (TIMEOUT = 3)
+        """
+    )
     assert ddl["row_count"] == 1

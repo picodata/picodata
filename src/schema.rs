@@ -7,6 +7,7 @@ use crate::plugin::PluginIdentifier;
 use crate::plugin::ServiceId;
 use crate::storage::*;
 use crate::tier::DEFAULT_TIER;
+use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::op::{Ddl, Op};
@@ -2434,16 +2435,29 @@ const SPACE_ID_TEMPORARY_MIN: SpaceId = 1 << 30;
 ///
 /// If `timeout` is reached earlier returns an error.
 pub fn wait_for_ddl_commit(
-    prepare_commit: RaftIndex,
+    ddl_prepare_index: RaftIndex,
     timeout: Duration,
 ) -> traft::Result<RaftIndex> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let deadline = fiber::clock().saturating_add(timeout);
-    let last_seen = prepare_commit;
+    let compacted_index = raft_storage.compacted_index()?;
+
     loop {
+        // If DdlPrepare compacted, then it's finalizer maybe too.
+        // Even if we find in raft log ddl finalizer, we can't be sure that it's ours.
+        if ddl_prepare_index <= compacted_index {
+            tlog!(Warning, "DDL finalizer raft op probably was compacted");
+
+            return Err(BoxError::new(
+                ErrorCode::RaftLogCompacted,
+                "DDL finalizer raft op probably was compacted",
+            )
+            .into());
+        }
+
         let cur_applied = node.get_index();
-        let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1, None)?;
+        let new_entries = raft_storage.entries(ddl_prepare_index + 1, cur_applied + 1, None)?;
         for entry in new_entries {
             if entry.entry_type != raft::prelude::EntryType::EntryNormal {
                 continue;
@@ -2453,10 +2467,7 @@ pub fn wait_for_ddl_commit(
             match op {
                 Op::DdlCommit => return Ok(index),
                 Op::DdlAbort { cause } => return Err(DdlError::Aborted(cause).into()),
-                Op::DdlPrepare { .. } => {
-                    #[rustfmt::skip]
-                    return Err(BoxError::new(ErrorCode::RaftLogCompacted, "DDL finalizer raft op was compacted").into());
-                }
+                Op::DdlPrepare { .. } => unreachable!("Can't skip ddl finalizer with not compacted original DdlPrepare, otherwise completely broken."),
                 _ => (),
             }
         }

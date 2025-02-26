@@ -243,7 +243,7 @@ impl RaftSpaceAccess {
 
     /// Returns `compacted_index` that is `first_index - 1`.
     #[inline(always)]
-    fn compacted_index(&self) -> tarantool::Result<RaftIndex> {
+    pub fn compacted_index(&self) -> tarantool::Result<RaftIndex> {
         let res = self.try_get_raft_state("compacted_index")?;
         let res = res.unwrap_or(0);
         Ok(res)
