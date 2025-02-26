@@ -10,18 +10,20 @@
 
 ## Общие сведения {: #intro }
 
-Плагин Uroboros используется для однонаправленной асинхронной репликации
-данных между двумя кластерами, созданных при помощи фреймворка Vshard.
+Плагин Uroboros используется для однонаправленной асинхронной логической
+[репликации](../overview/glossary.md#replication) данных между двумя
+кластерами Picodata.
 
 Основные задачи Uroboros:
 
 - перенос кластера на новую площадку без простоя
 - обеспечение отказоустойчивости путем репликации одного кластера в другой
 
+<!--
 ## Ограничения {: #limitations }
 
 1. Источником может быть только кластер Tarantool Cartridge, где
-   развернуты роли-сайдкары, включенные в поставку.
+   развернуты [роли-сайдкары], включенные в поставку.
 2. Роли надо развернуть на всех Vshard-группах, которые планируется
    реплицировать.
 3. Источник должен быть запущен на форке Tarantool от компании Picodata,
@@ -33,6 +35,39 @@ local ok, err = cartridge.cfg({}, {
     wal_ext = { new_old = true },
 })
 ```
+
+[роли-сайдкары]: https://git.picodata.io/picodata/plugin/uroboros-sidecars/cartridge-sidecar
+-->
+
+## Принцип работы {: #details }
+
+Для использования Uroboros требуются два кластера:
+кластер источник и кластер-приемник. Далее необходимо [развернуть кластер]
+Picodata с включенным плагином Uroboros. В этом кластере может быть как
+один инстанс, так и несколько — число инстансов определяет то, сколько
+исполнителей (процессов копирования) будет выполняться одновременно.
+
+При условии [корректной настройки](#config) подключения к кластерам Uroboros
+будет переносить данные из кластера-источника в кластер-приемник с помощью
+логической репликации (копирования журналов изменений). Этот способ
+предоставляет необходимую гибкость (позволяет работать с отдельными таблицами) и
+учитывает семантику данных.
+
+[развернуть кластер]: ../tutorial/deploy.md
+[файберов]: ../overview/glossary.md#fiber
+
+Схема работы плагина показана ниже:
+
+![Uroboros replication](../images/uroboros_replication.svg)
+
+Плагин учитывает топологию кластеров, с которыми он работает. Каждый
+исполнитель плагина Uroboros реплицирует один или более репликасетов из
+кластера-источника. На исполнителе создается набор [файберов], каждый
+из которых обрабатывает свою связку <репликасет источник + диапазон
+сегментов>. Таким образом, получается паралелльная отправка в
+кластер-приемник записей из различных сегментов. При этом сохраняется
+упорядоченность записей и изменений в рамках каждого сегмента (не
+возникает "состояния гонки").
 
 ## Состав плагина {: #plugin_files }
 
@@ -50,11 +85,86 @@ local ok, err = cartridge.cfg({}, {
 ```
 
 Основная логика плагина обеспечивается разделяемой библиотекой
-`liburoboros.so`. Исходная конфигурация плагина задается в файле манифеста
+`liburoboros.so`. Исходная [конфигурация](#config) плагина задается в файле манифеста
 (`manifest.yaml`). Директория `migrations` зарезервирована для файлов
 [миграций].
 
 [миграций]: ../overview/glossary.md#migration
+
+## Конфигурация плагина {: #config }
+
+Основные параметры плагина включают в себя:
+
+- имя отдельного пользователя (должно совпадать на кластере-источнике и
+  кластере-приемнике), под которым Uroboros будет подключаться
+- группа параметров для подключения к кластеру-источнику (producer) и
+  кластеру-приемнику (consumer)
+- группа параметров по настройке репликации (группы шардирования, исключаемые
+  спейсы (таблицы), настройки параллелизма, переподключения и т.д.)
+
+Исходная конфигурация плагина определяется файлом-манифестом:
+
+??? example "manifest.yaml"
+    ```yaml
+    description: Plugin tnt clusters replication
+    name: uroboros
+    version: 0.4.2
+    services:
+      - name: uroboros
+        description: uroboros descr
+        default_configuration:
+          password: password
+          producer:
+            user_url: http://localhost:9001/uroboros/api/v1/user
+            topology_url: http://localhost:9001/uroboros/api/v1/topology
+            space_info_url: http://localhost:9001/uroboros/api/v1/space
+          consumer:
+            type: tarantool
+            attributes:
+              space_info_url: http://localhost:9002/uroboros/api/v1/space
+              user_url: http://localhost:9002/uroboros/api/v1/user
+              topology_url: http://localhost:9002/uroboros/api/v1/topology
+          enabled_groups: ["default"]
+          disabled_spaces: []
+          buckets_per_writer: 1000
+          reconnect_delay: 10
+    migration:
+      - migrations/0001_state.db
+      - migrations/0002_uroboros_state.db
+    ```
+
+Пользовательская конфигурация плагина определяется отдельным
+конфигурационным файлом для сервиса плагина:
+
+
+```yaml
+default_configuration:
+  producer: # настройки кластера-источника
+    space_info_url: "http://<source_address>/uroboros/api/v1/space"
+    user_url: "http://<source_address>/uroboros/api/v1/user"
+    topology_url: "http://<source_address>/uroboros/api/v1/topology"
+  consumer: # настройки кластера-приемника
+    type: "tarantool" # может быть Tarantool, или, в будущем — Kafka или Picodata
+    attributes:
+      space_info_url: "http://<destination_address>/uroboros/api/v1/space"
+      user_url: "http://<destination_address>/uroboros/api/v1/user"
+      topology_url: "http://<destination_address>/uroboros/api/v1/topology"
+  enabled_groups: # группы шардирования, которые следует реплицировать
+    - storage
+    - group_1
+    - group_2
+  disabled_spaces: # таблицы из указанных выше групп шардирования, которые реплицировать НЕ следует
+    - ignored_space_1
+    - ignored_space_2
+  buckets_per_writer: 1000 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
+  reconnect_delay: 10 # задержка перед восстановлением коннекта к источнику
+```
+
+Для изменения настроек уже запущенного плагина используйте SQL-команду `ALTER PLUGIN ...`
+
+См. также:
+
+- [Конфигурация плагинов](../architecture/plugins.md#plugin_config)
 
 ## Подключение плагина {: #plugin_enable }
 
@@ -165,30 +275,7 @@ DC1: # Датацентр (failure_domain)
       ansible_host: ip3
 ```
 
-Создайте файл с конфигурацией. Пример:
-
-```yaml
-uroboros:
-  producer: # настройки кластера-источника
-    space_info_url: "http://<source_address>/uroboros/api/v1/space"
-    user_url: "http://<source_address>/uroboros/api/v1/user"
-    topology_url: "http://<source_address>/uroboros/api/v1/topology"
-  consumer: # настройки приемника
-    type: "tarantool" # может быть tarantool, или, в будущем kafka
-    attributes:
-      space_info_url: "http://<destination_address>/uroboros/api/v1/space"
-      user_url: "http://<destination_address>/uroboros/api/v1/user"
-      topology_url: "http://<destination_address>/uroboros/api/v1/topology"
-  enabled_groups: # vshard-группы, которые следует реплицировать
-    - storage
-    - group_1
-    - group_2
-  disabled_spaces: # таблицы из указанных выше vshard-group, которые реплицировать НЕ следует
-    - ignored_space_1
-    - ignored_space_2
-  buckets_per_writer: 300 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
-  reconnect_delay: 10 # задержка перед восстановлением коннекта к источнику
-```
+Создайте файл с [конфигурацией](#config).
 
 Подготовьте плейбук `picodata.yml`:
 
@@ -216,6 +303,39 @@ uroboros:
 ```bash
 ansible-playbook -i uroboros.yml picodata.yml
 ```
+
+## Мониторинг показателей плагина {: #grafana_board}
+
+Процесс работы плагина Uroboros можно удобно отслеживать в графическом
+интерфейсе [Grafana], для которого Picodata поставляет файл
+конфигурации (dashboard).
+
+Для настройки мониторинга импортируйте dashboard с данными Uroboros. Для
+этого понадобится файл [dashboard.grafana.json], который следует
+добавить в меню `Dashboards` > `New` > `Import`:
+
+![Import Uroboros dashboard](../images/grafana/import_dashboard.png)
+
+Панель dashboard для плагина Uroboros отображает ряд графиков, на
+которых отражена пропускная способность кластера с Uroboros, статистика
+по скопированным пакетам, а также данные по количеству записей в
+кластере-источнике и кластере-приемнике.
+
+Внешний вид dashboard для Uroboros показан ниже:
+
+![Uroboros dashboard](../images/grafana/uroboros.png)
+
+Для настройки dashboard используйте параметры в верхней части экрана:
+
+- **Источник данных** — по умолчанию `Prometheus`
+- **Кластер уробороса** — имя кластера с Uroboros
+- **Нода уробороса** — данные с каких узлов кластера с Uroboros следует отображать (по умолчанию `All`, т.е. со всех узлов)
+- **Кластер источник** — имя кластера, с которого Uroboros будет забирать данные (значение по умолчанию — `pustoe`)
+- **Кластер-приемник** — имя кластера, в который Uroboros будет записывать данные (значение по умолчанию — `porognee`)
+- **Игнорируемые спейсы** — список спейсов, данные которых не будут скопированы
+
+[Grafana]: ../admin/monitoring.md#grafana
+[dashboard.grafana.json]: https://git.picodata.io/picodata/plugin/uroboros/-/raw/master/observability/dashboard.grafana.json
 
 См. также:
 
