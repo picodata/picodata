@@ -295,8 +295,14 @@ postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
 
 * Поступающие запросы без изменений передаются в Picodata в текстовом виде,
   поэтому возможно выполнение только поддерживаемых в Picodata запросов
-* [Системные каталоги PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html)
-  реализованы частично
-* Подключение по протоколу PostgreSQL работает в режиме
-  [autocommit](https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html),
-  т.к. Picodata не поддерживает интерактивные транзакции
+* [Системные каталоги PostgreSQL] реализованы частично
+* По умолчанию подключение по протоколу PostgreSQL использует режим
+  [autocommit]. Команды [BEGIN], [COMMIT], [ROLLBACK], применяемые для
+ управления интерактивными транзакциями, реализованы только как
+ заглушки.
+
+[Системные каталоги PostgreSQL]: https://www.postgresql.org/docs/current/catalogs.html
+[autocommit]: https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html
+[BEGIN]: https://www.postgresql.org/docs/current/sql-begin.html
+[COMMIT]: https://www.postgresql.org/docs/current/sql-commit.html
+[ROLLBACK]: https://www.postgresql.org/docs/current/sql-rollback.html
