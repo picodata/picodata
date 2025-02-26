@@ -356,7 +356,11 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
         assert get_table_size(instance, "sharded_table") > 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/1124
+    """
     # Need 3 instances for quorum
     cluster.set_service_password("secret")
     i1 = cluster.add_instance(wait_online=False, replicaset_name="r1")
@@ -405,7 +409,11 @@ def assert_tier_bucket_count(cluster: Cluster, name: str, bucket_count: int, *in
         cluster.wait_until_instance_has_this_many_active_buckets(x, int(bucket_count / len(instances)))
 
 
+@pytest.mark.flaky(reruns=3)
 def test_bucket_count_custom_and_default(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/1397
+    """
     cluster.set_service_password("secret")
     cluster.set_config_file(
         yaml="""

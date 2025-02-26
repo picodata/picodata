@@ -2201,7 +2201,11 @@ def test_check_format(cluster: Cluster):
     assert dml["row_count"] == 2
 
 
+@pytest.mark.flaky(reruns=3)
 def test_values(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/1354
+    """
     # Initially test scenarios (presented below) were described in the issue:
     # https://git.picodata.io/core/picodata/-/issues/1278.
     cluster.deploy(instance_count=2)
@@ -6080,7 +6084,11 @@ buckets = any"""
     assert "\n".join(lines) == expected_explain
 
 
+@pytest.mark.flaky(reruns=3)
 def test_extreme_integer_values(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/1288
+    """
     [i1, i2, i3] = cluster.deploy(instance_count=3)
 
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)

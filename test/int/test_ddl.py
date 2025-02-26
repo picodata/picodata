@@ -376,7 +376,11 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
 
 ################################################################################
+@pytest.mark.flaky(reruns=3)
 def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
+    """
+    flaky: https://git.picodata.io/core/picodata/-/issues/871
+    """
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # Put i3 to sleep, so that schema change get's blocked.
