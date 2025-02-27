@@ -239,14 +239,15 @@ fn proc_discover(request, request_to) -> Result
 - *Done*: (MP_MAP `Role`) — если результат уже известен:
     - `leader_address`: (MP_STR) адрес лидера
 
-### .proc_enable_all_plugins {: #proc_enable_all_plugins }
+### .proc_before_online {: #proc_before_online }
 
 ```rust
-fn proc_enable_all_plugins(term, applied, timeout)
+fn proc_before_online(term, applied, timeout)
 ```
 
-Включает на текущем инстансе все плагины со статусом `enable = true`.
-Вызывает коллбэки [`on_start`] для всех сервисов всех плагинов.
+На текущем инстансе включает все плагины со статусом `enable = true`
+и инициализирует протокол PostgreSQL. Вызывает коллбэки [`on_start`] для
+всех сервисов всех плагинов.
 
 [Губернатор][g] вызывает данную хранимую процедуру при повторной
 инициализации инстансов после их временного выключения или выхода из строя.
