@@ -545,6 +545,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
         - (MP_MAP `PeerAddress`):
             - `raft_id`: (MP_INT)
             - `address`: (MP_STR)
+            - `connection_type`: (MP_STR) тип соединения (`iproto` или `pgproto`)
     - `box_replication`: (MP_ARRAY of MP_STR): адреса всех реплик в репликасете
                                               присоединяющегося инстанса
 
