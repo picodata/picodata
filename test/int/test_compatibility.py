@@ -58,6 +58,9 @@ def test_instances_of_incompatible_versions(cluster: Cluster):
     def upgrade_to_old_version(version):
         major = int(version.split(".")[0])
         minor = int(version.split(".")[1]) - 2
+        if minor <= 0:
+            major -= 1
+            minor = 1
         return f"{major}.{minor}.0-xxxx"
 
     picodata_version = i1.call("box.space._pico_property:get", "cluster_version")[1]
