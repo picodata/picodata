@@ -153,6 +153,31 @@ fn proc_apply_schema_change(term, applied, timeout) -> Result
     - `message`: (MP_STR)
     - `instance_name`: (MP_STR)
 
+### .proc_before_online {: #proc_before_online }
+
+```rust
+fn proc_before_online(term, applied, timeout)
+```
+
+На текущем инстансе включает все плагины со статусом `enable = true`
+и инициализирует протокол PostgreSQL. Вызывает коллбэки [`on_start`] для
+всех сервисов всех плагинов.
+
+[Губернатор][g] вызывает данную хранимую процедуру при повторной
+инициализации инстансов после их временного выключения или выхода из строя.
+
+[`on_start`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_start
+
+См. также:
+
+* [Инструкции и руководства — Добавление узлов](../tutorial/node_add.md)
+
+Параметры:
+
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
 ### .proc_cas {: #proc_cas }
 
 ```rust
@@ -238,31 +263,6 @@ fn proc_discover(request, request_to) -> Result
     - `peers`: (MP_ARRAY of MP_STR)
 - *Done*: (MP_MAP `Role`) — если результат уже известен:
     - `leader_address`: (MP_STR) адрес лидера
-
-### .proc_before_online {: #proc_before_online }
-
-```rust
-fn proc_before_online(term, applied, timeout)
-```
-
-На текущем инстансе включает все плагины со статусом `enable = true`
-и инициализирует протокол PostgreSQL. Вызывает коллбэки [`on_start`] для
-всех сервисов всех плагинов.
-
-[Губернатор][g] вызывает данную хранимую процедуру при повторной
-инициализации инстансов после их временного выключения или выхода из строя.
-
-[`on_start`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/plugin/interface/trait.Service.html#method.on_start
-
-См. также:
-
-* [Инструкции и руководства — Добавление узлов](../tutorial/node_add.md)
-
-Параметры:
-
-- `term`: (MP_INT `RaftTerm`)
-- `applied`: (MP_INT `RaftIndex`)
-- `timeout`: (MP_INT | MP_FLOAT) в секундах
 
 ### .proc_enable_plugin {: #proc_enable_plugin }
 
