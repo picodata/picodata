@@ -5475,6 +5475,12 @@ impl AbstractSyntaxTree {
                     let plan_id = plan.nodes.push(create_user.into());
                     map.add(id, plan_id);
                 }
+                Rule::AlterTable => {
+                    return Err(SbroadError::Unsupported(
+                        Entity::Ddl,
+                        Some("ALTER TABLE is reserved for future use".to_smolstr()),
+                    ));
+                }
                 Rule::DropUser => {
                     let mut name = None;
                     let mut timeout = get_default_timeout();

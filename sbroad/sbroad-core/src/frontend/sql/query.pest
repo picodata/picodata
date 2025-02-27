@@ -80,7 +80,7 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
             PrivilegeUsage = { ^"usage" }
             PrivilegeWrite = { ^"write" }
 
-DDL = _{ CreateTable | DropTable | TruncateTable | CreateIndex | DropIndex | CreateSchema | DropSchema
+DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | DropIndex | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
          | CreatePartition }
     CreatePartition = ${
@@ -127,6 +127,42 @@ DDL = _{ CreateTable | DropTable | TruncateTable | CreateIndex | DropIndex | Cre
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ TableNameIdentifier ~ W ~ AlterTableOperation }
+            TableNameIdentifier = @{ Identifier }
+            ColumnNameIdentifier = @{ Identifier }
+        AlterTableOperation = _{ AlterTableColumnAdd | AlterTableColumnDrop | AlterTableColumnAlter | AlterTableColumnRename }
+            // examples:
+            // - "address TEXT": add a single column with only a type
+            // - "age UNSIGNED NOT NULL": add a single column with both type and nullability
+            // - "address TEXT, age UNSIGNED NOT NULL": chaining for a multiple columns
+            AlterTableColumnAdd = { ^"add" ~ W ~ (^"column" ~ W)? ~ (IfNotExists ~ W)? ~ AlterTableColumnAddParams }
+                AlterTableColumnAddParam = _{ ColumnNameIdentifier ~ W ~ ColumnDefType ~ (W ~ ColumnDefIsNull)? }
+                AlterTableColumnAddParams = { AlterTableColumnAddParam ~ (WO ~ "," ~ WO ~ AlterTableColumnAddParam)* }
+            // examples:
+            // - "address": deletion of a single column
+            // - "address, age": deletion of multiple columns
+            AlterTableColumnDrop = { ^"drop" ~ W ~ (^"column" ~ W)? ~ (IfExists ~ W)? ~ AlterTableColumnDropParams }
+                AlterTableColumnDropParam = _{ ColumnNameIdentifier }
+                AlterTableColumnDropParams = { AlterTableColumnDropParam ~ (WO ~ "," ~ WO ~ AlterTableColumnDropParam)* }
+            // examples:
+            // - "address TYPE TEXT": change only a type of a single column
+            // - "age SET NOT NULL": introduce nullability of a single column
+            // - "name DROP NOT NULL": revoke nullability of a single column
+            // - "address TYPE TEXT, address SET NOT NULL, age DROP NOT NULL": chaining for a multiple columns
+            AlterTableColumnAlter = { ^"alter" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnAlterParams }
+                AlterTableColumnAlterParam = _{ ColumnNameIdentifier ~ W ~ (AlterTableColumnAlterDropNotNull | AlterTableColumnAlterSetNotNull | AlterTableColumnAlterSetType) }
+                AlterTableColumnAlterParams = { AlterTableColumnAlterParam ~ (WO ~ "," ~ WO ~ AlterTableColumnAlterParam)* }
+                    AlterTableColumnAlterSetType = { (^"set" ~ W ~ ^"data" ~ W)? ~ ^"type" ~ W ~ ColumnDefType }
+                    AlterTableColumnAlterSetNotNull = { ^"set" ~ W ~ ^"not" ~ W ~ ^"null" }
+                    AlterTableColumnAlterDropNotNull = { ^"drop" ~ W ~ ^"not" ~ W ~ ^"null" }
+            // examples:
+            // - "address TO gender": change a name for a single column
+            // - "address TO gender, age TO salary": chaining for a multiple columns
+            AlterTableColumnRename = { ^"rename" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnRenameParams }
+                AlterTableColumnRenameParam = _{ ColumnNameIdentifierFrom ~ W ~ ^"to" ~ W ~ ColumnNameIdentifierInto }
+                AlterTableColumnRenameParams = { AlterTableColumnRenameParam ~ (WO ~ "," ~ WO ~ AlterTableColumnRenameParam)* }
+                    ColumnNameIdentifierFrom = @{ ColumnNameIdentifier }
+                    ColumnNameIdentifierInto = @{ ColumnNameIdentifier }
     CreateProc = ${
         ^"create" ~ W ~ ^"procedure" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ WO
         ~ ProcParams ~ W ~ (^"language" ~ W ~ ProcLanguage ~ W)?

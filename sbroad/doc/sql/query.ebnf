@@ -149,7 +149,7 @@ grant       ::= 'GRANT' (
                     | role
                 )
                 'TO' (role | user)
-ddl         ::= (alter_plugin | alter_procedure | alter_system
+ddl         ::= (alter_plugin | alter_procedure | alter_system | alter_table
                 | create_index | create_plugin | create_procedure | create_table
                 | drop_index | drop_plugin | drop_procedure | drop_table | truncate_table)
 alter_system ::= 'ALTER' 'SYSTEM'
@@ -229,6 +229,21 @@ drop_table     ::= 'DROP' 'TABLE' ('IF' 'EXISTS')? table
 truncate_table ::= 'TRUNCATE' ('TABLE')? table
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+alter_table    ::= 'ALTER' 'TABLE' table (
+                       ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? (column type ('NOT' 'NULL')?) (',' column type ('NOT' 'NULL')?)*)
+                       | ('RENAME' 'COLUMN'? (column 'TO' column) (',' column 'TO' column)*)
+                       | ('DROP' 'COLUMN'? ('IF' 'EXISTS')? (column) (',' column)*)
+                       | ('ALTER' 'COLUMN'?
+                           (column (
+                               (('SET' 'DATA')? 'TYPE' type)
+                               | (('SET' | 'DROP') 'NOT' 'NULL')
+                           ))
+                           (',' column (
+                               (('SET' 'DATA')? 'TYPE' type)
+                               | (('SET' | 'DROP') 'NOT' 'NULL')
+                           ))*
+                       )
+                   )
 drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role
 drop_user      ::= 'DROP' 'USER' ('IF' 'EXISTS')? user
 create_plugin  ::= 'CREATE' 'PLUGIN' ('IF' 'NOT' 'EXISTS')? plugin version
