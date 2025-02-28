@@ -18,8 +18,8 @@
 * **RESET ALL** — сброс всех параметров до их значений по умолчанию.
 
 * **FOR TIER** / **FOR ALL TIERS** — применение действия для конкретного
-  тира, или глобально для всех тиров. По умолчанию параметры
-  устанавливаются глобально.
+  тира, или глобально для всех тиров. Если этот параметр не указан, то
+  подразумевается, что действие распространится глобально.
 
 ## Примеры {: #examples }
 
@@ -27,6 +27,12 @@
 
 ```sql
 ALTER SYSTEM SET auth_password_enforce_digits to false;
+```
+
+Установка параметра для конкретного тира:
+
+```sql
+ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR TIER default;
 ```
 
 Сброс параметра:
@@ -39,6 +45,12 @@ ALTER SYSTEM RESET auth_password_enforce_digits;
 
 ```sql
 ALTER SYSTEM RESET all;
+```
+
+Сброс параметра для конкретного тира:
+
+```sql
+ALTER SYSTEM RESET memtx_checkpoint_interval FOR TIER default;
 ```
 
 Получить текущее значение параметра:
