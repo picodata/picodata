@@ -580,6 +580,28 @@ class Connection(tarantool.Connection):  # type: ignore
         return result
 
 
+# Check whether error can be caused by instance crash.
+# For example, `auth attempts limit exceeded` can't
+# be cause of instance crash.
+def can_cause_fail(error: Exception):
+    if not isinstance(error, DatabaseError):
+        return True
+
+    error_code = error.args[0].code
+
+    # 47: ("ER_PASSWORD_MISMATCH", "Incorrect password supplied for user '%s'")
+    if error_code == 47:
+        return False
+
+    # 32: ("ER_PROC_LUA", "%s")
+    if error_code == 32:
+        # Picodata tracks auth attempts in custom lua hook
+        if error.args[0].message == "Maximum number of login attempts exceeded":
+            return False
+
+    return True
+
+
 @dataclass
 class Instance:
     binary_path: str
@@ -714,7 +736,8 @@ class Instance:
                 fetch_schema=False,
             )
         except Exception as e:
-            self.check_process_alive()
+            if can_cause_fail(e):
+                self.check_process_alive()
             # if process is dead, the above call will raise an exception
             # otherwise we raise the original exception
             raise e from e
@@ -740,7 +763,8 @@ class Instance:
                 return result
         except Exception as e:
             log.error(f"{self.name or self.port} RPC CALL {fn} failed: {e}", stacklevel=2)
-            self.check_process_alive()
+            if can_cause_fail(e):
+                self.check_process_alive()
             raise e from e
 
     def eval(
@@ -764,7 +788,8 @@ class Instance:
                 return result
         except Exception as e:
             log.error(f"{self.name or self.port} RPC EVAL `{short_expr}` failed: {e}", stacklevel=2)
-            self.check_process_alive()
+            if can_cause_fail(e):
+                self.check_process_alive()
             raise e from e
 
     def kill(self):
@@ -847,7 +872,8 @@ class Instance:
             return result
         except Exception as e:
             log.error(f"{self.name or self.port} RPC SQL to `{short_sql}` failed: {e}", stacklevel=2)
-            self.check_process_alive()
+            if can_cause_fail(e):
+                self.check_process_alive()
             raise e from e
 
     def retriable_sql(

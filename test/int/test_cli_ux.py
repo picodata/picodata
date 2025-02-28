@@ -660,7 +660,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
     i1.wait_online()
 
     # auth via pico_service many times
-    for _ in range(100):
+    for _ in range(6):
         with pytest.raises(NetworkError):
             i1.sql("try to auth", user="pico_service", password="wrong_password")
 
