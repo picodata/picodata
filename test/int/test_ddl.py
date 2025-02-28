@@ -1823,7 +1823,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     assert r1_active_buckets_count == 3000
 
     # Pause buckets receiving during rebalancing on a r2.
-    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = true")
+    r1.eval("vshard.storage.internal.errinj.ERRINJ_LAST_SEND_DELAY = true")
 
     # Rebalancer fiber works on a replicaset master with the smallest uuid.
     rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
@@ -1855,7 +1855,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
 
     # Resume buckets receiving on r2.
     lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
-    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = false")
+    r1.eval("vshard.storage.internal.errinj.ERRINJ_LAST_SEND_DELAY = false")
     # Wait for rebalancing to finish.
     lc.wait_matched()
 
@@ -1884,7 +1884,7 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
     ][0][0]
     assert r1_active_buckets_count == 3000
 
-    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = true")
+    r1.eval("vshard.storage.internal.errinj.ERRINJ_LAST_SEND_DELAY = true")
 
     rebalancer_r = r1 if r1.uuid() < r2.uuid() else r2
 
@@ -1908,7 +1908,7 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
         r1.sql("TRUNCATE test")
 
     lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
-    r2.eval("vshard.storage.internal.errinj.ERRINJ_LAST_RECEIVE_DELAY = false")
+    r1.eval("vshard.storage.internal.errinj.ERRINJ_LAST_SEND_DELAY = false")
     lc.wait_matched()
 
     # Execute TRUNCATE after rebalancing is finished.
