@@ -117,6 +117,10 @@ fn preload_vshard() {
     preload!("vshard.heap", "vshard/heap.lua");
     preload!("vshard.registry", "vshard/registry.lua");
     preload!("vshard.replicaset", "vshard/replicaset.lua");
+    preload!("vshard.service_info", "vshard/service_info.lua");
+    preload!("vshard.storage.export_log", "vshard/storage/export_log.lua");
+    preload!("vshard.storage.exports", "vshard/storage/exports.lua");
+    preload!("vshard.storage.schema", "vshard/storage/schema.lua");
     preload!("vshard.rlist", "vshard/rlist.lua");
     preload!("vshard.router", "vshard/router/init.lua");
     preload!("vshard.storage", "vshard/storage/init.lua");
