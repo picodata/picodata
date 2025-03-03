@@ -169,6 +169,14 @@ poetry run pytest -k test_sql_acl
 poetry run pytest -n 20
 ```
 
+#### Finding flaky tests
+
+To identify flaky tests by running them multiple times, use the --flake-finder and --flake-runs options with pytest. For example:
+
+```bash
+poetry run pytest test/pgproto/datetime_test.py -n=auto -k test_localtimestamp --flake-finder --flake-runs=100
+```
+
 #### Running tests without rebuilding the binary
 
 By default pytest in the beginning of the test run invokes cargo build
