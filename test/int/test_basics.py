@@ -740,8 +740,7 @@ def test_proc_runtime_info(instance: Instance):
     )
 
 
-def test_file_shredding(cluster: Cluster, class_tmp_dir):
-    tmp_path = class_tmp_dir
+def test_file_shredding(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env["PICODATA_SHREDDING"] = "1"
     i1.start()
@@ -749,9 +748,9 @@ def test_file_shredding(cluster: Cluster, class_tmp_dir):
 
     i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", True)
 
-    with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
+    with open(os.path.join(i1.instance_dir, "00000000000000000000.xlog"), "rb") as xlog:
         xlog_before_shred = xlog.read(100)
-    with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
+    with open(os.path.join(i1.instance_dir, "00000000000000000000.snap"), "rb") as snap:
         snap_before_shred = snap.read(100)
 
     # allow only one snapshot at a time
@@ -762,9 +761,9 @@ def test_file_shredding(cluster: Cluster, class_tmp_dir):
     i1.eval("box.snapshot(); box.snapshot()")
 
     def check_files_got_shredded():
-        with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
+        with open(os.path.join(i1.instance_dir, "00000000000000000000.xlog"), "rb") as xlog:
             xlog_after_shred = xlog.read(100)
-        with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
+        with open(os.path.join(i1.instance_dir, "00000000000000000000.snap"), "rb") as snap:
             snap_after_shred = snap.read(100)
 
         assert xlog_before_shred != xlog_after_shred

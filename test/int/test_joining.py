@@ -241,8 +241,8 @@ def test_separate_clusters(cluster: Cluster):
     # `--peer` option specified. As a result two instances form their
     # own clusters and don't interact at all.
     #
-    i1a = cluster.add_instance(name="i1", replicaset_name="r1", wait_online=False)
-    i1b = cluster.add_instance(name="i1", replicaset_name="r1", wait_online=False)
+    i1a = cluster.add_instance(wait_online=False)
+    i1b = cluster.add_instance(wait_online=False)
 
     i1a.peers.clear()
     i1b.peers.clear()
@@ -264,12 +264,12 @@ def test_separate_clusters(cluster: Cluster):
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
     # Despite instance_name and replicaset_name are the same, their uuids differ
 
-    assert i1a_info["name"] == "i1"
-    assert i1b_info["name"] == "i1"
+    assert i1a_info["name"] == "default_1_1"
+    assert i1b_info["name"] == "default_1_1"
     assert i1a_info["uuid"] != i1b_info["uuid"]
 
-    assert i1a_info["replicaset_name"] == "r1"
-    assert i1b_info["replicaset_name"] == "r1"
+    assert i1a_info["replicaset_name"] == "default_1"
+    assert i1b_info["replicaset_name"] == "default_1"
     assert i1a_info["replicaset_uuid"] != i1b_info["replicaset_uuid"]
 
 

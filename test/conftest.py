@@ -8,7 +8,6 @@ import shutil
 import sys
 import time
 import threading
-import gitlab
 from packaging.version import Version
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -1887,16 +1886,13 @@ class Cluster:
             if bootstrap_port == pg_port or port == pg_port:
                 pg_port = self.port_distributor.get()
 
-        # i is the index used for separate directory for each instance in the cluster
-        i = 1 + len(self.instances)
-
         instance = Instance(
             binary_path=self.binary_path,
             cwd=self.data_dir,
             cluster_name=self.id,
             name=name,
             replicaset_name=replicaset_name,
-            _instance_dir=f"{self.data_dir}/i{i}",
+            _instance_dir=self.choose_instance_dir(name or str(port)),
             share_dir=self.share_dir,
             host=self.base_host,
             port=port,
@@ -2230,6 +2226,17 @@ class Cluster:
                 """,
                 [user, privilege, object_type, object_name],
             )
+
+    def choose_instance_dir(self, wanted_name: str) -> str:
+        wanted_path = f"{self.data_dir}/{wanted_name}"
+
+        candidate = wanted_path
+        n = 2
+        while os.path.exists(candidate):
+            candidate = f"{wanted_path}-{n}"
+            n += 1
+
+        return candidate
 
 
 def picodata_expel(
@@ -2735,7 +2742,7 @@ class Postgres:
         i1.pg_ssl = self.ssl
 
         ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
-        instance_dir = Path(self.cluster.data_dir) / "i1"
+        instance_dir = Path(i1.instance_dir)
         instance_dir.mkdir(exist_ok=True)
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
@@ -2884,6 +2891,8 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     gitlab_token = os.getenv("PYTEST_REPORT_GITLAB_TOKEN")
     if not (os.getenv("CI") and gitlab_token):
         return
+
+    import gitlab
 
     gl = gitlab.Gitlab(url=GITLAB_URL, private_token=gitlab_token)
     project = gl.projects.get(id=PICODATA_GITLAB_PROJECT_ID, lazy=True)
