@@ -1825,8 +1825,14 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
     assert r1.sql("SELECT * from test") == []
 
 
+# TODO: Should be rewritten using error injection in case
+#       https://git.picodata.io/core/picodata/-/issues/1286
+#       is closed.
 def test_truncate_deals_with_aba_problem(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
     ddl = i1.sql("CREATE TABLE t (id INT PRIMARY KEY)")
     assert ddl["row_count"] == 1
@@ -1846,7 +1852,7 @@ def test_truncate_deals_with_aba_problem(cluster: Cluster):
     # Local TRUNCATE is executed in parallel with other DDL operations.
     # We should test that it doesn't touch newly created table and its data.
     data = i1.sql("SELECT * from t")
-    assert data == [[4], [5], [6]]
+    assert [[4], [5], [6]] == sorted(data)
 
     # Check that on leader operations were executed in the order above.
     i1.assert_raft_status("Leader")
@@ -1865,8 +1871,11 @@ def test_truncate_deals_with_aba_problem(cluster: Cluster):
 
 def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
-    _ = cluster.add_instance(replicaset_name="r2", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
+
+    for instance in [i2, i3]:
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 1500)
 
     ddl = i1.sql("CREATE TABLE t(a int primary key) WAIT APPLIED GLOBALLY")
     assert ddl["row_count"] == 1
@@ -1893,6 +1902,8 @@ def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
 
 def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Cluster):
     i1, i2, *_ = cluster.deploy(instance_count=5)
+    for instance in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 600)
 
     i1.sql("CREATE TABLE t(a int primary key)")
 
@@ -1965,6 +1976,9 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
 
 def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
 
     ddl = i1.sql("CREATE TABLE t(a int primary key)")
     assert ddl["row_count"] == 1
