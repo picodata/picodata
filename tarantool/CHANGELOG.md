@@ -3,6 +3,7 @@
 # [?.?.?] Unreleased
 
 ### Added
+- `AuthMethod::DEFAULT` represents the default value of `AuthMethod`, but is available in constant contexts.
 
 ### Changed
 - MSRV is now 1.81 instead of 1.71.1 as it was.
@@ -24,6 +25,7 @@
 ### Fixed (picodata)
 
 ### Breaking changes (picodata)
+- `AuthMethod::default()` is now `Md5`, not `ChapSha1`.
 
 ### Deprecated (picodata)
 

@@ -26,6 +26,7 @@ fn test_user_conn() -> Conn {
         ConnOptions {
             user: "test_user".into(),
             password: "password".into(),
+            auth_method: tarantool::auth::AuthMethod::ChapSha1,
             ..ConnOptions::default()
         },
         None,
@@ -635,6 +636,7 @@ pub fn triggers_schema_sync() {
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
+            auth_method: tarantool::auth::AuthMethod::ChapSha1,
             ..ConnOptions::default()
         },
         Some(Rc::new(TriggersMock {

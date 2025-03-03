@@ -478,6 +478,7 @@ mod tests {
             listen_port(),
             protocol::Config {
                 creds: Some(("test_user".into(), "password".into())),
+                auth_method: crate::auth::AuthMethod::ChapSha1,
                 ..Default::default()
             },
         )

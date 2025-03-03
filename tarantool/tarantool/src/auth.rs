@@ -9,15 +9,25 @@ crate::define_str_enum! {
     }
 }
 
+#[cfg(not(feature = "picodata"))]
+impl AuthMethod {
+    pub const DEFAULT: Self = Self::ChapSha1;
+}
+
 #[cfg(feature = "picodata")]
 crate::define_str_enum! {
     #[derive(Default)]
     pub enum AuthMethod {
-        #[default]
         ChapSha1 = "chap-sha1",
+        #[default]
         Md5 = "md5",
         Ldap = "ldap",
     }
+}
+
+#[cfg(feature = "picodata")]
+impl AuthMethod {
+    pub const DEFAULT: Self = Self::Md5;
 }
 
 #[cfg(feature = "picodata")]

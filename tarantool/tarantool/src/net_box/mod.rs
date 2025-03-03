@@ -237,6 +237,7 @@ mod tests {
             ConnOptions {
                 user: "test_user".into(),
                 password: "password".into(),
+                auth_method: crate::auth::AuthMethod::ChapSha1,
                 ..ConnOptions::default()
             },
             None,
