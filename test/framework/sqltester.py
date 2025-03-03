@@ -20,15 +20,23 @@ def do_execsql(cluster: Cluster, query: str, expected: list):
     assert data == expected
 
 
-def do_catchsql(cluster: Cluster, sql: str, expected: str):
+def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
     instance = cluster.leader()
-    if expected:
-        msg = re.escape(expected.strip())
-        with pytest.raises(TarantoolError, match=msg):
-            instance.sql(sql)
-    else:
-        # Split SQL by semicolon and execute each query separately
-        for query in sql.split(";"):
+    queries = [q.strip() for q in sql.split(";") if q.strip()]
+
+    if isinstance(expected, str):
+        expected = [expected]
+    elif expected is None:
+        expected = [None] * len(queries)
+
+    assert len(queries) == len(expected), f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
+
+    for query, exp_err in zip(queries, expected):
+        if exp_err:
+            msg = re.escape(exp_err.strip())
+            with pytest.raises(TarantoolError, match=msg):
+                instance.sql(query)
+        else:
             instance.sql(query)
 
 
@@ -74,10 +82,13 @@ def parse_file(cls: Type, file_name: str) -> list:
     for match in matches:
         name = match[0].strip()
         assert name, "Test name must be provided"
-        query = match[1].strip()
+        query = match[1]
+        if query.startswith("--"):
+            continue
+        query = query.strip()
         assert query, "SQL query must be provided"
         expected = _parse_line(match[2]) if match[2] else None
-        error = match[3].strip() if match[3] else None
+        error = match[3].strip().split("\n") if match[3] else None
         assert not (expected and error), "Cannot provide both expected result and error"
         params.append(pytest.param(query, expected, error, id=name))
     return params
