@@ -2147,16 +2147,23 @@ class Cluster:
         attempt = 1
         previous_active = None
         while True:
+            instances_with_rebalancer = []
             for j in self.instances:
                 if not j.process:
                     continue
-                j.eval(
+                has_rebalancer = j.eval(
                     """
                     if vshard.storage.internal.rebalancer_fiber ~= nil then
                         vshard.storage.rebalancer_wakeup()
+                        return true
                     end
+                    return false
                 """
                 )
+                if has_rebalancer:
+                    instances_with_rebalancer.append(j.name or j.port)
+            if len(instances_with_rebalancer) > 1:
+                log.error(f"multiple instances are running vshard rebalancer: {instances_with_rebalancer}")
 
             actual_active = Retriable(timeout=10, rps=4).call(lambda: i.call("vshard.storage.info")["bucket"]["active"])
             if actual_active == expected:
@@ -2170,8 +2177,14 @@ class Cluster:
                 if attempt < max_retries:
                     attempt += 1
                 else:
-                    log.error("vshard.storage.info.bucket.active stopped changing")
-                    assert actual_active == expected
+                    if len(instances_with_rebalancer) == 0:
+                        message = "vshard.rebalancer is not running anywhere!"
+                    elif len(instances_with_rebalancer) == 1:
+                        message = f"vshard.rebalancer is lagging (running no {instances_with_rebalancer[0]})"
+                    else:
+                        message = f"more than 1 vshard.rebalancer: {instances_with_rebalancer}"
+                    log.error(f"vshard.storage.info.bucket.active stopped changing: {message}")
+                    assert actual_active == expected, message
             else:
                 # Something changed -> reset retry counter
                 attempt = 1
