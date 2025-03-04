@@ -7,8 +7,8 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, Bound, BoundType, Frame, FrameType, LocalTimestamp, NamedWindows, Over, Reference,
-    ReferenceAsteriskSource, TruncateTable, Window,
+    Alias, Bound, BoundType, Frame, FrameType, GroupBy, LocalTimestamp, NamedWindows, Over,
+    Reference, ReferenceAsteriskSource, StableFunction, TruncateTable, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
@@ -54,7 +54,7 @@ use crate::ir::node::plugin::{
     AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
     MigrateTo, MigrateToOpts, RemoveServiceFromTier, ServiceSettings, SettingsPair,
 };
-use crate::ir::node::relational::Relational;
+use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     AlterSystem, AlterUser, BoolExpr, Constant, CountAsterisk, CreateIndex, CreateProc, CreateRole,
     CreateTable, CreateUser, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege,
@@ -66,7 +66,9 @@ use crate::ir::operator::{
 };
 use crate::ir::relation::{Column, ColumnRole, TableKind, Type as RelationType};
 use crate::ir::transformation::redistribution::ColumnPosition;
-use crate::ir::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{
+    LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
+};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
 use crate::warn;
@@ -2001,6 +2003,154 @@ impl Plan {
     }
 }
 
+impl Plan {
+    fn replace_group_by_ordinals_with_references(&mut self) -> Result<(), SbroadError> {
+        let top = self.get_top()?;
+        let mut post_tree =
+            PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        post_tree.populate_nodes(top);
+        let nodes = post_tree.take_nodes();
+        for LevelNode(_, id) in nodes {
+            if let Ok(Relational::Projection(_)) = self.get_relation_node(id) {
+                self.adjust_grouping_exprs(id)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn adjust_grouping_exprs(&mut self, final_proj_id: NodeId) -> Result<(), SbroadError> {
+        let (_, upper) = self.split_group_by(final_proj_id)?;
+
+        let final_proj_output = self.get_relational_output(final_proj_id)?;
+        let final_proj_cols = self.get_row_list(final_proj_output)?.clone();
+        let mut grouping_exprs =
+            if let Relational::GroupBy(GroupBy { gr_exprs, .. }) = self.get_relation_node(upper)? {
+                gr_exprs.clone()
+            } else {
+                return Ok(());
+            };
+
+        for expr in grouping_exprs.iter_mut() {
+            match self.get_expression_node(*expr)? {
+                Expression::Constant(Constant { value, .. }) => {
+                    let pos = match value {
+                        Value::Unsigned(val) => *val as usize,
+                        Value::Integer(_) => {
+                            return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "GROUP BY position {value} is not in select list"
+                                )),
+                            ));
+                        }
+                        _ => {
+                            continue;
+                        }
+                    };
+
+                    self.replace_const_with_reference(&final_proj_cols, upper, expr, pos)?;
+                }
+                Expression::StableFunction(StableFunction { name, .. }) => {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!("aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"))
+                    ));
+                }
+                _ => {
+                    self.check_grouping_expr_subtree(*expr)?;
+                }
+            }
+        }
+
+        if let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) =
+            self.get_mut_relation_node(upper)?
+        {
+            *gr_exprs = grouping_exprs;
+        }
+
+        Ok(())
+    }
+
+    fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            matches!(
+                self.get_node(node_id),
+                Ok(Node::Expression(Expression::StableFunction(_)))
+            )
+        };
+        let mut dfs = PostOrderWithFilter::with_capacity(
+            |x| self.nodes.expr_iter(x, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+
+        for LevelNode(_, node_id) in dfs.iter(group_expr) {
+            let node = self.get_expression_node(node_id)?;
+            if let Expression::StableFunction(StableFunction { name, .. }) = node {
+                if Expression::is_aggregate_name(name) {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!("aggregate functions are not allowed inside grouping expression. Got aggregate: {name}"))
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn replace_const_with_reference(
+        &mut self,
+        final_proj_cols: &[NodeId],
+        groupby_id: NodeId,
+        expr: &mut NodeId,
+        pos: usize,
+    ) -> Result<(), SbroadError> {
+        let idx = if let Some(idx) = pos.checked_sub(1) {
+            idx
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some(format_smolstr!("GROUP BY position 0 is not in select list")),
+            ));
+        };
+
+        let alias_id = if let Some(id) = final_proj_cols.get(idx) {
+            *id
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some(format_smolstr!(
+                    "GROUP BY position {pos} is not in select list"
+                )),
+            ));
+        };
+        let alias_node = self.get_expression_node(alias_id)?;
+        if let Expression::Alias(Alias { child, .. }) = alias_node {
+            let expr_node = self.get_expression_node(*child)?;
+            if let Expression::Reference(Reference {
+                position, col_type, ..
+            }) = expr_node
+            {
+                let ref_id =
+                    self.nodes
+                        .add_ref(Some(groupby_id), Some(vec![0]), *position, *col_type, None);
+
+                *expr = ref_id;
+            } else if let Expression::StableFunction(StableFunction { name, .. }) = expr_node {
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some(format_smolstr!(
+                        "aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"
+                    )),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl ParseExpression {
     #[allow(clippy::too_many_lines)]
     fn populate_plan<M>(
@@ -2162,11 +2312,10 @@ impl ParseExpression {
             } => {
                 let left_plan_id = left.populate_plan(plan, worker)?;
                 let left_row_id = plan.row(left_plan_id)?;
-                let left_is_row = !matches!(plan.get_node(left_row_id)?, Node::Parameter(_))
-                    && matches!(
-                        plan.get_expression_node(left_row_id)?,
-                        Expression::Row { .. }
-                    );
+                let left_is_row = matches!(
+                    plan.get_expression_node(left_row_id)?,
+                    Expression::Row { .. }
+                );
                 let left_row_children_number = if left_is_row {
                     plan.get_row_list(left_row_id)?.len()
                 } else {
@@ -4142,6 +4291,10 @@ impl AbstractSyntaxTree {
             let expr = plan.get_node(expr_plan_node_id)?;
 
             let entity = match expr {
+                Node::Expression(Expression::Parameter(..)) => return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some(SmolStr::from("Using parameter as a standalone ORDER BY expression doesn't influence sorting."))
+                )),
                 Node::Expression(expr) => {
                     if let Expression::Reference(Reference {col_type, ..}) = expr {
                         if matches!(col_type.get(), Some(Type::Array)) {
@@ -4215,10 +4368,6 @@ impl AbstractSyntaxTree {
                         }
                     }
                 }
-                Node::Parameter(..) => return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some(SmolStr::from("Using parameter as a standalone ORDER BY expression doesn't influence sorting."))
-                )),
                 _ => unreachable!("Unacceptable node as an ORDER BY element.")
             };
 
@@ -4566,6 +4715,7 @@ impl AbstractSyntaxTree {
                             &mut worker,
                             &mut plan,
                         )?;
+
                         children.push(expr_id);
                     }
                     let groupby_id = plan.add_groupby_from_ast(&children)?;
@@ -5464,6 +5614,7 @@ impl AbstractSyntaxTree {
 
         // The problem is that we crete Between structures before replacing subqueries.
         worker.fix_betweens(&mut plan)?;
+        plan.replace_group_by_ordinals_with_references()?;
         Ok(plan)
     }
 }

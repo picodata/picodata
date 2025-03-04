@@ -2483,14 +2483,14 @@ impl Plan {
                     self.set_dist(output, Distribution::Global)?;
                 }
                 RelOwned::GroupBy(GroupBy {
-                    output, gr_cols, ..
+                    output, gr_exprs, ..
                 }) => {
                     // Previously there was no additional logic for creating Motions for local GroupBy?
                     let mut fixed_subquery_ids = AHashSet::new();
-                    for gr_col in gr_cols {
-                        let gr_col_strategy = self.resolve_sub_query_conflicts(id, gr_col)?;
-                        fixed_subquery_ids.extend(gr_col_strategy.get_rel_ids());
-                        self.create_motion_nodes(gr_col_strategy)?;
+                    for gr_expr in gr_exprs {
+                        let gr_expr_strategy = self.resolve_sub_query_conflicts(id, gr_expr)?;
+                        fixed_subquery_ids.extend(gr_expr_strategy.get_rel_ids());
+                        self.create_motion_nodes(gr_expr_strategy)?;
                     }
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
 
@@ -2546,8 +2546,6 @@ impl Plan {
                     let fixed_subquery_ids = strategy.get_rel_ids();
                     self.create_motion_nodes(strategy)?;
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
-
-                    self.adjust_grouping_exprs(id)?;
 
                     let child_dist = self.get_distribution(
                         self.get_relational_output(self.get_relational_child(id, 0)?)?,

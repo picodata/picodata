@@ -168,7 +168,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         Expression::Constant { .. }
                         | Expression::Reference { .. }
                         | Expression::CountAsterisk { .. }
-                        | Expression::LocalTimestamp { .. } => None,
+                        | Expression::LocalTimestamp { .. }
+                        | Expression::Parameter { .. } => None,
                     }
                 }
                 Node::Acl(_)
@@ -178,8 +179,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                 | Node::Relational(_)
                 | Node::Invalid(_)
                 | Node::Plugin(_)
-                | Node::Deallocate(_)
-                | Node::Parameter(_) => None,
+                | Node::Deallocate(_) => None,
             }
         }
         None => None,

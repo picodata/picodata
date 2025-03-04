@@ -4,6 +4,7 @@ use crate::{
     errors::{Entity, SbroadError, TypeError},
     executor::vtable::calculate_unified_types,
     ir::{
+        node::Parameter,
         relation::{DerivedType, Type},
         Plan,
     },
@@ -24,9 +25,6 @@ impl Plan {
                     "relational node {relational:?} has no type"
                 )),
             )),
-            // Parameter nodes must recalculate their type during
-            // binding (see `bind_params` function).
-            Node::Parameter(ty) => Ok(ty.param_type),
             Node::Ddl(ddl) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("DDL node {ddl:?} has no type")),
@@ -191,6 +189,7 @@ impl Expression<'_> {
             }
             Expression::CountAsterisk(_) => DerivedType::new(Type::Integer),
             Expression::LocalTimestamp(_) => DerivedType::new(Type::Datetime),
+            Expression::Parameter(Parameter { param_type }) => *param_type,
         };
         Ok(ty)
     }

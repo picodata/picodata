@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::Rule;
+use crate::ir::node::expression::MutExpression;
 use crate::ir::node::Cast;
 use crate::ir::relation::Type as RelationType;
 use crate::ir::Plan;
@@ -134,7 +135,7 @@ impl Plan {
         let cast_id = self.nodes.push(cast_expr.into());
 
         let child_plan_node = self.get_mut_node(expr_id)?;
-        if let MutNode::Parameter(ty) = child_plan_node {
+        if let MutNode::Expression(MutExpression::Parameter(ty)) = child_plan_node {
             ty.param_type.set(to_type.as_relation_type());
         }
 

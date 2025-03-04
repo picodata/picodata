@@ -583,10 +583,10 @@ impl ExecutionPlan {
                                 *child = None;
                             }
                         }
-                        RelOwned::GroupBy(GroupBy { gr_cols, .. }) => {
+                        RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
                             let next_id = new_plan.nodes.next_id(ArenaType::Arena64);
-                            let mut new_cols: Vec<NodeId> = Vec::with_capacity(gr_cols.len());
-                            for col_id in gr_cols.iter() {
+                            let mut new_cols: Vec<NodeId> = Vec::with_capacity(gr_exprs.len());
+                            for col_id in gr_exprs.iter() {
                                 let new_col_id = subtree_map.get_id(*col_id);
                                 new_plan.replace_parent_in_subtree(
                                     new_col_id,
@@ -595,7 +595,7 @@ impl ExecutionPlan {
                                 )?;
                                 new_cols.push(new_col_id);
                             }
-                            *gr_cols = new_cols;
+                            *gr_exprs = new_cols;
                         }
                         RelOwned::OrderBy(OrderBy {
                             order_by_elements, ..
@@ -852,7 +852,8 @@ impl ExecutionPlan {
                     }
                     ExprOwned::Constant { .. }
                     | ExprOwned::CountAsterisk { .. }
-                    | ExprOwned::LocalTimestamp(_) => {}
+                    | ExprOwned::LocalTimestamp(_)
+                    | ExprOwned::Parameter { .. } => {}
                     ExprOwned::Case(Case {
                         search_expr,
                         when_blocks,
@@ -870,7 +871,6 @@ impl ExecutionPlan {
                         }
                     }
                 },
-                NodeOwned::Parameter { .. } => {}
                 NodeOwned::Invalid { .. }
                 | NodeOwned::Ddl { .. }
                 | NodeOwned::Acl { .. }

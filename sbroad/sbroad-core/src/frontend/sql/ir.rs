@@ -209,6 +209,7 @@ impl SubtreeCloner {
             }
             ExprOwned::Constant(Constant { value: _ })
             | ExprOwned::LocalTimestamp(_)
+            | ExprOwned::Parameter(_)
             | ExprOwned::Reference(Reference {
                 parent: _,
                 targets: _,
@@ -449,11 +450,11 @@ impl SubtreeCloner {
             }
             RelOwned::GroupBy(GroupBy {
                 children: _,
-                gr_cols,
+                gr_exprs,
                 output: _,
                 is_final: _,
             }) => {
-                *gr_cols = self.copy_list(gr_cols)?;
+                *gr_exprs = self.copy_list(gr_exprs)?;
             }
             RelOwned::OrderBy(OrderBy {
                 children: _,

@@ -6,8 +6,9 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
-    ExprInParentheses, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Over,
-    Parameter, Procedure, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
+    ExprInParentheses, GroupBy, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
+    NodeId, Over, Parameter, Procedure, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow,
+    Window,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
@@ -131,7 +132,10 @@ impl<'binder> ParamsBinder<'binder> {
             // otherwise we may get different hashes for plans
             // with tnt and pg parameters. See `subtree_hash*` tests,
             for LevelNode(_, param_id) in &self.nodes {
-                if !matches!(self.plan.get_node(*param_id)?, Node::Parameter(..)) {
+                if !matches!(
+                    self.plan.get_node(*param_id)?,
+                    Node::Expression(Expression::Parameter(..))
+                ) {
                     continue;
                 }
                 let value_idx = *self.pg_params_map.get(param_id).unwrap_or_else(|| {
@@ -449,7 +453,8 @@ impl<'binder> ParamsBinder<'binder> {
                     Expression::Reference { .. }
                     | Expression::Constant { .. }
                     | Expression::CountAsterisk { .. }
-                    | Expression::LocalTimestamp { .. } => {}
+                    | Expression::LocalTimestamp { .. }
+                    | Expression::Parameter { .. } => {}
                 },
                 Node::Block(block) => match block {
                     Block::Procedure(Procedure { ref values, .. }) => {
@@ -466,7 +471,6 @@ impl<'binder> ParamsBinder<'binder> {
                     }
                 },
                 Node::Invalid(..)
-                | Node::Parameter(..)
                 | Node::Ddl(..)
                 | Node::Acl(..)
                 | Node::Tcl(..)
@@ -537,6 +541,11 @@ impl<'binder> ParamsBinder<'binder> {
                         ..
                     }) => {
                         bind_param(param_id, true, &mut param_index);
+                    }
+                    MutRelational::GroupBy(GroupBy { gr_exprs, .. }) => {
+                        for expr_id in gr_exprs {
+                            bind_param(expr_id, false, &mut param_index);
+                        }
                     }
                     _ => {}
                 },
@@ -695,6 +704,7 @@ impl<'binder> ParamsBinder<'binder> {
                     MutExpression::Reference { .. }
                     | MutExpression::Constant { .. }
                     | MutExpression::CountAsterisk { .. }
+                    | MutExpression::Parameter { .. }
                     | MutExpression::LocalTimestamp { .. } => {}
                 },
                 MutNode::Block(block) => match block {
@@ -705,7 +715,6 @@ impl<'binder> ParamsBinder<'binder> {
                     }
                 },
                 MutNode::Invalid(..)
-                | MutNode::Parameter(..)
                 | MutNode::Ddl(..)
                 | MutNode::Tcl(..)
                 | MutNode::Plugin(_)
@@ -847,7 +856,7 @@ impl Plan {
     }
 
     /// Substitute parameters to the plan.
-    /// The purpose of this function is to find every `Parameter` node and replace it
+    /// The purpose of this function is to find every `Expression::Parameter` node and replace it
     /// with `Expression::Constant` (under the row).
     #[allow(clippy::too_many_lines)]
     pub fn bind_params(&mut self, values: Vec<Value>) -> Result<(), SbroadError> {
@@ -857,7 +866,7 @@ impl Plan {
             // later pipeline stages.
             let mut param_count: usize = 0;
             let filter = Box::new(|x: NodeId| -> bool {
-                if let Ok(Node::Parameter(_)) = self.get_node(x) {
+                if let Ok(Node::Expression(Expression::Parameter(_))) = self.get_node(x) {
                     param_count += 1;
                 }
                 false
@@ -1000,7 +1009,6 @@ impl Plan {
     }
 
     fn check_parameter_types(&mut self) -> Result<(), SbroadError> {
-        //let val = SmolStr::from("substring_to_regexp");
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
         for (id, node) in self.nodes.arena96.iter().enumerate() {

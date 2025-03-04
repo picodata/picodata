@@ -131,7 +131,7 @@ impl Nodes {
                 Node64::Having(having) => Node::Relational(Relational::Having(having)),
                 Node64::Join(join) => Node::Relational(Relational::Join(join)),
                 Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
-                Node64::Parameter(param) => Node::Parameter(param),
+                Node64::Parameter(param) => Node::Expression(Expression::Parameter(param)),
                 Node64::Procedure(proc) => Node::Block(Block::Procedure(proc)),
                 Node64::Projection(proj) => Node::Relational(Relational::Projection(proj)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
@@ -282,7 +282,9 @@ impl Nodes {
                     Node64::OrderBy(order_by) => {
                         MutNode::Relational(MutRelational::OrderBy(order_by))
                     }
-                    Node64::Parameter(param) => MutNode::Parameter(param),
+                    Node64::Parameter(param) => {
+                        MutNode::Expression(MutExpression::Parameter(param))
+                    }
                     Node64::Procedure(proc) => MutNode::Block(MutBlock::Procedure(proc)),
                     Node64::Projection(proj) => {
                         MutNode::Relational(MutRelational::Projection(proj))
@@ -1385,7 +1387,6 @@ impl Plan {
         match node {
             Node::Relational(rel) => Ok(rel),
             Node::Expression(_)
-            | Node::Parameter(..)
             | Node::Ddl(..)
             | Node::Invalid(..)
             | Node::Acl(..)
@@ -1408,7 +1409,6 @@ impl Plan {
         match self.get_mut_node(node_id)? {
             MutNode::Relational(rel) => Ok(rel),
             MutNode::Expression(_)
-            | MutNode::Parameter(..)
             | MutNode::Ddl(..)
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
@@ -1429,17 +1429,14 @@ impl Plan {
     /// - node is not expression type
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression, SbroadError> {
         match self.get_node(node_id)? {
-            Node::Expression(exp) => Ok(exp),
-            Node::Parameter(..) => {
+            Node::Expression(Expression::Parameter(param)) => {
                 if let Some(Node64::Constant(constant)) = self.constants.get(node_id) {
-                    return Ok(Expression::Constant(constant));
+                    Ok(Expression::Constant(constant))
+                } else {
+                    Ok(Expression::Parameter(param))
                 }
-
-                Err(SbroadError::Invalid(
-                    Entity::Node,
-                    Some("parameter node does not refer to an expression".into()),
-                ))
             }
+            Node::Expression(exp) => Ok(exp),
             _ => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some("node is not Expression type".into()),
@@ -1481,7 +1478,6 @@ impl Plan {
         match node {
             MutNode::Expression(exp) => Ok(exp),
             MutNode::Relational(_)
-            | MutNode::Parameter(..)
             | MutNode::Ddl(..)
             | MutNode::Invalid(..)
             | MutNode::Acl(..)
@@ -1725,7 +1721,8 @@ impl Plan {
             MutExpression::Constant { .. }
             | MutExpression::Reference { .. }
             | MutExpression::CountAsterisk { .. }
-            | MutExpression::LocalTimestamp { .. } => {}
+            | MutExpression::LocalTimestamp { .. }
+            | MutExpression::Parameter { .. } => {}
         }
         Err(SbroadError::FailedTo(
             Action::Replace,
@@ -1745,8 +1742,8 @@ impl Plan {
         col_idx: usize,
     ) -> Result<NodeId, SbroadError> {
         let node = self.get_relation_node(groupby_id)?;
-        if let Relational::GroupBy(GroupBy { gr_cols, .. }) = node {
-            let col_id = gr_cols.get(col_idx).ok_or_else(|| {
+        if let Relational::GroupBy(GroupBy { gr_exprs, .. }) = node {
+            let col_id = gr_exprs.get(col_idx).ok_or_else(|| {
                 SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                     "groupby column index out of range. Node: {node:?}"
                 ))
@@ -1784,10 +1781,10 @@ impl Plan {
     ///
     /// # Errors
     /// - node is not `GroupBy`
-    pub fn get_grouping_cols(&self, groupby_id: NodeId) -> Result<&[NodeId], SbroadError> {
+    pub fn get_grouping_exprs(&self, groupby_id: NodeId) -> Result<&[NodeId], SbroadError> {
         let node = self.get_relation_node(groupby_id)?;
-        if let Relational::GroupBy(GroupBy { gr_cols, .. }) = node {
-            return Ok(gr_cols);
+        if let Relational::GroupBy(GroupBy { gr_exprs, .. }) = node {
+            return Ok(gr_exprs);
         }
         Err(SbroadError::Invalid(
             Entity::Node,
@@ -1799,14 +1796,14 @@ impl Plan {
     ///
     /// # Errors
     /// - node is not `GroupBy`
-    pub fn set_grouping_cols(
+    pub fn set_grouping_exprs(
         &mut self,
         groupby_id: NodeId,
         new_cols: Vec<NodeId>,
     ) -> Result<(), SbroadError> {
         let node = self.get_mut_relation_node(groupby_id)?;
-        if let MutRelational::GroupBy(GroupBy { gr_cols, .. }) = node {
-            *gr_cols = new_cols;
+        if let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) = node {
+            *gr_exprs = new_cols;
             return Ok(());
         }
         Err(SbroadError::Invalid(
@@ -1929,7 +1926,7 @@ impl Plan {
 impl Plan {
     fn get_param_type(&self, param_id: NodeId) -> Result<DerivedType, SbroadError> {
         let node = self.get_node(param_id)?;
-        if let Node::Parameter(ty) = node {
+        if let Node::Expression(Expression::Parameter(ty)) = node {
             return Ok(ty.param_type);
         }
         Err(SbroadError::Invalid(
@@ -1940,7 +1937,7 @@ impl Plan {
 
     fn set_param_type(&mut self, param_id: NodeId, ty: Type) -> Result<(), SbroadError> {
         let node = self.get_mut_node(param_id)?;
-        if let MutNode::Parameter(param) = node {
+        if let MutNode::Expression(MutExpression::Parameter(param)) = node {
             param.param_type.set(ty);
             Ok(())
         } else {

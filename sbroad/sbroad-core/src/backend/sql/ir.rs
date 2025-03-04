@@ -118,7 +118,11 @@ impl ExecutionPlan {
         let capacity = plan.nodes.len();
         let mut was: AHashSet<NodeId> = AHashSet::with_capacity(plan.constants.len());
         let filter = |id: NodeId| -> bool {
-            if matches!(plan.get_node(id), Ok(Node::Parameter(_))) && !was.contains(&id) {
+            if matches!(
+                plan.get_node(id),
+                Ok(Node::Expression(Expression::Parameter(_)))
+            ) && !was.contains(&id)
+            {
                 was.insert(id);
                 true
             } else {
@@ -360,7 +364,7 @@ impl ExecutionPlan {
                                 ),
                             ));
                         }
-                        Node::Parameter(..) => {
+                        Node::Expression(Expression::Parameter(..)) => {
                             return Err(SbroadError::Unsupported(
                                 Entity::Node,
                                 Some("Parameters are not supported in the generated SQL".into()),
@@ -437,7 +441,8 @@ impl ExecutionPlan {
                                 | Expression::Row { .. }
                                 | Expression::Trim { .. }
                                 | Expression::Unary { .. }
-                                | Expression::LocalTimestamp { .. } => {}
+                                | Expression::LocalTimestamp { .. }
+                                | Expression::Parameter { .. } => {}
                                 Expression::Constant(Constant { value, .. }) => {
                                     write!(sql, "{value}").map_err(|e| {
                                         SbroadError::FailedTo(

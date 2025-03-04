@@ -284,7 +284,9 @@ impl<'plan> Comparator<'plan> {
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
-                    Expression::Alias(_) | Expression::LocalTimestamp(_) => {}
+                    Expression::Alias(_)
+                    | Expression::LocalTimestamp(_)
+                    | Expression::Parameter(_) => {}
                     Expression::Window(Window {
                         name: l_name,
                         partition: l_partition,
@@ -851,6 +853,9 @@ impl<'plan> Comparator<'plan> {
             }
             Expression::LocalTimestamp(_) => {
                 "LocalTimestamp".hash(state);
+            }
+            Expression::Parameter(_) => {
+                "Parameter".hash(state);
             }
         }
     }
@@ -1700,12 +1705,12 @@ impl Plan {
 
     /// The node is a trivalent (boolean or NULL).
     pub fn is_trivalent(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
-        let expr_node = self.get_node(expr_id)?;
-        let expr = match expr_node {
-            Node::Parameter(_) => return Ok(true),
-            Node::Expression(expr) => expr,
-            _ => panic!("Unsupported node to check `is_trivalent`: {expr_node:?}."),
-        };
+        let expr = self.get_expression_node(expr_id).map_err(|_| {
+            SbroadError::Invalid(
+                Entity::Node,
+                Some("Unsupported node to check `is_trivalent`".into()),
+            )
+        })?;
         match expr {
             Expression::Bool(_)
             | Expression::Like { .. }
@@ -1727,6 +1732,7 @@ impl Plan {
                 let col_type_inner = col_type.get();
                 return Ok(col_type_inner.map_or(true, |t| matches!(t, Type::Boolean)));
             }
+            Expression::Parameter(_) => return Ok(true),
             _ => {}
         }
         Ok(false)

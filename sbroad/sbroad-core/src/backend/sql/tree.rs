@@ -894,7 +894,7 @@ impl<'p> SyntaxPlan<'p> {
             | Node::Block(..) => {
                 panic!("Node {node:?} is not supported in the syntax plan")
             }
-            Node::Invalid(..) | Node::Parameter(..) => {
+            Node::Invalid(..) | Node::Expression(Expression::Parameter(..)) => {
                 let sn = SyntaxNode::new_parameter(id);
                 self.nodes.push_sn_plan(sn);
             }
@@ -946,7 +946,7 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::Unary { .. } => self.add_unary_op(id),
                 Expression::StableFunction { .. } => self.add_stable_func(id),
                 Expression::Trim { .. } => self.add_trim(id),
-                Expression::LocalTimestamp { .. } => {}
+                Expression::LocalTimestamp { .. } | Expression::Parameter { .. } => {}
             },
         }
     }
@@ -1107,24 +1107,24 @@ impl<'p> SyntaxPlan<'p> {
     fn add_group_by(&mut self, id: NodeId) {
         let (_, gb) = self.prologue_rel(id);
         let Relational::GroupBy(GroupBy {
-            children, gr_cols, ..
+            children, gr_exprs, ..
         }) = gb
         else {
             panic!("Expected GROUP BY node");
         };
         let child_plan_id = *children.first().expect("GROUP BY child");
         // The columns on the stack are in reverse order.
-        let plan_gr_cols = gr_cols.iter().rev().copied().collect::<Vec<_>>();
-        let mut syntax_gr_cols = Vec::with_capacity(plan_gr_cols.len());
+        let plan_gr_exprs = gr_exprs.iter().rev().copied().collect::<Vec<_>>();
+        let mut syntax_gr_exprs = Vec::with_capacity(plan_gr_exprs.len());
         // Reuse the same vector to avoid extra allocations
         // (replace plan node ids with syntax node ids).
-        for col_id in &plan_gr_cols {
-            syntax_gr_cols.push(self.pop_from_stack(*col_id, id));
+        for col_id in &plan_gr_exprs {
+            syntax_gr_exprs.push(self.pop_from_stack(*col_id, id));
         }
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
-        let mut sn_children = Vec::with_capacity(syntax_gr_cols.len() * 2 - 1);
+        let mut sn_children = Vec::with_capacity(syntax_gr_exprs.len() * 2 - 1);
         // The columns are in reverse order, so we need to reverse them back.
-        if let Some((first, others)) = syntax_gr_cols.split_first() {
+        if let Some((first, others)) = syntax_gr_exprs.split_first() {
             for id in others.iter().rev() {
                 sn_children.push(*id);
                 sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));

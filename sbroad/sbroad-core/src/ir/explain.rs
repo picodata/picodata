@@ -503,6 +503,7 @@ impl ColExpr {
                     );
                     stack.push((expr, id));
                 }
+                Expression::Parameter(_) => (),
             }
         }
 
@@ -722,7 +723,7 @@ impl NamedWindowsExplain {
 #[derive(Debug, PartialEq, Serialize)]
 struct GroupBy {
     /// List of colums in sql query
-    gr_cols: Vec<ColExpr>,
+    gr_exprs: Vec<ColExpr>,
     output_cols: Vec<ColExpr>,
 }
 
@@ -730,18 +731,18 @@ impl GroupBy {
     #[allow(dead_code)]
     fn new(
         plan: &Plan,
-        gr_cols: &Vec<NodeId>,
+        gr_exprs: &Vec<NodeId>,
         output_id: NodeId,
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
         let mut result = GroupBy {
-            gr_cols: vec![],
+            gr_exprs: vec![],
             output_cols: vec![],
         };
 
-        for col_node_id in gr_cols {
+        for col_node_id in gr_exprs {
             let col = ColExpr::new(plan, *col_node_id, sq_ref_map)?;
-            result.gr_cols.push(col);
+            result.gr_exprs.push(col);
         }
         let alias_list = plan.get_expression_node(output_id)?;
         for col_node_id in alias_list.get_row_list()? {
@@ -756,8 +757,8 @@ impl Display for GroupBy {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut s = "group by ".to_string();
 
-        let gr_cols = &self
-            .gr_cols
+        let gr_exprs = &self
+            .gr_exprs
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<String>>()
@@ -770,7 +771,7 @@ impl Display for GroupBy {
             .collect::<Vec<String>>()
             .join(", ");
 
-        write!(s, "({gr_cols})")?;
+        write!(s, "({gr_exprs})")?;
         write!(s, " output: ({output_cols})")?;
         write!(f, "{s}")
     }
@@ -1494,14 +1495,14 @@ impl FullExplain {
                     Some(ExplainNode::Except)
                 }
                 Relational::GroupBy(node::GroupBy {
-                    gr_cols,
+                    gr_exprs,
                     output,
                     children,
                     ..
                 }) => {
                     let sq_ref_map =
                         result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
-                    let p = GroupBy::new(ir, gr_cols, *output, &sq_ref_map)?;
+                    let p = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map)?;
                     Some(ExplainNode::GroupBy(p))
                 }
                 Relational::OrderBy(node::OrderBy {

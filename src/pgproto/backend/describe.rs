@@ -268,14 +268,12 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 | Relational::SelectWithoutScan { .. }
                 | Relational::Limit { .. } => Ok(CommandTag::Select),
             },
-            Node::Invalid(_) | Node::Expression(_) | Node::Parameter(_) => {
-                Err(SbroadError::Invalid(
-                    Entity::Node,
-                    Some(smol_str::format_smolstr!(
-                        "{node:?} can't be converted to CommandTag"
-                    )),
-                ))
-            }
+            Node::Invalid(_) | Node::Expression(_) => Err(SbroadError::Invalid(
+                Entity::Node,
+                Some(smol_str::format_smolstr!(
+                    "{node:?} can't be converted to CommandTag"
+                )),
+            )),
         }
     }
 }

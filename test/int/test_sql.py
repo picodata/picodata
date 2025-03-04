@@ -202,6 +202,52 @@ def test_pg_params(cluster: Cluster):
     )
     assert data == [[3, 2, 1, 2, 3]]
 
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""SELECT $1, 1 as c1 FROM t ORDER BY c1 DESC""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""SELECT $1 as c1 FROM (SELECT 1) ORDER BY 1 DESC""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""SELECT $1 + 0, 1 as c1 FROM t ORDER BY c1 DESC""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""SELECT $1, 1 as c1 FROM t""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 2 values for parameters. Got 0"):
+        i1.sql("""select coalesce($1, $2) from (values(1)) order by 1""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""select max($1) from (select 1)""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""SELECT MAX($1)""")
+
+    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+        i1.sql("""select max(coalesce($1, 1)) from (select 1)""")
+
+    # Test that using a numeric literal as an ordinal reference in GROUP BY
+    # which ends up referring to an aggregate expression max(a) is not allowed.
+    with pytest.raises(TarantoolError, match="aggregate functions are not allowed in GROUP BY"):
+        i1.sql("""select max(a), b from (select 1 as a, 2 as b) group by 1""")
+
+    # Test that a parameter placeholder used in the GROUP BY clause is treated as an expression,
+    # not as an ordinal reference to a column in the SELECT list.
+    data = i1.sql("""select max(a), b from (select 1 as a, 2 as b) group by $1""", 1)
+    assert data == [[1, 2]]
+
+    data = i1.sql("""select max(a), b from (select 1 as a, 2 as b) group by 2""")
+    assert data == [[1, 2]]
+
+    data = i1.sql("""select max(coalesce($1, $2)) from (select 1)""", 1, 2)
+    assert data == [[1]]
+
+    data = i1.sql("""select * from (select 1 as a) group by $1""", 1)
+    assert data == [[1]]
+
+    data = i1.sql("""with t(a,b,c) as (select 1, 2, 3) select coalesce($1, $2) from t order by 1""", 1, 2)
+    assert data == [[1]]
+
     with pytest.raises(TarantoolError, match="invalid parameters usage"):
         i1.sql(
             """

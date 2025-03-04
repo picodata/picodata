@@ -9,13 +9,12 @@ use crate::ir::expression::{ColumnPositionMap, Comparator, FunctionFeature, EXPR
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    Alias, ArenaType, Constant, GroupBy, Having, NodeId, Projection, Reference, StableFunction,
+    Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference, StableFunction,
 };
 use crate::ir::transformation::redistribution::{
     MotionKey, MotionPolicy, Program, Strategy, Target,
 };
-use crate::ir::tree::traversal::{BreadthFirst, LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
-use crate::ir::value::Value;
+use crate::ir::tree::traversal::{BreadthFirst, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use std::collections::{HashMap, HashSet};
 
@@ -403,7 +402,7 @@ impl Plan {
         let final_output = self.add_row_for_output(child_id, &[], true, None)?;
         let groupby = GroupBy {
             children: [child_id].to_vec(),
-            gr_cols: grouping_exprs.to_vec(),
+            gr_exprs: grouping_exprs.to_vec(),
             output: final_output,
             is_final,
         };
@@ -600,16 +599,16 @@ impl Plan {
         }
 
         if has_groupby {
-            let old_gr_cols = self.get_grouping_cols(upper)?;
+            let old_gr_exprs = self.get_grouping_exprs(upper)?;
             // remove duplicate expressions
             let mut unique_grouping_exprs: OrderedSet<GroupingExpression, _> =
-                OrderedSet::with_capacity_and_hasher(old_gr_cols.len(), RepeatableState);
-            for gr_expr in old_gr_cols {
+                OrderedSet::with_capacity_and_hasher(old_gr_exprs.len(), RepeatableState);
+            for gr_expr in old_gr_exprs {
                 unique_grouping_exprs.insert(GroupingExpression::new(*gr_expr, self));
             }
             let grouping_exprs: Vec<NodeId> = unique_grouping_exprs.iter().map(|e| e.id).collect();
             grouping_expr.extend(grouping_exprs.iter());
-            self.set_grouping_cols(upper, grouping_exprs)?;
+            self.set_grouping_exprs(upper, grouping_exprs)?;
 
             let mut mapper = ExpressionMapper::new(&grouping_expr, self);
             for node_id in finals {
@@ -704,10 +703,10 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let mut local_proj_child_id = upper;
         if !additional_grouping_exprs.is_empty() {
-            if let MutRelational::GroupBy(GroupBy { gr_cols, .. }) =
+            if let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) =
                 self.get_mut_relation_node(local_proj_child_id)?
             {
-                gr_cols.extend(additional_grouping_exprs);
+                gr_exprs.extend(additional_grouping_exprs);
             } else {
                 local_proj_child_id =
                     self.add_groupby(upper, &additional_grouping_exprs, true, None)?;
@@ -1120,7 +1119,7 @@ impl Plan {
             // no GroupBy in the original query, nothing to do
             return Ok(child_id);
         }
-        let mut gr_cols: Vec<NodeId> = Vec::with_capacity(grouping_exprs.len());
+        let mut gr_exprs: Vec<NodeId> = Vec::with_capacity(grouping_exprs.len());
         let child_map = ColumnPositionMap::new(self, child_id)?;
         let mut nodes = Vec::with_capacity(grouping_exprs.len());
         for expr_id in grouping_exprs {
@@ -1155,15 +1154,15 @@ impl Plan {
         }
         for node in nodes {
             let new_col_id = self.nodes.push(node.into());
-            gr_cols.push(new_col_id);
+            gr_exprs.push(new_col_id);
         }
         let output = self.add_row_for_output(child_id, &[], true, None)?;
         let final_id = self.nodes.next_id(ArenaType::Arena64);
-        for col in &gr_cols {
+        for col in &gr_exprs {
             self.replace_parent_in_subtree(*col, None, Some(final_id))?;
         }
         let final_groupby = GroupBy {
-            gr_cols,
+            gr_exprs,
             children: vec![child_id],
             is_final: true,
             output,
@@ -1478,138 +1477,6 @@ impl Plan {
             // actual child (Motion) wasn't created yet.
             self.set_distribution(self.get_relational_output(motion_parent)?)?;
         }
-        Ok(())
-    }
-
-    fn replace_const_with_reference(
-        &mut self,
-        final_proj_cols: &[NodeId],
-        groupby_id: NodeId,
-        expr: &mut NodeId,
-        pos: usize,
-    ) -> Result<(), SbroadError> {
-        let idx = if let Some(idx) = pos.checked_sub(1) {
-            idx
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Query,
-                Some(format_smolstr!("GROUP BY position 0 is not in select list")),
-            ));
-        };
-
-        let alias_id = if let Some(id) = final_proj_cols.get(idx) {
-            *id
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Query,
-                Some(format_smolstr!(
-                    "GROUP BY position {pos} is not in select list"
-                )),
-            ));
-        };
-        let alias_node = self.get_expression_node(alias_id)?;
-        if let Expression::Alias(Alias { child, .. }) = alias_node {
-            let expr_node = self.get_expression_node(*child)?;
-            if let Expression::Reference(Reference {
-                position, col_type, ..
-            }) = expr_node
-            {
-                let ref_id =
-                    self.nodes
-                        .add_ref(Some(groupby_id), Some(vec![0]), *position, *col_type, None);
-
-                *expr = ref_id;
-            } else if let Expression::StableFunction(StableFunction { name, .. }) = expr_node {
-                return Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!(
-                        "aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"
-                    )),
-                ));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(Expression::StableFunction(_)))
-            )
-        };
-        let mut dfs = PostOrderWithFilter::with_capacity(
-            |x| self.nodes.expr_iter(x, false),
-            EXPR_CAPACITY,
-            Box::new(filter),
-        );
-
-        for LevelNode(_, node_id) in dfs.iter(group_expr) {
-            let node = self.get_expression_node(node_id)?;
-            if let Expression::StableFunction(StableFunction { name, .. }) = node {
-                if Expression::is_aggregate_name(name) {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!("aggregate functions are not allowed inside grouping expression. Got aggregate: {name}"))
-                    ));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn adjust_grouping_exprs(&mut self, final_proj_id: NodeId) -> Result<(), SbroadError> {
-        let (_, upper) = self.split_group_by(final_proj_id)?;
-
-        let final_proj_output = self.get_relational_output(final_proj_id)?;
-        let final_proj_cols = self.get_row_list(final_proj_output)?.clone();
-        let mut grouping_cols =
-            if let Relational::GroupBy(GroupBy { gr_cols, .. }) = self.get_relation_node(upper)? {
-                gr_cols.clone()
-            } else {
-                return Ok(());
-            };
-
-        for expr in grouping_cols.iter_mut() {
-            match self.get_expression_node(*expr)? {
-                Expression::Constant(Constant { value, .. }) => {
-                    let pos = match value {
-                        Value::Unsigned(val) => *val as usize,
-                        Value::Integer(_) => {
-                            return Err(SbroadError::Invalid(
-                                Entity::Query,
-                                Some(format_smolstr!(
-                                    "GROUP BY position {value} is not in select list"
-                                )),
-                            ));
-                        }
-                        _ => {
-                            continue;
-                        }
-                    };
-
-                    self.replace_const_with_reference(&final_proj_cols, upper, expr, pos)?;
-                }
-                Expression::StableFunction(StableFunction { name, .. }) => {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!("aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"))
-                    ));
-                }
-                _ => {
-                    self.check_grouping_expr_subtree(*expr)?;
-                }
-            }
-        }
-
-        if let MutRelational::GroupBy(GroupBy { gr_cols, .. }) =
-            self.get_mut_relation_node(upper)?
-        {
-            *gr_cols = grouping_cols;
-        }
-
         Ok(())
     }
 

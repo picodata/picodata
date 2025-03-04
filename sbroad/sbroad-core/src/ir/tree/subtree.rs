@@ -202,7 +202,6 @@ fn subtree_next<'plan>(
     if let Some(child) = iter.get_nodes().get(iter.get_current()) {
         return match child {
             Node::Invalid(..)
-            | Node::Parameter(..)
             | Node::Ddl(..)
             | Node::Acl(..)
             | Node::Tcl(..)
@@ -235,7 +234,8 @@ fn subtree_next<'plan>(
                 }
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
-                | Expression::LocalTimestamp { .. } => None,
+                | Expression::LocalTimestamp { .. }
+                | Expression::Parameter { .. } => None,
                 Expression::Reference { .. } => {
                     let step = *iter.get_child().borrow();
                     if step == 0 {
@@ -377,7 +377,7 @@ fn subtree_next<'plan>(
                 Relational::GroupBy(GroupBy {
                     children,
                     output,
-                    gr_cols,
+                    gr_exprs,
                     ..
                 }) => {
                     let step = *iter.get_child().borrow();
@@ -386,11 +386,11 @@ fn subtree_next<'plan>(
                         return children.get(step).copied();
                     }
                     let col_idx = step - 1;
-                    if col_idx < gr_cols.len() {
+                    if col_idx < gr_exprs.len() {
                         *iter.get_child().borrow_mut() += 1;
-                        return gr_cols.get(col_idx).copied();
+                        return gr_exprs.get(col_idx).copied();
                     }
-                    if iter.need_output() && col_idx == gr_cols.len() {
+                    if iter.need_output() && col_idx == gr_exprs.len() {
                         *iter.get_child().borrow_mut() += 1;
                         return Some(*output);
                     }

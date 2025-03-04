@@ -18,7 +18,9 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{ArithmeticExpr, Like, Limit, LocalTimestamp, NamedWindows, Over, Window};
+use super::node::{
+    ArithmeticExpr, Like, Limit, LocalTimestamp, NamedWindows, Over, Parameter, Window,
+};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.
@@ -156,8 +158,8 @@ impl Plan {
                 Expression::Alias(Alias { name, child }) => {
                     let child_node = self.get_node(*child).expect("Alias must have a child node");
                     let child = match child_node {
+                        Node::Expression(Expression::Parameter(..)) => String::from("parameter"),
                         Node::Expression(child_expr) => format!("{child_expr:?}"),
-                        Node::Parameter(..) => String::from("parameter"),
                         Node::Relational(rel) => format!("{rel:?}"),
                         // TODO: fix `fix_betweens` logic to cover SubQueries with References.
                         _ => unreachable!("unexpected Alias child node"),
@@ -297,6 +299,9 @@ impl Plan {
                 Expression::LocalTimestamp(LocalTimestamp { precision }) => {
                     writeln!(buf, "LocalTimestamp [precision = {precision}]")?;
                 }
+                Expression::Parameter(Parameter { param_type }) => {
+                    writeln!(buf, "Parameter [type = {param_type}]")?;
+                }
             };
         }
         Ok(())
@@ -391,16 +396,16 @@ impl Plan {
                         self.formatted_arena_node(buf, tabulation_number + 1, *filter)?;
                     }
                     Relational::GroupBy(GroupBy {
-                        gr_cols, is_final, ..
+                        gr_exprs, is_final, ..
                     }) => {
                         writeln!(buf, "GroupBy [is_final = {is_final}]")?;
                         writeln_with_tabulation(buf, tabulation_number + 1, "Gr_cols:")?;
-                        for gr_col in gr_cols {
-                            let gl_col_expr = self.get_expression_node(*gr_col);
-                            let text = if let Ok(gl_col_expr) = gl_col_expr {
-                                format!("Gr_col: {gl_col_expr:?}")
+                        for expr_id in gr_exprs {
+                            let expr = self.get_expression_node(*expr_id);
+                            let text = if let Ok(expr) = expr {
+                                format!("Gr_col: {expr:?}")
                             } else {
-                                format!("Gr_col: {gr_col}")
+                                format!("Gr_col: {expr_id}")
                             };
                             writeln_with_tabulation(buf, tabulation_number + 2, text.as_str())?;
                         }

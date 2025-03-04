@@ -112,7 +112,6 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 Relational::ScanRelation { .. } => None,
             },
             Node::Expression(_)
-            | Node::Parameter(_)
             | Node::Invalid(_)
             | Node::Ddl(_)
             | Node::Acl(_)

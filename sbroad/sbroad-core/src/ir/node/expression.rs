@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Over, Reference, Row,
+    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row,
     StableFunction, Trim, UnaryExpr, Window,
 };
 
@@ -32,6 +32,7 @@ pub enum ExprOwned {
     LocalTimestamp(LocalTimestamp),
     Over(Over),
     Window(Window),
+    Parameter(Parameter),
 }
 
 impl From<ExprOwned> for NodeAligned {
@@ -55,6 +56,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
             ExprOwned::LocalTimestamp(lt) => lt.into(),
+            ExprOwned::Parameter(param) => param.into(),
         }
     }
 }
@@ -91,6 +93,7 @@ pub enum Expression<'a> {
     LocalTimestamp(&'a LocalTimestamp),
     Over(&'a Over),
     Window(&'a Window),
+    Parameter(&'a Parameter),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -114,6 +117,7 @@ pub enum MutExpression<'a> {
     LocalTimestamp(&'a mut LocalTimestamp),
     Over(&'a mut Over),
     Window(&'a mut Window),
+    Parameter(&'a mut Parameter),
 }
 
 #[allow(dead_code)]
@@ -216,6 +220,7 @@ impl Expression<'_> {
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
             Expression::LocalTimestamp(lt) => ExprOwned::LocalTimestamp((*lt).clone()),
+            Expression::Parameter(param) => ExprOwned::Parameter((*param).clone()),
         }
     }
 }
