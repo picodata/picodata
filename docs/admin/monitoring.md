@@ -185,7 +185,7 @@ C помощью полученного `leader_id` выясните адрес 
 
 ```sql
 \sql;
-SELECT "instance_id", "_pico_instance"."raft_id", "_pico_peer_address"."address"
+SELECT "name", "_pico_instance"."raft_id", "_pico_peer_address"."address"
 FROM "_pico_instance" JOIN "_pico_peer_address"
 ON "_pico_peer_address"."raft_id"="_pico_instance"."raft_id"
 WHERE "_pico_instance"."raft_id" = 2;
@@ -195,7 +195,7 @@ WHERE "_pico_instance"."raft_id" = 2;
 
 ```
 +-------------------------+---------+--------------------+
-| instance_name           | raft_id | address            |
+| name                    | raft_id | address            |
 +========================================================+
 | "default-2000"          | 2       | "192.168.0.2:3301" |
 +-------------------------+---------+--------------------+
