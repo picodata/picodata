@@ -203,7 +203,7 @@ def test_expel_timeout(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for admin:")
+    cli.expect_exact("Enter password for pico_service:")
     cli.sendline("wrong_password")
 
     if sys.platform == "darwin":
