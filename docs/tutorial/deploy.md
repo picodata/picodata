@@ -193,7 +193,7 @@ TBD:
 #### Файлы конфигурации {: #multi_tier_cluster_config }
 
 Следующий пример показывает запуск кластера, состоящий из двух тиров —
-compute и storage. Создайте отдельные файлы конфигурации для каждого из
+`compute` и `storage`. Создайте отдельные файлы конфигурации для каждого из
 тиров:
 
 ???+ example "compute.yml"
@@ -203,9 +203,11 @@ compute и storage. Создайте отдельные файлы конфиг�
       tier:
         compute:
           replication_factor: 1
+          bucket_count: 1500
           can_vote: true
         storage:
           replication_factor: 2
+          bucket_count: 1500
           can_vote: false
 
     instance:
@@ -223,9 +225,11 @@ compute и storage. Создайте отдельные файлы конфиг�
       tier:
         compute:
           replication_factor: 1
+          bucket_count: 1500
           can_vote: true
         storage:
           replication_factor: 2
+          bucket_count: 1500
           can_vote: false
 
     instance:

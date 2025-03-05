@@ -42,83 +42,85 @@ cluster:
   name: demo # (3)!
   tier:
     default:
-      replication_factor: 1 # (5)!
-      can_vote: true # (4)!
+      replication_factor: 1 # (7)!
+      bucket_count: 3000 # (5)!
+      can_vote: true # (6)!
   default_replication_factor: 1 # (1)!
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (12)!
-  name: null # (18)!
-  replicaset_name: null # (23)!
-  tier: default # (24)!
-  failure_domain: {} # (10)!
-  peer: # (19)!
+  instance_dir: . # (13)!
+  name: null # (19)!
+  replicaset_name: null # (24)!
+  tier: default # (25!
+  failure_domain: {} # (11)!
+  peer: # (20)!
   - 127.0.0.1:3301
-  iproto_listen: 127.0.0.1:3301 # (13)!
-  iproto_advertise: 127.0.0.1:3301 # (8)!
-  http_listen: null # (11)!
-  admin_socket: ./admin.sock # (7)!
-  share_dir: null # (22!)
-  audit: null # (9)!
+  iproto_listen: 127.0.0.1:3301 # (14)!
+  iproto_advertise: 127.0.0.1:3301 # (9)!
+  http_listen: null # (12)!
+  admin_socket: ./admin.sock # (8)!
+  share_dir: null # (23)!
+  audit: null # (10)!
   log:
-    level: info # (16)!
-    destination: null # (14)!
-    format: plain # (15)!
+    level: info # (17)!
+    destination: null # (15)!
+    format: plain # (16)!
   memtx:
-    memory: 64M # (17)!
+    memory: 64M # (18)!
   vinyl:
-    memory: 128M # (26)!
-    cache: 128M # (25)!
-    bloom_fpr: 0.05 # (27)!
-    max_tuple_size: 1M # (28)!
-    page_size: 8K # (29)!
-    range_size: 1G # (30)!
-    run_count_per_level: 2 # (31)!
-    run_size_ratio: 3.5 # (32)!
-    read_threads: 1 # (33)!
-    write_threads: 4 # (34)!
-    timeout: 60.0 # (35)!
+    memory: 128M # (27)!
+    cache: 128M # (26)!
+    bloom_fpr: 0.05 # (28)!
+    max_tuple_size: 1M # (29)!
+    page_size: 8K # (30)!
+    range_size: 1G # (31)!
+    run_count_per_level: 2 # (32)!
+    run_size_ratio: 3.5 # (33)!
+    read_threads: 1 # (34)!
+    write_threads: 4 # (35)!
+    timeout: 60.0 # (36)!
   pg:
-    listen: 127.0.0.1:4327 # (20)!
-    ssl: false # (21)!
+    listen: 127.0.0.1:4327 # (21)!
+    ssl: false # (22)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
 2. [cluster.default_bucket_count](#cluster_default_bucket_count)
 3. [cluster.name](#cluster_name)
 4. [cluster.shredding](#cluster_shredding)
-5. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
-6. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-7. [instance.admin_socket](#instance_admin_socket)
-8. [instance.iproto_advertise](#instance_iproto_advertise)
-9. [instance.audit](#instance_audit)
-10. [instance.failure_domain](#instance_failure_domain)
-11. [instance.http_listen](#instance_http_listen)
-12. [instance.instance_dir](#instance_instance_dir)
-13. [instance.iproto_listen](#instance_iproto_listen)
-14. [instance.log.destination](#instance_log_destination)
-15. [instance.log.format](#instance_log_format)
-16. [instance.log.level](#instance_log_level)
-17. [instance.memtx.memory](#instance_memtx_memory)
-18. [instance.name](#instance_name)
-19. [instance.peer](#instance_peer)
-20. [instance.pg.listen](#instance_pg_listen)
-21. [instance.pg.ssl](#instance_pg_ssl)
-22. [instance.share_dir](#instance_share_dir)
-23. [instance.replicaset_name](#instance_replicaset_name)
-24. [instance.tier](#instance_tier)
-25. [instance.vinyl.cache](#instance_vinyl_cache)
-26. [instance.vinyl.memory](#instance_vinyl_memory)
-27. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-28. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-29. [instance.vinyl.page_size](#instance_vinyl_page_size)
-30. [instance.vinyl.range_size](#instance_vinyl_range_size)
-31. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-32. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-33. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-34. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-35. [instance.vinyl.timeout](#instance_vinyl_timeout)
+5. [cluster.tier.<tier_name\>.bucket_count](#cluster_tier_tier_bucket_count)
+6. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
+7. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
+8. [instance.admin_socket](#instance_admin_socket)
+9. [instance.iproto_advertise](#instance_iproto_advertise)
+10. [instance.audit](#instance_audit)
+11. [instance.failure_domain](#instance_failure_domain)
+12. [instance.http_listen](#instance_http_listen)
+13. [instance.instance_dir](#instance_instance_dir)
+14. [instance.iproto_listen](#instance_iproto_listen)
+15. [instance.log.destination](#instance_log_destination)
+16. [instance.log.format](#instance_log_format)
+17. [instance.log.level](#instance_log_level)
+18. [instance.memtx.memory](#instance_memtx_memory)
+19. [instance.name](#instance_name)
+20. [instance.peer](#instance_peer)
+21. [instance.pg.listen](#instance_pg_listen)
+22. [instance.pg.ssl](#instance_pg_ssl)
+23. [instance.share_dir](#instance_share_dir)
+24. [instance.replicaset_name](#instance_replicaset_name)
+25. [instance.tier](#instance_tier)
+26. [instance.vinyl.cache](#instance_vinyl_cache)
+27. [instance.vinyl.memory](#instance_vinyl_memory)
+28. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+29. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+30. [instance.vinyl.page_size](#instance_vinyl_page_size)
+31. [instance.vinyl.range_size](#instance_vinyl_range_size)
+32. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+33. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+34. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+35. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+36. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -183,6 +185,17 @@ instance:
 Аналогичная команда: [`picodata run --shredding`]
 
 [`picodata run --shredding`]: cli.md#run_shredding
+
+### cluster.tier.<tier_name\>.bucket_count {: #cluster_tier_tier_bucket_count }
+
+Число сегментов в данном тире.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `3000`
+
+Данный параметр задается только в файле конфигурации.
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 

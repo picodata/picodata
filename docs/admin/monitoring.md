@@ -132,7 +132,7 @@ journalctl -u test@default-1000.service
 systemd[1]: Starting Picodata cluster test@default-1000...
 systemd[1]: Started Picodata cluster test@default-1000.
 picodata[4731]: 'cluster.name': "test"
-picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "can_vote": true}}
+picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "bucket_count": 3000, "can_vote": true}}
 picodata[4731]: 'cluster.default_replication_factor': 1
 picodata[4731]: 'instance.instance_dir': "/var/lib/picodata/test/default-1000"
 picodata[4731]: 'instance.name': "default-1000"
