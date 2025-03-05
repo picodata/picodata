@@ -376,8 +376,9 @@ def test_read_from_system_tables(cluster: Cluster):
         "raft_wal_count_max",
         "raft_wal_size_max",
         "shredding",
-        "sql_cache_size_max",
         "sql_motion_row_max",
+        "sql_storage_cache_count_max",
+        "sql_storage_cache_size_max",
         "sql_vdbe_opcode_max",
     ]
 

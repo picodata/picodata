@@ -6,7 +6,7 @@ use sbroad::backend::sql::ir::PatternWithParams;
 use sbroad::backend::sql::space::TableGuard;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::{unprepare, StorageMetadata, StorageReturnFormat};
+use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat};
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
 use sbroad::executor::engine::helpers::{
     self, execute_first_cacheable_request, execute_second_cacheable_request, read_or_prepare,
@@ -14,7 +14,7 @@ use sbroad::executor::engine::helpers::{
 };
 use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ExecutionPlan, QueryType};
-use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
+use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
 use sbroad::executor::protocol::{EncodedTables, RequiredData, SchemaInfo};
 use sbroad::executor::result::ProducerResult;
 use sbroad::ir::value::Value;
@@ -24,24 +24,29 @@ use tarantool::tuple::{Tuple, TupleBuffer};
 
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
+use once_cell::sync::Lazy;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
 use sbroad::ir::node::NodeId;
 use sbroad::ir::tree::Snapshot;
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, rc::Rc};
 
 use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
 
 thread_local!(
-    static STATEMENT_CACHE: Rc<Mutex<PicoStorageCache>> = Rc::new(
-        Mutex::new(PicoStorageCache::new(DEFAULT_CAPACITY, Some(Box::new(evict))).unwrap())
-    )
+    // We need Lazy, because cache can be initialized only after raft node.
+    pub static STATEMENT_CACHE: Lazy<Rc<Mutex<PicoStorageCache>>> = Lazy::new(|| {
+        let node = node::global().expect("node should be initialized at this moment");
+        let tier = node.raft_storage.tier().expect("storage shouldn't fail").expect("tier for instance should exists");
+        let capacity = node.storage.db_config.sql_storage_cache_count_max(&tier).expect("storage shouldn't fail");
+        let cache_impl = Rc::new(Mutex::new(PicoStorageCache::new(capacity, Some(Box::new(evict))).unwrap()));
+        cache_impl
+    })
 );
 
 #[allow(clippy::module_name_repetitions)]
 pub struct StorageRuntime {
-    pub metadata: RefCell<StorageMetadata>,
     bucket_count: u64,
     cache: Rc<Mutex<PicoStorageCache>>,
 }
@@ -53,7 +58,10 @@ fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadErr
     unprepare(plan_id, &mut (stmt, table_ids))
 }
 
-pub struct PicoStorageCache(LRUCache<SmolStr, StorageCacheValue>);
+pub struct PicoStorageCache {
+    pub cache: LRUCache<SmolStr, StorageCacheValue>,
+    pub capacity: usize,
+}
 
 impl PicoStorageCache {
     pub fn new(
@@ -68,11 +76,19 @@ impl PicoStorageCache {
         } else {
             None
         };
-        Ok(PicoStorageCache(LRUCache::new(capacity, new_fn)?))
+
+        Ok(PicoStorageCache {
+            cache: LRUCache::new(capacity, new_fn)?,
+            capacity,
+        })
     }
 
     pub fn capacity(&self) -> usize {
-        self.0.capacity()
+        self.capacity
+    }
+
+    pub fn adjust_capacity(&mut self, target_capacity: usize) -> Result<(), SbroadError> {
+        self.cache.adjust_capacity(target_capacity)
     }
 }
 
@@ -105,12 +121,12 @@ impl StorageCache for PicoStorageCache {
             version_map.insert(table_name.clone(), current_version);
         }
 
-        self.0.put(plan_id, (stmt, version_map, table_ids))?;
+        self.cache.put(plan_id, (stmt, version_map, table_ids))?;
         Ok(())
     }
 
     fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError> {
-        let Some((ir, version_map, table_ids)) = self.0.get(plan_id)? else {
+        let Some((ir, version_map, table_ids)) = self.cache.get(plan_id)? else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
@@ -135,7 +151,7 @@ impl StorageCache for PicoStorageCache {
     }
 
     fn clear(&mut self) -> Result<(), SbroadError> {
-        self.0.clear()
+        self.cache.clear()
     }
 }
 
@@ -296,9 +312,8 @@ impl StorageRuntime {
     /// - Failed to initialize the LRU cache.
     pub fn new() -> Result<Self, SbroadError> {
         let runtime = STATEMENT_CACHE.with(|cache| StorageRuntime {
-            metadata: RefCell::new(StorageMetadata::new()),
             bucket_count: DEFAULT_BUCKET_COUNT,
-            cache: cache.clone(),
+            cache: (*cache).clone(),
         });
         Ok(runtime)
     }

@@ -235,6 +235,17 @@ where
         self.map.insert(None, head);
         first_error
     }
+
+    pub fn adjust_capacity(&mut self, target_capacity: usize) -> Result<(), SbroadError> {
+        debug_assert!(target_capacity > 0);
+
+        self.capacity = target_capacity;
+        while self.size > self.capacity {
+            self.remove_last()?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<Key, Value> Cache<Key, Value> for LRUCache<Key, Value>

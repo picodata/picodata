@@ -14,7 +14,6 @@ use crate::error;
 use crate::errors::SbroadError;
 use crate::executor::engine::helpers::proxy::SQL_CACHE_PROXY;
 use crate::executor::engine::helpers::table_name;
-use crate::executor::lru::DEFAULT_CAPACITY;
 use crate::ir::node::NodeId;
 use crate::ir::value::{EncodedValue, Value};
 use crate::utils::ByteCounter;
@@ -49,38 +48,6 @@ pub enum StorageReturnFormat {
     // (and so iproto), where we always must return
     // Tuple
     DqlVshard,
-}
-
-/// Storage runtime configuration.
-#[allow(clippy::module_name_repetitions)]
-pub struct StorageMetadata {
-    /// Prepared statements cache capacity (on the storage).
-    pub storage_capacity: usize,
-    /// Prepared statements cache size in bytes (on the storage).
-    /// If a new statement is bigger doesn't fit into the cache,
-    /// it would not be cached but executed directly.
-    pub storage_size_bytes: usize,
-}
-
-impl Default for StorageMetadata {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl StorageMetadata {
-    #[must_use]
-    pub fn new() -> Self {
-        StorageMetadata {
-            storage_capacity: DEFAULT_CAPACITY,
-            storage_size_bytes: 1024 * DEFAULT_CAPACITY,
-        }
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.storage_capacity == 0 && self.storage_size_bytes == 0
-    }
 }
 
 pub fn prepare(pattern: String) -> Result<Statement, SbroadError> {

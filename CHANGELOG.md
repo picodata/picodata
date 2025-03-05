@@ -92,7 +92,9 @@ Parameters with scope `global` are the same on each instance.
 
 - `instance.shredding` moved to `cluster` section and is now defined at bootstrap only.
 
-- Added box `sql_cache_size` to _pico_db_config under `sql_cache_size_max` alias.
+- Added box `sql_cache_size` to _pico_db_config under `sql_storage_cache_size_max` alias.
+
+- Added `sql_storage_cache_count_max` to _pico_db_config.
 
 ### CLI
 

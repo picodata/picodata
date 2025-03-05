@@ -8,6 +8,7 @@ use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
+use crate::sql::storage::STATEMENT_CACHE;
 use crate::sql::value_type_str;
 use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
@@ -1660,6 +1661,20 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
+    /// Tarantool statement cache size capacity in bytes.
+    ///
+    /// Corresponds to `box.cfg.sql_cache_size`
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 5242880)]
+    #[introspection(scope = tier)]
+    pub sql_storage_cache_size_max: u64,
+
+    /// The maximum number of statements that Picodata
+    /// stores in LRU cache.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 50)]
+    pub sql_storage_cache_count_max: u64,
+
     /// The maximum number of snapshots that are stored in the memtx_dir
     /// directory. If the number of snapshots after creating a new one exceeds
     /// this value, the Tarantool garbage collector deletes old snapshots. If
@@ -1714,14 +1729,6 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 0x300)]
     #[introspection(scope = tier)]
     pub iproto_net_msg_max: u64,
-
-    /// Tarantool statement cache size capacity in bytes.
-    ///
-    /// Corresponds to `box.cfg.sql_cache_size`
-    #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 5242880)]
-    #[introspection(scope = tier)]
-    pub sql_cache_size_max: u64,
 }
 
 impl AlterSystemParameters {
@@ -1897,9 +1904,13 @@ pub fn get_defaults_for_all_alter_system_parameters(
 ///
 /// In case of dynamic parameter, apply parameter via box.cfg.
 ///
+/// Yields.
+///
 /// Panic in following cases:
 ///   - tuple is not key-value with predefined schema
 ///   - while applying via box.cfg
+///     TODO: it shouldn't panic in some cases, for example
+///     TODO: adjusting capacity of LRU cache in sbroad
 pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
     let name = tuple
         .field::<&str>(AlterSystemParameters::FIELD_NAME)
@@ -1948,7 +1959,7 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
                 .expect("type already checked");
 
             set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
-        } else if name == system_parameter_name!(sql_cache_size_max) {
+        } else if name == system_parameter_name!(sql_storage_cache_size_max) {
             let value = tuple
                 .field::<u64>(AlterSystemParameters::FIELD_VALUE)
                 .expect("there is always 3 fields in _pico_db_config tuple")
@@ -1970,6 +1981,24 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
             .expect("type already checked");
         // Cache the value.
         MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+    } else if name == system_parameter_name!(sql_storage_cache_count_max) {
+        let value = tuple
+            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
+            .expect("there is always 3 fields in _pico_db_config tuple")
+            .expect("type already checked");
+
+        STATEMENT_CACHE.with(|cache| {
+            // Yield might happen, but apply_parameter is not called from transaction.
+            // lock() on cache might happen many times during executing sql, but
+            // it doesn't take for long.
+            // Also changing capacity is a very rare operation, so it shouldn't be a problem.
+            let mut cache = cache.lock();
+            cache.capacity = value;
+            cache
+                .cache
+                .adjust_capacity(value)
+                .expect("can't fail with validated arguments");
+        });
     }
 }
 

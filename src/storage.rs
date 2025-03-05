@@ -3056,13 +3056,17 @@ impl DbConfig {
                 assert!(index < 1);
             }
 
-            let res: T = tuple.field(AlterSystemParameters::FIELD_VALUE)?.expect("");
+            let res: T = tuple
+                .field(AlterSystemParameters::FIELD_VALUE)?
+                .expect("field scope exists");
 
             if global_scope {
                 return Ok(res);
             }
 
-            let current_scope: &str = tuple.field(AlterSystemParameters::FIELD_SCOPE)?.expect("");
+            let current_scope: &str = tuple
+                .field(AlterSystemParameters::FIELD_SCOPE)?
+                .expect("field scope exists");
 
             if target_scope == current_scope {
                 return Ok(res);
@@ -3196,6 +3200,11 @@ impl DbConfig {
             system_parameter_name!(sql_vdbe_opcode_max),
             Self::GLOBAL_SCOPE,
         )
+    }
+
+    /// `tier` argument should be from set of existing tiers.
+    pub fn sql_storage_cache_count_max(&self, tier: &str) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(sql_storage_cache_count_max), tier)
     }
 
     #[inline]

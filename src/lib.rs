@@ -1086,8 +1086,6 @@ fn postjoin(
         .tier()?
         .expect("tier for instance should exists");
 
-    reapply_dynamic_parameters(&storage, &current_tier_name)?;
-
     if let Some(config) = &config.instance.audit {
         let raft_id = raft_storage
             .raft_id()
@@ -1128,6 +1126,8 @@ fn postjoin(
     let node = traft::node::Node::init(storage.clone(), raft_storage.clone(), false);
     let node = node.expect("failed initializing raft node");
     let raft_id = node.raft_id();
+
+    reapply_dynamic_parameters(&storage, &current_tier_name)?;
 
     let cs = raft_storage.conf_state().unwrap();
     if cs.voters == [raft_id] {
