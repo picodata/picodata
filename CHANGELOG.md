@@ -26,6 +26,9 @@ with the `YY.MINOR.MICRO` scheme.
 - `.proc_before_online`'s PostgreSQL protocol initialization stage will be
   skipped if it was already initialized before, making this RPC idempotent.
 
+- `--pg-listen` parameter is now checked at bootstrap (`postjoin`) stage, so
+  it is not possible anymore to bind a busy port when instance is offline.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added 

@@ -1125,10 +1125,14 @@ fn postjoin(
 
     let node = traft::node::Node::init(storage.clone(), raft_storage.clone(), false);
     let node = node.expect("failed initializing raft node");
-    let raft_id = node.raft_id();
 
     reapply_dynamic_parameters(&storage, &current_tier_name)?;
 
+    let pg_config = &config.instance.pg;
+    let instance_dir = config.instance.instance_dir();
+    pgproto::Context::init(pg_config, instance_dir, &node.storage)?;
+
+    let raft_id = node.raft_id();
     let cs = raft_storage.conf_state().unwrap();
     if cs.voters == [raft_id] {
         #[rustfmt::skip]

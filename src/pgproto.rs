@@ -22,6 +22,11 @@ mod value;
 /// Used to provide idempotency to enabling a PostgreSQL protocol.
 pub(crate) static mut IS_ENABLED: bool = false;
 
+/// Initialized to enable PostgreSQL server protocol.
+/// WARNING: if it is initialized, it does not directly mean
+/// that PostgreSQL server protocol is currently running.
+pub(crate) static mut CONTEXT: Option<Context> = None;
+
 /// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
@@ -57,7 +62,7 @@ fn enable_tcp_nodelay(raw: &CoIOStream) -> std::io::Result<()> {
     Ok(())
 }
 
-fn server_start(context: Context) {
+fn server_start(context: &'static Context) {
     // Help DBA diagnose storages by initializing them asap.
     backend::storage::force_init_portals_and_statements();
 
@@ -155,17 +160,33 @@ impl Context {
             storage,
         })
     }
+
+    /// Initialize PostgreSQL protocol server context. Sets up a global static
+    /// variable, instead of returning a context back to the caller.
+    /// WARNING: it will reinitialize context if it is already initialized.
+    pub fn init(
+        config: &Config,
+        instance_dir: &Path,
+        storage: &'static Catalog,
+    ) -> Result<(), Error> {
+        unsafe {
+            CONTEXT = Some(Context::new(config, instance_dir, storage)?);
+        }
+        Ok(())
+    }
 }
 
-/// Start a postgres server fiber.
-/// ATTENTION: won't start if already enabled.
-pub fn start(config: &Config, instance_dir: &Path, storage: &'static Catalog) -> Result<(), Error> {
+/// Start a PostgreSQL server fiber, based on context from `pgproto::CONTEXT` variable.
+/// ATTENTION:
+/// - won't start if it is already enabled (started)
+/// - panics if context was not initialized using `pgproto::init`
+pub fn start() -> Result<(), Error> {
     // SAFETY: safe as long as only called from tx thread
     if unsafe { !IS_ENABLED } {
-        let context = Context::new(config, instance_dir, storage)?;
+        let context = unsafe { CONTEXT.as_ref().expect("should be initialized") };
         tarantool::fiber::Builder::new()
             .name("pgproto")
-            .func(move || server_start(context))
+            .func(|| server_start(context))
             .start_non_joinable()?;
         unsafe { IS_ENABLED = true };
     }

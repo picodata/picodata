@@ -1,4 +1,3 @@
-use crate::config::PicodataConfig;
 use crate::pgproto;
 use crate::tlog;
 use crate::traft::node;
@@ -11,12 +10,7 @@ pub(super) fn before_online_inner(req: Request) -> crate::traft::Result<Response
     node.wait_index(req.applied, req.timeout)?;
     node.status().check_term(req.term)?;
 
-    let instance_config = &PicodataConfig::get().instance;
-    pgproto::start(
-        &instance_config.pg,
-        instance_config.instance_dir(),
-        &node.storage,
-    )?;
+    pgproto::start()?;
 
     let result = node.plugin_manager.handle_instance_online();
     if let Err(e) = result {
