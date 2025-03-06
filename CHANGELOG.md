@@ -23,6 +23,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - User creation or altering in SQL with a password and LDAP authentication method has been forbidden.
 
+- `.proc_before_online`'s PostgreSQL protocol initialization stage will be
+  skipped if it was already initialized before, making this RPC idempotent.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added 

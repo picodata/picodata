@@ -588,7 +588,7 @@ impl Loop {
             }) => {
                 set_status!("update instance state to online");
                 governor_step! {
-                    "enable plugins on instance" [
+                    "finalizing instance initialization" [
                         "instance_name" => %target,
                     ]
                     async {

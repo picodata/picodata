@@ -19,6 +19,9 @@ mod stream;
 mod tls;
 mod value;
 
+/// Used to provide idempotency to enabling a PostgreSQL protocol.
+pub(crate) static mut IS_ENABLED: bool = false;
+
 /// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
@@ -155,13 +158,16 @@ impl Context {
 }
 
 /// Start a postgres server fiber.
+/// ATTENTION: won't start if already enabled.
 pub fn start(config: &Config, instance_dir: &Path, storage: &'static Catalog) -> Result<(), Error> {
-    let context = Context::new(config, instance_dir, storage)?;
-
-    tarantool::fiber::Builder::new()
-        .name("pgproto")
-        .func(move || server_start(context))
-        .start_non_joinable()?;
-
+    // SAFETY: safe as long as only called from tx thread
+    if unsafe { !IS_ENABLED } {
+        let context = Context::new(config, instance_dir, storage)?;
+        tarantool::fiber::Builder::new()
+            .name("pgproto")
+            .func(move || server_start(context))
+            .start_non_joinable()?;
+        unsafe { IS_ENABLED = true };
+    }
     Ok(())
 }
