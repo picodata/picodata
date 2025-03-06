@@ -6,6 +6,27 @@ use crate::traft::{RaftIndex, RaftTerm};
 
 use std::time::Duration;
 
+pub(super) fn before_online_inner(req: Request) -> crate::traft::Result<Response> {
+    let node = node::global()?;
+    node.wait_index(req.applied, req.timeout)?;
+    node.status().check_term(req.term)?;
+
+    let instance_config = &PicodataConfig::get().instance;
+    pgproto::start(
+        &instance_config.pg,
+        instance_config.instance_dir(),
+        &node.storage,
+    )?;
+
+    let result = node.plugin_manager.handle_instance_online();
+    if let Err(e) = result {
+        tlog!(Error, "failed initializing plugin system: {e}");
+        return Err(e.into());
+    }
+
+    Ok(Response {})
+}
+
 crate::define_rpc_request! {
     /// Enables communication by PostgreSQL protocol and all
     /// plugins on instance locally that are marked as "enabled".
@@ -20,20 +41,7 @@ crate::define_rpc_request! {
     /// 5. Address for pgproto cannot be parsed or is busy
     /// 6. Any of "enabled" plugins was loaded with errors
     fn proc_before_online(req: Request) -> crate::traft::Result<Response> {
-        let node = node::global()?;
-        node.wait_index(req.applied, req.timeout)?;
-        node.status().check_term(req.term)?;
-
-        let instance_config = &PicodataConfig::get().instance;
-        pgproto::start(&instance_config.pg, instance_config.instance_dir(), &node.storage)?;
-
-        let result = node.plugin_manager.handle_instance_online();
-        if let Err(e) = result {
-            tlog!(Error, "failed initializing plugin system: {e}");
-            return Err(e.into());
-        }
-
-        Ok(Response {})
+        before_online_inner(req)
     }
 
     pub struct Request {

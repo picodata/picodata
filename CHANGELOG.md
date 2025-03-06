@@ -25,8 +25,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### RPC API
 
-- `.proc_enable_all_plugins` is renamed into `.proc_before_online` due to added step of
-  initialization of a PostgreSQL protocol at it's call.
+- `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added 
+  step of initialization of a PostgreSQL protocol at it's call: see "deprecation".
+
+### Deprecation
+
+- `.proc_enable_all_plugins` will be deprecated in the next major release.
 
 ### SQL
 - SQL supports `TRUNCATE` operation.
