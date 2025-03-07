@@ -862,10 +862,9 @@ where
             lua::lua_getfield(l, -1, c_ptr!("new"));
             impl_details::push_userdata(l, f);
             lua::lua_pushcclosure(l, Self::trampoline_for_lua, 1);
-            impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
+            impl_details::guarded_pcall(l, 1, 1).inspect_err(|_| {
                 // Pop the fiber module from the stack
                 lua::lua_pop(l, 1);
-                e
             })?; // stack[top] = fiber.new(c_closure)
 
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
@@ -970,10 +969,9 @@ mod impl_details {
 
         lua::lua_getfield(l, -1, c_ptr!("join"));
         lua::lua_pushinteger(l, f_id as _);
-        guarded_pcall(l, 1, 2).map_err(|e| {
+        guarded_pcall(l, 1, 2).inspect_err(|_| {
             // Pop the fiber module from the stack
             lua::lua_pop(l, 1);
-            e
         })?; // stack[top] = fiber.join(f_id)
 
         // 3 values on the stack that need to be dropped:

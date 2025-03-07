@@ -25,6 +25,10 @@
 
 ### Breaking changes (picodata)
 
+### Deprecated (picodata)
+
+- `Tuple::as_named_buffer` is now deprecated without any alternative, same as `TupleFormat::{names, name_count}`.
+
 
 # [6.1.0] Dec 10 2024
 

@@ -63,7 +63,7 @@ pub struct EndpointReceiver<T> {
 /// # Arguments
 ///
 /// * `cbus_endpoint`: cbus endpoint name. Note that the tx thread (or any other cord)
-/// must have a fiber occupied by the endpoint cbus_loop.
+///   must have a fiber occupied by the endpoint cbus_loop.
 ///
 /// # Examples
 ///

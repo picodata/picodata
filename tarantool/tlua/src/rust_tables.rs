@@ -402,7 +402,7 @@ where
 
         for i in IntoIterator::into_iter(was_assigned)
             .enumerate()
-            .flat_map(|(i, was_assigned)| was_assigned.then(|| i))
+            .flat_map(|(i, was_assigned)| was_assigned.then_some(i))
         {
             unsafe { std::ptr::drop_in_place(ptr.add(i)) }
         }

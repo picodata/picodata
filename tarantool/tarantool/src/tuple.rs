@@ -1576,15 +1576,16 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::*;
+    use crate::say_warn;
     use crate::Result;
-    use std::ffi::CStr;
-    use std::io::{Cursor, Write};
 
     ////////////////////////////////////////////////////////////////////////////
     // Tuple picodata extensions
     ////////////////////////////////////////////////////////////////////////////
 
     impl Tuple {
+        /// NO LONGER SUPPORTED!
+        ///
         /// Returns messagepack encoded tuple with named fields (messagepack map).
         ///
         /// Returned map has only numeric keys if tuple has default tuple format (see [TupleFormat](struct.TupleFormat.html)),
@@ -1592,36 +1593,11 @@ mod picodata {
         /// fields in tuple format - then additional fields are  presents in the map with numeric keys.
         ///
         /// This function is useful if there is no information about tuple fields in program runtime.
+        #[inline(always)]
         pub fn as_named_buffer(&self) -> Result<Vec<u8>> {
-            let format = self.format();
-            let buff = self.to_vec();
-
-            let field_count = self.len();
-            let mut named_buffer = Vec::with_capacity(buff.len());
-
-            let mut cursor = Cursor::new(&buff);
-
-            rmp::encode::write_map_len(&mut named_buffer, field_count)?;
-            rmp::decode::read_array_len(&mut cursor)?;
-            format.names().try_for_each(|field_name| -> Result<()> {
-                let value_start = cursor.position() as usize;
-                crate::msgpack::skip_value(&mut cursor)?;
-                let value_end = cursor.position() as usize;
-
-                rmp::encode::write_str(&mut named_buffer, field_name)?;
-                Ok(named_buffer.write_all(&buff[value_start..value_end])?)
-            })?;
-
-            for i in 0..field_count - format.name_count() {
-                let value_start = cursor.position() as usize;
-                crate::msgpack::skip_value(&mut cursor)?;
-                let value_end = cursor.position() as usize;
-
-                rmp::encode::write_u32(&mut named_buffer, i)?;
-                named_buffer.write_all(&buff[value_start..value_end])?;
-            }
-
-            Ok(named_buffer)
+            Err(crate::error::Error::other(
+                "Tuple::as_named_buffer is no longer supported",
+            ))
         }
 
         /// Returns a slice of data contained in the tuple.
@@ -1689,23 +1665,20 @@ mod picodata {
             unsafe { SINGLETON.as_ref().expect("just made sure it's there") }
         }
 
+        /// NO LONGER SUPPORTED.
+        ///
         /// Return tuple field names count.
         pub fn name_count(&self) -> u32 {
-            unsafe { (*(*self.inner).dict).name_count }
+            say_warn!("TupleFormat::name_count is no longer supported");
+            0
         }
 
+        /// NO LONGER SUPPORTED.
+        ///
         /// Return tuple field names.
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
-            let slice = unsafe {
-                std::slice::from_raw_parts((*(*self.inner).dict).names, self.name_count() as _)
-            };
-            slice.iter().copied().map(|ptr| {
-                // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
-                let cstr = unsafe { CStr::from_ptr(ptr) };
-                let s = cstr.to_str().expect("tuple fields should be in utf-8");
-                s
-            })
+            say_warn!("TupleFormat::names is no longer supported");
+            std::iter::empty()
         }
     }
 }

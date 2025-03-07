@@ -90,7 +90,7 @@ impl<T> Channel<T> {
 /// # Arguments
 ///
 /// * `cbus_endpoint`: cbus endpoint name. Note that the tx thread (or any other cord)
-/// must have a fiber occupied by the endpoint cbus_loop.
+///   must have a fiber occupied by the endpoint cbus_loop.
 /// * `cap`: specifies the buffer size.
 ///
 /// # Examples
@@ -495,7 +495,7 @@ mod tests {
         });
 
         for _ in 0..MESSAGES_PER_PRODUCER * 3 {
-            assert!(matches!(rx.receive(), Ok(_)));
+            assert!(rx.receive().is_ok());
         }
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
@@ -542,7 +542,7 @@ mod tests {
             // assert that all threads produce 10 messages and sleep after
             assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
             for _ in 0..10 {
-                assert!(matches!(rx.receive(), Ok(_)));
+                assert!(rx.receive().is_ok());
             }
             fiber::sleep(Duration::from_millis(100));
         }

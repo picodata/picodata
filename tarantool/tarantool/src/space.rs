@@ -445,9 +445,8 @@ impl SpaceCache {
         // TODO: clear the cache if box_schema_version changes.
         let mut cache = self.spaces.borrow_mut();
         cache.get(name).cloned().or_else(|| {
-            Space::find(name).map(|space| {
+            Space::find(name).inspect(|space| {
                 cache.insert(name.to_string(), space.clone());
-                space
             })
         })
     }
@@ -459,9 +458,8 @@ impl SpaceCache {
             .get(&(space.id, name.to_string()))
             .cloned()
             .or_else(|| {
-                space.index(name).map(|index| {
+                space.index(name).inspect(|index| {
                     cache.insert((space.id, name.to_string()), index.clone());
-                    index
                 })
             })
     }
