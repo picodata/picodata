@@ -5,6 +5,7 @@
 ### Added
 
 ### Changed
+- MSRV is now 1.81 instead of 1.71.1 as it was.
 
 ### Fixed
 - `network::protocol::codec::Header::encode` will not truncate to `u8` an
