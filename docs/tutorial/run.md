@@ -139,9 +139,14 @@ psql postgres://admin@127.0.0.1:55432?sslmode=disable
 
 Для обеспечения мер безопасности рекомендуется организовать хранение
 пароля для внутреннего системного пользователя `pico_service` в
-отдельном файле.
-Дополнительно, в опции [`--audit`] явно укажите указать способ вывода
-[журнала аудита](../admin/audit_log.md).
+отдельном файле `.picodata-cookie`, который следует поместить в [рабочую
+директорию инстанса]. Пароль пользователя `pico_service` используется в
+рамках всего кластера, поэтому его нужно задать одинаковым для всех
+инстансов кластера до их первого запуска (соответственно, следует также
+заранее подготовить рабочие директории инстансов).
+
+Дополнительно, в опции [`--audit`] явно укажите способ вывода [журнала
+аудита](../admin/audit_log.md).
 
 Также рекомендуется использовать опцию [`--shredding`], которая
 обеспечивает безопасное удаление рабочих файлов.
@@ -149,13 +154,15 @@ psql postgres://admin@127.0.0.1:55432?sslmode=disable
 Пример команд, реализующих безопасный запуск:
 
 ```shell
-echo "shAreD_s3cr3t" > secret.txt
-chmod 600 secret.txt
-picodata run --service-password-file secret.txt --audit audit.log --shredding
+mkdir data
+echo "shAreDs3cr3t" > data/.picodata-cookie
+chmod 600 data/.picodata-cookie
+picodata run --instance-dir=data --audit audit.log --shredding
 ```
 
 [`--audit`]: ../reference/cli.md#run_audit
 [`--shredding`]: ../reference/cli.md#run_shredding
+[рабочую директорию инстанса]: ../reference/cli.md#run_instance_dir
 
 ## Безопасное завершение работы {: #secure_stop }
 
