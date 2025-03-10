@@ -1759,7 +1759,7 @@ def test_coalesce(instance: Instance):
     assert data == [[0], [1]]
 
     # Type mismatch: all values must have the same type.
-    with pytest.raises(TarantoolError, match=" expected unsigned type, but got string"):
+    with pytest.raises(TarantoolError, match="coalesce types unsigned and string cannot be matched"):
         instance.sql("select coalesce(bar, 'none') from foo;")
 
     # 0 / 0 is not evaluated.

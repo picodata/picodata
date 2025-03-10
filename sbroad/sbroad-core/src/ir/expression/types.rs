@@ -78,10 +78,13 @@ impl Expression<'_> {
                         match (case_ty.get(), another_ty.get()) {
                             (Some(case_ty), Some(another_ty)) => {
                                 if *case_ty != *another_ty {
-                                    return Err(SbroadError::TypeError(TypeError::TypeMismatch(
-                                        *case_ty,
-                                        *another_ty,
-                                    )));
+                                    return Err(SbroadError::TypeError(
+                                        TypeError::TypesCannotBeMatched(
+                                            "case",
+                                            *case_ty,
+                                            *another_ty,
+                                        ),
+                                    ));
                                 }
                             }
                             (None, Some(_)) => case_ty_general = Some(*another_ty),
@@ -175,7 +178,10 @@ impl Expression<'_> {
                             if let Some(ty) = ty.get() {
                                 if let Some(last_ty) = last_ty.get() {
                                     if ty != last_ty {
-                                        return Err(TypeError::TypeMismatch(*last_ty, *ty).into());
+                                        return Err(TypeError::TypesCannotBeMatched(
+                                            "coalesce", *last_ty, *ty,
+                                        )
+                                        .into());
                                     }
                                 } else {
                                     last_ty.set(*ty)

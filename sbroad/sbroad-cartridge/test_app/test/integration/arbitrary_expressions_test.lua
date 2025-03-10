@@ -69,7 +69,7 @@ arbitrary_projection.test_arbitrary_invalid = function()
             END "case_result"
         FROM "arithmetic_space"
     ]], {} })
-    t.assert_str_contains(tostring(err), "expected string type, but got unsigned")
+    t.assert_str_contains(tostring(err), "case types string and unsigned cannot be matched")
 end
 
 arbitrary_projection.test_arbitrary_valid = function()
