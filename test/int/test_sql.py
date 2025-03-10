@@ -1920,6 +1920,67 @@ def test_except_on_global_tbls(cluster: Cluster):
     assert sorted(data, key=lambda x: x[0]) == [[7]]
 
 
+def test_except_parsing_panic_gl_1339(cluster: Cluster):
+    """
+    https://git.picodata.io/core/picodata/-/issues/1339
+    """
+
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    with pytest.raises(
+        TarantoolError, match="children tuples have mismatching amount of columns in except node: left 1, right 2"
+    ):
+        i1.sql("select 1 except select 1, 2")
+
+    with pytest.raises(TarantoolError, match="types unsigned and string are not supported for arithmetic expression"):
+        i1.sql("select 1 + 'kek' except select 1")
+
+    ddl = i1.sql("create table lol(a int primary key, b int, c int);")
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql("create table kek (a int primary key, b int, c int);")
+    assert ddl["row_count"] == 1
+
+    # query from the issue
+    with pytest.raises(
+        TarantoolError, match="children tuples have mismatching amount of columns in except node: left 2, right 1"
+    ):
+        i1.sql(
+            """
+            WITH cte0 AS
+              (SELECT t1.c,
+                      t3.b
+               FROM kek t0
+               JOIN lol t1 ON t0.a = t1.b
+               JOIN lol t3 ON
+                 (SELECT 86
+                  FROM lol
+                  JOIN kek t1 ON t1.b =
+                    (SELECT a
+                     FROM lol
+                     WHERE c IN (
+                                 VALUES (30101762462282911)))) <= 0
+               UNION SELECT 0,
+                            0
+               EXCEPT SELECT t3.a
+               FROM kek t0
+               JOIN lol t1 ON t0.a = t1.b
+               JOIN lol t2 ON a = a
+               JOIN kek t3 ON a BETWEEN t2.b AND t3.c),
+                 cte1 AS
+              (SELECT t1.c,
+                      t0.c,
+                      59 c3
+               FROM lol t0
+               JOIN lol t1 ON t0.a = t1.c
+               ORDER BY c3)
+            SELECT 0
+            FROM cte0;
+            """
+        )
+
+
 def test_hash(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

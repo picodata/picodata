@@ -1946,10 +1946,7 @@ impl SelectSet {
                         let remove_duplicates = matches!(u, SelectOp::Union);
                         plan.add_union(left_id, right_id, remove_duplicates)
                     }
-                    SelectOp::Except => {
-                        let r = plan.add_except(left_id, right_id).unwrap();
-                        Ok(r)
-                    }
+                    SelectOp::Except => plan.add_except(left_id, right_id),
                 }
             }
         }
