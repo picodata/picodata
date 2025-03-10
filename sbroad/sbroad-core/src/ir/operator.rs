@@ -1291,9 +1291,7 @@ impl Plan {
             }
         }
 
-        let output = self
-            .add_row_for_output(child_id, &[], true, None)
-            .expect("output row for CTE");
+        let output = self.add_row_for_output(child_id, &[], true, None)?;
         let cte = ScanCte {
             alias,
             child: child_id,

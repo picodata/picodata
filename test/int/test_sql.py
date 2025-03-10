@@ -4900,6 +4900,33 @@ def test_cte(cluster: Cluster):
     )
     assert data == [[1]]
 
+    # Ensure typing errors in cte do not result in panic.
+    # https://git.picodata.io/core/picodata/-/issues/1441
+
+    with pytest.raises(
+        TarantoolError,
+        match="coalesce types string and unsigned cannot be matched",
+    ):
+        i1.sql(""" with cte as (select coalesce('kek',1487)) select * from cte; """)
+
+    with pytest.raises(
+        TarantoolError,
+        match="case types unsigned and integer cannot be matched",
+    ):
+        i1.sql(""" with cte as (select case when true then 1 else -1 end) select * from cte; """)
+
+    with pytest.raises(
+        TarantoolError,
+        match="types unsigned and string are not supported for arithmetic expression",
+    ):
+        i1.sql(""" with cte as (select 1 + 'lol') select * from cte; """)
+
+    with pytest.raises(
+        TarantoolError,
+        match=r"can not convert boolean\(FALSE\) to integer",
+    ):
+        i1.sql(""" with cte as (select 1 + ?) select * from cte; """, False)
+
 
 def test_unique_index_name_for_sharded_table(cluster: Cluster):
     cluster.deploy(instance_count=1)
