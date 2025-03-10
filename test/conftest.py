@@ -2889,17 +2889,17 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     project = gl.projects.get(id=PICODATA_GITLAB_PROJECT_ID, lazy=True)
 
     issue_title = f"flaky: {item.nodeid}"
-    issues = project.issues.list(search=issue_title)
+    search_issues = project.issues.list(search=issue_title)
 
-    common_error_prefix = "Cant find ticket to report flaky test result."
-    if len(issues) != 1:
-        raise Exception(f"{common_error_prefix} Test name: {item.nodeid}, search result: {issues}")
+    issue = None
+    for search_issue in search_issues:
+        if search_issue.title == issue_title:
+            issue = search_issue
+            break
 
-    assert isinstance(issues, List)  # mypy
-    issue = issues[0]
-    if issue.title != issue_title:
+    if issue is None:
         raise Exception(
-            f"{common_error_prefix} Found issue with wrong title, expected '{issue_title}' got '{issue.title}.'"
+            f"Cant find ticket to report flaky test result. Test name: {item.nodeid}, search result: {search_issues}"
         )
 
     job_url = os.getenv("CI_JOB_URL")
