@@ -1,3 +1,4 @@
 # guide: https://gist.github.com/kateinoigakukun/b0bc920e587851bfffa98b9e279175f2
 
-096258aa4fda34ee575799de4cb4134a796af604 # code reformatting after switch to ruff
+096258aa4fda34ee575799de4cb4134a796af604 # switch to ruff
+81f8454f61173f8b5f5c9ab83972e955eb8d6f26 # bump rust to 1.85
