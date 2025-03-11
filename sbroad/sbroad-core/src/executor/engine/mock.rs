@@ -179,6 +179,64 @@ impl RouterConfigurationMock {
             .unwrap(),
         );
 
+        let columns2 = vec![
+            Column::new(
+                "identification_number",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "product_code",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "product_units",
+                DerivedType::new(Type::Boolean),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "sys_op",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::User,
+                true,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+        ];
+        let sharding_key = &["identification_number", "product_code"];
+        let primary_key = &["product_code", "identification_number"];
+        tables.insert(
+            "hash_testing2".to_smolstr(),
+            Table::new_sharded(
+                "hash_testing2",
+                columns2.clone(),
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
+        tables.insert(
+            "hash_testing_hist2".to_smolstr(),
+            Table::new_sharded(
+                "hash_testing_hist2",
+                columns2,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
         let sharding_key = &["identification_number"];
         tables.insert(
             "hash_single_testing".to_smolstr(),
@@ -390,6 +448,40 @@ impl RouterConfigurationMock {
 
         let columns = vec![
             Column::new(
+                "a",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a", "b"];
+        let primary_key: &[&str] = &["a", "b"];
+        tables.insert(
+            "t1_2".to_smolstr(),
+            Table::new_sharded(
+                "t1_2",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
+        let columns = vec![
+            Column::new(
                 "e",
                 DerivedType::new(Type::Unsigned),
                 ColumnRole::User,
@@ -458,6 +550,40 @@ impl RouterConfigurationMock {
                 ColumnRole::Sharding,
                 true,
             ),
+            Column::new(
+                "a",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a"];
+        let primary_key: &[&str] = &["a"];
+        tables.insert(
+            "t3_2".to_smolstr(),
+            Table::new_sharded(
+                "t3_2",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
+        let columns = vec![
+            Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
             Column::new("c", DerivedType::new(Type::String), ColumnRole::User, false),
             Column::new(
                 "d",
@@ -476,6 +602,12 @@ impl RouterConfigurationMock {
 
         let columns = vec![
             Column::new(
+                "bucket_id",
+                DerivedType::new(Type::Unsigned),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
                 "a",
                 DerivedType::new(Type::Integer),
                 ColumnRole::User,
@@ -488,6 +620,30 @@ impl RouterConfigurationMock {
                 false,
             ),
         ];
+
+        let sharding_key: &[&str] = &["a"];
+        let primary_key: &[&str] = &["a"];
+        tables.insert(
+            "t5".to_smolstr(),
+            Table::new_sharded("t5", columns, sharding_key, primary_key, SpaceEngine::Memtx)
+                .unwrap(),
+        );
+
+        let columns = vec![
+            Column::new(
+                "a",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(Type::Integer),
+                ColumnRole::User,
+                false,
+            ),
+        ];
+
         let primary_key: &[&str] = &["a"];
         tables.insert(
             "global_t".to_smolstr(),

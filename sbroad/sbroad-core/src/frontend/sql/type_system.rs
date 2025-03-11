@@ -1,0 +1,562 @@
+use crate::errors::SbroadError;
+use crate::ir::expression::cast::Type as CastType;
+use crate::ir::node::expression::Expression;
+use crate::ir::node::relational::Relational;
+use crate::ir::node::{
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Frame, FrameType, Like,
+    NodeId, Over, Reference, Row, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
+};
+use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
+use crate::ir::relation::Type as SbroadType;
+use crate::ir::Plan;
+use ahash::AHashMap;
+use sbroad_type_system::expr::{
+    ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind, Type,
+    UnaryOperator, WindowFrame as GenericWindowFrame,
+};
+use sbroad_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer};
+use sbroad_type_system::TypeSystem;
+use std::sync::LazyLock;
+
+#[cfg(test)]
+mod tests;
+
+pub type TypeExpr = GenericExpr<NodeId>;
+pub type TypeExprKind = GenericExprKind<NodeId>;
+pub type WindowFrame = GenericWindowFrame<NodeId>;
+pub type TypeAnalyzer = GenericTypeAnalyzer<'static, NodeId>;
+
+impl From<SbroadType> for Type {
+    fn from(value: SbroadType) -> Self {
+        match value {
+            SbroadType::Unsigned => Type::Unsigned,
+            SbroadType::Integer => Type::Integer,
+            SbroadType::Decimal => Type::Numeric,
+            SbroadType::Double => Type::Double,
+            SbroadType::String => Type::Text,
+            SbroadType::Boolean => Type::Boolean,
+            SbroadType::Datetime => Type::Datetime,
+            SbroadType::Any => Type::Unknown,
+            SbroadType::Uuid => Type::Uuid,
+            SbroadType::Array => Type::Array,
+            SbroadType::Map => Type::Map,
+        }
+    }
+}
+
+impl From<CastType> for Type {
+    fn from(value: CastType) -> Self {
+        match value {
+            CastType::Unsigned => Type::Unsigned,
+            CastType::Integer => Type::Integer,
+            CastType::Decimal => Type::Numeric,
+            CastType::Double => Type::Double,
+            CastType::String | CastType::Text | CastType::Varchar(_) => Type::Text,
+            CastType::Boolean => Type::Boolean,
+            CastType::Datetime => Type::Datetime,
+            // TODO: forbid casting to any
+            CastType::Any => Type::Unknown,
+            CastType::Uuid => Type::Uuid,
+            CastType::Map => Type::Map,
+        }
+    }
+}
+
+impl From<Bool> for ComparisonOperator {
+    fn from(op: Bool) -> Self {
+        match op {
+            Bool::Eq => ComparisonOperator::Eq,
+            Bool::In => ComparisonOperator::In,
+            Bool::Gt => ComparisonOperator::Gt,
+            Bool::GtEq => ComparisonOperator::GtEq,
+            Bool::Lt => ComparisonOperator::Lt,
+            Bool::LtEq => ComparisonOperator::LtEq,
+            Bool::NotEq => ComparisonOperator::NotEq,
+            Bool::Or | Bool::Between | Bool::And => panic!("{op} is not a comparison operator"),
+        }
+    }
+}
+
+fn order_by_to_type_expr(
+    order_by: &[OrderByElement],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<Vec<TypeExpr>, SbroadError> {
+    let mut translated = Vec::new();
+    for o in order_by {
+        if let OrderByEntity::Expression { expr_id } = o.entity {
+            translated.push(to_type_expr(expr_id, plan, subquery_map)?);
+        } else {
+            // There is no need in type checking ORDER BY index
+        }
+    }
+    Ok(translated)
+}
+
+fn new_window_frame(
+    frame: &Frame,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<WindowFrame, SbroadError> {
+    let kind = match frame.ty {
+        FrameType::Rows => FrameKind::Rows,
+        FrameType::Range => FrameKind::Range,
+    };
+
+    let push_bound_offset = |ty: &BoundType, res: &mut Vec<TypeExpr>| -> Result<_, _> {
+        if let BoundType::PrecedingOffset(id) | BoundType::FollowingOffset(id) = ty {
+            res.push(to_type_expr(*id, plan, subquery_map)?);
+        }
+        Ok::<(), SbroadError>(())
+    };
+
+    let mut bound_offsets = Vec::new();
+    match &frame.bound {
+        Bound::Single(bound_type) => push_bound_offset(bound_type, &mut bound_offsets)?,
+        Bound::Between(bound_type1, bound_type2) => {
+            push_bound_offset(bound_type1, &mut bound_offsets)?;
+            push_bound_offset(bound_type2, &mut bound_offsets)?;
+        }
+    }
+
+    Ok(WindowFrame {
+        kind,
+        bound_offsets,
+    })
+}
+
+fn to_type_expr_many(
+    nodes: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<Vec<TypeExpr>, SbroadError> {
+    nodes
+        .iter()
+        .map(|id| to_type_expr(*id, plan, subquery_map))
+        .collect()
+}
+
+pub fn to_type_expr(
+    node_id: NodeId,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    match plan.get_expression_node(node_id)? {
+        Expression::Parameter(_) => {
+            // Until parameter types inference is supported, we'll treat parameters as nulls to
+            // avoid breaking many existing queries and tests.
+            Ok(TypeExpr::new(node_id, TypeExprKind::Null))
+        }
+        Expression::Constant(value) => {
+            let Some(sbroad_type) = *value.value.get_type().get() else {
+                return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
+            };
+            let ty = Type::from(sbroad_type);
+            let kind = TypeExprKind::Literal(ty);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Reference(Reference { col_type, .. }) => {
+            let Some(sbroad_type) = col_type.get() else {
+                // Parameterized queries can create references of unknown type. This will be
+                // fixed once we support parameter types inference. But until then, we'll treat
+                // them as nulls, to avoid annoying errors.
+                // Eventually, this should be an error or even a panic.
+                return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
+            };
+            let ty = Type::from(*sbroad_type);
+            let kind = TypeExprKind::Reference(ty);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Cast(Cast { child, to }) => {
+            let to = Type::from(*to);
+            let child = to_type_expr(*child, plan, subquery_map)?;
+            let kind = TypeExprKind::Cast(Box::new(child), to);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Concat(Concat { left, right }) => {
+            let left = to_type_expr(*left, plan, subquery_map)?;
+            let right = to_type_expr(*right, plan, subquery_map)?;
+            let kind = TypeExprKind::Operator(String::from("||"), vec![left, right]);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Arithmetic(ArithmeticExpr { op, left, right }) => {
+            let left = to_type_expr(*left, plan, subquery_map)?;
+            let right = to_type_expr(*right, plan, subquery_map)?;
+            let kind = TypeExprKind::Operator(op.as_str().into(), vec![left, right]);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Bool(BoolExpr { op, left, right }) => {
+            // TODO: `a BETWEEN b AND c` is translated into two separate expressions:
+            // `a >= b` and `a <= c`. This can lead to inconsistent type coercion for `a` in each
+            // expression, which should be avoided to ensure type consistency.
+            //
+            // In addition, this leads to confusing errors:
+            // ```sql
+            // picodata> explain select 1 between 0 and 'kek'
+            // ---
+            // - null
+            // - 'sbroad: could not resolve overload for <=(unsigned, text)'
+            // ...
+            // ```
+            let left = to_type_expr(*left, plan, subquery_map)?;
+            let right = to_type_expr(*right, plan, subquery_map)?;
+
+            use crate::ir::operator::Bool::*;
+            let kind = match op {
+                And | Or => TypeExprKind::Operator(op.as_str().into(), vec![left, right]),
+                Eq | Gt | GtEq | Lt | LtEq | NotEq | In => {
+                    let op = ComparisonOperator::from(*op);
+                    TypeExprKind::Comparison(op, left.into(), right.into())
+                }
+                Between => panic!("there is no between expressions in the plan"),
+            };
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Row(Row { list, .. }) => {
+            for (subquery_id, row_id) in subquery_map {
+                if *row_id == node_id {
+                    let mut types = Vec::with_capacity(list.len());
+                    let output_id = plan.get_relation_node(*subquery_id)?.output();
+                    let columns = plan.get_row_list(output_id)?;
+                    for col_id in columns {
+                        let column = plan.get_expression_node(*col_id)?;
+                        if let Some(ty) = column.calculate_type(plan)?.get() {
+                            types.push(Type::from(*ty));
+                        } else {
+                            types.push(Type::Unknown);
+                        }
+                    }
+                    let kind = TypeExprKind::Subquery(types);
+                    return Ok(TypeExpr::new(node_id, kind));
+                }
+            }
+
+            if list.len() == 1 {
+                // Workaround for expressions like `1 + 2` that are
+                // translated into `ROW(1) + ROW(2)`.
+                // TODO: Remove this once
+                //       https://git.picodata.io/core/picodata/-/issues/1614 is closed.
+                return to_type_expr(list[0], plan, subquery_map);
+            }
+
+            let exprs = to_type_expr_many(list, plan, subquery_map)?;
+            let kind = TypeExprKind::Row(exprs);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::StableFunction(StableFunction {
+            name,
+            children,
+            feature: _,
+            ..
+        }) => match name.as_str() {
+            "coalesce" => {
+                let args = to_type_expr_many(children, plan, subquery_map)?;
+                let kind = TypeExprKind::Coalesce(args);
+                Ok(TypeExpr::new(node_id, kind))
+            }
+            name => {
+                let args = to_type_expr_many(children, plan, subquery_map)?;
+                let kind = TypeExprKind::Function(name.to_string(), args);
+                Ok(TypeExpr::new(node_id, kind))
+            }
+        },
+        Expression::Over(Over {
+            func_name,
+            func_args,
+            filter,
+            window,
+            ref_by_name: _,
+        }) => {
+            let args = to_type_expr_many(func_args, plan, subquery_map)?;
+            let name = func_name.to_string();
+            let filter = filter
+                .map(|f| to_type_expr(f, plan, subquery_map))
+                .transpose()?;
+            let over = to_type_expr(*window, plan, subquery_map)?;
+            let kind = TypeExprKind::WindowFunction {
+                name,
+                args,
+                filter: filter.map(Box::new),
+                over: Box::new(over),
+            };
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Window(Window {
+            ref partition,
+            ref ordering,
+            ref frame,
+            ..
+        }) => {
+            let partition = partition.as_deref().unwrap_or(&[]);
+            let partition_by = to_type_expr_many(partition, plan, subquery_map)?;
+            let ordering = ordering.as_deref().unwrap_or(&[]);
+            let order_by = order_by_to_type_expr(ordering, plan, subquery_map)?;
+            let frame = frame
+                .as_ref()
+                .map(|f| new_window_frame(f, plan, subquery_map))
+                .transpose()?;
+            let kind = TypeExprKind::Window {
+                order_by,
+                partition_by,
+                frame,
+            };
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Case(Case {
+            search_expr,
+            when_blocks,
+            else_expr,
+        }) => {
+            let mut when_exprs = Vec::with_capacity(when_blocks.len());
+            let mut result_exprs = Vec::with_capacity(when_blocks.len());
+
+            if let Some(search) = search_expr {
+                let search = to_type_expr(*search, plan, subquery_map)?;
+                when_exprs.push(search);
+            }
+
+            for (when, result) in when_blocks {
+                let when = to_type_expr(*when, plan, subquery_map)?;
+                let result = to_type_expr(*result, plan, subquery_map)?;
+                when_exprs.push(when);
+                result_exprs.push(result);
+            }
+
+            if let Some(els) = else_expr {
+                let els = to_type_expr(*els, plan, subquery_map)?;
+                result_exprs.push(els);
+            }
+
+            let kind = TypeExprKind::Case {
+                when_exprs,
+                result_exprs,
+            };
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Unary(UnaryExpr { op, child }) => {
+            let op = match op {
+                Unary::Not => UnaryOperator::Not,
+                Unary::IsNull => UnaryOperator::IsNull,
+                Unary::Exists => UnaryOperator::Exists,
+            };
+            let child = to_type_expr(*child, plan, subquery_map)?;
+            let kind = TypeExprKind::Unary(op, child.into());
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Like(Like {
+            left,
+            right,
+            escape,
+        }) => {
+            let args = to_type_expr_many(&[*left, *right, *escape], plan, subquery_map)?;
+            let kind = TypeExprKind::Function("like".into(), args);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Trim(Trim {
+            pattern, target, ..
+        }) => {
+            let args = if let Some(pattern) = pattern {
+                to_type_expr_many(&[*pattern, *target], plan, subquery_map)?
+            } else {
+                to_type_expr_many(&[*target], plan, subquery_map)?
+            };
+
+            let kind = TypeExprKind::Function("trim".into(), args);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::LocalTimestamp(_) => {
+            let kind = TypeExprKind::Literal(Type::Datetime);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::CountAsterisk(_) => {
+            // Handle it as `COUNT(1)`
+            let kind = TypeExprKind::Literal(Type::Integer);
+            let one = TypeExpr::new(node_id, kind);
+            let kind = TypeExprKind::Function(String::from("count"), vec![one]);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Alias(Alias { child, .. }) => to_type_expr(*child, plan, subquery_map),
+    }
+}
+
+static TYPE_SYSTEM: LazyLock<TypeSystem> = LazyLock::new(default_type_system);
+
+fn default_type_system() -> TypeSystem {
+    use sbroad_type_system::expr::Type::*;
+
+    let functions = vec![
+        // Arithmetic operations.
+        // - unsigned
+        Function::new_operator("+", [Unsigned, Unsigned], Integer),
+        Function::new_operator("-", [Unsigned, Unsigned], Integer),
+        Function::new_operator("/", [Unsigned, Unsigned], Integer),
+        Function::new_operator("*", [Unsigned, Unsigned], Integer),
+        // - int
+        Function::new_operator("+", [Integer, Integer], Integer),
+        Function::new_operator("-", [Integer, Integer], Integer),
+        Function::new_operator("/", [Integer, Integer], Integer),
+        Function::new_operator("*", [Integer, Integer], Integer),
+        // - double
+        Function::new_operator("+", [Double, Double], Double),
+        Function::new_operator("-", [Double, Double], Double),
+        Function::new_operator("/", [Double, Double], Double),
+        Function::new_operator("*", [Double, Double], Double),
+        // - numeric
+        Function::new_operator("+", [Numeric, Numeric], Numeric),
+        Function::new_operator("-", [Numeric, Numeric], Numeric),
+        Function::new_operator("/", [Numeric, Numeric], Numeric),
+        Function::new_operator("*", [Numeric, Numeric], Numeric),
+        // Logical operations.
+        Function::new_operator("or", [Boolean, Boolean], Boolean),
+        Function::new_operator("and", [Boolean, Boolean], Boolean),
+        // String operations.
+        Function::new_operator("||", [Text, Text], Text),
+        // Functions.
+        Function::new_scalar("like", [Text, Text, Text], Boolean),
+        Function::new_scalar("trim", [Text], Text),
+        Function::new_scalar("trim", [Text, Text], Text),
+        Function::new_scalar("to_date", [Text, Text], Datetime),
+        Function::new_scalar("to_char", [Datetime, Text], Text),
+        Function::new_scalar("substr", [Text, Integer], Text),
+        Function::new_scalar("substr", [Text, Integer, Integer], Text),
+        Function::new_scalar("lower", [Text], Text),
+        Function::new_scalar("upper", [Text], Text),
+        Function::new_scalar("substring", [Text, Integer], Text),
+        Function::new_scalar("substring", [Text, Integer, Integer], Text),
+        Function::new_scalar("substring", [Text, Text], Text),
+        Function::new_scalar("substring", [Text, Text, Text], Text),
+        // Aggregates.
+        // - count
+        // TODO: consider adding `any` type
+        Function::new_aggregate("count", [Unsigned], Unsigned),
+        Function::new_aggregate("count", [Integer], Unsigned),
+        Function::new_aggregate("count", [Double], Unsigned),
+        Function::new_aggregate("count", [Numeric], Unsigned),
+        Function::new_aggregate("count", [Text], Unsigned),
+        Function::new_aggregate("count", [Boolean], Unsigned),
+        Function::new_aggregate("count", [Datetime], Unsigned),
+        // - max
+        Function::new_aggregate("max", [Unsigned], Unsigned),
+        Function::new_aggregate("max", [Integer], Integer),
+        Function::new_aggregate("max", [Double], Double),
+        Function::new_aggregate("max", [Numeric], Numeric),
+        Function::new_aggregate("max", [Text], Text),
+        Function::new_aggregate("max", [Boolean], Boolean),
+        Function::new_aggregate("max", [Datetime], Datetime),
+        // - min
+        Function::new_aggregate("min", [Unsigned], Unsigned),
+        Function::new_aggregate("min", [Integer], Integer),
+        Function::new_aggregate("min", [Double], Double),
+        Function::new_aggregate("min", [Numeric], Numeric),
+        Function::new_aggregate("min", [Text], Text),
+        Function::new_aggregate("min", [Boolean], Boolean),
+        Function::new_aggregate("min", [Datetime], Datetime),
+        // - sum
+        Function::new_aggregate("sum", [Integer], Numeric),
+        Function::new_aggregate("sum", [Double], Numeric),
+        Function::new_aggregate("sum", [Numeric], Numeric),
+        // - total
+        Function::new_aggregate("total", [Integer], Double),
+        Function::new_aggregate("total", [Double], Double),
+        Function::new_aggregate("total", [Numeric], Double),
+        // - avg
+        Function::new_aggregate("avg", [Integer], Numeric),
+        Function::new_aggregate("avg", [Double], Numeric),
+        Function::new_aggregate("avg", [Numeric], Numeric),
+        // - string_agg & group_concat
+        Function::new_aggregate("string_agg", [Text], Text),
+        Function::new_aggregate("string_agg", [Text, Text], Text),
+        Function::new_aggregate("group_concat", [Text], Text),
+        Function::new_aggregate("group_concat", [Text, Text], Text),
+        // Windows.
+        // - count
+        // TODO: consider adding `any` type
+        Function::new_window("count", [], Unsigned),
+        Function::new_window("count", [Unsigned], Unsigned),
+        Function::new_window("count", [Integer], Unsigned),
+        Function::new_window("count", [Double], Unsigned),
+        Function::new_window("count", [Numeric], Unsigned),
+        Function::new_window("count", [Text], Unsigned),
+        Function::new_window("count", [Boolean], Unsigned),
+        Function::new_window("count", [Datetime], Unsigned),
+        // - max
+        Function::new_window("max", [Unsigned], Unsigned),
+        Function::new_window("max", [Integer], Integer),
+        Function::new_window("max", [Double], Double),
+        Function::new_window("max", [Numeric], Numeric),
+        Function::new_window("max", [Text], Text),
+        Function::new_window("max", [Boolean], Boolean),
+        Function::new_window("max", [Datetime], Datetime),
+        // - min
+        Function::new_window("min", [Unsigned], Unsigned),
+        Function::new_window("min", [Integer], Integer),
+        Function::new_window("min", [Double], Double),
+        Function::new_window("min", [Numeric], Numeric),
+        Function::new_window("min", [Text], Text),
+        Function::new_window("min", [Boolean], Boolean),
+        Function::new_window("min", [Datetime], Datetime),
+        // - sum
+        Function::new_window("sum", [Integer], Numeric),
+        Function::new_window("sum", [Double], Numeric),
+        Function::new_window("sum", [Numeric], Numeric),
+        // - total
+        Function::new_window("total", [Integer], Double),
+        Function::new_window("total", [Double], Double),
+        Function::new_window("total", [Numeric], Double),
+        // - avg
+        Function::new_window("avg", [Integer], Numeric),
+        Function::new_window("avg", [Double], Numeric),
+        Function::new_window("avg", [Numeric], Numeric),
+        // - string_agg & group_concat
+        Function::new_window("string_agg", [Text], Text),
+        Function::new_window("string_agg", [Text, Text], Text),
+        Function::new_window("group_concat", [Text], Text),
+        Function::new_window("group_concat", [Text, Text], Text),
+        // - row_number
+        Function::new_window("row_number", [], Integer),
+    ];
+
+    TypeSystem::new(functions)
+}
+
+pub fn new_analyzer() -> TypeAnalyzer {
+    TypeAnalyzer::new(&TYPE_SYSTEM)
+}
+
+/// Perform type analysis for a scalar expressions.
+/// A scalar expressions is represented as a singe value.
+/// Examples are: literal, reference, subquery and etc.
+/// Rows are not scalar expressions and when they are used as a standalone value analysis fails
+/// with "row value misused" error.
+pub fn analyze_scalar_expr(
+    type_analyzer: &mut TypeAnalyzer,
+    expr_id: NodeId,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<(), SbroadError> {
+    let type_expr = to_type_expr(expr_id, plan, subquery_map)?;
+    type_analyzer.analyze(&type_expr, None)?;
+    Ok(())
+}
+
+/// Perform type analysis for values rows expressions.
+/// Rows are expected to have homogeneous types and the same length.
+pub fn analyze_values_rows(
+    type_analyzer: &mut TypeAnalyzer,
+    rows: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<(), SbroadError> {
+    let mut type_rows = Vec::with_capacity(rows.len());
+    for row_id in rows {
+        if let Relational::ValuesRow(ValuesRow { data, .. }) = plan.get_relation_node(*row_id)? {
+            if let Expression::Row(Row { list, .. }) = plan.get_expression_node(*data)? {
+                let row = to_type_expr_many(list, plan, subquery_map)?;
+                type_rows.push(row);
+            }
+        }
+    }
+
+    type_analyzer.analyze_homogeneous_rows("VALUES", &type_rows)?;
+    Ok(())
+}

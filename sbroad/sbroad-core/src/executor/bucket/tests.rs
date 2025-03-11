@@ -292,7 +292,7 @@ fn global_tbl_sq3() {
     let query = r#"
     select "product_code" from "t" inner join "hash_testing"
     on "t"."a" = "hash_testing"."identification_number" and "hash_testing"."product_code"
-    in (select "a" as a1 from "global_t")
+    in (select "a"::text as a1 from "global_t")
 "#;
 
     let coordinator = RouterRuntimeMock::new();

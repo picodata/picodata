@@ -1,7 +1,7 @@
 use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::{
-    errors::{Entity, SbroadError, TypeError},
+    errors::{Entity, SbroadError},
     executor::vtable::calculate_unified_types,
     ir::{
         node::Parameter,
@@ -70,39 +70,28 @@ impl Expression<'_> {
                 else_expr,
                 ..
             }) => {
+                // TODO: infer type using type system.
+
                 // Outer option -- for uninitialized type.
                 // Inner option -- for the case of Null met.
                 let mut case_ty_general: Option<DerivedType> = None;
                 let mut check_types_corresponds = |another_ty: &DerivedType| {
                     if let Some(case_ty) = case_ty_general {
-                        match (case_ty.get(), another_ty.get()) {
-                            (Some(case_ty), Some(another_ty)) => {
-                                if *case_ty != *another_ty {
-                                    return Err(SbroadError::TypeError(
-                                        TypeError::TypesCannotBeMatched(
-                                            "case",
-                                            *case_ty,
-                                            *another_ty,
-                                        ),
-                                    ));
-                                }
-                            }
-                            (None, Some(_)) => case_ty_general = Some(*another_ty),
-                            (_, _) => {}
+                        if let (None, Some(_)) = (case_ty.get(), another_ty.get()) {
+                            case_ty_general = Some(*another_ty);
                         }
                     } else {
                         case_ty_general = Some(*another_ty)
                     }
-                    Ok(())
                 };
 
                 for (_, ret_expr) in when_blocks {
                     let ret_expr_type = plan.get_node_type(*ret_expr)?;
-                    check_types_corresponds(&ret_expr_type)?
+                    check_types_corresponds(&ret_expr_type);
                 }
                 if let Some(else_expr) = else_expr {
                     let else_expr_type = plan.get_node_type(*else_expr)?;
-                    check_types_corresponds(&else_expr_type)?
+                    check_types_corresponds(&else_expr_type);
                 }
                 case_ty_general.expect("Case type must be known")
             }
@@ -168,21 +157,13 @@ impl Expression<'_> {
                         expr.calculate_type(plan)?
                     }
                     "coalesce" => {
+                        // TODO: infer type using type system.
                         let mut last_ty = DerivedType::unknown();
                         for child_id in children {
                             let child = plan.get_expression_node(*child_id)?;
                             let ty = child.calculate_type(plan)?;
                             if let Some(ty) = ty.get() {
-                                if let Some(last_ty) = last_ty.get() {
-                                    if ty != last_ty {
-                                        return Err(TypeError::TypesCannotBeMatched(
-                                            "coalesce", *last_ty, *ty,
-                                        )
-                                        .into());
-                                    }
-                                } else {
-                                    last_ty.set(*ty)
-                                }
+                                last_ty.set(*ty)
                             }
                         }
                         last_ty

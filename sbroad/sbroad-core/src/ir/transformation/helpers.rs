@@ -14,6 +14,7 @@ use crate::ir::Plan;
 ///
 /// # Panics
 ///   if query is not correct
+#[track_caller]
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
@@ -26,6 +27,7 @@ pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
 ///
 /// # Panics
 ///   if query is not correct
+#[track_caller]
 #[must_use]
 pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
     let mut plan = sql_to_ir_without_bind(query);
@@ -34,6 +36,7 @@ pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
     plan
 }
 
+#[track_caller]
 pub fn sql_to_ir_without_bind(query: &str) -> Plan {
     let metadata = &RouterConfigurationMock::new();
     AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap()
@@ -41,6 +44,7 @@ pub fn sql_to_ir_without_bind(query: &str) -> Plan {
 
 /// Compiles and transforms an SQL query to a new parameterized SQL.
 #[allow(dead_code)]
+#[track_caller]
 pub fn check_transformation(
     query: &str,
     params: Vec<Value>,

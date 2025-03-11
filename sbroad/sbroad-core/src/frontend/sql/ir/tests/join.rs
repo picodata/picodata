@@ -37,18 +37,18 @@ fn milti_join1() {
 
 #[test]
 fn milti_join2() {
-    let input = r#"SELECT * FROM "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
+    let input = r#"SELECT * FROM "t1_2" "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
     LEFT JOIN "t4" ON true
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
+    projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
         left join on true::boolean
-            left join on ROW("t1"."a"::string) = ROW("t2"."e"::unsigned)
+            left join on ROW("t1"."a"::integer) = ROW("t2"."e"::unsigned)
                 scan "t1"
-                    projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-                        scan "t1"
+                    projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b")
+                        scan "t1_2" -> "t1"
                 motion [policy: full]
                     scan "t2"
                         projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
@@ -65,27 +65,27 @@ fn milti_join2() {
 
 #[test]
 fn milti_join3() {
-    let input = r#"SELECT * FROM "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
-    JOIN "t3" ON "t1"."a" = "t3"."a" JOIN "t4" ON "t2"."f" = "t4"."c"
+    let input = r#"SELECT * FROM "t1_2" "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
+    JOIN "t3_2" "t3" ON "t1"."a" = "t3"."a" JOIN "t4" ON "t2"."f" = "t4"."c"::int
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::string -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
-        join on ROW("t2"."f"::unsigned) = ROW("t4"."c"::string)
-            join on ROW("t1"."a"::string) = ROW("t3"."a"::string)
-                left join on ROW("t1"."a"::string) = ROW("t2"."e"::unsigned)
+    projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::integer -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
+        join on ROW("t2"."f"::unsigned) = ROW(ROW("t4"."c"::string)::int)
+            join on ROW("t1"."a"::integer) = ROW("t3"."a"::integer)
+                left join on ROW("t1"."a"::integer) = ROW("t2"."e"::unsigned)
                     scan "t1"
-                        projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-                            scan "t1"
+                        projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b")
+                            scan "t1_2" -> "t1"
                     motion [policy: full]
                         scan "t2"
                             projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
                                 scan "t2"
                 motion [policy: full]
                     scan "t3"
-                        projection ("t3"."a"::string -> "a", "t3"."b"::integer -> "b")
-                            scan "t3"
+                        projection ("t3"."a"::integer -> "a", "t3"."b"::integer -> "b")
+                            scan "t3_2" -> "t3"
             motion [policy: full]
                 scan "t4"
                     projection ("t4"."c"::string -> "c", "t4"."d"::integer -> "d")

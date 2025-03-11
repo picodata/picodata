@@ -28,7 +28,7 @@ fn union_all_in_sq() {
 
 #[test]
 fn inner_join_eq_for_keys() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN "t"
         ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")"#;
 
@@ -84,7 +84,7 @@ fn join_inner_sq_eq_no_keys() {
     let query = r#"SELECT * FROM "hash_testing" AS "t1"
         INNER JOIN
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
-        ON ("t1"."identification_number", 1) = (1, "t2"."pc")"#;
+        ON ("t1"."product_code", '1') = ('1', "t2"."pc")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -102,7 +102,7 @@ fn join_inner_sq_eq_no_outer_keys() {
     let query = r#"SELECT * FROM "hash_testing" AS "t1"
         INNER JOIN
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
-        ON ("t1"."identification_number", 1) = ("t2"."id", "t2"."pc")"#;
+        ON ("t1"."identification_number", '1') = ("t2"."id", "t2"."pc")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -119,7 +119,7 @@ fn join_inner_sq_eq_no_outer_keys() {
 fn inner_join_full_policy_sq_in_filter() {
     let query = r#"SELECT * FROM "hash_testing" AS "t1"
         INNER JOIN "t"
-        ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")
+        ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b"::text)
         AND ("t"."a", "t"."b") >=
         (SELECT "hash_testing"."sys_op", "hash_testing"."bucket_id" FROM "hash_testing")"#;
 
@@ -136,11 +136,11 @@ fn inner_join_full_policy_sq_in_filter() {
 
 #[test]
 fn inner_join_local_policy_sq_in_filter() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN "t"
         ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")
         AND ("t"."a", "t"."b") =
-        (SELECT "hash_testing"."identification_number", "hash_testing"."product_code" FROM "hash_testing")"#;
+        (SELECT "hash_testing2"."identification_number", "hash_testing2"."product_code" FROM "hash_testing2")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -149,13 +149,13 @@ fn inner_join_local_policy_sq_in_filter() {
 
 #[test]
 fn inner_join_local_policy_sq_with_union_all_in_filter() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN "t"
         ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")
         AND ("t"."a", "t"."b") =
-        (SELECT "hash_testing"."identification_number", "hash_testing"."product_code" FROM "hash_testing"
+        (SELECT "hash_testing2"."identification_number", "hash_testing2"."product_code" FROM "hash_testing2"
         UNION ALL
-        SELECT "hash_testing_hist"."identification_number", "hash_testing_hist"."product_code" FROM "hash_testing_hist")"#;
+        SELECT "hash_testing_hist2"."identification_number", "hash_testing_hist2"."product_code" FROM "hash_testing_hist2")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -169,8 +169,7 @@ fn join_inner_and_local_full_policies() {
     let query = r#"SELECT * FROM "hash_testing" AS "t1"
         INNER JOIN
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
-        ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")
-        AND "t1"."identification_number" = "t2"."pc""#;
+        ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -183,7 +182,7 @@ fn join_inner_or_local_full_policies() {
         INNER JOIN
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")
-        OR "t1"."identification_number" = "t2"."pc""#;
+        OR "t1"."identification_number"::text = "t2"."pc""#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();

@@ -1446,33 +1446,16 @@ impl Plan {
     /// Project all the columns from the child's subquery node.
     /// New columns don't have aliases.
     ///
-    /// `expected_output_size` is:
-    /// * 1 in case of scalar `SubQuery`. `(values (1)) = 1`
-    /// * Output size of left child of IN operator. `(1, 2) in (select a, b from t)`
-    /// * None in case of EXISTS operator. `exists (select * from t)`
-    ///
     /// Returns a pair of:
     /// * Created row id
     /// * Vec of created references ids whose `parent` and `target` should be changed.
-    ///
-    /// # Errors
-    /// - children nodes are inconsistent with the target position
     pub(crate) fn add_row_from_subquery(
         &mut self,
         sq_id: NodeId,
-        expected_output_size: Option<usize>,
     ) -> Result<(NodeId, Vec<NodeId>), SbroadError> {
         let sq_rel = self.get_relation_node(sq_id)?;
         let sq_output_id = sq_rel.output();
         let sq_alias_ids_len = self.get_row_list(sq_output_id)?.len();
-        if let Some(expected_output_size) = expected_output_size {
-            if expected_output_size != sq_alias_ids_len {
-                return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some(format_smolstr!("SubQuery expected to have {expected_output_size} rows output, but got {sq_alias_ids_len}."))
-                ));
-            }
-        }
 
         let mut new_refs = Vec::with_capacity(sq_alias_ids_len);
         for pos in 0..sq_alias_ids_len {

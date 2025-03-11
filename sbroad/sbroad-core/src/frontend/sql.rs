@@ -75,6 +75,7 @@ use crate::warn;
 use tarantool::auth::AuthMethod;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
+use type_system::TypeAnalyzer;
 
 // DDL timeout in seconds (1 day).
 const DEFAULT_TIMEOUT_F64: f64 = 24.0 * 60.0 * 60.0;
@@ -208,6 +209,7 @@ fn parse_proc_params(
 fn parse_call_proc<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node: &ParseNode,
+    type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -224,7 +226,13 @@ fn parse_call_proc<M: Metadata>(
             Rule::Parameter => parse_param(pairs_map.remove_pair(*proc_value_id), worker, plan)?,
             Rule::Literal => {
                 let literal_pair = pairs_map.remove_pair(*proc_value_id);
-                parse_expr(Pairs::single(literal_pair), &[], worker, plan)?
+                parse_scalar_expr(
+                    Pairs::single(literal_pair),
+                    type_analyzer,
+                    &[],
+                    worker,
+                    plan,
+                )?
             }
             _ => unreachable!("Unexpected rule met under ProcValue"),
         };
@@ -338,6 +346,7 @@ fn parse_create_proc(
 fn parse_alter_system<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node: &ParseNode,
+    type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -367,7 +376,8 @@ fn parse_alter_system<M: Metadata>(
 
             if let Some(param_value_node_id) = alter_system_type_node.children.get(1) {
                 let expr_pair = pairs_map.remove_pair(*param_value_node_id);
-                let expr_plan_node_id = parse_expr(Pairs::single(expr_pair), &[], worker, plan)?;
+                let expr_plan_node_id =
+                    parse_scalar_expr(Pairs::single(expr_pair), type_analyzer, &[], worker, plan)?;
                 let value_node = plan.get_node(expr_plan_node_id)?;
                 if let Node::Expression(Expression::Constant(Constant { value })) = value_node {
                     AlterSystemType::AlterSystemSet {
@@ -2002,10 +2012,9 @@ impl Plan {
     fn add_replaced_subquery<M: Metadata>(
         &mut self,
         sq_id: NodeId,
-        expected_output_size: Option<usize>,
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<NodeId, SbroadError> {
-        let (sq_row_id, new_refs) = self.add_row_from_subquery(sq_id, expected_output_size)?;
+        let (sq_row_id, new_refs) = self.add_row_from_subquery(sq_id)?;
         worker.subquery_replaces.insert(sq_id, sq_row_id);
         worker.sub_queries_to_fix_queue.push_back((sq_id, new_refs));
         Ok(sq_row_id)
@@ -2205,7 +2214,7 @@ impl ParseExpression {
         let plan_id = match self {
             ParseExpression::PlanId { plan_id } => *plan_id,
             ParseExpression::SubQueryPlanId { plan_id } => {
-                plan.add_replaced_subquery(*plan_id, Some(1), worker)?
+                plan.add_replaced_subquery(*plan_id, worker)?
             }
             ParseExpression::Cast { cast_type, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
@@ -2349,36 +2358,19 @@ impl ParseExpression {
             } => {
                 let left_plan_id = left.populate_plan(plan, worker)?;
                 let left_row_id = plan.row(left_plan_id)?;
-                let left_is_row = matches!(
-                    plan.get_expression_node(left_row_id)?,
-                    Expression::Row { .. }
-                );
-                let left_row_children_number = if left_is_row {
-                    plan.get_row_list(left_row_id)?.len()
-                } else {
-                    1
-                };
 
                 let right_plan_id = match op {
                     ParseExpressionInfixOperator::InfixBool(op) => match op {
                         Bool::In => {
                             if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
-                                plan.add_replaced_subquery(
-                                    *plan_id,
-                                    Some(left_row_children_number),
-                                    worker,
-                                )?
+                                plan.add_replaced_subquery(*plan_id, worker)?
                             } else {
                                 right.populate_plan(plan, worker)?
                             }
                         }
                         Bool::Eq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::NotEq => {
                             if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
-                                plan.add_replaced_subquery(
-                                    *plan_id,
-                                    Some(left_row_children_number),
-                                    worker,
-                                )?
+                                plan.add_replaced_subquery(*plan_id, worker)?
                             } else {
                                 right.populate_plan(plan, worker)?
                             }
@@ -2446,7 +2438,7 @@ impl ParseExpression {
                         plan.add_arithmetic_to_plan(left_row_id, arith.clone(), right_row_id)?
                     }
                     ParseExpressionInfixOperator::InfixBool(bool) => {
-                        plan.add_cond(left_row_id, bool.clone(), right_row_id)?
+                        plan.add_cond(left_row_id, *bool, right_row_id)?
                     }
                     ParseExpressionInfixOperator::Escape => {
                         unreachable!("escape op is not added to AST")
@@ -2530,7 +2522,7 @@ impl ParseExpression {
                 let ParseExpression::SubQueryPlanId { plan_id } = &**child else {
                     panic!("Expected SubQuery under EXISTS.")
                 };
-                let child_plan_id = plan.add_replaced_subquery(*plan_id, None, worker)?;
+                let child_plan_id = plan.add_replaced_subquery(*plan_id, worker)?;
                 let op_id = plan.add_unary(Unary::Exists, child_plan_id)?;
                 if *is_not {
                     plan.add_unary(Unary::Not, op_id)?
@@ -3478,11 +3470,7 @@ fn parse_select_set_pratt(
         .parse(select_pairs)
 }
 
-/// Parse expression pair and get plan id.
-/// * Retrieve expressions tree-like structure using `parse_expr_pratt`
-/// * Traverse tree to populate plan with new nodes
-/// * Return `plan_id` of root Expression node
-fn parse_expr<M>(
+fn parse_expr_no_type_check<M>(
     expression_pairs: Pairs<Rule>,
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
@@ -3493,6 +3481,59 @@ where
 {
     let parse_expr = parse_expr_pratt(expression_pairs, referred_relation_ids, worker, plan)?;
     parse_expr.populate_plan(plan, worker)
+}
+
+/// Parse expression pair and get plan id.
+/// * Retrieve expressions tree-like structure using `parse_expr_pratt`
+/// * Traverse tree to populate plan with new nodes
+/// * Return `plan_id` of root Expression node
+fn parse_scalar_expr<M>(
+    expression_pairs: Pairs<Rule>,
+    type_analyzer: &mut TypeAnalyzer,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<NodeId, SbroadError>
+where
+    M: Metadata,
+{
+    let expr_id = parse_expr_no_type_check(expression_pairs, referred_relation_ids, worker, plan)?;
+    type_system::analyze_scalar_expr(type_analyzer, expr_id, plan, &worker.subquery_replaces)?;
+    Ok(expr_id)
+}
+
+fn parse_values_rows<M>(
+    rows: &[usize],
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    col_idx: &mut usize,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<Vec<NodeId>, SbroadError>
+where
+    M: Metadata,
+{
+    let mut values_rows_ids: Vec<NodeId> = Vec::with_capacity(rows.len());
+    for ast_row_id in rows {
+        let row_pair = pairs_map.remove_pair(*ast_row_id);
+        // Don't check types until we have all rows.
+        // Consider the following queries:
+        //  - `VALUES (1), ('text')`: both rows are fine, but their types cannot be matched
+        //  - `VALUES ($1), (1)`: to infer parameter type in the 1st row we need the 2nd row
+        let expr_id = parse_expr_no_type_check(Pairs::single(row_pair), &[], worker, plan)?;
+        let values_row_id = plan.add_values_row(expr_id, col_idx)?;
+        plan.fix_subquery_rows(worker, values_row_id)?;
+        values_rows_ids.push(values_row_id);
+    }
+
+    type_system::analyze_values_rows(
+        type_analyzer,
+        &values_rows_ids,
+        plan,
+        &worker.subquery_replaces,
+    )?;
+
+    Ok(values_rows_ids)
 }
 
 fn parse_select(
@@ -3945,6 +3986,7 @@ impl AbstractSyntaxTree {
         &self,
         plan: &mut Plan,
         node_id: usize,
+        type_analyzer: &mut TypeAnalyzer,
         map: &mut Translation,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
@@ -3998,6 +4040,12 @@ impl AbstractSyntaxTree {
                     panic!("Expected Window node, got {:?}", window);
                 };
                 let name = name.as_ref().expect("Window name must be set").clone();
+                type_system::analyze_scalar_expr(
+                    type_analyzer,
+                    *window_id,
+                    plan,
+                    &worker.subquery_replaces,
+                )?;
                 named_windows.insert(name, *window_id);
             }
         }
@@ -4035,8 +4083,9 @@ impl AbstractSyntaxTree {
                             Rule::WindowFunctionArgsInner => {
                                 for arg_id in &func_args_child_node.children {
                                     let expr_pair = pairs_map.remove_pair(*arg_id);
-                                    let expr_plan_node_id = parse_expr(
+                                    let expr_plan_node_id = parse_scalar_expr(
                                         Pairs::single(expr_pair),
+                                        type_analyzer,
                                         &[plan_rel_child_id],
                                         worker,
                                         plan
@@ -4054,8 +4103,9 @@ impl AbstractSyntaxTree {
                     let filter_node = self.nodes.get_node(*filter_node_id)?;
                     let filter = if let Some(f_id) = filter_node.children.first() {
                         let expr_pair = pairs_map.remove_pair(*f_id);
-                        let expr = parse_expr(
+                        let expr = parse_scalar_expr(
                             Pairs::single(expr_pair),
+                            type_analyzer,
                             &[plan_rel_child_id],
                             worker,
                             plan,
@@ -4085,6 +4135,7 @@ impl AbstractSyntaxTree {
                         Rule::WindowBody => self.parse_window_body(
                             None,
                             plan_rel_child_id,
+                            type_analyzer,
                             plan,
                             *window_node_id,
                             map,
@@ -4103,6 +4154,12 @@ impl AbstractSyntaxTree {
                         ref_by_name,
                     };
                     let over_plan_id = plan.nodes.push(over.into());
+                    type_system::analyze_scalar_expr(
+                        type_analyzer,
+                        over_plan_id,
+                        plan,
+                        &worker.subquery_replaces,
+                    )?;
 
                     unnamed_col_pos += 1;
                     let alias_name = if let Some(alias_node_id) = over_children.get(4) {
@@ -4121,8 +4178,13 @@ impl AbstractSyntaxTree {
                         .first()
                         .expect("Column has no children.");
                     let expr_pair = pairs_map.remove_pair(*expr_ast_id);
-                    let expr_plan_node_id =
-                        parse_expr(Pairs::single(expr_pair), &[plan_rel_child_id], worker, plan)?;
+                    let expr_plan_node_id = parse_scalar_expr(
+                        Pairs::single(expr_pair),
+                        type_analyzer,
+                        &[plan_rel_child_id],
+                        worker,
+                        plan,
+                    )?;
 
                     let alias_name: SmolStr =
                         if let Some(alias_ast_node_id) = ast_column.children.get(1) {
@@ -4198,6 +4260,7 @@ impl AbstractSyntaxTree {
         &self,
         plan: &mut Plan,
         node_id: usize,
+        type_analyzer: &mut TypeAnalyzer,
         map: &mut Translation,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
@@ -4223,6 +4286,7 @@ impl AbstractSyntaxTree {
             let window = self.parse_window_body(
                 Some(window_name),
                 plan_rel_child_id,
+                type_analyzer,
                 plan,
                 *window_body_id,
                 map,
@@ -4241,6 +4305,7 @@ impl AbstractSyntaxTree {
         &self,
         plan: &mut Plan,
         node_id: usize,
+        type_analyzer: &mut TypeAnalyzer,
         map: &mut Translation,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
@@ -4259,8 +4324,13 @@ impl AbstractSyntaxTree {
                         .first()
                         .expect("Column has no children.");
                     let expr_pair = pairs_map.remove_pair(*expr_ast_id);
-                    let expr_plan_node_id =
-                        parse_expr(Pairs::single(expr_pair), &[], worker, plan)?;
+                    let expr_plan_node_id = parse_scalar_expr(
+                        Pairs::single(expr_pair),
+                        type_analyzer,
+                        &[],
+                        worker,
+                        plan,
+                    )?;
                     let alias_name = if let Some(alias_ast_node_id) = ast_column.children.get(1) {
                         parse_normalized_identifier(self, *alias_ast_node_id)?
                     } else {
@@ -4305,6 +4375,7 @@ impl AbstractSyntaxTree {
         plan: &mut Plan,
         referred_rel_id: NodeId,
         node_ids: &Vec<usize>,
+        type_analyzer: &mut TypeAnalyzer,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<Vec<OrderByElement>, SbroadError> {
@@ -4319,8 +4390,13 @@ impl AbstractSyntaxTree {
                 .first()
                 .expect("OrderByElement must have at least one child");
             let expr_pair = pairs_map.remove_pair(*order_by_element_expr_id);
-            let expr_plan_node_id =
-                parse_expr(Pairs::single(expr_pair), &[referred_rel_id], worker, plan)?;
+            let expr_plan_node_id = parse_scalar_expr(
+                Pairs::single(expr_pair),
+                type_analyzer,
+                &[referred_rel_id],
+                worker,
+                plan,
+            )?;
 
             // In case index is specified as ordering element, we have to check that
             // the index (starting from 1) is not bigger than the number of columns in
@@ -4433,6 +4509,7 @@ impl AbstractSyntaxTree {
         &self,
         plan: &mut Plan,
         node_id: usize,
+        type_analyzer: &mut TypeAnalyzer,
         map: &mut Translation,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
@@ -4448,6 +4525,7 @@ impl AbstractSyntaxTree {
             plan,
             projection_plan_id,
             &order_by_elements_ids,
+            type_analyzer,
             pairs_map,
             worker,
         )?;
@@ -4462,6 +4540,7 @@ impl AbstractSyntaxTree {
         &self,
         window_name: Option<SmolStr>,
         proj_child_id: NodeId,
+        type_analyzer: &mut TypeAnalyzer,
         plan: &mut Plan,
         node_id: usize,
         map: &mut Translation,
@@ -4489,8 +4568,9 @@ impl AbstractSyntaxTree {
 
                     for part_expr_node_id in &body_info_node.children {
                         let part_expr_pair = pairs_map.remove_pair(*part_expr_node_id);
-                        let part_expr_plan_node_id = parse_expr(
+                        let part_expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(part_expr_pair),
+                            type_analyzer,
                             &[proj_child_id],
                             worker,
                             plan,
@@ -4510,6 +4590,7 @@ impl AbstractSyntaxTree {
                         plan,
                         proj_child_id,
                         &body_info_node.children,
+                        type_analyzer,
                         pairs_map,
                         worker,
                     )?;
@@ -4550,8 +4631,9 @@ impl AbstractSyntaxTree {
                                     .first()
                                     .expect("Expr node expected under Offset window bound");
                                 let offset_expr_pair = pairs_map.remove_pair(*offset_expr_node_id);
-                                let offset_expr_plan_node_id = parse_expr(
+                                let offset_expr_plan_node_id = parse_scalar_expr(
                                     Pairs::single(offset_expr_pair),
+                                    type_analyzer,
                                     &[proj_child_id],
                                     worker,
                                     plan,
@@ -4634,6 +4716,8 @@ impl AbstractSyntaxTree {
         M: Metadata,
     {
         let mut plan = Plan::default();
+
+        let mut type_analyzer = type_system::new_analyzer();
 
         let Some(top) = self.top else {
             return Err(SbroadError::Invalid(Entity::AST, None));
@@ -4747,8 +4831,9 @@ impl AbstractSyntaxTree {
                     children.push(first_relational_child_plan_id);
                     for ast_column_id in node.children.iter().skip(1) {
                         let expr_pair = pairs_map.remove_pair(*ast_column_id);
-                        let expr_id = parse_expr(
+                        let expr_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
+                            &mut type_analyzer,
                             &[first_relational_child_plan_id],
                             &mut worker,
                             &mut plan,
@@ -4804,8 +4889,9 @@ impl AbstractSyntaxTree {
                         plan.add_const(Value::Boolean(true))
                     } else {
                         let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-                        parse_expr(
+                        parse_scalar_expr(
                             Pairs::single(expr_pair),
+                            &mut type_analyzer,
                             &[plan_left_id, plan_right_id],
                             &mut worker,
                             &mut plan,
@@ -4829,8 +4915,9 @@ impl AbstractSyntaxTree {
                         .get(1)
                         .expect("Filter not found among Selection children");
                     let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-                    let expr_plan_node_id = parse_expr(
+                    let expr_plan_node_id = parse_scalar_expr(
                         Pairs::single(expr_pair),
+                        &mut type_analyzer,
                         &[plan_rel_child_id],
                         &mut worker,
                         &mut plan,
@@ -4847,7 +4934,14 @@ impl AbstractSyntaxTree {
                     map.add(id, plan_node_id);
                 }
                 Rule::OrderBy => {
-                    self.parse_order_by(&mut plan, id, &mut map, pairs_map, &mut worker)?;
+                    self.parse_order_by(
+                        &mut plan,
+                        id,
+                        &mut type_analyzer,
+                        &mut map,
+                        pairs_map,
+                        &mut worker,
+                    )?;
                 }
                 Rule::SelectWithOptionalContinuation => {
                     let select_pair = pairs_map.remove_pair(id);
@@ -4872,29 +4966,42 @@ impl AbstractSyntaxTree {
                         self.parse_select_without_scan(
                             &mut plan,
                             id,
+                            &mut type_analyzer,
                             &mut map,
                             pairs_map,
                             &mut worker,
                         )?;
                     } else {
-                        self.parse_projection(&mut plan, id, &mut map, pairs_map, &mut worker)?;
+                        self.parse_projection(
+                            &mut plan,
+                            id,
+                            &mut type_analyzer,
+                            &mut map,
+                            pairs_map,
+                            &mut worker,
+                        )?;
                     }
                 }
                 Rule::NamedWindows => {
-                    self.parse_named_windows(&mut plan, id, &mut map, pairs_map, &mut worker)?;
+                    self.parse_named_windows(
+                        &mut plan,
+                        id,
+                        &mut type_analyzer,
+                        &mut map,
+                        pairs_map,
+                        &mut worker,
+                    )?;
                 }
                 Rule::Values => {
-                    let mut plan_value_row_ids: Vec<NodeId> =
-                        Vec::with_capacity(node.children.len());
-                    for ast_child_id in &node.children {
-                        let row_pair = pairs_map.remove_pair(*ast_child_id);
-                        let expr_id =
-                            parse_expr(Pairs::single(row_pair), &[], &mut worker, &mut plan)?;
-                        let values_row_id = plan.add_values_row(expr_id, &mut col_idx)?;
-                        plan.fix_subquery_rows(&mut worker, values_row_id)?;
-                        plan_value_row_ids.push(values_row_id);
-                    }
-                    let plan_values_id = plan.add_values(plan_value_row_ids)?;
+                    let values_rows_ids = parse_values_rows(
+                        &node.children,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut col_idx,
+                        &mut worker,
+                        &mut plan,
+                    )?;
+                    let plan_values_id = plan.add_values(values_rows_ids)?;
                     map.add(id, plan_values_id);
                 }
                 Rule::Update => {
@@ -4966,8 +5073,9 @@ impl AbstractSyntaxTree {
                             .expect("Expression expected as second child of UpdateItem");
 
                         let expr_pair = pairs_map.remove_pair(*expr_ast_id);
-                        let expr_plan_node_id = parse_expr(
+                        let expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
+                            &mut type_analyzer,
                             &[rel_child_id],
                             &mut worker,
                             &mut plan,
@@ -5078,8 +5186,9 @@ impl AbstractSyntaxTree {
                                 .get(1)
                                 .expect("Expr not found among DeleteFilter children");
                             let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-                            let expr_plan_node_id = parse_expr(
+                            let expr_plan_node_id = parse_scalar_expr(
                                 Pairs::single(expr_pair),
+                                &mut type_analyzer,
                                 &[plan_scan_id],
                                 &mut worker,
                                 &mut plan,
@@ -5255,7 +5364,14 @@ impl AbstractSyntaxTree {
                     map.add(id, child_id);
                 }
                 Rule::CallProc => {
-                    let call_proc = parse_call_proc(self, node, pairs_map, &mut worker, &mut plan)?;
+                    let call_proc = parse_call_proc(
+                        self,
+                        node,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
                     let plan_id = plan.nodes.push(call_proc.into());
                     map.add(id, plan_id);
                 }
@@ -5270,8 +5386,14 @@ impl AbstractSyntaxTree {
                     map.add(id, plan_id);
                 }
                 Rule::AlterSystem => {
-                    let alter_system =
-                        parse_alter_system(self, node, pairs_map, &mut worker, &mut plan)?;
+                    let alter_system = parse_alter_system(
+                        self,
+                        node,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
                     let plan_id = plan.nodes.push(alter_system.into());
                     map.add(id, plan_id);
                 }
@@ -5733,6 +5855,7 @@ impl Plan {
 pub mod ast;
 pub mod ir;
 pub mod tree;
+mod type_system;
 
 fn parse_plugin_opts<T: Default>(
     ast: &AbstractSyntaxTree,

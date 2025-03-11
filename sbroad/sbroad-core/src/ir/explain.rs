@@ -446,8 +446,7 @@ impl ColExpr {
                     let right_expr = stack.pop_expr(Some(id));
                     let left_expr = stack.pop_expr(Some(id));
 
-                    let bool_expr =
-                        ColExpr::Bool(Box::new(left_expr), op.clone(), Box::new(right_expr));
+                    let bool_expr = ColExpr::Bool(Box::new(left_expr), *op, Box::new(right_expr));
 
                     stack.push((bool_expr, id));
                 }

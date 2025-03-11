@@ -15,7 +15,7 @@ use super::*;
 fn not_eq1_test() {
     let sql = r#"
         SELECT "identification_number" FROM "hash_testing" AS "t"
-        WHERE "identification_number" <> 1 and "product_code" <> 2
+        WHERE "identification_number" <> 1 and "product_code" <> '2'
         "#;
 
     // Initialize the query.
@@ -43,7 +43,7 @@ fn not_eq1_test() {
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
                 r#"WHERE (("t"."identification_number") <> (?)) and (("t"."product_code") <> (?))"#,
             ),
-            vec![Value::from(1_u64), Value::from(2_u64)],
+            vec![Value::from(1_u64), Value::from("2")],
         ))),
     ]]);
     assert_eq!(expected, result);

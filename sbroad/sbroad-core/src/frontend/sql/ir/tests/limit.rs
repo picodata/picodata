@@ -106,8 +106,8 @@ fn single_limit() {
 
 #[test]
 fn join() {
-    let input = r#"SELECT * FROM "t1" LEFT JOIN "t2" ON "t1"."a" = "t2"."e"
-    JOIN "t3" ON "t1"."a" = "t3"."a" JOIN "t4" ON "t2"."f" = "t4"."c"
+    let input = r#"SELECT * FROM "t1" LEFT JOIN "t2" ON "t1"."b" = "t2"."e"
+    JOIN "t3" ON "t1"."a" = "t3"."a" JOIN "t4" ON "t2"."f" = "t4"."d"
     LIMIT 128
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
@@ -117,9 +117,9 @@ fn join() {
         motion [policy: full]
             limit 128
                 projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::string -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
-                    join on ROW("t2"."f"::unsigned) = ROW("t4"."c"::string)
+                    join on ROW("t2"."f"::unsigned) = ROW("t4"."d"::integer)
                         join on ROW("t1"."a"::string) = ROW("t3"."a"::string)
-                            left join on ROW("t1"."a"::string) = ROW("t2"."e"::unsigned)
+                            left join on ROW("t1"."b"::integer) = ROW("t2"."e"::unsigned)
                                 scan "t1"
                                     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
                                         scan "t1"

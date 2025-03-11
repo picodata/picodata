@@ -1,4 +1,5 @@
 use crate::ir::relation::Type;
+use sbroad_type_system::error::Error as TypeSystemError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::fmt;
 use tarantool::error::Error;
@@ -344,6 +345,7 @@ pub enum SbroadError {
     /// Second param is information what was expected and what got.
     UnexpectedNumberOfValues(SmolStr),
     TypeError(TypeError),
+    TypeSystemError(TypeSystemError),
     /// Object is not supported.
     /// Second param represents description or name that let to identify object.
     /// and can be empty (None).
@@ -389,6 +391,9 @@ impl fmt::Display for SbroadError {
             SbroadError::TypeError(err) => {
                 format_smolstr!("{err}")
             }
+            SbroadError::TypeSystemError(err) => {
+                format_smolstr!("{err}")
+            }
             SbroadError::DispatchError(s) | SbroadError::Other(s) => s.clone(),
         };
 
@@ -421,5 +426,11 @@ impl From<Error> for SbroadError {
 impl From<TypeError> for SbroadError {
     fn from(error: TypeError) -> Self {
         SbroadError::TypeError(error)
+    }
+}
+
+impl From<TypeSystemError> for SbroadError {
+    fn from(error: TypeSystemError) -> Self {
+        SbroadError::TypeSystemError(error)
     }
 }

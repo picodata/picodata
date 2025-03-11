@@ -185,8 +185,8 @@ fn test_query_explain_11() {
     let sql = r#"select a, count(b) from
     (select e, f from t2 where (e, f) = (10, 10))
     join
-    (select a, b from t1 where (a, b) = (20, 20))
-    on e = a
+    (select a, b from t1 where (a, b) = ('20', 20))
+    on e = b 
     group by a
 "#;
 
@@ -198,7 +198,7 @@ fn test_query_explain_11() {
             motion [policy: segment([ref("column_3496")])]
                 projection ("a"::string -> "column_3496", count(("b"::integer))::unsigned -> "count_4196")
                     group by ("a"::string) output: ("e"::unsigned -> "e", "f"::unsigned -> "f", "a"::string -> "a", "b"::integer -> "b")
-                        join on ROW("e"::unsigned) = ROW("a"::string)
+                        join on ROW("e"::unsigned) = ROW("b"::integer)
                             scan
                                 projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
                                     selection ROW("t2"."e"::unsigned, "t2"."f"::unsigned) = ROW(10::unsigned, 10::unsigned)
@@ -206,7 +206,7 @@ fn test_query_explain_11() {
                             motion [policy: full]
                                 scan
                                     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-                                        selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(20::unsigned, 20::unsigned)
+                                        selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW('20'::string, 20::unsigned)
                                             scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -223,15 +223,15 @@ fn test_query_explain_12() {
     let sql = r#"select a from
     (select e, f from t2 where (e, f) = (10, 10))
     join
-    (select a, b from t1 where (a, b) = (20, 20))
-    on e = a
+    (select a, b from t1 where (a, b) = ('20', 20))
+    on e = b
 "#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("a"::string -> "a")
-        join on ROW("e"::unsigned) = ROW("a"::string)
+        join on ROW("e"::unsigned) = ROW("b"::integer)
             scan
                 projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
                     selection ROW("t2"."e"::unsigned, "t2"."f"::unsigned) = ROW(10::unsigned, 10::unsigned)
@@ -239,7 +239,7 @@ fn test_query_explain_12() {
             motion [policy: full]
                 scan
                     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-                        selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(20::unsigned, 20::unsigned)
+                        selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW('20'::string, 20::unsigned)
                             scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -250,7 +250,7 @@ fn test_query_explain_12() {
 
 #[test]
 fn test_query_explain_13() {
-    let sql = r#"insert into global_t select a, b from t1 where (a, b) = (1, 1)"#;
+    let sql = r#"insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
@@ -258,7 +258,7 @@ fn test_query_explain_13() {
     insert "global_t" on conflict: fail
         motion [policy: full]
             projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-                selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned)
+                selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW('1'::string, 1::unsigned)
                     scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -269,13 +269,13 @@ fn test_query_explain_13() {
 
 #[test]
 fn test_query_explain_14() {
-    let sql = r#"select a, b from t1 where (a, b) = (1, 1) and (a, b) = (2, 2)"#;
+    let sql = r#"select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-        selection (ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned)) and (ROW("t1"."a"::string, "t1"."b"::integer) = ROW(2::unsigned, 2::unsigned))
+        selection (ROW("t1"."a"::string, "t1"."b"::integer) = ROW('1'::string, 1::unsigned)) and (ROW("t1"."a"::string, "t1"."b"::integer) = ROW('2'::string, 2::unsigned))
             scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000

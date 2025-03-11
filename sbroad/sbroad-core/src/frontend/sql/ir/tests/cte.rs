@@ -290,7 +290,7 @@ fn join_in_cte() {
     let sql = r#"
         WITH cte AS (
             SELECT t1."FIRST_NAME" FROM "test_space" t1
-            JOIN "test_space" t2 ON t1."FIRST_NAME" = t2."id"
+            JOIN "test_space" t2 ON t1."FIRST_NAME" = t2."id"::text
         )
         SELECT * FROM cte
     "#;
@@ -302,7 +302,7 @@ fn join_in_cte() {
     subquery $0:
     motion [policy: full]
                 projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-                    join on ROW("t1"."FIRST_NAME"::string) = ROW("t2"."id"::unsigned)
+                    join on ROW("t1"."FIRST_NAME"::string) = ROW(ROW("t2"."id"::unsigned)::text)
                         scan "t1"
                             projection ("t1"."id"::unsigned -> "id", "t1"."sysFrom"::unsigned -> "sysFrom", "t1"."FIRST_NAME"::string -> "FIRST_NAME", "t1"."sys_op"::unsigned -> "sys_op")
                                 scan "test_space" -> "t1"

@@ -62,23 +62,21 @@ fn selection1_oldest() {
 fn selection2_latest() {
     let query = r#"SELECT "product_code" FROM "hash_testing"
         WHERE "identification_number" IN (1)
-        AND "product_units" = 1
-        AND ("product_units" <> "sys_op" OR "product_units" IS NULL)"#;
+        AND "product_units" = true
+        AND ("product_units" OR "product_units" IS NULL)"#;
 
     let expected = PatternWithParams::new(
         f_sql(
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
-WHERE ((("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number") =
-("hash_testing"."product_units", ?, ?))
-and (("hash_testing"."product_units") <> ("hash_testing"."sys_op")))
-or ((("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number")
-= ("hash_testing"."product_units", ?, ?))
+WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (?, ?))
+and ("hash_testing"."product_units"))
+or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (?, ?))
 and (("hash_testing"."product_units") is null))"#,
         ),
         vec![
+            Value::Boolean(true),
             Value::Unsigned(1),
-            Value::Unsigned(1),
-            Value::Unsigned(1),
+            Value::Boolean(true),
             Value::Unsigned(1),
         ],
     );
@@ -89,16 +87,16 @@ and (("hash_testing"."product_units") is null))"#,
 fn selection2_oldest() {
     let query = r#"SELECT "product_code" FROM "hash_testing"
         WHERE "identification_number" IN (1)
-        AND "product_units" = 1
-        AND ("product_units" <> "sys_op" OR "product_units" IS NULL)"#;
+        AND "product_units" = true
+        AND ("product_units" OR "product_units" IS NULL)"#;
 
     let expected = PatternWithParams::new(
         [
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
             r#"WHERE ((("hash_testing"."identification_number") in (?)) and (("hash_testing"."product_units") = (?)))"#,
-            r#"and ((("hash_testing"."product_units") <> ("hash_testing"."sys_op")) or (("hash_testing"."product_units") is null))"#,
+            r#"and (("hash_testing"."product_units") or (("hash_testing"."product_units") is null))"#,
         ].join(" "),
-        vec![Value::Unsigned(1), Value::Unsigned(1)],
+        vec![Value::Unsigned(1), Value::Boolean(true)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

@@ -43,18 +43,10 @@ fn split_columns3() {
     let query = r#"SELECT "a" FROM "t" WHERE ("a", 2, "b") = (1, "b")"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap();
-    plan.bind_params(vec![]).unwrap();
-    let plan_err = plan.split_columns().unwrap_err();
+    let mut err = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap_err();
     assert_eq!(
-        format!(
-            "{} {} {} {}",
-            r#"unexpected number of values:"#,
-            r#"left and right rows have different number of columns:"#,
-            r#"Row(Row { list: [NodeId { offset: 5, arena_type: Arena96 }, NodeId { offset: 2, arena_type: Arena64 }, NodeId { offset: 6, arena_type: Arena96 }], distribution: None }),"#,
-            r#"Row(Row { list: [NodeId { offset: 3, arena_type: Arena64 }, NodeId { offset: 7, arena_type: Arena96 }], distribution: None })"#,
-        ),
-        format!("{plan_err}")
+        "unequal number of entries in row expression: 3 and 2",
+        err.to_string()
     );
 }
 

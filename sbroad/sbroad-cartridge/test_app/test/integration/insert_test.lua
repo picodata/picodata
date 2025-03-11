@@ -109,7 +109,7 @@ g.test_insert_2 = function()
     local r, err = api:call("sbroad.execute", { [[INSERT INTO "space_simple_shard_key"
     ("name", "sysOp", "id")
     SELECT 'four', 5, 3 FROM "space_simple_shard_key_hist" WHERE "id" IN (
-        SELECT ? FROM "space_simple_shard_key"
+        SELECT ?::int FROM "space_simple_shard_key"
     )]], { 1 } })
 
     t.assert_equals(err, nil)

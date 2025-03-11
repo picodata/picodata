@@ -1656,7 +1656,7 @@ impl<'p> SyntaxPlan<'p> {
             Expression::Bool(BoolExpr {
                 left, right, op, ..
             }) => {
-                let (op, left, right) = (op.clone(), *left, *right);
+                let (op, left, right) = (*op, *left, *right);
                 let op_sn_id = self
                     .nodes
                     .push_sn_non_plan(SyntaxNode::new_operator(&format!("{op}")));

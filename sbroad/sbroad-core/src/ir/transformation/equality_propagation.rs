@@ -437,12 +437,12 @@ impl Chain {
                 {
                     let left_row_id = plan.nodes.add_row(vec![first.0], None);
                     let right_row_id = plan.nodes.add_row(vec![first.1], None);
-                    let mut op_top_id = plan.add_cond(left_row_id, op.clone(), right_row_id)?;
+                    let mut op_top_id = plan.add_cond(left_row_id, *op, right_row_id)?;
 
                     for (l_id, r_id) in other_pairs {
                         let left_row_id = plan.nodes.add_row(vec![*l_id], None);
                         let right_row_id = plan.nodes.add_row(vec![*r_id], None);
-                        let cond_id = plan.add_cond(left_row_id, op.clone(), right_row_id)?;
+                        let cond_id = plan.add_cond(left_row_id, *op, right_row_id)?;
                         op_top_id = plan.add_cond(op_top_id, Bool::And, cond_id)?;
                     }
                     match grouped_top_id {

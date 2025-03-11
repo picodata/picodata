@@ -24,29 +24,6 @@ fn bool_in1() {
 }
 
 #[test]
-fn bool_in2() {
-    let input = r#"SELECT "a" FROM "t"
-    WHERE ("a", "b") IN ((1, 10), (2, 20), (3, 30))"#;
-    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
-
-    assert_eq!(
-        actual_pattern_params.params,
-        vec![
-            Value::from(1_u64),
-            Value::from(10_u64),
-            Value::from(2_u64),
-            Value::from(20_u64),
-            Value::from(3_u64),
-            Value::from(30_u64),
-        ]
-    );
-    insta::assert_snapshot!(
-        actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a", "t"."b") = (?, ?)) or (("t"."a", "t"."b") = (?, ?))) or (("t"."a", "t"."b") = (?, ?))"#
-    );
-}
-
-#[test]
 fn bool_in3() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" IN (1, 2) AND "b" IN (3)"#;
     let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
@@ -85,15 +62,15 @@ fn bool_in4() {
 #[test]
 fn bool_in5() {
     // check bool expression inside function expression will be replaced.
-    let input = r#"SELECT "a" FROM "t" WHERE func(("a" IN (1, 2))) < 1"#;
+    let input = r#"SELECT "a" FROM "t" WHERE trim(("a" IN (1, 2))::text) < '1'"#;
     let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(1_u64)]
+        vec![Value::from(1_u64), Value::from(2_u64), Value::from("1")]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("func" ((("t"."a") = (?)) or (("t"."a") = (?)))) < (?)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (((("t"."a") = (?)) or (("t"."a") = (?))) as text)) < (?)"#
     );
 }

@@ -38,7 +38,7 @@ use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::{ColumnPosition, JoinChild};
 
 /// Binary operator returning Bool expression.
-#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Bool {
     /// `AND`
@@ -82,11 +82,9 @@ impl Bool {
             _ => Err(SbroadError::Unsupported(Entity::Operator, None)),
         }
     }
-}
 
-impl Display for Bool {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let op = match &self {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             Bool::And => "and",
             Bool::Or => "or",
             Bool::Eq => "=",
@@ -96,10 +94,14 @@ impl Display for Bool {
             Bool::Lt => "<",
             Bool::LtEq => "<=",
             Bool::NotEq => "<>",
-            Bool::Between => unreachable!("Between in op fmt"),
-        };
+            Bool::Between => "between",
+        }
+    }
+}
 
-        write!(f, "{op}")
+impl Display for Bool {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -130,18 +132,20 @@ impl Arithmetic {
             _ => Err(SbroadError::Unsupported(Entity::Operator, None)),
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Arithmetic::Add => "+",
+            Arithmetic::Subtract => "-",
+            Arithmetic::Divide => "/",
+            Arithmetic::Multiply => "*",
+        }
+    }
 }
 
 impl Display for Arithmetic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let op = match &self {
-            Arithmetic::Multiply => "*",
-            Arithmetic::Divide => "/",
-            Arithmetic::Add => "+",
-            Arithmetic::Subtract => "-",
-        };
-
-        write!(f, "{op}")
+        write!(f, "{}", self.as_str())
     }
 }
 

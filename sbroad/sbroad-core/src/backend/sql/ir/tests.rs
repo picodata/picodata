@@ -10,6 +10,7 @@ use crate::ir::tree::Snapshot;
 use super::*;
 
 #[allow(clippy::needless_pass_by_value)]
+#[track_caller]
 fn check_sql_with_snapshot(
     query: &str,
     params: Vec<Value>,

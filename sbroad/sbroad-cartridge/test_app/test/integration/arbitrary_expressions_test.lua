@@ -59,7 +59,7 @@ arbitrary_projection.test_arbitrary_invalid = function()
     local _, err = api:call("sbroad.execute", { [[
         select "a" + "b" and true from "arithmetic_space"
     ]], {} })
-    t.assert_str_contains(tostring(err), "Type mismatch: can not convert integer(3) to boolean")
+    t.assert_str_contains(tostring(err), "could not resolve operator overload for and(int, bool)")
 
     local _, err = api:call("sbroad.execute", { [[
         SELECT
@@ -69,7 +69,7 @@ arbitrary_projection.test_arbitrary_invalid = function()
             END "case_result"
         FROM "arithmetic_space"
     ]], {} })
-    t.assert_str_contains(tostring(err), "case types string and unsigned cannot be matched")
+    t.assert_str_contains(tostring(err), "CASE/THEN types text and unsigned cannot be matched")
 end
 
 arbitrary_projection.test_arbitrary_valid = function()

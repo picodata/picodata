@@ -192,8 +192,7 @@ g.test_arithmetic_invalid = function()
         { [[select "id" from "arithmetic_space" where "boolean_col" + "boolean_col" > 0]], {} }
     )
     t.assert_str_contains(
-        tostring(err),
-        "Type mismatch: can not convert boolean(TRUE) to integer, decimal, double, datetime or interval"
+        tostring(err), "could not resolve operator overload for +(bool, bool)"
     )
 
     -- arithemic operation on string col
@@ -201,8 +200,7 @@ g.test_arithmetic_invalid = function()
         { [[select "id" from "arithmetic_space" where "string_col" + "string_col" > 0]], {} }
     )
     t.assert_str_contains(
-        tostring(err),
-        "Type mismatch: can not convert string('123') to integer, decimal, double, datetime or interval"
+        tostring(err), "could not resolve operator overload for +(text, text)"
     )
 end
 
@@ -247,19 +245,13 @@ g2.test_arithmetic_invalid = function()
     local _, err = api:call("sbroad.execute",
         { [[select "boolean_col" + "boolean_col" from "arithmetic_space"]], {} }
     )
-    t.assert_str_contains(
-        tostring(err),
-        "invalid expression: types boolean and boolean are not supported for arithmetic expression"
-    )
+    t.assert_str_contains(tostring(err), "could not resolve operator overload for +(bool, bool)")
 
     -- arithemic operation on string col
     local _, err = api:call("sbroad.execute",
         { [[select "string_col" + "string_col" from "arithmetic_space"]], {} }
     )
-    t.assert_str_contains(
-        tostring(err),
-        "invalid expression: types string and string are not supported for arithmetic expression"
-    )
+    t.assert_str_contains(tostring(err), "could not resolve operator overload for +(text, text)")
 end
 
 g.test_arithmetic_valid = function()

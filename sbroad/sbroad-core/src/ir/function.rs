@@ -126,7 +126,6 @@ impl Plan {
                 }
             }
         }
-        kind.check_args_types(self, &children)?;
         let feature = if is_distinct {
             Some(FunctionFeature::Distinct)
         } else {

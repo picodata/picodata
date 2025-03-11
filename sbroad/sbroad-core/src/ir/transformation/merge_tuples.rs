@@ -91,8 +91,8 @@ impl Chain {
                 // Try to put expressions with references to the left side.
                 let (left_id, right_id, group_op) =
                     match (plan.is_ref(*left)?, plan.is_ref(*right)?) {
-                        (false, true) => (*right, *left, op.clone()),
-                        _ => (*left, *right, op.clone()),
+                        (false, true) => (*right, *left, *op),
+                        _ => (*left, *right, *op),
                     };
 
                 if let Ok(Expression::Arithmetic(_)) = plan.get_expression_node(left_id) {
@@ -225,7 +225,7 @@ fn add_rows_and_cond(
 ) -> Result<NodeId, SbroadError> {
     let left_row_id = plan.nodes.add_row(left.into(), None);
     let right_row_id = plan.nodes.add_row(right.into(), None);
-    plan.add_cond(left_row_id, op.clone(), right_row_id)
+    plan.add_cond(left_row_id, *op, right_row_id)
 }
 
 struct GroupedRows {

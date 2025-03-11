@@ -38,7 +38,7 @@ rule parsing error
 -- SQL:
 SELECT f(x) OVER (ORDER BY y) FROM t1;
 -- ERROR:
-F() may not be used as a window function
+window function f does not exist
 
 -- TEST: window4-7.1.7
 -- SQL:

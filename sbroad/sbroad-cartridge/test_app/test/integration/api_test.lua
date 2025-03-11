@@ -618,15 +618,15 @@ g.test_to_char = function ()
         },
     })
 
-    -- invalid argument
-    -- FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/644
-    -- we need to check function's argument types when building a plan
     local _, error = api:call("sbroad.execute", { [[
         select to_char('%d', '%i-%m-%d')
         from (values ('2020 20'))
     ]]})
 
-    t.assert_str_contains(tostring(error), "bad argument #1 to 'format' (number expected, got string)")
+    t.assert_str_contains(
+        tostring(error),
+        "could not resolve function overload for to_char(text, text)"
+    )
 end
 
 g.test_current_date = function ()
@@ -904,7 +904,7 @@ g.test_select_without_scan = function ()
     _, err = api:call("sbroad.execute", { [[
         select (values (100, 500)) as bar
     ]] })
-    t.assert_str_contains(tostring(err), "invalid expression: SubQuery expected to have 1 rows output, but got 2.")
+    t.assert_str_contains(tostring(err), "subquery must return only one column")
 
 end
 

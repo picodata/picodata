@@ -218,10 +218,10 @@ def test_pg_params(cluster: Cluster):
         i1.sql("""select coalesce($1, $2) from (values(1)) order by 1""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""select max($1) from (select 1)""")
+        i1.sql("""select max($1 + 1) from (select 1)""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""SELECT MAX($1)""")
+        i1.sql("""SELECT MAX($1 * 1.0)""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""select max(coalesce($1, 1)) from (select 1)""")
@@ -239,7 +239,7 @@ def test_pg_params(cluster: Cluster):
     data = i1.sql("""select max(a), b from (select 1 as a, 2 as b) group by 2""")
     assert data == [[1, 2]]
 
-    data = i1.sql("""select max(coalesce($1, $2)) from (select 1)""", 1, 2)
+    data = i1.sql("""select max(coalesce($1, $2 + 1)) from (select 1)""", 1, 2)
     assert data == [[1]]
 
     data = i1.sql("""select * from (select 1 as a) group by $1""", 1)
@@ -302,7 +302,7 @@ def test_pg_params(cluster: Cluster):
     assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
     assert data["rows"] == [[1], [2]]
 
-    data = i1.sql("""select (select $1) + 1""", 1, strip_metadata=False)
+    data = i1.sql("""select (select $1::int) + 1""", 1, strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
     assert data["rows"] == [[2]]
 
@@ -1552,7 +1552,9 @@ def test_substring(instance: Instance):
         instance.sql("SELECT SUBSTRING('string', 2 , -10)")
 
     # invalid types of parameters
-    with pytest.raises(TarantoolError, match="Second and third parameters should have the same type"):
+    with pytest.raises(
+        TarantoolError, match=r"could not resolve function overload for substring\(text, text, unsigned\)"
+    ):
         instance.sql(r"""SELECT SUBSTRING ('abc' FROM '1' FOR 1)""")
 
     # substring expression examples
@@ -1566,14 +1568,14 @@ def test_substring(instance: Instance):
     assert data[0] == ["456"]
 
     # check for caching similar queries #1
-    with pytest.raises(TarantoolError, match="explicit types are required. Expected a string, and a numeric length."):
+    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
         instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
 
     data = instance.sql("SELECT SUBSTRING('12' for 12)")
     assert data[0] == ["12"]
 
     # check for caching similar queries #2
-    with pytest.raises(TarantoolError, match="explicit types are required. Expected a string, and a numeric length."):
+    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
         instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
 
     # overflow cases
@@ -1660,7 +1662,10 @@ def test_substring(instance: Instance):
         instance.sql(r"""SELECT SUBSTRING('abcdefg' SIMILAR '%\"\"\"%' ESCAPE '\')""")
 
     # invalid parameters number
-    with pytest.raises(TarantoolError, match="There is no such overload that takes only 1 argument"):
+    # TODO: Get rid of this check so we can get "could not resolve overload for substring(text)" error
+    with pytest.raises(
+        TarantoolError, match="incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument"
+    ):
         instance.sql("SELECT SUBSTRING('abc')")
 
     # character class handling
@@ -1747,7 +1752,7 @@ def test_substring(instance: Instance):
     assert data[0] == ["345"]
 
     instance.sql(
-        """SELECT SUBSTRING( (select $1 ) from  $2::string)""",
+        """SELECT SUBSTRING( (select $1::text ) from  $2::string)""",
         "a234567890",
         "3.5",
     )
@@ -1819,7 +1824,7 @@ def test_coalesce(instance: Instance):
     assert data == [[0], [1]]
 
     # Type mismatch: all values must have the same type.
-    with pytest.raises(TarantoolError, match="coalesce types unsigned and string cannot be matched"):
+    with pytest.raises(TarantoolError, match="COALESCE types unsigned and text cannot be matched"):
         instance.sql("select coalesce(bar, 'none') from foo;")
 
     # 0 / 0 is not evaluated.
@@ -1993,7 +1998,7 @@ def test_except_parsing_panic_gl_1339(cluster: Cluster):
     ):
         i1.sql("select 1 except select 1, 2")
 
-    with pytest.raises(TarantoolError, match="types unsigned and string are not supported for arithmetic expression"):
+    with pytest.raises(TarantoolError, match=r"could not resolve operator overload for \+\(unsigned, text\)"):
         i1.sql("select 1 + 'kek' except select 1")
 
     ddl = i1.sql("create table lol(a int primary key, b int, c int);")
@@ -2384,7 +2389,7 @@ def test_values(cluster: Cluster):
     ddl = i1.sql(""" create table t (a int primary key, b text) """)
     assert ddl["row_count"] == 1
 
-    dml = i1.sql(""" insert into t values (1, (values(?))), (2, 'hi') """, None)
+    dml = i1.sql(""" insert into t values (1, ?), (2, 'hi') """, None)
     assert dml["row_count"] == 2
 
     data = i1.sql("""select * from t """)
@@ -5023,19 +5028,19 @@ def test_cte(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="coalesce types string and unsigned cannot be matched",
+        match="COALESCE types text and unsigned cannot be matched",
     ):
         i1.sql(""" with cte as (select coalesce('kek',1487)) select * from cte; """)
 
     with pytest.raises(
         TarantoolError,
-        match="case types unsigned and integer cannot be matched",
+        match="CASE/THEN types unsigned and text cannot be matched",
     ):
-        i1.sql(""" with cte as (select case when true then 1 else -1 end) select * from cte; """)
+        i1.sql("with cte as (select case when true then 1 else '-1' end) select * from cte;")
 
     with pytest.raises(
         TarantoolError,
-        match="types unsigned and string are not supported for arithmetic expression",
+        match=r"could not resolve operator overload for \+\(unsigned, text\)",
     ):
         i1.sql(""" with cte as (select 1 + 'lol') select * from cte; """)
 

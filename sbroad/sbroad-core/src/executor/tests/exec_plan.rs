@@ -187,7 +187,7 @@ GROUP BY "COL_1", "COL_2", "COL_3""#
 
 #[test]
 fn exec_plan_subtree_aggregates() {
-    let sql = r#"SELECT "T1"."sys_op" || "T1"."sys_op", "T1"."sys_op"*2 + count("T1"."sysFrom"),
+    let sql = r#"SELECT "T1"."sys_op" + "T1"."sys_op", "T1"."sys_op"*2 + count("T1"."sysFrom"),
                       sum("T1"."id"), sum(distinct "T1"."id"*"T1"."sys_op") / count(distinct "id"),
                       group_concat("T1"."FIRST_NAME", 'o'), avg("T1"."id"), total("T1"."id"), min("T1"."id"), max("T1"."id")
                       FROM "test_space" as "T1" group by "T1"."sys_op""#;
@@ -228,7 +228,7 @@ fn exec_plan_subtree_aggregates() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Unsigned(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") || ("COL_1") as "col_1", (("COL_1") * (?)) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") + ("COL_1") as "col_1", (("COL_1") * (?)) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -440,7 +440,7 @@ fn exec_plan_subtree_count_asterisk() {
 fn exec_plan_subtree_having() {
     let sql = format!(
         "{} {} {}",
-        r#"SELECT "T1"."sys_op" || "T1"."sys_op", count("T1"."sys_op"*2) + count(distinct "T1"."sys_op"*2)"#,
+        r#"SELECT "T1"."sys_op" + "T1"."sys_op", count("T1"."sys_op"*2) + count(distinct "T1"."sys_op"*2)"#,
         r#"FROM "test_space" as "T1" group by "T1"."sys_op""#,
         r#"HAVING sum(distinct "T1"."sys_op"*2) > 1"#
     );
@@ -488,7 +488,7 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {} {}",
-                r#"SELECT ("COL_1") || ("COL_1") as "col_1","#,
+                r#"SELECT ("COL_1") + ("COL_1") as "col_1","#,
                 r#"(sum ("COL_3")) + (count (DISTINCT "COL_2")) as "col_2" FROM"#,
                 r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
                 r#"GROUP BY "COL_1" HAVING (sum (DISTINCT "COL_2")) > (?)"#
@@ -1400,7 +1400,7 @@ fn subtree_hash2() {
 
 #[test]
 fn check_parentheses() {
-    let query = r#"SELECT "id" from "test_space" WHERE "sysFrom" = ((1) < (3)) + 2"#;
+    let query = r#"SELECT "id" from "test_space" WHERE "sysFrom" = ((1) + (3)) + 2"#;
 
     let rt = RouterRuntimeMock::new();
     let mut query = Query::new(&rt, query, vec![]).unwrap();
@@ -1408,7 +1408,7 @@ fn check_parentheses() {
     let top_id = plan.get_top().unwrap();
 
     let expected = PatternWithParams::new(
-        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = (((?) < (?)) + (?))"#.to_string(),
+        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = (((?) + (?)) + (?))"#.to_string(),
         vec![Value::from(1_u64), Value::from(3_u64), Value::from(2_u64)],
     );
 

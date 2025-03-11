@@ -42,8 +42,8 @@ fn not_in2() {
 
 #[test]
 fn not_in3() {
-    let query = r#"SELECT 1 FROM "hash_testing" AS "t" WHERE ("identification_number", "product_code") NOT IN (
-        SELECT "product_code", 42 FROM "hash_testing_hist")"#;
+    let query = r#"SELECT 1 FROM "hash_testing2" AS "t" WHERE ("identification_number", "product_code") NOT IN (
+        SELECT "product_code", 42 FROM "hash_testing_hist2")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -74,8 +74,8 @@ fn not_in4() {
 
 #[test]
 fn not_in5() {
-    let query = r#"SELECT 1 FROM "hash_testing" AS "t" WHERE ("identification_number", "product_code") NOT IN (
-        SELECT 42, 666 FROM "hash_testing_hist" AS "t")"#;
+    let query = r#"SELECT 1 FROM "hash_testing2" AS "t" WHERE ("identification_number", "product_code") NOT IN (
+        SELECT 42, 666 FROM "hash_testing_hist2" AS "t")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();

@@ -208,9 +208,9 @@ fn union_linker_test() {
             SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" > 0
         ) as "t1"
         WHERE "id" in (SELECT "identification_number" FROM (
-            SELECT "product_code", "identification_number" FROM "hash_testing" WHERE "product_units" < 3
+            SELECT "product_code", "identification_number" FROM "hash_testing" WHERE "sys_op" < 3
             UNION ALL
-            SELECT "product_code", "identification_number" FROM "hash_testing_hist" WHERE "product_units" > 3
+            SELECT "product_code", "identification_number" FROM "hash_testing_hist" WHERE "sys_op" > 3
         ) as "t2"
         WHERE "product_code" = '123')"#;
 
@@ -483,7 +483,7 @@ fn join_linker3_test() {
 #[allow(clippy::too_many_lines)]
 fn join_linker4_test() {
     let sql = r#"SELECT "T1"."id" FROM "test_space" as "T1" JOIN
-    (SELECT "FIRST_NAME" as "r_id" FROM "test_space") as "T2"
+    (SELECT "sys_op" as "r_id" FROM "test_space") as "T2"
     on "T1"."id" = "T2"."r_id" and
     "T1"."FIRST_NAME" = (SELECT "FIRST_NAME" as "fn" FROM "test_space" WHERE "id" = 1)"#;
 
@@ -576,7 +576,7 @@ fn join_linker5_test() {
     let sql = r#"select * from "t1" inner join (
       select "f", "b" as B from "t2"
       inner join "t3" on "t2"."g" = "t3"."b") as q
-on q."f" = "t1"."a""#;
+on q."f" = "t1"."b""#;
 
     let coordinator = RouterRuntimeMock::new();
 
@@ -625,7 +625,7 @@ on q."f" = "t1"."a""#;
                 r#"SELECT * FROM"#,
                 r#"(SELECT "t1"."a", "t1"."b" FROM "t1") as "t1""#,
                 r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_1136")"#,
-                r#"as "q" ON ("q"."f") = ("t1"."a")"#,
+                r#"as "q" ON ("q"."f") = ("t1"."b")"#,
             ),
             vec![],
         ))),
@@ -669,8 +669,8 @@ fn dispatch_order_by() {
 #[test]
 fn anonymous_col_index_test() {
     let sql = r#"SELECT * FROM "test_space"
-    WHERE "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "product_units" < 3)
-        OR "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "product_units" > 5)"#;
+    WHERE "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" < 3)
+        OR "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" > 5)"#;
 
     let coordinator = RouterRuntimeMock::new();
 
@@ -827,6 +827,7 @@ fn get_motion_policy(plan: &Plan, motion_id: NodeId) -> &MotionPolicy {
     }
 }
 
+#[track_caller]
 pub(crate) fn broadcast_check(sql: &str, pattern: &str, params: Vec<Value>) {
     let coordinator = RouterRuntimeMock::new();
 

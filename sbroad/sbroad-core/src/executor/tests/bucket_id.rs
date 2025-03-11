@@ -34,7 +34,7 @@ fn bucket1_test() {
 #[test]
 fn bucket2_test() {
     let sql = r#"SELECT "a", "bucket_id", "b" FROM "t1"
-        WHERE "a" = 1 AND "b" = 2"#;
+        WHERE "a" = '1' AND "b" = 2"#;
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
@@ -45,7 +45,7 @@ fn bucket2_test() {
         .unwrap();
 
     let mut expected = ProducerResult::new();
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from("1");
     let param2 = Value::from(2_u64);
     let bucket = query
         .coordinator
@@ -68,7 +68,7 @@ fn bucket2_test() {
 
 #[test]
 fn bucket3_test() {
-    let sql = r#"SELECT *, func('111') FROM "t1""#;
+    let sql = r#"SELECT *, trim('111') FROM "t1""#;
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
@@ -83,7 +83,7 @@ fn bucket3_test() {
     expected.rows.push(vec![
         LuaValue::String("Execute query on all buckets".to_string()),
         LuaValue::String(String::from(PatternWithParams::new(
-            r#"SELECT "t1"."a", "t1"."b", "func" (?) as "col_1" FROM "t1""#.to_string(),
+            r#"SELECT "t1"."a", "t1"."b", TRIM (?) as "col_1" FROM "t1""#.to_string(),
             vec![Value::from("111".to_string())],
         ))),
     ]);

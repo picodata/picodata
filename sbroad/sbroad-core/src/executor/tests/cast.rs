@@ -103,8 +103,8 @@ fn cast11_test() {
 #[test]
 fn cast12_test() {
     broadcast_check(
-        r#"SELECT CAST(func("a") as varchar(100)) FROM "t1""#,
-        r#"SELECT CAST ("func" ("t1"."a") as varchar(100)) as "col_1" FROM "t1""#,
+        r#"SELECT CAST(trim("a") as varchar(100)) FROM "t1""#,
+        r#"SELECT CAST (TRIM ("t1"."a") as varchar(100)) as "col_1" FROM "t1""#,
         vec![],
     );
 }

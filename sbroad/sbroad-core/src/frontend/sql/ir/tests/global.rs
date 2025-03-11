@@ -232,7 +232,7 @@ fn front_sql_global_tbl_sq4() {
     let input = r#"
     select "product_code" from "t" inner join "hash_testing"
     on "t"."a" = "hash_testing"."identification_number" and "hash_testing"."product_code"
-    in (select "a" as a1 from "global_t")
+    in (select "a"::text as a1 from "global_t")
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
@@ -248,7 +248,7 @@ fn front_sql_global_tbl_sq4() {
                         scan "hash_testing"
     subquery $0:
     scan
-                projection ("global_t"."a"::integer -> "a1")
+                projection ("global_t"."a"::integer::text -> "a1")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000

@@ -172,11 +172,8 @@ impl BoolOp {
             left, op, right, ..
         }) = plan.get_expression_node(expr_id)?
         {
-            Ok(BoolOp {
-                left: *left,
-                op: op.clone(),
-                right: *right,
-            })
+            let (op, left, right) = (*op, *left, *right);
+            Ok(BoolOp { left, op, right })
         } else {
             Err(SbroadError::Invalid(Entity::Operator, None))
         }

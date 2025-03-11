@@ -12,9 +12,9 @@ use super::{Motion, Relational};
 
 #[test]
 fn inner_join1() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN
-        (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
+        (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist2") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."pc", "t2"."id")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
@@ -38,13 +38,13 @@ fn inner_join1() {
 
 #[test]
 fn inner_join2() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN "t"
         ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")
         AND ("t"."a", "t"."b") =
-        (SELECT "hash_testing"."identification_number", "hash_testing"."product_code" FROM "hash_testing"
+        (SELECT "hash_testing2"."identification_number", "hash_testing2"."product_code" FROM "hash_testing2"
         UNION ALL
-        SELECT "hash_testing_hist"."product_code", "hash_testing_hist"."identification_number" FROM "hash_testing_hist")"#;
+        SELECT "hash_testing_hist2"."product_code", "hash_testing_hist2"."identification_number" FROM "hash_testing_hist2")"#;
 
     let mut plan = sql_to_ir(query, vec![]);
     plan.add_motions().unwrap();
@@ -137,7 +137,7 @@ fn inner_join3() {
 
 #[test]
 fn inner_join4() {
-    let query = r#"SELECT * FROM "hash_testing" AS "t1"
+    let query = r#"SELECT * FROM "hash_testing2" AS "t1"
         INNER JOIN "t" as "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."d", "t2"."a")"#;
 

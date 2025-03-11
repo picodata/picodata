@@ -1,0 +1,12 @@
+[package]
+name = "sbroad-type-system"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+criterion = "0.5.1"
+thiserror = "2.0.12"
+
+[[bench]]
+name = "benchmark"
+harness = false

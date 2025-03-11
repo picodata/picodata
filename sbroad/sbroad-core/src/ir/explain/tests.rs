@@ -13,7 +13,6 @@ fn simple_query_without_cond_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
         scan "hash_testing" -> "t"
@@ -32,7 +31,6 @@ fn simple_query_with_cond_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
         selection (ROW("t"."identification_number"::integer) = ROW(1::unsigned)) and (ROW("t"."product_code"::string) = ROW('222'::string))
@@ -82,7 +80,6 @@ WHERE "id" = 1"#;
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
         selection ROW("t"."id"::unsigned) = ROW(1::unsigned)
@@ -121,7 +118,6 @@ WHERE "id" IN (SELECT "id"
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
         selection ROW("t"."id"::unsigned) in ROW($0)
@@ -203,7 +199,6 @@ fn motion_subquery_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
         selection (ROW("t"."id"::unsigned) in ROW($1)) or (ROW("t"."id"::unsigned) in ROW($0))
@@ -251,7 +246,6 @@ WHERE "t2"."product_code" = '123'"#;
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
         selection ROW("t2"."product_code"::string) = ROW('123'::string)
@@ -281,7 +275,6 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
         join on ROW("t1"."id"::unsigned) = ROW($0)
@@ -313,7 +306,6 @@ fn unary_condition_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
         selection (ROW("test_space"."id"::unsigned) is null) and (not (ROW("test_space"."FIRST_NAME"::string) is null))
@@ -408,7 +400,6 @@ fn select_value_plan() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
         scan
@@ -429,7 +420,6 @@ fn select_cast_plan1() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned::unsigned -> "b")
         scan "test_space"
@@ -448,7 +438,6 @@ fn select_cast_plan2() {
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
         selection ROW("test_space"."id"::unsigned::int) = ROW(1::unsigned)
@@ -461,16 +450,15 @@ fn select_cast_plan2() {
 
 #[test]
 fn select_cast_plan_nested() {
-    let query = r#"SELECT cast(func("id") as string) FROM "test_space""#;
+    let query = r#"SELECT cast(trim("id"::text) as string) FROM "test_space""#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
     let top = &plan.get_top().unwrap();
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
-    let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection ("func"(("test_space"."id"::unsigned))::integer::string -> "col_1")
+    projection (TRIM("test_space"."id"::unsigned::text)::string -> "col_1")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -480,7 +468,7 @@ fn select_cast_plan_nested() {
 
 #[test]
 fn select_cast_plan_nested_where() {
-    let query = r#"SELECT "id" FROM "test_space" WHERE cast(func("id") as string) = 1"#;
+    let query = r#"SELECT "id" FROM "test_space" WHERE cast(trim("id"::text) as string) = '1'"#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
@@ -490,7 +478,7 @@ fn select_cast_plan_nested_where() {
     let mut actual_explain = String::new();
     actual_explain.push_str(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection ROW("func"(("test_space"."id"::unsigned))::integer::string) = ROW(1::unsigned)
+    selection ROW(TRIM("test_space"."id"::unsigned::text)::string) = ROW('1'::string)
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -503,7 +491,7 @@ execution options:
 
 #[test]
 fn select_cast_plan_nested_where2() {
-    let query = r#"SELECT "id" FROM "test_space" WHERE func(cast(42 as string)) = 1"#;
+    let query = r#"SELECT "id" FROM "test_space" WHERE trim(cast(42 as string)) = '1'"#;
 
     let plan = sql_to_optimized_ir(query, vec![]);
 
@@ -513,7 +501,7 @@ fn select_cast_plan_nested_where2() {
     let mut actual_explain = String::new();
     actual_explain.push_str(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection ROW("func"((42::unsigned::string))::integer) = ROW(1::unsigned)
+    selection TRIM(42::unsigned::string) = ROW('1'::string)
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000

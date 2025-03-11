@@ -30,6 +30,8 @@ smol_str = { version = "0.2", features = ["serde"] }
 time = { version = ">=0.3.0, <0.3.18", features = ["formatting"] }
 chrono = "0.4"
 
+sbroad-type-system = { path = "../sbroad-type-system" }
+
 [dependencies.tarantool]
 git = "https://git.picodata.io/picodata/picodata/tarantool-module.git"
 version = ">=4.0"

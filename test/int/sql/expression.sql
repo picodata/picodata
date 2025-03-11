@@ -119,25 +119,25 @@ false
 -- SQL:
 SELECT 1 + (2 < 3)
 -- ERROR:
-unsigned and boolean are not supported for arithmetic
+could not resolve operator overload for +(unsigned, bool)
 
 -- TEST: parentheses-under-arithmetic-with-not
 -- SQL:
 SELECT (NOT 1) + NULL
 -- ERROR:
-can not convert integer(1) to boolean
+argument of NOT must be type boolean, not type unsigned
 
 -- TEST: parentheses-under-arithmetic-with-between
 -- SQL:
 SELECT 1 + (1 BETWEEN 1 AND 1)
 -- ERROR:
-unsigned and boolean are not supported for arithmetic
+could not resolve operator overload for +(unsigned, bool)
 
 -- TEST: parentheses-under-concat
 -- SQL:
 SELECT (NOT 1) || '1'
 -- ERROR:
-can not convert integer(1) to boolean
+argument of NOT must be type boolean, not type unsigned
 
 -- TEST: parentheses-under-divide
 -- SQL:
@@ -161,13 +161,13 @@ SELECT 2 * (3 + 5)
 -- SQL:
 SELECT 1 = (2 = FALSE)
 -- ERROR:
-can not convert boolean(FALSE) to number
+could not resolve operator overload for =(unsigned, bool)
 
 -- TEST: parentheses-under-like
 -- SQL:
 SELECT (NOT NULL) LIKE 'a'
 -- ERROR:
-wrong arguments for function LIKE
+could not resolve function overload for like(bool, text, text)
 
 -- TEST: parentheses-under-not-with-and
 -- SQL:
