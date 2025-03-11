@@ -1,16 +1,15 @@
 use crate::cas::Range;
+use crate::error_code::ErrorCode;
 use crate::info::InstanceInfo;
 use crate::instance::{InstanceName, StateVariant};
-use crate::plugin::migration::Error;
-use crate::plugin::{
-    reenterable_plugin_cas_request, PluginError, PluginOp, PreconditionCheckResult,
-};
+use crate::plugin::{reenterable_plugin_cas_request, PluginOp, PreconditionCheckResult};
 use crate::storage::{self, PropertyName, SystemTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
 use crate::{tlog, traft};
 use serde::{Deserialize, Serialize};
+use tarantool::error::BoxError;
 use tarantool::time::Instant;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
@@ -38,22 +37,36 @@ impl From<InstanceInfo> for PicoPropertyLock {
     }
 }
 
+impl std::fmt::Display for PicoPropertyLock {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{}", self.instance_name, self.incarnation)
+    }
+}
+
 /// Try to acquire a lock.
 ///
 /// # Errors
-/// Return [`PluginError::LockAlreadyAcquired`] if any other instance already acquires the lock.
+/// Return an error if any other instance already acquires the lock.
 /// Return error if underlying CAS fails.
-pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
+pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
     let node = node::global().expect("node must be already initialized");
     let precondition = || {
         let my_instance_info = InstanceInfo::try_get(node, None).unwrap();
 
         if let Some(op) = node.storage.properties.pending_plugin_op()? {
-            let PluginOp::MigrationLock(existed_lock) = op else {
-                return Err(PluginError::LockAlreadyAcquired.into());
+            let existed_lock = match op {
+                PluginOp::MigrationLock(v) => v,
+                op => {
+                    return Err(BoxError::new(
+                        ErrorCode::PluginError,
+                        format!("Another plugin operation is in progress: {op}"),
+                    )
+                    .into());
+                }
             };
 
-            let info = InstanceInfo::try_get(node, Some(&existed_lock.instance_name)).ok();
+            let owner_name = existed_lock.instance_name;
+            let info = InstanceInfo::try_get(node, Some(&owner_name)).ok();
             match info {
                 None => {
                     tlog!(
@@ -74,7 +87,12 @@ pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
                     );
                 }
                 _ => {
-                    return Err(PluginError::LockAlreadyAcquired.into());
+                    return Err(
+                        BoxError::new(
+                            ErrorCode::PluginError,
+                            format!("Another plugin migration is in progress, initiated by instance {owner_name}"),
+                        ).into()
+                    );
                 }
             }
         }
@@ -93,16 +111,7 @@ pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
-    if let Err(e) = reenterable_plugin_cas_request(node, precondition, deadline) {
-        if matches!(
-            e,
-            traft::error::Error::Plugin(PluginError::LockAlreadyAcquired)
-        ) {
-            return Err(PluginError::LockAlreadyAcquired);
-        }
-
-        return Err(Error::AcquireLock(e.to_string()).into());
-    }
+    reenterable_plugin_cas_request(node, precondition, deadline)?;
 
     Ok(())
 }
@@ -111,17 +120,32 @@ pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
 /// (this means that the instance incarnation has not changed since the lock was taken).
 ///
 /// # Errors
-/// Return [`PluginError::LockGoneUnexpected`] if lock should be already acquired by current instance,
+/// Return an error if lock should be already acquired by current instance,
 /// but it's not. Return errors if storage fails.
+#[track_caller]
 pub fn lock_is_acquired_by_us() -> traft::Result<()> {
     let node = node::global()?;
-    let instance_info = InstanceInfo::try_get(node, None)?;
-    let Some(PluginOp::MigrationLock(lock)) = node.storage.properties.pending_plugin_op()? else {
-        return Err(PluginError::LockGoneUnexpected.into());
+    let op = node.storage.properties.pending_plugin_op()?;
+
+    let lock = match op {
+        Some(PluginOp::MigrationLock(v)) => v,
+        other => {
+            tlog!(Error, "migration lock disappeared, found {other:?} instead");
+            return Err(error_migration_lock_lost().into());
+        }
     };
-    if lock != PicoPropertyLock::from(instance_info) {
-        return Err(PluginError::LockGoneUnexpected.into());
+
+    let instance_info = InstanceInfo::try_get(node, None)?;
+
+    let expected_lock = PicoPropertyLock::from(instance_info);
+    if lock != expected_lock {
+        tlog!(
+            Error,
+            "migration lock owner changed, expected {expected_lock}, got {lock}"
+        );
+        return Err(error_migration_lock_lost().into());
     }
+
     Ok(())
 }
 
@@ -130,16 +154,10 @@ pub fn lock_is_acquired_by_us() -> traft::Result<()> {
 /// # Errors
 ///
 /// Return error if lock already released or underlying CAS fails.
-pub fn release(deadline: Instant) -> crate::plugin::Result<()> {
+pub fn release(deadline: Instant) -> traft::Result<()> {
     let node = node::global().expect("node must be already initialized");
     let precondition = || {
-        let existed_lock = node.storage.properties.pending_plugin_op()?;
-
-        match existed_lock {
-            None => return Err(PluginError::LockAlreadyReleased.into()),
-            Some(PluginOp::MigrationLock(_)) => {}
-            _ => return Err(PluginError::LockGoneUnexpected.into()),
-        };
+        lock_is_acquired_by_us()?;
 
         let dml = Dml::delete(
             storage::Properties::TABLE_ID,
@@ -154,16 +172,15 @@ pub fn release(deadline: Instant) -> crate::plugin::Result<()> {
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
-    if let Err(e) = reenterable_plugin_cas_request(node, precondition, deadline) {
-        if matches!(
-            e,
-            traft::error::Error::Plugin(PluginError::LockAlreadyReleased)
-        ) {
-            return Err(PluginError::LockAlreadyReleased);
-        }
-
-        return Err(Error::ReleaseLock(e.to_string()).into());
-    }
+    reenterable_plugin_cas_request(node, precondition, deadline)?;
 
     Ok(())
+}
+
+#[track_caller]
+fn error_migration_lock_lost() -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        "Migration got interrupted likely because connection to cluster was lost",
+    )
 }

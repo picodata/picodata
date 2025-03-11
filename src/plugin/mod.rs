@@ -88,12 +88,6 @@ pub enum PluginError {
     AmbiguousInstallCandidate,
     #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
     AmbiguousEnableCandidate,
-    #[error("Migration lock is already acquired")]
-    LockAlreadyAcquired,
-    #[error("Migration lock is unexpected gone away")]
-    LockGoneUnexpected,
-    #[error("Migration lock is already released")]
-    LockAlreadyReleased,
     #[error("Some of configuration keys are unknown ({0})")]
     InvalidConfigurationKey(String),
     #[error("Trying to update an empty configuration")]
@@ -1047,6 +1041,27 @@ pub enum PluginOp {
         kind: TopologyUpdateOpKind,
     },
     MigrationLock(PicoPropertyLock),
+}
+
+impl Display for PluginOp {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::CreatePlugin { manifest, .. } => {
+                write!(f, "CREATE PLUGIN {}", manifest.name)?;
+            }
+            Self::EnablePlugin { plugin, .. } => {
+                write!(f, "ALTER PLUGIN {} ENABLE", plugin.name)?;
+            }
+            Self::AlterServiceTiers { plugin, .. } => {
+                write!(f, "ALTER PLUGIN {} CHANGE SERVICE TIER", plugin.name)?;
+            }
+            Self::MigrationLock { .. } => {
+                write!(f, "ALTER PLUGIN MIGRATE")?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]

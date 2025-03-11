@@ -1230,8 +1230,12 @@ def test_migration_lock(cluster: Cluster):
 
     time.sleep(1)
 
-    with pytest.raises(TarantoolError, match="Migration lock is already acquired"):
+    with pytest.raises(TarantoolError) as e:
         i3.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0", timeout=10)
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"Another plugin migration is in progress, initiated by instance {i2.name}",
+    )
 
     #
     # i2 suddenly stops responding before it has finished applying migrations
@@ -1254,8 +1258,12 @@ def test_migration_lock(cluster: Cluster):
     i2.call("pico._inject_error", "PLUGIN_MIGRATION_LONG_MIGRATION", False)
 
     # i2 notices that the lock was forcefully taken away
-    with pytest.raises(TarantoolError, match="Migration lock is already released"):
+    with pytest.raises(TarantoolError) as e:
         thread.join()
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        "Migration got interrupted likely because connection to cluster was lost",
+    )
 
 
 # -------------------------- configuration tests -------------------------------------
