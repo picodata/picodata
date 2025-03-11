@@ -459,7 +459,7 @@ impl PortalInner {
             &runtime,
             HashMap::new(),
         );
-        let tuple = dispatch(query)?;
+        let tuple = dispatch(query, None)?;
 
         let state = match self.describe.query_type() {
             QueryType::Acl | QueryType::Ddl => {

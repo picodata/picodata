@@ -215,7 +215,19 @@ fn empty_query_response() -> traft::Result<Tuple> {
     Tuple::try_from_slice(&buf).map_err(Into::into)
 }
 
-pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
+/// Execute the cluster SQL query.
+///
+/// `override_deadline` if provided is used to override the timeout provided in
+/// the `OPTION (TIMEOUT = ?)` part of the SQL query. Note that overriding only
+/// happens downwards, that is it can only be decreased but not increased.
+///
+/// This is needed for example for `ALTER PLUGIN MIGRATE` queries, so that the
+/// whole query doesn't take longer (give or take) than the timeout specified by
+/// the user.
+pub fn dispatch(
+    mut query: Query<RouterRuntime>,
+    override_deadline: Option<Instant>,
+) -> traft::Result<Tuple> {
     if query.is_empty() {
         return empty_query_response();
     }
@@ -262,7 +274,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
 
         let ir_node = ir_plan_mut.replace_with_stub(top_id);
         let node = node::global()?;
-        let result = reenterable_schema_change_request(node, ir_node)?;
+        let result = reenterable_schema_change_request(node, ir_node, override_deadline)?;
         let tuple = Tuple::new(&(result,))?;
         Ok(tuple)
     } else if query.is_plugin()? {
@@ -274,7 +286,12 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 .to_smolstr()
                 .parse::<f64>()
                 .map_err(|e| Error::Other(e.into()))?;
-            Ok(duration_from_secs_f64_clamped(secs))
+            let mut timeout = duration_from_secs_f64_clamped(secs);
+            if let Some(override_deadline) = override_deadline {
+                let override_deadline = override_deadline.duration_since(Instant::now_fiber());
+                timeout = timeout.min(override_deadline);
+            }
+            Ok(timeout)
         };
 
         // NOTE: this is different from how access checks are done for DDL, because:
@@ -458,7 +475,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 // Take options from the original query.
                 let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
                 stmt_ir_plan.raw_options = options;
-                dispatch(stmt_query)
+                dispatch(stmt_query, override_deadline)
             }
         }
     } else {
@@ -495,10 +512,12 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         })??;
 
         if plan.is_dml_on_global_table()? {
-            let res = do_dml_on_global_tbl(query)?;
+            let res = do_dml_on_global_tbl(query, override_deadline)?;
             return Ok(Tuple::new(&(res,))?);
         }
 
+        // TODO: Query::dispatch should support passing an explicit timeout
+        // <https://git.picodata.io/core/picodata/-/issues/1743>
         let tuple = match query.dispatch() {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
@@ -567,10 +586,14 @@ impl<'de> Decode<'de> for BindArgs {
 /// Part of public RPC API.
 #[proc(packed_args)]
 pub fn proc_sql_dispatch(args: BindArgs) -> traft::Result<Tuple> {
-    sql_dispatch(&args.pattern, args.params).map_err(err_for_tnt_console)
+    sql_dispatch(&args.pattern, args.params, None).map_err(err_for_tnt_console)
 }
 
-pub fn sql_dispatch(pattern: &str, params: Vec<Value>) -> traft::Result<Tuple> {
+pub fn sql_dispatch(
+    pattern: &str,
+    params: Vec<Value>,
+    override_deadline: Option<Instant>,
+) -> traft::Result<Tuple> {
     let runtime = RouterRuntime::new()?;
     let node = node::global()?;
     // Admin privileges are need for reading tables metadata.
@@ -580,7 +603,7 @@ pub fn sql_dispatch(pattern: &str, params: Vec<Value>) -> traft::Result<Tuple> {
         let default_options = Some(Options::new(sql_motion_row_max, sql_vdbe_opcode_max));
         Query::with_options(&runtime, pattern, params, default_options)
     })??;
-    dispatch(query)
+    dispatch(query, override_deadline)
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {
@@ -1896,6 +1919,7 @@ fn ensure_ddl_allowed_in_cluster(node: &TraftNode, ir_node: &NodeOwned) -> traft
 pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: NodeOwned,
+    override_deadline: Option<Instant>,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
 
@@ -1904,6 +1928,7 @@ pub(crate) fn reenterable_schema_change_request(
     // Save current user as later user is switched to admin
     let current_user = effective_user_id();
 
+    // This timeout comes from `OPTION (TIMEOUT = ?)` part of the SQL query
     let timeout = match &ir_node {
         NodeOwned::Ddl(ddl) => ddl.timeout()?,
         NodeOwned::Acl(acl) => acl.timeout()?,
@@ -1912,7 +1937,12 @@ pub(crate) fn reenterable_schema_change_request(
         }
     };
     let timeout = duration_from_secs_f64_clamped(timeout);
-    let deadline = Instant::now_fiber().saturating_add(timeout);
+    let mut deadline = Instant::now_fiber().saturating_add(timeout);
+    // This timeout comes from the arugments to this function.
+    // For example this could be a timeout passed to `ALTER PLUGIN MIGRATE TO`.
+    if let Some(override_deadline) = override_deadline {
+        deadline = override_deadline.min(deadline);
+    }
 
     let _su = session::su(ADMIN_ID).expect("cant fail because admin should always have session");
 
@@ -2032,7 +2062,10 @@ pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
 // before doing any reads. After materializing the subtree we
 // convert virtual table to a batch of DML ops and apply it via
 // CAS. No retries are made in case of CAS error.
-fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<ConsumerResult> {
+fn do_dml_on_global_tbl(
+    mut query: Query<RouterRuntime>,
+    override_deadline: Option<Instant>,
+) -> traft::Result<ConsumerResult> {
     let current_user = effective_user_id();
 
     let raft_node = node::global()?;
@@ -2134,7 +2167,10 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
     // there.
     with_su(ADMIN_ID, || -> traft::Result<ConsumerResult> {
         let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
-        let deadline = Instant::now_fiber().saturating_add(timeout);
+        let mut deadline = Instant::now_fiber().saturating_add(timeout);
+        if let Some(override_deadline) = override_deadline {
+            deadline = override_deadline.min(deadline);
+        }
 
         let ops_count = ops.len();
         let op = crate::traft::op::Op::BatchDml { ops };

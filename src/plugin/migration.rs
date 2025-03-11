@@ -504,24 +504,23 @@ fn find_placeholder(query_string: &str) -> Option<Placeholder> {
 
 /// Apply sql from migration file onto cluster.
 trait SqlApplier {
-    fn apply(&self, sql: &str, deadline: Option<Instant>) -> traft::Result<()>;
+    fn apply(&self, sql: &str, deadline: Instant) -> traft::Result<()>;
 }
 
 /// By default, sql applied with SBroad.
 struct SBroadApplier;
 
 impl SqlApplier for SBroadApplier {
-    fn apply(&self, sql: &str, deadline: Option<Instant>) -> traft::Result<()> {
+    #[track_caller]
+    fn apply(&self, sql: &str, deadline: Instant) -> traft::Result<()> {
         // check that lock is still actual
         lock::lock_is_acquired_by_us()?;
-        // Should sbroad accept a timeout parameter?
-        if let Some(deadline) = deadline {
-            if fiber::clock() > deadline {
-                return Err(traft::error::Error::timeout());
-            }
+
+        if fiber::clock() > deadline {
+            return Err(traft::error::Error::timeout());
         }
 
-        sql::sql_dispatch(sql, vec![]).map(|_| ())
+        sql::sql_dispatch(sql, vec![], Some(deadline)).map(|_| ())
     }
 }
 
@@ -536,7 +535,7 @@ fn up_single_file(
     for (sql, i) in queries.up.iter().zip(1..) {
         #[rustfmt::skip]
         tlog!(Debug, "applying `UP` migration query {filename} #{i}/{} `{}`", queries.up.len(), DisplayTruncated(sql));
-        if let Err(e) = applier.apply(sql, Some(deadline)) {
+        if let Err(e) = applier.apply(sql, deadline) {
             #[rustfmt::skip]
             tlog!(Error, "failed applying `UP` migration query (file: {filename}) `{}`: {e}", DisplayTruncated(sql));
             return Err(Error::Up {
@@ -550,14 +549,14 @@ fn up_single_file(
     Ok(())
 }
 
-fn down_single_file(queries: &MigrationInfo, applier: &impl SqlApplier) {
+fn down_single_file(queries: &MigrationInfo, applier: &impl SqlApplier, deadline: Instant) {
     debug_assert!(queries.is_parsed);
     let filename = &queries.filename_from_manifest;
 
     for (sql, i) in queries.down.iter().zip(1..) {
         #[rustfmt::skip]
         tlog!(Debug, "applying `DOWN` migration query {filename} #{i}/{} `{}`", queries.down.len(), DisplayTruncated(sql));
-        if let Err(e) = applier.apply(sql, None) {
+        if let Err(e) = applier.apply(sql, deadline) {
             #[rustfmt::skip]
             tlog!(Error, "Error while apply DOWN query (file: {filename}) `{}`: {e}", DisplayTruncated(sql));
         }
@@ -572,7 +571,7 @@ fn down_single_file_with_commit(
 ) {
     let node = node::global().expect("node must be already initialized");
 
-    down_single_file(queries, applier);
+    down_single_file(queries, applier, deadline);
 
     let make_op = || {
         lock::lock_is_acquired_by_us()?;
@@ -878,7 +877,7 @@ command; -- pico.UP
     }
 
     impl SqlApplier for BufApplier {
-        fn apply(&self, sql: &str, _deadline: Option<Instant>) -> crate::traft::Result<()> {
+        fn apply(&self, sql: &str, _deadline: Instant) -> crate::traft::Result<()> {
             if let Some(p) = self.poison_query {
                 if p == sql {
                     return Err(crate::traft::error::Error::Other("test error".into()));
@@ -947,7 +946,8 @@ sql_command_3;
             buf: RefCell::new(vec![]),
             poison_query: None,
         };
-        down_single_file(&queries, &applier);
+        let deadline = Instant::now_accurate().saturating_add(tarantool::time::INFINITY);
+        down_single_file(&queries, &applier, deadline);
         #[rustfmt::skip]
         assert_eq!(
             applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
@@ -967,7 +967,8 @@ sql_command_3;
             buf: RefCell::new(vec![]),
             poison_query: Some("sql_command_2;"),
         };
-        down_single_file(&queries, &applier);
+        let deadline = Instant::now_accurate().saturating_add(tarantool::time::INFINITY);
+        down_single_file(&queries, &applier, deadline);
         #[rustfmt::skip]
         assert_eq!(
             applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),

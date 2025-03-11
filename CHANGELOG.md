@@ -115,6 +115,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed an issue where an instance cannot join after we expelled another instance.
 
+- `ALTER PLUGIN MIGRATE TO` command's timeout option is now handled more accurately.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
