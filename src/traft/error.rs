@@ -192,6 +192,7 @@ impl Error {
             | Self::Raft(raft::Error::Store(raft::StorageError::LogTemporarilyUnavailable)) => {
                 ErrorCode::RaftLogUnavailable as _
             }
+            Self::Raft(raft::Error::ProposalDropped) => ErrorCode::RaftProposalDropped as _,
             Self::Raft(_) => ErrorCode::Other as _,
             Self::Plugin(e) => e.error_code(),
             // TODO: when sbroad will need boxed errors, implement

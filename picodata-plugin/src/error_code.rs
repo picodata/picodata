@@ -89,6 +89,9 @@ tarantool::define_enum_with_introspection! {
         /// TableNotOperable: table {table} is prohibited for use in a predicate
         CasConfigNotAllowed = 10026,
 
+        /// Raft proposal was dropped by the leader.
+        RaftProposalDropped = 10027,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
@@ -129,6 +132,9 @@ impl ErrorCode {
             // Leader checked the predicate and found a conflict.
             // The client should synchronize and check the preconditions.
             | ErrorCode::CasConflictFound
+            // Raft proposal was dropped by the leader.
+            // The client should synchronize and retry the request.
+            | ErrorCode::RaftProposalDropped
             => true,
             _ => false,
         }

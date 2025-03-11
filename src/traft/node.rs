@@ -626,6 +626,8 @@ impl NodeImpl {
         m.set_msg_type(raft::MessageType::MsgPropose);
         m.from = self.raw_node.raft.id;
         m.set_entries(vec![entry].into());
+
+        crate::error_injection!("RAFT_PROPOSAL_DROPPED" => return Err(traft::error::Error::Raft(RaftError::ProposalDropped)));
         self.raw_node.raft.step(m)?;
 
         let index = self.raw_node.raft.raft_log.last_index();

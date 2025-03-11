@@ -465,3 +465,24 @@ def test_cas_operable_table(cluster: Cluster):
         ErrorCode.CasTableNotOperable,
         "TableNotOperable: " + "table warehouse cannot be modified now as DDL operation is in progress",
     )
+
+
+def test_cas_raft_proposal_drop(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False, init_replication_factor=1)
+    i1.start()
+    i1.wait_online()
+    index = i1.eval(
+        """
+        local index = box.space._raft_state:get("applied").value
+        return index
+        """
+    )
+    error_injection = "RAFT_PROPOSAL_DROPPED"
+    i1.call("pico._inject_error", error_injection, True)
+
+    with pytest.raises(TarantoolError) as err:
+        i1.cas("insert", "_pico_property", ["foo", "420"], index=index)
+    assert err.value.args[:2] == (
+        ErrorCode.RaftProposalDropped,
+        "raft: proposal dropped",
+    )
