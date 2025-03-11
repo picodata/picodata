@@ -2072,6 +2072,8 @@ class Cluster:
 
         connection_type = "iproto"
         leader_id = raft_info["leader_id"]
+        assert leader_id != 0, "leader unknown"
+
         [[leader_address]] = self.peer.sql(
             "SELECT address FROM _pico_peer_address WHERE raft_id = ? and connection_type = ?",
             leader_id,
@@ -2197,8 +2199,12 @@ class Cluster:
         timeout: int | float = 30,
         rps: int | float = 5,
     ):
-        leader = self.leader()
-        leader.wait_has_states(current_state, target_state, target=target, timeout=timeout, rps=rps)
+        def do_attempt():
+            leader = self.leader()
+            leader.wait_has_states(current_state, target_state, target=target, timeout=timeout, rps=rps)
+
+        # This retriable call is needed so that we can handled leader changes
+        Retriable(fatal=AssertionError, timeout=timeout, rps=rps).call(do_attempt)
 
     def masters(self) -> List[Instance]:
         leader = self.leader()

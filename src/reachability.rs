@@ -55,9 +55,13 @@ impl InstanceReachabilityManager {
         if success {
             info.last_success = Some(now);
             info.fail_streak = 0;
+            info.fail_streak_start = None;
             // If was previously reported as unreachable, it's now reachable so
             // next time it should again be reported as unreachable.
         } else {
+            if info.fail_streak == 0 {
+                info.fail_streak_start = Some(now);
+            }
             info.fail_streak += 1;
         }
     }
@@ -89,7 +93,8 @@ impl InstanceReachabilityManager {
     pub fn get_unreachables(&self) -> HashSet<RaftId> {
         let mut res = HashSet::with_capacity(self.infos.len() / 3);
         for (raft_id, info) in &self.infos {
-            if self.determine_reachability(info) == Unreachable {
+            let status = self.determine_reachability(info);
+            if status == Unreachable {
                 res.insert(*raft_id);
             }
         }
@@ -99,22 +104,29 @@ impl InstanceReachabilityManager {
     /// Make a descision on the given instance's reachability based on the
     /// provided `info`. This is an internal function.
     fn determine_reachability(&self, info: &InstanceReachabilityInfo) -> ReachabilityState {
-        let Some(last_success) = info.last_success else {
-            // Don't make decisions about instances which didn't previously
-            // respond once so as to not interrup the process of booting up.
-            // TODO: report unreachable if fail_streak is big enough.
-            return Undecided;
-        };
-        if info.fail_streak == 0 {
-            // Didn't fail once, so can't be unreachable.
-            return Reachable;
+        if let Some(last_success) = info.last_success {
+            if info.fail_streak == 0 {
+                // Didn't fail once, so can't be unreachable.
+                return Reachable;
+            }
+            let now = fiber::clock();
+            if now.duration_since(last_success) > self.auto_offline_timeout() {
+                return Unreachable;
+            } else {
+                return Reachable;
+            }
         }
-        let now = fiber::clock();
-        if now.duration_since(last_success) > self.auto_offline_timeout() {
-            Unreachable
-        } else {
-            Reachable
+
+        if let Some(first_fail) = info.fail_streak_start {
+            let now = fiber::clock();
+            if now.duration_since(first_fail) > self.auto_offline_timeout() {
+                return Unreachable;
+            }
         }
+
+        // Don't make decisions about instances which didn't previously
+        // respond once so as to not interrupt the process of booting up.
+        return Undecided;
     }
 
     /// Is called from raft main loop when handling raft messages, passing a
@@ -195,6 +207,7 @@ use ReachabilityState::*;
 pub struct InstanceReachabilityInfo {
     pub last_success: Option<Instant>,
     pub last_attempt: Option<Instant>,
+    pub fail_streak_start: Option<Instant>,
     pub fail_streak: u32,
     pub is_reported: bool,
 }

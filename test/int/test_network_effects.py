@@ -168,8 +168,8 @@ def test_leader_disruption(cluster3: Cluster):
 
 def test_instance_automatic_offline_detection(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
-    dml = i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout=0.5")
-    assert dml["row_count"] == 1
+    rows = i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout=0.5")
+    assert rows["row_count"] == 1
 
     cluster.wait_has_states(i3, "Online", "Online")
 
@@ -183,6 +183,27 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
     i3.start()
 
     cluster.wait_has_states(i3, "Online", "Online")
+
+
+def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
+    i1, i2, i3, i4, i5 = cluster.deploy(instance_count=5)
+    rows = i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout=0.5")
+    assert rows["row_count"] == 1
+
+    # Make sure target instances are fully initialized
+    i1.assert_raft_status("Leader")
+
+    # Brutally kill 2 instances (one of them is the current leader)
+    i1.kill()
+    i3.kill()
+
+    # A new leader is chosen, it detects that instances are offline and changes their states eventually
+    cluster.wait_has_states(i1, "Offline", "Offline")
+    cluster.wait_has_states(i3, "Offline", "Offline")
+
+    # Just for clarity, the new leader is not the old one
+    leader = cluster.leader()
+    assert leader != i1
 
 
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
