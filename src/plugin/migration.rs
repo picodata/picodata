@@ -1,6 +1,7 @@
 use crate::cas;
 use crate::cbus::ENDPOINT_NAME;
 use crate::config::PicodataConfig;
+use crate::error_code::ErrorCode;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
@@ -18,42 +19,10 @@ use std::io::{ErrorKind, Read};
 use std::time::Duration;
 use std::{io, panic};
 use tarantool::cbus;
+use tarantool::error::BoxError;
+use tarantool::error::IntoBoxError;
 use tarantool::fiber;
 use tarantool::time::Instant;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Error while open migration file `{0}`: {1}")]
-    File(String, io::Error),
-
-    #[error("Failed spawning a migrations parsing thread: {0}")]
-    Blocking(#[from] BlockingError),
-
-    #[error("Invalid migration file format: {0}")]
-    InvalidMigrationFormat(String),
-
-    #[error("Failed to apply `UP` command (file: {filename}) `{}`: {error}", DisplayTruncated(.command))]
-    Up {
-        filename: String,
-        command: String,
-        error: String,
-    },
-
-    #[error("Update migration progress: {0}")]
-    UpdateProgress(String),
-
-    #[error("Release migration lock: {0}")]
-    ReleaseLock(String),
-
-    #[error("Acquire migration lock: {0}")]
-    AcquireLock(String),
-
-    #[error("inconsistent with previous version migration list, reason: {0}")]
-    InconsistentMigrationList(String),
-
-    #[error("placeholder: {0}")]
-    Placeholder(#[from] PlaceholderSubstitutionError),
-}
 
 const MAX_COMMAND_LENGTH_TO_SHOW: usize = 256;
 struct DisplayTruncated<'a>(&'a str);
@@ -94,18 +63,9 @@ impl std::fmt::Display for DisplayTruncated<'_> {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum BlockingError {
-    #[error("failed to spawn a thread: {0}")]
-    Io(#[from] io::Error),
-
-    #[error("BUG: thread returned without sending result to the channel")]
-    Bug,
-}
-
 /// Function executes provided closure on a separate thread
 /// blocking the current fiber until the result is ready.
-pub fn blocking<F, R>(f: F) -> Result<R, BlockingError>
+pub fn blocking<F, R>(f: F) -> traft::Result<R>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
@@ -126,14 +86,18 @@ where
     // Attempt to get proper error by joining the thread.
     // In theory this can block for insignificant amount of time.
     match jh.join() {
-        Ok(_) => Err(BlockingError::Bug),
+        Ok(_) => Err(BoxError::new(
+            ErrorCode::Other,
+            "BUG: thread returned without sending result to the channel",
+        )
+        .into()),
         Err(e) => panic::resume_unwind(e),
     }
 }
 
 /// Sends a task to a separate thread to calculate the checksum of the migrations file
 /// and blocks the current fiber until the result is ready.
-pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> Result<md5::Digest, Error> {
+pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> traft::Result<md5::Digest> {
     let shortname = &migration.filename_from_manifest;
     let fullpath = migration.full_filepath.clone();
 
@@ -162,8 +126,7 @@ pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> Result<md5::
 
     let res = blocking(move || {
         tlog!(Debug, "hashing a migrations file '{fullpath}'");
-        let res = calculate_migration_hash_from_file(&fullpath)
-            .map_err(|e| Error::File(fullpath.to_string(), e));
+        let res = calculate_migration_hash_from_file(&fullpath);
         if let Err(e) = &res {
             tlog!(Debug, "failed hashing migrations file '{fullpath}': {e}");
         }
@@ -236,14 +199,13 @@ fn read_migration_queries_from_file_async(
     mut migration: MigrationInfo,
     plugin_ident: &PluginIdentifier,
     storage: &Catalog,
-) -> Result<MigrationInfo, Error> {
+) -> traft::Result<MigrationInfo> {
     tlog!(Info, "parsing migrations file '{}'", migration.shortname());
     let t0 = Instant::now_accurate();
 
     let substitutions = storage
         .plugin_config
-        .get_by_entity(plugin_ident, CONTEXT_ENTITY)
-        .map_err(PlaceholderSubstitutionError::Tarantool)?;
+        .get_by_entity(plugin_ident, CONTEXT_ENTITY)?;
 
     let migration = blocking(move || {
         let fullpath = &migration.full_filepath;
@@ -272,9 +234,15 @@ fn read_migration_queries_from_file_async(
 fn read_migration_queries_from_file(
     migration: &mut MigrationInfo,
     substitutions: &HashMap<String, rmpv::Value>,
-) -> Result<(), Error> {
+) -> Result<(), BoxError> {
     let fullpath = &migration.full_filepath;
-    let source = std::fs::read_to_string(fullpath).map_err(|e| Error::File(fullpath.into(), e))?;
+    let source = match std::fs::read_to_string(fullpath) {
+        Ok(v) => v,
+        Err(e) => {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::Other, format!("failed reading file {fullpath}: {e}")));
+        }
+    };
     parse_migration_queries(&source, migration, substitutions)
 }
 
@@ -284,7 +252,7 @@ fn parse_migration_queries(
     source: &str,
     migration: &mut MigrationInfo,
     substitutions: &HashMap<String, rmpv::Value>,
-) -> Result<(), Error> {
+) -> Result<(), BoxError> {
     let mut up_lines = vec![];
     let mut down_lines = vec![];
 
@@ -304,38 +272,30 @@ fn parse_migration_queries(
         match temp {
             Some(("", "pico.UP")) => {
                 if !up_lines.is_empty() {
-                    return Err(Error::InvalidMigrationFormat(format!(
-                        "{filename}:{lineno}: duplicate `pico.UP` annotation found"
-                    )));
+                    return Err(duplicate_annotation(filename, lineno, "pico.UP"));
                 }
                 state = State::ParsingUp;
                 continue;
             }
             Some(("", "pico.DOWN")) => {
                 if !down_lines.is_empty() {
-                    return Err(Error::InvalidMigrationFormat(format!(
-                        "{filename}:{lineno}: duplicate `pico.DOWN` annotation found"
-                    )));
+                    return Err(duplicate_annotation(filename, lineno, "pico.DOWN"));
                 }
                 state = State::ParsingDown;
                 continue;
             }
             Some(("", comment)) if comment.starts_with("pico.") => {
-                return Err(Error::InvalidMigrationFormat(
+                return Err(BoxError::new(ErrorCode::PluginError,
                     format!("{filename}:{lineno}: unsupported annotation `{comment}`, expected one of `pico.UP`, `pico.DOWN`"),
                 ));
             }
             Some((code, comment)) if comment.contains("pico.UP") => {
                 debug_assert!(!code.is_empty());
-                return Err(Error::InvalidMigrationFormat(format!(
-                    "{filename}:{lineno}: unexpected `pico.UP` annotation, it must be at the start of the line"
-                )));
+                return Err(misplaced_annotation(filename, lineno, "pico.UP"));
             }
             Some((code, comment)) if comment.contains("pico.DOWN") => {
                 debug_assert!(!code.is_empty());
-                return Err(Error::InvalidMigrationFormat(format!(
-                    "{filename}:{lineno}: unexpected `pico.DOWN` annotation, it must be at the start of the line"
-                )));
+                return Err(misplaced_annotation(filename, lineno, "pico.DOWN"));
             }
             Some((code, _)) => {
                 if code.is_empty() {
@@ -352,16 +312,25 @@ fn parse_migration_queries(
         // A query line found
         match state {
             State::Initial => {
-                return Err(Error::InvalidMigrationFormat(format!(
-                    "{filename}: no pico.UP annotation found at start of file"
-                )));
+                return Err(BoxError::new(
+                    ErrorCode::PluginError,
+                    format!("{filename}: no pico.UP annotation found at start of file"),
+                ));
             }
             State::ParsingUp => {
-                up_lines.push(substitute_config_placeholders(line, lineno, substitutions)?);
+                up_lines.push(substitute_config_placeholders(
+                    line,
+                    filename,
+                    lineno,
+                    substitutions,
+                )?);
             }
-            State::ParsingDown => {
-                down_lines.push(substitute_config_placeholders(line, lineno, substitutions)?)
-            }
+            State::ParsingDown => down_lines.push(substitute_config_placeholders(
+                line,
+                filename,
+                lineno,
+                substitutions,
+            )?),
         }
     }
 
@@ -375,6 +344,22 @@ fn parse_migration_queries(
     migration.up = split_sql_queries(&up_lines);
     migration.down = split_sql_queries(&down_lines);
     Ok(())
+}
+
+#[track_caller]
+fn duplicate_annotation(filename: &str, lineno: usize, annotation: &str) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("{filename}:{lineno}: duplicate `{annotation}` annotation found"),
+    )
+}
+
+#[track_caller]
+fn misplaced_annotation(filename: &str, lineno: usize, annotation: &str) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("{filename}:{lineno}: unexpected `{annotation}` annotation, it must be at the start of the line"),
+    )
 }
 
 fn split_sql_queries(lines: &[Cow<'_, str>]) -> Vec<String> {
@@ -418,24 +403,6 @@ fn split_sql_queries(lines: &[Cow<'_, str>]) -> Vec<String> {
     queries
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum PlaceholderSubstitutionError {
-    #[error("no key named {key} found in migration context at line {line_no}")]
-    NotFound { key: String, line_no: usize },
-
-    #[error(
-        "only strings are supported as placeholder targets, {key} is not a string but {value} at line {line_no}"
-    )]
-    BadType {
-        key: String,
-        value: rmpv::Value,
-        line_no: usize,
-    },
-
-    #[error(transparent)]
-    Tarantool(#[from] tarantool::error::Error),
-}
-
 pub const CONTEXT_ENTITY: &str = "migration_context";
 
 const MARKER: &str = "@_plugin_config.";
@@ -444,29 +411,22 @@ const MARKER: &str = "@_plugin_config.";
 /// Function returns query string with all substitutions applied if any
 fn substitute_config_placeholders<'a>(
     query_string: &'a str,
-    line_no: usize,
+    filename: &str,
+    lineno: usize,
     substitutions: &HashMap<String, rmpv::Value>,
-) -> Result<Cow<'a, str>, PlaceholderSubstitutionError> {
-    use PlaceholderSubstitutionError::*;
-
+) -> Result<Cow<'a, str>, BoxError> {
     let mut query_string = Cow::from(query_string);
 
     // Note that it is wrong to search for all placeholders first and then replace them, because
     // after each replace position of the following placeholder in a string might change.
     while let Some(placeholder) = find_placeholder(query_string.as_ref()) {
-        let Some(value) = substitutions.get(&placeholder.variable) else {
-            return Err(NotFound {
-                key: placeholder.variable,
-                line_no,
-            });
+        let key = &placeholder.variable;
+        let Some(value) = substitutions.get(key) else {
+            return Err(not_found(filename, lineno, key));
         };
 
         let Some(value) = value.as_str() else {
-            return Err(BadType {
-                key: placeholder.variable,
-                value: value.clone(),
-                line_no,
-            });
+            return Err(bad_type(filename, lineno, key, value));
         };
 
         query_string
@@ -475,6 +435,22 @@ fn substitute_config_placeholders<'a>(
     }
 
     Ok(query_string)
+}
+
+#[track_caller]
+fn not_found(filename: &str, lineno: usize, key: &str) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("{filename}:{lineno}: no key named {key} found in migration context"),
+    )
+}
+
+#[track_caller]
+fn bad_type(filename: &str, lineno: usize, key: &str, value: &rmpv::Value) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("{filename}:{lineno}: only strings are supported as placeholder targets, {key} is not a string but {value}")
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -528,7 +504,7 @@ fn up_single_file(
     queries: &MigrationInfo,
     applier: &impl SqlApplier,
     deadline: Instant,
-) -> Result<(), Error> {
+) -> traft::Result<()> {
     debug_assert!(queries.is_parsed);
     let filename = &queries.filename_from_manifest;
 
@@ -538,11 +514,18 @@ fn up_single_file(
         if let Err(e) = applier.apply(sql, deadline) {
             #[rustfmt::skip]
             tlog!(Error, "failed applying `UP` migration query (file: {filename}) `{}`: {e}", DisplayTruncated(sql));
-            return Err(Error::Up {
-                filename: filename.into(),
-                command: sql.clone(),
-                error: e.to_string(),
-            });
+            let cause = e.into_box_error();
+            let message = format!(
+                "Failed to apply `UP` command (file: {filename}) `{}`: {cause}",
+                DisplayTruncated(sql)
+            );
+            if let Some((file, line)) = cause.file().zip(cause.line()) {
+                return Err(
+                    BoxError::with_location(cause.error_code(), message, file, line).into(),
+                );
+            } else {
+                return Err(BoxError::new(cause.error_code(), message).into());
+            }
         }
     }
 
@@ -608,7 +591,7 @@ pub fn apply_up_migrations(
     migrations: &[String],
     deadline: Instant,
     rollback_timeout: Duration,
-) -> crate::plugin::Result<()> {
+) -> traft::Result<()> {
     crate::error_injection!(block "PLUGIN_MIGRATION_LONG_MIGRATION");
 
     // checking the existence of migration files
@@ -617,11 +600,9 @@ pub fn apply_up_migrations(
         let migration = MigrationInfo::new_unparsed(plugin_ident, file.clone());
 
         if !migration.path().exists() {
-            return Err(Error::File(
-                file.to_string(),
-                io::Error::new(ErrorKind::NotFound, "file not found"),
-            )
-            .into());
+            return Err(
+                io::Error::new(ErrorKind::NotFound, format!("file '{file}' not found")).into(),
+            );
         }
 
         migration_files.push(migration);
@@ -651,14 +632,14 @@ pub fn apply_up_migrations(
 
         if let Err(e) = up_single_file(migration, &SBroadApplier, deadline) {
             handle_err(&seen_queries);
-            return Err(e.into());
+            return Err(e);
         }
 
         let hash = match calculate_migration_hash_async(migration) {
             Ok(h) => h,
             Err(e) => {
                 handle_err(&seen_queries);
-                return Err(e.into());
+                return Err(e);
             }
         };
 
@@ -680,18 +661,12 @@ pub fn apply_up_migrations(
 
         #[rustfmt::skip]
         tlog!(Debug, "updating global storage with migrations progress {num}/{migrations_count}");
-        // FIXME: currently it possible that migrations will be initiated from
-        // 2 different instances simultaneously which can break some invariants.
-        // What we should do is to introduce a global lock in _pico_property
-        // such that the client first checks if the lock is acquired, then does
-        // a CaS request to acquire the lock and only after that starts doing
-        // the migrations, and releases the lock at the end.
         if let Err(e) = reenterable_plugin_cas_request(node, make_op, deadline) {
             #[rustfmt::skip]
             tlog!(Error, "failed: updating global storage with migrations progress: {e}");
 
             handle_err(&seen_queries);
-            return Err(Error::UpdateProgress(e.to_string()).into());
+            return Err(e);
         }
     }
     #[rustfmt::skip]
@@ -741,7 +716,7 @@ mod tests {
     use std::cell::RefCell;
 
     #[track_caller]
-    fn parse_migration_queries_for_tests(sql: &str) -> Result<MigrationInfo, Error> {
+    fn parse_migration_queries_for_tests(sql: &str) -> Result<MigrationInfo, BoxError> {
         let mut migration = MigrationInfo {
             full_filepath: "not used".into(),
             filename_from_manifest: "test.db".into(),
@@ -812,8 +787,8 @@ sql_command1
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db: no pico.UP annotation found at start of file",
+            e.message(),
+            "test.db: no pico.UP annotation found at start of file",
         );
 
         let queries = r#"
@@ -821,8 +796,8 @@ sql_command1
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db:2: unsupported annotation `pico.up`, expected one of `pico.UP`, `pico.DOWN`",
+            e.message(),
+            "test.db:2: unsupported annotation `pico.up`, expected one of `pico.UP`, `pico.DOWN`",
         );
 
         let queries = r#"
@@ -832,8 +807,8 @@ command;
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db:4: duplicate `pico.UP` annotation found",
+            e.message(),
+            "test.db:4: duplicate `pico.UP` annotation found",
         );
 
         let queries = r#"
@@ -844,8 +819,8 @@ command_2
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db:4: duplicate `pico.DOWN` annotation found",
+            e.message(),
+            "test.db:4: duplicate `pico.DOWN` annotation found",
         );
 
         let queries = r#"
@@ -856,8 +831,8 @@ command_3;
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db:4: unexpected `pico.DOWN` annotation, it must be at the start of the line",
+            e.message(),
+            "test.db:4: unexpected `pico.DOWN` annotation, it must be at the start of the line",
         );
 
         let queries = r#"
@@ -866,8 +841,8 @@ command; -- pico.UP
         "#;
         let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
-            e.to_string(),
-            "Invalid migration file format: test.db:3: unexpected `pico.UP` annotation, it must be at the start of the line",
+            e.message(),
+            "test.db:3: unexpected `pico.UP` annotation, it must be at the start of the line",
         );
     }
 
@@ -1066,7 +1041,7 @@ sql_command_3;
         let substitutions = migration_context();
 
         assert_eq!(
-            substitute_config_placeholders(&mut query_string, 1, &substitutions).unwrap(),
+            substitute_config_placeholders(&mut query_string, "test", 1, &substitutions).unwrap(),
             "SELECT value_123"
         )
     }
@@ -1079,7 +1054,7 @@ sql_command_3;
         let substitutions = migration_context();
 
         assert_eq!(
-            substitute_config_placeholders(&mut query_string, 1, &substitutions).unwrap(),
+            substitute_config_placeholders(&mut query_string, "test", 1, &substitutions).unwrap(),
             "SELECT value_123 @value_123_also_long"
         )
     }

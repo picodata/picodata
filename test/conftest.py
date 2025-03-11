@@ -93,8 +93,10 @@ class ErrorCode:
     InstanceUnavaliable = 10022
     CasTableNotOperable = 10023
     Uninitialized = 10024
+    ExpelNotAllowed = 10025
     CasConfigNotAllowed = 10026
     RaftProposalDropped = 10027
+    SbroadError = 10028
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas

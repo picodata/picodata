@@ -92,6 +92,9 @@ tarantool::define_enum_with_introspection! {
         /// Raft proposal was dropped by the leader.
         RaftProposalDropped = 10027,
 
+        /// Generic sbroad error
+        SbroadError = 10028,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range

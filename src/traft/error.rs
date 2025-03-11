@@ -107,6 +107,8 @@ pub enum Error {
     NotALeader,
     #[error("lua error: {0}")]
     Lua(#[from] LuaError),
+    #[error("{}", DisplayBoxError(.0))]
+    BoxError(BoxError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("instance with {} not found", *.0)]
@@ -187,6 +189,7 @@ impl Error {
     pub fn error_code(&self) -> u32 {
         match self {
             Self::Uninitialized => ErrorCode::Uninitialized as _,
+            Self::BoxError(e) => e.error_code(),
             Self::Tarantool(e) => e.error_code(),
             Self::Cas(e) => e.error_code(),
             Self::Raft(raft::Error::Store(raft::StorageError::Compacted)) => {
@@ -201,8 +204,8 @@ impl Error {
             Self::Plugin(e) => e.error_code(),
             // TODO: when sbroad will need boxed errors, implement
             // `IntoBoxError` for `sbroad::errors::SbroadError` and
-            // uncomment the following line:
-            // Self::Sbroad(e) => e.error_code(),
+            // use it here:
+            Self::Sbroad(_) => ErrorCode::SbroadError as _,
             Self::LeaderUnknown => ErrorCode::LeaderUnknown as _,
             Self::Expelled => ErrorCode::InstanceExpelled as _,
             Self::NotALeader => ErrorCode::NotALeader as _,
@@ -273,7 +276,22 @@ impl<E: Display> From<::tarantool::transaction::TransactionError<E>> for Error {
 impl From<BoxError> for Error {
     #[inline(always)]
     fn from(err: BoxError) -> Self {
-        Self::Tarantool(err.into())
+        Self::BoxError(err)
+    }
+}
+
+struct DisplayBoxError<'a>(&'a BoxError);
+impl std::fmt::Display for DisplayBoxError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let code = self.0.error_code();
+        let message = self.0.message();
+        if let Some(code) = TarantoolErrorCode::from_i64(code as _) {
+            return write!(f, "{code:?}: {message}");
+        }
+        if let Some(code) = ErrorCode::from_i64(code as _) {
+            return write!(f, "{code:?}: {message}");
+        }
+        write!(f, "#{code}: {message}")
     }
 }
 
@@ -296,14 +314,18 @@ impl IntoBoxError for Error {
     #[inline]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
-        if let Self::Tarantool(e) = self {
-            // Optimization
-            return e.into_box_error();
+        match self {
+            Self::BoxError(e) => e,
+            Self::Tarantool(e) => {
+                // Optimization
+                return e.into_box_error();
+            }
+            other => {
+                // FIXME: currently these errors capture the source location of where this function is called (see #[track_caller]),
+                // but we probably want to instead capture the location where the original error was created.
+                BoxError::new(other.error_code(), other.to_string())
+            }
         }
-
-        // FIXME: currently these errors capture the source location of where this function is called (see #[track_caller]),
-        // but we probably want to instead capture the location where the original error was created.
-        BoxError::new(self.error_code(), self.to_string())
     }
 }
 

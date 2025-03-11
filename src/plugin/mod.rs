@@ -80,8 +80,6 @@ pub enum PluginError {
     TopologyError(String),
     #[error("Found more than one service factory for `{0}` ver. `{1}`")]
     ServiceCollision(String, String),
-    #[error(transparent)]
-    Migration(#[from] migration::Error),
     #[error(
         "Cannot specify install candidate (there should be only one directory in plugin main dir)"
     )]
@@ -683,13 +681,10 @@ pub fn migration_up(
     let manifest = Manifest::load(ident)?;
 
     let already_applied_migrations = node.storage.plugin_migrations.get_by_plugin(&ident.name)?;
-    if already_applied_migrations.len() > manifest.migration.len() {
-        return Err(
-            PluginError::Migration(migration::Error::InconsistentMigrationList(
-                "more migrations have already been applied than are in the manifest".to_string(),
-            ))
-            .into(),
-        );
+    let applied_count = already_applied_migrations.len();
+    let manifest_count = manifest.migration.len();
+    if applied_count > manifest_count {
+        return Err(missing_migration_files(applied_count, manifest_count).into());
     }
 
     if manifest.migration.is_empty() {
@@ -698,32 +693,18 @@ pub fn migration_up(
     }
 
     let mut migration_delta = manifest.migration;
-    for (i, migration_file) in migration_delta
-        .drain(..already_applied_migrations.len())
-        .enumerate()
-    {
+    for (i, migration_file) in migration_delta.drain(..applied_count).enumerate() {
         if migration_file != already_applied_migrations[i].migration_file {
-            return Err(
-                PluginError::Migration(migration::Error::InconsistentMigrationList(format!(
-                    "unknown migration files found in manifest migrations ({migration_file})"
-                )))
-                .into(),
-            );
+            return Err(unknown_migration_file(migration_file).into());
         }
 
         let migration = MigrationInfo::new_unparsed(ident, migration_file);
-        let hash = migration::calculate_migration_hash_async(&migration)
-            .map_err(PluginError::Migration)?;
+        let hash = migration::calculate_migration_hash_async(&migration)?;
         let hash_string = format!("{:x}", hash);
 
         if hash_string != already_applied_migrations[i].hash() {
-            let shortname = migration.shortname();
-            return Err(
-                PluginError::Migration(migration::Error::InconsistentMigrationList(
-                    format!("unknown migration files found in manifest migrations (mismatched hash checksum for {shortname})")
-                ))
-                .into(),
-            );
+            let details = format!("mismatched hash checksum for {}", migration.shortname());
+            return Err(unknown_migration_file(details).into());
         }
     }
 
@@ -736,7 +717,23 @@ pub fn migration_up(
     let error = migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout);
     lock::release(deadline)?;
 
-    error.map_err(Error::Plugin)
+    error
+}
+
+#[track_caller]
+fn missing_migration_files(applied_count: usize, manifest_count: usize) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("more migrations have already been applied ({applied_count}) than are in the manifest ({manifest_count})"),
+    )
+}
+
+#[track_caller]
+fn unknown_migration_file(details: String) -> BoxError {
+    BoxError::new(
+        ErrorCode::PluginError,
+        format!("unknown migration files found in manifest migrations ({details})"),
+    )
 }
 
 pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Result<()> {
