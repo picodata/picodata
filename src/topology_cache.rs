@@ -397,6 +397,13 @@ impl TopologyCacheMutable {
     }
 
     #[inline(always)]
+    pub fn this_instance(&self) -> &Instance {
+        self.this_instance
+            .get()
+            .expect("should be known at this point")
+    }
+
+    #[inline(always)]
     pub fn all_instances(&self) -> impl Iterator<Item = &Instance> {
         self.instances_by_name.values()
     }
@@ -431,6 +438,13 @@ impl TopologyCacheMutable {
         };
 
         self.instance_by_name(name)
+    }
+
+    #[inline(always)]
+    pub fn this_replicaset(&self) -> &Replicaset {
+        self.this_replicaset
+            .get()
+            .expect("should be known at this point")
     }
 
     #[inline(always)]
@@ -470,6 +484,11 @@ impl TopologyCacheMutable {
         };
 
         Ok(replicaset)
+    }
+
+    #[inline(always)]
+    pub fn this_tier(&self) -> &Tier {
+        self.this_tier.get().expect("should be known at this point")
     }
 
     #[inline(always)]

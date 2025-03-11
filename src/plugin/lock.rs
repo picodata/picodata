@@ -1,6 +1,6 @@
 use crate::cas::Range;
 use crate::error_code::ErrorCode;
-use crate::info::InstanceInfo;
+use crate::instance::Instance;
 use crate::instance::{InstanceName, StateVariant};
 use crate::plugin::{reenterable_plugin_cas_request, PluginOp, PreconditionCheckResult};
 use crate::storage::{self, PropertyName, SystemTable};
@@ -23,17 +23,11 @@ pub struct PicoPropertyLock {
 }
 
 impl PicoPropertyLock {
-    pub fn new(instance_name: InstanceName, incarnation: u64) -> Self {
+    pub fn new(instance: &Instance) -> Self {
         Self {
-            instance_name,
-            incarnation,
+            instance_name: instance.name.clone(),
+            incarnation: instance.current_state.incarnation,
         }
-    }
-}
-
-impl From<InstanceInfo> for PicoPropertyLock {
-    fn from(instance_info: InstanceInfo) -> Self {
-        PicoPropertyLock::new(instance_info.name, instance_info.current_state.incarnation)
     }
 }
 
@@ -51,8 +45,6 @@ impl std::fmt::Display for PicoPropertyLock {
 pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
     let node = node::global().expect("node must be already initialized");
     let precondition = || {
-        let my_instance_info = InstanceInfo::try_get(node, None).unwrap();
-
         if let Some(op) = node.storage.properties.pending_plugin_op()? {
             let existed_lock = match op {
                 PluginOp::MigrationLock(v) => v,
@@ -66,21 +58,24 @@ pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
             };
 
             let owner_name = existed_lock.instance_name;
-            let info = InstanceInfo::try_get(node, Some(&owner_name)).ok();
-            match info {
+            let topology = node.topology_cache.get();
+            let instance = topology.instance_by_name(&owner_name).ok();
+            match instance {
                 None => {
                     tlog!(
                         Warning,
                         "Lock by non-existent instance found, acquire new lock"
                     );
                 }
-                Some(info) if info.current_state.variant != StateVariant::Online => {
+                Some(instance) if instance.current_state.variant != StateVariant::Online => {
                     tlog!(
                         Warning,
                         "Lock by offline or expelled instance found, acquire new lock"
                     );
                 }
-                Some(info) if info.current_state.incarnation != existed_lock.incarnation => {
+                Some(instance)
+                    if instance.current_state.incarnation != existed_lock.incarnation =>
+                {
                     tlog!(
                         Warning,
                         "Lock by instance with changed incarnation, acquire new lock"
@@ -97,7 +92,9 @@ pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
             }
         }
 
-        let new_lock = PluginOp::MigrationLock(PicoPropertyLock::from(my_instance_info));
+        let topology = node.topology_cache.get();
+        let instance = topology.this_instance();
+        let new_lock = PluginOp::MigrationLock(PicoPropertyLock::new(instance));
         let dml = Dml::replace(
             storage::Properties::TABLE_ID,
             &(&PropertyName::PendingPluginOperation, new_lock),
@@ -135,9 +132,9 @@ pub fn lock_is_acquired_by_us() -> traft::Result<()> {
         }
     };
 
-    let instance_info = InstanceInfo::try_get(node, None)?;
-
-    let expected_lock = PicoPropertyLock::from(instance_info);
+    let topology = node.topology_cache.get();
+    let instance = topology.this_instance();
+    let expected_lock = PicoPropertyLock::new(instance);
     if lock != expected_lock {
         tlog!(
             Error,
