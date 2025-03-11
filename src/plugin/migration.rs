@@ -517,7 +517,7 @@ impl SqlApplier for SBroadApplier {
         // Should sbroad accept a timeout parameter?
         if let Some(deadline) = deadline {
             if fiber::clock() > deadline {
-                return Err(traft::error::Error::Timeout);
+                return Err(traft::error::Error::timeout());
             }
         }
 

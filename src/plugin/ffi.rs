@@ -27,6 +27,7 @@ use std::time::Duration;
 use std::{mem, slice};
 use tarantool::datetime::Datetime;
 use tarantool::error::IntoBoxError;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::ffi::tarantool::BoxTuple;
 use tarantool::fiber;
 use tarantool::tuple::TupleBuffer;
@@ -233,7 +234,7 @@ extern "C" fn pico_ffi_cas(
         Ok(cas::CasResult::Ok((index, term))) => ROk(RSome(Tuple2(index, term))),
         Ok(cas::CasResult::RetriableError(e)) => error_into_tt_error(e),
         // FIXME: this is wrong, just return an error instead
-        Err(traft::error::Error::Timeout) => ROk(RNone),
+        Err(e) if e.error_code() == TarantoolErrorCode::Timeout as u32 => ROk(RNone),
         Err(e) => error_into_tt_error(e),
     }
 }
@@ -244,7 +245,8 @@ extern "C" fn pico_ffi_wait_index(index: u64, timeout: RDuration) -> RResult<ROp
     let node = node::global().expect("node is initialized before plugins");
     match node.wait_index(index, timeout.into()) {
         Ok(idx) => ROk(RSome(idx)),
-        Err(traft::error::Error::Timeout) => ROk(RNone),
+        // FIXME: this is wrong, just return an error instead
+        Err(e) if e.error_code() == TarantoolErrorCode::Timeout as u32 => ROk(RNone),
         Err(e) => error_into_tt_error(e),
     }
 }

@@ -105,7 +105,7 @@ pub fn wait_vclock(target: Vclock, timeout: Duration) -> traft::Result<Vclock> {
         } else {
             #[rustfmt::skip]
             tlog!(Debug, "failed waiting for vclock {target:?}: timeout, current: {current:?}");
-            return Err(Error::Timeout);
+            return Err(Error::timeout());
         }
     }
 }
@@ -254,7 +254,7 @@ pub fn wait_for_index_globally(
                         *instance
                     )
                 }
-                return Err(Error::Timeout);
+                return Err(Error::timeout());
             }
 
             let fs = broadcast_wait_index_rpc(&pool, &unconfirmed, &index, &deadline)?;

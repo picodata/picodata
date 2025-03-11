@@ -341,11 +341,15 @@ impl Node {
     /// Returns current applied [`RaftIndex`].
     ///
     /// **This function yields**
+    #[track_caller]
     pub fn read_index(&self, timeout: Duration) -> traft::Result<RaftIndex> {
         let deadline = fiber::clock().saturating_add(timeout);
 
         let rx = self.raw_operation(|node_impl| node_impl.read_index_async())?;
-        let index: RaftIndex = fiber::block_on(rx.timeout(timeout)).map_err(|_| Error::Timeout)?;
+        let index: RaftIndex = match fiber::block_on(rx.timeout(timeout)) {
+            Ok(v) => v,
+            Err(_) => return Err(Error::timeout()),
+        };
 
         self.wait_index(index, deadline.duration_since(fiber::clock()))
     }
@@ -361,6 +365,7 @@ impl Node {
     // TODO: this should also take a term and return an error if the term
     // changes, because it means that leader has changed and the entry got
     // rolled back.
+    #[track_caller]
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
         tlog!(Debug, "waiting for applied index {target}");
         let mut applied = self.applied.clone();
@@ -383,7 +388,7 @@ impl Node {
                         Debug,
                         "failed waiting for applied index {target}: timeout, current: {current}"
                     );
-                    return Err(Error::Timeout);
+                    return Err(Error::timeout());
                 }
             }
         })

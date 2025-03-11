@@ -131,7 +131,7 @@ crate::define_rpc_request! {
 
         debug_assert!(is_read_only()?);
 
-        crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::Timeout));
+        crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
 
         // Wait until replication progresses.
         crate::sync::wait_vclock(req.vclock, req.timeout)?;

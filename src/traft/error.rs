@@ -67,8 +67,6 @@ pub enum DoesNotExist {
 pub enum Error {
     #[error("uninitialized yet")]
     Uninitialized,
-    #[error("timeout")]
-    Timeout,
     #[error("current instance is expelled from the cluster")]
     Expelled,
     #[error("{0}")]
@@ -180,6 +178,12 @@ impl std::fmt::Display for IdOfInstance {
 }
 
 impl Error {
+    #[track_caller]
+    #[inline(always)]
+    pub fn timeout() -> Self {
+        BoxError::new(TarantoolErrorCode::Timeout, "timeout").into()
+    }
+
     pub fn error_code(&self) -> u32 {
         match self {
             Self::Uninitialized => ErrorCode::Uninitialized as _,
@@ -245,9 +249,10 @@ impl<E> From<timeout::Error<E>> for Error
 where
     Error: From<E>,
 {
+    #[track_caller]
     fn from(err: timeout::Error<E>) -> Self {
         match err {
-            timeout::Error::Expired => Self::Timeout,
+            timeout::Error::Expired => Self::timeout(),
             timeout::Error::Failed(err) => err.into(),
         }
     }

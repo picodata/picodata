@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
+use ::tarantool::error::TarantoolErrorCode::Timeout;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
@@ -836,7 +837,7 @@ impl Loop {
                                         );
                                         Err(OnError::Abort(cause))
                                     }
-                                    Err(Error::Timeout) => {
+                                    Err(e) if e.error_code() == Timeout as u32 => {
                                         tlog!(Error, "failed to enable plugin at instance: timeout";
                                             "instance_name" => %instance_name,
                                         );

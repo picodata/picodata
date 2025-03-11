@@ -1918,7 +1918,7 @@ pub(crate) fn reenterable_schema_change_request(
 
     'retry: loop {
         if Instant::now_fiber() > deadline {
-            return Err(Error::Timeout);
+            return Err(Error::timeout());
         }
 
         // read_index is important as a protection from stale reads.

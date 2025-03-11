@@ -213,7 +213,7 @@ crate::define_rpc_request! {
 
         let index_status = space_bucket.index("status").expect("space _bucket should have a 'status' index");
 
-        crate::error_injection!("TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT" => return Err(Error::Timeout));
+        crate::error_injection!("TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT" => return Err(Error::timeout()));
 
         loop {
             let total_count = space_bucket.len()?;
@@ -246,7 +246,7 @@ crate::define_rpc_request! {
             } else {
                 #[rustfmt::skip]
                 tlog!(Debug, "failed waiting for bucket count {expected_count}, current is {effective_count}");
-                return Err(Error::Timeout);
+                return Err(Error::timeout());
             }
         }
 
