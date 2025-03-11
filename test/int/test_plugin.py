@@ -1266,6 +1266,57 @@ def test_migration_lock(cluster: Cluster):
     )
 
 
+def test_release_migration_lock_timeout(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+    i2 = cluster.add_instance(wait_online=False, replicaset_name="storage")
+    i3 = cluster.add_instance(wait_online=False, replicaset_name="storage")
+    cluster.wait_online()
+
+    # Block DDL in cluster, so that a migrations time out
+    i1.assert_raft_status("Leader")
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT", True)
+
+    plugin = _PLUGIN_WITH_MIGRATION_2
+
+    # Create the plugin
+    i2.sql(f"CREATE PLUGIN {plugin} 0.1.0", timeout=5)
+
+    # Attempt to apply migrations
+    with pytest.raises(TarantoolError) as e:
+        i2.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0 OPTION (TIMEOUT = 1, ROLLBACK_TIMEOUT = 1)", timeout=10)
+    assert e.value.args[:2] == ("ER_TIMEOUT", "timeout")
+
+    # The subsequent request works, because migration lock was released
+    with pytest.raises(TarantoolError) as e:
+        i2.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0 OPTION (TIMEOUT = 1, ROLLBACK_TIMEOUT = 1)", timeout=10)
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"Another plugin migration is in progress, initiated by instance {i2.name}",
+    )
+
+    # Unblock DDL
+    i1.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT", False)
+
+    # This instance still cannot apply the migrations because of the bug
+    with pytest.raises(TarantoolError) as e:
+        i2.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0 OPTION (TIMEOUT = 10)", timeout=10)
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"Another plugin migration is in progress, initiated by instance {i2.name}",
+    )
+
+    # And no other instance can apply migrations because everybody thinks i2 is
+    # running the migration at the moment
+    with pytest.raises(TarantoolError) as e:
+        i3.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0 OPTION (TIMEOUT = 10)", timeout=10)
+    assert e.value.args[:2] == (
+        ErrorCode.PluginError,
+        f"Another plugin migration is in progress, initiated by instance {i2.name}",
+    )
+
+    # This sucks!
+
+
 # -------------------------- configuration tests -------------------------------------
 
 
