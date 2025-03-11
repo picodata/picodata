@@ -42,6 +42,8 @@ use tarantool::error::{BoxError, IntoBoxError};
 use tarantool::fiber;
 use tarantool::time::Instant;
 
+pub const LOCK_RELEASE_MINIMUM_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
     #[error("Plugin `{0}` already exists")]
@@ -715,7 +717,8 @@ pub fn migration_up(
 
     lock::try_acquire(deadline)?;
     let error = migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout);
-    lock::release(deadline)?;
+    let release_timeout = rollback_timeout.max(LOCK_RELEASE_MINIMUM_TIMEOUT);
+    lock::release(fiber::clock().saturating_add(release_timeout))?;
 
     error
 }
@@ -759,7 +762,8 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
 
     lock::try_acquire(deadline)?;
     migration::apply_down_migrations(&ident, &migration_list, deadline, &node.storage);
-    lock::release(deadline)?;
+    let release_timeout = timeout.max(LOCK_RELEASE_MINIMUM_TIMEOUT);
+    lock::release(fiber::clock().saturating_add(release_timeout))?;
 
     Ok(())
 }
@@ -988,7 +992,8 @@ pub fn drop_plugin(
                 // DROP PLUGIN WITH DATA which would result in data not being dropped.
                 lock::try_acquire(deadline)?;
                 migration::apply_down_migrations(ident, &migration_list, deadline, &node.storage);
-                lock::release(deadline)?;
+                let release_timeout = timeout.max(LOCK_RELEASE_MINIMUM_TIMEOUT);
+                lock::release(fiber::clock().saturating_add(release_timeout))?;
             }
         }
 

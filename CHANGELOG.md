@@ -117,6 +117,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `ALTER PLUGIN MIGRATE TO` command's timeout option is now handled more accurately.
 
+- Fixed a bug where a timeout during `ALTER PLUGIN MIGRATE` command would make it
+  impossible to run migrations on the current instance.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
