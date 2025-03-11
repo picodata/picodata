@@ -20,6 +20,7 @@ from conftest import (
     assert_starts_with,
     copy_plugin_library,
 )
+from framework.thread import spawn_thread
 from decimal import Decimal
 import requests
 import signal
@@ -1219,34 +1220,18 @@ def test_migration_lock(cluster: Cluster):
     # disappeared quicker
     i1.sql(""" ALTER SYSTEM SET governor_auto_offline_timeout = 1 """)
 
+    plugin = _PLUGIN_WITH_MIGRATION_2
+
     # successfully install v0.1.0
-    i2.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION_2,
-        "0.1.0",
-        timeout=5,
-    )
+    i2.sql(f"CREATE PLUGIN {plugin} 0.1.0", timeout=5)
 
     i2.call("pico._inject_error", "PLUGIN_MIGRATION_LONG_MIGRATION", True)
-    i2.eval(
-        """
-            local fiber = require('fiber')
-            function migrate()
-                local res = {pico.migration_up('testplug_w_migration_2', '0.1.0', {timeout = 20})}
-                rawset(_G, "migration_up_result", res)
-            end
-            fiber.create(migrate)
-    """
-    )
+    thread = spawn_thread(lambda: i2.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0", timeout=20))
+
     time.sleep(1)
 
-    with pytest.raises(ReturnError, match="Migration lock is already acquired"):
-        i3.call(
-            "pico.migration_up",
-            _PLUGIN_WITH_MIGRATION_2,
-            "0.1.0",
-            timeout=10,
-        )
+    with pytest.raises(TarantoolError, match="Migration lock is already acquired"):
+        i3.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0", timeout=10)
 
     #
     # i2 suddenly stops responding before it has finished applying migrations
@@ -1260,7 +1245,7 @@ def test_migration_lock(cluster: Cluster):
     #
     # i3 can now apply the migrations, because the lock holder is not online
     #
-    i3.call("pico.migration_up", _PLUGIN_WITH_MIGRATION_2, "0.1.0", timeout=10)
+    i3.sql(f"ALTER PLUGIN {plugin} MIGRATE TO 0.1.0", timeout=10)
 
     #
     # i2 wakes up and attempts to continue with applying the migrations
@@ -1268,15 +1253,9 @@ def test_migration_lock(cluster: Cluster):
     os.killpg(i2.process.pid, signal.SIGCONT)
     i2.call("pico._inject_error", "PLUGIN_MIGRATION_LONG_MIGRATION", False)
 
-    def check_migration_up_result(instance: Instance):
-        result = instance.eval("return migration_up_result")
-        assert result is not None
-        return result
-
     # i2 notices that the lock was forcefully taken away
-    ok, err = Retriable(timeout=10).call(check_migration_up_result, i2)
-    assert ok is None
-    assert err == "Migration lock is already released"
+    with pytest.raises(TarantoolError, match="Migration lock is already released"):
+        thread.join()
 
 
 # -------------------------- configuration tests -------------------------------------
