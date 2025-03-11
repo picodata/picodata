@@ -44,6 +44,7 @@ nav:
       - tutorial/deploy_kubernetes.md
     - Начало работы:
       - tutorial/connecting.md
+      - tutorial/dbeaver.md
       - tutorial/sql_examples.md
       - tutorial/webui.md
     - Разработка приложений:

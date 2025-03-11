@@ -39,6 +39,7 @@ Picodata — это распределенная система промышле
 #### Начало работы {: #getting_started }
 
 * [Подключение и работа в консоли](tutorial/connecting.md)
+* [Подключение через DBeaver](tutorial/dbeaver.md)
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
 
