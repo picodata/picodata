@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="665" height="387" viewBox="0 0 665 387">
+<svg xmlns="http://www.w3.org/2000/svg" width="705" height="387" viewBox="0 0 705 387">
    <defs>
       <style type="text/css">
     @namespace "http://www.w3.org/2000/svg";
@@ -28,7 +28,6 @@
     rect.text             {fill: none; stroke: none;}
     polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
   </style>
-      <style class="darkreader darkreader--sync" media="screen"/>
    </defs>
    <polygon points="11 17 3 13 3 21"/>
    <polygon points="19 17 11 13 11 21"/>
@@ -87,61 +86,69 @@
          class="terminal"
          rx="10"/>
    <text class="terminal" x="53" y="207">PASSWORD</text>
-   <rect x="165" y="189" width="24" height="32" rx="10"/>
-   <rect x="163"
+   <rect x="185" y="189" width="64" height="32" rx="10"/>
+   <rect x="183"
          y="187"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="173" y="207">'</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#text"
-      xlink:title="password">
-      <rect x="209" y="189" width="80" height="32"/>
-      <rect x="207" y="187" width="80" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="217" y="207">password</text>
-   </a>
-   <rect x="309" y="189" width="24" height="32" rx="10"/>
-   <rect x="307"
-         y="187"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="317" y="207">'</text>
-   <rect x="373" y="221" width="64" height="32" rx="10"/>
-   <rect x="371"
-         y="219"
          width="64"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="381" y="239">USING</text>
-   <rect x="477" y="221" width="100" height="32" rx="10"/>
-   <rect x="475"
-         y="219"
-         width="100"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="485" y="239">CHAP-SHA1</text>
-   <rect x="477" y="265" width="56" height="32" rx="10"/>
-   <rect x="475"
-         y="263"
+   <text class="terminal" x="193" y="207">USING</text>
+   <rect x="269" y="189" width="56" height="32" rx="10"/>
+   <rect x="267"
+         y="187"
          width="56"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="485" y="283">LDAP</text>
-   <rect x="477" y="309" width="50" height="32" rx="10"/>
-   <rect x="475"
+   <text class="terminal" x="277" y="207">LDAP</text>
+   <rect x="185" y="233" width="24" height="32" rx="10"/>
+   <rect x="183"
+         y="231"
+         width="24"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="193" y="251">'</text>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="../../sql_types#text"
+      xlink:title="password">
+      <rect x="229" y="233" width="80" height="32"/>
+      <rect x="227" y="231" width="80" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="237" y="251">password</text>
+   </a>
+   <rect x="329" y="233" width="24" height="32" rx="10"/>
+   <rect x="327"
+         y="231"
+         width="24"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="337" y="251">'</text>
+   <rect x="393" y="265" width="64" height="32" rx="10"/>
+   <rect x="391"
+         y="263"
+         width="64"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="401" y="283">USING</text>
+   <rect x="497" y="265" width="100" height="32" rx="10"/>
+   <rect x="495"
+         y="263"
+         width="100"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="505" y="283">CHAP-SHA1</text>
+   <rect x="497" y="309" width="50" height="32" rx="10"/>
+   <rect x="495"
          y="307"
          width="50"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="485" y="327">MD5</text>
+   <text class="terminal" x="505" y="327">MD5</text>
    <rect x="45" y="353" width="76" height="32" rx="10"/>
    <rect x="43"
          y="351"
@@ -166,7 +173,7 @@
       <text class="nonterminal" x="207" y="371">user</text>
    </a>
    <path class="line"
-         d="m19 17 h2 m0 0 h10 m62 0 h10 m0 0 h10 m56 0 h10 m0 0 h10 m48 0 h10 m20 0 h10 m0 0 h68 m-98 0 h20 m78 0 h20 m-118 0 q10 0 10 10 m98 0 q0 -10 10 -10 m-108 10 v12 m98 0 v-12 m-98 12 q0 10 10 10 m78 0 q10 0 10 -10 m-88 10 h10 m58 0 h10 m22 -32 l2 0 m2 0 l2 0 m2 0 l2 0 m-376 98 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m0 0 h508 m-612 0 h20 m592 0 h20 m-632 0 q10 0 10 10 m612 0 q0 -10 10 -10 m-622 10 v24 m612 0 v-24 m-612 24 q0 10 10 10 m592 0 q10 0 10 -10 m-602 10 h10 m86 0 h10 m0 0 h486 m-602 -10 v20 m612 0 v-20 m-612 20 v24 m612 0 v-24 m-612 24 q0 10 10 10 m592 0 q10 0 10 -10 m-602 10 h10 m100 0 h10 m0 0 h10 m24 0 h10 m0 0 h10 m80 0 h10 m0 0 h10 m24 0 h10 m20 0 h10 m0 0 h234 m-264 0 h20 m244 0 h20 m-284 0 q10 0 10 10 m264 0 q0 -10 10 -10 m-274 10 v12 m264 0 v-12 m-264 12 q0 10 10 10 m244 0 q10 0 10 -10 m-254 10 h10 m64 0 h10 m20 0 h10 m100 0 h10 m-140 0 h20 m120 0 h20 m-160 0 q10 0 10 10 m140 0 q0 -10 10 -10 m-150 10 v24 m140 0 v-24 m-140 24 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m56 0 h10 m0 0 h44 m-130 -10 v20 m140 0 v-20 m-140 20 v24 m140 0 v-24 m-140 24 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m50 0 h10 m0 0 h50 m-562 -130 v20 m612 0 v-20 m-612 20 v144 m612 0 v-144 m-612 144 q0 10 10 10 m592 0 q10 0 10 -10 m-602 10 h10 m76 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m48 0 h10 m0 0 h370 m23 -252 h-3"/>
-   <polygon points="655 115 663 111 663 119"/>
-   <polygon points="655 115 647 111 647 119"/>
+         d="m19 17 h2 m0 0 h10 m62 0 h10 m0 0 h10 m56 0 h10 m0 0 h10 m48 0 h10 m20 0 h10 m0 0 h68 m-98 0 h20 m78 0 h20 m-118 0 q10 0 10 10 m98 0 q0 -10 10 -10 m-108 10 v12 m98 0 v-12 m-98 12 q0 10 10 10 m78 0 q10 0 10 -10 m-88 10 h10 m58 0 h10 m22 -32 l2 0 m2 0 l2 0 m2 0 l2 0 m-376 98 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m0 0 h548 m-652 0 h20 m632 0 h20 m-672 0 q10 0 10 10 m652 0 q0 -10 10 -10 m-662 10 v24 m652 0 v-24 m-652 24 q0 10 10 10 m632 0 q10 0 10 -10 m-642 10 h10 m86 0 h10 m0 0 h526 m-642 -10 v20 m652 0 v-20 m-652 20 v24 m652 0 v-24 m-652 24 q0 10 10 10 m632 0 q10 0 10 -10 m-642 10 h10 m100 0 h10 m20 0 h10 m64 0 h10 m0 0 h10 m56 0 h10 m0 0 h312 m-492 0 h20 m472 0 h20 m-512 0 q10 0 10 10 m492 0 q0 -10 10 -10 m-502 10 v24 m492 0 v-24 m-492 24 q0 10 10 10 m472 0 q10 0 10 -10 m-482 10 h10 m24 0 h10 m0 0 h10 m80 0 h10 m0 0 h10 m24 0 h10 m20 0 h10 m0 0 h234 m-264 0 h20 m244 0 h20 m-284 0 q10 0 10 10 m264 0 q0 -10 10 -10 m-274 10 v12 m264 0 v-12 m-264 12 q0 10 10 10 m244 0 q10 0 10 -10 m-254 10 h10 m64 0 h10 m20 0 h10 m100 0 h10 m-140 0 h20 m120 0 h20 m-160 0 q10 0 10 10 m140 0 q0 -10 10 -10 m-150 10 v24 m140 0 v-24 m-140 24 q0 10 10 10 m120 0 q10 0 10 -10 m-130 10 h10 m50 0 h10 m0 0 h50 m-582 -130 v20 m652 0 v-20 m-652 20 v144 m652 0 v-144 m-652 144 q0 10 10 10 m632 0 q10 0 10 -10 m-642 10 h10 m76 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m48 0 h10 m0 0 h410 m23 -252 h-3"/>
+   <polygon points="695 115 703 111 703 119"/>
+   <polygon points="695 115 687 111 687 119"/>
 </svg>

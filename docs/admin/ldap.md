@@ -110,14 +110,14 @@ UNIX:
 нового пользователя][create_user] через параметр `USING`:
 
 ```sql
-CREATE USER "username" password '' USING ldap;
+CREATE USER "username" USING ldap;
 ```
 
 Помимо этого, можно сменить метод аутентификации уже существующего
 пользователя:
 
 ```sql
-ALTER USER "username" WITH PASSWORD '' USING ldap;
+ALTER USER "username" USING ldap;
 ```
 [create_user]: access_control.md#create_user
 
