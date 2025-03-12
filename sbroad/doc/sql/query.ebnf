@@ -214,7 +214,7 @@ alter_user     ::= 'ALTER' 'USER' user
                    'WITH'? (
                        'LOGIN'
                        | 'NOLOGIN'
-                       | 'PASSWORD' "'" password "'" ('USING' ('CHAP-SHA1' | 'LDAP' | 'MD5'))?
+                       | 'PASSWORD' (('USING' ('LDAP')) | ("'" password "'" ('USING' ('CHAP-SHA1' | 'MD5'))?)) 
                        | 'RENAME' 'TO' user
                    )
 drop_index     ::= 'DROP' 'INDEX' ('IF' 'EXISTS')? index
