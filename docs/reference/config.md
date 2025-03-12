@@ -28,6 +28,30 @@ picodata run --config <PATH>
 
 * [`picodata run --config`](cli.md#run_config)
 
+## Порядок применения параметров {: #params_priority }
+
+Параметры командной строки имеют более высокий приоритет, чем файл
+конфигурации. Соответственно, используя параметр [`--config-parameter`],
+можно переопределить нужные параметры запуска Picodata. Уровни вложения
+параметра разделяются точкой. Например:
+
+```shell
+picodata run --config ./picodata_config.yaml -c instance.log.level=verbose
+```
+
+!!! danger "Ограничение"
+    Параметры тиров нельзя переопределить отдельно — вместо этого
+    следует указать в командной строке всю секцию `cluster.tier`.
+    Например:
+    ```shell
+    picodata run --config ./picodata_config.yaml -c
+    cluster.tier='{"default": {"replication_factor": 3, "can_vote":
+    true}}'
+    ```
+    Параметры тиров, которые при этом указаны в файле
+    конфигурации, будут проигнорированы
+
+[`--config-parameter`]: cli.md#run_config_parameter
 
 ## Описание файла конфигурации {: #config_file_description }
 
