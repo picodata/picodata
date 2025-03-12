@@ -7,11 +7,21 @@ __pycache__/
 
 .rocks
 
-# Saved panic backtraces
+# By default, we ignore snapshots, wal and saved backtraces
 *.backtrace
-# Snapshot and WAL storage of running instances
 *.snap
 *.xlog
+*.vylog
+*.index
+*.run
+# But, for backwards compatibility tests, we have to save
+# snapshots, memtx and vinyl WALs, runs and indexes, except
+# this should happen only inside `test/compat` directory
+!test/compat/**/*.snap
+!test/compat/**/*.xlog
+!test/compat/**/*.vylog
+!test/compat/**/*.run
+!test/compat/**/*.index
 
 tmp/
 *.rustfmt
