@@ -12,7 +12,6 @@ from conftest import (
 )
 
 
-@pytest.mark.xfail
 def test_upgrade_major(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
     os.makedirs(inst.instance_dir, exist_ok=True)
@@ -28,7 +27,6 @@ def test_upgrade_major(cluster: Cluster):
     inst.wait_online()
 
 
-@pytest.mark.xfail
 def test_upgrade_minor(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
     os.makedirs(inst.instance_dir, exist_ok=True)
