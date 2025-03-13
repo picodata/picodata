@@ -398,7 +398,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to lua")
 
-    cli.sendline("box.session.user();")
+    cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
     cli.expect_exact("...\r\n")

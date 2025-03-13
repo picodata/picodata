@@ -10,6 +10,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.2.0] - Unreleased
 
+### CLI
+- `picodata admin` in \lua mode no longer requires a delimiter for executing commands.
+
 ### ACL
 
 - For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.

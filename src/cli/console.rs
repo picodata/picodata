@@ -201,10 +201,14 @@ impl<T: Helper> Console<T> {
     fn update_history(&mut self, command: Command) -> Command {
         // do not save special commands
         if let Command::Expression(expression) = &command {
-            if let Err(e) = self
-                .editor
-                .add_history_entry(expression.clone() + &self.delimiter.clone().unwrap_or_default())
-            {
+            let history_entry = match self.current_language {
+                ConsoleLanguage::Lua => expression.clone(),
+                ConsoleLanguage::Sql => {
+                    expression.clone() + &self.delimiter.clone().unwrap_or_default()
+                }
+            };
+
+            if let Err(e) = self.editor.add_history_entry(history_entry) {
                 println!("error while updating history: {e}");
             }
             if let Err(e) = self.editor.save_history(&self.history_file_path) {
@@ -216,18 +220,28 @@ impl<T: Helper> Console<T> {
     }
 
     fn process_command(&mut self) {
-        if let Some(ref delimiter) = self.delimiter {
-            while let Some((separated_part, tail)) =
-                self.uncompleted_statement.split_once(delimiter)
-            {
-                self.separated_statements.push_back(separated_part.into());
-                self.uncompleted_statement = tail.into();
+        match self.current_language {
+            ConsoleLanguage::Lua => {
+                if !self.uncompleted_statement.trim().is_empty() {
+                    self.separated_statements
+                        .push_back(std::mem::take(&mut self.uncompleted_statement));
+                }
             }
-        } else {
-            // if delimiter is None (enter), treat statement as single command
-            if !self.uncompleted_statement.trim().is_empty() {
-                self.separated_statements
-                    .push_back(std::mem::take(&mut self.uncompleted_statement));
+            ConsoleLanguage::Sql => {
+                if let Some(ref delimiter) = self.delimiter {
+                    while let Some((separated_part, tail)) =
+                        self.uncompleted_statement.split_once(delimiter)
+                    {
+                        self.separated_statements.push_back(separated_part.into());
+                        self.uncompleted_statement = tail.into();
+                    }
+                } else {
+                    // if delimiter is None (enter), treat statement as single command
+                    if !self.uncompleted_statement.trim().is_empty() {
+                        self.separated_statements
+                            .push_back(std::mem::take(&mut self.uncompleted_statement));
+                    }
+                }
             }
         }
     }

@@ -39,14 +39,14 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("sql> ")
 
     # sql console doesn't know about language switching
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
     cli.expect_exact("Language cannot be changed in this console")
 
     cli.sendline("\\sql")
     cli.expect_exact("Language cannot be changed in this console")
 
     # for not registried command nothing can happen
-    cli.sendline("\\lya;")
+    cli.sendline("\\lya")
     cli.expect_exact("Unknown special sequence")
     cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
@@ -117,7 +117,20 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("Language switched to lua")
     cli.expect_exact("(admin) lua> ")
 
-    cli.sendline("\\sql;")
+    # Lua does not require delimiter
+    cli.sendline("box.session.user()")
+    cli.expect_exact("admin")
+
+    # Enter a command with the default delimiter
+    cli.sendline("box.session.user();")
+    cli.expect_exact("admin")
+
+    # Press the up arrow key to access the command history
+    cli.sendline("\033[A")
+    # Command is retrieved from the history with the delimiter
+    cli.expect_exact("box.session.user();")
+
+    cli.sendline("\\sql")
     cli.expect_exact("Language switched to sql")
     cli.expect_exact("(admin) sql> ")
 
@@ -137,7 +150,7 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("(admin) sql> ")
 
     # nothing happens on completion in SQL mode
-    cli.sendline("\\sql;")
+    cli.sendline("\\sql")
     cli.expect_exact("Language switched to sql")
     cli.sendline("\t\t")
     cli.expect_exact("(admin) sql> ")
