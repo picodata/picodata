@@ -9,60 +9,22 @@ The proposed solution is to export API functions with `box.schema.func.create` b
 
 ## Picodata API
 
-Existing API that we need to allow access to.
+Existing API that we need to allow access to (some function names were changed according to our plans to rename them).
 
 1. Raft
-  - raft_status() - can return a map
-  OR
-  - raft_term()
-  - raft_commit()
-  - raft_leader()
-  - raft_state() (Follower | Leader | ...)
-  - raft_id()
-  - raft_applied()
-  OR
-  - allow access to _raft_state space
+  - raft_term() -> unsigned
+  - raft_commit_index() -> unsigned
+  - raft_applied_index() -> unsigned
+  - raft_leader_id() -> unsigned
+  - raft_leader_uuid() -> uuid
+  - raft_state() -> string (Follower | Leader | ...)
+  - raft_id() -> unsigned
 2. Other
-  - picodata_version()
-  - local_config()
-  - vshard_config()
-  - whoami()
-  - local_vclock()
-
-### JSON
-
-In the future we will also want to support JSON functions.
-There are twenty-six scalar functions and operators:
-
-- json(json)
-- jsonb(json)
-- json_array(value1,value2,...)
-- jsonb_array(value1,value2,...)
-- json_array_length(json)
-- json_array_length(json,path)
-- json_error_position(json)
-- json_extract(json,path,...)
-- jsonb_extract(json,path,...)
-- json -> path
-- json ->> path
-- json_insert(json,path,value,...)
-- jsonb_insert(json,path,value,...)
-- json_object(label1,value1,...)
-- jsonb_object(label1,value1,...)
-- json_patch(json1,json2)
-- jsonb_patch(json1,json2)
-- json_pretty(json)
-- json_remove(json,path,...)
-- jsonb_remove(json,path,...)
-- json_replace(json,path,value,...)
-- jsonb_replace(json,path,value,...)
-- json_set(json,path,value,...)
-- jsonb_set(json,path,value,...)
-- json_type(json)
-- json_type(json,path)
-- json_valid(json)
-- json_valid(json,flags)
-- json_quote(value)
+  - picodata_version() -> string
+  - local_config() -> map
+  - sharding_config() -> map
+  - instance_uuid() -> uuid
+  - vclock() -> map
 
 ### Support in SQL
 
@@ -81,19 +43,6 @@ IdentifierWithOptionalContinuation = ${ Identifier ~ (ReferenceContinuation | (W
                     CountAsterisk = { "*" }
 ```
 
-### Existence check
-There are two options for managing built-in functions in SQL: either storing them in the `_pico_routine` table alongside stored procedures
-or matching them by a constant list of function names.
-
-Storing built-in functions in the _pico_routine table offers centralized management and better scalability if we'll want to have user defined functions.
-This approach also allows to add function metadata, making it more flexible in the long term.
-We'll also need to add a new column `type` for functions which will require alter table migration.
-
-On the other hand, using a constant list of function names is simpler and can offer faster performance.
-For better scalability and flexibility, storing functions in the _pico_routine table is generally the more sustainable choice.
-
-Even simpler choice can be skipping the existence check altogether as it can be done by tarantool during local sql execution.
-
 ### ACL
 
 It is proposed to use tarantool prvivileges, we already do it for our ACL and it's most straightforward to use for functions.
@@ -109,7 +58,7 @@ Source: https://www.tarantool.io/en/doc/latest/admin/access_control/#access-cont
 
 If tarantool manages privileges, care should be taken to switch the user to the actual before executing resulting SQL on a target instance.
 
-On our side we should allow clusterwide SQL to grant and revoke `execute` on both `universe` and specific functions.
+On our side we should allow clusterwide SQL to grant and revoke `execute` on specific functions.
 This should be already done for `routine` (our sql stored procedures) so there can be none or minimum amount of edits.
 
 ### Adding a functions
@@ -139,16 +88,26 @@ Source: https://www.tarantool.io/en/doc/2.11/reference/reference_sql/sql_plus_lu
 In our case language will be `C`, body should be empty and the name should correspond to the exported symbol in the Rust code. Most probably in Rust the exported function
 will be marked with `#[tarantool::proc]` macro.
 
-### _raft_log and _raft_state access
+### Misc
 
-For `_raft_log` and `_raft_state` spaces it seems more logical to grant role `public` read access to them
-than to define functions for accessing their contents. For this we will also need to add both spaces to `_pico_table`.
-They are special raft spaces and are not replicated the same way like all the other _pico_table spaces, nevertheless
-it seems that we can still allow them to be in `_pico_table` for convinience.
+#### Existence Check
+The existence of a function will be in any case checked locally when the function will be executed by tarantool.
+But to provide better errors and UX, we can check it earlier. For example by adding function name list to the grammar.
+
+#### Autocomplete
+For dev tools (like cli/ide autocomplete/help) it might be useful to store builtin function definitions in `_pico_routine` table.
+This approach also allows to add function metadata.
+In this case we'll need to add a new column `type` for functions to differentiate them from stored procedures.
+
+#### _raft_log and _raft_state access
+
+We also considered granting role `public` access to `_raft_log` and `_raft_state` instead of providing functions but decided against it.
+Though in general we still plan to support querying local spaces through sql.
 
 ## Implementation
 Tasks:
 - Define built-in picodata API functions
 - Ensure that we allow calling built-in functions in our sql
 - Ensure that we allow granting and revoking `execute` privilege for functions in our clusterwide ACL (use tarantool ACL under the hood)
-- Allow read access to `_raft_state` and `_raft_log`
+- (Optional) check builtin function existence in grammar
+- (Optional) store function meta in `_pico_routine`
