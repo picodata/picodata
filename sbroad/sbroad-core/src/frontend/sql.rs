@@ -7,8 +7,8 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, Bound, BoundType, Frame, FrameType, GroupBy, LocalTimestamp, NamedWindows, Over,
-    Reference, ReferenceAsteriskSource, StableFunction, TruncateTable, Window,
+    Alias, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy, LocalTimestamp,
+    NamedWindows, Over, Reference, ReferenceAsteriskSource, StableFunction, TruncateTable, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
@@ -651,6 +651,23 @@ fn parse_drop_index(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropIn
     })
 }
 
+fn parse_column_def_type(node: &ParseNode) -> Result<RelationType, SbroadError> {
+    let data_type = match node.rule {
+        Rule::TypeBool => RelationType::Boolean,
+        Rule::TypeDatetime => RelationType::Datetime,
+        Rule::TypeDecimal => RelationType::Decimal,
+        Rule::TypeDouble => RelationType::Double,
+        Rule::TypeInt => RelationType::Integer,
+        Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => RelationType::String,
+        Rule::TypeUnsigned => RelationType::Unsigned,
+        Rule::TypeUuid => RelationType::Uuid,
+        _ => {
+            panic!("Met unexpected rule under ColumnDef: {:?}.", node.rule);
+        }
+    };
+    Ok(data_type)
+}
+
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::uninlined_format_args)]
 fn parse_create_table(
@@ -713,21 +730,7 @@ fn parse_create_table(
                         .first()
                         .expect("ColumnDefType must have a type child");
                     let ty_node = ast.nodes.get_node(*ty_node_id)?;
-                    let data_type = match ty_node.rule {
-                        Rule::TypeBool => RelationType::Boolean,
-                        Rule::TypeDatetime => RelationType::Datetime,
-                        Rule::TypeDecimal => RelationType::Decimal,
-                        Rule::TypeDouble => RelationType::Double,
-                        Rule::TypeInt => RelationType::Integer,
-                        Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => {
-                            RelationType::String
-                        }
-                        Rule::TypeUnsigned => RelationType::Unsigned,
-                        Rule::TypeUuid => RelationType::Uuid,
-                        _ => {
-                            panic!("Met unexpected rule under ColumnDef: {:?}.", ty_node.rule);
-                        }
-                    };
+                    let data_type = parse_column_def_type(ty_node)?;
                     let mut is_nullable = true;
 
                     for def_child_id in column_def_children.iter().skip(2) {
@@ -956,6 +959,70 @@ fn parse_create_table(
         timeout,
         tier,
     })
+}
+
+fn parse_alter_table(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+) -> Result<AlterTable, SbroadError> {
+    debug_assert_eq!(
+        node.rule,
+        Rule::AlterTable,
+        "Expected rule AlterTable, got {:?}.",
+        node.rule
+    );
+    // TODO: should we also support wait applied globally?
+    let table_name = parse_identifier(ast, node.first_child())?;
+    let id = node.child_n(1);
+    let node = ast.nodes.get_node(id)?;
+    match node.rule {
+        Rule::AlterTableColumnAdd => {
+            let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
+            let mut columns: Vec<ColumnDef> = Vec::new();
+            for id in &node.children {
+                let node = ast.nodes.get_node(*id)?;
+                match node.rule {
+                    Rule::IfNotExists => if_not_exists = true,
+                    Rule::AlterTableColumnAddParams => {
+                        for id in &node.children {
+                            let node = ast.nodes.get_node(*id)?;
+                            debug_assert_eq!(node.rule, Rule::AlterTableColumnAddParam);
+                            let name = parse_identifier(ast, node.child_n(0))?;
+                            let data_type_node = ast.nodes.get_node(node.child_n(1))?;
+                            debug_assert_eq!(data_type_node.rule, Rule::ColumnDefType);
+                            let data_type_node =
+                                ast.nodes.get_node(data_type_node.first_child())?;
+                            let data_type = parse_column_def_type(data_type_node)?;
+                            let is_nullable = if let Some(id) = node.children.get(2) {
+                                let node = ast.nodes.get_node(*id)?;
+                                debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
+                                true
+                            } else {
+                                false
+                            };
+                            columns.push(ColumnDef {
+                                name,
+                                data_type,
+                                is_nullable,
+                            });
+                        }
+                    }
+                    _ => panic!("Unexpected alter table rule"),
+                }
+            }
+            Ok(AlterTable {
+                name: table_name,
+                op: AlterTableOp::Add {
+                    columns,
+                    if_not_exists,
+                },
+            })
+        }
+        _ => Err(SbroadError::Unsupported(
+            Entity::Ddl,
+            Some("ALTER TABLE ADD is the only supported option".to_smolstr()),
+        )),
+    }
 }
 
 fn parse_drop_table(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropTable, SbroadError> {
@@ -5476,10 +5543,9 @@ impl AbstractSyntaxTree {
                     map.add(id, plan_id);
                 }
                 Rule::AlterTable => {
-                    return Err(SbroadError::Unsupported(
-                        Entity::Ddl,
-                        Some("ALTER TABLE is reserved for future use".to_smolstr()),
-                    ));
+                    let alter_table = parse_alter_table(self, node)?;
+                    let plan_id = plan.nodes.push(alter_table.into());
+                    map.add(id, plan_id);
                 }
                 Rule::DropUser => {
                     let mut name = None;

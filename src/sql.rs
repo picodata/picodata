@@ -14,7 +14,7 @@ use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::storage::{space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
-use crate::traft::error::{self, Error};
+use crate::traft::error::{self, Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -1554,6 +1554,12 @@ fn ddl_ir_node_to_op_or_result(
             return Err(Error::Other(
                 "unreachable CreateSchema/DropSchema".to_string().into(),
             ));
+        }
+        DdlOwned::AlterTable(_) => {
+            return Err(Error::Unsupported(Unsupported::new(
+                "Ddl::AlterTable".into(),
+                None,
+            )));
         }
     }
 }

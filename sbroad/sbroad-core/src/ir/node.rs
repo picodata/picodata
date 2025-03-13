@@ -866,6 +866,28 @@ pub struct CreateTable {
     pub tier: Option<SmolStr>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct AlterTable {
+    pub name: SmolStr,
+    pub op: AlterTableOp,
+}
+
+const _: () = assert!(std::mem::size_of::<AlterTable>() < 64);
+
+impl From<AlterTable> for NodeAligned {
+    fn from(value: AlterTable) -> Self {
+        Self::Node64(Node64::AlterTable(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum AlterTableOp {
+    Add {
+        columns: Vec<ColumnDef>,
+        if_not_exists: bool,
+    },
+}
+
 impl From<CreateTable> for NodeAligned {
     fn from(value: CreateTable) -> Self {
         Self::Node232(Node232::CreateTable(value))
@@ -1255,6 +1277,7 @@ pub enum Node64 {
     DropUser(DropUser),
     CreateRole(CreateRole),
     DropTable(DropTable),
+    AlterTable(AlterTable),
     DropIndex(DropIndex),
     GroupBy(GroupBy),
     SetParam(SetParam),
@@ -1280,6 +1303,7 @@ impl Node64 {
             Node64::DropIndex(drop_index) => NodeOwned::Ddl(DdlOwned::DropIndex(drop_index)),
             Node64::DropRole(drop_role) => NodeOwned::Acl(AclOwned::DropRole(drop_role)),
             Node64::DropTable(drop_table) => NodeOwned::Ddl(DdlOwned::DropTable(drop_table)),
+            Node64::AlterTable(alter_table) => NodeOwned::Ddl(DdlOwned::AlterTable(alter_table)),
             Node64::TruncateTable(truncate_table) => {
                 NodeOwned::Ddl(DdlOwned::TruncateTable(truncate_table))
             }

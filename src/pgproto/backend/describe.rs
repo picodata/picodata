@@ -84,6 +84,7 @@ pub enum CommandTag {
     SetParam = 20,
     SetTransaction = 21,
     TruncateTable = 40,
+    AlterTable = 41,
     Update = 13,
 }
 
@@ -104,6 +105,7 @@ impl CommandTag {
             Self::DropSchema => "DROP SCHEMA",
             Self::DropTable => "DROP TABLE",
             Self::TruncateTable => "TRUNCATE TABLE",
+            Self::AlterTable => "ALTER TABLE",
             Self::DropIndex => "DROP INDEX",
             Self::Delete => "DELETE",
             Self::Explain => "EXPLAIN",
@@ -156,6 +158,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::RevokeRole => QueryType::Acl,
             CommandTag::DropTable
             | CommandTag::TruncateTable
+            | CommandTag::AlterTable
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
             | CommandTag::CreateIndex
@@ -222,6 +225,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
                 Ddl::SetParam { .. } => Ok(CommandTag::SetParam),
                 Ddl::SetTransaction { .. } => Ok(CommandTag::SetTransaction),
+                Ddl::AlterTable(..) => Ok(CommandTag::AlterTable),
             },
             Node::Tcl(tcl) => match tcl {
                 Tcl::Begin => Ok(CommandTag::Begin),

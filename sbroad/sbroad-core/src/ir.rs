@@ -149,6 +149,7 @@ impl Nodes {
                 }
                 Node64::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
                 Node64::NamedWindows(window) => Node::Relational(Relational::NamedWindows(window)),
+                Node64::AlterTable(alter_table) => Node::Ddl(Ddl::AlterTable(alter_table)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
@@ -311,6 +312,9 @@ impl Nodes {
                     }
                     Node64::NamedWindows(window) => {
                         MutNode::Relational(MutRelational::NamedWindows(window))
+                    }
+                    Node64::AlterTable(alter_table) => {
+                        MutNode::Ddl(MutDdl::AlterTable(alter_table))
                     }
                 }),
             ArenaType::Arena96 => self

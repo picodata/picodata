@@ -12,12 +12,12 @@ ALTER TABLE t ALTER COLUMN d DROP NOT NULL;
 ALTER TABLE t ALTER d SET NOT NULL;
 ALTER TABLE t ALTER d DROP NOT NULL;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: alter_batch
 -- SQL:
@@ -48,19 +48,19 @@ ALTER TABLE t ALTER d TYPE INT, d SET NOT NULL, d DROP NOT NULL;
 -- multiple columns multiple nulls multiple types
 ALTER TABLE t ALTER d TYPE INT, d SET NOT NULL, d DROP NOT NULL, e TYPE INT, e SET NOT NULL, e DROP NOT NULL;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 
 -- TEST: rename_single
@@ -68,16 +68,16 @@ sbroad: unsupported DDL: ALTER TABLE is reserved for future use
 ALTER TABLE t RENAME COLUMN c TO x;
 ALTER TABLE t RENAME x TO c;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: rename_batch
 -- SQL:
 ALTER TABLE t RENAME COLUMN a TO z, b TO y, c TO x, d TO w;
 ALTER TABLE t RENAME z TO a, y TO b, x TO c, w TO d;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 
 -- TEST: add_drop_single

@@ -1,6 +1,6 @@
 use super::{
-    AlterSystem, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc, DropTable, NodeAligned,
-    RenameRoutine, SetParam, SetTransaction, TruncateTable,
+    AlterSystem, AlterTable, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc, DropTable,
+    NodeAligned, RenameRoutine, SetParam, SetTransaction, TruncateTable,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::Node32;
@@ -12,6 +12,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 pub enum DdlOwned {
     CreateTable(CreateTable),
     DropTable(DropTable),
+    AlterTable(AlterTable),
     TruncateTable(TruncateTable),
     CreateProc(CreateProc),
     DropProc(DropProc),
@@ -50,7 +51,7 @@ impl DdlOwned {
                     )
                 })
             }
-            DdlOwned::CreateSchema | DdlOwned::DropSchema => Ok(0.0),
+            DdlOwned::CreateSchema | DdlOwned::DropSchema | DdlOwned::AlterTable(_) => Ok(0.0),
         }
     }
 
@@ -103,6 +104,7 @@ impl From<DdlOwned> for NodeAligned {
             DdlOwned::DropIndex(drop_index) => drop_index.into(),
             DdlOwned::DropProc(drop_proc) => drop_proc.into(),
             DdlOwned::DropTable(drop_table) => drop_table.into(),
+            DdlOwned::AlterTable(alter_table) => alter_table.into(),
             DdlOwned::TruncateTable(truncate_table) => truncate_table.into(),
             DdlOwned::DropSchema => Self::Node32(Node32::DropSchema),
             DdlOwned::AlterSystem(alter_system) => alter_system.into(),
@@ -119,6 +121,7 @@ pub enum MutDdl<'a> {
     CreateTable(&'a mut CreateTable),
     DropTable(&'a mut DropTable),
     TruncateTable(&'a mut TruncateTable),
+    AlterTable(&'a mut AlterTable),
     CreateProc(&'a mut CreateProc),
     DropProc(&'a mut DropProc),
     RenameRoutine(&'a mut RenameRoutine),
@@ -137,6 +140,7 @@ pub enum Ddl<'a> {
     CreateTable(&'a CreateTable),
     DropTable(&'a DropTable),
     TruncateTable(&'a TruncateTable),
+    AlterTable(&'a AlterTable),
     CreateProc(&'a CreateProc),
     DropProc(&'a DropProc),
     RenameRoutine(&'a RenameRoutine),
@@ -174,7 +178,7 @@ impl Ddl<'_> {
                     )
                 })
             }
-            Ddl::CreateSchema | Ddl::DropSchema => Ok(0.0),
+            Ddl::CreateSchema | Ddl::DropSchema | Ddl::AlterTable(_) => Ok(0.0),
         }
     }
 
@@ -234,6 +238,7 @@ impl Ddl<'_> {
             Ddl::RenameRoutine(rename) => DdlOwned::RenameRoutine((*rename).clone()),
             Ddl::SetParam(set_param) => DdlOwned::SetParam((*set_param).clone()),
             Ddl::SetTransaction(set_trans) => DdlOwned::SetTransaction((*set_trans).clone()),
+            Ddl::AlterTable(alter_table) => DdlOwned::AlterTable((*alter_table).clone()),
         }
     }
 }
