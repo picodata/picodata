@@ -67,6 +67,8 @@ Parameters with scope `global` are the same on each instance.
 
 ### CLI
 
+- `picodata admin` in \lua mode no longer requires a delimiter for executing commands.
+
 - `picodata expel` takes instance uuid instead of instance name.
 
 - `picodata expel` now doesn't allow expelling Online instances and replicaset
