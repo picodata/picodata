@@ -4,10 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-mkdocs = "==1.6.0"
-mkdocs-material = "==9.5.28"
-mkdocs-open-in-new-tab = "==1.0.3"
-pygments = "==2.18.0"
+mkdocs = "==1.6.1"
+mkdocs-material = "==9.6.8"
+mkdocs-open-in-new-tab = "==1.0.8"
+pygments = "==2.19.1"
 
 [dev-packages]
 flake8 = "*"
