@@ -174,7 +174,7 @@ build-stress-image:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: fetch
     GIT_DESCRIBE: $PICODATA_DESCRIBE
-    SUBMODULES_TO_FETCH_TAGS: "tarantool-sys,tarantool-sys/third_party/luajit"
+    GIT_FETCH_TAGS_DIRS: ".,tarantool-sys,tarantool-sys/third_party/luajit"
     RUST_BACKTRACE: full
     KUBERNETES_CPU_REQUEST: 6
     KUBERNETES_MEMORY_REQUEST: "6Gi"
@@ -281,7 +281,7 @@ lint:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
-    SUBMODULES_TO_FETCH_TAGS: "tarantool-sys,tarantool-sys/third_party/luajit"
+    GIT_FETCH_TAGS_DIRS: "tarantool-sys,tarantool-sys/third_party/luajit"
     TARGET: debug
   cache:
     - <<: *py_cache

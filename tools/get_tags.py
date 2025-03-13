@@ -7,12 +7,13 @@ import os
 import time
 
 
-SUBMODULES_TO_FETCH_TAGS = os.environ.get('SUBMODULES_TO_FETCH_TAGS', ['.',
-                                          'tarantool-sys', 'tarantool-sys/third_party/luajit'])
-if type(SUBMODULES_TO_FETCH_TAGS) is str:
-    SUBMODULES_TO_FETCH_TAGS = SUBMODULES_TO_FETCH_TAGS.split(",")
 GET_SOURCES_ATTEMPTS = int(os.environ.get('GET_SOURCES_ATTEMPTS', 3))
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
+
+DEFAULT_FETCH_DIRS = ['tarantool-sys', 'tarantool-sys/third_party/luajit']
+GIT_FETCH_TAGS_DIRS = os.environ.get('GIT_FETCH_TAGS_DIRS', DEFAULT_FETCH_DIRS)
+if type(GIT_FETCH_TAGS_DIRS) is str:
+    GIT_FETCH_TAGS_DIRS = GIT_FETCH_TAGS_DIRS.split(",")
 
 
 def run_shell(path, shell=True, executable='/bin/bash', text=True):
@@ -55,7 +56,7 @@ def run_shell(path, shell=True, executable='/bin/bash', text=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="GetGitTags", description="Get project tags")
-    parser.add_argument("dirs", nargs="*", default=SUBMODULES_TO_FETCH_TAGS, type=str)
+    parser.add_argument("dirs", nargs="*", default=GIT_FETCH_TAGS_DIRS, type=str)
     args = parser.parse_args()
 
     for path in args.dirs:
