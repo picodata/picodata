@@ -222,10 +222,11 @@ where
                 if let Some(key) = key {
                     let res = evict(key, &mut lru_node.value);
                     if res.is_err() {
+                        let res_fmt = format!("{res:?}");
                         if first_error.is_ok() {
-                            first_error.clone_from(&res);
+                            first_error = res;
                         }
-                        error!(Option::from("clear LRU cache"), &format!("{res:?}"));
+                        error!(Option::from("clear LRU cache"), &res_fmt);
                     }
                 }
             }

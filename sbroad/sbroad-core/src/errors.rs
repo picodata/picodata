@@ -1,5 +1,4 @@
 use crate::ir::relation::Type;
-use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::fmt;
 use tarantool::error::Error;
@@ -8,7 +7,7 @@ use tarantool::transaction::TransactionError;
 const DO_SKIP: &str = "do skip";
 
 /// Reason or object of errors.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum Entity {
     /// corresponding to operations on ACL.
     Acl,
@@ -228,7 +227,7 @@ impl fmt::Display for Entity {
 }
 
 /// Action that failed
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum Action {
     Add,
     Borrow,
@@ -284,7 +283,7 @@ impl fmt::Display for Action {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     AmbiguousParameterType(usize, Type, Type),
     CouldNotDetermineParameterType(usize),
@@ -316,7 +315,7 @@ impl fmt::Display for TypeError {
 impl std::error::Error for TypeError {}
 
 /// Types of error
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum SbroadError {
     /// DoSkip is a special case of an error - nothing bad had happened, the target node doesn't contain
     /// anything interesting for us, skip it without any serious error.
