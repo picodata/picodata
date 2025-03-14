@@ -2,20 +2,18 @@
 
 use ::tarantool::network::AsClient as _;
 use ::tarantool::network::Client;
-use ::tarantool::network::Config;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use crate::has_states;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
-use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
-use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::static_ref;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::{node, ConnectionType, Result};
+use crate::util::relay_connection_config;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -163,11 +161,7 @@ where
         ::tarantool::error::Error::IO(io::Error::new(io::ErrorKind::InvalidInput, err))
     })?;
 
-    let mut config = Config::default();
-    config.creds = Some((
-        PICO_SERVICE_USER_NAME.into(),
-        pico_service_password().into(),
-    ));
+    let config = relay_connection_config();
     let client = Client::connect_with_config(address, port, config).await?;
 
     let tuple = client.call(proc, args).await?;

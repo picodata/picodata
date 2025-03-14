@@ -1,10 +1,8 @@
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::mailbox::Mailbox;
-use crate::pico_service::pico_service_password;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
-use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::storage::{Catalog, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
@@ -12,6 +10,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
+use crate::util::relay_connection_config;
 #[cfg(debug_assertions)]
 use crate::util::NoYieldsGuard;
 use ::raft::prelude as raft;
@@ -22,7 +21,6 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::network::AsClient as _;
 use ::tarantool::network::ClientError;
-use ::tarantool::network::Config;
 use ::tarantool::network::ReconnClient;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use ::tarantool::util::IntoClones;
@@ -189,11 +187,7 @@ impl PoolWorker {
         max_concurrent_fut: usize,
         instance_reachability: InstanceReachabilityManagerRef,
     ) {
-        let mut config = Config::default();
-        config.creds = Some((
-            PICO_SERVICE_USER_NAME.into(),
-            pico_service_password().into(),
-        ));
+        let mut config = relay_connection_config();
         config.connect_timeout = Some(call_timeout);
         let client = ReconnClient::with_config(address.clone(), port, config);
 

@@ -1,4 +1,7 @@
-use crate::{config::SbroadType, traft::error::Error};
+use crate::{
+    config::SbroadType, pico_service::pico_service_password, schema::PICO_SERVICE_USER_NAME,
+    traft::error::Error,
+};
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use std::{
     any::{Any, TypeId},
@@ -9,7 +12,10 @@ use std::{
     path::Path,
     time::Duration,
 };
-use tarantool::session::{self, UserId};
+use tarantool::{
+    network::Config,
+    session::{self, UserId},
+};
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
@@ -1001,6 +1007,18 @@ pub fn check_msgpack_matches_type(
             Marker::Reserved => "<reserved>",
         }
     }
+}
+
+/// Connection config for inter-instance communication
+/// via `pico_service` user with `ChapSha1` auth method.
+pub fn relay_connection_config() -> Config {
+    let mut config = Config::default();
+    config.auth_method = tarantool::auth::AuthMethod::ChapSha1;
+    config.creds = Some((
+        PICO_SERVICE_USER_NAME.into(),
+        pico_service_password().into(),
+    ));
+    config
 }
 
 /// Returns the number of character edit operations needed to convert `lhs` to `rhs`.
