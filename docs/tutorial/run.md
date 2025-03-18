@@ -87,10 +87,10 @@ overview](https://docs.docker.com/compose/)
 Скачайте файл [docker-compose.yml], который описывает тестовый кластер
 из 4-х инстансов:
 
-[docker-compose.yml]: https://git.picodata.io/core/picodata/-/blob/master/docker/docker-compose.yml
+[docker-compose.yml]: https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml?inline=false
 
 ```bash
-curl -O https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml
+curl -O https://git.picodata.io/core/picodata/-/raw/master/docker/docker-compose.yml?inline=false
 ```
 
 Создайте директорию для рабочих файлов проекта и
