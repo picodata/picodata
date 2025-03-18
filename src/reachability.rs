@@ -101,7 +101,7 @@ impl InstanceReachabilityManager {
         return res;
     }
 
-    /// Make a descision on the given instance's reachability based on the
+    /// Make a decision on the given instance's reachability based on the
     /// provided `info`. This is an internal function.
     fn determine_reachability(&self, info: &InstanceReachabilityInfo) -> ReachabilityState {
         if let Some(last_success) = info.last_success {
