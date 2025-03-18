@@ -405,20 +405,18 @@ impl std::error::Error for SbroadError {}
 
 impl<E: fmt::Debug> From<TransactionError<E>> for SbroadError {
     fn from(error: TransactionError<E>) -> Self {
-        SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::Transaction),
-            format_smolstr!("{error:?}"),
+        SbroadError::Invalid(
+            Entity::Transaction,
+            Some(format_smolstr!("Transaction error occurred: {error:?}")),
         )
     }
 }
 
 impl From<Error> for SbroadError {
     fn from(error: Error) -> Self {
-        SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::Tarantool),
-            format_smolstr!("{error:?}"),
+        SbroadError::Invalid(
+            Entity::Tarantool,
+            Some(format_smolstr!("Tarantool module error occurred: {error:?}"),)
         )
     }
 }

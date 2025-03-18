@@ -851,7 +851,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     )
 
     assert process.stderr.find("- null\n") != -1
-    assert process.stderr.find("transaction: RolledBack") != -1
+    assert process.stderr.find("Transaction error occurred: RolledBack") != -1
     assert process.returncode != 0, f"Process failed with exit code {process.returncode}\n"
 
     # Test the exit code when attempting to drop non-existent plugins

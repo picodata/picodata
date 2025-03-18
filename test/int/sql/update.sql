@@ -103,7 +103,7 @@ rule parsing error
 -- SQL:
  update "testing_space" set "product_units" = 'hello'
 -- ERROR:
-failed to create transaction
+Transaction error occurred
 
 -- TEST: test_invalid-8
 -- SQL:
