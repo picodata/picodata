@@ -8,6 +8,8 @@ Table     = @{ Identifier }
 ScanTable = { Table }
 ScanCteOrTable = @{ Table }
 
+PublicSchema = _{ (^"public" | ("\"public\"")) ~ "."}
+
 IfExists = @{ ^"if" ~ W ~ ^"exists" }
 IfNotExists = @{ ^"if" ~ W ~ ^"not" ~ W ~ ^"exists" }
 
@@ -84,8 +86,8 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
          | CreatePartition }
     CreatePartition = ${
-        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ ^"partition" ~ W ~ ^"of" ~ W ~
-        Identifier ~ W ~ PartitionOfSpec ~ (W ~ Partition)?
+        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ W ~ ^"partition" ~ W ~ ^"of" ~ W ~
+        (PublicSchema)? ~ Identifier ~ W ~ PartitionOfSpec ~ (W ~ Partition)?
     }
         PartitionOfSpec = ${ (^"for" ~ W ~ ^"values" ~ W ~ ForValuesSpec) | ^"default" }
             ForValuesSpec = _{ ForValuesSpecIn | ForValuesSpecFromTo | ForValuesSpecWith }
@@ -97,7 +99,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
                             MaxValue = { ^"maxvalue" }
                 ForValuesSpecWith = ${ ^"with" ~ WO ~ "(" ~ ^"modulus" ~ W ~ Literal ~ WO ~ "," ~ WO ~ ^"remainder" ~ W ~  Literal ~ WO ~ ")" }
     CreateTable = ${
-        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ NewTable ~ WO ~
+        ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ NewTable ~ WO ~
         "(" ~ WO ~ Columns ~ WO ~ ("," ~ WO ~ PrimaryKey)? ~ WO ~ ")" ~
         (W ~ Engine)? ~ (W ~ Distribution)? ~ (W ~ WaitApplied)? ~ (W ~ Partition)? ~ (W ~ TimeoutOption)?
     }
@@ -125,9 +127,9 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
                 PartitionList = { ^"list" }
                 PartitionHash = { ^"hash" }
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
-    DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
-    TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
-    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ TableNameIdentifier ~ W ~ AlterTableOperation }
+    DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableOperation }
             TableNameIdentifier = @{ Identifier }
             ColumnNameIdentifier = @{ Identifier }
         AlterTableOperation = _{ AlterTableColumnAdd | AlterTableColumnDrop | AlterTableColumnAlter | AlterTableColumnRename }
@@ -164,7 +166,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
                     ColumnNameIdentifierFrom = @{ ColumnNameIdentifier }
                     ColumnNameIdentifierInto = @{ ColumnNameIdentifier }
     CreateProc = ${
-        ^"create" ~ W ~ ^"procedure" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ WO
+        ^"create" ~ W ~ ^"procedure" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ WO
         ~ ProcParams ~ W ~ (^"language" ~ W ~ ProcLanguage ~ W)?
         ~ ((^"as" ~ W ~ "$$" ~ WO ~ ProcBody ~ WO ~ "$$") | (^"begin" ~ W ~ "atomic" ~ W ~ ProcBody ~ W ~ "end"))
         ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
@@ -175,17 +177,17 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             SQL = { ^"sql" }
         ProcBody = { (Insert | Update | Delete) }
 
-    DropProc = ${ ^"drop" ~ W ~ ^"procedure" ~ W ~ (IfExists ~ W)? ~ ProcWithOptionalParams ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    DropProc = ${ ^"drop" ~ W ~ ^"procedure" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ ProcWithOptionalParams ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         ProcWithOptionalParams = ${ Identifier ~ ProcParams? }
 
-    RenameProc = ${ ^"alter" ~ W ~ ^"procedure" ~ W ~ OldProc ~ (ProcParams)? ~ W ~ ^"rename" ~ W ~ ^"to"
+    RenameProc = ${ ^"alter" ~ W ~ ^"procedure" ~ W ~ (PublicSchema)? ~ OldProc ~ (ProcParams)? ~ W ~ ^"rename" ~ W ~ ^"to"
                     ~ W ~ NewProc ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         OldProc = @{ Identifier }
         NewProc = @{ Identifier }
 
     CreateIndex = ${
         ^"create" ~ W ~ (Unique ~ W)? ~ ^"index" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
-        ^"on" ~ W ~ Table ~ W ~ (IndexType ~ W)? ~ "(" ~ WO ~ Parts ~ WO ~ ")" ~
+        ^"on" ~ W ~ (PublicSchema)? ~ Table ~ W ~ (IndexType ~ W)? ~ "(" ~ WO ~ Parts ~ WO ~ ")" ~
         (W ~ IndexOptions)? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
     }
     Unique = { ^"unique" }
@@ -209,7 +211,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             Euclid = { ^"euclid" }
             Manhattan = { ^"manhattan" }
         Hint = !{ ^"hint" ~ "=" ~ (True | False) }
-    DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+    DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
 
     CreateSchema = ${ ^"create" ~ W ~ ^"schema" ~ W ~ (IfNotExists ~ W)? ~ Identifier }
     DropSchema = ${ ^"drop" ~ W ~ ^"schema" ~ W ~ (IfExists ~ W)? ~ Identifier ~ (W ~ (Cascade | Restrict))? }
@@ -252,7 +254,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
         		    AlterSystemTierSingle = ${ ^"tier" ~ W ~ Identifier }
 
 Block = ${ CallProc ~ (W ~ DqlOption)? }
-    CallProc = ${ ^"call"~ W ~ Identifier ~ WO ~ "(" ~ WO ~ ProcValues ~ WO ~ ")" }
+    CallProc = ${ ^"call"~ W ~ (PublicSchema)? ~ Identifier ~ WO ~ "(" ~ WO ~ ProcValues ~ WO ~ ")" }
         ProcValues = !{ (ProcValue ~ ("," ~ ProcValue)*)? }
             ProcValue = _{ Literal | Parameter }
 
@@ -284,11 +286,11 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
     Projection = ${ (Distinct ~ W)? ~ ProjectionElements }
         ProjectionElements = _{ ProjectionElement ~ (WO ~ "," ~ WO ~ ProjectionElement)* }
         ProjectionElement = _{ Over | Asterisk | Column }
-        Column = ${ Expr ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
+        Column = ${ (PublicSchema)? ~ Expr ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
         Asterisk = ${ (Identifier ~ ".")? ~ "*" }
     WhereClause = _{ ^"where" ~ W ~ Selection }
     Selection = { Expr }
-    Scan = ${ (ScanCteOrTable| SubQuery) ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
+    Scan = ${ (((PublicSchema)? ~ ScanCteOrTable) | SubQuery) ~ (W ~ (^"as" ~ W)? ~ Identifier)? }
     Join = { (JoinKind ~ W)? ~ ^"join" ~ W ~ Scan ~ W ~ ^"on" ~ W ~ Expr }
         JoinKind = _{ ( InnerJoinKind | LeftJoinKind ) }
             InnerJoinKind = { ^"inner" }
@@ -303,13 +305,13 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
             Asc = { ^"asc" }
             Desc = { ^"desc" }
     SubQuery = !{ "(" ~ (SelectFull | Values) ~ ")" }
-    Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | Values) ~ (W ~ OnConflict)? }
+    Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ (PublicSchema)? ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | Values) ~ (W ~ OnConflict)? }
         TargetColumns = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
         OnConflict = _{ ^"on" ~ W ~ ^"conflict" ~ W ~ ^"do" ~ W ~ (DoNothing | DoReplace | DoFail) }
         DoReplace = { ^"replace" }
         DoNothing = { ^"nothing" }
         DoFail = { ^"fail" }
-    Update = ${ ^"update" ~ W ~ ScanTable ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
+    Update = ${ ^"update" ~ W ~ (PublicSchema)? ~ ScanTable ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
         UpdateList = { UpdateItem ~ (WO ~ "," ~ WO ~ UpdateItem)* }
         UpdateItem = !{ Identifier ~ "=" ~ Expr }
         UpdateFrom = _{ ^"from" ~ W ~ Scan ~ (W ~ ^"where" ~ W ~ Expr)? }
@@ -324,7 +326,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
     TimeoutOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ Timeout ~ WO ~ ")" }
     VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ "=" ~ (Unsigned | Parameter) }
     MotionRowMax = { ^"sql_motion_row_max" ~ "=" ~ (Unsigned | Parameter) }
-    Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
+    Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ ScanTable ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 
 Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
