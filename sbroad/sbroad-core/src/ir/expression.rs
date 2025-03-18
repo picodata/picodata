@@ -453,7 +453,8 @@ impl<'plan> Comparator<'plan> {
                             else_expr: else_expr_right,
                         }) = right
                         {
-                            let mut search_expr_equal = false;
+                            let mut search_expr_equal =
+                                search_expr_left.is_none() && search_expr_right.is_none();
                             if let (Some(search_expr_left), Some(search_expr_right)) =
                                 (search_expr_left, search_expr_right)
                             {
@@ -469,7 +470,8 @@ impl<'plan> Comparator<'plan> {
                                         && self.are_subtrees_equal(*res_l, *res_r).unwrap_or(false)
                                 });
 
-                            let mut else_expr_equal = false;
+                            let mut else_expr_equal =
+                                else_expr_left.is_none() && else_expr_right.is_none();
                             if let (Some(else_expr_left), Some(else_expr_right)) =
                                 (else_expr_left, else_expr_right)
                             {

@@ -47,7 +47,11 @@ def _parse_line(input_string):
     for element in elements:
         element = element.strip()  # Remove leading and trailing whitespaces
 
-        if element.startswith("'") and element.endswith("'"):
+        if element.lower() == "false":
+            result.append(False)
+        elif element.lower() == "true":
+            result.append(True)
+        elif element.startswith("'") and element.endswith("'"):
             # If element in single quotes, remove them and add as string
             result.append(element[1:-1])
         elif element.lower() in {"null", "none", "nil", ""}:
