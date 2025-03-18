@@ -22,7 +22,7 @@ not_in_nav: |
   plugins/argus.md
   plugins/svarog.md
   plugins/task.md
-  plugins/uroboros.md
+  plugins/ouroboros.md
 
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
@@ -145,7 +145,7 @@ nav:
     - plugins/argus.md
     - plugins/radix.md
     - plugins/synapse.md
-    - plugins/uroboros.md
+    - plugins/ouroboros.md
     - plugins/gostech_audit_log.md
   - Обеспечение безопасности:
     - security/os.md

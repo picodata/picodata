@@ -1,8 +1,8 @@
 
-# Uroboros
+# Ouroboros
 
 В данном разделе приведены сведения о
-[Uroboros](https://git.picodata.io/picodata/plugin/uroboros), плагине для
+[Ouroboros](https://git.picodata.io/picodata/plugin/ouroboros), плагине для
 СУБД Picodata.
 
 !!! tip "Picodata Enterprise"
@@ -10,11 +10,11 @@
 
 ## Общие сведения {: #intro }
 
-Плагин Uroboros используется для однонаправленной асинхронной логической
+Плагин Ouroboros используется для однонаправленной асинхронной логической
 [репликации](../overview/glossary.md#replication) данных между двумя
 кластерами Picodata.
 
-Основные задачи Uroboros:
+Основные задачи Ouroboros:
 
 - перенос кластера на новую площадку без простоя
 - обеспечение отказоустойчивости путем репликации одного кластера в другой
@@ -41,13 +41,13 @@ local ok, err = cartridge.cfg({}, {
 
 ## Принцип работы {: #details }
 
-Для использования Uroboros требуются два кластера:
+Для использования Ouroboros требуются два кластера:
 кластер источник и кластер-приемник. Далее необходимо [развернуть кластер]
-Picodata с включенным плагином Uroboros. В этом кластере может быть как
+Picodata с включенным плагином Ouroboros. В этом кластере может быть как
 один инстанс, так и несколько — число инстансов определяет то, сколько
 исполнителей (процессов копирования) будет выполняться одновременно.
 
-При условии [корректной настройки](#config) подключения к кластерам Uroboros
+При условии [корректной настройки](#config) подключения к кластерам Ouroboros
 будет переносить данные из кластера-источника в кластер-приемник с помощью
 логической репликации (копирования журналов изменений). Этот способ
 предоставляет необходимую гибкость (позволяет работать с отдельными таблицами) и
@@ -58,10 +58,10 @@ Picodata с включенным плагином Uroboros. В этом клас
 
 Схема работы плагина показана ниже:
 
-![Uroboros replication](../images/uroboros_replication.svg)
+![Ouroboros replication](../images/uroboros_replication.svg)
 
 Плагин учитывает топологию кластеров, с которыми он работает. Каждый
-исполнитель плагина Uroboros реплицирует один или более репликасетов из
+исполнитель плагина Ouroboros реплицирует один или более репликасетов из
 кластера-источника. На исполнителе создается набор [файберов], каждый
 из которых обрабатывает свою связку <репликасет источник + диапазон
 сегментов>. Таким образом, получается паралелльная отправка в
@@ -75,17 +75,17 @@ Picodata с включенным плагином Uroboros. В этом клас
 включающая имя и версию плагина, а также его файлы:
 
 ```
-└── uroboros
+└── ouroboros
     └── 1.0.0
         ├── liburoboros.so
         ├── manifest.yaml
         └── migrations
             ├── 0001_state.db
-            └── 0002_uroboros_state.db
+            └── 0002_ouroboros_state.db
 ```
 
 Основная логика плагина обеспечивается разделяемой библиотекой
-`liburoboros.so`. Исходная [конфигурация](#config) плагина задается в файле манифеста
+`libouroboros.so`. Исходная [конфигурация](#config) плагина задается в файле манифеста
 (`manifest.yaml`). Директория `migrations` зарезервирована для файлов
 [миграций].
 
@@ -96,7 +96,7 @@ Picodata с включенным плагином Uroboros. В этом клас
 Основные параметры плагина включают в себя:
 
 - имя отдельного пользователя (должно совпадать на кластере-источнике и
-  кластере-приемнике), под которым Uroboros будет подключаться
+  кластере-приемнике), под которым Ouroboros будет подключаться
 - группа параметров для подключения к кластеру-источнику (producer) и
   кластеру-приемнику (consumer)
 - группа параметров по настройке репликации (группы шардирования, исключаемые
@@ -107,11 +107,11 @@ Picodata с включенным плагином Uroboros. В этом клас
 ??? example "manifest.yaml"
     ```yaml
     description: Plugin tnt clusters replication
-    name: uroboros
+    name: ouroboros
     version: 0.4.2
     services:
-      - name: uroboros
-        description: uroboros descr
+      - name: ouroboros
+        description: ouroboros descr
         default_configuration:
           password: password
           producer:
@@ -191,10 +191,10 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN uroboros 0.4.1;
-ALTER PLUGIN uroboros MIGRATE TO 0.4.1;
-ALTER PLUGIN uroboros 0.4.1 ADD SERVICE uroboros TO TIER default;
-ALTER PLUGIN uroboros 0.4.1 ENABLE;
+CREATE PLUGIN ouroboros 0.4.1;
+ALTER PLUGIN ouroboros MIGRATE TO 0.4.1;
+ALTER PLUGIN ouroboros 0.4.1 ADD SERVICE ouroboros TO TIER default;
+ALTER PLUGIN ouroboros 0.4.1 ENABLE;
 ```
 
 [административной консоли]: ../tutorial/connecting.md#admin_console
@@ -204,8 +204,8 @@ ALTER PLUGIN uroboros 0.4.1 ENABLE;
 ### Подготовка {: #preparation }
 
 1. Изучите [документацию по развертыванию кластера Picodata](https://docs.picodata.io/picodata/stable/tutorial/deploy_ansible/). Выполнить инструкции по установке роли.
-2. Скачайте нужную версию плагина `uroboros` и положите пакет в рабочую директорию.
-3. Проверьте наличие конфигурационного файла для плагина `uroboros-config.yml`, проверьте настройки в нем (см. ниже).
+2. Скачайте нужную версию плагина `ouroboros` и положите пакет в рабочую директорию.
+3. Проверьте наличие конфигурационного файла для плагина `ouroboros-config.yml`, проверьте настройки в нем (см. ниже).
 
 !!! note "Примечание"
     На сервере, с которого будет происходить установка,
@@ -215,7 +215,7 @@ ALTER PLUGIN uroboros 0.4.1 ENABLE;
 
 Создайте файл с описанием кластера согласно [руководству по
 развертыванию кластера](../tutorial/deploy_ansible.md). Например,
-`uroboros.yml`.
+`ouroboros.yml`.
 
 ```yaml
 ---
@@ -224,7 +224,7 @@ all:
     user: username # имя пользователя, под которым будут запущены процессы picodata
     group: groupname # группа пользователя, под которой будут запущены процессы picodata
     password: "<password>"
-    cluster_name: uroboros
+    cluster_name: ouroboros
     audit: false
     log_level: warn
     log_to: file
@@ -248,11 +248,11 @@ all:
     rootless: true
 
     plugins:
-      uroboros:
-        path: "uroboros_0.3.0.tar.gz"
+      ouroboros:
+        path: "ouroboros_0.3.0.tar.gz"
         tiers:
           - default
-        config: "uroboros-config.yml"
+        config: "ouroboros-config.yml"
     tiers:
       default:
         instances_per_server: 5
@@ -293,45 +293,45 @@ DC1: # Датацентр (failure_domain)
 
 В результате в рабочем каталоге должно быть 4 файла:
 
-- uroboros.yml
+- ouroboros.yml
 - picodata.yml
-- uroboros_config.yml
-- uroboros_xxxxx.tar.gz
+- ouroboros_config.yml
+- ouroboros_xxxxx.tar.gz
 
-Запустите раскатку Uroboros:
+Запустите раскатку Ouroboros:
 
 ```bash
-ansible-playbook -i uroboros.yml picodata.yml
+ansible-playbook -i ouroboros.yml picodata.yml
 ```
 
 ## Мониторинг показателей плагина {: #grafana_board}
 
-Процесс работы плагина Uroboros можно удобно отслеживать в графическом
+Процесс работы плагина Ouroboros можно удобно отслеживать в графическом
 интерфейсе [Grafana], для которого Picodata поставляет файл
 конфигурации (dashboard).
 
-Для настройки мониторинга импортируйте dashboard с данными Uroboros. Для
+Для настройки мониторинга импортируйте dashboard с данными Ouroboros. Для
 этого понадобится файл [dashboard.grafana.json], который следует
 добавить в меню `Dashboards` > `New` > `Import`:
 
-![Import Uroboros dashboard](../images/grafana/import_dashboard.png)
+![Import Ouroboros dashboard](../images/grafana/import_dashboard.png)
 
-Панель dashboard для плагина Uroboros отображает ряд графиков, на
-которых отражена пропускная способность кластера с Uroboros, статистика
+Панель dashboard для плагина Ouroboros отображает ряд графиков, на
+которых отражена пропускная способность кластера с Ouroboros, статистика
 по скопированным пакетам, а также данные по количеству записей в
 кластере-источнике и кластере-приемнике.
 
-Внешний вид dashboard для Uroboros показан ниже:
+Внешний вид dashboard для Ouroboros показан ниже:
 
-![Uroboros dashboard](../images/grafana/uroboros.png)
+![Ouroboros dashboard](../images/grafana/uroboros.png)
 
 Для настройки dashboard используйте параметры в верхней части экрана:
 
 - **Источник данных** — по умолчанию `Prometheus`
-- **Кластер уробороса** — имя кластера с Uroboros
-- **Нода уробороса** — данные с каких узлов кластера с Uroboros следует отображать (по умолчанию `All`, т.е. со всех узлов)
-- **Кластер источник** — имя кластера, с которого Uroboros будет забирать данные (значение по умолчанию — `pustoe`)
-- **Кластер-приемник** — имя кластера, в который Uroboros будет записывать данные (значение по умолчанию — `porognee`)
+- **Кластер уробороса** — имя кластера с Ouroboros
+- **Нода уробороса** — данные с каких узлов кластера с Ouroboros следует отображать (по умолчанию `All`, т.е. со всех узлов)
+- **Кластер источник** — имя кластера, с которого Ouroboros будет забирать данные (значение по умолчанию — `pustoe`)
+- **Кластер-приемник** — имя кластера, в который Ouroboros будет записывать данные (значение по умолчанию — `porognee`)
 - **Игнорируемые спейсы** — список спейсов, данные которых не будут скопированы
 
 [Grafana]: ../admin/monitoring.md#grafana
@@ -344,16 +344,16 @@ ansible-playbook -i uroboros.yml picodata.yml
 <!--
 ## Сборка и подготовка файлов плагина {: #local_build }
 
-Склонируйте репозиторий с исходным кодом Uroboros:
+Склонируйте репозиторий с исходным кодом Ouroboros:
 
 ```bash
 git clone https://git.picodata.io/picodata/plugin/uroboros.git
 ```
 
-Соберите разделяемые библиотеки Uroboros (требуется актуальные версии Rust, Cargo, GNU Make):
+Соберите разделяемые библиотеки Ouroboros (требуется актуальные версии Rust, Cargo, GNU Make):
 
 ```bash
-cd uroboros
+cd ouroboros
 make build
 ```
 
@@ -384,7 +384,7 @@ cp -r migrations/* plugins/uroboros/<версия>
 
 Локальное тестовое окружение использует Docker-образ с ОС Rocky Linux 8
 и предоставляет два кластера (источник и назначение) для проверки работы
-плагина Uroboros. Файлы тестового окружения находятся в директории
+плагина Ouroboros. Файлы тестового окружения находятся в директории
 `local-dev-clusters`.
 
 Для запуска локального тестового окружения требуется запущенная

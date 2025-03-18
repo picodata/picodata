@@ -88,7 +88,7 @@ Picodata — это распределенная система промышле
 * [Argus](plugins/argus.md)
 * [Radix](plugins/radix.md)
 * [Synapse](plugins/synapse.md)
-* [Uroboros](plugins/uroboros.md)
+* [Ouroboros](plugins/ouroboros.md)
 * [Внешний модуль аудита](plugins/gostech_audit_log.md)
 
 ### Обеспечение безопасности {: #security }
