@@ -1,9 +1,9 @@
-use std::rc::Rc;
-
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use engine::mock::TEMPLATE;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
+use std::rc::Rc;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::collection;
@@ -1377,6 +1377,23 @@ fn check_subtree_hashes_are_equal(
     assert_eq!(get_hash(sql1, values1), get_hash(sql2, values2));
 }
 
+fn check_subtree_hashes_are_equal_2(
+    sql1: &str,
+    values1: Vec<Value>,
+    sql2: &str,
+    values2: Vec<Value>,
+) {
+    let get_hash = |sql: &str, values: Vec<Value>| -> SmolStr {
+        let plan = sql_to_optimized_ir(sql, values);
+        let top = plan.get_top().unwrap();
+        let mut exec_plan = ExecutionPlan::from(plan.clone());
+        let subplan = exec_plan.take_subtree(top).unwrap();
+        subplan.get_ir_plan().pattern_id(top).unwrap()
+    };
+
+    assert_eq!(get_hash(sql1, values1), get_hash(sql2, values2));
+}
+
 #[test]
 fn subtree_hash1() {
     check_subtree_hashes_are_equal(
@@ -1441,3 +1458,47 @@ fn subtree_hash3() {
     );
 }
 */
+
+#[test]
+fn subtree_hash4() {
+    check_subtree_hashes_are_equal_2(
+        r#"VALUES (1)"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::Unsigned(1)],
+    );
+}
+
+#[test]
+fn subtree_hash5() {
+    check_subtree_hashes_are_equal_2(
+        r#"VALUES (-1)"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::Integer(-1)],
+    );
+}
+
+#[test]
+fn subtree_hash6() {
+    check_subtree_hashes_are_equal_2(
+        r#"VALUES ('abc')"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::String("abc".to_string())],
+    );
+}
+
+#[test]
+fn subtree_hash7() {
+    check_subtree_hashes_are_equal_2(
+        r#"VALUES (0, True, 'abc')"#,
+        vec![],
+        r#"VALUES ($1, $2, $3)"#,
+        vec![
+            Value::Unsigned(0),
+            Value::Boolean(true),
+            Value::String("abc".to_string()),
+        ],
+    );
+}
