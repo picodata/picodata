@@ -71,6 +71,7 @@ pub mod mailbox;
 pub mod on_shutdown;
 mod pgproto;
 mod pico_service;
+pub mod picodata_metrics;
 pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
@@ -341,15 +342,21 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
         ))
     })?;
 
+    use prometheus::default_registry;
+    picodata_metrics::register_metrics(default_registry());
+
     lua.exec_with(
         r#"
-        local user_metrics = ...
+        local user_metrics, picodata_metrics = ...
         pico.httpd:route({method = 'GET', path = 'metrics' }, function()
         local resp = require('metrics.plugins.prometheus').collect_http()
-        resp.body = resp.body .. user_metrics()
+        resp.body = resp.body .. user_metrics() .. picodata_metrics()
         return resp
         end)"#,
-        tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
+        (
+            tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
+            tlua::Function::new(crate::picodata_metrics::collect_metrics),
+        ),
     )
     .map_err(|err| Error::other(format!("failed to add route `/metrics`: {}", err)))?;
 

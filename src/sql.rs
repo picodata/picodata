@@ -4,6 +4,7 @@ use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::config::AlterSystemParameters;
+use crate::picodata_metrics;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -594,6 +595,8 @@ pub fn sql_dispatch(
     params: Vec<Value>,
     override_deadline: Option<Instant>,
 ) -> traft::Result<Tuple> {
+    let start = Instant::now_fiber();
+
     let runtime = RouterRuntime::new()?;
     let node = node::global()?;
     // Admin privileges are need for reading tables metadata.
@@ -603,7 +606,19 @@ pub fn sql_dispatch(
         let default_options = Some(Options::new(sql_motion_row_max, sql_vdbe_opcode_max));
         Query::with_options(&runtime, pattern, params, default_options)
     })??;
-    dispatch(query, override_deadline)
+
+    let result = dispatch(query, override_deadline);
+
+    let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
+    picodata_metrics::sql_query_duration_seconds().observe(duration);
+    picodata_metrics::sql_query_total().inc();
+    match result {
+        Ok(tuple) => Ok(tuple),
+        Err(e) => {
+            picodata_metrics::sql_query_errors_total().inc();
+            Err(e)
+        }
+    }
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {
