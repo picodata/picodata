@@ -301,6 +301,67 @@ def test_pg_params(cluster: Cluster):
             True,
         )
 
+    data = i1.sql("""select * from (select $1 union select ($1 * 2))""", 1, strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["rows"] == [[1], [2]]
+
+    data = i1.sql("""select (select $1) + 1""", 1, strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["rows"] == [[2]]
+
+    data = i1.sql("""select * from (select * from (select $1))""", "picodata", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "string"}]
+
+    data = i1.sql("""select * from (select * from (select $1))""", 1, strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+
+    data = i1.sql("""select * from (select * from (select $1))""", -1, strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+
+    # first table is created
+    ddl = i1.sql(
+        """
+        create table test_params_1 (a unsigned, b unsigned,
+        c unsigned, d unsigned, primary key (b))
+        using memtx
+        distributed by (a, b)
+        option (timeout = 3)
+    """
+    )
+    # check the creation of the first table
+    assert ddl["row_count"] == 1
+
+    # second table is created
+    ddl = i1.sql(
+        """
+        create table test_params_2 (a string, b integer, primary key (a, b))
+        using memtx
+        distributed by (a, b)
+        option (timeout = 3)
+    """
+    )
+    # check the creation of the second table
+    assert ddl["row_count"] == 1
+
+    with pytest.raises(TarantoolError, match="Unable to unify inconsistent types: Unsigned and String"):
+        i1.sql(
+            """
+        SELECT "a", "b" FROM "test_params_1"
+        WHERE "a" <= ? and "b" >= ? and "b" <= ?
+        AND ("a", "b") NOT IN (
+        SELECT "a", "b" FROM "test_params_1"
+        WHERE "b" >= ?
+        UNION ALL
+        SELECT "a", "b" FROM "test_params_2"
+        WHERE "a" <= ?)
+        """,
+            1,
+            2,
+            3,
+            4,
+            5,
+        )
+
 
 def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)

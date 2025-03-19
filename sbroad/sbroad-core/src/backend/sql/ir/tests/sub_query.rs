@@ -101,47 +101,6 @@ fn sub_query2_oldest() {
 }
 
 #[test]
-fn sub_query3_latest() {
-    let query = r#"SELECT "a", "b" FROM "t"
-    WHERE "a" <= ? and "b" >= ? and "b" <= ?
-    AND ("a", "b") NOT IN (
-        SELECT "a", "b" FROM "t"
-        WHERE "b" >= ?
-        UNION ALL
-        SELECT "a", "b" FROM "t1"
-        WHERE "a" <= ?
-    )"#;
-    let params = vec![
-        Value::from(1_u64),
-        Value::from(2_u64),
-        Value::from(3_u64),
-        Value::from(4_u64),
-        Value::from(5_u64),
-        Value::from(6_u64),
-    ];
-
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {} {} {} {}",
-            r#"SELECT "t"."a", "t"."b" FROM "t""#,
-            r#"WHERE ("t"."b") <= (?)"#,
-            r#"and not ("t"."a", "t"."b") in"#,
-            r#"(SELECT "t"."a", "t"."b" FROM "t" WHERE ("t"."b") >= (?)"#,
-            r#"UNION ALL SELECT "t1"."a", "t1"."b" FROM "t1" WHERE ("t1"."a") <= (?))"#,
-            r#"and ("t"."a") <= (?) and ("t"."b") >= (?)"#
-        ),
-        vec![
-            Value::from(3_u64),
-            Value::from(4_u64),
-            Value::from(5_u64),
-            Value::from(1_u64),
-            Value::from(2_u64),
-        ],
-    );
-    check_sql_with_snapshot(query, params, expected, Snapshot::Latest);
-}
-
-#[test]
 fn sub_query_exists() {
     let query =
         r#"SELECT "FIRST_NAME" FROM "test_space" WHERE EXISTS (SELECT 0 FROM "hash_testing")"#;

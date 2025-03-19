@@ -7,12 +7,12 @@ use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
     ExprInParentheses, GroupBy, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
-    NodeId, Over, Parameter, Procedure, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow,
-    Window,
+    NodeId, Over, Parameter, Procedure, Reference, Row, Selection, StableFunction, Trim, UnaryExpr,
+    ValuesRow, Window,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
-use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan, ValueIdx};
 use chrono::Local;
@@ -736,12 +736,33 @@ impl<'binder> ParamsBinder<'binder> {
     }
 
     fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
-        for LevelNode(_, id) in &self.nodes {
+        let mut ref_nodes = Vec::new();
+        {
+            let filter = |node_id| {
+                matches!(
+                    self.plan.get_node(node_id),
+                    Ok(Node::Expression(Expression::Reference(_)))
+                )
+            };
+            let mut tree = PostOrderWithFilter::with_capacity(
+                |node| self.plan.parameter_iter(node, true),
+                EXPR_CAPACITY,
+                Box::new(filter),
+            );
+            let top_id = self.plan.get_top()?;
+            tree.populate_nodes(top_id);
+            ref_nodes = tree.take_nodes();
+        }
+
+        for LevelNode(_, id) in &ref_nodes {
             // Before binding, references that referred to
             // parameters had an unknown types,
             // but in fact they should have the types of given parameters.
-            let new_type = if let Node::Expression(ref mut expr @ Expression::Reference(_)) =
-                self.plan.get_node(*id)?
+            let new_type = if let Node::Expression(
+                ref mut expr @ Expression::Reference(Reference {
+                    parent: Some(_), ..
+                }),
+            ) = self.plan.get_node(*id)?
             {
                 Some(expr.recalculate_ref_type(self.plan)?)
             } else {

@@ -15,6 +15,7 @@ use crate::ir::{Node, Nodes, Plan};
 trait SubtreePlanIterator<'plan>: PlanTreeIterator<'plan> {
     fn need_output(&self) -> bool;
     fn need_motion_subtree(&self) -> bool;
+    fn output_first(&self) -> bool;
 }
 
 /// Expression and relational nodes iterator.
@@ -25,6 +26,7 @@ pub struct SubtreeIterator<'plan> {
     child: RefCell<usize>,
     plan: &'plan Plan,
     need_output: bool,
+    output_first: bool,
 }
 
 impl<'nodes> TreeIterator<'nodes> for SubtreeIterator<'nodes> {
@@ -55,6 +57,9 @@ impl<'plan> SubtreePlanIterator<'plan> for SubtreeIterator<'plan> {
     fn need_motion_subtree(&self) -> bool {
         true
     }
+    fn output_first(&self) -> bool {
+        self.output_first
+    }
 }
 
 impl Iterator for SubtreeIterator<'_> {
@@ -73,6 +78,21 @@ impl<'plan> Plan {
             child: RefCell::new(0),
             plan: self,
             need_output,
+            output_first: true,
+        }
+    }
+
+    pub fn parameter_iter(
+        &'plan self,
+        current: NodeId,
+        need_output: bool,
+    ) -> SubtreeIterator<'plan> {
+        SubtreeIterator {
+            current,
+            child: RefCell::new(0),
+            plan: self,
+            need_output,
+            output_first: false,
         }
     }
 }
@@ -114,6 +134,10 @@ impl<'plan> SubtreePlanIterator<'plan> for FlashbackSubtreeIterator<'plan> {
     }
 
     fn need_motion_subtree(&self) -> bool {
+        true
+    }
+
+    fn output_first(&self) -> bool {
         true
     }
 }
@@ -172,6 +196,9 @@ impl<'plan> SubtreePlanIterator<'plan> for ExecPlanSubtreeIterator<'plan> {
 
     fn need_motion_subtree(&self) -> bool {
         false
+    }
+    fn output_first(&self) -> bool {
+        true
     }
 }
 
@@ -315,12 +342,11 @@ fn subtree_next<'plan>(
                 | Relational::UnionAll(UnionAll { output, .. }) => {
                     let step = *iter.get_child().borrow();
                     let children = r.children();
+                    *iter.get_child().borrow_mut() += 1;
                     if step < children.len() {
-                        *iter.get_child().borrow_mut() += 1;
                         return children.get(step).copied();
                     }
                     if iter.need_output() && step == children.len() {
-                        *iter.get_child().borrow_mut() += 1;
                         return Some(*output);
                     }
                     None
@@ -475,11 +501,20 @@ fn subtree_next<'plan>(
                 }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
-                    if step == 0 {
-                        return Some(*output);
-                    }
-                    if step <= children.len() {
-                        return children.get(step - 1).copied();
+                    if iter.output_first() {
+                        if step == 0 {
+                            return Some(*output);
+                        }
+                        if step <= children.len() {
+                            return children.get(step - 1).copied();
+                        }
+                    } else {
+                        if step < children.len() {
+                            return children.get(step).copied();
+                        }
+                        if step == children.len() {
+                            return Some(*output);
+                        }
                     }
                     None
                 }
