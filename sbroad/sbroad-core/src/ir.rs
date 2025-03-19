@@ -149,7 +149,6 @@ impl Nodes {
                 }
                 Node64::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
                 Node64::NamedWindows(window) => Node::Relational(Relational::NamedWindows(window)),
-                Node64::AlterTable(alter_table) => Node::Ddl(Ddl::AlterTable(alter_table)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
@@ -169,6 +168,7 @@ impl Nodes {
                 .get(id.offset as usize)
                 .map(|node| match node {
                     Node136::AlterUser(alter_user) => Node::Acl(Acl::AlterUser(alter_user)),
+                    Node136::AlterTable(alter_table) => Node::Ddl(Ddl::AlterTable(alter_table)),
                     Node136::CreateProc(create_proc) => Node::Ddl(Ddl::CreateProc(create_proc)),
                     Node136::RevokePrivilege(revoke_priv) => {
                         Node::Acl(Acl::RevokePrivilege(revoke_priv))
@@ -313,9 +313,6 @@ impl Nodes {
                     Node64::NamedWindows(window) => {
                         MutNode::Relational(MutRelational::NamedWindows(window))
                     }
-                    Node64::AlterTable(alter_table) => {
-                        MutNode::Ddl(MutDdl::AlterTable(alter_table))
-                    }
                 }),
             ArenaType::Arena96 => self
                 .arena96
@@ -341,6 +338,9 @@ impl Nodes {
                     .map(|node| match node {
                         Node136::AlterUser(alter_user) => {
                             MutNode::Acl(MutAcl::AlterUser(alter_user))
+                        }
+                        Node136::AlterTable(alter_table) => {
+                            MutNode::Ddl(MutDdl::AlterTable(alter_table))
                         }
                         Node136::CreateProc(create_proc) => {
                             MutNode::Ddl(MutDdl::CreateProc(create_proc))

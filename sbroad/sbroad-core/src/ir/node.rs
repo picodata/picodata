@@ -869,14 +869,16 @@ pub struct CreateTable {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct AlterTable {
     pub name: SmolStr,
+    pub wait_applied_globally: bool,
+    pub timeout: Decimal,
     pub op: AlterTableOp,
 }
 
-const _: () = assert!(std::mem::size_of::<AlterTable>() < 64);
+const _: () = assert!(std::mem::size_of::<AlterTable>() < 136);
 
 impl From<AlterTable> for NodeAligned {
     fn from(value: AlterTable) -> Self {
-        Self::Node64(Node64::AlterTable(value))
+        Self::Node136(Node136::AlterTable(value))
     }
 }
 
@@ -1277,7 +1279,6 @@ pub enum Node64 {
     DropUser(DropUser),
     CreateRole(CreateRole),
     DropTable(DropTable),
-    AlterTable(AlterTable),
     DropIndex(DropIndex),
     GroupBy(GroupBy),
     SetParam(SetParam),
@@ -1303,7 +1304,6 @@ impl Node64 {
             Node64::DropIndex(drop_index) => NodeOwned::Ddl(DdlOwned::DropIndex(drop_index)),
             Node64::DropRole(drop_role) => NodeOwned::Acl(AclOwned::DropRole(drop_role)),
             Node64::DropTable(drop_table) => NodeOwned::Ddl(DdlOwned::DropTable(drop_table)),
-            Node64::AlterTable(alter_table) => NodeOwned::Ddl(DdlOwned::AlterTable(alter_table)),
             Node64::TruncateTable(truncate_table) => {
                 NodeOwned::Ddl(DdlOwned::TruncateTable(truncate_table))
             }
@@ -1377,6 +1377,7 @@ pub enum Node136 {
     CreateUser(CreateUser),
     AlterUser(AlterUser),
     AlterSystem(AlterSystem),
+    AlterTable(AlterTable),
     CreateProc(CreateProc),
     RenameRoutine(RenameRoutine),
     Motion(Motion),
@@ -1396,6 +1397,7 @@ impl Node136 {
             Node136::AlterSystem(alter_system) => {
                 NodeOwned::Ddl(DdlOwned::AlterSystem(alter_system))
             }
+            Node136::AlterTable(alter_table) => NodeOwned::Ddl(DdlOwned::AlterTable(alter_table)),
             Node136::CreateProc(create_proc) => NodeOwned::Ddl(DdlOwned::CreateProc(create_proc)),
             Node136::GrantPrivilege(grant_privelege) => {
                 NodeOwned::Acl(AclOwned::GrantPrivilege(grant_privelege))

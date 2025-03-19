@@ -36,6 +36,7 @@ impl DdlOwned {
             DdlOwned::CreateTable(CreateTable { ref timeout, .. })
             | DdlOwned::DropTable(DropTable { ref timeout, .. })
             | DdlOwned::TruncateTable(TruncateTable { ref timeout, .. })
+            | DdlOwned::AlterTable(AlterTable { ref timeout, .. })
             | DdlOwned::CreateIndex(CreateIndex { ref timeout, .. })
             | DdlOwned::DropIndex(DropIndex { ref timeout, .. })
             | DdlOwned::SetParam(SetParam { ref timeout, .. })
@@ -51,7 +52,7 @@ impl DdlOwned {
                     )
                 })
             }
-            DdlOwned::CreateSchema | DdlOwned::DropSchema | DdlOwned::AlterTable(_) => Ok(0.0),
+            DdlOwned::CreateSchema | DdlOwned::DropSchema => Ok(0.0),
         }
     }
 
@@ -66,6 +67,10 @@ impl DdlOwned {
                 ..
             })
             | DdlOwned::TruncateTable(TruncateTable {
+                wait_applied_globally,
+                ..
+            })
+            | DdlOwned::AlterTable(AlterTable {
                 wait_applied_globally,
                 ..
             })
@@ -163,6 +168,7 @@ impl Ddl<'_> {
             Ddl::CreateTable(CreateTable { ref timeout, .. })
             | Ddl::DropTable(DropTable { ref timeout, .. })
             | Ddl::TruncateTable(TruncateTable { ref timeout, .. })
+            | Ddl::AlterTable(AlterTable { ref timeout, .. })
             | Ddl::CreateIndex(CreateIndex { ref timeout, .. })
             | Ddl::DropIndex(DropIndex { ref timeout, .. })
             | Ddl::SetParam(SetParam { ref timeout, .. })
@@ -178,7 +184,7 @@ impl Ddl<'_> {
                     )
                 })
             }
-            Ddl::CreateSchema | Ddl::DropSchema | Ddl::AlterTable(_) => Ok(0.0),
+            Ddl::CreateSchema | Ddl::DropSchema => Ok(0.0),
         }
     }
 
@@ -193,6 +199,10 @@ impl Ddl<'_> {
                 ..
             })
             | Ddl::TruncateTable(TruncateTable {
+                wait_applied_globally,
+                ..
+            })
+            | Ddl::AlterTable(AlterTable {
                 wait_applied_globally,
                 ..
             })

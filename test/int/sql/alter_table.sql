@@ -79,7 +79,6 @@ ALTER TABLE t RENAME z TO a, y TO b, x TO c, w TO d;
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
-
 -- TEST: add_drop_single
 -- SQL:
 ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT;
@@ -91,14 +90,14 @@ ALTER TABLE t DROP COLUMN h;
 ALTER TABLE t ADD i INT;
 ALTER TABLE t DROP i;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: add_drop_batch
 -- SQL:
@@ -111,11 +110,11 @@ ALTER TABLE t DROP COLUMN f, g, h, i;
 ALTER TABLE t ADD f INT, g INT, h INT, i INT;
 ALTER TABLE t DROP f, g, h, i;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
-sbroad: unsupported DDL: ALTER TABLE is reserved for future use
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
