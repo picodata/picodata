@@ -146,7 +146,7 @@ brew install node yarn
 git clone https://git.picodata.io/core/picodata.git --recursive
 ```
 
-Загрузка с зеркала Github:
+Загрузка с зеркала GitHub:
 
 ```bash
 git clone https://github.com/picodata/picodata.git --recursive
