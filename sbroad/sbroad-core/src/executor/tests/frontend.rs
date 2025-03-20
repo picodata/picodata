@@ -2,7 +2,6 @@ use super::*;
 
 use crate::executor::engine::mock::RouterRuntimeMock;
 use pretty_assertions::assert_eq;
-use smol_str::format_smolstr;
 
 #[test]
 fn front_valid_sql1() {

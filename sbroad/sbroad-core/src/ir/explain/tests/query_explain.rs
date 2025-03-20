@@ -1,6 +1,3 @@
-use pretty_assertions::assert_eq;
-use smol_str::ToSmolStr;
-
 use crate::executor::{engine::mock::RouterRuntimeMock, Query};
 
 #[test]

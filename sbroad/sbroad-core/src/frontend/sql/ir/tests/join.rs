@@ -1,5 +1,4 @@
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
-use pretty_assertions::assert_eq;
 
 #[test]
 fn milti_join1() {

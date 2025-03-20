@@ -1283,7 +1283,6 @@ fn front_sql_groupby() {
     let input = r#"SELECT "identification_number", "product_code" FROM "hash_testing" group by "identification_number", "product_code""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::integer -> "identification_number", "gr_expr_2"::string -> "product_code")
         group by ("gr_expr_1"::integer, "gr_expr_2"::string) output: ("gr_expr_1"::integer -> "gr_expr_1", "gr_expr_2"::string -> "gr_expr_2")
@@ -1306,7 +1305,6 @@ fn front_sql_groupby_less_cols_in_proj() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::integer -> "identification_number")
         group by ("gr_expr_1"::integer, "gr_expr_2"::boolean) output: ("gr_expr_1"::integer -> "gr_expr_1", "gr_expr_2"::boolean -> "gr_expr_2")
@@ -1355,7 +1353,6 @@ fn front_sql_groupby_union_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         projection ("hash_testing"."identification_number"::integer -> "identification_number")
@@ -1387,7 +1384,6 @@ fn front_sql_groupby_join_1() {
         "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::string -> "product_code", "gr_expr_2"::boolean -> "product_units")
         group by ("gr_expr_1"::string, "gr_expr_2"::boolean) output: ("gr_expr_1"::string -> "gr_expr_1", "gr_expr_2"::boolean -> "gr_expr_2")
@@ -1462,7 +1458,6 @@ fn front_sql_join() {
         "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
 
     // TODO: For the  hash function in the cartrisge runtime we can apply
     //       `motion [policy: segment([ref("id")])]` instead of the `motion [policy: full]`.
@@ -1490,7 +1485,6 @@ fn front_sql_groupby_insert() {
     SELECT "b", "d" FROM "t" group by "b", "d" ON CONFLICT DO FAIL"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "t" on conflict: fail
         motion [policy: segment([value(NULL), ref("d")])]
@@ -1601,7 +1595,6 @@ fn front_sql_total_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (total(("total_1"::double))::double -> "col_1", total(distinct ("gr_expr_1"::double))::double -> "col_2")
         motion [policy: full]
@@ -1620,7 +1613,6 @@ fn front_sql_min_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (min(("min_1"::unsigned))::unsigned -> "col_1", min(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
         motion [policy: full]
@@ -1639,7 +1631,6 @@ fn front_sql_max_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (max(("max_1"::unsigned))::unsigned -> "col_1", max(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
         motion [policy: full]
@@ -1658,7 +1649,6 @@ fn front_sql_group_concat_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (group_concat(("group_concat_1"::string))::string -> "col_1", group_concat(distinct ("gr_expr_1"::string))::string -> "col_2")
         motion [policy: full]
@@ -1677,7 +1667,6 @@ fn front_sql_group_concat_aggregate2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (group_concat(("group_concat_1"::string, ' '::string))::string -> "col_1", group_concat(distinct ("gr_expr_1"::string))::string -> "col_2")
         motion [policy: full]
@@ -1727,7 +1716,6 @@ fn front_sql_count_asterisk1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1", sum(("count_1"::unsigned))::unsigned -> "col_2")
         motion [policy: full]
@@ -1745,7 +1733,6 @@ fn front_sql_count_asterisk2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
@@ -1801,7 +1788,6 @@ fn front_sql_aggregates_with_distinct1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "col_1", count(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
@@ -1822,7 +1808,6 @@ fn front_sql_aggregates_with_distinct2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
@@ -1842,7 +1827,6 @@ fn front_sql_aggregates_with_distinct3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(distinct ("gr_expr_1"::decimal))::decimal -> "col_1")
         motion [policy: full]
@@ -1960,7 +1944,6 @@ fn front_sql_pg_style_params3() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(42)]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1")
         having ROW(sum(("count_1"::unsigned))::unsigned) > ROW(42::unsigned)
@@ -2202,7 +2185,6 @@ fn front_sql_union_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         projection ("t"."a"::unsigned -> "a")
@@ -2228,7 +2210,6 @@ fn front_sql_union_single_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         motion [policy: segment([ref("col_1")])]
@@ -2254,7 +2235,6 @@ fn front_sql_union_single_both() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         motion [policy: segment([ref("col_1")])]
@@ -2279,7 +2259,6 @@ fn front_sql_insert_single() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "t" on conflict: fail
         motion [policy: segment([value(NULL), ref("col_2")])]
@@ -2301,7 +2280,6 @@ fn front_sql_except_single_right() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
         projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
@@ -2323,7 +2301,6 @@ fn front_sql_except_single_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
         projection ("t"."b"::unsigned -> "b", "t"."a"::unsigned -> "a")
@@ -2347,7 +2324,6 @@ fn front_sql_except_single_left() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
         motion [policy: segment([ref("col_1"), ref("col_2")])]
@@ -2396,7 +2372,6 @@ fn front_sql_groupby_expression() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1")
@@ -2417,7 +2392,6 @@ fn front_sql_groupby_expression2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned + ROW(sum(("count_1"::unsigned))::unsigned) -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
@@ -2438,7 +2412,6 @@ fn front_sql_groupby_expression3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1", ("gr_expr_2"::unsigned * ROW(sum(("sum_1"::decimal))::decimal)) / ROW(sum(("count_2"::unsigned))::unsigned) -> "col_2")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "count_2"::unsigned -> "count_2", "sum_1"::decimal -> "sum_1")
@@ -2459,7 +2432,6 @@ fn front_sql_groupby_expression4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1", "gr_expr_2"::unsigned -> "a")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
@@ -2540,7 +2512,6 @@ fn front_sql_left_join_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::decimal -> "a", "t2"."b"::unsigned -> "b")
         left join on ROW("t1"."a"::decimal) = ROW("t2"."b"::unsigned)
@@ -2570,7 +2541,6 @@ fn front_sql_left_join_single_left2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     // full motion should be under outer child
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::decimal -> "a", "t2"."b"::unsigned -> "b")
@@ -2601,7 +2571,6 @@ fn front_sql_left_join_single_both() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     // full motion should be under outer child
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::decimal -> "a", "t2"."b"::unsigned -> "b")
@@ -2659,7 +2628,8 @@ fn front_sql_having1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
+    println!("Formatted arena: {}", plan.formatted_arena().unwrap());
+
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "a", sum(("sum_1"::decimal))::decimal -> "col_1")
         having (ROW("gr_expr_1"::unsigned) > ROW(1::unsigned)) and (ROW(sum(distinct ("gr_expr_2"::decimal))::decimal) > ROW(1::unsigned))
@@ -2682,7 +2652,6 @@ fn front_sql_having2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (ROW(sum(("sum_1"::decimal))::decimal) * ROW(count(distinct ("gr_expr_1"::unsigned))::unsigned) -> "col_1", sum(("sum_1"::decimal))::decimal -> "col_2")
         having (ROW(sum(distinct ("gr_expr_1"::decimal))::decimal) > ROW(1::unsigned)) and (ROW(sum(("sum_1"::decimal))::decimal) > ROW(1::unsigned))
@@ -2704,7 +2673,6 @@ fn front_sql_having3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
         having ROW(sum(("sum_1"::decimal))::decimal) > ROW(1::unsigned)
@@ -2742,7 +2710,6 @@ fn front_sql_having_with_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "sysFrom", sum(distinct ("gr_expr_2"::decimal))::decimal -> "sum", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "count")
         having ROW($0) > ROW(count(distinct ("gr_expr_2"::unsigned))::unsigned)
@@ -2790,7 +2757,6 @@ fn front_sql_having_with_sq_segment_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "sysFrom", "gr_expr_2"::unsigned -> "sys_op", sum(distinct ("gr_expr_3"::decimal))::decimal -> "sum", count(distinct ("gr_expr_3"::unsigned))::unsigned -> "count")
         having ROW("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) in ROW($0, $0)
@@ -2822,7 +2788,6 @@ fn front_sql_having_with_sq_segment_local_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "sysFrom", "gr_expr_2"::unsigned -> "sys_op", sum(distinct ("gr_expr_3"::decimal))::decimal -> "sum", count(distinct ("gr_expr_3"::unsigned))::unsigned -> "count")
         having ROW("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) in ROW($0, $0)
@@ -2848,7 +2813,6 @@ fn front_sql_unique_local_aggregates() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     // here we must compute only two aggregates at local stage: sum(a), count(a)
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2", ROW(sum(("sum_1"::decimal))::decimal) + ROW(sum(("count_2"::unsigned))::unsigned) -> "col_3")
@@ -2870,7 +2834,6 @@ fn front_sql_unique_local_groupings() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     // here we must compute only two groupby columns at local stage: a, b
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "col_2", count(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_3")
@@ -2929,7 +2892,6 @@ fn front_sql_select_distinct() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     // here we must compute only two groupby columns at local stage: a, b
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "a", "gr_expr_2"::unsigned -> "col_1")
@@ -2950,7 +2912,6 @@ fn front_sql_select_distinct_asterisk() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "a", "gr_expr_2"::unsigned -> "b", "gr_expr_3"::unsigned -> "c", "gr_expr_4"::unsigned -> "d")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned, "gr_expr_3"::unsigned, "gr_expr_4"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "gr_expr_3"::unsigned -> "gr_expr_3", "gr_expr_4"::unsigned -> "gr_expr_4")
@@ -2987,7 +2948,6 @@ fn front_sql_select_distinct_with_aggr() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1", "gr_expr_1"::unsigned -> "b")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "sum_1"::decimal -> "sum_1")
@@ -3007,7 +2967,6 @@ fn front_sql_select_distinct_with_aggr2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
         motion [policy: full]
@@ -3324,7 +3283,6 @@ fn front_sql_update6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     update "t3"
     "b" = "col_0"
@@ -3834,7 +3792,6 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
     let input = r#"SELECT COUNT(*) FROM "test_space" GROUP BY "id" + (VALUES (1))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
@@ -4007,9 +3964,6 @@ fn front_sql_whitespaces_are_not_ignored() {
 
     for query in correct_queries {
         let res = ParseTree::parse(Rule::Command, query);
-        if res.is_err() {
-            println!("Query [{query}] is invalid.")
-        }
         assert!(res.is_ok());
     }
 
@@ -4020,9 +3974,6 @@ fn front_sql_whitespaces_are_not_ignored() {
             fixed.push_str(&query[..wp_idx]);
             fixed.push_str(&query[wp_idx + 1..]);
             let res = ParseTree::parse(Rule::Command, &fixed);
-            if res.is_ok() {
-                println!("Query [{fixed}] is valid.")
-            }
             assert!(res.is_err())
         }
     }

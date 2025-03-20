@@ -1,6 +1,5 @@
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
-use pretty_assertions::assert_eq;
 
 #[test]
 fn update1() {

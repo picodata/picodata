@@ -1,5 +1,4 @@
 use crate::executor::{engine::mock::RouterRuntimeMock, Query};
-use pretty_assertions::assert_eq;
 
 #[test]
 fn select_values_rows() {

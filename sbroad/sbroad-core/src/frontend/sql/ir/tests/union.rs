@@ -1,5 +1,3 @@
-use pretty_assertions::assert_eq;
-
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 
 #[test]
