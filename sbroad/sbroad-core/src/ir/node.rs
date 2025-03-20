@@ -874,8 +874,6 @@ pub struct AlterTable {
     pub op: AlterTableOp,
 }
 
-const _: () = assert!(std::mem::size_of::<AlterTable>() < 136);
-
 impl From<AlterTable> for NodeAligned {
     fn from(value: AlterTable) -> Self {
         Self::Node136(Node136::AlterTable(value))
@@ -1369,6 +1367,8 @@ impl Node96 {
         }
     }
 }
+
+const _: () = assert!(std::mem::size_of::<Node136>() < 136);
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

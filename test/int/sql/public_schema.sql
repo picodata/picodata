@@ -62,7 +62,7 @@ DROP INDEX public.i0;
 -- SQL:
 ALTER TABLE public.t ADD COLUMN d INT;
 -- ERROR:
-ALTER TABLE is reserved for future use
+unsupported action/entity: Ddl::AlterTable
 
 -- TEST: dml-ok
 -- SQL:

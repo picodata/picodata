@@ -1012,7 +1012,7 @@ fn parse_alter_table(
                                 });
                             }
                         }
-                        _ => panic!("Unexpected alter table rule"),
+                        rule => unreachable!("pest should not allow rule: {rule:?}"),
                     }
                 }
                 op = Some(AlterTableOp::Add {
@@ -1038,7 +1038,7 @@ fn parse_alter_table(
                     Some("ALTER TABLE ADD is the only supported option".to_smolstr()),
                 ))
             }
-            rule => panic!("unexpected rule: {rule:?}"),
+            rule => unreachable!("pest should not allow rule: {rule:?}"),
         }
     }
     Ok(AlterTable {

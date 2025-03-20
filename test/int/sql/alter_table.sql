@@ -81,15 +81,23 @@ sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: add_drop_single
 -- SQL:
+ALTER TABLE t ADD COLUMN IF NOT EXISTS k INT WAIT APPLIED GLOBALLY;
+ALTER TABLE t DROP COLUMN k WAIT APPLIED GLOBALLY;
+ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 1000) ;
+ALTER TABLE t DROP COLUMN i OPTION (timeout = 1000) ;
 ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT;
 ALTER TABLE t DROP COLUMN IF EXISTS f;
 ALTER TABLE t ADD IF NOT EXISTS g INT;
 ALTER TABLE t DROP IF EXISTS g;
 ALTER TABLE t ADD COLUMN h INT;
 ALTER TABLE t DROP COLUMN h;
-ALTER TABLE t ADD i INT;
-ALTER TABLE t DROP i;
+ALTER TABLE t ADD j INT;
+ALTER TABLE t DROP j;
 -- ERROR:
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+unsupported action/entity: Ddl::AlterTable
+sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 unsupported action/entity: Ddl::AlterTable
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 unsupported action/entity: Ddl::AlterTable
@@ -118,3 +126,9 @@ unsupported action/entity: Ddl::AlterTable
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 unsupported action/entity: Ddl::AlterTable
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+
+-- TEST: add_timeout_single
+-- SQL:
+ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 0) ;
+-- ERROR:
+timeout

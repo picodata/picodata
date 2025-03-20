@@ -137,7 +137,6 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             // - "address TEXT": add a single column with only a type
             // - "age UNSIGNED NOT NULL": add a single column with both type and nullability
             // - "address TEXT, age UNSIGNED NOT NULL": chaining for a multiple columns
-            // TODO: Add wait applied and timeout option
             AlterTableColumnAdd = { ^"add" ~ W ~ (^"column" ~ W)? ~ (IfNotExists ~ W)? ~ AlterTableColumnAddParams }
                 AlterTableColumnAddParam = { ColumnNameIdentifier ~ W ~ ColumnDefType ~ (W ~ ColumnDefIsNull)? }
                 AlterTableColumnAddParams = { AlterTableColumnAddParam ~ (WO ~ "," ~ WO ~ AlterTableColumnAddParam)* }

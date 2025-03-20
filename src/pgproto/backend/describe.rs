@@ -47,6 +47,7 @@ pub enum CommandTag {
     AddTrier = 37,
     AlterRole = 0,
     AlterSystem = 22,
+    AlterTable = 41,
     Begin = 52,
     CallProcedure = 16,
     CreateProcedure = 14,
@@ -84,7 +85,6 @@ pub enum CommandTag {
     SetParam = 20,
     SetTransaction = 21,
     TruncateTable = 40,
-    AlterTable = 41,
     Update = 13,
 }
 
