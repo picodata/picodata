@@ -45,4 +45,6 @@ crate::define_rpc_request! {
     }
 
     pub struct Response {}
+
+    service_label: "proc_before_online"
 }

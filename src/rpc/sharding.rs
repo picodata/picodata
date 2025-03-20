@@ -123,6 +123,8 @@ crate::define_rpc_request! {
     ///
     /// [`sharding::Request`]: Request
     pub struct Response {}
+
+    service_label: "proc_sharding"
 }
 
 pub mod bootstrap {
@@ -196,6 +198,8 @@ pub mod bootstrap {
         ///
         /// [`sharding::bootstrap::Request`]: Request
         pub struct Response {}
+
+        service_label: "proc_sharding_bootstrap"
     }
 }
 
@@ -266,4 +270,6 @@ crate::define_rpc_request! {
 
     /// Response to [`WaitBucketCountRequest`].
     pub struct WaitBucketCountResponse {}
+
+    service_label: "proc_wait_bucket_count"
 }

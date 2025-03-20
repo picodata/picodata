@@ -41,4 +41,6 @@ crate::define_rpc_request! {
     }
 
     pub struct Response {}
+
+    service_label: "proc_enable_service"
 }

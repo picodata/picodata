@@ -29,4 +29,6 @@ crate::define_rpc_request! {
     pub struct Response {
         pub snapshot_data: SnapshotData,
     }
+
+    service_label: "proc_raft_snapshot_next_chunk"
 }

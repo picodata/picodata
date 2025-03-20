@@ -66,6 +66,8 @@ crate::define_rpc_request! {
     }
 
     pub struct Response {}
+
+    service_label: "proc_update_instance"
 }
 
 impl Request {

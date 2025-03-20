@@ -202,11 +202,34 @@ macro_rules! define_rpc_request {
         pub $res_record:tt  $response:ident
         $({ $($res_named_fields:tt)* })?
         $(( $($res_unnamed_fields:tt)* );)?
+
+        service_label: $service_label:expr
     ) => {
         $(#[$proc_meta])*
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
-            $($proc_body)*
+            let start = tarantool::time::Instant::now_fiber();
+
+            let service_label = $service_label;
+            let result: ::std::result::Result<_, $crate::traft::error::Error> = { $($proc_body)* };
+
+            let duration = tarantool::time::Instant::now_fiber().duration_since(start).as_secs_f64();
+            $crate::picodata_metrics::rpc_request_duration_seconds().observe(duration);
+
+            match &result {
+                Ok(_) => {
+                    $crate::picodata_metrics::rpc_request_total()
+                        .with_label_values(&[service_label])
+                        .inc();
+                },
+                Err(_) => {
+                    $crate::picodata_metrics::rpc_request_errors_total()
+                        .with_label_values(&[service_label])
+                        .inc();
+                },
+            }
+
+            result
         }
 
         impl ::tarantool::tuple::Encode for $request {}

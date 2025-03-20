@@ -485,6 +485,8 @@ crate::define_rpc_request! {
         pub index: RaftIndex,
         pub term: RaftTerm,
     }
+
+    service_label: "proc_cas"
 }
 
 impl Request {

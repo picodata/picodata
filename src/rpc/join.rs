@@ -67,6 +67,8 @@ crate::define_rpc_request! {
         pub shredding: bool,
         pub cluster_uuid: String,
     }
+
+    service_label: "proc_raft_join"
 }
 
 // Compares the versions of instances before joining the cluster.

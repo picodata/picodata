@@ -43,4 +43,6 @@ crate::define_rpc_request! {
         /// Plugin may be successfully loaded.
         Ok,
     }
+
+    service_label: "proc_load_plugin_dry_run"
 }
