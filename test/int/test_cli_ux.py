@@ -793,7 +793,7 @@ def test_picodata_version(cluster: Cluster):
     lines = iter(stdout.splitlines())
     assert_starts_with(next(lines), b"picodata ")
     assert_starts_with(next(lines), b"tarantool (fork) version")
-    assert_starts_with(next(lines), b"target: Linux")
+    assert_starts_with(next(lines), b"Linux")
 
 
 def test_admin_cli_exit_code(cluster: Cluster):
