@@ -293,7 +293,7 @@ fn resolve_rpc_target(
     if all_instances_with_service.is_empty() {
         // TODO: put service definitions into TopologyCache as well
         if node.storage.services.get(plugin, service)?.is_none() {
-            return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
+            return Err(BoxError::new(ErrorCode::NoSuchService, format!("service '{plugin}.{service}' not found")).into());
         } else {
             return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
         }

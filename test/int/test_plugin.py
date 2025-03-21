@@ -2128,18 +2128,30 @@ def test_plugin_rpc_sdk_basic_errors(cluster: Cluster):
     with pytest.raises(TarantoolError, match="context must contain a request_id"):
         i1.call(".proc_rpc_dispatch", "/ping", b"", {})
 
-    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+    with pytest.raises(TarantoolError) as e:
         i1.call(".proc_rpc_dispatch", "/unknown-route", b"", make_context())
+    assert e.value.args[:2] == (
+        "ER_NO_SUCH_FUNCTION",
+        f"no RPC endpoint `{plugin_name}.{service_name}/unknown-route` is registered",
+    )
 
     # Note: plugin.service is a part of the route, so if service or plugin name
     # is incorrect, the response is there's no handler
     context = make_context({PLUGIN_NAME: "NO_SUCH_PLUGIN"})
-    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+    with pytest.raises(TarantoolError) as e:
         i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+    assert e.value.args[:2] == (
+        "ER_NO_SUCH_FUNCTION",
+        f"no RPC endpoint `NO_SUCH_PLUGIN.{service_name}/ping` is registered",
+    )
 
     context = make_context({SERVICE_NAME: "NO_SUCH_SERVICE"})
-    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+    with pytest.raises(TarantoolError) as e:
         i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+    assert e.value.args[:2] == (
+        "ER_NO_SUCH_FUNCTION",
+        f"no RPC endpoint `{plugin_name}.NO_SUCH_SERVICE/ping` is registered",
+    )
 
     context = make_context({PLUGIN_VERSION: _PLUGIN_VERSION_2})
     with pytest.raises(
@@ -2450,6 +2462,18 @@ cluster:
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
 
+    # Check requesting RPC to unknown plugin (other code path)
+    with pytest.raises(TarantoolError) as e:
+        context = make_context()
+        input = dict(
+            path="/ping",
+            replicaset_name="r1",
+            input=msgpack.dumps([]),
+            service_info=("NO_SUCH_PLUGIN", service_name, _PLUGIN_VERSION_1),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (ErrorCode.NoSuchService, f"service 'NO_SUCH_PLUGIN:0.1.0.{service_name}' not found")
+
     # Check requesting RPC to unknown service
     with pytest.raises(
         TarantoolError,
@@ -2463,6 +2487,18 @@ cluster:
             service_info=(plugin_name, "NO_SUCH_SERVICE", _PLUGIN_VERSION_1),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown service (other code path)
+    with pytest.raises(TarantoolError) as e:
+        context = make_context()
+        input = dict(
+            path="/ping",
+            replicaset_name="r1",
+            input=msgpack.dumps([]),
+            service_info=(plugin_name, "NO_SUCH_SERVICE", _PLUGIN_VERSION_1),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (ErrorCode.NoSuchService, f"service '{plugin_name}:0.1.0.NO_SUCH_SERVICE' not found")
 
     # Check requesting RPC to unknown instance
     with pytest.raises(TarantoolError) as e:

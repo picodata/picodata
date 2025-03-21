@@ -583,6 +583,11 @@ class Connection(tarantool.Connection):  # type: ignore
 # For example, `auth attempts limit exceeded` can't
 # be cause of instance crash.
 def can_cause_fail(error: Exception):
+    if isinstance(error, TarantoolError):
+        # FIXME after some tarantool errors may still there may be a crash, we
+        # should gather some statistics and update this with more conditions
+        return False
+
     if not isinstance(error, DatabaseError):
         return True
 
