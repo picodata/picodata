@@ -9,6 +9,60 @@ static RPC_REQUEST_TOTAL: OnceLock<CounterVec> = OnceLock::new();
 static RPC_REQUEST_ERRORS_TOTAL: OnceLock<CounterVec> = OnceLock::new();
 static RPC_REQUEST_DURATION_SECONDS: OnceLock<Histogram> = OnceLock::new();
 
+static GLOBAL_TABLES_OPS_TOTAL: OnceLock<CounterVec> = OnceLock::new();
+static GLOBAL_TABLES_OPS_ERRORS_TOTAL: OnceLock<CounterVec> = OnceLock::new();
+static GLOBAL_TABLES_WRITE_LATENCY_SECONDS: OnceLock<Histogram> = OnceLock::new();
+static GLOBAL_TABLES_RECORDS_TOTAL: OnceLock<CounterVec> = OnceLock::new();
+
+pub fn global_tables_ops_total() -> &'static CounterVec {
+    GLOBAL_TABLES_OPS_TOTAL.get_or_init(|| {
+        CounterVec::new(
+            Opts::new(
+                "global_tables_ops_total",
+                "Total number of CAS operations on global tables",
+            ),
+            &["op_type", "table"],
+        )
+        .expect("Failed to create global_tables_ops_total")
+    })
+}
+
+pub fn global_tables_ops_errors_total() -> &'static CounterVec {
+    GLOBAL_TABLES_OPS_ERRORS_TOTAL.get_or_init(|| {
+        CounterVec::new(
+            Opts::new(
+                "global_tables_ops_errors_total",
+                "Total number of CAS operations on global tables that resulted in an error",
+            ),
+            &["op_type", "table"],
+        )
+        .expect("Failed to create global_tables_ops_errors_total")
+    })
+}
+
+pub fn global_tables_write_latency_seconds() -> &'static Histogram {
+    GLOBAL_TABLES_WRITE_LATENCY_SECONDS.get_or_init(|| {
+        Histogram::with_opts(HistogramOpts::new(
+            "global_tables_write_latency_seconds",
+            "Histogram of CAS operation latencies on global tables (in seconds)",
+        ))
+        .expect("Failed to create global_tables_write_latency_seconds")
+    })
+}
+
+pub fn global_tables_records_total() -> &'static CounterVec {
+    GLOBAL_TABLES_RECORDS_TOTAL.get_or_init(|| {
+        CounterVec::new(
+            Opts::new(
+                "global_tables_records_total",
+                "Total number of records written via CAS operations on global tables",
+            ),
+            &["op_type", "table"],
+        )
+        .expect("Failed to create global_tables_records_total")
+    })
+}
+
 pub fn governor_change_counter() -> &'static IntCounter {
     GOVERNOR_CHANGE_COUNTER.get_or_init(|| {
         IntCounter::with_opts(Opts::new(
@@ -104,6 +158,18 @@ pub fn register_metrics(registry: &Registry) {
     registry
         .register(Box::new(rpc_request_duration_seconds().clone()))
         .expect("Failed to register rpc_request_duration_seconds histogram");
+    registry
+        .register(Box::new(global_tables_ops_total().clone()))
+        .expect("Failed to register global_tables_ops_total");
+    registry
+        .register(Box::new(global_tables_ops_errors_total().clone()))
+        .expect("Failed to register global_tables_ops_errors_total");
+    registry
+        .register(Box::new(global_tables_write_latency_seconds().clone()))
+        .expect("Failed to register global_tables_write_latency_seconds");
+    registry
+        .register(Box::new(global_tables_records_total().clone()))
+        .expect("Failed to register global_tables_records_total");
 }
 
 pub fn collect_metrics() -> String {

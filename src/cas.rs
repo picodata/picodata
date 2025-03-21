@@ -1,6 +1,7 @@
 use crate::access_control;
 use crate::config;
 use crate::error_code::ErrorCode;
+use crate::picodata_metrics;
 use crate::proc_name;
 use crate::static_ref;
 use crate::storage;
@@ -155,6 +156,30 @@ pub fn compare_and_swap(
     force_local: bool,
     deadline: Instant,
 ) -> traft::Result<CasResult> {
+    let start = Instant::now_fiber();
+    let (op_type, table_label) = match &request.op {
+        Op::Dml(dml) => {
+            let op_type = match dml {
+                Dml::Insert { .. } => "insert",
+                Dml::Replace { .. } => "replace",
+                Dml::Update { .. } => "update",
+                Dml::Delete { .. } => "delete",
+            };
+            (op_type, format!("{}", dml.space()))
+        }
+        Op::BatchDml { ops } => {
+            let op_type = "batch_dml";
+            let table_label = if let Some(first) = ops.first() {
+                format!("{}", first.space())
+            } else {
+                "unknown".into()
+            };
+            (op_type, table_label)
+        }
+        Op::Acl(_) => ("acl", "system".into()),
+        _ => ("other", "global".into()),
+    };
+
     let node = node::global()?;
 
     if let Op::BatchDml { ops } = &request.op {
@@ -164,6 +189,9 @@ pub fn compare_and_swap(
     }
 
     let Some(leader_id) = node.status().leader_id else {
+        picodata_metrics::global_tables_ops_errors_total()
+            .with_label_values(&[op_type, &table_label])
+            .inc();
         return Err(TraftError::LeaderUnknown);
     };
 
@@ -175,6 +203,9 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_local(request);
     } else if force_local {
+        picodata_metrics::global_tables_ops_errors_total()
+            .with_label_values(&[op_type, &table_label])
+            .inc();
         return Err(TraftError::NotALeader);
     } else {
         let future = async {
@@ -190,6 +221,10 @@ pub fn compare_and_swap(
 
     let response = crate::unwrap_ok_or!(res,
         Err(e) => {
+            picodata_metrics::global_tables_ops_errors_total()
+                .with_label_values(&[op_type, &table_label])
+                .inc();
+
             if e.is_retriable() {
                 return Ok(CasResult::RetriableError(e));
             } else {
@@ -203,12 +238,37 @@ pub fn compare_and_swap(
 
         let actual_term = raft::Storage::term(&node.raft_storage, response.index)?;
         if response.term != actual_term {
+            picodata_metrics::global_tables_ops_errors_total()
+                .with_label_values(&[op_type, &table_label])
+                .inc();
+
             // Leader has changed and the entry got rolled back, ok to retry.
             return Ok(CasResult::RetriableError(TraftError::TermMismatch {
                 requested: response.term,
                 current: actual_term,
             }));
         }
+    }
+
+    let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
+    picodata_metrics::global_tables_write_latency_seconds().observe(duration);
+
+    picodata_metrics::global_tables_ops_total()
+        .with_label_values(&[op_type, &table_label])
+        .inc();
+
+    match &request.op {
+        Op::BatchDml { ops } => {
+            picodata_metrics::global_tables_records_total()
+                .with_label_values(&[op_type, &table_label])
+                .inc_by(ops.len() as f64);
+        }
+        Op::Dml(_) => {
+            picodata_metrics::global_tables_records_total()
+                .with_label_values(&[op_type, &table_label])
+                .inc();
+        }
+        _ => {}
     }
 
     return Ok(CasResult::Ok((response.index, response.term)));
