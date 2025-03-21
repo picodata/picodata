@@ -5,6 +5,7 @@ import os
 import re
 import filecmp
 import shutil
+import stat
 import sys
 import time
 import threading
@@ -164,7 +165,7 @@ def pytest_addoption(parser: pytest.Parser):
         "--base-port",
         type=int,
         action="store",
-        default=3300,
+        default=3303,  # 3301 and 3302 are needed for backwards compat tests
         help="Base socket port which determines the range of ports used for picodata instances spawned for testing.",  # noqa: E501
     )
 
@@ -2538,6 +2539,20 @@ def cluster(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor) ->
     cluster.kill()
 
 
+@pytest.fixture(scope="class")
+def compat_cluster(binary_path_fixt, class_tmp_dir, cluster_names) -> Generator[Cluster, None, None]:
+    """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
+    cluster = Cluster(
+        binary_path=binary_path_fixt,
+        id="demo",  # should be in sync with snapshot generation script
+        data_dir=class_tmp_dir,
+        base_host=BASE_HOST,  # should be in sync with snapshot generation script
+        port_distributor=PortDistributor(3301, 3303),  # should be in sync with snapshot generation script
+    )
+    yield cluster
+    cluster.kill()
+
+
 @pytest.fixture
 def unstarted_instance(
     cluster: Cluster, port_distributor: PortDistributor, pytestconfig
@@ -2787,7 +2802,7 @@ def postgres_with_mtls(cluster: Cluster, pg_port: int):
     return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
 
 
-def copy_dir(src: Path, dst: Path):
+def copy_dir(src: Path, dst: Path, copy_socks: bool = False):
     if os.path.exists(dst):
         if any(os.scandir(dst)):
             raise ValueError(f"{dst} is not empty, exiting...")
@@ -2797,6 +2812,9 @@ def copy_dir(src: Path, dst: Path):
     for item in os.listdir(src):
         source_item = os.path.join(src, item)
         dest_item = os.path.join(dst, item)
+
+        if stat.S_ISSOCK(os.stat(source_item).st_mode) and not copy_socks:
+            continue
 
         if os.path.isdir(source_item):
             shutil.copytree(source_item, dest_item)

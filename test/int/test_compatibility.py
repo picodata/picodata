@@ -1,65 +1,53 @@
 import pytest
 import os
-import shutil
-
 
 from conftest import (
     Cluster,
     Compatibility,
     ProcessDead,
-    get_tt_snapshot_by_path,
     log_crawler,
+    copy_dir,
 )
+from pathlib import Path
 
 
-def test_upgrade_major(cluster: Cluster):
-    inst = cluster.add_instance(wait_online=False)
-    os.makedirs(inst.instance_dir, exist_ok=True)
+@pytest.mark.xdist_group(name="compat")
+def test_upgrade_major(compat_cluster: Cluster):
+    inst = compat_cluster.add_instance(wait_online=False)
+    os.makedirs(inst.instance_dir)
+    compat = Compatibility()
 
+    if compat.current_tag.major == 25:
+        pytest.skip("same major we started backwards compat guarantees")
+
+    msg = "snapshot of the previous major was not found"
+    hint = "try to generate snapshot using makefile or justfile"
+    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
+
+    backups = compat.previous_major_tag_path()
+    assert backups, error
+
+    into = Path(inst.instance_dir)
+    copy_dir(backups, into)
+    inst.start()
+    inst.wait_online()
+
+
+@pytest.mark.xdist_group(name="compat")
+def test_upgrade_minor(compat_cluster: Cluster):
+    inst = compat_cluster.add_instance(wait_online=False)
+    os.makedirs(inst.instance_dir)
     compat = Compatibility()
 
     msg = "snapshot of the previous major was not found"
     hint = "try to generate snapshot using makefile or justfile"
     error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
 
-    result = compat.previous_major_tag_with_path()
-    match result:
-        case str(_):
-            raise AssertionError(error)
-        case None:
-            print(
-                "not possible to check previous non-supporting backwards compatibility major versions, skipping test..."
-            )
-            return
-    _, path = result
-    snapshot = get_tt_snapshot_by_path(path)
-    assert snapshot, error
+    backups = compat.previous_minor_tag_path()
+    assert backups, error
 
-    shutil.copy(snapshot, f"{inst.instance_dir}/")
-    inst.start()
-    inst.wait_online()
-
-
-def test_upgrade_minor(cluster: Cluster):
-    inst = cluster.add_instance(wait_online=False)
-    os.makedirs(inst.instance_dir, exist_ok=True)
-
-    compat = Compatibility()
-
-    msg = "snapshot of the previous minor was not found"
-    hint = "try to generate snapshot using makefile or justfile"
-    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
-
-    result = compat.previous_minor_tag_with_path()
-    if result is None:
-        print(f"{msg}, skipping test...")
-        return
-
-    _, path = result
-    snapshot = get_tt_snapshot_by_path(path)
-    assert snapshot, error
-
-    shutil.copy(snapshot, f"{inst.instance_dir}/")
+    into = Path(inst.instance_dir)
+    copy_dir(backups, into)
     inst.start()
     inst.wait_online()
 

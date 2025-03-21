@@ -26,26 +26,22 @@ if __name__ == "__main__":
             binary_path=conftest.binary_path(),
             id="demo",  # default cluster name
             data_dir=str(tmpdir),
-            base_host="127.0.0.1",  # default advertise
+            base_host=conftest.BASE_HOST,
             port_distributor=port_distributor,
         )
         inst = cluster.add_instance()
         inst.fill_with_data()
 
-        compat = Compatibility()
-        version = compat.current_tag
-
-        snapshot = inst.latest_snapshot()
-        if not snapshot:
-            raise ValueError(f'should have found the snapshot at "{inst.instance_dir}"')
-
         cluster.terminate()
         print("A short wait to ensure the instance had finished successfully...")
         time.sleep(2)
 
-        copy_path = compat.version_to_dir_path(version)
-        os.makedirs(copy_path, exist_ok=True)
-        shutil.copy2(snapshot, copy_path)
-        print(f'Successfully generated snapshot of version {version}, copied into "{copy_path}".')
+        compat = Compatibility()
+        version = compat.current_tag
+
+        src_dir = Path(inst.instance_dir)
+        dest_dir = compat.version_to_dir_path(version)
+        conftest.copy_dir(src_dir, dest_dir)
+        print(f'Success! Auto-generated snapshot of {version} copied into "{dest_dir}".')
     finally:
         shutil.rmtree(tmpdir)
