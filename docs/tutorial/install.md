@@ -25,7 +25,7 @@ IMPORTANT
 https://git.picodata.io/core/picodata/-/blob/master/Cargo.toml#L6
 -->
 
-- [Rust и Cargo](http://www.rustup.rs) 1.76 или новее
+- [Rust и Cargo](http://www.rustup.rs) 1.85 или новее
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
