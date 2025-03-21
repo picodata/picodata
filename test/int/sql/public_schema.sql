@@ -58,15 +58,13 @@ rule parsing error
 -- SQL:
 DROP INDEX public.i0;
 
--- TEST: alter-table-unsupported-error
+-- TEST: alter-table
 -- SQL:
-ALTER TABLE public.t ADD COLUMN d INT;
--- ERROR:
-unsupported action/entity: Ddl::AlterTable
+ALTER TABLE public.t ADD COLUMN d INT null;
 
 -- TEST: dml-ok
 -- SQL:
-INSERT INTO public.t VALUES(1,'2','3');
+INSERT INTO public.t VALUES(1,'2','3', null);
 UPDATE public.t SET b='kek' WHERE a < 5;
 DELETE FROM public.t WHERE a < 3;
 TRUNCATE TABLE public.t;

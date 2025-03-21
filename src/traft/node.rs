@@ -1094,6 +1094,28 @@ impl NodeImpl {
                         );
                     }
 
+                    Ddl::ChangeFormat {
+                        table_id,
+                        initiator_id,
+                        ..
+                    } => {
+                        ddl_meta_space_update_operable(&self.storage, table_id, true)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator_id).expect("user must exist");
+
+                        let space_raw = self.storage.tables.get(table_id);
+                        let space = space_raw.ok().flatten().expect("failed to get space");
+                        let name = &space.name;
+                        crate::audit!(
+                            message: "changed table format for `{name}`",
+                            title: "change_table_format",
+                            severity: Medium,
+                            name: &name,
+                            initiator: initiator_def.name,
+                        );
+                    }
+
                     Ddl::CreateProcedure {
                         id, name, owner, ..
                     } => {
@@ -1248,7 +1270,18 @@ impl NodeImpl {
                     Ddl::TruncateTable { .. } => {
                         unreachable!("TRUNCATE execution should not reach Op::DdlAbort handling")
                     }
-
+                    Ddl::ChangeFormat {
+                        table_id,
+                        ref old_format,
+                        ..
+                    } => {
+                        ddl_meta_space_update_operable(&self.storage, table_id, true)
+                            .expect("storage shouldn't fail");
+                        self.storage
+                            .tables
+                            .update_format(table_id, old_format)
+                            .expect("storage shouldn't fail");
+                    }
                     Ddl::CreateProcedure { id, .. } => {
                         self.storage
                             .privileges
@@ -1719,7 +1752,6 @@ impl NodeImpl {
                     tlog!(Warning, "failed creating table '{}': {e}", table_def.name);
                 }
             }
-
             Ddl::CreateIndex {
                 space_id,
                 index_id,
@@ -1744,17 +1776,14 @@ impl NodeImpl {
                     .insert(&index_def)
                     .expect("storage shouldn't fail");
             }
-
             Ddl::DropTable { id, .. } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
                     .expect("storage shouldn't fail");
             }
-
             Ddl::TruncateTable { id, .. } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
                     .expect("storage shouldn't fail");
             }
-
             Ddl::DropIndex {
                 index_id, space_id, ..
             } => {
@@ -1763,7 +1792,6 @@ impl NodeImpl {
                     .update_operable(space_id, index_id, false)
                     .expect("storage shouldn't fail");
             }
-
             Ddl::CreateProcedure {
                 id,
                 name,
@@ -1810,6 +1838,20 @@ impl NodeImpl {
                 self.storage
                     .routines
                     .update_operable(routine_id, false)
+                    .expect("storage shouldn't fail");
+            }
+            Ddl::ChangeFormat {
+                table_id,
+                new_format,
+                ..
+            } => {
+                self.storage
+                    .tables
+                    .update_format(table_id, &new_format)
+                    .expect("storage shouldn't fail");
+                self.storage
+                    .tables
+                    .update_operable(table_id, false)
                     .expect("storage shouldn't fail");
             }
         }

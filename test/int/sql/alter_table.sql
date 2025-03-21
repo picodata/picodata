@@ -89,22 +89,14 @@ ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT;
 ALTER TABLE t DROP COLUMN IF EXISTS f;
 ALTER TABLE t ADD IF NOT EXISTS g INT;
 ALTER TABLE t DROP IF EXISTS g;
-ALTER TABLE t ADD COLUMN h INT;
-ALTER TABLE t DROP COLUMN h;
-ALTER TABLE t ADD j INT;
-ALTER TABLE t DROP j;
 -- ERROR:
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: add_drop_batch
@@ -113,18 +105,10 @@ ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT, g INT, h INT, i INT;
 ALTER TABLE t DROP COLUMN IF EXISTS f, g, h, i;
 ALTER TABLE t ADD IF NOT EXISTS f INT, g INT, h INT, i INT;
 ALTER TABLE t DROP IF EXISTS f, g, h, i;
-ALTER TABLE t ADD COLUMN f INT, g INT, h INT, i INT;
-ALTER TABLE t DROP COLUMN f, g, h, i;
-ALTER TABLE t ADD f INT, g INT, h INT, i INT;
-ALTER TABLE t DROP f, g, h, i;
 -- ERROR:
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: Ddl::AlterTable
+unsupported action/entity: IF NOT EXISTS
 sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
 -- TEST: add_timeout_single
@@ -132,3 +116,10 @@ sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 0) ;
 -- ERROR:
 timeout
+
+-- TEST: add_drop_success
+-- SQL:
+ALTER TABLE t ADD COLUMN f INT, g INT, h INT;
+ALTER TABLE t ADD i INT, j INT, k INT;
+ALTER TABLE t ADD COLUMN l INT;
+ALTER TABLE t ADD m INT;

@@ -532,6 +532,19 @@ impl Tables {
     }
 
     #[inline]
+    pub fn update_format(
+        &self,
+        id: SpaceId,
+        format: &[tarantool::space::Field],
+    ) -> tarantool::Result<()> {
+        // We can't use UpdateOps as we use custom encoding
+        let mut table_def = self.get(id)?.expect("should exist");
+        table_def.format = format.to_vec();
+        self.put(&table_def)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn delete(&self, id: SpaceId) -> tarantool::Result<Option<Tuple>> {
         self.space.delete(&[id])
     }

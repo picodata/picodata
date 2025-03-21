@@ -293,6 +293,19 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
                 as_user,
             )
         }
+        op::Ddl::ChangeFormat { table_id, .. } => {
+            let space = space_by_id(*table_id)?;
+            let meta = space.meta()?;
+
+            box_access_check_ddl_as_user(
+                &space.meta()?.name,
+                *table_id,
+                meta.user_id,
+                TntSchemaObjectType::Space,
+                PrivType::Write,
+                as_user,
+            )
+        }
         op::Ddl::CreateIndex { space_id, .. } => {
             let space = space_by_id(*space_id)?;
             let meta = space.meta()?;

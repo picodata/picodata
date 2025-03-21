@@ -132,6 +132,12 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
+                ddl: Ddl::ChangeFormat { table_id, .. },
+            } => {
+                write!(f, "DdlPrepare({schema_version}, ChangeFormat({table_id}))")
+            }
+            Self::DdlPrepare {
+                schema_version,
                 ddl: Ddl::CreateIndex {
                     space_id, index_id, ..
                 },
@@ -741,6 +747,12 @@ pub enum Ddl {
         initiator_id: UserId,
         owner_id: UserId,
         schema_version: u64,
+    },
+    ChangeFormat {
+        table_id: SpaceId,
+        new_format: Vec<Field>,
+        old_format: Vec<Field>,
+        initiator_id: UserId,
     },
 }
 

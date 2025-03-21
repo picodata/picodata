@@ -1,4 +1,5 @@
 use crate::op::Ddl;
+use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::schema::ddl_create_function_on_master;
 use crate::storage::schema::ddl_create_index_on_master;
 use crate::storage::schema::ddl_create_space_on_master;
@@ -200,6 +201,16 @@ pub fn apply_schema_change(
                 if let Some(e) = abort_reason {
                     return Err(Error::Aborted(e.into()));
                 }
+            }
+        }
+
+        Ddl::ChangeFormat {
+            table_id,
+            ref new_format,
+            ..
+        } => {
+            if let Err(e) = ddl_change_format_on_master(table_id, &new_format) {
+                return Err(Error::Aborted(e.into()));
             }
         }
 

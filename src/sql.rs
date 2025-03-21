@@ -14,7 +14,7 @@ use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::storage::{space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
-use crate::traft::error::{self, Error, Unsupported};
+use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -38,10 +38,10 @@ use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::node::{
-    AlterSystem, AlterUser, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser,
-    Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
-    Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
-    Update,
+    AlterSystem, AlterTableOp, AlterUser, Constant, CreateIndex, CreateProc, CreateRole,
+    CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole, DropTable, DropUser,
+    GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege,
+    ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
 use tarantool::decimal::Decimal;
@@ -1535,6 +1535,50 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
+        DdlOwned::AlterTable(alter_table) => {
+            let AlterTableOp::Add {
+                ref columns,
+                ref if_not_exists,
+            } = alter_table.op;
+            if *if_not_exists {
+                // due to unclear semantics of IF NOT EXISTS
+                return Err(Error::Unsupported(error::Unsupported::new(
+                    "IF NOT EXISTS".into(),
+                    None,
+                )));
+            }
+            let Some(table) = &storage.tables.by_name(&alter_table.name)? else {
+                return Err(error::DoesNotExist::Table(alter_table.name.clone()).into());
+            };
+
+            for column in columns {
+                for table_field in &table.format {
+                    if table_field.name == column.name {
+                        return Err(error::AlreadyExists::Column(column.name.clone()).into());
+                    }
+                }
+            }
+            let old_format = table.format.clone();
+            let new_format = old_format
+                .iter()
+                .cloned()
+                .chain(columns.iter().map(|f| tarantool::space::Field {
+                    name: f.name.to_string(),
+                    field_type: FieldType::from(&f.data_type),
+                    is_nullable: f.is_nullable,
+                }))
+                .collect();
+            let ddl = OpDdl::ChangeFormat {
+                table_id: table.id,
+                old_format,
+                new_format,
+                initiator_id: current_user,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
         DdlOwned::SetParam(SetParam { param_value, .. }) => {
             tlog!(
                 Warning,
@@ -1554,12 +1598,6 @@ fn ddl_ir_node_to_op_or_result(
             return Err(Error::Other(
                 "unreachable CreateSchema/DropSchema".to_string().into(),
             ));
-        }
-        DdlOwned::AlterTable(_) => {
-            return Err(Error::Unsupported(Unsupported::new(
-                "Ddl::AlterTable".into(),
-                None,
-            )));
         }
     }
 }

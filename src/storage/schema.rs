@@ -1,14 +1,14 @@
-use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
+use crate::schema::{fields_to_format, Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::storage::Catalog;
 use crate::storage::RoutineId;
 use crate::storage::{set_local_schema_version, space_by_id_unchecked};
-use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
 use crate::traft::Result;
+use crate::{column_name, traft};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -24,7 +24,7 @@ use tarantool::schema::index::{create_index, drop_index};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{Space, SpaceId, SystemSpace};
-use tarantool::tlua::{self, LuaError};
+use tarantool::tlua::{self, AnyLuaValue, LuaError};
 use tarantool::tuple::Encode;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,6 +126,15 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
 
         Ddl::DropIndex { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+        }
+
+        Ddl::ChangeFormat {
+            table_id,
+            ref old_format,
+            ..
+        } => {
+            ddl_change_format_on_master(table_id, old_format)?;
+            set_local_schema_version(version)?;
         }
     }
 
@@ -470,6 +479,25 @@ pub fn ddl_truncate_space_on_master(space_id: SpaceId) -> traft::Result<Option<T
         Ok(())
     })();
     Ok(res.err())
+}
+
+/// Change tarantool space format.
+///
+/// Return values:
+/// * `Ok(())` in case of success.
+/// * `Err(e)` in case of error which should result in a ddl abort.
+pub fn ddl_change_format_on_master(
+    space_id: SpaceId,
+    format: &[tarantool::space::Field],
+) -> Result<(), TntError> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+    let format = fields_to_format(format);
+    let sys_space = Space::from(SystemSpace::Space);
+    let mut ops = UpdateOps::with_capacity(1);
+    ops.assign(column_name!(tarantool::space::Metadata, format), format)?;
+    sys_space.update(&[space_id], ops)?;
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

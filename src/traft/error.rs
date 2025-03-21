@@ -37,6 +37,8 @@ impl Display for Unsupported {
 pub enum AlreadyExists {
     #[error("table {0} already exists")]
     Table(SmolStr),
+    #[error("column {0} already exists")]
+    Column(SmolStr),
     #[error("index {0} already exists")]
     Index(SmolStr),
     #[error("procedure {0} already exists")]
