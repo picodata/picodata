@@ -35,7 +35,6 @@ pub fn version_for_help() -> &'static str {
         result.push_str(crate::tarantool::version());
         result.push('\n');
 
-        result.push_str("target: ");
         result.push_str(env!("OS_VERSION"));
         result
     })
