@@ -132,7 +132,10 @@ to 2 and 3.
 
 ### Fixes
 
+- Changed `picodata status` output format to more minimalistic and unix-stylished.
+
 - It's no longer possible to execute DML queries for tables that are not operable
+
 - Fixed panic on user/role creation when max user number was exceeded
 
 - `picodata expel` used to finish before the instance got finally expelled.
