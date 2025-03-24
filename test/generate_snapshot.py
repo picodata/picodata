@@ -4,54 +4,47 @@ from pathlib import Path
 import conftest
 import os
 import shutil
-import sys
 import time
 
 
 def check_start_dir():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    current_dir = os.getcwd()
-    not_in_test_directory = script_dir != current_dir
-
-    if not_in_test_directory:
-        hint_path = os.path.relpath(script_dir, current_dir)
-        print(f"Run this script from a directory where it is located.\nHint: `cd {hint_path}/`")
-        sys.exit(-1)
+    script_dir = Path(os.path.abspath(__file__)).parent.parent.absolute()
+    if script_dir != Path(os.getcwd()):
+        raise ValueError("run this script from a root of a project")
 
 
 if __name__ == "__main__":
     check_start_dir()
 
     conftest.cargo_build()
-    port_distributor = PortDistributor(1333, 1344)
+    port_distributor = PortDistributor(3301, 3303)  # default pgproto port
     tmpdir = Path("./tmp_generate_snapshot").resolve()
     tmpdir.mkdir(exist_ok=True)
 
     try:
         cluster = Cluster(
             binary_path=conftest.binary_path(),
-            id="cluster_to_gen_snap",
+            id="demo",  # default cluster name
             data_dir=str(tmpdir),
-            base_host="localhost",
+            base_host="127.0.0.1",  # default advertise
             port_distributor=port_distributor,
         )
         inst = cluster.add_instance()
         inst.fill_with_data()
 
-        parent_dir = Path(os.path.dirname(os.getcwd()))
-        compat = Compatibility(root_path=parent_dir)
-        version, path = compat.current_tag()
+        compat = Compatibility()
+        version = compat.current_tag
 
-        snapshot = inst.latest_snapshot(path)
-        assert snapshot, (
-            f'Should\'ve found the snapshot at "{path}". Current version is {version}. Something unexpected happened!'
-        )
+        snapshot = inst.latest_snapshot()
+        if not snapshot:
+            raise ValueError(f'should have found the snapshot at "{inst.instance_dir}"')
 
         cluster.terminate()
-        print("A short wait to ensure the instance has completed successfully...")
-        time.sleep(3)
+        print("A short wait to ensure the instance had finished successfully...")
+        time.sleep(2)
 
-        copy_path = f"{os.getcwd()}/compat/{str(version)}"
+        copy_path = compat.version_to_dir_path(version)
+        os.makedirs(copy_path, exist_ok=True)
         shutil.copy2(snapshot, copy_path)
         print(f'Successfully generated snapshot of version {version}, copied into "{copy_path}".')
     finally:

@@ -21,14 +21,15 @@ from functools import reduce
 from typing import (
     Any,
     Callable,
-    Literal,
+    Dict,
     Generator,
     Iterator,
-    Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     Type,
+    Union,
 )
 from itertools import count
 from contextlib import contextmanager, suppress
@@ -1661,21 +1662,6 @@ class Instance:
                 password = password[:-1]
         return password
 
-    def latest_snapshot(self, into: Path):
-        def modification_time(f):
-            return os.path.getmtime(os.path.join(self.instance_dir, f))
-
-        all_snapshots = list()
-        for filename in os.listdir(self.instance_dir):
-            full_path = os.path.join(self.instance_dir, filename)
-            if os.path.isfile(full_path) and filename.endswith(".snap"):
-                all_snapshots.append(filename)
-        if not all_snapshots:
-            return None
-
-        latest_snapshot = max(all_snapshots, key=modification_time)
-        return Path(f"{self.instance_dir}/{latest_snapshot}")
-
     def fill_with_data(self):
         ddl = self.sql(
             """
@@ -2801,70 +2787,131 @@ def postgres_with_mtls(cluster: Cluster, pg_port: int):
     return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
 
 
-def is_semver_version(version: str) -> bool:
-    # see https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string  # noqa: E501
-    pattern = r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"  # noqa: E501
-    return bool(re.fullmatch(pattern, version))
+def copy_dir(src: Path, dst: Path):
+    if os.path.exists(dst):
+        if any(os.scandir(dst)):
+            raise ValueError(f"{dst} is not empty, exiting...")
+    else:
+        os.makedirs(dst)
 
+    for item in os.listdir(src):
+        source_item = os.path.join(src, item)
+        dest_item = os.path.join(dst, item)
 
-def get_tt_snapshot_by_path(path: Path) -> Optional[str]:
-    """
-    Checks presence of a ".snap" filne in a provided path.
-    Returns `None` if no snapshot was found, otherwise a
-    full path to a snapshot as a `str`.
-    """
-    for file in os.listdir(path):
-        if file.endswith(".snap"):
-            return os.path.join(path, file)
-    return None
+        if os.path.isdir(source_item):
+            shutil.copytree(source_item, dest_item)
+        else:
+            shutil.copy2(source_item, dest_item)
 
 
 class Compatibility:
-    # SemVers only, last version in a list is a current tag
-    tags: list[tuple[Version, Path]]
+    root: Path
+    git_repo: git.Repo
+    git_info: git.Git
+
+    all_tags: List[Version]
+    current_tag: Version
+    previous_major_tag: Optional[Version] = None
+    previous_minor_tag: Optional[Version] = None
 
     def __init__(self, root_path: Optional[Path] = None):
-        if root_path is None:
-            root_path = Path(os.getcwd())
-        git_repo = git.Repo(root_path)
+        self.root = root_path or Path(os.getcwd())
+        self.git_repo = git.Repo(self.root)
+        self.git_info = git.Git(self.root)
 
-        all_tags = list(map(str, git_repo.tags))
-        tags_versions = [tag.split("-")[0] for tag in all_tags]
-        semver_versions = filter(is_semver_version, tags_versions)
-        processed_versions = [Version(version) for version in semver_versions]
+        self.all_tags = self._get_sorted_semver_tags()
+        self.current_tag = self._find_current_tag()
 
-        if processed_versions or len(processed_versions) < 2:
-            self.tags = [(version, Path(f"{root_path}/test/compat/{str(version)}")) for version in processed_versions]
-        else:
-            print("too few tags retrieved from git were correct SemVers")
-            # FIXME should through an exception instead, doing this will likely
-            # leave picodata instances unkilled
-            sys.exit(-1)
+        previous_major_tag = self._find_previous_major_tag()
+        match previous_major_tag:
+            case (None, _):
+                self.previous_major_tag = None
+            case Version():
+                self.previous_major_tag = previous_major_tag
+        previous_minor_tag = self._find_previous_minor_tag()
+        match previous_minor_tag:
+            case (None, _):
+                self.previous_minor_tag = None
+            case Version():
+                self.previous_minor_tag = previous_minor_tag
 
-    def current_tag(self) -> tuple[Version, Path]:
-        version, path = self.tags[-1]
-        return (version, path)
+    def _get_sorted_semver_tags(self) -> List[Version]:
+        raw_tags = self.git_repo.tags
+        if not raw_tags:
+            raise ValueError("no valid tags found in the repository")
 
-    def previous_tag(self) -> tuple[Version, Path]:
-        version, path = self.tags[-2]
-        return (version, path)
+        valid_tags = []
+        for tag in raw_tags:
+            try:
+                version = Version(str(tag))
+                if version.major >= 25:  # from this version we started to support backwards compatibility
+                    valid_tags.append(version)
+            except ValueError:
+                continue
 
-    def previous_minor_tag(self) -> Optional[tuple[Version, Path]]:
-        curr_tag, curr_path = self.current_tag()
-        prev_tag, prev_path = self.previous_tag()
+        return sorted(valid_tags)
 
-        first_after_major_bump = curr_tag.micro == 0
-        if first_after_major_bump:
+    def _find_current_tag(self) -> Version:
+        dirty_version = self.git_info.describe()
+        version_parts = dirty_version.split("-")
+        clean_version = Version(version_parts[0])
+        return clean_version
+
+    # should not be `None`
+    def current_tag_with_path(self) -> Tuple[Version, Path]:
+        version = self.current_tag
+        path = self.version_to_dir_path(version)
+        return version, path
+
+    def _find_previous_major_tag(self) -> Version | str | None:
+        current_major = self.current_tag.major
+        if current_major == 25:
+            return None  # first verison we started to support backwards compatibility
+
+        try:
+            current_index = self.all_tags.index(self.current_tag)
+        except ValueError:
+            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
+
+        # iterate backwards until we find a tag with a lower major version
+        for i in range(current_index - 1, -1, -1):
+            if self.all_tags[i].major < current_major:
+                return self.all_tags[i]
+
+        return f"no previous major version to current ({self.current_tag}) tag was found"
+
+    def previous_major_tag_path(self) -> Optional[Path]:
+        version = self.previous_major_tag
+        if version is None:
             return None
+        return self.version_to_dir_path(version)
 
-        minor_versions_diff = curr_tag.micro - prev_tag.micro
-        if minor_versions_diff > 1:
-            print("diffs of the two latest tags are more than one minor and are not bumped majors")  # noqa: E501
-            # FIXME should through an exception instead, doing this will likely
-            # leave picodata instances unkilled
-            sys.exit(-1)
-        else:
-            return (prev_tag, prev_path)
+    def _find_previous_minor_tag(self) -> Union[Version, Tuple[None, str]]:
+        current_major = self.current_tag.major
+        current_minor = self.current_tag.minor
+        try:
+            current_index = self.all_tags.index(self.current_tag)
+        except ValueError:
+            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
+
+        # iterate backwards until we find a tag with the same major and a lower minor version
+        for i in range(current_index - 1, -1, -1):
+            tag = self.all_tags[i]
+            if tag.major == current_major and tag.minor < current_minor:
+                return tag
+
+        return None, f"no previous patch version to current ({self.current_tag}) was found"
+
+    def previous_minor_tag_path(self) -> Optional[Path]:
+        version = self.previous_minor_tag
+        if version is None:
+            return None
+        return self.version_to_dir_path(version)
+
+    def version_to_dir_path(self, version: Version) -> Path:
+        path = Path(f"{self.root}/test/compat/{version}/")
+        os.makedirs(path, exist_ok=True)
+        return path
 
 
 @pytest.fixture

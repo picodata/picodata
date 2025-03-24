@@ -16,11 +16,24 @@ def test_upgrade_major(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
     os.makedirs(inst.instance_dir, exist_ok=True)
 
-    version, path = Compatibility().previous_tag()
+    compat = Compatibility()
+
+    msg = "snapshot of the previous major was not found"
+    hint = "try to generate snapshot using makefile or justfile"
+    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
+
+    result = compat.previous_major_tag_with_path()
+    match result:
+        case str(_):
+            raise AssertionError(error)
+        case None:
+            print(
+                "not possible to check previous non-supporting backwards compatibility major versions, skipping test..."
+            )
+            return
+    _, path = result
     snapshot = get_tt_snapshot_by_path(path)
-    assert snapshot, (
-        f"Snapshot of the previous MAJOR version was not found. Generate one using `make generate` on a previous MAJOR version. {version} is current version."
-    )  # noqa: E501
+    assert snapshot, error
 
     shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()
@@ -31,14 +44,20 @@ def test_upgrade_minor(cluster: Cluster):
     inst = cluster.add_instance(wait_online=False)
     os.makedirs(inst.instance_dir, exist_ok=True)
 
-    tag = Compatibility().previous_minor_tag()
-    assert tag, "Current MINOR version is after MAJOR bump, so snapshot check with previous MINOR is not possible."  # noqa: E501
-    version, path = tag
+    compat = Compatibility()
 
+    msg = "snapshot of the previous minor was not found"
+    hint = "try to generate snapshot using makefile or justfile"
+    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
+
+    result = compat.previous_minor_tag_with_path()
+    if result is None:
+        print(f"{msg}, skipping test...")
+        return
+
+    _, path = result
     snapshot = get_tt_snapshot_by_path(path)
-    assert snapshot, (
-        f"Snapshot of the previous MINOR version was not found. Generate one using `make generate` on a previous MINOR version. {version} is current version."
-    )  # noqa: E501
+    assert snapshot, error
 
     shutil.copy(snapshot, f"{inst.instance_dir}/")
     inst.start()

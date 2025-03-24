@@ -98,9 +98,9 @@ test-py:
 .PHONY: test
 test: test-rs test-py
 
-.PHONY: generate
-generate:
-	poetry run python test/generate_snapshot.py
+.PHONY: generate-snapshot
+generate-snapshot:
+	poetry run python3 test/generate_snapshot.py
 
 .PHONY: lint-rs
 lint-rs:

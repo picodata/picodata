@@ -196,3 +196,8 @@ reset-submodules:
 [doc("patch tarantool version")]
 tarantool-patch:
 	@echo "${VER_TNT}" > tarantool-sys/VERSION
+
+[group("misc")]
+[doc("patch tarantool version")]
+generate-snapshot:
+	@poetry run python3 test/generate_snapshot.py
