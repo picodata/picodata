@@ -214,18 +214,14 @@ macro_rules! define_rpc_request {
             let result: ::std::result::Result<_, $crate::traft::error::Error> = { $($proc_body)* };
 
             let duration = tarantool::time::Instant::now_fiber().duration_since(start).as_secs_f64();
-            $crate::picodata_metrics::rpc_request_duration_seconds().observe(duration);
+            $crate::metrics::observe_rpc_request_duration(duration);
 
             match &result {
                 Ok(_) => {
-                    $crate::picodata_metrics::rpc_request_total()
-                        .with_label_values(&[service_label])
-                        .inc();
+                    $crate::metrics::record_rpc_request(service_label);
                 },
                 Err(_) => {
-                    $crate::picodata_metrics::rpc_request_errors_total()
-                        .with_label_values(&[service_label])
-                        .inc();
+                    $crate::metrics::record_rpc_request_error(service_label);
                 },
             }
 

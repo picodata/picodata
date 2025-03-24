@@ -1073,7 +1073,7 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
         return;
     }
 
-    crate::picodata_metrics::governor_change_counter().inc();
+    crate::metrics::report_governor_change();
 
     let counter = status.get().step_counter;
     tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");

@@ -4,7 +4,7 @@ use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::config::AlterSystemParameters;
-use crate::picodata_metrics;
+use crate::metrics;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -610,12 +610,12 @@ pub fn sql_dispatch(
     let result = dispatch(query, override_deadline);
 
     let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
-    picodata_metrics::sql_query_duration_seconds().observe(duration);
-    picodata_metrics::sql_query_total().inc();
+    metrics::observe_sql_query_duration(duration);
+    metrics::record_sql_query_total();
     match result {
         Ok(tuple) => Ok(tuple),
         Err(e) => {
-            picodata_metrics::sql_query_errors_total().inc();
+            metrics::record_sql_query_error();
             Err(e)
         }
     }

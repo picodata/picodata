@@ -68,10 +68,10 @@ pub mod kvcell;
 pub mod r#loop;
 mod luamod;
 pub mod mailbox;
+pub mod metrics;
 pub mod on_shutdown;
 mod pgproto;
 mod pico_service;
-pub mod picodata_metrics;
 pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
@@ -343,7 +343,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
     })?;
 
     use prometheus::default_registry;
-    picodata_metrics::register_metrics(default_registry());
+    metrics::register_metrics(default_registry());
 
     lua.exec_with(
         r#"
@@ -355,7 +355,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
         end)"#,
         (
             tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
-            tlua::Function::new(crate::picodata_metrics::collect_metrics),
+            tlua::Function::new(crate::metrics::collect_metrics),
         ),
     )
     .map_err(|err| Error::other(format!("failed to add route `/metrics`: {}", err)))?;

@@ -349,3 +349,30 @@ def test_metrics_ok(instance: Instance) -> None:
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
     response = requests.get(f"http://{http_listen}/metrics")
     assert response.ok
+
+
+@pytest.mark.webui
+def test_picodata_metrics(instance: Instance) -> None:
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    url = f"http://{http_listen}/metrics"
+    response = requests.get(url)
+    assert response.ok, f"Metrics endpoint {url} did not return OK: {response.status_code}"
+
+    metrics_output = response.text
+    expected_metrics = [
+        "governor_changes_total",
+        "sql_query_total",
+        "sql_query_errors_total",
+        "sql_query_duration_seconds",
+        "rpc_request_total",
+        # "rpc_request_errors_total", # Only used with certain label
+        "rpc_request_duration_seconds",
+        "global_tables_ops_total",
+        # "global_tables_ops_errors_total", # Only used with certain labels
+        "global_tables_write_latency_seconds",
+        "global_tables_records_total",
+        "instance_state",
+    ]
+
+    for metric in expected_metrics:
+        assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"

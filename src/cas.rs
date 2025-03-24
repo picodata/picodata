@@ -1,7 +1,7 @@
 use crate::access_control;
 use crate::config;
 use crate::error_code::ErrorCode;
-use crate::picodata_metrics;
+use crate::metrics;
 use crate::proc_name;
 use crate::static_ref;
 use crate::storage;
@@ -189,9 +189,7 @@ pub fn compare_and_swap(
     }
 
     let Some(leader_id) = node.status().leader_id else {
-        picodata_metrics::global_tables_ops_errors_total()
-            .with_label_values(&[op_type, &table_label])
-            .inc();
+        metrics::record_global_table_errors(op_type, &table_label);
         return Err(TraftError::LeaderUnknown);
     };
 
@@ -203,9 +201,7 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_local(request);
     } else if force_local {
-        picodata_metrics::global_tables_ops_errors_total()
-            .with_label_values(&[op_type, &table_label])
-            .inc();
+        metrics::record_global_table_errors(op_type, &table_label);
         return Err(TraftError::NotALeader);
     } else {
         let future = async {
@@ -221,9 +217,7 @@ pub fn compare_and_swap(
 
     let response = crate::unwrap_ok_or!(res,
         Err(e) => {
-            picodata_metrics::global_tables_ops_errors_total()
-                .with_label_values(&[op_type, &table_label])
-                .inc();
+            metrics::record_global_table_errors(op_type, &table_label);
 
             if e.is_retriable() {
                 return Ok(CasResult::RetriableError(e));
@@ -238,9 +232,7 @@ pub fn compare_and_swap(
 
         let actual_term = raft::Storage::term(&node.raft_storage, response.index)?;
         if response.term != actual_term {
-            picodata_metrics::global_tables_ops_errors_total()
-                .with_label_values(&[op_type, &table_label])
-                .inc();
+            metrics::record_global_table_errors(op_type, &table_label);
 
             // Leader has changed and the entry got rolled back, ok to retry.
             return Ok(CasResult::RetriableError(TraftError::TermMismatch {
@@ -251,22 +243,16 @@ pub fn compare_and_swap(
     }
 
     let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
-    picodata_metrics::global_tables_write_latency_seconds().observe(duration);
+    metrics::observe_global_table_write_latency(duration);
 
-    picodata_metrics::global_tables_ops_total()
-        .with_label_values(&[op_type, &table_label])
-        .inc();
+    metrics::record_global_table_ops_total(op_type, &table_label);
 
     match &request.op {
         Op::BatchDml { ops } => {
-            picodata_metrics::global_tables_records_total()
-                .with_label_values(&[op_type, &table_label])
-                .inc_by(ops.len() as f64);
+            metrics::record_global_table_records(op_type, &table_label, ops.len());
         }
         Op::Dml(_) => {
-            picodata_metrics::global_tables_records_total()
-                .with_label_values(&[op_type, &table_label])
-                .inc();
+            metrics::record_global_table_records(op_type, &table_label, 1);
         }
         _ => {}
     }
