@@ -19,9 +19,9 @@ use sbroad::{
         Plan,
     },
 };
-use serde::Serialize;
+use serde::{ser::SerializeMap, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::{collections::HashMap, iter::zip, os::raw::c_int};
+use std::{iter::zip, os::raw::c_int};
 use tarantool::{
     proc::{Return, ReturnMsgpack},
     tuple::FunctionCtx,
@@ -289,8 +289,9 @@ impl Serialize for MetadataColumn {
     where
         S: serde::Serializer,
     {
-        let map = HashMap::from([(self.name.clone(), self.ty.to_string())]);
-        map.serialize(serializer)
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry(&self.name, &self.ty.to_string())?;
+        map.end()
     }
 }
 
