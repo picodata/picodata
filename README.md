@@ -26,7 +26,7 @@
 pip install pipenv
 ```
 
-Для установки Pipenv потребуются Python не ниже версии 3.7 и актуальный `pip`
+Для установки Pipenv потребуются Python не ниже версии 3.9 и актуальный `pip`
 
 Подробнее — [Pipenv Installation](https://pipenv.pypa.io/en/latest/installation.html)
 
