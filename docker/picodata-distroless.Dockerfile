@@ -43,6 +43,7 @@ FROM docker-public.binary.picodata.io/distroless/cc-debian12
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 
+ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
 
 ENTRYPOINT ["/usr/bin/picodata"]

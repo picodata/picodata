@@ -32,7 +32,7 @@ RUN chmod 755 /usr/bin/picodata \
     && chown 1000:1000 -R /var/lib/picodata
 
 USER 1000:1000
-
+ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
 
 ENTRYPOINT ["/usr/bin/picodata"]
