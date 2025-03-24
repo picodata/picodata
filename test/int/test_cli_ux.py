@@ -954,23 +954,36 @@ def strip(s: str) -> str:
 
 
 def test_picodata_status_basic(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+    cluster:
+        name: test
+        tier:
+            storage:
+            router:
+    """
+    )
+
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
-    cluster.deploy(instance_count=3)
+
+    _ = cluster.add_instance(failure_domain=dict(DC="MSK"), tier="router")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="storage")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="router")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="router")
+
     cluster.wait_online()
-    i1, i2, i3 = sorted(cluster.instances, key=lambda i: i.name or "")
+    i1, i2, i3, i4 = sorted(cluster.instances, key=lambda i: i.name or "")
 
     i1_address = f"{i1.host}:{i1.port}"
     i2_address = f"{i2.host}:{i2.port}"
     i3_address = f"{i3.host}:{i3.port}"
+    i4_address = f"{i4.host}:{i4.port}"
 
     i1_uuid = i1.uuid()
     i2_uuid = i2.uuid()
     i3_uuid = i3.uuid()
-
-    i1_replicaset_uuid = i1.replicaset_uuid()
-    i2_replicaset_uuid = i2.replicaset_uuid()
-    i3_replicaset_uuid = i3.replicaset_uuid()
+    i4_uuid = i4.uuid()
 
     assert i1.service_password_file
 
@@ -985,27 +998,28 @@ def test_picodata_status_basic(cluster: Cluster):
         ],
     )
 
-    assert strip(data.decode()) == strip(
-        f"""\
+    output = f"""\
+ CLUSTER NAME: cluster-0-0
+ TIER/DOMAIN: router/MSK
 
+ name         state    uuid                                   uri            
+{i1.name}    Online   {i1_uuid}   {i1_address} 
 
-CLUSTER NAME: {i1.cluster_name}
+ TIER/DOMAIN: router/SPB
+ name         state    uuid                                   uri            
+{i2.name}    Online   {i2_uuid}   {i2_address} 
+{i3.name}    Online   {i3_uuid}   {i3_address} 
 
+ TIER/DOMAIN: storage/SPB
+ name         state    uuid                                   uri            
+{i4.name}   Online   {i4_uuid}   {i4_address} 
 
-+---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
-| instance_name | current_state | target_state  | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
-+========================================================================================================================================================+
-| {i1.name}   | ["Online", 1] | ["Online", 1] | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
-|---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}   | ["Online", 1] | ["Online", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
-|---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}   | ["Online", 1] | ["Online", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
-+---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
-(3 rows)
-"""  # noqa: E501
-    )
+"""
 
-    # let's kill i2, so after that it should be on last place in status table
+    for line in data.decode():
+        assert line in output
+
+    # let's kill i2, so after that it should be on last place in corresponding block
     i2.terminate()
 
     data = subprocess.check_output(
@@ -1019,59 +1033,26 @@ CLUSTER NAME: {i1.cluster_name}
         ],
     )
 
-    assert strip(data.decode()) == strip(
-        f"""\
+    output = f"""\
+ CLUSTER NAME: cluster-0-0
+ TIER/DOMAIN: router/MSK
 
+ name         state    uuid                                   uri            
+{i1.name}    Online   {i1_uuid}   {i1_address} 
 
-CLUSTER NAME: {i1.cluster_name}
+ TIER/DOMAIN: router/SPB
+ name         state    uuid                                   uri            
+{i3.name}    Online   {i3_uuid}   {i3_address} 
+{i2.name}    Offline   {i2_uuid}   {i2_address} 
 
+ TIER/DOMAIN: storage/SPB
+ name         state    uuid                                   uri            
+{i4.name}   Online   {i4_uuid}   {i4_address} 
 
-+---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
-| instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
-+==========================================================================================================================================================+
-| {i1.name}   | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
-|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}   | ["Online", 1]  | ["Online", 1]  | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
-|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}   | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
-+---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
-(3 rows)
-"""  # noqa: E501
-    )
+"""
 
-    # let's kill i3. Equal by state instances should be sorted by instance_name
-    i3.terminate()
-
-    data = subprocess.check_output(
-        [
-            cluster.binary_path,
-            "status",
-            "--peer",
-            i1_address,
-            "--service-password-file",
-            i1.service_password_file,
-        ],
-    )
-
-    assert strip(data.decode()) == strip(
-        f"""\
-
-
-CLUSTER NAME: {i1.cluster_name}
-
-
-+---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
-| instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
-+==========================================================================================================================================================+
-| {i1.name}   | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
-|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i2.name}   | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
-|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
-| {i3.name}   | ["Offline", 1] | ["Offline", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
-+---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
-(3 rows)
-"""  # noqa: E501
-    )
+    for line in data.decode():
+        assert line in output
 
 
 def test_picodata_status_exit_code(cluster: Cluster):

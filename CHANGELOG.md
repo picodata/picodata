@@ -21,6 +21,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Fixes
 
+- Changed `picodata status` output format to more minimalistic and unix-stylished.
+
 - Fixed panic when dropping system user pico_service.
 
 - PostgreSQL protocol initialization now happens at the stage of instance becoming online,
