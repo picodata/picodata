@@ -2077,7 +2077,10 @@ class Cluster:
 
         connection_type = "iproto"
         leader_id = raft_info["leader_id"]
-        assert leader_id != 0, "leader unknown"
+        if leader_id == 0:
+            # Do not use `assert` because Cluster.wait_has_states considers
+            # AssertionError to be fatal, but in this case we just want to retry
+            raise Exception("leader unknown")
 
         [[leader_address]] = self.peer.sql(
             "SELECT address FROM _pico_peer_address WHERE raft_id = ? and connection_type = ?",
