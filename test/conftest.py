@@ -584,7 +584,7 @@ class Connection(tarantool.Connection):  # type: ignore
 # be cause of instance crash.
 def can_cause_fail(error: Exception):
     if isinstance(error, TarantoolError):
-        # FIXME after some tarantool errors may still there may be a crash, we
+        # FIXME after some tarantool errors there still may be a crash, we
         # should gather some statistics and update this with more conditions
         return False
 
