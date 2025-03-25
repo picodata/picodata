@@ -196,7 +196,7 @@ def test_expel_timeout(cluster: Cluster):
             "expel",
             "random_instance_name",
             f"--timeout={CLI_TIMEOUT}",
-            "--peer=10001",
+            "--peer=10001:3301",
         ],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,

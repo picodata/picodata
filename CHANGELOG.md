@@ -12,6 +12,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### CLI
 - `picodata admin` in \lua mode no longer requires a delimiter for executing commands.
+- allow only the full format for address command-line arguments
+  - allow `HOST:PORT`,
+  - disallow `HOST` or `:PORT`,
+  - this is technically a breaking change.
 
 ### ACL
 

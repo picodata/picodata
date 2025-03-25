@@ -256,7 +256,7 @@ def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
 def test_connect_auth_type_unknown(binary_path_fixt: str):
     cli = pexpect.spawn(
         command=binary_path_fixt,
-        args=["connect", ":0", "-u", "testuser", "-a", "deadbeef"],
+        args=["connect", "127.0.0.1:0", "-u", "testuser", "-a", "deadbeef"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -413,7 +413,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
 def test_connect_with_empty_password_path(binary_path_fixt: str):
     cli = pexpect.spawn(
         command=binary_path_fixt,
-        args=["connect", ":3301", "--password-file", "", "-u", "trash"],
+        args=["connect", "127.0.0.1:3301", "--password-file", "", "-u", "trash"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -429,7 +429,7 @@ def test_connect_with_wrong_password_path(binary_path_fixt: str):
         command=binary_path_fixt,
         args=[
             "connect",
-            ":3301",
+            "127.0.0.1:3301",
             "--password-file",
             "/not/existing/path",
             "-u",
@@ -594,22 +594,22 @@ def test_connect_timeout(cluster: Cluster):
     # * many others that depend on your/CI network settings and
     #   which we don't want to list here
 
-    cli = connect_to("100")
+    cli = connect_to("100:1234")
     cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("192.168.0.1")
+    cli = connect_to("192.168.0.1:1234")
     cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("1000010002")
+    cli = connect_to("1000010002:1234")
     cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("1000010002", timeout=CLI_TIMEOUT)
+    cli = connect_to("1000010002:1234", timeout=CLI_TIMEOUT)
     cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("192.168.0.1", timeout=0)
+    cli = connect_to("192.168.0.1:1234", timeout=0)
     cli.expect_exact("Connection Error. Try to reconnect")
     cli.expect_exact(pexpect.EOF)

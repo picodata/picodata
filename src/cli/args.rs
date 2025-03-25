@@ -81,7 +81,7 @@ pub struct Run {
 
     #[clap(
         long = "advertise",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_ADVERTISE",
         hide = true,
         group = "advertise_arguments"
@@ -101,7 +101,7 @@ pub struct Run {
 
     #[clap(
         long = "iproto-advertise",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_IPROTO_ADVERTISE",
         group = "advertise_arguments"
     )]
@@ -119,7 +119,7 @@ pub struct Run {
     #[clap(
         short = 'l',
         long = "listen",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_LISTEN",
         hide = true,
         group = "listen_arguments"
@@ -133,7 +133,7 @@ pub struct Run {
 
     #[clap(
         long = "iproto-listen",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_IPROTO_LISTEN",
         group = "listen_arguments"
     )]
@@ -143,12 +143,12 @@ pub struct Run {
     pub iproto_listen: Option<IprotoAddress>,
 
     /// Pgproto server address.
-    #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_PG_LISTEN")]
+    #[clap(long, value_name = "HOST:PORT", env = "PICODATA_PG_LISTEN")]
     pub pg_listen: Option<PgprotoAddress>,
 
     #[clap(
         long = "peer",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         require_value_delimiter = true,
         use_value_delimiter = true,
         env = "PICODATA_PEER"
@@ -208,7 +208,7 @@ pub struct Run {
     /// But the raft node is uninitialized yet.
     pub script: Option<PathBuf>,
 
-    #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_HTTP_LISTEN")]
+    #[clap(long, value_name = "HOST:PORT", env = "PICODATA_HTTP_LISTEN")]
     /// HTTP server address.
     pub http_listen: Option<HttpAddress>,
 
@@ -405,7 +405,7 @@ pub struct Expel {
 
     #[clap(
         long = "peer",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_PEER",
         default_value = "127.0.0.1:3301"
     )]
@@ -530,7 +530,7 @@ pub struct Connect {
 
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address to connect. Format:
-    /// `[user@][host][:port]`.
+    /// `[user@]host:port`.
     pub address: IprotoAddress,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
@@ -600,7 +600,7 @@ impl Admin {
 pub struct Status {
     #[clap(
         long = "peer",
-        value_name = "[HOST][:PORT]",
+        value_name = "HOST:PORT",
         env = "PICODATA_PEER",
         default_value = "127.0.0.1:3301"
     )]
@@ -689,7 +689,7 @@ impl Plugin {
 pub struct ServiceConfigUpdate {
     #[clap(value_name = "ADDRESS")]
     /// Instance address to connect
-    /// as `pico_service` in `[host][:port]` format.
+    /// as `pico_service` in `host:port` format.
     /// If `[user@]` is specified, it is ignored.
     pub address: IprotoAddress,
 

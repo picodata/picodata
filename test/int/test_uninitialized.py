@@ -17,7 +17,7 @@ def uninitialized_instance(cluster: Cluster) -> Generator[Instance, None, None]:
     """Returns a running instance that is stuck in discovery phase."""
 
     # Connecting TCP/0 always results in "Connection refused"
-    instance = cluster.add_instance(peers=[":0"], wait_online=False)
+    instance = cluster.add_instance(peers=["127.0.0.1:0"], wait_online=False)
     instance.start()
 
     def check_running(instance):

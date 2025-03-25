@@ -7,6 +7,17 @@ pub const DEFAULT_HTTP_PORT: &str = "8080";
 pub const DEFAULT_IPROTO_PORT: &str = "3301";
 pub const DEFAULT_PGPROTO_PORT: &str = "4327";
 
+fn parse_host_and_port(addr: &str) -> Result<(String, String), String> {
+    let format_err = || Err("valid format: HOST:PORT".to_string());
+    let Some((host, port)) = addr.rsplit_once(':') else {
+        return format_err();
+    };
+    if host.is_empty() || port.is_empty() || host.contains(':') {
+        return format_err();
+    }
+    Ok((host.into(), port.into()))
+}
+
 ////////////////////
 // IPROTO ADDRESS //
 ////////////////////
@@ -42,7 +53,7 @@ impl IprotoAddress {
     }
 
     fn parse_address(addr: &str) -> Result<Self, String> {
-        let format_err = || Err("valid format: [user@][host][:port]".to_string());
+        let format_err = || Err("valid format: [USER@]HOST:PORT".to_string());
         let (user, host_port) = match addr.rsplit_once('@') {
             Some((user, host_port)) => {
                 if user.contains(':') || user.contains('@') {
@@ -55,21 +66,14 @@ impl IprotoAddress {
             }
             None => (None, addr),
         };
-        let (host, port) = match host_port.rsplit_once(':') {
-            Some((host, port)) => {
-                if host.contains(':') || port.is_empty() {
-                    return format_err();
-                }
-                let host = if host.is_empty() { None } else { Some(host) };
-                (host, Some(port))
-            }
-            None => (Some(host_port), None),
-        };
-        Ok(Self {
-            user: user.map(Into::into),
-            host: host.unwrap_or(DEFAULT_LISTEN_HOST).into(),
-            port: port.unwrap_or(DEFAULT_IPROTO_PORT).into(),
-        })
+        match parse_host_and_port(host_port) {
+            Ok((host, port)) => Ok(Self {
+                user: user.map(str::to_owned),
+                host,
+                port,
+            }),
+            Err(_) => format_err(),
+        }
     }
 }
 
@@ -144,24 +148,6 @@ impl HttpAddress {
     pub fn to_host_port(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-
-    fn parse_address(addr: &str) -> Result<Self, String> {
-        let format_err = || Err("valid format: [host][:port]".to_string());
-        let (host, port) = match addr.rsplit_once(':') {
-            Some((host, port)) => {
-                if host.contains(':') || port.is_empty() {
-                    return format_err();
-                }
-                let host = if host.is_empty() { None } else { Some(host) };
-                (host, Some(port))
-            }
-            None => (Some(addr), None),
-        };
-        Ok(Self {
-            host: host.unwrap_or(DEFAULT_LISTEN_HOST).into(),
-            port: port.unwrap_or(DEFAULT_HTTP_PORT).into(),
-        })
-    }
 }
 
 impl std::fmt::Display for HttpAddress {
@@ -175,7 +161,8 @@ impl FromStr for HttpAddress {
     type Err = String;
 
     fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        Self::parse_address(addr)
+        let (host, port) = parse_host_and_port(addr)?;
+        Ok(Self { host, port })
     }
 }
 
@@ -231,24 +218,6 @@ impl PgprotoAddress {
     pub fn to_host_port(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-
-    fn parse_address(addr: &str) -> Result<Self, String> {
-        let format_err = || Err("valid format: [host][:port]".to_string());
-        let (host, port) = match addr.rsplit_once(':') {
-            Some((host, port)) => {
-                if host.contains(':') || port.is_empty() {
-                    return format_err();
-                }
-                let host = if host.is_empty() { None } else { Some(host) };
-                (host, Some(port))
-            }
-            None => (Some(addr), None),
-        };
-        Ok(Self {
-            host: host.unwrap_or(DEFAULT_LISTEN_HOST).into(),
-            port: port.unwrap_or(DEFAULT_PGPROTO_PORT).into(),
-        })
-    }
 }
 
 impl std::fmt::Display for PgprotoAddress {
@@ -262,7 +231,8 @@ impl FromStr for PgprotoAddress {
     type Err = String;
 
     fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        Self::parse_address(addr)
+        let (host, port) = parse_host_and_port(addr)?;
+        Ok(Self { host, port })
     }
 }
 
@@ -302,30 +272,6 @@ mod tests {
         //
 
         assert_eq!(
-            "1234".parse(),
-            Ok(IprotoAddress {
-                user: None,
-                host: "1234".into(),
-                port: "3301".into()
-            })
-        );
-        assert_eq!(
-            ":1234".parse(),
-            Ok(IprotoAddress {
-                user: None,
-                host: "127.0.0.1".into(),
-                port: "1234".into()
-            })
-        );
-        assert_eq!(
-            "example".parse(),
-            Ok(IprotoAddress {
-                user: None,
-                host: "example".into(),
-                port: "3301".into()
-            })
-        );
-        assert_eq!(
             "127.0.0.1:1234".parse(),
             Ok(IprotoAddress {
                 user: None,
@@ -359,24 +305,6 @@ mod tests {
             })
         );
 
-        assert_eq!(
-            "user@:port".parse(),
-            Ok(IprotoAddress {
-                user: Some("user".into()),
-                host: "127.0.0.1".into(),
-                port: "port".into()
-            })
-        );
-
-        assert_eq!(
-            "user@host".parse(),
-            Ok(IprotoAddress {
-                user: Some("user".into()),
-                host: "host".into(),
-                port: "3301".into()
-            })
-        );
-
         //
         // check parsing of incorrect addresses
         //
@@ -388,6 +316,24 @@ mod tests {
         assert!("user:pass@host".parse::<IprotoAddress>().is_err());
         assert!("@host".parse::<IprotoAddress>().is_err());
         assert!("host:".parse::<IprotoAddress>().is_err());
+        assert!("1234".parse::<IprotoAddress>().is_err());
+        assert!(":1234".parse::<IprotoAddress>().is_err());
+        assert!("example".parse::<IprotoAddress>().is_err());
+        assert!("user@:port".parse::<IprotoAddress>().is_err());
+        assert!("user@host".parse::<IprotoAddress>().is_err());
+
+        assert_eq!(
+            "1234".parse::<IprotoAddress>(),
+            Err("valid format: [USER@]HOST:PORT".into()),
+        );
+        assert_eq!(
+            "1234".parse::<HttpAddress>(),
+            Err("valid format: HOST:PORT".into()),
+        );
+        assert_eq!(
+            "1234".parse::<PgprotoAddress>(),
+            Err("valid format: HOST:PORT".into()),
+        );
 
         //
         // check conflicting ports in address parsing
@@ -412,15 +358,15 @@ mod tests {
         // check correctness of default values to avoid human factor
         //
 
-        let default_iproto_addr = DEFAULT_LISTEN_HOST.parse::<IprotoAddress>().unwrap();
-        assert!(default_iproto_addr.host == DEFAULT_LISTEN_HOST);
-        assert!(default_iproto_addr.port == DEFAULT_IPROTO_PORT);
-
-        let default_http_addr = DEFAULT_LISTEN_HOST.parse::<HttpAddress>().unwrap();
+        let default_http_addr = HttpAddress::default_host_port()
+            .parse::<HttpAddress>()
+            .unwrap();
         assert!(default_http_addr.host == DEFAULT_LISTEN_HOST);
         assert!(default_http_addr.port == DEFAULT_HTTP_PORT);
 
-        let default_pgproto_addr = DEFAULT_LISTEN_HOST.parse::<PgprotoAddress>().unwrap();
+        let default_pgproto_addr = PgprotoAddress::default_host_port()
+            .parse::<PgprotoAddress>()
+            .unwrap();
         assert!(default_pgproto_addr.host == DEFAULT_LISTEN_HOST);
         assert!(default_pgproto_addr.port == DEFAULT_PGPROTO_PORT);
     }

@@ -2261,7 +2261,7 @@ instance:
 "###;
         let err = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap_err();
         #[rustfmt::skip]
-        assert_eq!(err.to_string(), "invalid configuration: mapping values are not allowed in this context at line 2 column 26");
+        assert_eq!(err.to_string(), "invalid configuration: instance: valid format: [USER@]HOST:PORT at line 2 column 5");
 
         let yaml = r###"
 instance:
@@ -2274,7 +2274,7 @@ instance:
 
         let yaml = r###"
 instance:
-    iproto_listen:  kevin->  <-spacey
+    iproto_listen:  kevin->  <-spacey:3301
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
         let listen = config.instance.iproto_listen.unwrap();
@@ -2286,7 +2286,7 @@ instance:
     fn default_http_port() {
         let yaml = r###"
 instance:
-    http_listen: 127.0.0.1
+    http_listen: 127.0.0.1:8080
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
         let listen = config.instance.http_listen.unwrap();
@@ -2500,7 +2500,7 @@ instance:
             // command line > env
             let config = setup_for_tests(Some(yaml), &["run",
                 "--peer", "one:1",
-                "--peer", "two:2,    <- same problem here,:3,4"
+                "--peer", "two:2,    <- same problem here:3301,127.0.0.1:3,4:3301"
             ]).unwrap();
 
             assert_eq!(
@@ -2565,7 +2565,7 @@ instance:
         // Advertise = listen unless specified explicitly
         //
             {
-            std::env::set_var("PICODATA_LISTEN", "L-ENVIRON");
+            std::env::set_var("PICODATA_LISTEN", "L-ENVIRON:3301");
             let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
@@ -2573,14 +2573,14 @@ instance:
 
             let yaml = r###"
 instance:
-    iproto_advertise: A-CONFIG
+    iproto_advertise: A-CONFIG:3301
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
 
-            let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE:3301"]).unwrap();
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
