@@ -17,6 +17,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.
 
+- Forbid the granting of DROP privileges on system tables.
+
 ### Fixes
 
 - Fixed panic when dropping system user pico_service.

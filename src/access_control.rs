@@ -497,6 +497,10 @@ fn access_check_grant_revoke(
             }
         }
         PicoSchemaObjectType::Table => {
+            if priv_def.privilege() == PrivilegeType::Drop {
+                forbid_drop_if_system_space(storage, object_id)?;
+            }
+
             let space = space_by_id(object_id)?;
             let meta = space.meta()?;
 
