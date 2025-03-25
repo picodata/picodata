@@ -433,7 +433,7 @@ struct AggregateSignature<'plan> {
     pub local_alias: Rc<String>,
 }
 
-impl<'plan> Hash for AggregateSignature<'plan> {
+impl Hash for AggregateSignature<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         let mut comp = Comparator::new(self.plan);
@@ -444,7 +444,7 @@ impl<'plan> Hash for AggregateSignature<'plan> {
     }
 }
 
-impl<'plan> PartialEq<Self> for AggregateSignature<'plan> {
+impl PartialEq<Self> for AggregateSignature<'_> {
     fn eq(&self, other: &Self) -> bool {
         let comparator = Comparator::new(self.plan);
         self.kind == other.kind
@@ -456,7 +456,7 @@ impl<'plan> PartialEq<Self> for AggregateSignature<'plan> {
     }
 }
 
-impl<'plan> Eq for AggregateSignature<'plan> {}
+impl Eq for AggregateSignature<'_> {}
 
 fn aggr_local_alias(kind: AggregateKind, index: usize) -> String {
     format!("{kind}_{index}")
@@ -469,9 +469,9 @@ impl Plan {
     /// TODO: We should also support OrderBy.
     ///
     /// # Arguments
-    /// [`finals`] - ids of nodes in final (reduce stage) before adding two stage aggregation.
-    /// It may contain ids of `Projection`, `Having` or `NamedWindows`.
-    /// Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
+    /// * `finals` - ids of nodes in final (reduce stage) before adding two stage aggregation.
+    ///   It may contain ids of `Projection`, `Having` or `NamedWindows`.
+    ///   Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
     pub fn collect_aggregates(&self, finals: &Vec<NodeId>) -> Result<Vec<Aggregate>, SbroadError> {
         let mut aggrs = Vec::with_capacity(AGGR_CAPACITY);
         for node_id in finals {

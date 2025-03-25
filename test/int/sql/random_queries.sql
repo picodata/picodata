@@ -6,6 +6,11 @@ INSERT INTO t VALUES(1, 1);
 INSERT INTO t VALUES(2, 1);
 INSERT INTO t VALUES(3, 2);
 INSERT INTO t VALUES(4, 3);
+DROP TABLE IF EXISTS tb;
+CREATE TABLE tb(a INT PRIMARY KEY, b BOOLEAN);
+INSERT INTO tb VALUES(1, true);
+INSERT INTO tb VALUES(2, true);
+INSERT INTO tb VALUES(3, false);
 
 -- TEST: reference-under-case-expression
 -- SQL:
@@ -186,3 +191,9 @@ false
 SELECT FALSE AND (FALSE OR TRUE)
 -- EXPECTED:
 false
+
+-- TEST: having-with-boolean-column
+-- SQL:
+SELECT sum(a) FROM tb GROUP BY b HAVING b;
+-- EXPECTED:
+3

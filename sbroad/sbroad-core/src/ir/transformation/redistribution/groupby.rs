@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
@@ -7,7 +8,7 @@ use crate::ir::aggregates::Aggregate;
 use crate::ir::distribution::Distribution;
 use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::relational::Relational;
+use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference};
 use crate::ir::transformation::redistribution::{
     MotionKey, MotionPolicy, Program, Strategy, Target,
@@ -37,13 +38,13 @@ struct ExpressionLocationId {
     /// Id of grouping expression.
     pub expr_id: NodeId,
     /// Id of expression which is a parent of `expr`.
-    pub parent_expr_id: NodeId,
+    pub parent_expr_id: Option<NodeId>,
     /// Relational node in which this `expr` is used.
     pub rel_id: NodeId,
 }
 
 impl ExpressionLocationId {
-    pub fn new(expr_id: NodeId, parent_expr_id: NodeId, rel_id: NodeId) -> Self {
+    pub fn new(expr_id: NodeId, parent_expr_id: Option<NodeId>, rel_id: NodeId) -> Self {
         ExpressionLocationId {
             parent_expr_id,
             expr_id,
@@ -82,7 +83,7 @@ impl PartialEq for GroupingExpression<'_> {
     }
 }
 
-impl<'plan> Eq for GroupingExpression<'plan> {}
+impl Eq for GroupingExpression<'_> {}
 
 /// Maps id of `GroupBy` expression used in `GroupBy` (from local stage)
 /// to list of locations where this expression is used in other relational
@@ -97,7 +98,7 @@ impl<'plan> Eq for GroupingExpression<'plan> {}
 /// In case there is a reference (or expression containing it) in the final relational operator
 /// that doesn't correspond to any GroupBy expression, an error should have been thrown on the
 /// stage of `collect_grouping_expressions`.
-type GroupbyExpressionsMap = HashMap<NodeId, Vec<ExpressionLocationId>>;
+type GroupbyExpressionsMap = AHashMap<NodeId, Vec<ExpressionLocationId>>;
 
 /// Maps id of `GroupBy` expression used in `GroupBy` (from local stage)
 /// to corresponding local alias used in local Projection. Note:
@@ -174,12 +175,6 @@ impl<'plan> ExpressionMapper<'plan> {
             })
             .copied()
         {
-            let parent_expr = parent_expr.unwrap_or_else(|| {
-                panic!(
-                    "parent expression for grouping expression under {:?} rel node should be found",
-                    self.rel_id
-                )
-            });
             let location = ExpressionLocationId::new(current, parent_expr, self.rel_id);
             if let Some(v) = self.map.get_mut(&gr_expr) {
                 v.push(location);
@@ -258,7 +253,7 @@ impl GroupByInfo {
         Self {
             id,
             grouping_exprs: Vec::with_capacity(GR_EXPR_CAPACITY),
-            gr_exprs_map: HashMap::with_capacity(GR_EXPR_CAPACITY),
+            gr_exprs_map: AHashMap::with_capacity(GR_EXPR_CAPACITY),
             grouping_expr_to_alias_map: OrderedMap::with_hasher(RepeatableState),
             reduce_info: GroupByReduceInfo::new(),
         }
@@ -795,14 +790,13 @@ impl Plan {
         &mut self,
         groupby_info: &GroupByInfo,
     ) -> Result<(), SbroadError> {
-        println!("Enter patch_grouping_expressions");
         let local_aliases_map = &groupby_info.reduce_info.local_aliases_map;
         let gr_exprs_map = &groupby_info.gr_exprs_map;
 
         type RelationalID = NodeId;
         type GroupByExpressionID = NodeId;
         type ExpressionID = NodeId;
-        type ExpressionParent = NodeId;
+        type ExpressionParent = Option<NodeId>;
         // Map of { Relation -> vec![(
         //                           expr_id under group by
         //                           expr_id of the same expr under other relation (e.g. Projection)
@@ -834,7 +828,6 @@ impl Plan {
                         "expected relation node ({rel_id:?}) to have children!"
                     ))
                 })?;
-            println!("Before call ColumnPositionMap::new");
             let alias_to_pos_map = ColumnPositionMap::new(self, child_id)?;
             let mut nodes = Vec::with_capacity(group.len());
             for (gr_expr_id, expr_id, parent_expr_id) in group {
@@ -869,7 +862,26 @@ impl Plan {
             }
             for (parent_expr_id, expr_id, node) in nodes {
                 let ref_id = self.nodes.push(node.into());
-                self.replace_expression(parent_expr_id, expr_id, ref_id)?;
+                if let Some(parent_expr_id) = parent_expr_id {
+                    self.replace_expression(parent_expr_id, expr_id, ref_id)?;
+                } else {
+                    // Grouping expression doesn't have parent grouping expression.
+                    let rel_node = self.get_mut_relation_node(rel_id)?;
+                    match rel_node {
+                        MutRelational::Having(Having { filter, .. }) => {
+                            // E.g. `select a from t group by a having a`.
+                            if *filter == expr_id {
+                                *filter = ref_id;
+                            }
+                        }
+                        _ => {
+                            // Currently Having is the only relational node in which grouping expression
+                            // can not have a parent expression (under Projection all expressions are covered
+                            // with output Row node).
+                            panic!("Unexpected final node met for expression replacement: {rel_node:?}")
+                        }
+                    }
+                }
             }
         }
         Ok(())
