@@ -55,7 +55,6 @@ pytest_plugins = "framework.sqltester"
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
-PORT_RANGE = 800
 METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
@@ -183,22 +182,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(scope="session")
 def port_distributor(xdist_worker_number: int, pytestconfig) -> PortDistributor:
-    """
-    Return pair (base_port, max_port) available for current pytest subprocess.
-    Ensures that all ports in this range are not in use.
-    Executes once due scope="session".
-
-    Note: this function has a side-effect.
-    """
     assert isinstance(xdist_worker_number, int)
     assert xdist_worker_number >= 0
     global_base_port = pytestconfig.getoption("--base-port")
-    base_port = global_base_port + xdist_worker_number * PORT_RANGE
 
-    max_port = base_port + PORT_RANGE
-    assert max_port <= 65535
+    ports_per_worker = (32768 - global_base_port) // int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1"))
+    worker_base_port = global_base_port + xdist_worker_number * ports_per_worker
 
-    return PortDistributor(start=base_port, end=max_port)
+    worker_max_port = worker_base_port + ports_per_worker
+
+    return PortDistributor(start=worker_base_port, end=worker_max_port)
 
 
 @pytest.fixture(scope="session")

@@ -25,4 +25,5 @@ class PortDistributor:
             if can_bind(port):
                 return port
 
-        raise Exception("No more free ports left in configured range, consider enlarging it")
+        # NB: if it's deemed not to be enough we can itertools.cycle the iterator
+        raise Exception("No more free ports left, per worker range exhausted")
