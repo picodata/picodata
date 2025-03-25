@@ -860,7 +860,7 @@ pub struct AlterTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
     pub timeout: Decimal,
-    pub op: AlterTableOp,
+    pub ops: Vec<AlterTableOp>,
 }
 
 impl From<AlterTable> for NodeAligned {
@@ -872,7 +872,7 @@ impl From<AlterTable> for NodeAligned {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum AlterTableOp {
     Add {
-        columns: Vec<ColumnDef>,
+        column: ColumnDef,
         if_not_exists: bool,
     },
 }

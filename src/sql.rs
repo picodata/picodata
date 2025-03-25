@@ -1537,47 +1537,55 @@ fn ddl_ir_node_to_op_or_result(
             }))
         }
         DdlOwned::AlterTable(alter_table) => {
-            let AlterTableOp::Add {
-                ref columns,
-                ref if_not_exists,
-            } = alter_table.op;
-            if *if_not_exists {
-                // due to unclear semantics of IF NOT EXISTS
-                return Err(Error::Unsupported(error::Unsupported::new(
-                    "IF NOT EXISTS".into(),
-                    None,
-                )));
-            }
             let Some(table) = &storage.tables.by_name(&alter_table.name)? else {
                 return Err(error::DoesNotExist::Table(alter_table.name.clone()).into());
             };
 
-            for column in columns {
-                for table_field in &table.format {
-                    if table_field.name == column.name {
-                        return Err(error::AlreadyExists::Column(column.name.clone()).into());
+            let current_table_format = table.format.clone();
+            let mut new_table_format = current_table_format.clone(); // inevitable clone
+
+            for op in alter_table.ops.iter() {
+                match op {
+                    AlterTableOp::Add {
+                        column,
+                        if_not_exists,
+                    } => {
+                        // due to unclear semantics of IF NOT EXISTS
+                        if *if_not_exists {
+                            return Err(Error::Unsupported(error::Unsupported::new(
+                                "IF NOT EXISTS".into(),
+                                None,
+                            )));
+                        }
+
+                        // do not add this column with the same name
+                        for table_field in &table.format {
+                            if table_field.name == column.name {
+                                return Err(
+                                    error::AlreadyExists::Column(column.name.clone()).into()
+                                );
+                            }
+                        }
+
+                        // append this new column
+                        let field = tarantool::space::Field {
+                            name: column.name.to_string(),
+                            field_type: FieldType::from(&column.data_type),
+                            is_nullable: column.is_nullable,
+                        };
+                        new_table_format.push(field);
                     }
                 }
             }
-            let old_format = table.format.clone();
-            let new_format = old_format
-                .iter()
-                .cloned()
-                .chain(columns.iter().map(|f| tarantool::space::Field {
-                    name: f.name.to_string(),
-                    field_type: FieldType::from(&f.data_type),
-                    is_nullable: f.is_nullable,
-                }))
-                .collect();
-            let ddl = OpDdl::ChangeFormat {
-                table_id: table.id,
-                old_format,
-                new_format,
-                initiator_id: current_user,
-            };
+
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
-                ddl,
+                ddl: OpDdl::ChangeFormat {
+                    table_id: table.id,
+                    old_format: current_table_format,
+                    new_format: new_table_format,
+                    initiator_id: current_user,
+                },
             }))
         }
         DdlOwned::SetParam(SetParam { param_value, .. }) => {

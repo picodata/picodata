@@ -3,7 +3,8 @@
 DROP TABLE IF EXISTS t;
 CREATE TABLE t(a INT PRIMARY KEY, b TEXT, c DOUBLE NOT NULL, d UNSIGNED, e INT NOT NULL);
 
--- TEST: alter_single
+
+-- TEST: alter
 -- SQL:
 ALTER TABLE t ALTER COLUMN d TYPE DECIMAL;
 ALTER TABLE t ALTER d TYPE UNSIGNED;
@@ -12,114 +13,95 @@ ALTER TABLE t ALTER COLUMN d DROP NOT NULL;
 ALTER TABLE t ALTER d SET NOT NULL;
 ALTER TABLE t ALTER d DROP NOT NULL;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 
--- TEST: alter_batch
--- SQL:
--- column with types only
-ALTER TABLE t ALTER COLUMN d TYPE DECIMAL, e TYPE DECIMAL;
--- types only
-ALTER TABLE t ALTER d TYPE UNSIGNED, e TYPE INT;
--- column with nulls forward
-ALTER TABLE t ALTER COLUMN d SET NOT NULL, e SET NOT NULL;
--- column with nulls backward
-ALTER TABLE t ALTER COLUMN d DROP NOT NULL, e DROP NOT NULL;
--- nulls forward
-ALTER TABLE t ALTER d SET NOT NULL, e SET NOT NULL;
--- nulls backward
-ALTER TABLE t ALTER d DROP NOT NULL, e DROP NOT NULL;
--- column with single column multiple nulls
-ALTER TABLE t ALTER COLUMN d SET NOT NULL, d DROP NOT NULL;
--- single column multiple nulls
-ALTER TABLE t ALTER d SET NOT NULL, d DROP NOT NULL;
--- column with single column multiple nulls single type
-ALTER TABLE t ALTER COLUMN d TYPE INT, d SET NOT NULL, d DROP NOT NULL;
--- single column multiple nulls single type
-ALTER TABLE t ALTER d TYPE INT, d SET NOT NULL, d DROP NOT NULL;
--- column with single column multiple nulls multiple types
-ALTER TABLE t ALTER COLUMN d TYPE INT, d SET NOT NULL, d DROP NOT NULL, d TYPE UNSIGNED;
--- single column multiple nulls multiple types
-ALTER TABLE t ALTER d TYPE INT, d SET NOT NULL, d DROP NOT NULL;
--- multiple columns multiple nulls multiple types
-ALTER TABLE t ALTER d TYPE INT, d SET NOT NULL, d DROP NOT NULL, e TYPE INT, e SET NOT NULL, e DROP NOT NULL;
--- ERROR:
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-
-
--- TEST: rename_single
+-- TEST: rename
 -- SQL:
 ALTER TABLE t RENAME COLUMN c TO x;
 ALTER TABLE t RENAME x TO c;
 -- ERROR:
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 
--- TEST: rename_batch
--- SQL:
-ALTER TABLE t RENAME COLUMN a TO z, b TO y, c TO x, d TO w;
-ALTER TABLE t RENAME z TO a, y TO b, x TO c, w TO d;
--- ERROR:
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
--- TEST: add_drop_single
+-- TEST: add (err)
 -- SQL:
 ALTER TABLE t ADD COLUMN IF NOT EXISTS k INT WAIT APPLIED GLOBALLY;
-ALTER TABLE t DROP COLUMN k WAIT APPLIED GLOBALLY;
-ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 1000) ;
-ALTER TABLE t DROP COLUMN i OPTION (timeout = 1000) ;
+ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 1000);
 ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT;
-ALTER TABLE t DROP COLUMN IF EXISTS f;
 ALTER TABLE t ADD IF NOT EXISTS g INT;
+-- ERROR:
+unsupported action/entity: IF NOT EXISTS
+unsupported action/entity: IF NOT EXISTS
+unsupported action/entity: IF NOT EXISTS
+unsupported action/entity: IF NOT EXISTS
+
+-- TEST: add (ok)
+-- SQL:
+ALTER TABLE t ADD COLUMN h INT;
+ALTER TABLE t ADD j INT;
+
+
+-- TEST: drop
+-- SQL:
+ALTER TABLE t DROP COLUMN k WAIT APPLIED GLOBALLY;
+ALTER TABLE t DROP COLUMN i OPTION (timeout = 1000);
+ALTER TABLE t DROP COLUMN IF EXISTS f;
 ALTER TABLE t DROP IF EXISTS g;
+ALTER TABLE t DROP COLUMN h;
+ALTER TABLE t DROP j;
+-- ERROR:
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+
+
+-- TEST: multiple
+-- SQL:
+-- add only
+ALTER TABLE t ADD COLUMN a1 INT, ADD COLUMN a2 TEXT;
+-- drop only
+ALTER TABLE t DROP COLUMN a1, DROP COLUMN a2;
+-- rename only
+ALTER TABLE t RENAME COLUMN b TO b_new, RENAME COLUMN d TO d_new;
+ALTER TABLE t RENAME COLUMN b to b_new, RENAME COLUMN b_new to b;
+-- alter only
+ALTER TABLE t ALTER COLUMN c TYPE FLOAT, ALTER COLUMN e SET NOT NULL, ALTER COLUMN e DROP NOT NULL;
+-- single column with renaming first then alterting nullability
+ALTER TABLE t ADD COLUMN f INT, RENAME COLUMN f TO f_new, ALTER COLUMN f_new SET NOT NULL, DROP COLUMN f_new;
+-- single column with altering type first then renaming
+ALTER TABLE t ADD COLUMN f INT, ALTER COLUMN f TYPE DOUBLE, RENAME COLUMN f TO f_new, DROP COLUMN f_new;
+-- multiple unique columns
+ALTER TABLE t ADD COLUMN f INT, ALTER COLUMN b SET NOT NULL, RENAME COLUMN c to x, ALTER COLUMN d_new TYPE DECIMAL, ALTER COLUMN e DROP NOT NULL, DROP COLUMN e;
 -- ERROR:
 unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 
--- TEST: add_drop_batch
--- SQL:
-ALTER TABLE t ADD COLUMN IF NOT EXISTS f INT, g INT, h INT, i INT;
-ALTER TABLE t DROP COLUMN IF EXISTS f, g, h, i;
-ALTER TABLE t ADD IF NOT EXISTS f INT, g INT, h INT, i INT;
-ALTER TABLE t DROP IF EXISTS f, g, h, i;
--- ERROR:
-unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
-unsupported action/entity: IF NOT EXISTS
-sbroad: unsupported DDL: ALTER TABLE ADD is the only supported option
 
--- TEST: add_timeout_single
+-- TEST: timeout
 -- SQL:
-ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 0) ;
+ALTER TABLE t ADD COLUMN IF NOT EXISTS i INT OPTION (timeout = 0);
+ALTER TABLE t DROP COLUMN IF EXISTS i OPTION (timeout = 0);
+ALTER TABLE t RENAME COLUMN i TO j OPTION (timeout = 0);
+ALTER TABLE t ALTER COLUMN i SET NOT NULL OPTION (timeout = 0);
+ALTER TABLE t ALTER COLUMN i TYPE DECIMAL OPTION (timeout = 0);
 -- ERROR:
 timeout
-
--- TEST: add_drop_success
--- SQL:
-ALTER TABLE t ADD COLUMN f INT, g INT, h INT;
-ALTER TABLE t ADD i INT, j INT, k INT;
-ALTER TABLE t ADD COLUMN l INT;
-ALTER TABLE t ADD m INT;
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE

@@ -964,10 +964,13 @@ fn parse_alter_table(
         "Expected rule AlterTable, got {:?}.",
         node.rule
     );
+
     let mut table_name = parse_identifier(ast, node.first_child())?;
-    let mut op = None;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut timeout = get_default_timeout();
+
+    let mut add_ops = Vec::new();
+
     for id in &node.children {
         let node = ast.nodes.get_node(*id)?;
         match node.rule {
@@ -976,56 +979,61 @@ fn parse_alter_table(
             }
             Rule::AlterTableColumnAdd => {
                 let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
-                let mut columns: Vec<ColumnDef> = Vec::new();
                 for id in &node.children {
                     let node = ast.nodes.get_node(*id)?;
                     match node.rule {
                         Rule::IfNotExists => if_not_exists = true,
-                        Rule::AlterTableColumnAddParams => {
-                            for id in &node.children {
+                        Rule::AlterTableColumnAddParam => {
+                            let name = parse_identifier(ast, node.child_n(0))?;
+
+                            let data_type_node = ast.nodes.get_node(node.child_n(1))?;
+                            debug_assert_eq!(data_type_node.rule, Rule::ColumnDefType);
+                            let data_type_node =
+                                ast.nodes.get_node(data_type_node.first_child())?;
+                            let data_type = parse_column_def_type(data_type_node)?;
+
+                            let is_nullable = if let Some(id) = node.children.get(2) {
                                 let node = ast.nodes.get_node(*id)?;
-                                debug_assert_eq!(node.rule, Rule::AlterTableColumnAddParam);
-                                let name = parse_identifier(ast, node.child_n(0))?;
-                                let data_type_node = ast.nodes.get_node(node.child_n(1))?;
-                                debug_assert_eq!(data_type_node.rule, Rule::ColumnDefType);
-                                let data_type_node =
-                                    ast.nodes.get_node(data_type_node.first_child())?;
-                                let data_type = parse_column_def_type(data_type_node)?;
-                                let is_nullable = if let Some(id) = node.children.get(2) {
-                                    let node = ast.nodes.get_node(*id)?;
-                                    debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
-                                    match (node.children.first(), node.children.get(1)) {
-                                        (None, None) => true, // NULL explicitly specified
-                                        (Some(child_id), None) => {
-                                            let not_flag_node = ast.nodes.get_node(*child_id)?;
-                                            if let Rule::NotFlag = not_flag_node.rule {
-                                                false // NOT NULL specified
-                                            } else {
-                                                panic!(
-                                                    "Expected NotFlag rule, got: {:?}.",
-                                                    not_flag_node.rule
-                                                );
-                                            }
+                                debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
+                                match (node.children.first(), node.children.get(1)) {
+                                    (None, None) => true, // NULL explicitly specified
+                                    (Some(child_id), None) => {
+                                        let not_flag_node = ast.nodes.get_node(*child_id)?;
+                                        if let Rule::NotFlag = not_flag_node.rule {
+                                            false // NOT NULL specified
+                                        } else {
+                                            panic!(
+                                                "Expected NotFlag rule, got: {:?}.",
+                                                not_flag_node.rule
+                                            );
                                         }
-                                        _ => panic!("Unexpected rule met under ColumnDefIsNull."),
                                     }
-                                } else {
-                                    false
-                                };
-                                columns.push(ColumnDef {
+                                    _ => panic!("Unexpected rule met under ColumnDefIsNull."),
+                                }
+                            } else {
+                                false
+                            };
+
+                            add_ops.push(AlterTableOp::Add {
+                                column: ColumnDef {
                                     name,
                                     data_type,
                                     is_nullable,
-                                });
-                            }
+                                },
+                                if_not_exists,
+                            });
                         }
                         rule => unreachable!("pest should not allow rule: {rule:?}"),
                     }
                 }
-                op = Some(AlterTableOp::Add {
-                    columns,
-                    if_not_exists,
-                });
+            }
+            Rule::AlterTableColumnDrop
+            | Rule::AlterTableColumnAlter
+            | Rule::AlterTableColumnRename => {
+                return Err(SbroadError::Unsupported(
+                    Entity::Ddl,
+                    Some("ADD COLUMN is the only supported action in ALTER TABLE".to_smolstr()),
+                ))
             }
             Rule::Timeout => {
                 timeout = get_timeout(ast, *id)?;
@@ -1036,23 +1044,18 @@ fn parse_alter_table(
             Rule::WaitAppliedLocally => {
                 wait_applied_globally = false;
             }
-
-            Rule::AlterTableColumnDrop
-            | Rule::AlterTableColumnAlter
-            | Rule::AlterTableColumnRename => {
-                return Err(SbroadError::Unsupported(
-                    Entity::Ddl,
-                    Some("ALTER TABLE ADD is the only supported option".to_smolstr()),
-                ))
-            }
             rule => unreachable!("pest should not allow rule: {rule:?}"),
         }
     }
+
+    let mut ops = Vec::new();
+    ops.append(&mut add_ops);
+
     Ok(AlterTable {
         name: table_name,
         wait_applied_globally,
         timeout,
-        op: op.expect("should be set"),
+        ops,
     })
 }
 

@@ -129,40 +129,32 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
-    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableOperation ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}
+    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableColumnAction ~ (WO ~ "," ~ WO ~ AlterTableColumnAction)* ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}
             TableNameIdentifier = @{ Identifier }
             ColumnNameIdentifier = @{ Identifier }
-        AlterTableOperation = _{ AlterTableColumnAdd | AlterTableColumnDrop | AlterTableColumnAlter | AlterTableColumnRename }
+        AlterTableColumnAction = _{ AlterTableColumnAdd | AlterTableColumnDrop | AlterTableColumnAlter | AlterTableColumnRename }
             // examples:
             // - "address TEXT": add a single column with only a type
             // - "age UNSIGNED NOT NULL": add a single column with both type and nullability
-            // - "address TEXT, age UNSIGNED NOT NULL": chaining for a multiple columns
-            AlterTableColumnAdd = { ^"add" ~ W ~ (^"column" ~ W)? ~ (IfNotExists ~ W)? ~ AlterTableColumnAddParams }
+            AlterTableColumnAdd = { ^"add" ~ W ~ (^"column" ~ W)? ~ (IfNotExists ~ W)? ~ AlterTableColumnAddParam }
                 AlterTableColumnAddParam = { ColumnNameIdentifier ~ W ~ ColumnDefType ~ (W ~ ColumnDefIsNull)? }
-                AlterTableColumnAddParams = { AlterTableColumnAddParam ~ (WO ~ "," ~ WO ~ AlterTableColumnAddParam)* }
-            // examples:
+            // example:
             // - "address": deletion of a single column
-            // - "address, age": deletion of multiple columns
-            AlterTableColumnDrop = { ^"drop" ~ W ~ (^"column" ~ W)? ~ (IfExists ~ W)? ~ AlterTableColumnDropParams }
-                AlterTableColumnDropParam = _{ ColumnNameIdentifier }
-                AlterTableColumnDropParams = { AlterTableColumnDropParam ~ (WO ~ "," ~ WO ~ AlterTableColumnDropParam)* }
+            AlterTableColumnDrop = { ^"drop" ~ W ~ (^"column" ~ W)? ~ (IfExists ~ W)? ~ AlterTableColumnDropParam }
+                AlterTableColumnDropParam = { ColumnNameIdentifier }
             // examples:
             // - "address TYPE TEXT": change only a type of a single column
             // - "age SET NOT NULL": introduce nullability of a single column
             // - "name DROP NOT NULL": revoke nullability of a single column
-            // - "address TYPE TEXT, address SET NOT NULL, age DROP NOT NULL": chaining for a multiple columns
-            AlterTableColumnAlter = { ^"alter" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnAlterParams }
-                AlterTableColumnAlterParam = _{ ColumnNameIdentifier ~ W ~ (AlterTableColumnAlterDropNotNull | AlterTableColumnAlterSetNotNull | AlterTableColumnAlterSetType) }
-                AlterTableColumnAlterParams = { AlterTableColumnAlterParam ~ (WO ~ "," ~ WO ~ AlterTableColumnAlterParam)* }
+            AlterTableColumnAlter = { ^"alter" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnAlterParam }
+                AlterTableColumnAlterParam = { ColumnNameIdentifier ~ W ~ (AlterTableColumnAlterDropNotNull | AlterTableColumnAlterSetNotNull | AlterTableColumnAlterSetType) }
                     AlterTableColumnAlterSetType = { (^"set" ~ W ~ ^"data" ~ W)? ~ ^"type" ~ W ~ ColumnDefType }
                     AlterTableColumnAlterSetNotNull = { ^"set" ~ W ~ ^"not" ~ W ~ ^"null" }
                     AlterTableColumnAlterDropNotNull = { ^"drop" ~ W ~ ^"not" ~ W ~ ^"null" }
             // examples:
             // - "address TO gender": change a name for a single column
-            // - "address TO gender, age TO salary": chaining for a multiple columns
-            AlterTableColumnRename = { ^"rename" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnRenameParams }
-                AlterTableColumnRenameParam = _{ ColumnNameIdentifierFrom ~ W ~ ^"to" ~ W ~ ColumnNameIdentifierInto }
-                AlterTableColumnRenameParams = { AlterTableColumnRenameParam ~ (WO ~ "," ~ WO ~ AlterTableColumnRenameParam)* }
+            AlterTableColumnRename = { ^"rename" ~ W ~ (^"column" ~ W)? ~ AlterTableColumnRenameParam }
+                AlterTableColumnRenameParam = { ColumnNameIdentifierFrom ~ W ~ ^"to" ~ W ~ ColumnNameIdentifierInto }
                     ColumnNameIdentifierFrom = @{ ColumnNameIdentifier }
                     ColumnNameIdentifierInto = @{ ColumnNameIdentifier }
     CreateProc = ${

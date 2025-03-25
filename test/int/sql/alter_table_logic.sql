@@ -46,7 +46,7 @@ Tuple field 4 (required_field) required by space format is missing
 -- SQL:
 DROP TABLE IF EXISTS test_table;
 CREATE TABLE test_table(id INT PRIMARY KEY);
-ALTER TABLE test_table ADD COLUMN first_name TEXT NULL, last_name TEXT NOT NULL, email TEXT;
+ALTER TABLE test_table ADD COLUMN first_name TEXT NULL, ADD COLUMN last_name TEXT NOT NULL, ADD COLUMN email TEXT;
 INSERT INTO test_table VALUES (1, NULL, 'Doe', 'john@example.com');
 
 -- TEST: verify_multiple_columns
