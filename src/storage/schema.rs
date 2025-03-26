@@ -24,7 +24,7 @@ use tarantool::schema::index::{create_index, drop_index};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{Space, SpaceId, SystemSpace};
-use tarantool::tlua::{self, AnyLuaValue, LuaError};
+use tarantool::tlua::{self, LuaError};
 use tarantool::tuple::Encode;
 
 ////////////////////////////////////////////////////////////////////////////////

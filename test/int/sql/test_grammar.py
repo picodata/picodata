@@ -4,7 +4,7 @@ from framework.sqltester import (
 )
 
 
-@sql_test_file("alter_table.sql")
+@sql_test_file("alter_table_grammar.sql")
 class TestAlterTable(ClusterSingleInstance):
     pass
 
