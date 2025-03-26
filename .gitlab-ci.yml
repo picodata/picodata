@@ -95,26 +95,23 @@ variables:
   paths:
     - .cargo/
     - target/${TARGET}/
-  key:
-    files:
-      - Cargo.lock
-    prefix: "base_cache${TARGET}"
+  key: "base_cache-${TARGET}-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - base_cache-${TARGET}-$MAIN_BRANCH
 
 .base_node: &base_node
   paths:
     - webui/node_modules/
-  key:
-    files:
-      - webui/yarn.lock
-    prefix: "base_node"
+  key: "base_node-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - base_node-$MAIN_BRANCH
 
 .py_cache: &py_cache
   paths:
     - .venv
-  key:
-    files:
-      - poetry.lock
-    prefix: "py_cache"
+  key: "py_cache-$CI_COMMIT_REF_SLUG"
+  fallback_keys:
+    - py_cache-$MAIN_BRANCH
 
 .kaniko_image: &kaniko_image
   image:
