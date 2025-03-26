@@ -664,6 +664,7 @@ stress_tests:
     - docker-k8s
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
+      allow_failure: true
   variables:
     TNT_HOST: tarantool
     STRESS_TEST: insert
@@ -675,7 +676,6 @@ stress_tests:
       pull_policy: always
   image: docker-public.binary.picodata.io/k6_tnt:latest
   stage: stress-test
-  allow_failure: true
   script:
     - echo "STRESS_TEST=${STRESS_TEST}"
     # wait while tnt cluster is started
@@ -714,20 +714,15 @@ diff_stress-results:
   script:
     - |
       curl $RAW_REGISTRY/sbroad-stress-tests/$FARCH -o $FARCH
-      file $FARCH
       set -x
-      if [ ! -f ${FARCH} -o $(file -i ${FARCH} | grep gzip | wc -l) -eq 0 ] ; then
-        echo "Error: archive ${FARCH} not found on binary"
-        exit 1
-      fi
       tar -xvf $FARCH -C sbroad/sbroad-cartridge/stress-test/
       cd sbroad/sbroad-cartridge/stress-test/
       find -name k6_summary.json
       for D in $(find . -name k6_summary.json -exec sh -c "dirname {} | sed 's/.*\///g'" \; ); do
         echo "Branch = $D"
-        if [ "$D" != "main" -a -f main/$D/k6_summary.json -a -f $CI_COMMIT_BRANCH/$D/k6_summary.json ]; then
-        tarantool compare.lua main/$D/k6_summary.json $CI_COMMIT_BRANCH/$D/k6_summary.json
-        elif [ "$D" == main ]; then
+        if [ "$D" != "$MAIN_BRANCH" -a -f $MAIN_BRANCH/$D/k6_summary.json -a -f $CI_COMMIT_BRANCH/$D/k6_summary.json ]; then
+        tarantool compare.lua $MAIN_BRANCH/$D/k6_summary.json $CI_COMMIT_BRANCH/$D/k6_summary.json
+        elif [ "$D" == "$MAIN_BRANCH" ]; then
           echo "skipped"
         else
           echo "Error: stress-test results not found!"; exit 2;
