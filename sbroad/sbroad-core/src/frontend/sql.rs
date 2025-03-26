@@ -1001,7 +1001,21 @@ fn parse_alter_table(
                                 let is_nullable = if let Some(id) = node.children.get(2) {
                                     let node = ast.nodes.get_node(*id)?;
                                     debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
-                                    true
+                                    match (node.children.first(), node.children.get(1)) {
+                                        (None, None) => true, // NULL explicitly specified
+                                        (Some(child_id), None) => {
+                                            let not_flag_node = ast.nodes.get_node(*child_id)?;
+                                            if let Rule::NotFlag = not_flag_node.rule {
+                                                false // NOT NULL specified
+                                            } else {
+                                                panic!(
+                                                    "Expected NotFlag rule, got: {:?}.",
+                                                    not_flag_node.rule
+                                                );
+                                            }
+                                        }
+                                        _ => panic!("Unexpected rule met under ColumnDefIsNull."),
+                                    }
                                 } else {
                                     false
                                 };
