@@ -151,7 +151,7 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 
 ### --http-listen {: #run_http_listen }
 
-`--http-listen <[HOST][:PORT]>`
+`--http-listen <HOST:PORT>`
 
 Адрес HTTP-сервера.
 
@@ -206,7 +206,7 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 
 ### --iproto-advertise {: #run_iproto_advertise }
 
-`--iproto-advertise <[HOST][:PORT]>`
+`--iproto-advertise <HOST:PORT>`
 
 Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
 инстанса и используется для подключения к нему других инстансов.
@@ -226,7 +226,7 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 
 ### --iproto-listen {: #run_iproto_listen }
 
-`--iproto-listen <[HOST][:PORT]>`
+`--iproto-listen <HOST:PORT>`
 
 Сетевой адрес инстанса.
 
@@ -298,7 +298,7 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 
 ### --peer {: #run_peer }
 
-`--peer <[HOST][:PORT]>`
+`--peer <HOST:PORT>`
 
 Список сетевых адресов других инстансов, разделенных запятыми. Используется
 при инициализации кластера и присоединении инстанса к уже существующему
@@ -467,7 +467,7 @@ picodata config default -o picodata.yaml
 picodata connect [OPTIONS] <ADDRESS>
 ```
 
-- `ADDRESS`: Адрес инстанса Picodata в формате `[user@][host][:port]`,
+- `ADDRESS`: Адрес инстанса Picodata в формате `[USER@]HOST:PORT`,
   соответствующий опции [`picodata run --iproto-advertise`](#run_iproto_advertise)
 
 **Пример**
@@ -596,7 +596,7 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 
 ### --peer {: #expel_peer }
 
-`--peer <[HOST][:PORT]>`
+`--peer <HOST:PORT>`
 
 Адрес любого инстанса из состава кластера.
 
@@ -650,7 +650,7 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 picodata plugin configure <ADDRESS> <PLUGIN_NAME> <PLUGIN_VERSION> <PLUGIN_CONFIG>
 ```
 
-- `ADDRESS`: Адрес инстанса в формате `[host][:port]` для подключения
+- `ADDRESS`: Адрес инстанса в формате `HOST:PORT` для подключения
   системного пользователя `pico_service`
 - `PLUGIN_NAME`: Имя плагина, содержащего обновляемый сервис
 - `PLUGIN_VERSION`: Версия плагина, содержащего обновляемый сервис
@@ -741,7 +741,7 @@ CLUSTER NAME: demo
 
 ### --peer {: #status_peer }
 
-`--peer <[HOST][:PORT]>`
+`--peer <HOST:PORT>`
 
 Адрес любого инстанса из состава кластера.
 
