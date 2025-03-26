@@ -32,7 +32,7 @@ def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
     assert len(queries) == len(expected), f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
 
     for query, exp_err in zip(queries, expected):
-        if exp_err:
+        if exp_err and exp_err != "-":
             msg = re.escape(exp_err.strip())
             with pytest.raises(TarantoolError, match=msg):
                 instance.sql(query)
