@@ -45,12 +45,33 @@ SELECT CASE WHEN a <= 4 THEN 42 END AS c FROM t ORDER BY c;
 
 -- TEST: case-under-where-clause
 -- SQL:
-SELECT * FROM t WHERE CASE WHEN true THEN 5::INT END = 5;
+SELECT * FROM t WHERE CASE WHEN true THEN 5::INT END = 5 ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
 
 -- TEST: case-under-where-clause-subtree
 -- SQL:
-SELECT * FROM t WHERE true and CASE WHEN true THEN 5::INT END = 5;
+SELECT * FROM t WHERE true and CASE WHEN true THEN 5::INT END = 5 ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
+
+-- TEST: not-in-simple
+-- SQL:
+SELECT a FROM t WHERE a NOT IN (1, 3) ORDER BY 1;
+-- EXPECTED:
+2,
+4
+
+-- TEST: not-in-redundant
+-- SQL:
+SELECT a FROM t WHERE a NOT IN (1, 2) AND TRUE ORDER BY 1;
+-- EXPECTED:
+3,
+4
+
+-- TEST: not-in-under-join
+-- SQL:
+SELECT a FROM t JOIN (SELECT b from t) new ON t.b = new.b AND a NOT IN (1, 2) AND TRUE ORDER BY 1;
+-- EXPECTED:
+3,
+4

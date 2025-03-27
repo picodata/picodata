@@ -517,7 +517,7 @@ impl ExecutionPlan {
 
                             // XXX: UNDO operation can cause problems if we introduce more complicated transformations
                             // for filter/condition (but then the UNDO logic should be changed as well).
-                            let undo_expr_id = ir_plan.undo.get_oldest(expr_id).unwrap_or(expr_id);
+                            let undo_expr_id = ir_plan.undo.get_oldest(expr_id);
                             *expr_id = subtree_map.get_id(*undo_expr_id);
                             new_plan.replace_parent_in_subtree(*expr_id, None, Some(next_id))?;
                         }

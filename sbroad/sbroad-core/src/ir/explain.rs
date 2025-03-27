@@ -1558,7 +1558,7 @@ impl FullExplain {
                 }) => {
                     let sq_ref_map =
                         result.get_sq_ref_map(&mut current_node, &mut stack, children, 1);
-                    let filter_id = ir.undo.get_oldest(filter).map_or_else(|| *filter, |id| *id);
+                    let filter_id = *ir.undo.get_oldest(filter);
                     let selection = ColExpr::new(ir, filter_id, &sq_ref_map)?;
                     let explain_node = match &node {
                         Relational::Selection { .. } => ExplainNode::Selection(selection),

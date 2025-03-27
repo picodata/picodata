@@ -14,25 +14,26 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId};
 use crate::ir::operator::Bool;
-use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::Plan;
 use smol_str::format_smolstr;
+
+use super::{ExprId, TransformationOldNewPair};
 
 /// Replace IN operator with the chain of the OR-ed equalities in the expression tree.
 fn call_expr_tree_replace_in(
     plan: &mut Plan,
     top_id: NodeId,
-) -> Result<OldNewTopIdPair, SbroadError> {
+) -> Result<TransformationOldNewPair, SbroadError> {
     plan.expr_tree_replace_bool(top_id, &call_from_in, &[Bool::In])
 }
 
-fn call_from_in(plan: &mut Plan, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
+fn call_from_in(plan: &mut Plan, top_id: NodeId) -> Result<ExprId, SbroadError> {
     plan.in_to_or(top_id)
 }
 
 impl Plan {
     /// Convert the IN operator to the chain of the OR-ed equalities.
-    fn in_to_or(&mut self, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
+    fn in_to_or(&mut self, top_id: NodeId) -> Result<ExprId, SbroadError> {
         let top_expr = self.get_expression_node(top_id)?;
         let (left_id, right_id) = match top_expr {
             Expression::Bool(BoolExpr {
@@ -55,7 +56,7 @@ impl Plan {
         if self.get_motion_from_row(right_id)?.is_some()
             || self.get_sub_query_from_row_node(right_id)?.is_some()
         {
-            return Ok((top_id, top_id));
+            return Ok(top_id);
         }
 
         let right_columns = self.get_expression_node(right_id)?.clone_row_list()?;
@@ -81,15 +82,12 @@ impl Plan {
                 new_top_id = self.concat_or(new_top_id, new_right_id)?;
             }
 
-            return Ok((top_id, new_top_id));
+            return Ok(new_top_id);
         }
-        Ok((top_id, top_id))
+        Ok(top_id)
     }
 
     /// Replace all IN operators with the OR-ed chain of equalities.
-    ///
-    /// # Errors
-    /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
     pub fn replace_in_operator(&mut self) -> Result<(), SbroadError> {
         self.transform_expr_trees(&call_expr_tree_replace_in)
     }

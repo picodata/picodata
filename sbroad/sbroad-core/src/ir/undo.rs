@@ -27,34 +27,22 @@ impl TransformationLog {
         }
     }
 
-    pub fn add(&mut self, new_id: NodeId, old_id: NodeId) {
-        match self.log.get_key_value(&new_id) {
-            None => {
-                self.log.insert(new_id, old_id);
-            }
-            Some((_, prev_old_id)) => {
-                self.log.insert(old_id, *prev_old_id);
-                self.log.insert(new_id, old_id);
-            }
-        }
+    pub fn add(&mut self, old_id_new: NodeId, new_id: NodeId) {
+        // We are inserting a `new_id` as a key, because later
+        // we'd like to retrieve old_id as value during the process of restoration.
+        self.log.entry(new_id).or_insert(old_id_new);
     }
 
     #[must_use]
-    pub fn get(&self, new_id: &NodeId) -> Option<&NodeId> {
-        self.log.get(new_id)
-    }
-
-    #[must_use]
-    pub fn get_oldest(&self, new_id: &NodeId) -> Option<&NodeId> {
-        match self.log.get_key_value(new_id) {
-            None => None,
-            Some((id, _)) => {
-                let mut current = id;
-                while let Some(parent) = self.get(current) {
-                    current = parent;
-                }
-                Some(current)
+    pub fn get_oldest<'log, 'new: 'log>(&'log self, new_id: &'new NodeId) -> &'log NodeId {
+        if self.log.contains_key(new_id) {
+            let mut current_id = new_id;
+            while let Some(prev_id) = self.log.get(current_id) {
+                current_id = prev_id;
             }
+            current_id
+        } else {
+            new_id
         }
     }
 }

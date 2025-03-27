@@ -16,18 +16,24 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Alias, ArithmeticExpr, BoolExpr, NodeId, Reference, Row};
 use crate::ir::operator::Bool;
-use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::tree::traversal::BreadthFirst;
 use crate::ir::tree::traversal::EXPR_CAPACITY;
 use crate::ir::Plan;
 use smol_str::{format_smolstr, ToSmolStr};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+use super::{ExprId, TransformationOldNewPair};
+
 fn call_expr_tree_merge_tuples(
     plan: &mut Plan,
     top_id: NodeId,
-) -> Result<OldNewTopIdPair, SbroadError> {
-    plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)
+) -> Result<TransformationOldNewPair, SbroadError> {
+    let new_top_id =
+        plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)?;
+    Ok(TransformationOldNewPair {
+        old_id: top_id,
+        new_id: new_top_id,
+    })
 }
 
 fn call_build_and_chains(
@@ -434,10 +440,6 @@ impl Plan {
     /// Build all the "AND" chains in subtree with `f_build_chains` function,
     /// transform back every chain to a plan expression with `f_to_plan` function
     /// and return a new expression subtree.
-    ///
-    /// # Errors
-    /// - Failed to build an expression subtree for some chain.
-    /// - The plan is invalid (some bugs).
     #[allow(clippy::type_complexity, clippy::too_many_lines)]
     pub fn expr_tree_modify_and_chains(
         &mut self,
@@ -448,7 +450,7 @@ impl Plan {
         )
             -> Result<HashMap<NodeId, Chain, RepeatableState>, SbroadError>,
         f_to_plan: &dyn Fn(&Chain, &mut Plan) -> Result<NodeId, SbroadError>,
-    ) -> Result<OldNewTopIdPair, SbroadError> {
+    ) -> Result<ExprId, SbroadError> {
         let mut tree = BreadthFirst::with_capacity(
             |node| self.nodes.expr_iter(node, false),
             EXPR_CAPACITY,
@@ -569,10 +571,10 @@ impl Plan {
         // Try to replace the subtree top node (if it is also AND).
         if let Some(top_chain) = chains.get(&expr_id) {
             let new_expr_id = f_to_plan(top_chain, self)?;
-            return Ok((expr_id, new_expr_id));
+            return Ok(new_expr_id);
         }
 
-        Ok((expr_id, expr_id))
+        Ok(expr_id)
     }
 
     /// Group boolean operators in the AND-ed chain by operator type and merge

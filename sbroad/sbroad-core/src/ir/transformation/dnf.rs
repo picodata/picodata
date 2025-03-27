@@ -74,9 +74,10 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, ExprInParentheses, Node32, NodeId};
 use crate::ir::operator::Bool;
-use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::Plan;
 use std::collections::VecDeque;
+
+use super::{ExprId, TransformationOldNewPair};
 
 /// A chain of the trivalents (boolean or NULL expressions) concatenated by AND.
 #[derive(Clone, Debug)]
@@ -176,16 +177,19 @@ impl Chain {
     }
 }
 
-fn call_expr_tree_to_dnf(plan: &mut Plan, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
-    plan.expr_tree_to_dnf(top_id)
+fn call_expr_tree_to_dnf(
+    plan: &mut Plan,
+    top_id: NodeId,
+) -> Result<TransformationOldNewPair, SbroadError> {
+    let new_top_id = plan.expr_tree_to_dnf(top_id)?;
+    Ok(TransformationOldNewPair {
+        old_id: top_id,
+        new_id: new_top_id,
+    })
 }
 
 impl Plan {
     /// Get the DNF "AND" chains from the expression tree.
-    ///
-    /// # Errors
-    /// - If the expression tree is not a trivalent expression.
-    /// - Failed to append node to the AND chain.
     pub fn get_dnf_chains(&self, top_id: NodeId) -> Result<VecDeque<Chain>, SbroadError> {
         let capacity: usize = self.nodes.arena32.iter().fold(0_usize, |acc, node| {
             acc + match node {
@@ -263,7 +267,7 @@ impl Plan {
     /// - Failed to retrieve DNF chains.
     /// - Failed to convert the AND chain to a new expression tree.
     /// - Failed to concatenate the AND expression trees to the OR tree.
-    pub fn expr_tree_to_dnf(&mut self, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
+    pub fn expr_tree_to_dnf(&mut self, top_id: NodeId) -> Result<ExprId, SbroadError> {
         let mut result = self.get_dnf_chains(top_id)?;
 
         let mut new_top_id: Option<NodeId> = None;
@@ -278,16 +282,11 @@ impl Plan {
         let new_top_id = new_top_id.ok_or_else(|| {
             SbroadError::Invalid(Entity::Chain, Some("Chain returned no expressions".into()))
         })?;
-        Ok((top_id, new_top_id))
+        Ok(new_top_id)
     }
 
     /// Convert an expression tree of trivalent nodes to a conjunctive
     /// normal form (CNF) for the whole plan.
-    ///
-    /// # Errors
-    /// - If the plan does not contain the top.
-    /// - If the plan doesn't contain relational operators where expected.
-    /// - If failed to convert an expression tree to a CNF.
     pub fn set_dnf(&mut self) -> Result<(), SbroadError> {
         self.transform_expr_trees(&call_expr_tree_to_dnf)
     }

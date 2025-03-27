@@ -317,13 +317,7 @@ fn subtree_next<'plan>(
                         Ordering::Equal => match snapshot {
                             Snapshot::Latest => Some(*condition),
                             Snapshot::Oldest => {
-                                return Some(
-                                    *iter
-                                        .get_plan()
-                                        .undo
-                                        .get_oldest(condition)
-                                        .map_or_else(|| condition, |id| id),
-                                );
+                                return Some(*iter.get_plan().undo.get_oldest(condition));
                             }
                         },
                         Ordering::Greater => {
@@ -552,13 +546,7 @@ fn subtree_next<'plan>(
                         Ordering::Equal => match snapshot {
                             Snapshot::Latest => Some(*filter),
                             Snapshot::Oldest => {
-                                return Some(
-                                    *iter
-                                        .get_plan()
-                                        .undo
-                                        .get_oldest(filter)
-                                        .map_or_else(|| filter, |id| id),
-                                );
+                                return Some(*iter.get_plan().undo.get_oldest(filter));
                             }
                         },
                         Ordering::Greater => {

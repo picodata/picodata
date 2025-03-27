@@ -16,14 +16,15 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId, Row};
 use crate::ir::operator::Bool;
-use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::Plan;
 use smol_str::format_smolstr;
+
+use super::{ExprId, TransformationOldNewPair};
 
 fn call_expr_tree_split_columns(
     plan: &mut Plan,
     top_id: NodeId,
-) -> Result<OldNewTopIdPair, SbroadError> {
+) -> Result<TransformationOldNewPair, SbroadError> {
     plan.expr_tree_replace_bool(
         top_id,
         &call_split_bool,
@@ -38,7 +39,7 @@ fn call_expr_tree_split_columns(
     )
 }
 
-fn call_split_bool(plan: &mut Plan, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
+fn call_split_bool(plan: &mut Plan, top_id: NodeId) -> Result<ExprId, SbroadError> {
     plan.split_bool(top_id)
 }
 
@@ -50,7 +51,7 @@ impl Plan {
     /// - If the operator is not a boolean operator.
     /// - If left and right tuples have different number of columns.
     /// - If the plan is invalid for some unknown reason.
-    fn split_bool(&mut self, top_id: NodeId) -> Result<OldNewTopIdPair, SbroadError> {
+    fn split_bool(&mut self, top_id: NodeId) -> Result<ExprId, SbroadError> {
         let top_expr = self.get_expression_node(top_id)?;
         let (left_id, right_id, op) = match top_expr {
             Expression::Bool(BoolExpr {
@@ -102,10 +103,10 @@ impl Plan {
                     new_top_id = self.concat_and(new_top_id, cond_id)?;
                 }
 
-                return Ok((top_id, new_top_id));
+                return Ok(new_top_id);
             }
         }
-        Ok((top_id, top_id))
+        Ok(top_id)
     }
 
     /// Split columns in all the boolean operators of the plan.

@@ -96,12 +96,13 @@ use crate::ir::node::{Constant, NodeId, Reference, ReferenceAsteriskSource, Row}
 use crate::ir::operator::Bool;
 use crate::ir::relation::DerivedType;
 use crate::ir::transformation::merge_tuples::Chain;
-use crate::ir::transformation::OldNewTopIdPair;
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
 use itertools::Itertools;
 use smol_str::ToSmolStr;
 use std::collections::{HashMap, HashSet};
+
+use super::TransformationOldNewPair;
 
 /// A copy of the `Expression::Reference` with traits for the `HashSet`.
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -339,8 +340,13 @@ impl EqClassChain {
 fn call_expr_tree_derive_equalities(
     plan: &mut Plan,
     top_id: NodeId,
-) -> Result<OldNewTopIdPair, SbroadError> {
-    plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)
+) -> Result<TransformationOldNewPair, SbroadError> {
+    let new_top_id =
+        plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)?;
+    Ok(TransformationOldNewPair {
+        old_id: top_id,
+        new_id: new_top_id,
+    })
 }
 
 fn call_build_and_chains(

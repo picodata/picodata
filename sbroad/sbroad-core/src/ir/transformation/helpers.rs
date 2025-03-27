@@ -40,9 +40,6 @@ pub fn sql_to_ir_without_bind(query: &str) -> Plan {
 }
 
 /// Compiles and transforms an SQL query to a new parameterized SQL.
-///
-/// # Panics
-///   if query is not correct
 #[allow(dead_code)]
 pub fn check_transformation(
     query: &str,

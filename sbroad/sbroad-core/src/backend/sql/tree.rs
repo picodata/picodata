@@ -1094,7 +1094,7 @@ impl<'p> SyntaxPlan<'p> {
 
         let filter_id = match self.snapshot {
             Snapshot::Latest => *filter,
-            Snapshot::Oldest => *plan.undo.get_oldest(filter).map_or_else(|| filter, |id| id),
+            Snapshot::Oldest => *plan.undo.get_oldest(filter),
         };
         let child_plan_id = *children.first().expect("FILTER child");
         let filter_sn_id = self.pop_from_stack(filter_id, id);
@@ -1184,10 +1184,7 @@ impl<'p> SyntaxPlan<'p> {
         };
         let cond_plan_id = match self.snapshot {
             Snapshot::Latest => *condition,
-            Snapshot::Oldest => *plan
-                .undo
-                .get_oldest(condition)
-                .map_or_else(|| condition, |id| id),
+            Snapshot::Oldest => *plan.undo.get_oldest(condition),
         };
         let inner_plan_id = *children.get(1).expect("JOIN inner child");
         let outer_plan_id = *children.first().expect("JOIN outer child");

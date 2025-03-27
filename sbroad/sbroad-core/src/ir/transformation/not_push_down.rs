@@ -9,16 +9,19 @@ use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::{BoolExpr, Constant, ExprInParentheses, NodeId, Row, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
-use crate::ir::transformation::{OldNewExpressionMap, OldNewTopIdPair};
+use crate::ir::transformation::OldNewTransformationMap;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 use smol_str::{format_smolstr, SmolStr};
 
+use super::TransformationOldNewPair;
+
 /// Enum representing status of Not push down traversal.
 /// It may be in two states:
 /// * None -- which means we haven't met `Not` operator and don't want to negate anything.
 /// * Active -- which means we want to negate current expression and pass it deeper.
+#[derive(Debug)]
 enum NotState {
     /// Not doesn't work.
     ///
@@ -49,55 +52,66 @@ impl NotState {
 fn call_expr_tree_not_push_down(
     plan: &mut Plan,
     top_id: NodeId,
-) -> Result<OldNewTopIdPair, SbroadError> {
-    // Because of the borrow checker we can't change `Bool` and `Row` children during recursive
-    // traversal and have to do it using this map after transformation.
-    let mut old_new_expression_map = OldNewExpressionMap::new();
-    let new_top_id =
-        plan.push_down_not_for_expression(top_id, NotState::Off, &mut old_new_expression_map)?;
-    let (old_top_id, new_top_id) = if new_top_id == top_id && old_new_expression_map.is_empty() {
-        (top_id, top_id)
-    } else {
-        let old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
-        let filter = |node_id: NodeId| -> bool {
-            matches!(
-                plan.get_node(node_id),
-                Ok(Node::Expression(
-                    Expression::ExprInParentheses(_) | Expression::Bool(_) | Expression::Row(_)
-                ))
-            )
-        };
-        let mut subtree = PostOrderWithFilter::with_capacity(
-            |node| plan.nodes.expr_iter(node, false),
-            EXPR_CAPACITY,
-            Box::new(filter),
-        );
-        subtree.populate_nodes(top_id);
-        let nodes = subtree.take_nodes();
-        drop(subtree);
-        for level_node in &nodes {
-            let id = level_node.1;
-            let expr = plan.get_mut_expression_node(id)?;
-            match expr {
-                MutExpression::ExprInParentheses(ExprInParentheses { child }) => {
-                    old_new_expression_map.replace(child);
-                }
-                MutExpression::Bool(BoolExpr { left, right, .. }) => {
-                    old_new_expression_map.replace(left);
-                    old_new_expression_map.replace(right);
-                }
-                MutExpression::Row(Row { list, .. }) => {
-                    for id in list {
-                        old_new_expression_map.replace(id);
-                    }
-                }
-                _ => {}
-            }
-        }
-        (old_top_id, new_top_id)
-    };
+) -> Result<TransformationOldNewPair, SbroadError> {
+    let mut transformation_map = OldNewTransformationMap::new();
 
-    Ok((old_top_id, new_top_id))
+    let new_top_id =
+        plan.push_down_not_for_expression(top_id, NotState::Off, &mut transformation_map)?;
+
+    if transformation_map.is_empty() {
+        // No need to transform tree children,
+        // but top_id could have changed.
+        return Ok(TransformationOldNewPair {
+            old_id: top_id,
+            new_id: new_top_id,
+        });
+    }
+
+    // Clone previous top_id, because we're going to apply transformations on
+    // the previous tree.
+    let remember_old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
+
+    let filter = |node_id: NodeId| -> bool {
+        matches!(
+            plan.get_node(node_id),
+            Ok(Node::Expression(
+                Expression::ExprInParentheses(_) | Expression::Bool(_) | Expression::Row(_)
+            ))
+        )
+    };
+    let mut subtree = PostOrderWithFilter::with_capacity(
+        |node| plan.nodes.expr_iter(node, false),
+        EXPR_CAPACITY,
+        Box::new(filter),
+    );
+    subtree.populate_nodes(new_top_id);
+    let nodes = subtree.take_nodes();
+    drop(subtree);
+    for level_node in &nodes {
+        let id = level_node.1;
+
+        let expr = plan.get_mut_expression_node(id)?;
+        match expr {
+            MutExpression::ExprInParentheses(ExprInParentheses { child }) => {
+                transformation_map.replace(child);
+            }
+            MutExpression::Bool(BoolExpr { left, right, .. }) => {
+                transformation_map.replace(left);
+                transformation_map.replace(right);
+            }
+            MutExpression::Row(Row { list, .. }) => {
+                for id in list {
+                    transformation_map.replace(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(TransformationOldNewPair {
+        old_id: remember_old_top_id,
+        new_id: new_top_id,
+    })
 }
 
 impl Bool {
@@ -158,15 +172,12 @@ impl Plan {
         }
     }
 
-    // SELECT * FROM (values (1)) where true and not (true and false)
-    // SELECT "COLUMN_1" FROM (VALUES (?)) WHERE ((?) or (?))
-
     /// Recursive push down of `Not` operator.
     fn push_down_not_for_expression(
         &mut self,
         expr_id: NodeId,
         not_state: NotState,
-        map: &mut OldNewExpressionMap,
+        map: &mut OldNewTransformationMap,
     ) -> Result<NodeId, SbroadError> {
         let expr = self.get_expression_node(expr_id)?;
         let new_expr_id = match expr {
@@ -190,7 +201,7 @@ impl Plan {
                             let new_value = Value::from(!*b);
                             self.add_const(new_value)
                         }
-                        Value::Null => expr_id,
+                        Value::Null => self.cover_with_not(expr_id, &not_state)?,
                         _ => {
                             return Err(SbroadError::Invalid(
                                 Entity::Node,
@@ -206,7 +217,7 @@ impl Plan {
                 let (remember_left, remember_right) = (*left, *right);
 
                 if let NotState::On { .. } = not_state {
-                    let negated_op = op.negate();
+                    let negated_op: Option<(Bool, bool)> = op.negate();
                     let Some((negated_op, should_proceed)) = negated_op else {
                         return self.cover_with_not(expr_id, &not_state);
                     };
@@ -263,7 +274,13 @@ impl Plan {
                 }
                 Unary::IsNull | Unary::Exists => self.cover_with_not(expr_id, &not_state)?,
             },
-            _ => expr_id,
+            _ => {
+                if let NotState::On { .. } = not_state {
+                    self.cover_with_not(expr_id, &not_state)?
+                } else {
+                    expr_id
+                }
+            }
         };
         Ok(new_expr_id)
     }

@@ -117,20 +117,20 @@ impl Translation {
 /// Helper struct to clone plan's subtree.
 /// Assumes that all parameters are bound.
 pub struct SubtreeCloner {
-    old_new: AHashMap<NodeId, NodeId>,
+    old_new_map: AHashMap<NodeId, NodeId>,
     nodes_with_backward_references: Vec<NodeId>,
 }
 
 impl SubtreeCloner {
     fn new(capacity: usize) -> Self {
         SubtreeCloner {
-            old_new: AHashMap::with_capacity(capacity),
+            old_new_map: AHashMap::with_capacity(capacity),
             nodes_with_backward_references: Vec::new(),
         }
     }
 
     fn get_new_id(&self, old_id: NodeId) -> Result<NodeId, SbroadError> {
-        self.old_new
+        self.old_new_map
             .get(&old_id)
             .ok_or_else(|| {
                 SbroadError::Invalid(
@@ -534,7 +534,7 @@ impl SubtreeCloner {
         let nodes = dfs.take_nodes();
         drop(dfs);
         for LevelNode(_, id) in nodes {
-            if self.old_new.contains_key(&id) {
+            if self.old_new_map.contains_key(&id) {
                 // IR is a DAG and our DFS traversal does not
                 // track already visited nodes, so we may
                 // visit the same node multiple times.
@@ -557,13 +557,13 @@ impl SubtreeCloner {
                 }
             };
             let new_id = plan.nodes.push(new_node);
-            self.old_new.insert(id, new_id);
+            self.old_new_map.insert(id, new_id);
         }
 
         self.replace_backward_refs(plan)?;
 
         let new_top_id = self
-            .old_new
+            .old_new_map
             .get(&top_id)
             .ok_or_else(|| {
                 SbroadError::Invalid(
@@ -581,9 +581,8 @@ impl SubtreeCloner {
     /// Assumes that all parameters are bound and there are no parameters
     /// in the subtree.
     ///
-    /// # Errors
-    /// - invalid plan subtree, e.g some node is met twice in the plan
-    /// - parameters/ddl/acl nodes are found in subtree
+    /// TODO: Should we return translation map as well? Seems like
+    ///       it can simply life sometimes.
     pub fn clone_subtree(plan: &mut Plan, top_id: NodeId) -> Result<NodeId, SbroadError> {
         let subtree_capacity = top_id.offset as usize;
         let mut helper = Self::new(subtree_capacity);

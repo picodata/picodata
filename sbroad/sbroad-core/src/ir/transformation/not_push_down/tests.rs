@@ -36,7 +36,7 @@ fn not_double() {
 fn not_null() {
     let input = r#"SELECT * FROM (values (1)) where not null"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (?)"#.to_string(),
+        r#"SELECT * FROM (VALUES (?)) WHERE (not ?)"#.to_string(),
         vec![Value::Unsigned(1), Value::Null],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
