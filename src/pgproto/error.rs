@@ -63,6 +63,7 @@ impl IntoBoxError for DecodingError {}
 pub type PgResult<T> = Result<T, PgError>;
 
 /// Pgproto's main error type.
+/// Error message formats are important, preferably Postgres-compatible.
 #[derive(Error, Debug)]
 pub enum PgError {
     #[error("internal error: {0}")]
@@ -79,6 +80,10 @@ pub enum PgError {
 
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
+
+    // Error message format is compatible with Postgres.
+    #[error("authentication failed for user '{0}': LDAP: {1}")]
+    LdapAuthError(String, String),
 
     #[error("{1}")]
     WithExplicitCode(PgErrorCode, String),

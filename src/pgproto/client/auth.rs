@@ -6,6 +6,7 @@ use crate::tlog;
 use pgwire::messages::startup::PasswordMessageFamily;
 use std::{io, os::raw::c_int};
 use tarantool::auth::AuthMethod;
+use tarantool::error::BoxError;
 
 extern "C" {
     /// pointers must have valid and non-null values, salt must be at least 20 bytes
@@ -30,7 +31,8 @@ fn build_auth_info(client_pass: &str, auth_method: &AuthMethod) -> Vec<u8> {
     result
 }
 
-/// Perform authentication, throwing a [`PgError::InvalidPassword`] if it failed.
+/// Perform authentication, throwing [`PgError::InvalidPassword`] or
+/// [`PgError::LdapAuthError`] if it failed.
 pub fn do_authenticate(
     user: &str,
     salt: [u8; 4],
@@ -55,6 +57,14 @@ pub fn do_authenticate(
 
     match ret {
         0 => Ok(()),
+        _ if auth_method == AuthMethod::Ldap => {
+            let err_message = if let Err(err) = BoxError::maybe_last() {
+                err.message().to_owned()
+            } else {
+                "unknown error".to_owned()
+            };
+            Err(PgError::LdapAuthError(user.to_owned(), err_message))
+        }
         _ => Err(PgError::InvalidPassword(user.to_owned())),
     }
 }

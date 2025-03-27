@@ -49,6 +49,8 @@ with the `YY.MINOR.MICRO` scheme.
 - `--pg-listen` parameter is now checked at bootstrap (`postjoin`) stage, so
   it is not possible anymore to bind a busy port when instance is offline.
 
+- Provide the client with a detailed error message when using LDAP for authentication and the LDAP server is unavailable.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added

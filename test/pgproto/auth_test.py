@@ -158,7 +158,9 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
     assert conn.execute_simple("SELECT 1").rows == [[1]]
 
     # invalid creds
-    with pytest.raises(DatabaseError, match=f"authentication failed for user '{ldap_server.user}'"):
+    with pytest.raises(
+        DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Invalid credentials"
+    ):
         pg.Connection(
             ldap_server.user,
             password="invalid",
@@ -171,6 +173,41 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
         pg.Connection(
             "missing_user",
             password="invalid",
+            host=i1.pg_host,
+            port=i1.pg_port,
+        )
+
+
+def test_auth_ldap_server_down(cluster: Cluster, port_distributor: PortDistributor):
+    class NotWorkingServer:
+        host = "127.0.0.1"
+        port = 389
+        user = "user"
+        password = "password"
+
+    ldap_server = NotWorkingServer()
+
+    # Configure the instance
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
+    i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    i1.pg_host = "127.0.0.1"
+    i1.pg_port = port_distributor.get()
+    i1.start()
+    i1.wait_online()
+
+    i1.sql(
+        f"""
+            CREATE USER "{ldap_server.user}" USING LDAP
+        """
+    )
+
+    with pytest.raises(
+        DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Can't contact LDAP server"
+    ):
+        pg.Connection(
+            ldap_server.user,
+            password=ldap_server.password,
             host=i1.pg_host,
             port=i1.pg_port,
         )

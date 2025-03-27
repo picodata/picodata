@@ -61,14 +61,14 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
 
     process = subprocess.Popen(["glauth", "-c", ldap_cfg_path], stdout=subprocess.PIPE)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     deadline = time.time() + 3
-
     while deadline > time.time():
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((LDAP_SERVER_HOST, port))
             break
         except ConnectionRefusedError:
+            sock.close()
             time.sleep(0.1)
 
     return LdapServer(
