@@ -42,7 +42,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### RPC API
 
-- `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added 
+- `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
   step of initialization of a PostgreSQL protocol at it's call: see "deprecation".
 
 ### Deprecation
@@ -51,6 +51,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 - SQL supports `TRUNCATE` operation.
+- SQL supports `ALTER TABLE t ADD COLUMN` operation.
 
 ### Configuration
 
