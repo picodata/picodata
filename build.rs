@@ -48,7 +48,7 @@ fn insert_build_metadata() {
     rustc::env("BUILD_PROFILE", build_profile);
 
     let os_version = std::process::Command::new("uname")
-        .args(["-srmo"])
+        .args(["-sm"])
         .output()
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
