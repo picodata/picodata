@@ -335,12 +335,16 @@ def install_and_enable_plugin(
     instance,
     plugin,
     services,
+    tiers=None,
     version="0.1.0",
     migrate=False,
     timeout=3,
     default_config=None,
     if_not_exists=False,
 ):
+    if tiers is None:
+        tiers = [_DEFAULT_TIER]
+
     instance.call(
         "pico.install_plugin",
         plugin,
@@ -363,7 +367,9 @@ def install_and_enable_plugin(
                     f"box.space._pico_plugin_config:replace({{'{plugin}', '0.1.0', '{s}', '{key}', ...}})",
                     default_config[key],
                 )
-        instance.call("pico.service_append_tier", plugin, version, s, _DEFAULT_TIER)
+        for tier in tiers:
+            instance.call("pico.service_append_tier", plugin, version, s, tier)
+
     instance.call("pico.enable_plugin", plugin, version, timeout=timeout)
 
 
@@ -2278,13 +2284,7 @@ cluster:
 
     plugin_name = "testplug_sdk"
     service_name = "service_with_rpc_tests"
-    install_and_enable_plugin(i1, plugin_name, [service_name], migrate=True)
-
-    version = "0.1.0"
-    services = [service_name]
-
-    for s in services:
-        router_instance.call("pico.service_append_tier", plugin_name, version, s, "router")
+    install_and_enable_plugin(i1, plugin_name, [service_name], ["default", "router"], migrate=True)
 
     # Run test test_fiber_name_after_local_RPC
     i1.call(".proc_rpc_dispatch", "/test_fiber_name_after_local_RPC", b"", make_context())
