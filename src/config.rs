@@ -1209,6 +1209,9 @@ pub struct InstanceConfig {
     #[introspection(nested)]
     pub pg: pgproto::Config,
 
+    #[introspection(config_default = 2 * 60 * 60)]
+    pub activation_deadline: Option<u64>,
+
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
     #[serde(flatten)]
@@ -1288,6 +1291,11 @@ impl InstanceConfig {
     pub fn share_dir(&self) -> &Path {
         self.share_dir
             .as_deref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    pub fn activation_deadline(&self) -> u64 {
+        self.activation_deadline
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }

@@ -126,6 +126,7 @@ instance:
                 listen=dict(source="default", value="127.0.0.1:4327"),
                 ssl=dict(source="default", value=False),
             ),
+            activation_deadline=dict(value=7200, source="default"),
         ),
     )
 
@@ -465,6 +466,7 @@ def test_output_config_parameters(cluster: Cluster):
         replicaset_name: with-love
         memtx:
             memory: 42069B
+        activation_deadline: 3600
     """
     )
 
@@ -487,7 +489,8 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.audit':
         'instance.log.level': "verbose"
         'instance.log.format': "plain"
-        'instance.memtx.memory': \"42069B\""""
+        'instance.memtx.memory': \"42069B\"
+        'instance.activation_deadline': 3600"""
 
     params_list = [line.strip().encode("ASCII") for line in output_params.splitlines()]
     found_params = set()
