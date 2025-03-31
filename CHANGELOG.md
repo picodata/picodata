@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
   - allow `HOST:PORT`,
   - disallow `HOST` or `:PORT`,
   - this is technically a breaking change.
+- provide a more detailed message for address binding errors
 
 ### Pgproto
 

@@ -210,14 +210,19 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         args.auth_method,
         Duration::from_secs(args.timeout),
     )
-    .map_err(|err| ReplError::Other(format!("Connection Error. Try to reconnect: {}", err)))?;
+    .map_err(|err| {
+        ReplError::Other(format!(
+            "Connection Error (address {}). Try to reconnect: {}",
+            args.address, err
+        ))
+    })?;
 
     // Check if connection is valid. We need to do it because connect is lazy
     // and we want to check whether authentication have succeeded or not
     if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
         return Err(ReplError::Other(format!(
-            "Connection Error. Try to reconnect: {}",
-            err
+            "Connection Error (address {}). Try to reconnect: {}",
+            args.address, err
         )));
     }
 

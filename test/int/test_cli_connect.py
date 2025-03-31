@@ -595,21 +595,21 @@ def test_connect_timeout(cluster: Cluster):
     #   which we don't want to list here
 
     cli = connect_to("100:1234")
-    cli.expect_exact("Connection Error. Try to reconnect")
+    cli.expect_exact("Connection Error (address 100:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1:1234")
-    cli.expect_exact("Connection Error. Try to reconnect")
+    cli.expect_exact("Connection Error (address 192.168.0.1:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002:1234")
-    cli.expect_exact("Connection Error. Try to reconnect")
+    cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002:1234", timeout=CLI_TIMEOUT)
-    cli.expect_exact("Connection Error. Try to reconnect")
+    cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1:1234", timeout=0)
-    cli.expect_exact("Connection Error. Try to reconnect")
+    cli.expect_exact("Connection Error (address 192.168.0.1:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)

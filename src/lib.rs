@@ -303,7 +303,9 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
         "#,
         (host, port),
     )
-    .expect("failed to start http server");
+    .unwrap_or_else(|err| {
+        panic!("failed to start http server on {}:{}: {}", host, port, err);
+    });
     lua.exec_with(
         "pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, ...)",
         tlua::Function::new(|| -> _ {
@@ -825,7 +827,15 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
-    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port())?;
+    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port()).map_err(
+        |err| {
+            Error::other(format!(
+                "failed to start listen on iproto {}: {}",
+                config.instance.iproto_listen().to_host_port(),
+                err
+            ))
+        },
+    )?;
 
     let role = discovery::wait_global();
     let next_entrypoint = match role {
@@ -1144,7 +1154,13 @@ fn postjoin(
     }
 
     tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port())
-        .expect("changing listen port shouldn't fail");
+        .unwrap_or_else(|err| {
+            panic!(
+                "changing listen address to {} shouldn't fail: {}",
+                config.instance.iproto_listen().to_host_port(),
+                err
+            );
+        });
 
     // Start admin console
     let socket_uri = util::validate_and_complete_unix_socket_path(config.instance.admin_socket())?;

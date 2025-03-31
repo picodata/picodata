@@ -152,7 +152,12 @@ impl Context {
 
         let addr = (host, port);
         tlog!(Info, "starting postgres server at {:?}...", addr);
-        let server = server::new_listener(addr)?;
+        let server = server::new_listener(addr).map_err(|err| {
+            Error::other(format!(
+                "failed to start postgres server on {}:{}: {}",
+                host, port, err,
+            ))
+        })?;
 
         Ok(Self {
             server,
