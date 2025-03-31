@@ -5778,6 +5778,7 @@ impl Plan {
             Expression::Reference(_)
             | Expression::Constant(_)
             | Expression::Cast(_)
+            | Expression::Case(_)
             | Expression::Concat(_)
             | Expression::StableFunction(_),
         ) = self.get_node(expr_id)?

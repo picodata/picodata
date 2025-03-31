@@ -42,3 +42,15 @@ SELECT CASE WHEN a <= 4 THEN 42 END AS c FROM t ORDER BY c;
 42,
 42,
 42
+
+-- TEST: case-under-where-clause
+-- SQL:
+SELECT * FROM t WHERE CASE WHEN true THEN 5::INT END = 5;
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3
+
+-- TEST: case-under-where-clause-subtree
+-- SQL:
+SELECT * FROM t WHERE true and CASE WHEN true THEN 5::INT END = 5;
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3
