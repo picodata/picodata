@@ -4,6 +4,12 @@ rustflags = [
   "-C", "link-arg=dynamic_lookup",
 ]
 
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-undefined",
+  "-C", "link-arg=dynamic_lookup",
+]
+
 [source.binary]
 registry = "sparse+https://binary.picodata.io/repository/cargo-proxy/"
 
