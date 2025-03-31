@@ -6,7 +6,7 @@ use super::{
     Nodes, Plan,
 };
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, ExprInParentheses, NodeId, Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, NodeId, Trim, UnaryExpr,
 };
 use std::cell::RefCell;
 
@@ -79,7 +79,6 @@ trait TreeIterator<'nodes> {
 
     fn handle_single_child(&mut self, expr: Expression) -> Option<NodeId> {
         let (Expression::Alias(Alias { child, .. })
-        | Expression::ExprInParentheses(ExprInParentheses { child })
         | Expression::Cast(Cast { child, .. })
         | Expression::Unary(UnaryExpr { child, .. })) = expr
         else {

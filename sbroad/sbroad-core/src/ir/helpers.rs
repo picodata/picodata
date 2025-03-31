@@ -5,9 +5,8 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
-    Alias, BoolExpr, Case, Constant, Delete, ExprInParentheses, GroupBy, Having, Join, Motion,
-    NodeId, OrderBy, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, UnaryExpr,
-    Update, ValuesRow,
+    Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, UnaryExpr, Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -165,11 +164,6 @@ impl Plan {
                         _ => unreachable!("unexpected Alias child node"),
                     };
                     writeln!(buf, "Alias [name = {name}, child = {child}]")?;
-                }
-                Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                    writeln!(buf, "Parentheses")?;
-                    writeln_with_tabulation(buf, tabulation_number + 1, "Child")?;
-                    self.formatted_arena_node(buf, tabulation_number + 1, *child)?;
                 }
                 Expression::Case(Case {
                     search_expr,

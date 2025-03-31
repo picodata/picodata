@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write as _};
-use std::mem::take;
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -163,14 +162,69 @@ impl Default for ColExpr {
     }
 }
 
+/// Helper struct for constructing ColExpr out of
+/// given plan expression node.
+struct ColExprStack<'st> {
+    /// Vec of (col_expr, corresponding_plan_id).
+    inner: Vec<(ColExpr, NodeId)>,
+    plan: &'st Plan,
+}
+
+impl<'st> ColExprStack<'st> {
+    fn new<'plan: 'st>(plan: &'plan Plan) -> Self {
+        Self {
+            inner: Vec::new(),
+            plan,
+        }
+    }
+
+    fn push(&mut self, pair: (ColExpr, NodeId)) {
+        self.inner.push(pair)
+    }
+
+    fn pop(&mut self) -> (ColExpr, NodeId) {
+        self.inner
+            .pop()
+            .expect("ColExpr stack should contain expression")
+    }
+
+    fn pop_expr(&mut self, top_plan_id: Option<NodeId>) -> ColExpr {
+        let (expr, plan_id) = self.pop();
+        match top_plan_id {
+            None => expr,
+            Some(top_plan_id) => expr.covered_with_parentheses(self.plan, top_plan_id, plan_id),
+        }
+    }
+
+    fn pop_expr_optional(&mut self) -> Option<ColExpr> {
+        self.inner.pop().map(|(expr, _)| expr)
+    }
+}
+
 impl ColExpr {
+    fn covered_with_parentheses(
+        self,
+        plan: &Plan,
+        top_plan_id: NodeId,
+        self_plan_id: NodeId,
+    ) -> Self {
+        let should_cover = plan
+            .should_cover_with_parentheses(top_plan_id, self_plan_id)
+            .expect("top and child nodes should exist");
+        if should_cover {
+            ColExpr::Parentheses(Box::new(self))
+        } else {
+            self
+        }
+    }
+
     #[allow(dead_code, clippy::too_many_lines)]
     fn new(
         plan: &Plan,
         subtree_top: NodeId,
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
-        let mut stack: Vec<(ColExpr, NodeId)> = Vec::new();
+        let mut stack: ColExprStack = ColExprStack::new(plan);
         let mut dft_post =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
 
@@ -191,9 +245,7 @@ impl ColExpr {
                         for o_elem in ordering {
                             let expr = match o_elem.entity {
                                 OrderByEntity::Expression { .. } => {
-                                    let (expr, _) = stack.pop().unwrap_or_else(|| {
-                                        panic!("Can't pop window ordering expr from stack.");
-                                    });
+                                    let expr = stack.pop_expr(Some(id));
                                     OrderByExpr::Expr { expr }
                                 }
                                 OrderByEntity::Index { value } => OrderByExpr::Index { value },
@@ -210,9 +262,7 @@ impl ColExpr {
                     if let Some(partition) = partition {
                         p_elems.reserve(partition.len());
                         for _ in partition {
-                            let (expr, _) = stack.pop().unwrap_or_else(|| {
-                                panic!("Can't pop window partition expr from stack.")
-                            });
+                            let expr = stack.pop_expr(Some(id));
                             p_elems.push(expr)
                         }
                         p_elems.reverse();
@@ -233,22 +283,16 @@ impl ColExpr {
                     filter,
                     ..
                 }) => {
-                    let (window, _) = stack
-                        .pop()
-                        .unwrap_or_else(|| panic!("Can't pop window expr from stack."));
+                    let window = stack.pop_expr(Some(id));
 
                     let filter = filter.map(|_| {
-                        let (expr, _) = stack.pop().unwrap_or_else(|| {
-                            panic!("Can't pop window function arg expr from stack.")
-                        });
+                        let expr = stack.pop_expr(Some(id));
                         Box::new(expr)
                     });
 
                     let mut args = Vec::with_capacity(func_args.len());
                     for _ in func_args {
-                        let (expr, _) = stack.pop().unwrap_or_else(|| {
-                            panic!("Can't pop window function arg expr from stack.")
-                        });
+                        let expr = stack.pop_expr(Some(id));
                         args.push(expr);
                     }
                     args.reverse();
@@ -258,12 +302,9 @@ impl ColExpr {
                     stack.push((over_expr, id));
                 }
                 Expression::Cast(Cast { to, .. }) => {
-                    let (expr, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing CAST expression".to_smolstr(),
-                        )
-                    })?;
-                    let cast_expr: ColExpr = ColExpr::Cast(Box::new(expr), *to);
+                    let child_expr = stack.pop_expr(Some(id));
+
+                    let cast_expr: ColExpr = ColExpr::Cast(Box::new(child_expr), *to);
                     stack.push((cast_expr, id));
                 }
                 Expression::Case(Case {
@@ -272,9 +313,7 @@ impl ColExpr {
                     else_expr,
                 }) => {
                     let else_expr_col = if else_expr.is_some() {
-                        let (expr, _) = stack
-                            .pop()
-                            .unwrap_or_else(|| panic!("Can't pop else expr from stack."));
+                        let expr = stack.pop_expr(Some(id));
                         Some(Box::new(expr))
                     } else {
                         None
@@ -283,22 +322,16 @@ impl ColExpr {
                     let mut match_expr_cols: Vec<(Box<ColExpr>, Box<ColExpr>)> = when_blocks
                         .iter()
                         .map(|_| {
-                            let (res_expr, _) = stack
-                                .pop()
-                                .unwrap_or_else(|| panic!("Can't pop res expr from stack."));
+                            let res_expr = stack.pop_expr(Some(id));
 
-                            let (cond_expr, _) = stack
-                                .pop()
-                                .unwrap_or_else(|| panic!("Can't pop cond expr from stack."));
+                            let cond_expr = stack.pop_expr(Some(id));
                             (Box::new(cond_expr), Box::new(res_expr))
                         })
                         .collect();
                     match_expr_cols.reverse();
 
                     let search_expr_col = if search_expr.is_some() {
-                        let (expr, _) = stack
-                            .pop()
-                            .unwrap_or_else(|| panic!("Can't pop search expr from stack."));
+                        let expr = stack.pop_expr(Some(id));
                         Some(Box::new(expr))
                     } else {
                         None
@@ -333,41 +366,15 @@ impl ColExpr {
                     stack.push((ref_expr, id));
                 }
                 Expression::Concat(_) => {
-                    let (right, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing CONCAT expression".to_smolstr(),
-                        )
-                    })?;
-                    let (left, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing CONCAT expression".to_smolstr(),
-                        )
-                    })?;
+                    let right = stack.pop_expr(Some(id));
+                    let left = stack.pop_expr(Some(id));
                     let concat_expr = ColExpr::Concat(Box::new(left), Box::new(right));
                     stack.push((concat_expr, id));
                 }
                 Expression::Like { .. } => {
-                    let escape = Some(
-                        stack
-                            .pop()
-                            .ok_or_else(|| {
-                                SbroadError::UnexpectedNumberOfValues(
-                                    "stack is empty while processing ESCAPE expression"
-                                        .to_smolstr(),
-                                )
-                            })?
-                            .0,
-                    );
-                    let (right, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing right LIKE expression".to_smolstr(),
-                        )
-                    })?;
-                    let (left, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing left LIKE expression".to_smolstr(),
-                        )
-                    })?;
+                    let escape = Some(stack.pop_expr(Some(id)));
+                    let right = stack.pop_expr(Some(id));
+                    let left = stack.pop_expr(Some(id));
                     let concat_expr =
                         ColExpr::Like(Box::new(left), Box::new(right), escape.map(Box::new));
                     stack.push((concat_expr, id));
@@ -378,10 +385,8 @@ impl ColExpr {
                     stack.push((expr, id));
                 }
                 Expression::Trim(Trim { kind, .. }) => {
-                    let (target, _) = stack
-                        .pop()
-                        .expect("stack is empty while processing TRIM expression");
-                    let pattern = stack.pop().map(|(pattern, _)| Box::new(pattern));
+                    let target = stack.pop_expr(Some(id));
+                    let pattern = stack.pop_expr_optional().map(Box::new);
                     let trim_expr = ColExpr::Trim(kind.clone(), pattern, Box::new(target));
                     stack.push((trim_expr, id));
                 }
@@ -396,11 +401,7 @@ impl ColExpr {
                     let mut len = children.len();
                     let mut args: Vec<ColExpr> = Vec::with_capacity(len);
                     while len > 0 {
-                        let (arg, _) = stack.pop().ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                format_smolstr!("stack is empty, expected to pop {len} element while processing STABLE FUNCTION expression"),
-                            )
-                        })?;
+                        let arg = stack.pop_expr(Some(id));
                         args.push(arg);
                         len -= 1;
                     }
@@ -416,84 +417,43 @@ impl ColExpr {
                 }
                 Expression::Row(RowExpr { list, .. }) => {
                     let mut len = list.len();
-                    let mut row: Vec<(ColExpr, NodeId)> = Vec::with_capacity(len);
+                    let mut row: ColExprStack = ColExprStack::new(plan);
                     while len > 0 {
-                        let expr = stack.pop().ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                format_smolstr!("stack is empty, expected to pop {len} element while processing ROW expression"),
-                            )
-                        })?;
+                        let expr = stack.pop();
                         row.push(expr);
                         len -= 1;
                     }
-                    row.reverse();
-                    let row = Row::from_col_exprs_with_ids(plan, &mut row, sq_ref_map)?;
+                    row.inner.reverse();
+                    let row = Row::from_col_expr_stack(plan, row, sq_ref_map)?;
                     let row_expr = ColExpr::Row(row);
                     stack.push((row_expr, id));
                 }
-                Expression::Arithmetic(ArithmeticExpr {
-                    left: _,
-                    op,
-                    right: _,
-                }) => {
-                    let (right, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing ARITHMETIC expression".to_smolstr(),
-                        )
-                    })?;
+                Expression::Arithmetic(ArithmeticExpr { op, .. }) => {
+                    let right_expr = stack.pop_expr(Some(id));
+                    let left_expr = stack.pop_expr(Some(id));
 
-                    let (left, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing ARITHMETIC expression".to_smolstr(),
-                        )
-                    })?;
-
-                    let ar_expr = ColExpr::Arithmetic(Box::new(left), op.clone(), Box::new(right));
+                    let ar_expr =
+                        ColExpr::Arithmetic(Box::new(left_expr), op.clone(), Box::new(right_expr));
 
                     stack.push((ar_expr, id));
                 }
-                Expression::ExprInParentheses { .. } => {
-                    let (child_expr, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing ALIAS expression".to_smolstr(),
-                        )
-                    })?;
-                    let parentheses_expr = ColExpr::Parentheses(Box::new(child_expr));
-                    stack.push((parentheses_expr, id));
-                }
                 Expression::Alias(Alias { name, .. }) => {
-                    let (expr, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing ALIAS expression".to_smolstr(),
-                        )
-                    })?;
+                    let expr = stack.pop_expr(Some(id));
                     let alias_expr = ColExpr::Alias(Box::new(expr), name.clone());
                     stack.push((alias_expr, id));
                 }
                 Expression::Bool(BoolExpr { op, .. }) => {
-                    let (right, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing BOOL expression".to_smolstr(),
-                        )
-                    })?;
+                    let right_expr = stack.pop_expr(Some(id));
+                    let left_expr = stack.pop_expr(Some(id));
 
-                    let (left, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing BOOL expression".to_smolstr(),
-                        )
-                    })?;
-
-                    let bool_expr = ColExpr::Bool(Box::new(left), op.clone(), Box::new(right));
+                    let bool_expr =
+                        ColExpr::Bool(Box::new(left_expr), op.clone(), Box::new(right_expr));
 
                     stack.push((bool_expr, id));
                 }
                 Expression::Unary(UnaryExpr { op, .. }) => {
-                    let (expr, _) = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "stack is empty while processing UNARY expression".to_smolstr(),
-                        )
-                    })?;
-                    let alias_expr = ColExpr::Unary(op.clone(), Box::new(expr));
+                    let child_expr = stack.pop_expr(Some(id));
+                    let alias_expr = ColExpr::Unary(op.clone(), Box::new(child_expr));
                     stack.push((alias_expr, id));
                 }
                 Expression::LocalTimestamp(_) => {
@@ -507,9 +467,7 @@ impl ColExpr {
             }
         }
 
-        let (expr, _) = stack
-            .pop()
-            .ok_or_else(|| SbroadError::UnexpectedNumberOfValues("stack is empty".to_smolstr()))?;
+        let expr = stack.pop_expr(None);
         Ok(expr)
     }
 }
@@ -535,20 +493,16 @@ enum BoundTypeExplain {
 }
 
 impl BoundTypeExplain {
-    fn from_ir(b_type: &BoundType, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+    fn from_ir(b_type: &BoundType, stack: &mut ColExprStack) -> Self {
         match b_type {
             BoundType::PrecedingUnbounded => BoundTypeExplain::PrecedingUnbounded,
             BoundType::PrecedingOffset(_) => {
-                let (expr, _) = stack
-                    .pop()
-                    .unwrap_or_else(|| panic!("Can't pop preceding offset expr from stack."));
+                let expr: ColExpr = stack.pop_expr(None);
                 BoundTypeExplain::PrecedingOffset(expr)
             }
             BoundType::CurrentRow => BoundTypeExplain::CurrentRow,
             BoundType::FollowingOffset(_) => {
-                let (expr, _) = stack
-                    .pop()
-                    .unwrap_or_else(|| panic!("Can't pop following offset expr from stack."));
+                let expr = stack.pop_expr(None);
                 BoundTypeExplain::FollowingOffset(expr)
             }
             BoundType::FollowingUnbounded => BoundTypeExplain::FollowingUnbounded,
@@ -577,7 +531,7 @@ enum BoundExplain {
 }
 
 impl BoundExplain {
-    fn from_ir(bound: &Bound, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+    fn from_ir(bound: &Bound, stack: &mut ColExprStack) -> Self {
         match bound {
             Bound::Single(b_type) => BoundExplain::Single(BoundTypeExplain::from_ir(b_type, stack)),
             Bound::Between(lower, upper) => {
@@ -607,7 +561,7 @@ struct FrameExplain {
 }
 
 impl FrameExplain {
-    fn from_ir(frame: &Frame, stack: &mut Vec<(ColExpr, NodeId)>) -> Self {
+    fn from_ir(frame: &Frame, stack: &mut ColExprStack) -> Self {
         let bound = BoundExplain::from_ir(&frame.bound, stack);
         FrameExplain {
             ty: frame.ty.clone(),
@@ -1027,14 +981,14 @@ impl Row {
         self.cols.push(row);
     }
 
-    fn from_col_exprs_with_ids(
+    fn from_col_expr_stack(
         plan: &Plan,
-        exprs_with_ids: &mut Vec<(ColExpr, NodeId)>,
+        col_expr_stack: ColExprStack,
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
         let mut row = Row::new();
 
-        for (col_expr, expr_id) in take(exprs_with_ids) {
+        for (col_expr, expr_id) in col_expr_stack.inner {
             let current_node = plan.get_expression_node(expr_id)?;
 
             match &current_node {

@@ -7,7 +7,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{BoolExpr, Constant, ExprInParentheses, NodeId, Row, UnaryExpr};
+use crate::ir::node::{BoolExpr, Constant, NodeId, Row, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::transformation::OldNewTransformationMap;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
@@ -74,9 +74,7 @@ fn call_expr_tree_not_push_down(
     let filter = |node_id: NodeId| -> bool {
         matches!(
             plan.get_node(node_id),
-            Ok(Node::Expression(
-                Expression::ExprInParentheses(_) | Expression::Bool(_) | Expression::Row(_)
-            ))
+            Ok(Node::Expression(Expression::Bool(_) | Expression::Row(_)))
         )
     };
     let mut subtree = PostOrderWithFilter::with_capacity(
@@ -92,9 +90,6 @@ fn call_expr_tree_not_push_down(
 
         let expr = plan.get_mut_expression_node(id)?;
         match expr {
-            MutExpression::ExprInParentheses(ExprInParentheses { child }) => {
-                transformation_map.replace(child);
-            }
             MutExpression::Bool(BoolExpr { left, right, .. }) => {
                 transformation_map.replace(left);
                 transformation_map.replace(right);
@@ -181,17 +176,6 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let expr = self.get_expression_node(expr_id)?;
         let new_expr_id = match expr {
-            Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                // In case we have expression `true and not (true and false)` we would like to
-                // save parentheses over not child:
-                // `true and false or true` != `true and (false or true)`.
-                let remember_old_child = *child;
-                let new_child = self.push_down_not_for_expression(*child, not_state, map)?;
-                if new_child != remember_old_child {
-                    map.insert(remember_old_child, new_child);
-                }
-                expr_id
-            }
             Expression::Constant(Constant { value }) => {
                 if let NotState::Off = not_state {
                     expr_id

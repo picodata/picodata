@@ -1859,9 +1859,6 @@ enum ParseExpression {
     SubQueryPlanId {
         plan_id: NodeId,
     },
-    Parentheses {
-        child: Box<ParseExpression>,
-    },
     Infix {
         is_not: bool,
         op: ParseExpressionInfixOperator,
@@ -2194,10 +2191,6 @@ impl ParseExpression {
             ParseExpression::SubQueryPlanId { plan_id } => {
                 plan.add_replaced_subquery(*plan_id, Some(1), worker)?
             }
-            ParseExpression::Parentheses { child } => {
-                let child_plan_id = child.populate_plan(plan, worker)?;
-                plan.add_covered_with_parentheses(child_plan_id)
-            }
             ParseExpression::Cast { cast_type, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
                 plan.add_cast(child_plan_id, *cast_type)?
@@ -2350,23 +2343,10 @@ impl ParseExpression {
                     1
                 };
 
-                // TODO: Remove ParseExpression::Parentheses as a standalone expression.
-                //       On the stage of local SQL generation, add parentheses next to
-                //       specific operators (+, AND) based on priorities.
-
-                // Workaround specific for In operator:
-                // During parsing it's hard for us to distinguish Row and ExpressionInParentheses.
-                // Under In operator we expect to see Row even if there is a single expression
-                // covered in parentheses. Here we reinterpret ExpressionInParentheses as Row.
                 let right_plan_id = match op {
                     ParseExpressionInfixOperator::InfixBool(op) => match op {
                         Bool::In => {
-                            if let ParseExpression::Parentheses { child } = &**right {
-                                let reinterpreted_right = ParseExpression::Row {
-                                    children: vec![(**child).clone()],
-                                };
-                                reinterpreted_right.populate_plan(plan, worker)?
-                            } else if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
+                            if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
                                 plan.add_replaced_subquery(
                                     *plan_id,
                                     Some(left_row_children_number),
@@ -2978,13 +2958,12 @@ where
                     let child_expr_pair = inner_pairs
                         .next()
                         .expect("Expected to see inner expression under parentheses");
-                    let child_parse_expr = parse_expr_pratt(
+                    parse_expr_pratt(
                         Pairs::single(child_expr_pair),
                         referred_relation_ids,
                         worker,
                         plan
-                    )?;
-                    ParseExpression::Parentheses { child: Box::new(child_parse_expr) }
+                    )?
                 }
                 Rule::Parameter => {
                     let plan_id = parse_param(primary, worker, plan)?;

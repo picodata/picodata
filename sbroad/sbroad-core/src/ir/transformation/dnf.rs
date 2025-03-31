@@ -72,7 +72,7 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{BoolExpr, ExprInParentheses, Node32, NodeId};
+use crate::ir::node::{BoolExpr, Node32, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::Plan;
 use std::collections::VecDeque;
@@ -85,9 +85,8 @@ pub struct Chain {
     nodes: VecDeque<NodeId>,
 }
 
-/// Helper function to identify whether we are dealing with AND/OR operator that
-/// may be covered with parentheses.
-fn optionally_covered_and_or(expr_id: NodeId, plan: &Plan) -> Result<Option<NodeId>, SbroadError> {
+/// Helper function to identify whether we are dealing with AND/OR operator.
+fn and_or(expr_id: NodeId, plan: &Plan) -> Result<Option<NodeId>, SbroadError> {
     let expr = plan.get_expression_node(expr_id)?;
     let and_or = match expr {
         Expression::Bool(BoolExpr { op, .. }) => {
@@ -96,9 +95,6 @@ fn optionally_covered_and_or(expr_id: NodeId, plan: &Plan) -> Result<Option<Node
             } else {
                 None
             }
-        }
-        Expression::ExprInParentheses(ExprInParentheses { child }) => {
-            optionally_covered_and_or(*child, plan)?
         }
         _ => None,
     };
@@ -123,7 +119,7 @@ impl Chain {
     /// Append a new node to the chain. Keep AND and OR nodes in the back,
     /// while other nodes in the front of the chain queue.
     fn push(&mut self, expr_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
-        let and_or = optionally_covered_and_or(expr_id, plan)?;
+        let and_or = and_or(expr_id, plan)?;
         if let Some(and_or_id) = and_or {
             self.nodes.push_back(and_or_id);
         } else {
@@ -241,24 +237,6 @@ impl Plan {
         }
 
         Ok(result)
-    }
-
-    /// Unwrap expression from ExprInParentheses.
-    ///
-    /// # Errors
-    /// - Failed to find node with given id in plan.
-    pub fn unwrap_expr(&self, id: NodeId) -> Result<Expression<'_>, SbroadError> {
-        let mut bool_id = id;
-
-        loop {
-            let node = self.get_expression_node(bool_id)?;
-            if let Expression::ExprInParentheses(ExprInParentheses { child }) = node {
-                bool_id = *child;
-                continue;
-            }
-
-            break Ok(node);
-        }
     }
 
     /// Convert an expression tree of trivalent nodes to a disjunctive normal form (DNF).

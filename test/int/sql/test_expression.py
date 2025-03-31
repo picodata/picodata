@@ -4,6 +4,6 @@ from framework.sqltester import (
 )
 
 
-@sql_test_file("groupby.sql")
+@sql_test_file("expression.sql")
 class TestGroupBy(ClusterTwoInstances):
     pass

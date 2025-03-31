@@ -42,7 +42,7 @@ fn test_query_explain_3() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t2"."e"::unsigned -> "e")
-        selection ROW("t2"."e"::unsigned) = ROW(1::unsigned) and ROW("t2"."f"::unsigned) = ROW(13::unsigned)
+        selection (ROW("t2"."e"::unsigned) = ROW(1::unsigned)) and (ROW("t2"."f"::unsigned) = ROW(13::unsigned))
             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -275,7 +275,7 @@ fn test_query_explain_14() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
-        selection ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned) and ROW("t1"."a"::string, "t1"."b"::integer) = ROW(2::unsigned, 2::unsigned)
+        selection (ROW("t1"."a"::string, "t1"."b"::integer) = ROW(1::unsigned, 1::unsigned)) and (ROW("t1"."a"::string, "t1"."b"::integer) = ROW(2::unsigned, 2::unsigned))
             scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000

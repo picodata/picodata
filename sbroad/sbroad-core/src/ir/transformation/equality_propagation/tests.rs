@@ -18,25 +18,20 @@ fn derive_equalities(plan: &mut Plan) {
 fn equality_propagation1() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = 2 AND "c" = 1 OR "d" = 1"#;
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
 
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."c") = (?) and ("t"."a") = (?) and ("t"."b") = (?)"#,
-            r#"and ("t"."c") = ("t"."a") or ("t"."d") = (?)"#,
-        ),
+    assert_eq!(
+        actual_pattern_params.params,
         vec![
             Value::from(1_u64),
             Value::from(1_u64),
             Value::from(2_u64),
             Value::from(1_u64),
-        ],
+        ]
     );
-
-    assert_eq!(
-        check_transformation(input, vec![], &derive_equalities),
-        expected
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."c") = (?)) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."c") = ("t"."a"))) or (("t"."d") = (?))"#
     );
 }
 
@@ -44,15 +39,12 @@ fn equality_propagation1() {
 fn equality_propagation2() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = NULL AND "b" = NULL"#;
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
 
-    let expected = PatternWithParams::new(
-        r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") = (?) and ("t"."b") = (?)"#.to_string(),
-        vec![Value::Null, Value::Null],
-    );
-
-    assert_eq!(
-        check_transformation(input, vec![], &derive_equalities),
-        expected
+    assert_eq!(actual_pattern_params.params, vec![Value::Null, Value::Null]);
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a") = (?)) and (("t"."b") = (?))"#
     );
 }
 
@@ -60,19 +52,15 @@ fn equality_propagation2() {
 fn equality_propagation3() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = null AND "a" = null"#;
-
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."a") = (?) and ("t"."a") = (?) and ("t"."b") = (?)"#,
-        ),
-        vec![Value::Null, Value::from(1_u64), Value::Null],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
 
     assert_eq!(
-        check_transformation(input, vec![], &derive_equalities),
-        expected
+        actual_pattern_params.params,
+        vec![Value::Null, Value::from(1_u64), Value::Null]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (("t"."a") = (?))) and (("t"."b") = (?))"#
     );
 }
 
@@ -80,25 +68,20 @@ fn equality_propagation3() {
 fn equality_propagation4() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = null AND "a" = null AND "b" = 1"#;
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
 
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."b") = (?) and ("t"."a") = (?) and ("t"."a") = (?)"#,
-            r#"and ("t"."b") = (?) and ("t"."b") = ("t"."a")"#,
-        ),
+    assert_eq!(
+        actual_pattern_params.params,
         vec![
             Value::from(1_u64),
             Value::Null,
             Value::from(1_u64),
             Value::Null,
-        ],
+        ]
     );
-
-    assert_eq!(
-        check_transformation(input, vec![], &derive_equalities),
-        expected
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."b") = (?)) and (("t"."a") = (?))) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."b") = ("t"."a"))"#
     );
 }
 
@@ -106,27 +89,20 @@ fn equality_propagation4() {
 fn equality_propagation5() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = 1 AND "c" = 1 AND "d" = 1"#;
+    let actual_pattern_params = check_transformation(input, vec![], &derive_equalities);
 
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {} {} {} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."d") = (?) and ("t"."c") = (?)"#,
-            r#"and ("t"."a") = (?) and ("t"."b") = (?)"#,
-            r#"and ("t"."b") = ("t"."c") and ("t"."c") = ("t"."d")"#,
-            r#"and ("t"."d") = ("t"."a")"#,
-        ),
+    assert_eq!(
+        actual_pattern_params.params,
         vec![
             Value::from(1_u64),
             Value::from(1_u64),
             Value::from(1_u64),
             Value::from(1_u64),
-        ],
+        ]
     );
-
-    assert_eq!(
-        check_transformation(input, vec![], &derive_equalities),
-        expected
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((((("t"."d") = (?)) and (("t"."c") = (?))) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."b") = ("t"."c"))) and (("t"."c") = ("t"."d"))) and (("t"."d") = ("t"."a"))"#
     );
 }
 

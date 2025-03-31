@@ -135,8 +135,6 @@ impl From<BoolExpr> for NodeAligned {
 /// Binary expression returning row result.
 ///
 /// Example: `a + b > 42`, `a + b < c + 1`, `1 + 2 != 2 * 2`.
-///
-/// TODO: always cover children with parentheses (in `to_sql`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ArithmeticExpr {
     /// Left branch expression node index in the plan node arena.
@@ -351,17 +349,6 @@ pub struct UnaryExpr {
 impl From<UnaryExpr> for NodeAligned {
     fn from(value: UnaryExpr) -> Self {
         Self::Node32(Node32::Unary(value))
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct ExprInParentheses {
-    pub child: NodeId,
-}
-
-impl From<ExprInParentheses> for NodeAligned {
-    fn from(value: ExprInParentheses) -> Self {
-        Self::Node32(Node32::ExprInParentheses(value))
     }
 }
 
@@ -1199,7 +1186,6 @@ pub enum Node32 {
     Invalid(Invalid),
     Union(Union),
     CountAsterisk(CountAsterisk),
-    ExprInParentheses(ExprInParentheses),
     Unary(UnaryExpr),
     Concat(Concat),
     Like(Like),
@@ -1233,9 +1219,6 @@ impl Node32 {
             Node32::CountAsterisk(count) => NodeOwned::Expression(ExprOwned::CountAsterisk(count)),
             Node32::Like(like) => NodeOwned::Expression(ExprOwned::Like(like)),
             Node32::Except(except) => NodeOwned::Relational(RelOwned::Except(except)),
-            Node32::ExprInParentheses(expr_in_par) => {
-                NodeOwned::Expression(ExprOwned::ExprInParentheses(expr_in_par))
-            }
             Node32::Intersect(intersect) => NodeOwned::Relational(RelOwned::Intersect(intersect)),
             Node32::Invalid(inv) => NodeOwned::Invalid(inv),
             Node32::SelectWithoutScan(select) => {

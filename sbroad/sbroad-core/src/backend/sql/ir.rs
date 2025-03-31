@@ -266,6 +266,7 @@ impl ExecutionPlan {
             match data {
                 // TODO: should we care about plans without projections?
                 // Or they should be treated as invalid?
+                SyntaxData::Empty => {}
                 SyntaxData::As => sql.push_str("AS"),
                 SyntaxData::Over => sql.push_str("OVER"),
                 SyntaxData::PartitionBy => sql.push_str("PARTITION BY"),
@@ -431,7 +432,6 @@ impl ExecutionPlan {
                                 Expression::Alias { .. }
                                 | Expression::Window { .. }
                                 | Expression::Over { .. }
-                                | Expression::ExprInParentheses { .. }
                                 | Expression::Bool { .. }
                                 | Expression::Arithmetic { .. }
                                 | Expression::Cast { .. }

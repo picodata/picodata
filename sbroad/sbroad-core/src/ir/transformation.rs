@@ -22,8 +22,8 @@ use super::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, ExprInParentheses, Join, NodeId, Row, Selection,
-    StableFunction, Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Join, NodeId, Row, Selection, StableFunction,
+    Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::{Node, Plan};
@@ -232,7 +232,6 @@ impl Plan {
         let filter = |node_id: NodeId| -> bool {
             if let Ok(Node::Expression(
                 Expression::Bool(_)
-                | Expression::ExprInParentheses(_)
                 | Expression::Arithmetic(_)
                 | Expression::Alias(_)
                 | Expression::Row(_)
@@ -357,7 +356,6 @@ impl Plan {
                     map.replace(window);
                 }
                 MutExpression::Alias(Alias { child, .. })
-                | MutExpression::ExprInParentheses(ExprInParentheses { child, .. })
                 | MutExpression::Cast(Cast { child, .. })
                 | MutExpression::Unary(UnaryExpr { child, .. }) => {
                     map.replace(child);

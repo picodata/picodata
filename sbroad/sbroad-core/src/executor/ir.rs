@@ -13,9 +13,9 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
-    ExprInParentheses, GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136,
-    NodeId, NodeOwned, OrderBy, Over, Reference, Row, ScanCte, ScanRelation, Selection,
-    StableFunction, Trim, UnaryExpr, Update, ValuesRow, Window,
+    GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136, NodeId, NodeOwned,
+    OrderBy, Over, Reference, Row, ScanCte, ScanRelation, Selection, StableFunction, Trim,
+    UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -793,7 +793,6 @@ impl ExecutionPlan {
                         *window = subtree_map.get_id(*window);
                     }
                     ExprOwned::Alias(Alias { ref mut child, .. })
-                    | ExprOwned::ExprInParentheses(ExprInParentheses { ref mut child })
                     | ExprOwned::Cast(Cast { ref mut child, .. })
                     | ExprOwned::Unary(UnaryExpr { ref mut child, .. }) => {
                         *child = subtree_map.get_id(*child);

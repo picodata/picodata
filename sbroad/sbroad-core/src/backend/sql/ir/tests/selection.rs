@@ -27,10 +27,10 @@ fn selection1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."product_code") < (?)"#,
-            r#"and ("hash_testing"."identification_number") in"#,
+            r#"WHERE (("hash_testing"."product_code") < (?))"#,
+            r#"and (("hash_testing"."identification_number") in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?))"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = (?)))"#,
         ),
         vec![Value::from("a"), Value::from("b")],
     );
@@ -47,10 +47,10 @@ fn selection1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") in"#,
+            r#"WHERE (("hash_testing"."identification_number") in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?))"#,
-            r#"and ("hash_testing"."product_code") < (?)"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = (?)))"#,
+            r#"and (("hash_testing"."product_code") < (?))"#,
         ),
         vec![Value::from("b"), Value::from("a")],
     );
@@ -68,12 +68,12 @@ fn selection2_latest() {
     let expected = PatternWithParams::new(
         f_sql(
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
-WHERE ("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number") =
-("hash_testing"."product_units", ?, ?)
-and ("hash_testing"."product_units") <> ("hash_testing"."sys_op")
-or ("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number")
-= ("hash_testing"."product_units", ?, ?)
-and ("hash_testing"."product_units") is null"#,
+WHERE ((("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number") =
+("hash_testing"."product_units", ?, ?))
+and (("hash_testing"."product_units") <> ("hash_testing"."sys_op")))
+or ((("hash_testing"."identification_number", "hash_testing"."product_units", "hash_testing"."identification_number")
+= ("hash_testing"."product_units", ?, ?))
+and (("hash_testing"."product_units") is null))"#,
         ),
         vec![
             Value::Unsigned(1),
@@ -95,8 +95,8 @@ fn selection2_oldest() {
     let expected = PatternWithParams::new(
         [
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") in (?) and ("hash_testing"."product_units") = (?)"#,
-            r#"and (("hash_testing"."product_units") <> ("hash_testing"."sys_op") or ("hash_testing"."product_units") is null)"#,
+            r#"WHERE ((("hash_testing"."identification_number") in (?)) and (("hash_testing"."product_units") = (?)))"#,
+            r#"and ((("hash_testing"."product_units") <> ("hash_testing"."sys_op")) or (("hash_testing"."product_units") is null))"#,
         ].join(" "),
         vec![Value::Unsigned(1), Value::Unsigned(1)],
     );

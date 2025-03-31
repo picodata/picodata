@@ -5,10 +5,9 @@ use crate::ir::node::block::{Block, MutBlock};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
-    ExprInParentheses, GroupBy, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
-    NodeId, Over, Parameter, Procedure, Reference, Row, Selection, StableFunction, Trim, UnaryExpr,
-    ValuesRow, Window,
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, GroupBy,
+    Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Over, Parameter,
+    Procedure, Reference, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
@@ -331,9 +330,6 @@ impl<'binder> ParamsBinder<'binder> {
                         child: ref param_id,
                         ..
                     })
-                    | Expression::ExprInParentheses(ExprInParentheses {
-                        child: ref param_id,
-                    })
                     | Expression::Cast(Cast {
                         child: ref param_id,
                         ..
@@ -554,9 +550,6 @@ impl<'binder> ParamsBinder<'binder> {
                     MutExpression::Alias(Alias {
                         child: ref mut param_id,
                         ..
-                    })
-                    | MutExpression::ExprInParentheses(ExprInParentheses {
-                        child: ref mut param_id,
                     })
                     | MutExpression::Cast(Cast {
                         child: ref mut param_id,

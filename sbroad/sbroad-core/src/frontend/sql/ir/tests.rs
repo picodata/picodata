@@ -54,7 +54,7 @@ fn front_sql2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
-        selection ROW("hash_testing"."identification_number"::integer) = ROW(1::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('1'::string) or ROW("hash_testing"."identification_number"::integer) = ROW(2::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('2'::string)
+        selection ((ROW("hash_testing"."identification_number"::integer) = ROW(1::unsigned)) and (ROW("hash_testing"."product_code"::string) = ROW('1'::string))) or ((ROW("hash_testing"."identification_number"::integer) = ROW(2::unsigned)) and (ROW("hash_testing"."product_code"::string) = ROW('2'::string)))
             scan "hash_testing"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -113,7 +113,7 @@ fn front_sql4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t3"."identification_number"::integer -> "identification_number", "t3"."product_code"::string -> "product_code")
-        selection (ROW("t3"."identification_number"::integer) = ROW(1::unsigned) or (ROW("t3"."identification_number"::integer) = ROW(2::unsigned) or ROW("t3"."identification_number"::integer) = ROW(3::unsigned))) and (ROW("t3"."product_code"::string) = ROW('1'::string) or ROW("t3"."product_code"::string) = ROW('2'::string))
+        selection ((ROW("t3"."identification_number"::integer) = ROW(1::unsigned)) or ((ROW("t3"."identification_number"::integer) = ROW(2::unsigned)) or (ROW("t3"."identification_number"::integer) = ROW(3::unsigned)))) and ((ROW("t3"."product_code"::string) = ROW('1'::string)) or (ROW("t3"."product_code"::string) = ROW('2'::string)))
             scan "t3"
                 union all
                     projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
@@ -163,7 +163,7 @@ fn front_sql6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id", "hash_testing"."product_units"::boolean -> "product_units")
-        selection ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('123'::string)
+        selection (ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned)) and (ROW("hash_testing"."product_code"::string) = ROW('123'::string))
             join on ROW("hash_testing"."identification_number"::integer) = ROW("t"."id"::unsigned)
                 scan "hash_testing"
                     projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op")
@@ -222,12 +222,12 @@ fn front_sql9() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t3"."id"::unsigned -> "id", "t3"."FIRST_NAME"::string -> "FIRST_NAME", "t8"."identification_number"::integer -> "identification_number", "t8"."product_code"::string -> "product_code")
-        selection ROW("t3"."id"::unsigned) = ROW(1::unsigned) and ROW("t8"."identification_number"::integer) = ROW(1::unsigned) and ROW("t8"."product_code"::string) = ROW('123'::string)
+        selection ((ROW("t3"."id"::unsigned) = ROW(1::unsigned)) and (ROW("t8"."identification_number"::integer) = ROW(1::unsigned))) and (ROW("t8"."product_code"::string) = ROW('123'::string))
             join on ROW("t3"."id"::unsigned) = ROW("t8"."identification_number"::integer)
                 scan "t3"
                     union all
                         projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                            selection ROW("test_space"."sys_op"::unsigned) < ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) >= ROW(0::unsigned)
+                            selection (ROW("test_space"."sys_op"::unsigned) < ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) >= ROW(0::unsigned))
                                 scan "test_space"
                         projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
                             selection ROW("test_space_hist"."sysFrom"::unsigned) <= ROW(0::unsigned)
@@ -342,7 +342,7 @@ fn front_sql18() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("hash_testing"."product_code"::string -> "product_code")
-        selection ROW("hash_testing"."product_code"::string) >= ROW(1::unsigned) and ROW("hash_testing"."product_code"::string) <= ROW(2::unsigned)
+        selection (ROW("hash_testing"."product_code"::string) >= ROW(1::unsigned)) and (ROW("hash_testing"."product_code"::string) <= ROW(2::unsigned))
             scan "hash_testing"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -359,7 +359,7 @@ fn front_sql19() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("hash_testing"."identification_number"::integer -> "identification_number")
-        selection not ROW("hash_testing"."product_code"::string) is null
+        selection not (ROW("hash_testing"."product_code"::string) is null)
             scan "hash_testing"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -381,7 +381,7 @@ fn front_sql_is_true() {
     let input = r#"select true is not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not ROW(true::boolean) = true::boolean -> "col_1")
+    projection (not (ROW(true::boolean) = true::boolean) -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -402,7 +402,7 @@ fn front_sql_is_false() {
     let input = r#"select true is not false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not ROW(true::boolean) = false::boolean -> "col_1")
+    projection (not (ROW(true::boolean) = false::boolean) -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -432,7 +432,7 @@ fn front_sql_is_null_unknown() {
     let input = r#"select true is not null"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not ROW(true::boolean) is null -> "col_1")
+    projection (not (ROW(true::boolean) is null) -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -441,7 +441,7 @@ fn front_sql_is_null_unknown() {
     let input = r#"select true is not unknown"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not ROW(true::boolean) is null -> "col_1")
+    projection (not (ROW(true::boolean) is null) -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -471,7 +471,7 @@ fn front_sql_between_with_additional_and_from_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection ROW("t"."id"::unsigned) > ROW(1::unsigned) and ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned)
+        selection ((ROW("t"."id"::unsigned) > ROW(1::unsigned)) and (ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned))) and (ROW("t"."id"::unsigned) <= (ROW("t"."id"::unsigned) + ROW(10::unsigned)))
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -489,7 +489,7 @@ fn front_sql_between_with_additional_not_from_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection not (ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned)) and ROW(true::boolean)
+        selection (not ((ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned)) and (ROW("t"."id"::unsigned) <= (ROW("t"."id"::unsigned) + ROW(10::unsigned))))) and ROW(true::boolean)
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -507,7 +507,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection ROW("t"."id"::unsigned) > ROW(1::unsigned) and ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned) and ROW("t"."id"::unsigned) <= ROW("t"."id"::unsigned) + ROW(10::unsigned) and ROW(true::boolean)
+        selection (((ROW("t"."id"::unsigned) > ROW(1::unsigned)) and (ROW("t"."id"::unsigned) >= ROW("t"."id"::unsigned))) and (ROW("t"."id"::unsigned) <= (ROW("t"."id"::unsigned) + ROW(10::unsigned)))) and ROW(true::boolean)
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -526,7 +526,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection not not (ROW(false::boolean) >= ROW(false::boolean) and ROW(false::boolean) <= ROW(true::boolean))
+        selection not (not ((ROW(false::boolean) >= ROW(false::boolean)) and (ROW(false::boolean) <= ROW(true::boolean))))
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -544,7 +544,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection ROW(false::boolean) and ROW(true::boolean) and ROW(false::boolean) >= ROW(false::boolean) and ROW(false::boolean) <= ROW(true::boolean)
+        selection ((ROW(false::boolean) and ROW(true::boolean)) and (ROW(false::boolean) >= ROW(false::boolean))) and (ROW(false::boolean) <= ROW(true::boolean))
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -944,7 +944,7 @@ fn front_case_simple() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (case when ROW(true::boolean) = ROW(true::boolean) then 'Moscow'::string when ROW(1::unsigned) <> ROW(2::unsigned) and ROW(4::unsigned) < ROW(5::unsigned) then 42::unsigned else false::boolean end -> "case_result")
+    projection (case when ROW(true::boolean) = ROW(true::boolean) then 'Moscow'::string when (ROW(1::unsigned) <> ROW(2::unsigned)) and (ROW(4::unsigned) < ROW(5::unsigned)) then 42::unsigned else false::boolean end -> "case_result")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1144,7 +1144,7 @@ fn front_sql_join_on_bucket_id2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-        join on ROW("t_mv"."bucket_id"::unsigned) = ROW("t2"."bucket_id"::unsigned) or ROW("t2"."e"::unsigned) = ROW("t2"."f"::unsigned)
+        join on (ROW("t_mv"."bucket_id"::unsigned) = ROW("t2"."bucket_id"::unsigned)) or (ROW("t2"."e"::unsigned) = ROW("t2"."f"::unsigned))
             scan "t2"
                 projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t2"."bucket_id"::unsigned -> "bucket_id")
                     scan "t2"
@@ -1433,7 +1433,7 @@ fn front_sql_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t2"."product_code"::string -> "product_code", "t2"."product_units"::boolean -> "product_units")
-        join on ROW("t2"."identification_number"::integer) = ROW("t"."id"::unsigned) and not ROW("t"."id"::unsigned) is null
+        join on (ROW("t2"."identification_number"::integer) = ROW("t"."id"::unsigned)) and (not (ROW("t"."id"::unsigned) is null))
             scan "t2"
                 projection ("hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."identification_number"::integer -> "identification_number")
                     scan "hash_testing"
@@ -1456,7 +1456,7 @@ fn front_sql_join() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."product_code"::string -> "product_code", "t1"."product_units"::boolean -> "product_units")
-        join on ROW("t1"."identification_number"::integer) = ROW("t2"."id"::unsigned) and not ROW("t2"."id"::unsigned) is null
+        join on (ROW("t1"."identification_number"::integer) = ROW("t2"."id"::unsigned)) and (not (ROW("t2"."id"::unsigned) is null))
             scan "t1"
                 projection ("hash_single_testing"."product_units"::boolean -> "product_units", "hash_single_testing"."product_code"::string -> "product_code", "hash_single_testing"."identification_number"::integer -> "identification_number")
                     scan "hash_single_testing"
@@ -1481,7 +1481,7 @@ fn front_sql_join() {
     //       `motion [policy: segment([ref("id")])]` instead of the `motion [policy: full]`.
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."product_code"::string -> "product_code", "t1"."product_units"::boolean -> "product_units")
-        join on ROW("t1"."identification_number"::integer) = ROW("t2"."id"::decimal) and not ROW("t2"."id"::decimal) is null
+        join on (ROW("t1"."identification_number"::integer) = ROW("t2"."id"::decimal)) and (not (ROW("t2"."id"::decimal) is null))
             scan "t1"
                 projection ("hash_single_testing"."product_units"::boolean -> "product_units", "hash_single_testing"."product_code"::string -> "product_code", "hash_single_testing"."identification_number"::integer -> "identification_number")
                     scan "hash_single_testing"
@@ -1798,7 +1798,7 @@ fn front_sql_aggregates_with_subexpressions() {
     projection ("column_596"::unsigned -> "b", sum(("count_1496"::unsigned))::unsigned -> "col_1", sum(("count_1796"::unsigned))::unsigned -> "col_2")
         group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "count_1496"::unsigned -> "count_1496", "count_1796"::unsigned -> "count_1796")
             motion [policy: segment([ref("column_596")])]
-                projection ("t"."b"::unsigned -> "column_596", count((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned) + ROW(1::unsigned)))::unsigned -> "count_1496", count(("func"(("t"."a"::unsigned))::integer))::unsigned -> "count_1796")
+                projection ("t"."b"::unsigned -> "column_596", count(((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned)) + ROW(1::unsigned)))::unsigned -> "count_1496", count(("func"(("t"."a"::unsigned))::integer))::unsigned -> "count_1796")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
@@ -1840,8 +1840,8 @@ fn front_sql_aggregates_with_distinct2() {
     projection ("column_596"::unsigned -> "b", sum(distinct ("column_1232"::decimal))::decimal -> "col_1")
         group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "column_1232"::unsigned -> "column_1232")
             motion [policy: segment([ref("column_596")])]
-                projection ("t"."b"::unsigned -> "column_596", ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned) -> "column_1232")
-                    group by ("t"."b"::unsigned, ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+                projection ("t"."b"::unsigned -> "column_596", (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) + ROW(3::unsigned) -> "column_1232")
+                    group by ("t"."b"::unsigned, (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1859,8 +1859,8 @@ fn front_sql_aggregates_with_distinct3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(distinct ("column_632"::decimal))::decimal -> "col_1")
         motion [policy: full]
-            projection (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned) -> "column_632")
-                group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+            projection ((ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) + ROW(3::unsigned) -> "column_632")
+                group by ((ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) + ROW(3::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2022,7 +2022,7 @@ fn front_sql_option_defaults() {
     let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1000), Value::Unsigned(10)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-        selection ROW("t"."a"::unsigned) = ROW(1000::unsigned) and ROW("t"."b"::unsigned) = ROW(10::unsigned)
+        selection (ROW("t"."a"::unsigned) = ROW(1000::unsigned)) and (ROW("t"."b"::unsigned) = ROW(10::unsigned))
             scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2055,7 +2055,7 @@ fn front_sql_aggregate_without_groupby() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_796"::decimal))::decimal -> "col_1")
         motion [policy: full]
-            projection (sum((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned) + ROW(1::unsigned)))::decimal -> "sum_796")
+            projection (sum(((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned)) + ROW(1::unsigned)))::decimal -> "sum_796")
                 scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2328,11 +2328,11 @@ fn front_sql_groupby_expression2() {
 
     println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("column_632"::unsigned + ROW(sum(("count_1596"::unsigned))::unsigned) -> "col_1")
-        group by ("column_632"::unsigned) output: ("column_632"::unsigned -> "column_632", "count_1596"::unsigned -> "count_1596")
-            motion [policy: segment([ref("column_632")])]
-                projection ((ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) -> "column_632", count(("t"."a"::unsigned))::unsigned -> "count_1596")
-                    group by ((ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned))) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+    projection ("column_532"::unsigned + ROW(sum(("count_1596"::unsigned))::unsigned) -> "col_1")
+        group by ("column_532"::unsigned) output: ("column_532"::unsigned -> "column_532", "count_1596"::unsigned -> "count_1596")
+            motion [policy: segment([ref("column_532")])]
+                projection (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) -> "column_532", count(("t"."a"::unsigned))::unsigned -> "count_1596")
+                    group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2349,11 +2349,11 @@ fn front_sql_groupby_expression3() {
 
     println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("column_532"::unsigned -> "col_1", "column_832"::unsigned * ROW(sum(("sum_2496"::decimal))::decimal) / ROW(sum(("count_2596"::unsigned))::unsigned) -> "col_2")
-        group by ("column_532"::unsigned, "column_832"::unsigned) output: ("column_532"::unsigned -> "column_532", "column_832"::unsigned -> "column_832", "count_2596"::unsigned -> "count_2596", "sum_2496"::decimal -> "sum_2496")
-            motion [policy: segment([ref("column_532"), ref("column_832")])]
-                projection (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) -> "column_532", (ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned)) -> "column_832", count((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned)))::unsigned -> "count_2596", sum((ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned)))::decimal -> "sum_2496")
-                    group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned), (ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned))) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+    projection ("column_532"::unsigned -> "col_1", ("column_732"::unsigned * ROW(sum(("sum_2496"::decimal))::decimal)) / ROW(sum(("count_2596"::unsigned))::unsigned) -> "col_2")
+        group by ("column_532"::unsigned, "column_732"::unsigned) output: ("column_532"::unsigned -> "column_532", "column_732"::unsigned -> "column_732", "count_2596"::unsigned -> "count_2596", "sum_2496"::decimal -> "sum_2496")
+            motion [policy: segment([ref("column_532"), ref("column_732")])]
+                projection (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned) -> "column_532", ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned) -> "column_732", count((ROW("t"."a"::unsigned) * ROW("t"."b"::unsigned)))::unsigned -> "count_2596", sum((ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned)))::decimal -> "sum_2496")
+                    group by (ROW("t"."a"::unsigned) + ROW("t"."b"::unsigned), ROW("t"."c"::unsigned) * ROW("t"."d"::unsigned)) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2483,7 +2483,7 @@ fn front_sql_left_join_single_left2() {
     // full motion should be under outer child
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::decimal -> "a", "t2"."b"::unsigned -> "b")
-        left join on ROW("t1"."a"::decimal) + ROW(3::unsigned) <> ROW("t2"."b"::unsigned)
+        left join on (ROW("t1"."a"::decimal) + ROW(3::unsigned)) <> ROW("t2"."b"::unsigned)
             motion [policy: segment([ref("a")])]
                 scan "t1"
                     projection (ROW(sum(("sum_696"::decimal))::decimal) / ROW(3::unsigned) -> "a")
@@ -2571,7 +2571,7 @@ fn front_sql_having1() {
     println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("column_596"::unsigned -> "a", sum(("sum_2196"::decimal))::decimal -> "col_1")
-        having ROW("column_596"::unsigned) > ROW(1::unsigned) and ROW(sum(distinct ("column_1296"::decimal))::decimal) > ROW(1::unsigned)
+        having (ROW("column_596"::unsigned) > ROW(1::unsigned)) and (ROW(sum(distinct ("column_1296"::decimal))::decimal) > ROW(1::unsigned))
             group by ("column_596"::unsigned) output: ("column_596"::unsigned -> "column_596", "column_1296"::unsigned -> "column_1296", "sum_2196"::decimal -> "sum_2196")
                 motion [policy: segment([ref("column_596")])]
                     projection ("t"."a"::unsigned -> "column_596", "t"."b"::unsigned -> "column_1296", sum(("t"."b"::unsigned))::decimal -> "sum_2196")
@@ -2594,7 +2594,7 @@ fn front_sql_having2() {
     println!("{}", plan.as_explain().unwrap());
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (ROW(sum(("sum_1696"::decimal))::decimal) * ROW(count(distinct ("column_1596"::unsigned))::unsigned) -> "col_1", sum(("sum_1696"::decimal))::decimal -> "col_2")
-        having ROW(sum(distinct ("column_1596"::decimal))::decimal) > ROW(1::unsigned) and ROW(sum(("sum_1696"::decimal))::decimal) > ROW(1::unsigned)
+        having (ROW(sum(distinct ("column_1596"::decimal))::decimal) > ROW(1::unsigned)) and (ROW(sum(("sum_1696"::decimal))::decimal) > ROW(1::unsigned))
             motion [policy: full]
                 projection ("t"."b"::unsigned -> "column_1596", sum(("t"."a"::unsigned))::decimal -> "sum_1696")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
@@ -2966,7 +2966,7 @@ fn front_sql_insert_1() {
     insert "t" on conflict: fail
         motion [policy: segment([value(NULL), ref("a")])]
             projection ("t"."a"::unsigned -> "a")
-                selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned) or ROW("t"."a"::unsigned) = ROW(2::unsigned) and ROW("t"."b"::unsigned) = ROW(3::unsigned)
+                selection ((ROW("t"."a"::unsigned) = ROW(1::unsigned)) and (ROW("t"."b"::unsigned) = ROW(2::unsigned))) or ((ROW("t"."a"::unsigned) = ROW(2::unsigned)) and (ROW("t"."b"::unsigned) = ROW(3::unsigned)))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2984,7 +2984,7 @@ fn front_sql_insert_2() {
     insert "t" on conflict: fail
         motion [policy: local segment([ref("a"), ref("b")])]
             projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
-                selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
+                selection (ROW("t"."a"::unsigned) = ROW(1::unsigned)) and (ROW("t"."b"::unsigned) = ROW(2::unsigned))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3003,7 +3003,7 @@ fn front_sql_insert_3() {
     insert "t" on conflict: fail
         motion [policy: segment([ref("b"), ref("a")])]
             projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
-                selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned) or ROW("t"."a"::unsigned) = ROW(3::unsigned) and ROW("t"."b"::unsigned) = ROW(4::unsigned)
+                selection ((ROW("t"."a"::unsigned) = ROW(1::unsigned)) and (ROW("t"."b"::unsigned) = ROW(2::unsigned))) or ((ROW("t"."a"::unsigned) = ROW(3::unsigned)) and (ROW("t"."b"::unsigned) = ROW(4::unsigned)))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3021,7 +3021,7 @@ fn front_sql_insert_4() {
     insert "t" on conflict: fail
         motion [policy: local segment([ref("a"), ref("b")])]
             projection ("t"."b"::unsigned -> "b", "t"."a"::unsigned -> "a")
-                selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
+                selection (ROW("t"."a"::unsigned) = ROW(1::unsigned)) and (ROW("t"."b"::unsigned) = ROW(2::unsigned))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3039,7 +3039,7 @@ fn front_sql_insert_5() {
     insert "t" on conflict: fail
         motion [policy: segment([ref("col_2"), ref("col_1")])]
             projection (5::unsigned -> "col_1", 6::unsigned -> "col_2")
-                selection ROW("t"."a"::unsigned) = ROW(1::unsigned) and ROW("t"."b"::unsigned) = ROW(2::unsigned)
+                selection (ROW("t"."a"::unsigned) = ROW(1::unsigned)) and (ROW("t"."b"::unsigned) = ROW(2::unsigned))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3274,7 +3274,7 @@ fn front_sql_not_equal() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not ROW(true::boolean) = ROW(true::boolean)
+        selection not (ROW(true::boolean) = ROW(true::boolean))
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3290,7 +3290,7 @@ fn front_sql_not_cast() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not 'true'::string::bool
+        selection not ('true'::string::bool)
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3322,7 +3322,7 @@ fn front_sql_not_or() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not ROW(true::boolean) or ROW(true::boolean)
+        selection (not ROW(true::boolean)) or ROW(true::boolean)
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3391,7 +3391,7 @@ fn front_sql_not_in() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not ROW(1::unsigned) in ROW($0)
+        selection not (ROW(1::unsigned) in ROW($0))
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3424,20 +3424,20 @@ fn front_sql_not_complex_query() {
         vec![Value::from(1), Value::from(1), Value::from(true)],
     );
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not (not ('true'::string::bool) and ROW(1::unsigned) + (1::integer) <> ROW(false::boolean)) -> "col_1")
+    projection (not ((not ROW('true'::string::bool)) and ((ROW(1::unsigned) + ROW(1::integer)) <> ROW(false::boolean))) -> "col_1")
         selection not exists ROW($0)
-            join on ROW("ts"."nid"::boolean) <> ROW("nts"."nnid"::boolean) * (1::integer) or ROW(false::boolean) <> ROW((not not ROW(true::boolean))::bool)
+            join on (ROW("ts"."nid"::boolean) <> (ROW("nts"."nnid"::boolean) * ROW(1::integer))) or (ROW(false::boolean) <> ROW((not (not ROW(true::boolean)))::bool))
                 scan "ts"
                     projection (not ROW("test_space"."id"::unsigned) -> "nid")
                         scan "test_space"
                 motion [policy: full]
                     scan "nts"
-                        projection (not not ROW("test_space"."id"::unsigned) -> "nnid")
+                        projection (not (not ROW("test_space"."id"::unsigned)) -> "nnid")
                             scan "test_space"
     subquery $0:
     scan
                 projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-                    selection not ROW(true::boolean) = (true::boolean)
+                    selection not (ROW(true::boolean) = ROW(true::boolean))
                         scan
                             values
                                 value row (data=ROW(1::unsigned))

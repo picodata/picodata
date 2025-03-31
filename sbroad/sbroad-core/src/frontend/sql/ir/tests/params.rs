@@ -162,7 +162,7 @@ fn front_params1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("test_space"."sys_op"::unsigned) = ROW(0::integer) and ROW("test_space"."sysFrom"::unsigned) > ROW(1::integer)
+        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) and (ROW("test_space"."sysFrom"::unsigned) > ROW(1::integer))
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -179,7 +179,7 @@ fn front_params2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown) and ROW("test_space"."FIRST_NAME"::string) = ROW('hello'::string)
+        selection (ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown)) and (ROW("test_space"."FIRST_NAME"::string) = ROW('hello'::string))
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -197,7 +197,7 @@ fn front_params3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown) and ROW("test_space"."FIRST_NAME"::string) = ROW('кириллица'::string)
+        selection (ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown)) and (ROW("test_space"."FIRST_NAME"::string) = ROW('кириллица'::string))
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -241,7 +241,7 @@ fn front_params5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection ROW("test_space"."sys_op"::unsigned) = ROW(0::integer) or ROW("test_space"."id"::unsigned) in ROW($0)
+        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) or (ROW("test_space"."id"::unsigned) in ROW($0))
             scan "test_space"
     subquery $0:
     motion [policy: segment([ref("sysFrom")])]
@@ -275,7 +275,7 @@ fn front_params6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection ROW("test_space"."sys_op"::unsigned) = ROW(0::integer) or not ROW("test_space"."id"::unsigned) in ROW($0)
+        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) or (not (ROW("test_space"."id"::unsigned) in ROW($0)))
             scan "test_space"
     subquery $0:
     motion [policy: full]

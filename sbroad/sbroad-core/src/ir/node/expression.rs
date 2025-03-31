@@ -6,9 +6,9 @@ use crate::{
 };
 
 use super::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    ExprInParentheses, Like, LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row,
-    StableFunction, Trim, UnaryExpr, Window,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, Like,
+    LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row, StableFunction, Trim,
+    UnaryExpr, Window,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -28,7 +28,6 @@ pub enum ExprOwned {
     Unary(UnaryExpr),
     CountAsterisk(CountAsterisk),
     Case(Case),
-    ExprInParentheses(ExprInParentheses),
     LocalTimestamp(LocalTimestamp),
     Over(Over),
     Window(Window),
@@ -49,7 +48,6 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Constant(constant) => constant.into(),
             ExprOwned::CountAsterisk(count) => count.into(),
             ExprOwned::Like(like) => like.into(),
-            ExprOwned::ExprInParentheses(expr) => expr.into(),
             ExprOwned::Reference(reference) => reference.into(),
             ExprOwned::Row(row) => row.into(),
             ExprOwned::StableFunction(stable_func) => stable_func.into(),
@@ -89,7 +87,6 @@ pub enum Expression<'a> {
     Unary(&'a UnaryExpr),
     CountAsterisk(&'a CountAsterisk),
     Case(&'a Case),
-    ExprInParentheses(&'a ExprInParentheses),
     LocalTimestamp(&'a LocalTimestamp),
     Over(&'a Over),
     Window(&'a Window),
@@ -113,7 +110,6 @@ pub enum MutExpression<'a> {
     Unary(&'a mut UnaryExpr),
     CountAsterisk(&'a mut CountAsterisk),
     Case(&'a mut Case),
-    ExprInParentheses(&'a mut ExprInParentheses),
     LocalTimestamp(&'a mut LocalTimestamp),
     Over(&'a mut Over),
     Window(&'a mut Window),
@@ -211,9 +207,6 @@ impl Expression<'_> {
             Expression::Constant(constant) => ExprOwned::Constant((*constant).clone()),
             Expression::Like(like) => ExprOwned::Like((*like).clone()),
             Expression::CountAsterisk(count) => ExprOwned::CountAsterisk((*count).clone()),
-            Expression::ExprInParentheses(expr_par) => {
-                ExprOwned::ExprInParentheses((*expr_par).clone())
-            }
             Expression::Reference(reference) => ExprOwned::Reference((*reference).clone()),
             Expression::Row(row) => ExprOwned::Row((*row).clone()),
             Expression::StableFunction(sfunc) => ExprOwned::StableFunction((*sfunc).clone()),

@@ -6137,7 +6137,7 @@ buckets = [1934]"""
 
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
     expected_explain = """projection ("t"."a"::integer -> "a")
-    selection ROW("t"."a"::integer) = ROW(1::unsigned) and ROW("t"."a"::integer) = ROW(2::unsigned)
+    selection (ROW("t"."a"::integer) = ROW(1::unsigned)) and (ROW("t"."a"::integer) = ROW(2::unsigned))
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6238,7 +6238,7 @@ buckets = [1-3000]"""
 "d" = "col_1"
     motion [policy: segment([])]
         projection ("t2"."c"::integer -> "col_0", 1::unsigned -> "col_1", "t2"."d"::integer -> "col_2")
-            selection ROW("t2"."d"::integer) = ROW(2::unsigned) or ROW("t2"."d"::integer) = ROW(2002::unsigned)
+            selection (ROW("t2"."d"::integer) = ROW(2::unsigned)) or (ROW("t2"."d"::integer) = ROW(2002::unsigned))
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000

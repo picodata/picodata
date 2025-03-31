@@ -238,10 +238,9 @@ fn subtree_next<'plan>(
             Node::Expression(expr) => match expr {
                 Expression::Window { .. } => iter.handle_window_iter(expr),
                 Expression::Over { .. } => iter.handle_over_iter(expr),
-                Expression::Alias { .. }
-                | Expression::ExprInParentheses { .. }
-                | Expression::Cast { .. }
-                | Expression::Unary { .. } => iter.handle_single_child(expr),
+                Expression::Alias { .. } | Expression::Cast { .. } | Expression::Unary { .. } => {
+                    iter.handle_single_child(expr)
+                }
                 Expression::Case { .. } => iter.handle_case_iter(expr),
                 Expression::Bool { .. }
                 | Expression::Arithmetic { .. }

@@ -18,8 +18,8 @@ use super::node::{Bound, BoundType, Like, Over, Window};
 use super::operator::OrderByEntity;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
-    ExprInParentheses, Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference,
-    Relational, Row, StableFunction, Trim, UnaryExpr, Value,
+    Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Relational, Row,
+    StableFunction, Trim, UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
@@ -73,15 +73,6 @@ impl TrimKind {
 }
 
 impl Nodes {
-    /// Adds exression covered with parentheses node.
-    ///
-    /// # Errors
-    /// - child node is invalid
-    pub(crate) fn add_covered_with_parentheses(&mut self, child: NodeId) -> NodeId {
-        let covered_with_parentheses = ExprInParentheses { child };
-        self.push(covered_with_parentheses.into())
-    }
-
     /// Adds alias node.
     ///
     /// # Errors
@@ -419,13 +410,6 @@ impl<'plan> Comparator<'plan> {
                     Expression::CountAsterisk(_) => {
                         return Ok(matches!(right, Expression::CountAsterisk(_)))
                     }
-                    Expression::ExprInParentheses(ExprInParentheses { child: l_child }) => {
-                        if let Expression::ExprInParentheses(ExprInParentheses { child: r_child }) =
-                            right
-                        {
-                            return self.are_subtrees_equal(*l_child, *r_child);
-                        }
-                    }
                     Expression::Bool(BoolExpr {
                         left: left_left,
                         op: op_left,
@@ -749,9 +733,6 @@ impl<'plan> Comparator<'plan> {
                     self.hash_for_child_expr(*filter, depth);
                 }
                 self.hash_for_child_expr(*window, depth);
-            }
-            Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                self.hash_for_child_expr(*child, depth);
             }
             Expression::Alias(Alias { child, name }) => {
                 name.hash(state);
@@ -1722,9 +1703,6 @@ impl Plan {
                 value: Value::Boolean(_) | Value::Null,
                 ..
             }) => return Ok(true),
-            Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                return self.is_trivalent(*child)
-            }
             Expression::Row(Row { list, .. }) => {
                 if let (Some(inner_id), None) = (list.first(), list.get(1)) {
                     return self.is_trivalent(*inner_id);

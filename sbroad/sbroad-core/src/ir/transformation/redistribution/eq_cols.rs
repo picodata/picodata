@@ -2,8 +2,8 @@ use crate::errors::SbroadError;
 use crate::ir::expression::ExpressionId;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, ExprInParentheses, Like, NodeId,
-    Reference, Row, StableFunction, Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Like, NodeId, Reference, Row,
+    StableFunction, Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::transformation::redistribution::BoolOp;
@@ -146,7 +146,6 @@ impl ReferredMap {
                     })
                 }
                 Expression::Alias(Alias { child, .. })
-                | Expression::ExprInParentheses(ExprInParentheses { child })
                 | Expression::Cast(Cast { child, .. })
                 | Expression::Unary(UnaryExpr { child, .. }) => {
                     referred.get(*child).unwrap_or(&Referred::None).clone()

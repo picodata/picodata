@@ -7,7 +7,7 @@ use node::ddl::{Ddl, MutDdl};
 use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
 use node::{Invalid, NodeAligned};
-use operator::Arithmetic;
+use operator::{Arithmetic, Unary};
 use relation::{Table, Type};
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -26,10 +26,10 @@ use crate::executor::engine::TableVersionMap;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, ExprInParentheses,
-    GroupBy, Having, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64,
-    Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, Row, ScanRelation, Selection,
-    StableFunction, Trim, UnaryExpr, Values,
+    Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
+    Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId,
+    NodeOwned, OrderBy, Projection, Reference, Row, ScanRelation, Selection, StableFunction, Trim,
+    UnaryExpr, Values,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::{Column, DerivedType};
@@ -88,9 +88,6 @@ impl Nodes {
                 Node32::CountAsterisk(count) => Node::Expression(Expression::CountAsterisk(count)),
                 Node32::Like(like) => Node::Expression(Expression::Like(like)),
                 Node32::Except(except) => Node::Relational(Relational::Except(except)),
-                Node32::ExprInParentheses(expr) => {
-                    Node::Expression(Expression::ExprInParentheses(expr))
-                }
                 Node32::Intersect(intersect) => Node::Relational(Relational::Intersect(intersect)),
                 Node32::Invalid(inv) => Node::Invalid(inv),
                 Node32::Limit(limit) => Node::Relational(Relational::Limit(limit)),
@@ -226,9 +223,6 @@ impl Nodes {
                     }
                     Node32::Like(like) => MutNode::Expression(MutExpression::Like(like)),
                     Node32::Except(except) => MutNode::Relational(MutRelational::Except(except)),
-                    Node32::ExprInParentheses(expr) => {
-                        MutNode::Expression(MutExpression::ExprInParentheses(expr))
-                    }
                     Node32::Intersect(intersect) => {
                         MutNode::Relational(MutRelational::Intersect(intersect))
                     }
@@ -1223,14 +1217,6 @@ impl Plan {
         Ok(self.nodes.push(node.into()))
     }
 
-    /// Add node covered with parentheses to the plan.
-    ///
-    /// # Errors
-    /// Returns `SbroadError` when the condition node can't append'.
-    pub fn add_covered_with_parentheses(&mut self, child: NodeId) -> NodeId {
-        self.nodes.add_covered_with_parentheses(child)
-    }
-
     /// Add arithmetic node to the plan.
     ///
     /// # Errors
@@ -1624,7 +1610,6 @@ impl Plan {
                 }
             }
             MutExpression::Unary(UnaryExpr { child, .. })
-            | MutExpression::ExprInParentheses(ExprInParentheses { child })
             | MutExpression::Alias(Alias { child, .. })
             | MutExpression::Cast(Cast { child, .. }) => {
                 if *child == old_id {
@@ -1886,6 +1871,54 @@ impl Plan {
             Entity::Expression,
             Some("node is not Alias".into()),
         ))
+    }
+
+    /// Find whether we should cover the child expression with parentheses.
+    /// For a pair of parent and child expression by default we cover
+    /// all children with parentheses in order to save info about precedence
+    /// and associativity. But for some cases we'd like not to cover expressions
+    /// with redundant parentheses in case we are 100% sure it won't break anything.
+    pub fn should_cover_with_parentheses(
+        &self,
+        top_expr_id: NodeId,
+        child_expr_id: NodeId,
+    ) -> Result<bool, SbroadError> {
+        let top = self.get_expression_node(top_expr_id)?;
+        let child = self.get_expression_node(child_expr_id)?;
+
+        let should_not_cover = matches!(
+            (top, child),
+            (
+                Expression::StableFunction(_)
+                    | Expression::LocalTimestamp(_)
+                    | Expression::Row(_)
+                    | Expression::Alias(_)
+                    | Expression::Trim(_)
+                    | Expression::Case(_)
+                    | Expression::Over(_)
+                    | Expression::Window(_),
+                _
+            ) | (
+                _,
+                Expression::StableFunction(_)
+                    | Expression::Trim(_)
+                    | Expression::LocalTimestamp(_)
+                    | Expression::CountAsterisk(_)
+                    | Expression::Row(_)
+                    | Expression::Reference(_)
+                    | Expression::Constant(_)
+                    | Expression::Parameter(_)
+                    | Expression::Case(_)
+                    | Expression::Over(_)
+                    | Expression::Window(_)
+                    | Expression::Unary(UnaryExpr {
+                        op: Unary::Exists,
+                        ..
+                    })
+            )
+        );
+
+        Ok(!should_not_cover)
     }
 
     /// Set slices of the plan.

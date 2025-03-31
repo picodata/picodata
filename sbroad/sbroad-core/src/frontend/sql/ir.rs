@@ -11,10 +11,10 @@ use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
-    Except, ExprInParentheses, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion,
-    NamedWindows, Node, NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr,
-    Union, UnionAll, Update, Values, ValuesRow, Window,
+    Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, NamedWindows, Node,
+    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScanCte, ScanRelation,
+    ScanSubQuery, SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr, Union, UnionAll,
+    Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -222,7 +222,6 @@ impl SubtreeCloner {
                 ref mut child,
                 name: _,
             })
-            | ExprOwned::ExprInParentheses(ExprInParentheses { ref mut child })
             | ExprOwned::Cast(Cast {
                 ref mut child,
                 to: _,

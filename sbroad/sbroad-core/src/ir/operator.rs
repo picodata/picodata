@@ -41,11 +41,11 @@ use crate::ir::transformation::redistribution::{ColumnPosition, JoinChild};
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Bool {
-    /// `&&`
+    /// `AND`
     And,
     /// `=`
     Eq,
-    /// `in`
+    /// `IN`
     In,
     /// `>`
     Gt,
@@ -57,9 +57,9 @@ pub enum Bool {
     LtEq,
     /// `!=`
     NotEq,
-    /// `||`
+    /// `OR`
     Or,
-    /// `between`
+    /// `BETWEEN`
     Between,
 }
 

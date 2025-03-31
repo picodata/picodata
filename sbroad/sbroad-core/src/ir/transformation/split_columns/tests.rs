@@ -14,28 +14,27 @@ fn split_columns(plan: &mut Plan) {
 #[test]
 fn split_columns1() {
     let input = r#"SELECT "a" FROM "t" WHERE ("a", 2) = (1, "b")"#;
-    let expected = PatternWithParams::new(
-        r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") = (?) and (?) = ("t"."b")"#.to_string(),
-        vec![Value::from(1_u64), Value::from(2_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
 
     assert_eq!(
-        check_transformation(input, vec![], &split_columns),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a") = (?)) and ((?) = ("t"."b"))"#
     );
 }
 
 #[test]
 fn split_columns2() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" = 1"#;
-    let expected = PatternWithParams::new(
-        r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") = (?)"#.to_string(),
-        vec![Value::from(1_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
 
-    assert_eq!(
-        check_transformation(input, vec![], &split_columns),
-        expected
+    assert_eq!(actual_pattern_params.params, vec![Value::from(1_u64)]);
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") = (?)"#
     );
 }
 
@@ -47,7 +46,6 @@ fn split_columns3() {
     let mut plan = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap();
     plan.bind_params(vec![]).unwrap();
     let plan_err = plan.split_columns().unwrap_err();
-    // TODO: seems i failed agoin and didn't cover smth with a ROW?
     assert_eq!(
         format!(
             "{} {} {} {}",
@@ -63,31 +61,29 @@ fn split_columns3() {
 #[test]
 fn split_columns4() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" in (1, 2)"#;
-    let expected = PatternWithParams::new(
-        r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") in (?, ?)"#.to_string(),
-        vec![Value::from(1_u64), Value::from(2_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
 
     assert_eq!(
-        check_transformation(input, vec![], &split_columns),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") in (?, ?)"#
     );
 }
 
 #[test]
 fn split_columns5() {
     let input = r#"SELECT "a" FROM "t" WHERE ("a", 2) < (1, "b") and "a" > 2"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t" WHERE ("t"."a") < (?) and (?) < ("t"."b")"#,
-            r#"and ("t"."a") > (?)"#,
-        ),
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(2_u64)],
-    );
 
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
     assert_eq!(
-        check_transformation(input, vec![], &split_columns),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64), Value::from(2_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") < (?)) and ((?) < ("t"."b"))) and (("t"."a") > (?))"#
     );
 }

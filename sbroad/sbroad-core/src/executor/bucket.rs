@@ -97,7 +97,7 @@ where
         let mut buckets: Vec<Buckets> = vec![];
         let ir_plan = self.exec_plan.get_ir_plan();
         let tier = self.exec_plan.get_ir_plan().tier.as_ref();
-        let expr = ir_plan.unwrap_expr(expr_id)?;
+        let expr = ir_plan.get_expression_node(expr_id)?;
 
         // Try to collect buckets from expression of type `sharding_key = value`
         if let Expression::Bool(BoolExpr {
@@ -109,12 +109,12 @@ where
         {
             let pairs = vec![(*left, *right), (*right, *left)];
             for (left_id, right_id) in pairs {
-                let left_expr = ir_plan.unwrap_expr(left_id)?;
+                let left_expr = ir_plan.get_expression_node(left_id)?;
                 if !matches!(left_expr, Expression::Row(_)) {
                     continue;
                 }
 
-                let right_expr = ir_plan.unwrap_expr(right_id)?;
+                let right_expr = ir_plan.get_expression_node(right_id)?;
                 let right_columns = if let Expression::Row(Row { list, .. }) = right_expr {
                     list.clone()
                 } else {

@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    Alias, ArithmeticExpr, Case, Cast, Constant, ExprInParentheses, Expression, MutExpression,
-    Node, NodeId, Reference, Row, StableFunction,
+    Alias, ArithmeticExpr, Case, Cast, Constant, Expression, MutExpression, Node, NodeId,
+    Reference, Row, StableFunction,
 };
 
 impl Plan {
@@ -106,10 +106,7 @@ impl Expression<'_> {
                 }
                 case_ty_general.expect("Case type must be known")
             }
-            Expression::Alias(Alias { child, .. })
-            | Expression::ExprInParentheses(ExprInParentheses { child }) => {
-                plan.get_node_type(*child)?
-            }
+            Expression::Alias(Alias { child, .. }) => plan.get_node_type(*child)?,
             Expression::Bool(_) | Expression::Unary(_) | Expression::Like { .. } => {
                 DerivedType::new(Type::Boolean)
             }

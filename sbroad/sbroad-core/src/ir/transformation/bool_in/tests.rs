@@ -11,18 +11,15 @@ fn replace_in_operator(plan: &mut Plan) {
 #[test]
 fn bool_in1() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" IN (1, 2, 3)"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."a") = (?) or ("t"."a") = (?) or ("t"."a") = (?)"#,
-        ),
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
 
     assert_eq!(
-        check_transformation(input, vec![], &replace_in_operator),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) or (("t"."a") = (?))) or (("t"."a") = (?))"#
     );
 }
 
@@ -30,12 +27,10 @@ fn bool_in1() {
 fn bool_in2() {
     let input = r#"SELECT "a" FROM "t"
     WHERE ("a", "b") IN ((1, 10), (2, 20), (3, 30))"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."a", "t"."b") = (?, ?) or ("t"."a", "t"."b") = (?, ?) or ("t"."a", "t"."b") = (?, ?)"#,
-        ),
+    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
+
+    assert_eq!(
+        actual_pattern_params.params,
         vec![
             Value::from(1_u64),
             Value::from(10_u64),
@@ -43,34 +38,26 @@ fn bool_in2() {
             Value::from(20_u64),
             Value::from(3_u64),
             Value::from(30_u64),
-        ],
+        ]
     );
-
-    assert_eq!(
-        check_transformation(input, vec![], &replace_in_operator),
-        expected
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a", "t"."b") = (?, ?)) or (("t"."a", "t"."b") = (?, ?))) or (("t"."a", "t"."b") = (?, ?))"#
     );
 }
 
 #[test]
 fn bool_in3() {
-    // Note: as soon as DNF transformation is not applied, there are not parentheses around OR
-    //       operator (that is an invalid SQL transformation).
-    //       In case we apply the whole optimization transformation, we'll get a correct output
-    //       query.
     let input = r#"SELECT "a" FROM "t" WHERE "a" IN (1, 2) AND "b" IN (3)"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("t"."a") = (?) or ("t"."a") = (?) and ("t"."b") = (?)"#,
-        ),
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
 
     assert_eq!(
-        check_transformation(input, vec![], &replace_in_operator),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) or (("t"."a") = (?))) and (("t"."b") = (?))"#
     );
 }
 
@@ -78,23 +65,20 @@ fn bool_in3() {
 fn bool_in4() {
     // check bool expression in cast expression will be replaced.
     let input = r#"SELECT "a" FROM "t" WHERE cast(("a" IN (1, 2)) as integer) - 1 = 0"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE (CAST ((("t"."a") = (?) or ("t"."a") = (?)) as int)) - (?) = (?)"#,
-        ),
+    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
+
+    assert_eq!(
+        actual_pattern_params.params,
         vec![
             Value::from(1_u64),
             Value::from(2_u64),
             Value::from(1_u64),
             Value::from(0_u64),
-        ],
+        ]
     );
-
-    assert_eq!(
-        check_transformation(input, vec![], &replace_in_operator),
-        expected
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ((CAST (((("t"."a") = (?)) or (("t"."a") = (?))) as int)) - (?)) = (?)"#
     );
 }
 
@@ -102,17 +86,14 @@ fn bool_in4() {
 fn bool_in5() {
     // check bool expression inside function expression will be replaced.
     let input = r#"SELECT "a" FROM "t" WHERE func(("a" IN (1, 2))) < 1"#;
-    let expected = PatternWithParams::new(
-        format!(
-            "{} {}",
-            r#"SELECT "t"."a" FROM "t""#,
-            r#"WHERE ("func" ((("t"."a") = (?) or ("t"."a") = (?)))) < (?)"#,
-        ),
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(1_u64)],
-    );
+    let actual_pattern_params = check_transformation(input, vec![], &replace_in_operator);
 
     assert_eq!(
-        check_transformation(input, vec![], &replace_in_operator),
-        expected
+        actual_pattern_params.params,
+        vec![Value::from(1_u64), Value::from(2_u64), Value::from(1_u64)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("func" ((("t"."a") = (?)) or (("t"."a") = (?)))) < (?)"#
     );
 }

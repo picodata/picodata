@@ -111,7 +111,6 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         Expression::Window { .. } => iter.handle_window_iter(expr),
                         Expression::Over { .. } => iter.handle_over_iter(expr),
                         Expression::Alias { .. }
-                        | Expression::ExprInParentheses { .. }
                         | Expression::Cast { .. }
                         | Expression::Unary { .. } => iter.handle_single_child(expr),
                         Expression::Bool { .. }

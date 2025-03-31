@@ -62,7 +62,7 @@ fn update_selection() {
     "c" = "col_0"
         motion [policy: local]
             projection (2::unsigned -> "col_0", "t"."b"::unsigned -> "col_1")
-                selection ROW("t"."a"::unsigned) = ROW(1::integer) and ROW("t"."b"::unsigned) = ROW(2::decimal)
+                selection (ROW("t"."a"::unsigned) = ROW(1::integer)) and (ROW("t"."b"::unsigned) = ROW(2::decimal))
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -80,7 +80,7 @@ fn delete_selection() {
     delete "t2"
         motion [policy: local]
             projection ("t2"."g"::unsigned -> "pk_col_0", "t2"."h"::unsigned -> "pk_col_1")
-                selection ROW("t2"."e"::unsigned) = ROW(3::unsigned) and ROW("t2"."f"::unsigned) = ROW(2::decimal)
+                selection (ROW("t2"."e"::unsigned) = ROW(3::unsigned)) and (ROW("t2"."f"::unsigned) = ROW(2::decimal))
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000

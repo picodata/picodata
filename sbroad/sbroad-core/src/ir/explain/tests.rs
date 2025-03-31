@@ -35,7 +35,7 @@ fn simple_query_with_cond_plan() {
     let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
-        selection ROW("t"."identification_number"::integer) = ROW(1::unsigned) and ROW("t"."product_code"::string) = ROW('222'::string)
+        selection (ROW("t"."identification_number"::integer) = ROW(1::unsigned)) and (ROW("t"."product_code"::string) = ROW('222'::string))
             scan "hash_testing" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -89,7 +89,7 @@ WHERE "id" = 1"#;
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
                         selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
@@ -128,7 +128,7 @@ WHERE "id" IN (SELECT "id"
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
                         selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
@@ -206,11 +206,11 @@ fn motion_subquery_plan() {
     let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("t"."id"::unsigned) in ROW($1) or ROW("t"."id"::unsigned) in ROW($0)
+        selection (ROW("t"."id"::unsigned) in ROW($1)) or (ROW("t"."id"::unsigned) in ROW($0))
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned) and ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned)
+                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
                         selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
@@ -219,7 +219,7 @@ fn motion_subquery_plan() {
     motion [policy: segment([ref("identification_number")])]
                 scan
                     projection ("hash_testing"."identification_number"::integer -> "identification_number")
-                        selection ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned) and ROW("hash_testing"."product_code"::string) = ROW('123'::string)
+                        selection (ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned)) and (ROW("hash_testing"."product_code"::string) = ROW('123'::string))
                             scan "hash_testing"
     subquery $1:
     scan
@@ -316,7 +316,7 @@ fn unary_condition_plan() {
     let mut actual_explain = String::new();
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("test_space"."id"::unsigned) is null and not ROW("test_space"."FIRST_NAME"::string) is null
+        selection (ROW("test_space"."id"::unsigned) is null) and (not (ROW("test_space"."FIRST_NAME"::string) is null))
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

@@ -222,41 +222,13 @@ fn exec_plan_subtree_aggregates() {
     } else {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
-
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            f_sql(
-                r#"SELECT "T1"."sys_op" as "column_596",
-("T1"."id") * ("T1"."sys_op") as "column_1632",
-"T1"."id" as "column_2096", count ("T1"."sysFrom") as "count_1596",
-sum ("T1"."id") as "sum_1796", count ("T1"."id") as "count_2696",
-min ("T1"."id") as "min_3096", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496",
-total ("T1"."id") as "total_2896",
-max ("T1"."id") as "max_3296" FROM "test_space" as "T1" GROUP BY "T1"."sys_op",
-("T1"."id") * ("T1"."sys_op"), "T1"."id""#
-            ),
-            vec![Value::from("o")]
-        )
-    );
+    assert_eq!(sql.params, vec![Value::from("o")]);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "column_596", ("T1"."id") * ("T1"."sys_op") as "column_1632", "T1"."id" as "column_2096", count ("T1"."sysFrom") as "count_1596", sum ("T1"."id") as "sum_1796", count ("T1"."id") as "count_2696", min ("T1"."id") as "min_3096", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_2496", total ("T1"."id") as "total_2896", max ("T1"."id") as "max_3296" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(
-        sql,
-        PatternWithParams::new(
-            f_sql(
-                r#"SELECT ("COL_1") || ("COL_1") as "col_1",
-("COL_1") * (?) + (sum ("COL_4")) as "col_2",
-sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4",
-group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6",
-total ("COL_9") as "col_7", min ("COL_7") as "col_8",
-max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136")
-GROUP BY "COL_1""#
-            ),
-            vec![Value::Unsigned(2), Value::from("o")]
-        )
-    );
+    assert_eq!(sql.params, vec![Value::Unsigned(2), Value::from("o")]);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") || ("COL_1") as "col_1", (("COL_1") * (?)) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -1431,7 +1403,7 @@ fn check_parentheses() {
     let top_id = plan.get_top().unwrap();
 
     let expected = PatternWithParams::new(
-        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = ((?) < (?)) + (?)"#.to_string(),
+        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = (((?) < (?)) + (?))"#.to_string(),
         vec![Value::from(1_u64), Value::from(3_u64), Value::from(2_u64)],
     );
 

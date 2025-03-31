@@ -212,7 +212,7 @@ g.test_explain_arithmetic_selection = function()
         -- luacheck: max line length 210
         {
             "projection (\"arithmetic_space\".\"id\"::integer -> \"id\")",
-            "    selection ROW(\"arithmetic_space\".\"a\"::integer) + ROW(\"arithmetic_space\".\"b\"::integer) = ROW(\"arithmetic_space\".\"b\"::integer) + ROW(\"arithmetic_space\".\"a\"::integer)",
+            "    selection (ROW(\"arithmetic_space\".\"a\"::integer) + ROW(\"arithmetic_space\".\"b\"::integer)) = (ROW(\"arithmetic_space\".\"b\"::integer) + ROW(\"arithmetic_space\".\"a\"::integer))",
             "        scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
@@ -226,10 +226,10 @@ g.test_explain_arithmetic_selection = function()
     t.assert_equals(err, nil)
     t.assert_equals(
         r,
-        -- luacheck: max line length 240
+        -- luacheck: max line length 250
         {
             "projection (\"arithmetic_space\".\"id\"::integer -> \"id\")",
-            "    selection ROW(\"arithmetic_space\".\"a\"::integer) + ROW(\"arithmetic_space\".\"b\"::integer) > ROW(0::unsigned) and ROW(\"arithmetic_space\".\"b\"::integer) * ROW(\"arithmetic_space\".\"a\"::integer) = ROW(5::unsigned)",
+            "    selection ((ROW(\"arithmetic_space\".\"a\"::integer) + ROW(\"arithmetic_space\".\"b\"::integer)) > ROW(0::unsigned)) and ((ROW(\"arithmetic_space\".\"b\"::integer) * ROW(\"arithmetic_space\".\"a\"::integer)) = ROW(5::unsigned))",
             "        scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
@@ -257,7 +257,7 @@ WHERE "t3"."id" = 2
         {
             "projection (\"t3\".\"id\"::integer -> \"id\", \"t3\".\"a\"::integer -> \"a\", \"t8\".\"id1\"::integer -> \"id1\")",
             "    selection ROW(\"t3\".\"id\"::integer) = ROW(2::unsigned)",
-            "        join on ROW(\"t3\".\"id\"::integer) + ROW(\"t3\".\"a\"::integer) * ROW(2::unsigned) = ROW(\"t8\".\"id1\"::integer) + ROW(4::unsigned)",
+            "        join on (ROW(\"t3\".\"id\"::integer) + (ROW(\"t3\".\"a\"::integer) * ROW(2::unsigned))) = (ROW(\"t8\".\"id1\"::integer) + ROW(4::unsigned))",
             "            scan \"t3\"",
             "                union all",
             "                    projection (\"arithmetic_space\".\"id\"::integer -> \"id\", \"arithmetic_space\".\"a\"::integer -> \"a\")",
@@ -297,11 +297,11 @@ WHERE "t3"."id" = 2
         {
             "projection (\"t3\".\"id\"::integer -> \"id\", \"t3\".\"a\"::integer -> \"a\", \"t8\".\"id1\"::integer -> \"id1\")",
             "    selection ROW(\"t3\".\"id\"::integer) = ROW(2::unsigned)",
-            "        join on ROW(\"t3\".\"id\"::integer) + ROW(\"t3\".\"a\"::integer) * ROW(2::unsigned) = ROW(\"t8\".\"id1\"::integer) + ROW(4::unsigned)",
+            "        join on (ROW(\"t3\".\"id\"::integer) + (ROW(\"t3\".\"a\"::integer) * ROW(2::unsigned))) = (ROW(\"t8\".\"id1\"::integer) + ROW(4::unsigned))",
             "            scan \"t3\"",
             "                union all",
             "                    projection (\"arithmetic_space\".\"id\"::integer -> \"id\", \"arithmetic_space\".\"a\"::integer -> \"a\")",
-            "                        selection ROW(\"arithmetic_space\".\"c\"::integer) + ROW(\"arithmetic_space\".\"a\"::integer) < ROW(0::unsigned)",
+            "                        selection (ROW(\"arithmetic_space\".\"c\"::integer) + ROW(\"arithmetic_space\".\"a\"::integer)) < ROW(0::unsigned)",
             "                            scan \"arithmetic_space\"",
             "                    projection (\"arithmetic_space\".\"id\"::integer -> \"id\", \"arithmetic_space\".\"a\"::integer -> \"a\")",
             "                        selection ROW(\"arithmetic_space\".\"c\"::integer) > ROW(0::unsigned)",
@@ -348,7 +348,7 @@ g.test_explain_arithmetic_projection = function()
         r,
         -- luacheck: max line length 210
         {
-            "projection (ROW(\"arithmetic_space\".\"a\"::integer) + ROW(\"arithmetic_space\".\"b\"::integer) * ROW(\"arithmetic_space\".\"c\"::integer) -> \"col_1\")",
+            "projection (ROW(\"arithmetic_space\".\"a\"::integer) + (ROW(\"arithmetic_space\".\"b\"::integer) * ROW(\"arithmetic_space\".\"c\"::integer)) -> \"col_1\")",
             "    scan \"arithmetic_space\"",
             "execution options:",
             "    sql_vdbe_opcode_max = 45000",
