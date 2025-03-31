@@ -83,6 +83,7 @@ impl TarantoolBuildRoot {
         let http_prefix = self.http_prefix_dir();
 
         Command::new("cmake")
+            .env("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // >= 3.5 is required since 4.0
             .args(["-S", "http"])
             .arg("-B")
             .arg(&http_prefix)
@@ -179,6 +180,8 @@ impl TarantoolBuildRoot {
                         tarantool_root.display(),
                     ));
             }
+
+            configure_cmd.env("CMAKE_POLICY_VERSION_MINIMUM", "3.5"); // >= 3.5 is required since 4.0
             configure_cmd.run();
         }
 
@@ -188,6 +191,7 @@ impl TarantoolBuildRoot {
             // parameters. On OpenSUSE, running this script breaks our build, because it
             // modifies the (project-local!) paths to compiled libraries in submodules.
             .env_remove("CONFIG_SITE")
+            .env("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // >= 3.5 is required since 4.0
             .set_make_jobserver(jsc)
             .arg("--build")
             .arg(tarantool_root);
