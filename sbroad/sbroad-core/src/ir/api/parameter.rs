@@ -737,8 +737,7 @@ impl<'binder> ParamsBinder<'binder> {
     }
 
     fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
-        let ref_nodes;
-        {
+        let ref_nodes = {
             let filter = |node_id| {
                 matches!(
                     self.plan.get_node(node_id),
@@ -752,8 +751,8 @@ impl<'binder> ParamsBinder<'binder> {
             );
             let top_id = self.plan.get_top()?;
             tree.populate_nodes(top_id);
-            ref_nodes = tree.take_nodes();
-        }
+            tree.take_nodes()
+        };
 
         for LevelNode(_, id) in &ref_nodes {
             // Before binding, references that referred to

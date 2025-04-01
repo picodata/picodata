@@ -300,11 +300,8 @@ impl SubtreeCloner {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn clone_relational(
-        &mut self,
-        old_relational: &Relational,
-        id: NodeId,
-    ) -> Result<RelOwned, SbroadError> {
+    fn clone_relational(&mut self, plan: &mut Plan, id: NodeId) -> Result<RelOwned, SbroadError> {
+        let old_relational = plan.get_relation_node(id)?;
         let mut copied: RelOwned = old_relational.get_rel_owned();
 
         // all relational nodes have output and children list,
@@ -314,6 +311,7 @@ impl SubtreeCloner {
         copied.set_children(new_children);
         let new_output_id = self.get_new_id(old_relational.output())?;
         *copied.mut_output() = new_output_id;
+        let next_rel_id = plan.nodes.next_id(copied.arena_type());
 
         // copy node specific fields, that reference other plan nodes
 
@@ -400,15 +398,15 @@ impl SubtreeCloner {
                 child: _,
                 output: _,
             }) => {}
-            RelOwned::Having(Having {
+            RelOwned::Selection(Selection {
                 children: _,
-                output: _,
                 filter,
+                output: _,
             })
-            | RelOwned::Selection(Selection {
+            | RelOwned::Having(Having {
                 children: _,
-                filter,
                 output: _,
+                filter,
             })
             | RelOwned::Join(Join {
                 children: _,
@@ -417,6 +415,7 @@ impl SubtreeCloner {
                 kind: _,
             }) => {
                 *filter = self.get_new_id(*filter)?;
+                plan.set_parent_in_subtree(*filter, next_rel_id)?
             }
             RelOwned::Motion(Motion {
                 alias: _,
@@ -455,6 +454,9 @@ impl SubtreeCloner {
                 is_final: _,
             }) => {
                 *gr_exprs = self.copy_list(gr_exprs)?;
+                for expr_id in gr_exprs.iter() {
+                    plan.set_parent_in_subtree(*expr_id, next_rel_id)?;
+                }
             }
             RelOwned::OrderBy(OrderBy {
                 children: _,
@@ -464,9 +466,13 @@ impl SubtreeCloner {
                 let mut new_order_by_elements = Vec::with_capacity(order_by_elements.len());
                 for element in &mut *order_by_elements {
                     let new_entity = match element.entity {
-                        OrderByEntity::Expression { expr_id } => OrderByEntity::Expression {
-                            expr_id: self.get_new_id(expr_id)?,
-                        },
+                        OrderByEntity::Expression { expr_id } => {
+                            let new_expr_id = self.get_new_id(expr_id)?;
+                            plan.set_parent_in_subtree(new_expr_id, next_rel_id)?;
+                            OrderByEntity::Expression {
+                                expr_id: new_expr_id,
+                            }
+                        }
                         OrderByEntity::Index { value } => OrderByEntity::Index { value },
                     };
                     new_order_by_elements.push(OrderByElement {
@@ -545,7 +551,7 @@ impl SubtreeCloner {
 
             let node = plan.get_node(id)?;
             let new_node: NodeAligned = match node {
-                Node::Relational(rel) => self.clone_relational(&rel, id)?.into(),
+                Node::Relational(_) => self.clone_relational(plan, id)?.into(),
                 Node::Expression(expr) => self.clone_expression(&expr)?.into(),
                 _ => {
                     return Err(SbroadError::Invalid(

@@ -1758,11 +1758,7 @@ impl Plan {
         Ok(false)
     }
 
-    /// Replace parent for all references in the expression subtree of the current node.
-    ///
-    /// # Errors
-    /// - node is invalid
-    /// - node is not an expression
+    /// Replace parent from one to another for all references in the expression subtree of the provided node.
     pub fn replace_parent_in_subtree(
         &mut self,
         node_id: NodeId,
@@ -1786,6 +1782,42 @@ impl Plan {
         for LevelNode(_, id) in references {
             let mut node = self.get_mut_expression_node(id)?;
             node.replace_parent_in_reference(from_id, to_id);
+        }
+        Ok(())
+    }
+
+    /// Replaces the parent node ID for all references in the expression subtree of the provided node.
+    /// Unlike conditional replacement, this updates any parent reference.
+    ///
+    /// # Example
+    /// Used to fix cloned parent references (in SELECT under intersect) in EXCEPT queries like:
+    /// ```sql
+    /// SELECT 1 FROM t2 WHERE (SELECT true) EXCEPT SELECT 3 FROM t1;
+    /// ```
+    pub fn set_parent_in_subtree(
+        &mut self,
+        expr_id: NodeId,
+        rel_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
+                return true;
+            }
+            false
+        };
+        let mut subtree = PostOrderWithFilter::with_capacity(
+            |node| self.nodes.expr_iter(node, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+        subtree.populate_nodes(expr_id);
+        let references = subtree.take_nodes();
+        drop(subtree);
+        for LevelNode(_, id) in references {
+            let node = self.get_mut_expression_node(id)?;
+            if let MutExpression::Reference(Reference { parent, .. }) = node {
+                *parent = Some(rel_id);
+            }
         }
         Ok(())
     }
