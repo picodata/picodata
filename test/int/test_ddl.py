@@ -599,14 +599,15 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     # present for the ddl to be committed.
 
     # Propose a space creation which will succeed
-    space_def = dict(
-        name="ids",
-        format=[dict(name="id", type="unsigned", is_nullable=False)],
-        primary_key=["id"],
-        distribution="global",
+    i1.sql(
+        """
+        CREATE TABLE ids (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
     )
-    index = i1.create_table(space_def)
-    i2.raft_wait_index(index, 3)
+    i2.raft_wait_index(i1.raft_get_index(), 3)
     space_id = i1.eval("return box.space.ids.id")
 
     # Space created
@@ -731,18 +732,17 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
 
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
-    i1.create_table(
-        dict(
-            name="stuff",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-            engine="memtx",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE stuff (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        USING memtx
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
     )
-    i1.sql("CREATE INDEX skey ON stuff (id)")
-    i1_index = i1.raft_get_index()
-    i2.raft_wait_index(i1_index)
+    i1.sql("CREATE INDEX skey ON stuff (id) WAIT APPLIED LOCALLY")
+    i2.raft_wait_index(i1.raft_get_index())
     space_id = i1.eval("return box.space.stuff.id")
 
     initiator_id = PICO_SERVICE_ID
@@ -809,14 +809,15 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_name = "table"
-    cluster.create_table(
-        dict(
-            name=space_name,
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        f"""
+        CREATE TABLE \"{space_name}\" (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
+    cluster.raft_wait_index(i1.raft_get_index())
 
     assert i1.call("box.space._space.index.name:get", space_name) is not None
     assert i2.call("box.space._space.index.name:get", space_name) is not None
@@ -975,35 +976,28 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
-    cluster.create_table(
-        dict(
-            name="replace_me",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="sharded",
-            sharding_key=["id"],
-        ),
+    i1.sql(
+        """
+        CREATE TABLE replace_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+        """
     )
     i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
-    i1_index = i1.raft_get_index()
     for i in cluster.instances:
-        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
         space_id = i.eval("return box.space.replace_me.id")
         assert i.call("box.space._index:get", [space_id, 1]) is not None
 
-    cluster.create_table(
-        dict(
-            name="drop_me",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE drop_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
     i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
-    i1_index = i1.raft_get_index()
     for i in cluster.instances:
-        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "drop_me") is not None
         space_id = i.eval("return box.space.drop_me.id")
         assert i.call("box.space._index:get", [space_id, 1]) is not None
@@ -1013,26 +1007,24 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
 
     # Drop the spaces
     for space_name in ["replace_me", "drop_me"]:
-        cluster.drop_table(space_name)
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i2.raft_wait_index(i1.raft_get_index())
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
     #
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_table(
-        dict(
-            name="replace_me",
-            format=[
-                dict(name="#", type="unsigned", is_nullable=False),
-            ],
-            primary_key=["#"],
-            distribution="global",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE replace_me (# UNSIGNED NOT NULL, PRIMARY KEY (#))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
-    i1.sql("CREATE INDEX replace_skey ON replace_me (#)")
-    i1_index = i1.raft_get_index()
-    i2.raft_wait_index(i1_index)
+    i1.sql("CREATE INDEX replace_skey ON replace_me (#) WAIT APPLIED LOCALLY")
+    i2.raft_wait_index(i1.raft_get_index())
 
     for i in (i1, i2):
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
@@ -1157,63 +1149,70 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
-    cluster.create_table(
-        dict(
-            name="replace_me",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="sharded",
-            sharding_key=["id"],
-        ),
+    i1.sql(
+        """
+        CREATE TABLE replace_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+        """
     )
     i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
-    i1_index = i1.raft_get_index()
     for i in cluster.instances:
-        i.raft_wait_index(i1_index)
         replace_space_id = i.eval("return box.space.replace_me.id")
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
         assert i.call("box.space._index:get", [replace_space_id, 1]) is not None
 
-    cluster.create_table(
-        dict(
-            name="drop_me",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="sharded",
-            sharding_key=["id"],
-        ),
+    i1.sql(
+        """
+        CREATE TABLE drop_me (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+        """
     )
     i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
-    i1_index = i1.raft_get_index()
     for i in cluster.instances:
-        i.raft_wait_index(i1_index)
         drop_space_id = i.eval("return box.space.drop_me.id")
         assert i.call("box.space._space.index.name:get", "drop_me") is not None
         assert i.call("box.space._index:get", [drop_space_id, 1]) is not None
 
+    i1.sql(
+        """
+        CREATE TABLE drop_me_globally (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+        """
+    )
+    for i in cluster.instances:
+        assert i.call("box.space._space.index.name:get", "drop_me_globally") is not None
+
     # i3 will be catching up.
     i3.terminate()
 
+    # Try to drop using WAIT APPLIED GLOBALLY
+    with pytest.raises(
+        TarantoolError,
+        match="ddl operation committed, but failed to receive acknowledgements from all instances",
+    ):
+        i1.sql("DROP TABLE drop_me_globally WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 3.0)")
+
     for space_name in ["replace_me", "drop_me"]:
-        cluster.drop_table(space_name)
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i2.raft_wait_index(i1.raft_get_index())
         for i in (i1, i2):
             assert i.call("box.space._space.index.name:get", space_name) is None
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_table(
-        dict(
-            name="replace_me",
-            format=[
-                dict(name="#", type="unsigned", is_nullable=False),
-            ],
-            primary_key=["#"],
-            distribution="global",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE replace_me (# UNSIGNED NOT NULL, PRIMARY KEY (#))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
-    i1.sql("CREATE INDEX new_replace_skey ON replace_me (#)")
-    i1_index = i1.raft_get_index()
-    i2.raft_wait_index(i1_index)
+    i1.sql("CREATE INDEX new_replace_skey ON replace_me (#) WAIT APPLIED LOCALLY")
+    i2.raft_wait_index(i1.raft_get_index())
 
     for i in (i1, i2):
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
@@ -1257,27 +1256,22 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
-    cluster.create_table(
-        dict(
-            name="space_to_drop",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE space_to_drop (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
-    cluster.create_table(
-        dict(
-            name="space_to_replace",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="sharded",
-            sharding_key=["id"],
-        ),
+    i1.sql(
+        """
+        CREATE TABLE space_to_replace (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+        """
     )
     i1.sql("CREATE INDEX drop_skey ON space_to_drop (id)")
     i1.sql("CREATE INDEX replace_skey ON space_to_replace (id)")
-    i1_index = i1.raft_get_index()
-    cluster.raft_wait_index(i1_index)
 
     for space_name in ["space_to_drop", "space_to_replace"]:
         for i in cluster.instances:
@@ -1291,21 +1285,23 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["space_to_drop", "space_to_replace"]:
-        cluster.drop_table(space_name)
+        i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+        i1_index = i1.raft_get_index()
         for i in (i1, i2, i3):
+            i.raft_wait_index(i1_index)
             assert i.call("box.space._space.index.name:get", space_name) is None
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_table(
-        dict(
-            name="space_to_replace",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        """
+        CREATE TABLE space_to_replace (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
-    i1.sql("CREATE INDEX replace_skey ON space_to_replace (id)")
+    i1.sql("CREATE INDEX replace_skey ON space_to_replace (id) WAIT APPLIED LOCALLY")
     i1_index = i1.raft_get_index()
 
     for i in (i1, i2, i3):
@@ -1406,16 +1402,12 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     # Set up.
     #
     space_name = "space_which_changes_format"
-    cluster.create_table(
-        dict(
-            name=space_name,
-            format=[
-                dict(name="id", type="unsigned", is_nullable=False),
-                dict(name="value", type="unsigned", is_nullable=False),
-            ],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        f"""
+        CREATE TABLE {space_name} (id UNSIGNED NOT NULL,value UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
 
     for i in cluster.instances:
@@ -1433,24 +1425,22 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     #
     # Change the space format.
     #
-    cluster.drop_table(space_name)
+    i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")
+    cluster.raft_wait_index(i1.raft_get_index())
     assert i1.call("box.space._space.index.name:get", space_name) is None
     assert i2.call("box.space._space.index.name:get", space_name) is None
     assert i3.call("box.space._space.index.name:get", space_name) is None
     assert i4.call("box.space._space.index.name:get", space_name) is None
 
-    cluster.create_table(
-        dict(
-            name=space_name,
-            format=[
-                dict(name="id", type="unsigned", is_nullable=False),
-                dict(name="value", type="string", is_nullable=False),
-            ],
-            primary_key=["id"],
-            distribution="global",
-        ),
+    i1.sql(
+        f"""
+        CREATE TABLE {space_name} (id UNSIGNED NOT NULL,value STRING NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3.0)
+        """
     )
-
+    cluster.raft_wait_index(i1.raft_get_index())
     for row in ([1, "one"], [2, "two"], [3, "three"]):  # type: ignore
         index = cluster.cas("insert", space_name, row)
         cluster.raft_wait_index(index, 3)
@@ -1576,7 +1566,7 @@ def test_wait_applied_options(cluster: Cluster):
     # option results in an error.
     with pytest.raises(
         TarantoolError,
-        match="ddl operation committed, but failed to receive acknowledgements from all replicasets",
+        match="ddl operation committed, but failed to receive acknowledgements from all instances",
     ):
         i1.sql(
             """
@@ -1782,12 +1772,6 @@ cluster:
         WAIT APPLIED GLOBALLY
         """
     )
-
-    # Note: WAIT APPLIED GLOBALLY only ensures application on replicaset masters,
-    # so we need to wait for index to be applied on replicas.
-    # (https://git.picodata.io/core/picodata/-/issues/1367)
-    raft_index = max([i.raft_get_index() for i in cluster.instances])
-    cluster.raft_wait_index(raft_index)
 
     # All 3 tables exist on all instances
     table_ids = {}
@@ -1995,7 +1979,7 @@ def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
     # This is a replica which will be catching up
     i3.terminate()
 
-    i1.sql("TRUNCATE t")
+    i1.sql("TRUNCATE t WAIT APPLIED LOCALLY")
 
     # i3 wakes up.
     i3.start()

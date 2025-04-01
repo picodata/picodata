@@ -1676,11 +1676,11 @@ pub(crate) fn reenterable_schema_change_request(
                 wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
             if wait_applied_globally {
                 wait_for_index_globally(
-                    &node.storage,
+                    &node.topology_cache,
                     Rc::clone(&node.pool),
                     commit_index,
                     deadline,
-                ).map_err(|_| Error::Other("ddl operation committed, but failed to receive acknowledgements from all replicasets".into()))?;
+                ).map_err(|_| Error::Other("ddl operation committed, but failed to receive acknowledgements from all instances".into()))?;
             }
         }
 

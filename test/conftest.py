@@ -1242,6 +1242,8 @@ class Instance:
 
     def create_table(self, params: dict, timeout: float = 10) -> int:
         """
+        DEPRECATED: use Instance.sql(...) instead of this function.
+
         Creates a table. Returns a raft index at which a newly created table
         has to exist on all peers.
 
@@ -1285,6 +1287,8 @@ class Instance:
 
     def drop_table(self, table: int | str, timeout: float = 10) -> int:
         """
+        DEPRECATED: use Instance.sql(...) instead of this function
+
         Drops the table. Returns a raft index at which the table has to be
         dropped on all peers.
         """
@@ -1976,6 +1980,8 @@ class Cluster:
 
     def create_table(self, params: dict, timeout: float = 3.0):
         """
+        DEPRECATED: use Instance.sql(...) instead of this function.
+
         Creates a table. Waits for all online peers to be aware of it.
         """
         index = self.leader().create_table(params, timeout)
@@ -1983,6 +1989,8 @@ class Cluster:
 
     def drop_table(self, space: int | str, timeout: float = 3.0):
         """
+        DEPRECATED: use Instance.sql(...) instead of this function.
+
         Drops the space. Waits for all online peers to be aware of it.
         """
         index = self.leader().drop_table(space, timeout)

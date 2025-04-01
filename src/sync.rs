@@ -7,13 +7,14 @@ use futures::stream::FuturesOrdered;
 use futures::{Future, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::has_states;
 use crate::instance::InstanceName;
 use crate::rpc::RequestArgs;
-use crate::storage::{Catalog, ToEntryIter};
+use crate::topology_cache::TopologyCache;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
 use crate::traft::network::ConnectionPool;
@@ -186,7 +187,7 @@ fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,
 /// Note: The client must ensure that the term remains unchanged, otherwise, the operation on the
 /// index may be changed. It's safe to wait for an index after committing it.
 pub fn wait_for_index_globally(
-    storage: &Catalog,
+    topology: &TopologyCache,
     pool: Rc<ConnectionPool>,
     index: RaftIndex,
     deadline: Instant,
@@ -221,27 +222,26 @@ pub fn wait_for_index_globally(
         Ok(fs)
     }
 
-    let replicasets: Vec<_> = storage
-        .replicasets
-        .iter()
-        .expect("storage should never fail")
-        .collect();
-    let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
-    let instances = storage
-        .instances
-        .all_instances()
-        .expect("storage should never fail");
+    let instances_values: Vec<InstanceName>;
+    let instances: HashSet<&InstanceName>;
+    {
+        // `topology_ref` is `NoYieldsRef` so we cannot use it in `fiber::block_on` below
+        // that's why we need to collect all instance names here.
+        let topology_ref = topology.get();
+        instances_values = topology_ref
+            .all_instances()
+            .filter(|instance| !has_states!(instance, Expelled -> *))
+            .map(|instance| instance.name.clone())
+            .collect();
+        instances = instances_values.iter().collect();
+    }
 
     fiber::block_on(async {
         let mut confirmed = HashSet::new();
 
         loop {
-            let masters: HashSet<_> = crate::rpc::replicasets_masters(&replicasets, &instances)
-                .into_iter()
-                .map(|(instance_name, _)| instance_name)
-                .collect();
             let confirmed_copy = confirmed.clone();
-            let unconfirmed: Vec<_> = masters.difference(&confirmed_copy).collect();
+            let unconfirmed: Vec<_> = instances.difference(&confirmed_copy).collect();
             if unconfirmed.is_empty() {
                 return Ok(());
             }

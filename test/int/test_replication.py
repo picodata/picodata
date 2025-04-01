@@ -314,7 +314,9 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i5.terminate()
 
     # Do some storage modifications, which will need to be replicated.
-    i4.sql(""" CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """)
+    i4.sql(
+        """ CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) WAIT APPLIED LOCALLY """
+    )
     i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
 
     # Make sure i1 is leader.

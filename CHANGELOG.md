@@ -25,6 +25,7 @@ with the `YY.MINOR.MICRO` scheme.
   - Now it more strict: "only allow clients to connect via SSL".
   - This is technically a breaking change.
 
+- The WAIT APPLIED GLOBALLY option now waits for all instances rather than just replicaset masters.
 
 ### ACL
 
