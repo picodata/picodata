@@ -5,7 +5,6 @@ use crate::has_states;
 use crate::instance::state::State;
 use crate::instance::state::StateVariant;
 use crate::instance::{Instance, InstanceName};
-use crate::metrics;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
 use crate::plugin::TopologyUpdateOpKind;
@@ -158,6 +157,7 @@ pub(super) fn action_plan<'i>(
         return Ok(Downgrade {
             instance_name,
             new_current_state,
+            tier: &tier.name,
             cas,
         }
         .into());
@@ -592,8 +592,6 @@ pub(super) fn action_plan<'i>(
             &global_cluster_version,
         )?;
 
-        metrics::report_instance_state(&tier.name, instance_name, "Expelled");
-
         let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
         let op = Op::single_dml_or_batch(ops);
@@ -601,6 +599,7 @@ pub(super) fn action_plan<'i>(
         return Ok(Downgrade {
             instance_name,
             new_current_state,
+            tier: &tier.name,
             cas,
         }
         .into());
@@ -654,8 +653,9 @@ pub(super) fn action_plan<'i>(
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
         return Ok(ToOnline {
-            target: instance_name,
+            instance_name,
             new_current_state,
+            tier: &tier.name,
             plugin_rpc,
             cas,
         }
@@ -1150,6 +1150,8 @@ pub mod stage {
             pub instance_name: &'i InstanceName,
             /// The state which is going to be set as target's new current state. Is only used for loggin.
             pub new_current_state: &'i str,
+            /// The name of the tier to which this instance belongs. Is only used for loggin.
+            pub tier: &'i str,
             /// Global DML which updates `current_state` to `Offline` in `_pico_instance` for a given instance.
             pub cas: cas::Request,
         }
@@ -1216,9 +1218,11 @@ pub mod stage {
 
         pub struct ToOnline<'i> {
             /// This instance's is becomming online. Name is only used for logging.
-            pub target: &'i InstanceName,
+            pub instance_name: &'i InstanceName,
             /// This is going to be the new current state of the instance. Only used for logging.
             pub new_current_state: &'i str,
+            /// The name of the tier to which this instance belongs. Is only used for loggin.
+            pub tier: &'i str,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.
             pub plugin_rpc: rpc::enable_all_plugins::Request,

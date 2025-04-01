@@ -80,8 +80,6 @@ crate::define_rpc_request! {
     }
 
     pub struct Response {}
-
-    service_label: "proc_expel"
 }
 
 pub mod redirect {
@@ -128,7 +126,5 @@ pub mod redirect {
         /// leader.
         pub struct Request(pub super::Request);
         pub struct Response {}
-
-        service_label: "proc_expel_redirect"
     }
 }

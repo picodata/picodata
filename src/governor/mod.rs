@@ -12,6 +12,7 @@ use ::tarantool::space::UpdateOps;
 use crate::cas;
 use crate::column_name;
 use crate::instance::InstanceName;
+use crate::metrics;
 use crate::op::Op;
 use crate::proc_name;
 use crate::replicaset::Replicaset;
@@ -434,9 +435,11 @@ impl Loop {
             Plan::Downgrade(Downgrade {
                 instance_name,
                 new_current_state,
+                tier,
                 cas,
             }) => {
                 set_status!("update instance state to offline");
+                metrics::record_instance_state(tier, instance_name, new_current_state);
                 tlog!(Info, "downgrading instance {instance_name}");
 
                 governor_step! {
@@ -586,24 +589,26 @@ impl Loop {
             }
 
             Plan::ToOnline(ToOnline {
-                target,
+                instance_name,
                 new_current_state,
+                tier,
                 plugin_rpc,
                 cas,
             }) => {
                 set_status!("update instance state to online");
+                metrics::record_instance_state(tier, instance_name, new_current_state);
                 governor_step! {
                     "finalizing instance initialization" [
-                        "instance_name" => %target,
+                        "instance_name" => %instance_name,
                     ]
                     async {
-                        pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
+                        pool.call(instance_name, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
                     }
                 }
 
                 governor_step! {
                     "handling instance state change" [
-                        "instance_name" => %target,
+                        "instance_name" => %instance_name,
                         "current_state" => %new_current_state,
                     ]
                     async {
@@ -1073,7 +1078,7 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
         return;
     }
 
-    crate::metrics::report_governor_change();
+    crate::metrics::record_governor_change();
 
     let counter = status.get().step_counter;
     tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");

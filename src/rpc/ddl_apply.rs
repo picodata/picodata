@@ -114,8 +114,6 @@ crate::define_rpc_request! {
         /// whole cluster.
         Abort { cause: ErrorInfo },
     }
-
-    service_label: "proc_apply_schema_change"
 }
 
 #[derive(Debug, thiserror::Error)]

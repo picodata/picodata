@@ -609,8 +609,8 @@ pub fn sql_dispatch(
 
     let result = dispatch(query, override_deadline);
 
-    let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
-    metrics::observe_sql_query_duration(duration);
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_sql_query_duration(duration as f64);
     metrics::record_sql_query_total();
     match result {
         Ok(tuple) => Ok(tuple),

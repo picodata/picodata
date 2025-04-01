@@ -119,8 +119,6 @@ crate::define_rpc_request! {
 
     /// Response to [`ConfigureReplicationRequest`].
     pub struct Response {}
-
-    service_label: "proc_replication"
 }
 
 crate::define_rpc_request! {
@@ -154,8 +152,6 @@ crate::define_rpc_request! {
     }
 
     pub struct ReplicationSyncResponse {}
-
-    service_label: "proc_replication_sync"
 }
 
 fn is_read_only() -> Result<bool> {
@@ -280,6 +276,4 @@ crate::define_rpc_request! {
     pub struct DemoteResponse {
         pub vclock: Vclock,
     }
-
-    service_label: "proc_replication_demote"
 }

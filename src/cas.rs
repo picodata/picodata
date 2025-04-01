@@ -157,28 +157,7 @@ pub fn compare_and_swap(
     deadline: Instant,
 ) -> traft::Result<CasResult> {
     let start = Instant::now_fiber();
-    let (op_type, table_label) = match &request.op {
-        Op::Dml(dml) => {
-            let op_type = match dml {
-                Dml::Insert { .. } => "insert",
-                Dml::Replace { .. } => "replace",
-                Dml::Update { .. } => "update",
-                Dml::Delete { .. } => "delete",
-            };
-            (op_type, format!("{}", dml.space()))
-        }
-        Op::BatchDml { ops } => {
-            let op_type = "batch_dml";
-            let table_label = if let Some(first) = ops.first() {
-                format!("{}", first.space())
-            } else {
-                "unknown".into()
-            };
-            (op_type, table_label)
-        }
-        Op::Acl(_) => ("acl", "system".into()),
-        _ => ("other", "global".into()),
-    };
+    let operations = get_op_type_and_table(&request.op);
 
     let node = node::global()?;
 
@@ -189,7 +168,7 @@ pub fn compare_and_swap(
     }
 
     let Some(leader_id) = node.status().leader_id else {
-        metrics::record_global_table_errors(op_type, &table_label);
+        metrics::record_global_table_errors(operations);
         return Err(TraftError::LeaderUnknown);
     };
 
@@ -201,7 +180,7 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_local(request);
     } else if force_local {
-        metrics::record_global_table_errors(op_type, &table_label);
+        metrics::record_global_table_errors(operations);
         return Err(TraftError::NotALeader);
     } else {
         let future = async {
@@ -217,7 +196,7 @@ pub fn compare_and_swap(
 
     let response = crate::unwrap_ok_or!(res,
         Err(e) => {
-            metrics::record_global_table_errors(op_type, &table_label);
+            metrics::record_global_table_errors(operations);
 
             if e.is_retriable() {
                 return Ok(CasResult::RetriableError(e));
@@ -232,7 +211,7 @@ pub fn compare_and_swap(
 
         let actual_term = raft::Storage::term(&node.raft_storage, response.index)?;
         if response.term != actual_term {
-            metrics::record_global_table_errors(op_type, &table_label);
+            metrics::record_global_table_errors(operations);
 
             // Leader has changed and the entry got rolled back, ok to retry.
             return Ok(CasResult::RetriableError(TraftError::TermMismatch {
@@ -242,22 +221,44 @@ pub fn compare_and_swap(
         }
     }
 
-    let duration = Instant::now_fiber().duration_since(start).as_secs_f64();
-    metrics::observe_global_table_write_latency(duration);
-
-    metrics::record_global_table_ops_total(op_type, &table_label);
-
-    match &request.op {
-        Op::BatchDml { ops } => {
-            metrics::record_global_table_records(op_type, &table_label, ops.len());
-        }
-        Op::Dml(_) => {
-            metrics::record_global_table_records(op_type, &table_label, 1);
-        }
-        _ => {}
-    }
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_global_table_write_latency(duration as f64);
+    metrics::record_global_table_ops_total(operations);
 
     return Ok(CasResult::Ok((response.index, response.term)));
+}
+
+fn get_op_type_and_table(ops: &Op) -> Vec<(&str, String)> {
+    let mut operations = vec![];
+
+    match ops {
+        Op::Dml(dml) => {
+            let op_type = match dml {
+                Dml::Insert { .. } => "insert",
+                Dml::Replace { .. } => "replace",
+                Dml::Update { .. } => "update",
+                Dml::Delete { .. } => "delete",
+            };
+            operations.push((op_type, format!("{}", dml.space())));
+        }
+        Op::BatchDml { ops } => {
+            for dml in ops.iter() {
+                let op_type = match dml {
+                    Dml::Insert { .. } => "insert",
+                    Dml::Replace { .. } => "replace",
+                    Dml::Update { .. } => "update",
+                    Dml::Delete { .. } => "delete",
+                };
+                operations.push((op_type, format!("{}", dml.space())));
+            }
+        }
+        Op::Acl(_) => {
+            operations.push(("acl", "system".into()));
+        }
+        _ => operations.push(("other", "global".into())),
+    };
+
+    operations
 }
 
 #[must_use = "You must decide if you're retrying the error or returning it to user"]
@@ -531,8 +532,6 @@ crate::define_rpc_request! {
         pub index: RaftIndex,
         pub term: RaftTerm,
     }
-
-    service_label: "proc_cas"
 }
 
 impl Request {

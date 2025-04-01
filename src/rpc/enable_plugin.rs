@@ -64,6 +64,4 @@ crate::define_rpc_request! {
         /// whole cluster.
         Abort { cause: ErrorInfo },
     }
-
-    service_label: "proc_enable_plugin"
 }
