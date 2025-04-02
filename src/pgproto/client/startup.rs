@@ -111,21 +111,32 @@ pub fn handshake<S: Read + Write>(
     mut stream: PgStream<S>,
     tls_acceptor: Option<&TlsAcceptor>,
 ) -> PgResult<(PgStream<S>, ClientParams)> {
-    let mut expect_startup = false;
+    let mut waiting_for_ssl = tls_acceptor.is_some();
+    let mut client_attempted_ssl = false;
+
     loop {
         let message = stream.read_message()?;
         // At the beginning we can get SslRequest or Startup.
         match message {
-            FeMessage::Startup(startup) => return Ok((stream, parse_startup(startup)?)),
+            FeMessage::Startup(startup) => {
+                if waiting_for_ssl {
+                    // ssl handshake is required (because the server has ssl set up), but wasn't performed
+                    stream.write_message(messages::error_response(PgError::SslRequired.info()))?;
+                    return Err(PgError::SslRequired);
+                }
+
+                return Ok((stream, parse_startup(startup)?));
+            }
             FeMessage::SslRequest(_) => {
-                if expect_startup {
+                if client_attempted_ssl {
+                    // ssl handshake was already attempted
                     return Err(PgError::ProtocolViolation(format!(
                         "expected Startup, got {message:?}"
                     )));
                 } else {
                     stream = handle_ssl_request(stream, tls_acceptor)?;
-                    // After SslRequest, only Startup is expected.
-                    expect_startup = true;
+                    client_attempted_ssl = true;
+                    waiting_for_ssl = false;
                 }
             }
             _ => {

@@ -17,6 +17,14 @@ with the `YY.MINOR.MICRO` scheme.
   - disallow `HOST` or `:PORT`,
   - this is technically a breaking change.
 
+### Pgproto
+
+- Do not allow connections without ssl when ssl is enabled on the server.
+  - In previous versions `pg.ssl = true` meant "allow clients to connect either plaintext or via SSL",
+  - Now it more strict: "only allow clients to connect via SSL".
+  - This is technically a breaking change.
+
+
 ### ACL
 
 - For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.

@@ -9,6 +9,7 @@ pub enum PgErrorCode {
     DuplicatePreparedStatement,
     FeatureNotSupported,
     InternalError,
+    InvalidAuthorizationSpecification,
     InvalidPassword,
     IoError,
     ProtocolViolation,
@@ -21,6 +22,7 @@ impl PgErrorCode {
             PgErrorCode::DuplicatePreparedStatement => "42P05",
             PgErrorCode::FeatureNotSupported => "0A000",
             PgErrorCode::InternalError => "XX000",
+            PgErrorCode::InvalidAuthorizationSpecification => "28000",
             PgErrorCode::InvalidPassword => "28P01",
             PgErrorCode::IoError => "58030",
             PgErrorCode::ProtocolViolation => "08P01",
@@ -71,6 +73,9 @@ pub enum PgError {
 
     #[error("feature is not supported: {0}")]
     FeatureNotSupported(String),
+
+    #[error("this server requires the client to use ssl")]
+    SslRequired,
 
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
@@ -143,6 +148,7 @@ impl PgError {
             InternalError(_) => PgErrorCode::InternalError,
             ProtocolViolation(_) => PgErrorCode::ProtocolViolation,
             FeatureNotSupported(_) => PgErrorCode::FeatureNotSupported,
+            SslRequired => PgErrorCode::InvalidAuthorizationSpecification,
             InvalidPassword(_) => PgErrorCode::InvalidPassword,
             IoError(_) => PgErrorCode::InvalidPassword,
             WithExplicitCode(code, _) => *code,
