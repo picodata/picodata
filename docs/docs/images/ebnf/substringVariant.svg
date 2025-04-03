@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="229" height="213" viewBox="0 0 229 213">
+   <defs>
+      <style type="text/css">
+    @namespace "http://www.w3.org/2000/svg";
+    .line                 {fill: none; stroke: #330000; stroke-width: 1;}
+    .bold-line            {stroke: #140000; shape-rendering: crispEdges; stroke-width: 2;}
+    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
+    .filled               {fill: #330000; stroke: none;}
+    text.terminal         {font-family: Verdana, Sans-serif;
+                            font-size: 12px;
+                            fill: #140000;
+                            font-weight: bold;
+                          }
+    text.nonterminal      {font-family: Verdana, Sans-serif;
+                            font-size: 12px;
+                            fill: #1A0000;
+                            font-weight: normal;
+                          }
+    text.regexp           {font-family: Verdana, Sans-serif;
+                            font-size: 12px;
+                            fill: #1F0000;
+                            font-weight: normal;
+                          }
+    rect, circle, polygon {fill: #330000; stroke: #330000;}
+    rect.terminal         {fill: #FF4D4D; stroke: #330000; stroke-width: 1;}
+    rect.nonterminal      {fill: #FF9E9E; stroke: #330000; stroke-width: 1;}
+    rect.text             {fill: none; stroke: none;}
+    polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
+  </style>
+   </defs>
+   <polygon points="9 17 1 13 1 21"/>
+   <polygon points="17 17 9 13 9 21"/>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="#substringFromFor"
+      xlink:title="substringFromFor">
+      <rect x="51" y="3" width="130" height="32"/>
+      <rect x="49" y="1" width="130" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="21">substringFromFor</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="#substringRegular"
+      xlink:title="substringRegular">
+      <rect x="51" y="47" width="128" height="32"/>
+      <rect x="49" y="45" width="128" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="65">substringRegular</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="#substringFor"
+      xlink:title="substringFor">
+      <rect x="51" y="91" width="100" height="32"/>
+      <rect x="49" y="89" width="100" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="109">substringFor</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="#substringFrom"
+      xlink:title="substringFrom">
+      <rect x="51" y="135" width="110" height="32"/>
+      <rect x="49" y="133" width="110" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="153">substringFrom</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="#substringSimilar"
+      xlink:title="substringSimilar">
+      <rect x="51" y="179" width="122" height="32"/>
+      <rect x="49" y="177" width="122" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="197">substringSimilar</text>
+   </a>
+   <path class="line"
+         d="m17 17 h2 m20 0 h10 m130 0 h10 m-170 0 h20 m150 0 h20 m-190 0 q10 0 10 10 m170 0 q0 -10 10 -10 m-180 10 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m128 0 h10 m0 0 h2 m-160 -10 v20 m170 0 v-20 m-170 20 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m100 0 h10 m0 0 h30 m-160 -10 v20 m170 0 v-20 m-170 20 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m110 0 h10 m0 0 h20 m-160 -10 v20 m170 0 v-20 m-170 20 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m122 0 h10 m0 0 h8 m23 -176 h-3"/>
+   <polygon points="219 17 227 13 227 21"/>
+   <polygon points="219 17 211 13 211 21"/>
+</svg>

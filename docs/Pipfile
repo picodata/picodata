@@ -1,0 +1,33 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+mkdocs = "==1.6.1"
+mkdocs-material = "==9.6.8"
+mkdocs-open-in-new-tab = "==1.0.8"
+pygments = "==2.19.1"
+beautifulsoup4 = "==4.13.3"
+
+[dev-packages]
+flake8 = "*"
+black = "*"
+mypy = "*"
+types-markdown = "*"
+types-beautifulsoup4 = "*"
+
+[requires]
+python_version = "3"
+
+[scripts]
+serve = "mkdocs serve"
+build = "mkdocs build -s"
+lint = """
+  bash -c "
+    flake8 hooks --max-line-length 99
+    black hooks --check --diff --line-length 99
+    mypy hooks
+  "
+"""
+fmt = "black hooks --line-length 99"

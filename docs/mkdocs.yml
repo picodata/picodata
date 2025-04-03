@@ -1,0 +1,316 @@
+# Конфигурация MkDocs
+# https://www.mkdocs.org/user-guide/configuration/
+
+# Общие настройки
+# site_name — https://www.mkdocs.org/user-guide/configuration/#site_name
+# site_description — https://www.mkdocs.org/user-guide/configuration/#site_description
+# site_url — https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#stay-on-the-same-page-when-switching-versions
+# repo_url — https://www.mkdocs.org/user-guide/configuration/#repo_url
+# edit_uri — https://www.mkdocs.org/user-guide/configuration/#edit_uri
+site_name: Портал документации Picodata
+site_description: Picodata documentation site
+repo_url: https://git.picodata.io/core/docs
+edit_uri: -/blob/main/docs/
+# site_url: see hooks/set_site_url.py
+
+# Исключения из навигации
+# https://www.mkdocs.org/user-guide/configuration/#not_in_nav
+not_in_nav: |
+  index.md
+  reference/api.md
+  architecture/clusterwide_schema.md
+  plugins/argus.md
+  plugins/svarog.md
+  plugins/task.md
+  plugins/ouroboros.md
+
+# Навигация
+# https://www.mkdocs.org/user-guide/configuration/#nav
+nav:
+  - Ознакомление с ПО Picodata:
+    - overview/description.md
+    - overview/benefits.md
+    - overview/glossary.md
+    - overview/feedback.md
+    - overview/versioning.md
+  - Инструкции и руководства:
+    - tutorial/install.md
+    - Запуск и развертывание:
+      - tutorial/run.md
+      - tutorial/deploy.md
+      - tutorial/node_add.md
+      - tutorial/node_expel.md
+      - tutorial/deploy_ansible.md
+      - tutorial/deploy_kubernetes.md
+    - Начало работы:
+      - tutorial/connecting.md
+      - tutorial/dbeaver.md
+      - tutorial/sql_examples.md
+      - tutorial/webui.md
+    - Разработка приложений:
+      - tutorial/create_plugin.md
+      - tutorial/plugins.md
+      - Внешние коннекторы:
+        - Оглавление: connectors_index.md
+        - tutorial/connectors/java.md
+        - tutorial/connectors/jdbc.md
+  - Администрирование кластера:
+      - admin/configure.md
+      - admin/monitoring.md
+      - admin/backup.md
+      - admin/access_control.md
+      - admin/ldap.md
+      - admin/ssl.md
+      - admin/audit_log.md
+      - admin/sizing.md
+  - Справочные материалы:
+    - Язык SQL:
+      - Команды и термины SQL: sql_index.md
+      - reference/sql/dcl.md
+      - reference/sql/ddl.md
+      - reference/sql/dml.md
+      - reference/sql/dql.md
+      - reference/sql/non_block.md
+      - reference/sql/object.md
+      - reference/sql_types.md
+      - reference/sql/parametrization.md
+      - reference/ansi_sql.md
+      - reference/legend.md
+      - Команды:
+        - reference/sql/alter_plugin.md
+        - reference/sql/alter_procedure.md
+        - reference/sql/alter_system.md
+        - reference/sql/alter_user.md
+        - reference/sql/call.md
+        - reference/sql/create_index.md
+        - reference/sql/create_plugin.md
+        - reference/sql/create_procedure.md
+        - reference/sql/create_role.md
+        - reference/sql/create_table.md
+        - reference/sql/create_user.md
+        - reference/sql/delete.md
+        - reference/sql/drop_index.md
+        - reference/sql/drop_plugin.md
+        - reference/sql/drop_procedure.md
+        - reference/sql/drop_role.md
+        - reference/sql/drop_table.md
+        - reference/sql/drop_user.md
+        - reference/sql/explain.md
+        - reference/sql/grant.md
+        - reference/sql/insert.md
+        - reference/sql/revoke.md
+        - reference/sql/select.md
+        - reference/sql/update.md
+        - reference/sql/values.md
+      - Использование:
+        - reference/sql/with.md
+        - reference/sql/window.md
+        - reference/sql/join.md
+      - Функции и выражения:
+        - reference/sql/window_builtin.md
+        - reference/sql/aggregate.md
+        - reference/sql/case.md
+        - reference/sql/cast.md
+        - reference/sql/coalesce.md
+        - reference/sql/ilike.md
+        - reference/sql/like.md
+        - reference/sql/lower.md
+        - reference/sql/substr.md
+        - reference/sql/substring.md
+        - reference/sql/trim.md
+        - reference/sql/upper.md
+        - Дата и время:
+          - reference/sql/current_date.md
+          - reference/sql/localtimestamp.md
+          - reference/sql/to_char.md
+          - reference/sql/to_date.md
+    - reference/cli.md
+    - reference/config.md
+    - reference/audit_events.md
+    - reference/db_config.md
+    - reference/metrics.md
+    - reference/limitations.md
+  - Архитектура:
+    - architecture/distributed_sql.md
+    - architecture/discovery.md
+    - architecture/instance_lifecycle.md
+    - architecture/instance_runtime_files.md
+    - architecture/topology_management.md
+    - architecture/raft_failover.md
+    - architecture/system_tables.md
+    - architecture/rpc_api.md
+    - architecture/fibers.md
+    - architecture/plugins.md
+  - Плагины:
+    - plugins/argus.md
+    - plugins/radix.md
+    - plugins/synapse.md
+    - plugins/ouroboros.md
+    - plugins/gostech_audit_log.md
+  - Обеспечение безопасности:
+    - security/os.md
+    - security/runtime.md
+    - security/audit_log.md
+    - security/integrity.md
+
+# Настройки темы Material
+  ## name, custom_dir — https://squidfunk.github.io/mkdocs-material/customization/#setup-and-theme-structure
+  ## font — https://squidfunk.github.io/mkdocs-material/setup/changing-the-fonts/#regular-font
+  ## logo — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#logo
+  ## favicon — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#favicon
+  ## language — https://squidfunk.github.io/mkdocs-material/setup/changing-the-language/#site-language
+  ## features:
+    ### toc.follow — https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
+    ### content.code.annotate — https://squidfunk.github.io/mkdocs-material/reference/code-blocks/#code-annotations
+    ### content.code.copy — https://squidfunk.github.io/mkdocs-material/upgrade/#contentcodecopy
+    ### content.action.edit — https://squidfunk.github.io/mkdocs-material/upgrade/#contentaction
+    ### navigation.footer — https://squidfunk.github.io/mkdocs-material/setup/setting-up-the-footer/#navigation
+theme:
+  name: material
+  custom_dir: overrides
+  font:
+    text: Inter
+  logo: assets/logo.svg
+  icon: assets/icon.svg  # Custom setting
+  favicon: assets/favicon.png
+  language: ru
+  features:
+    - toc.follow
+    - content.code.annotate
+    - content.code.copy
+    - content.action.edit
+    - navigation.footer
+
+# Дополнительные настройки темы Material
+  ## analytics — https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-analytics/#setting-up-site-analytics
+  ## version — https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#configuration
+  ## > version: provider: mike
+  ## Активирует селектор версий `class="md-version"`.
+  ## Список селектора `md-version__list` формируется из файла `versions.json`
+  ## https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/assets/javascripts/bundle.ts#L156
+extra:
+  analytics:
+    provider: google
+    property: G-6X8Z5N2CGR
+    feedback:
+      title: Была ли эта информация полезной для вас?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: Да, это было полезно
+          data: 1
+          note: >-
+            Благодарим за отзыв!
+        - icon: material/emoticon-sad-outline
+          name: Страница требует улучшения
+          data: 0
+          note: >-
+            Благодарим за отзыв! <a href="https://t.me/picodataru"
+            target="_blank" rel="noopener">Напишите</a>, что бы вы хотели
+            улучшить на этой странице или в целом на сайте документации.
+  # version: see hooks/set_versioning.py
+
+# Кастомизация CSS
+# https://www.mkdocs.org/user-guide/configuration/#extra_css
+extra_css:
+  - extra/style.css
+
+# Плагины MkDocs
+# https://www.mkdocs.org/user-guide/configuration/#plugins
+  ## > open-in-new-tab
+  ## Вставляет атрибуты `target="_blank"` и `rel="noopener"` во внешние ссылки
+  ## https://github.com/JakubAndrysek/mkdocs-open-in-new-tab
+  ## > search
+  ## Добавляет в хедер панель поиска
+  ## https://www.mkdocs.org/user-guide/configuration/#search
+  ## https://squidfunk.github.io/mkdocs-material/plugins/search/
+plugins:
+  - open-in-new-tab
+  - search:
+      lang:
+        - en
+        - ru
+
+# Расширения Python Markdown
+# https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/
+  ## > attr_list
+  ## Добавляет синтаксис для определения атрибутов различных элементов HTML в выводе Markdown.
+  ## Используется для кастомизации якорей в формате {: #anchor }. Двоеточие и пробелы можно убирать
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#attribute-lists
+  ## https://python-markdown.github.io/extensions/attr_list/
+  ## > admonition
+  ## Добавляет синтаксис для оформления выносок `!!! note`
+  ## https://python-markdown.github.io/extensions/admonition/
+  ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#usage
+  ## Описание типов выносок:
+  ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#supported-types
+  ## > pymdownx.details
+  ## Добавляет синтаксис для оформления сворачиваемых блоков `??? note`
+  ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#collapsible-blocks
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/details/
+  ## > toc.permalink: true
+  ## Добавляет ссылку на якорь в конце каждого заголовка
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink
+  ## > toc.permalink_title
+  ## Добавляет описание ссылки на якорь, которое отображается при наведении
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink_title
+  ## > pymdownx.superfences (SuperFences)
+  ## Позволяет произвольно встраивать фрагменты кода и блоки контента друг в друга
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown-extensions/#superfences
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/superfences/
+  ## > pymdownx.highlight (Highlight)
+  ## Добавляет поддержку подсветки синтаксиса во фрагментах кода с помощью SuperFences
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown-extensions/#highlight
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/
+  ## > .use_pygments: true
+  ## Highlight использует Pygments для подсветки синтаксиса
+  ## https://pygments.org/
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > .pygments_lang_class: true
+  ## Pygments добавляет класс CSS с указанием языка, используемого во фрагменте кода
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > .guess_lang: true
+  ## Pygments пытается определить используемый во фрагменте кода язык, если он не указан
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > pymdownx.keys
+  ## Добавляет синтаксис для рендеринга клавиш клавиатуры и их сочетаний
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/keys/
+  ## > md_in_html
+  ## Позволяет использовать Markdown внутри тегов HTML
+  ## https://python-markdown.github.io/extensions/md_in_html/
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#markdown-in-html
+markdown_extensions:
+  - attr_list
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true
+      permalink_title: Ссылка на абзац
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      use_pygments: true
+      pygments_lang_class: true
+      guess_lang: true
+  - pymdownx.keys
+  - md_in_html
+
+# Валидация ссылок
+# https://www.mkdocs.org/user-guide/configuration/#validation
+validation:
+  links:
+    unrecognized_links: warn
+
+# Хуки
+# https://www.mkdocs.org/user-guide/configuration/#hooks
+hooks:
+  - ./hooks/set_site_url.py
+  - ./hooks/set_versioning.py
+  - ./hooks/add_meta.py
+  - ./hooks/check_headers.py
+  - ./hooks/check_padding.py
+  - ./hooks/check_svg_attrs.py
+  - ./hooks/check_unused_svg.py
+  - ./hooks/check_links.py
+  - ./hooks/check_sorting.py
+  - ./hooks/validate_system_tables.py
+  - ./hooks/inline_svg.py
+  - ./hooks/export_to_pdf.py

@@ -1,0 +1,22 @@
+{#
+  Material for MkDocs Jinja2 template:
+  https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/partials/source.html
+#}
+
+<!-- Repository information -->
+<a
+  href="{{ config.repo_url }}"
+  title="Репозиторий Picodata"
+  class="md-source"
+  data-md-component="source"
+  target="_blank"
+  rel="noopener"
+>
+  <div class="md-source__icon md-icon">
+    {% set icon = config.theme.icon.repo or "fontawesome/brands/git-alt" %}
+    {% include ".icons/" ~ icon ~ ".svg" %}
+  </div>
+  <div class="md-source__repository">
+    GitLab
+  </div>
+</a>
