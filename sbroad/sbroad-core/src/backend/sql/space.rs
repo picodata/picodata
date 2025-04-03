@@ -21,6 +21,11 @@ mod prod_imports {
     pub use tarantool::session::with_su;
     pub use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 
+    /// Create a temporary space. It wraps all Space API with `with_su`
+    /// since user can have no permissions to read/write to tables.
+    ///
+    /// # Errors
+    /// - The space with the same name but different schema already exists.
     pub fn create_tmp_space_impl(
         exec_plan: &ExecutionPlan,
         plan_id: &str,
@@ -42,7 +47,7 @@ mod prod_imports {
 
         // If the space already exists, it is possible that admin has
         // populated it with data (by mistake?). Clean the space up.
-        if let Some(space) = Space::find(table_name.as_str()) {
+        if let Some(space) = with_su(ADMIN_ID, || Space::find(table_name.as_str()))? {
             cleanup(space, table_name.as_str());
         }
 

@@ -6591,3 +6591,22 @@ def test_groupby_with_column_positions(cluster: Cluster):
         [7, 8, 6, 5],
         [7, 8, 8, 7],
     ]
+
+
+def test_cte_with_tmp_space(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+    i1.create_user(with_name="dmitry", with_password="Password1", with_auth="chap-sha1")
+
+    # While executing this query, sbroad creates temporary table.
+    # This test checks that user can execute that query without
+    # read permission granted.
+    with i1.connect(timeout=5, user="dmitry", password="Password1") as conn:
+        query = conn.sql(
+            """
+            with a(x) as (values (0), (1)),
+                b(x) as (select t1.x::text from a t1 join a t2 on true)
+            select * from b;
+            """,
+        )
+        assert query["rows"] == [["0"], ["0"], ["1"], ["1"]]
