@@ -195,7 +195,7 @@ impl Expression<'_> {
             }
             Expression::CountAsterisk(_) => DerivedType::new(Type::Integer),
             Expression::LocalTimestamp(_) => DerivedType::new(Type::Datetime),
-            Expression::Parameter(Parameter { param_type }) => *param_type,
+            Expression::Parameter(Parameter { param_type, .. }) => *param_type,
         };
         Ok(ty)
     }

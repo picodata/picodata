@@ -1,5 +1,3 @@
-use smol_str::format_smolstr;
-
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, Node64, NodeId, Parameter};
@@ -101,6 +99,7 @@ impl Plan {
                 const_id,
                 Node64::Parameter(Parameter {
                     param_type: DerivedType::unknown(),
+                    index: None,
                 }),
             )?;
             if let Node64::Constant(constant) = const_node {

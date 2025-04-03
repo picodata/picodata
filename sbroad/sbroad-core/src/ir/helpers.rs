@@ -299,8 +299,12 @@ impl Plan {
                 Expression::LocalTimestamp(LocalTimestamp { precision }) => {
                     writeln!(buf, "LocalTimestamp [precision = {precision}]")?;
                 }
-                Expression::Parameter(Parameter { param_type }) => {
-                    writeln!(buf, "Parameter [type = {param_type}]")?;
+                Expression::Parameter(Parameter { param_type, index }) => {
+                    if let Some(index) = index {
+                        writeln!(buf, "Parameter [type = {param_type}, index = {index}]")?;
+                    } else {
+                        writeln!(buf, "Parameter [type = {param_type}]")?;
+                    }
                 }
             };
         }

@@ -41,6 +41,7 @@ use crate::ir::value::Value;
 use crate::warn;
 
 use self::node::{Bound, BoundType, Like, Over, Window};
+use ahash::AHashMap;
 
 // TODO: remove when rust version in bumped in module
 #[allow(elided_lifetimes_in_associated_constant)]
@@ -679,8 +680,6 @@ impl Options {
     }
 }
 
-pub type ValueIdx = usize;
-
 /// Logical plan tree structure.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Plan {
@@ -713,11 +712,6 @@ pub struct Plan {
     /// for storing the order of options in `Option` clause, after `bind_params` is
     /// called this field is not used and becomes empty.
     pub raw_options: Vec<OptionSpec>,
-    /// Mapping between parameter plan id and corresponding value position in
-    /// in values list. This is needed only for handling PG-like parameters
-    /// in `bind_params` after which it becomes `None`.
-    /// If query uses tnt-like params, then the map is empty.
-    pub pg_params_map: HashMap<NodeId, ValueIdx>,
     /// SQL options. Initiliazed to defaults upon IR creation. Then bound to actual
     /// values after `bind_params` these options are set to their actual values.
     /// See `apply_options`.
@@ -868,7 +862,6 @@ impl Plan {
             raw_options: vec![],
             options: Options::default(),
             version_map: TableVersionMap::new(),
-            pg_params_map: HashMap::new(),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
         }
@@ -1950,8 +1943,8 @@ impl Plan {
         }
     }
 
-    fn count_pg_parameters(&self) -> usize {
-        self.pg_params_map
+    fn count_pg_parameters(pg_params_map: &AHashMap<NodeId, usize>) -> usize {
+        pg_params_map
             .values()
             .fold(0, |p1, p2| std::cmp::max(p1, *p2 + 1)) // idx 0 stands for $1
     }
@@ -1967,7 +1960,8 @@ impl Plan {
         &mut self,
         client_types: &[Option<Type>],
     ) -> Result<Vec<Type>, SbroadError> {
-        let params_count = self.count_pg_parameters();
+        let pg_params_map = self.build_pg_param_map();
+        let params_count = Self::count_pg_parameters(&pg_params_map);
         if params_count < client_types.len() {
             return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                 "client provided {} types for {} parameters",
@@ -1977,7 +1971,7 @@ impl Plan {
         }
         let mut inferred_types = vec![None; params_count];
 
-        for (node_id, param_idx) in &self.pg_params_map {
+        for (node_id, param_idx) in &pg_params_map {
             let param_type = *self.get_param_type(*node_id)?.get();
             let inferred_type = inferred_types.get(*param_idx).unwrap_or_else(|| {
                 panic!("param idx {param_idx} exceeds params count {params_count}")
@@ -2017,9 +2011,7 @@ impl Plan {
         // for queries like `SELECT $1::int + $1`. Without this correction there will be an error
         // like int and scalar are not supported for arithmetic expression, despite of the fact
         // that the type of parameter was specified.
-        //
-        // TODO: Avoid cloning of self.pg_params_map.
-        for (node_id, param_idx) in &self.pg_params_map.clone() {
+        for (node_id, param_idx) in &pg_params_map {
             self.set_param_type(*node_id, types[*param_idx])?;
         }
 

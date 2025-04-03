@@ -1619,40 +1619,27 @@ fn try_get_param_index(pair: Pair<'_, Rule>) -> Result<Option<usize>, SbroadErro
     }
 }
 
-/// Binding to Tarantool/Postgres parameter resulted from parsing.
-enum Parameter {
-    TntParameter,
-    PgParameter { index: usize },
-}
-
 fn parse_param<M: Metadata>(
     pair: Pair<'_, Rule>,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
-    let parameter = match try_get_param_index(pair)? {
-        None => {
-            // Tarantool parameter.
-            if worker.met_pg_param {
-                return Err(SbroadError::UseOfBothParamsStyles);
-            }
-            worker.met_tnt_param = true;
-            Parameter::TntParameter
+    let index = try_get_param_index(pair)?;
+    if index.is_some() {
+        // Postgres parameter.
+        if worker.met_tnt_param {
+            return Err(SbroadError::UseOfBothParamsStyles);
         }
-        Some(index) => {
-            // Postgres parameter.
-            if worker.met_tnt_param {
-                return Err(SbroadError::UseOfBothParamsStyles);
-            }
-            worker.met_pg_param = true;
-            Parameter::PgParameter { index }
+        worker.met_pg_param = true;
+    } else {
+        // Tarantool parameter.
+        if worker.met_pg_param {
+            return Err(SbroadError::UseOfBothParamsStyles);
         }
-    };
-    let param_id = plan.add_param();
-    if let Parameter::PgParameter { index } = parameter {
-        plan.pg_params_map.insert(param_id, index - 1);
+        worker.met_tnt_param = true;
     }
-    Ok(param_id)
+
+    Ok(plan.add_param(index))
 }
 
 // Helper structure used to resolve expression operators priority.

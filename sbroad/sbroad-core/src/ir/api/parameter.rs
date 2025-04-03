@@ -14,7 +14,7 @@ use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::Value;
-use crate::ir::{ArenaType, Node, OptionParamValue, Plan, ValueIdx};
+use crate::ir::{ArenaType, Node, OptionParamValue, Plan};
 use chrono::Local;
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
@@ -32,7 +32,7 @@ struct ParamsBinder<'binder> {
     /// Flag indicating whether we use Tarantool parameters notation.
     tnt_params_style: bool,
     /// Map of { plan param_id -> corresponding value }.
-    pg_params_map: HashMap<NodeId, ValueIdx>,
+    pg_params_map: AHashMap<NodeId, usize>,
     /// Plan nodes that correspond to Parameters.
     param_node_ids: AHashSet<NodeId>,
     /// Params transformed into constant Values.
@@ -52,7 +52,7 @@ fn get_param_value(
     param_id: NodeId,
     param_index: usize,
     value_ids: &[NodeId],
-    pg_params_map: &HashMap<NodeId, ValueIdx>,
+    pg_params_map: &AHashMap<NodeId, usize>,
 ) -> NodeId {
     let value_index = if tnt_params_style {
         // In case non-pg params are used, index is the correct position
@@ -81,14 +81,15 @@ impl<'binder> ParamsBinder<'binder> {
         tree.populate_nodes(top_id);
         let nodes = tree.take_nodes();
 
+        let pg_params_map = plan.build_pg_param_map();
+        let tnt_params_style = pg_params_map.is_empty();
+
         let mut binded_options_counter = 0;
         if !plan.raw_options.is_empty() {
-            binded_options_counter = plan.bind_option_params(&mut values);
+            binded_options_counter = plan.bind_option_params(&mut values, &pg_params_map);
         }
 
         let param_node_ids = plan.get_param_set();
-        let tnt_params_style = plan.pg_params_map.is_empty();
-        let pg_params_map = std::mem::take(&mut plan.pg_params_map);
 
         let binder = ParamsBinder {
             plan,
@@ -783,9 +784,10 @@ impl<'binder> ParamsBinder<'binder> {
 }
 
 impl Plan {
-    pub fn add_param(&mut self) -> NodeId {
+    pub fn add_param(&mut self, index: Option<usize>) -> NodeId {
         self.nodes.push(
             Parameter {
+                index,
                 param_type: DerivedType::unknown(),
             }
             .into(),
@@ -794,16 +796,20 @@ impl Plan {
 
     /// Bind params related to `Option` clause.
     /// Returns the number of params binded to options.
-    pub fn bind_option_params(&mut self, values: &mut Vec<Value>) -> usize {
+    pub fn bind_option_params(
+        &mut self,
+        values: &mut Vec<Value>,
+        pg_params_map: &AHashMap<NodeId, usize>,
+    ) -> usize {
         // Bind parameters in options to values.
         // Because the Option clause is the last clause in the
         // query the parameters are located in the end of params list.
         let mut binded_params_counter = 0usize;
         for opt in self.raw_options.iter_mut().rev() {
             if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
-                if !self.pg_params_map.is_empty() {
+                if !pg_params_map.is_empty() {
                     // PG-like params syntax
-                    let value_idx = *self.pg_params_map.get(&param_id).unwrap_or_else(|| {
+                    let value_idx = *pg_params_map.get(&param_id).unwrap_or_else(|| {
                         panic!("No value idx in map for option parameter: {opt:?}.");
                     });
                     let value = values.get(value_idx).unwrap_or_else(|| {
@@ -824,8 +830,7 @@ impl Plan {
     // Gather all parameter nodes from the tree to a hash set.
     #[must_use]
     pub fn get_param_set(&self) -> AHashSet<NodeId> {
-        let param_set: AHashSet<NodeId> = self
-            .nodes
+        self.nodes
             .arena64
             .iter()
             .enumerate()
@@ -839,8 +844,33 @@ impl Plan {
                     None
                 }
             })
-            .collect();
-        param_set
+            .collect()
+    }
+
+    /// Build a map { pg_parameter_node_id: param_idx }, where param_idx starts with 0.
+    #[must_use]
+    pub fn build_pg_param_map(&self) -> AHashMap<NodeId, usize> {
+        self.nodes
+            .arena64
+            .iter()
+            .enumerate()
+            .filter_map(|(id, node)| {
+                if let Node64::Parameter(Parameter {
+                    index: Some(index), ..
+                }) = node
+                {
+                    Some((
+                        NodeId {
+                            offset: u32::try_from(id).unwrap(),
+                            arena_type: ArenaType::Arena64,
+                        },
+                        index - 1,
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Synchronize values row output with the data tuple after parameter binding.
