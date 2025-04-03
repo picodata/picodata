@@ -682,6 +682,21 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     assert i1.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
 
+    i1.sql("CREATE INDEX skey ON stuff (id)")
+    i1_index = i1.raft_get_index()
+    i2.raft_wait_index(i1_index)
+
+    tt_sk_def = [
+        space_id,
+        2,
+        "skey",
+        "tree",
+        dict(unique=False),
+        [{"field": 0, "is_nullable": False, "type": "unsigned"}],
+    ]
+    assert i1.call("box.space._index:get", [space_id, 2]) == tt_sk_def
+    assert i2.call("box.space._index:get", [space_id, 2]) == tt_sk_def
+
     # Compact the log to trigger snapshot for the newcommer
     i1.raft_compact_log()
     i2.raft_compact_log()
@@ -691,14 +706,16 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 4
+    assert i3.call("box.space._index:get", [space_id, 2]) == tt_sk_def
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 5
 
     # A replicaset follower boots up from snapshot
     i4 = cluster.add_instance(wait_online=True, replicaset_name="R2")
     assert i4.call("box.space._space:get", space_id) == tt_space_def
     assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i4.call("box.space._schema:get", "local_schema_version")[1] == 4
+    assert i4.call("box.space._index:get", [space_id, 2]) == tt_sk_def
+    assert i4.call("box.space._schema:get", "local_schema_version")[1] == 5
 
 
 ################################################################################
@@ -714,7 +731,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
 
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
-    index = i1.create_table(
+    i1.create_table(
         dict(
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -723,8 +740,9 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
             engine="memtx",
         ),
     )
-    i1.raft_wait_index(index)
-    i2.raft_wait_index(index)
+    i1.sql("CREATE INDEX skey ON stuff (id)")
+    i1_index = i1.raft_get_index()
+    i2.raft_wait_index(i1_index)
     space_id = i1.eval("return box.space.stuff.id")
 
     initiator_id = PICO_SERVICE_ID
@@ -751,6 +769,17 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
+    tt_sk_def = [
+        space_id,
+        1,
+        "skey",
+        "tree",
+        dict(unique=False),
+        [{"field": 0, "is_nullable": False, "type": "unsigned"}],
+    ]
+    assert i1.call("box.space._index:get", [space_id, 1]) == tt_sk_def
+    assert i2.call("box.space._index:get", [space_id, 1]) == tt_sk_def
+
     # Compact the log to trigger snapshot applying on the catching up instance
     i1.raft_compact_log()
     i2.raft_compact_log()
@@ -762,7 +791,8 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     # A replica catches up by snapshot
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
-    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 4
+    assert i3.call("box.space._index:get", [space_id, 1]) == tt_sk_def
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 5
 
 
 ################################################################################
@@ -954,8 +984,13 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
             sharding_key=["id"],
         ),
     )
+    i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     cluster.create_table(
         dict(
@@ -965,8 +1000,13 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
             distribution="global",
         ),
     )
+    i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "drop_me") is not None
+        space_id = i.eval("return box.space.drop_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     # i3 will be catching up.
     i3.terminate()
@@ -990,9 +1030,14 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
             distribution="global",
         ),
     )
+    i1.sql("CREATE INDEX replace_skey ON replace_me (#)")
+    i1_index = i1.raft_get_index()
+    i2.raft_wait_index(i1_index)
 
-    assert i1.call("box.space._space.index.name:get", "replace_me") is not None
-    assert i2.call("box.space._space.index.name:get", "replace_me") is not None
+    for i in (i1, i2):
+        assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     # Wake up the catching up instance.
     i3.start()
@@ -1006,6 +1051,9 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     # The space was dropped and a new one was created without conflict.
     format = i3.eval("return box.space[...]:format()", "replace_me")
     assert [f["name"] for f in format] == ["#"]
+    # The secondary index was created.
+    replace_space_id = i3.eval("return box.space.replace_me.id")
+    assert i3.call("box.space._index:get", [replace_space_id, 1]) is not None
 
 
 ################################################################################
@@ -1025,8 +1073,13 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
             sharding_key=["id"],
         ),
     )
+    i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     cluster.create_table(
         dict(
@@ -1036,8 +1089,13 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
             distribution="global",
         ),
     )
+    i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
         assert i.call("box.space._space.index.name:get", "drop_me") is not None
+        space_id = i.eval("return box.space.drop_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     #
     # Drop spaces.
@@ -1060,9 +1118,13 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
             distribution="global",
         ),
     )
-
-    assert i1.call("box.space._space.index.name:get", "replace_me") is not None
-    assert i2.call("box.space._space.index.name:get", "replace_me") is not None
+    i1.sql("CREATE INDEX replace_skey ON replace_me (#)")
+    i1_index = i1.raft_get_index()
+    for i in cluster.instances:
+        i.raft_wait_index(i1_index)
+        assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     #
     # Add a new replicaset.
@@ -1077,13 +1139,13 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
     #
     # Both caught up successfully.
     #
-    assert i3.call("box.space._space.index.name:get", "drop_me") is None
-    assert i4.call("box.space._space.index.name:get", "drop_me") is None
+    for i in (i3, i4):
+        assert i.call("box.space._space.index.name:get", "drop_me") is None
 
-    format = i3.eval("return box.space[...]:format()", "replace_me")
-    assert [f["name"] for f in format] == ["#"]
-    format = i4.eval("return box.space[...]:format()", "replace_me")
-    assert [f["name"] for f in format] == ["#"]
+        format = i.eval("return box.space[...]:format()", "replace_me")
+        assert [f["name"] for f in format] == ["#"]
+        replace_space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [replace_space_id, 1]) is not None
 
 
 ################################################################################
@@ -1104,8 +1166,13 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
             sharding_key=["id"],
         ),
     )
+    i1.sql("CREATE INDEX replace_skey ON replace_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
+        replace_space_id = i.eval("return box.space.replace_me.id")
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        assert i.call("box.space._index:get", [replace_space_id, 1]) is not None
 
     cluster.create_table(
         dict(
@@ -1116,16 +1183,21 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
             sharding_key=["id"],
         ),
     )
+    i1.sql("CREATE INDEX drop_skey ON drop_me (id)")
+    i1_index = i1.raft_get_index()
     for i in cluster.instances:
+        i.raft_wait_index(i1_index)
+        drop_space_id = i.eval("return box.space.drop_me.id")
         assert i.call("box.space._space.index.name:get", "drop_me") is not None
+        assert i.call("box.space._index:get", [drop_space_id, 1]) is not None
 
     # i3 will be catching up.
     i3.terminate()
 
     for space_name in ["replace_me", "drop_me"]:
         cluster.drop_table(space_name)
-        assert i1.call("box.space._space.index.name:get", space_name) is None
-        assert i2.call("box.space._space.index.name:get", space_name) is None
+        for i in (i1, i2):
+            assert i.call("box.space._space.index.name:get", space_name) is None
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
@@ -1139,9 +1211,14 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
             distribution="global",
         ),
     )
+    i1.sql("CREATE INDEX new_replace_skey ON replace_me (#)")
+    i1_index = i1.raft_get_index()
+    i2.raft_wait_index(i1_index)
 
-    assert i1.call("box.space._space.index.name:get", "replace_me") is not None
-    assert i2.call("box.space._space.index.name:get", "replace_me") is not None
+    for i in (i1, i2):
+        assert i.call("box.space._space.index.name:get", "replace_me") is not None
+        i_replace_space_id = i.eval("return box.space.replace_me.id")
+        assert i.call("box.space._index:get", [i_replace_space_id, 1]) is not None
 
     # Compact raft log to trigger snapshot generation.
     i1.raft_compact_log()
@@ -1157,6 +1234,17 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     # The space was dropped and a new one was created without conflict.
     format = i3.eval("return box.space[...]:format()", "replace_me")
     assert [f["name"] for f in format] == ["#"]
+
+    # Secondary index created correctly.
+    i3_replace_space_id = i3.eval("return box.space.replace_me.id")
+    assert i3.call("box.space._index:get", [i3_replace_space_id, 1]) == [
+        i3_replace_space_id,
+        1,
+        "new_replace_skey",
+        "tree",
+        {"unique": False},
+        [{"field": 0, "is_nullable": False, "type": "unsigned"}],
+    ]
 
 
 ################################################################################
@@ -1186,22 +1274,26 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
             sharding_key=["id"],
         ),
     )
+    i1.sql("CREATE INDEX drop_skey ON space_to_drop (id)")
+    i1.sql("CREATE INDEX replace_skey ON space_to_replace (id)")
+    i1_index = i1.raft_get_index()
+    cluster.raft_wait_index(i1_index)
 
     for space_name in ["space_to_drop", "space_to_replace"]:
         for i in cluster.instances:
             assert i.call("box.space._space.index.name:get", space_name) is not None
+            space_id = i.eval(f"return box.space.{space_name}.id")
+            assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     # i4 will be catching up.
     i4.terminate()
-
     #
     # Drop spaces.
     #
     for space_name in ["space_to_drop", "space_to_replace"]:
         cluster.drop_table(space_name)
-        assert i1.call("box.space._space.index.name:get", space_name) is None
-        assert i2.call("box.space._space.index.name:get", space_name) is None
-        assert i3.call("box.space._space.index.name:get", space_name) is None
+        for i in (i1, i2, i3):
+            assert i.call("box.space._space.index.name:get", space_name) is None
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
@@ -1213,10 +1305,14 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
             distribution="global",
         ),
     )
+    i1.sql("CREATE INDEX replace_skey ON space_to_replace (id)")
+    i1_index = i1.raft_get_index()
 
-    assert i1.call("box.space._space.index.name:get", "space_to_replace") is not None
-    assert i2.call("box.space._space.index.name:get", "space_to_replace") is not None
-    assert i3.call("box.space._space.index.name:get", "space_to_replace") is not None
+    for i in (i1, i2, i3):
+        i.raft_wait_index(i1_index)
+        assert i.call("box.space._space.index.name:get", "space_to_replace") is not None
+        space_id = i.eval("return box.space.space_to_replace.id")
+        assert i.call("box.space._index:get", [space_id, 1]) is not None
 
     # Compact raft log to trigger snapshot generation.
     i1.raft_compact_log()
@@ -1230,9 +1326,19 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     i4.wait_online()
 
     # The space was dropped.
-    # assert i4.call("box.space._space.index.name:get", "space_to_drop") is None
+    assert i4.call("box.space._space.index.name:get", "space_to_drop") is None
     # The space was replaced.
     assert i4.call("box.space._space.index.name:get", "space_to_replace") is not None
+    # Secondary index created correctly.
+    i4_replace_space_id = i4.eval("return box.space.space_to_replace.id")
+    assert i4.call("box.space._index:get", [i4_replace_space_id, 1]) == [
+        i4_replace_space_id,
+        1,
+        "replace_skey",
+        "tree",
+        {"unique": False},
+        [{"field": 0, "is_nullable": False, "type": "unsigned"}],
+    ]
 
 
 ################################################################################

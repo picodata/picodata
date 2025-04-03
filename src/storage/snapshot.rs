@@ -1,10 +1,12 @@
 use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::schema::Distribution;
+use crate::schema::IndexDef;
 use crate::schema::PrivilegeDef;
 use crate::schema::TableDef;
 use crate::schema::UserDef;
 use crate::schema::INITIAL_SCHEMA_VERSION;
 use crate::storage::schema::acl;
+use crate::storage::schema::ddl_create_index_on_master;
 use crate::storage::schema::ddl_create_space_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::{self, ignore_only_error, space_by_id, Privileges};
@@ -27,6 +29,7 @@ use std::iter::Peekable;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode as TntErrorCode;
 use tarantool::fiber;
+use tarantool::index::IndexId;
 use tarantool::msgpack::{ArrayWriter, ValueIter};
 use tarantool::read_view::ReadView;
 use tarantool::read_view::ReadViewIterator;
@@ -308,6 +311,7 @@ impl Catalog {
 
         // These need to be saved before we truncate the corresponding spaces.
         let mut old_table_versions = HashMap::new();
+        let mut old_index_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
@@ -316,6 +320,11 @@ impl Catalog {
 
         for def in self.tables.iter()? {
             old_table_versions.insert(def.id, def.schema_version);
+        }
+        // Primary key is handled explicitly in space creating/dropping.
+        // So we skip it here.
+        for def in self.indexes.iter()?.filter(|x| x.id != 0) {
+            old_index_versions.insert((def.table_id, def.id), def.schema_version);
         }
         for def in self.users.iter()? {
             old_user_versions.insert(def.id, def.schema_version);
@@ -382,7 +391,12 @@ impl Catalog {
             let t0 = std::time::Instant::now();
 
             self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
-            // TODO: secondary indexes
+            // Primary key is handled explicitly in space creating/dropping.
+            // So we skip it here.
+            self.apply_schema_changes_on_master(
+                self.indexes.iter()?.filter(|x| x.id != 0),
+                &old_index_versions,
+            )?;
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
             set_local_schema_version(v_snapshot)?;
@@ -653,6 +667,41 @@ impl SchemaDef for TableDef {
                 "failed to drop table {space_id}: {abort_reason}"
             )));
         }
+        Ok(())
+    }
+}
+
+impl SchemaDef for IndexDef {
+    type Key = (SpaceId, IndexId);
+
+    #[inline(always)]
+    fn key(&self) -> (SpaceId, IndexId) {
+        (self.table_id, self.id)
+    }
+
+    #[inline(always)]
+    fn schema_version(&self) -> u64 {
+        self.schema_version
+    }
+
+    #[inline(always)]
+    fn is_operable(&self) -> bool {
+        self.operable
+    }
+
+    #[inline(always)]
+    fn on_insert(&self, storage: &Catalog) -> Result<()> {
+        let space_id = self.table_id;
+        let index_id = self.id;
+        ddl_create_index_on_master(storage, space_id, index_id)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn on_delete(_key: &(SpaceId, IndexId), _storage: &Catalog) -> Result<()> {
+        // Do not need to delete secondary indexes, because
+        // they are deleted automatically when the space is deleted.
+        // (see `TableDef::on_delete`)
         Ok(())
     }
 }

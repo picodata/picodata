@@ -51,6 +51,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Provide the client with a detailed error message when using LDAP for authentication and the LDAP server is unavailable.
 
+- Fixed secondary indexes not working after raft log compaction.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
