@@ -56,6 +56,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a bug where replication master switchover would sometimes fail.
 
+- No longer dumps backtrace files by default. Logs error if dump failed.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added

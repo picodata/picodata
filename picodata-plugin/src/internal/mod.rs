@@ -8,6 +8,7 @@ use crate::internal::ffi::{
 };
 use crate::internal::types::InstanceInfo;
 use abi_stable::derive_macro_reexports::RResult;
+use std::{env, fs, io, process};
 use tarantool::error::BoxError;
 
 /// Return picodata version.
@@ -42,6 +43,27 @@ pub fn raft_info() -> types::RaftInfo {
     unsafe { pico_ffi_raft_info() }
 }
 
+/// Dump the backtrace to a file to make debugging easier.
+/// This is also used in integration tests.
+fn dump_backtrace(msg: &str) -> Result<(), io::Error> {
+    let should_dump = env::var("PICODATA_INTERNAL_BACKTRACE_DUMP")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+
+    if !should_dump {
+        return Ok(());
+    }
+
+    let name = format!("picodata-{}.backtrace", process::id());
+    let path = env::current_dir()?.join(&name);
+
+    fs::write(&name, msg)
+        .map(|_| tarantool::say_info!("dumped panic backtrace to `{}`", path.display()))
+        .inspect_err(|e| tarantool::say_info!("{}", e))?;
+
+    Ok(())
+}
+
 #[inline]
 pub fn set_panic_hook() {
     // NOTE: this function is called ASAP when starting up the process.
@@ -55,17 +77,11 @@ pub fn set_panic_hook() {
         let message = format!(
             "Picodata {version}\n\n{info}\n\nbacktrace:\n{backtrace}\naborting due to panic"
         );
-        tarantool::say_crit!("\n\n{message}");
 
-        // Dump the backtrace to file for easier debugging experience.
-        // In particular this is used in the integration tests.
-        let pid = std::process::id();
-        let backtrace_filename = format!("picodata-{pid}.backtrace");
-        _ = std::fs::write(&backtrace_filename, message);
-        if let Ok(mut dir) = std::env::current_dir() {
-            dir.push(backtrace_filename);
-            tarantool::say_info!("dumped panic backtrace to `{}`", dir.display());
-        }
+        // Dump backtrace to logs and file if needed
+        tarantool::say_crit!("\n\n{message}");
+        dump_backtrace(&message)
+            .unwrap_or_else(|e| tarantool::say_info!("Failed to dump panic backtrace: {}", e));
 
         std::process::abort();
     }));

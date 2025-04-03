@@ -1015,6 +1015,10 @@ class Instance:
         if "PICODATA_LOG_LEVEL" not in env:
             env["PICODATA_LOG_LEVEL"] = "verbose"
 
+        # Enable dumping panic backtraces to a file, so that we can report
+        # panic in `Instance.check_process_alive`
+        env["PICODATA_INTERNAL_BACKTRACE_DUMP"] = "1"
+
         passthrough_env = [
             "ASAN_OPTIONS",
             "ASAN_SYMBOLIZER_PATH",
