@@ -98,7 +98,6 @@ variables:
       paths:
         - docs/**
       compare_to: *main-branch
-  - &else {}
 
 .base_cache: &base_cache
   paths:
