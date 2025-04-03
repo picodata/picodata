@@ -221,14 +221,7 @@ fn parse_call_proc<M: Metadata>(
     for proc_value_id in &proc_values.children {
         let proc_value = ast.nodes.get_node(*proc_value_id)?;
         let plan_value_id = match proc_value.rule {
-            Rule::Parameter => parse_param(
-                &ParameterSource::AstNode {
-                    ast,
-                    ast_node_id: *proc_value_id,
-                },
-                worker,
-                plan,
-            )?,
+            Rule::Parameter => parse_param(pairs_map.remove_pair(*proc_value_id), worker, plan)?,
             Rule::Literal => {
                 let literal_pair = pairs_map.remove_pair(*proc_value_id);
                 parse_expr(Pairs::single(literal_pair), &[], worker, plan)?
@@ -1565,20 +1558,14 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
 fn parse_option<M: Metadata>(
     ast: &AbstractSyntaxTree,
     option_node_id: usize,
+    pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<OptionParamValue, SbroadError> {
     let ast_node = ast.nodes.get_node(option_node_id)?;
     let value = match ast_node.rule {
         Rule::Parameter => {
-            let plan_id = parse_param(
-                &ParameterSource::AstNode {
-                    ast,
-                    ast_node_id: option_node_id,
-                },
-                worker,
-                plan,
-            )?;
+            let plan_id = parse_param(pairs_map.remove_pair(option_node_id), worker, plan)?;
             OptionParamValue::Parameter { plan_id }
         }
         Rule::Unsigned => {
@@ -1599,83 +1586,36 @@ fn parse_option<M: Metadata>(
     Ok(value)
 }
 
-enum ParameterSource<'parameter> {
-    AstNode {
-        ast: &'parameter AbstractSyntaxTree,
-        ast_node_id: usize,
-    },
-    Pair {
-        pair: Pair<'parameter, Rule>,
-    },
-}
-
-impl ParameterSource<'_> {
-    fn get_param_index(&self) -> Result<Option<usize>, SbroadError> {
-        let param_index = match self {
-            ParameterSource::AstNode { ast, ast_node_id } => {
-                let param_node = ast.nodes.get_node(*ast_node_id)?;
-                let child = param_node
-                    .children
-                    .first()
-                    .expect("Expected child node under Parameter");
-                let inner_param_node = ast.nodes.get_node(*child)?;
-                match inner_param_node.rule {
-                    Rule::TntParameter => None,
-                    Rule::PgParameter => {
-                        let param_index = inner_param_node
-                            .children
-                            .first()
-                            .expect("Expected Unsigned under PgParameter");
-                        let param_index_node = ast.nodes.get_node(*param_index)?;
-                        let Some(ref param_index_value) = param_index_node.value else {
-                            unreachable!("Expected value for Unsigned")
-                        };
-                        let param_index_usize =
-                            param_index_value.parse::<usize>().map_err(|_| {
-                                SbroadError::Invalid(
-                                    Entity::Query,
-                                    Some(format_smolstr!("{param_index_value} cannot be parsed as unsigned param number")),
-                                )
-                            })?;
-                        Some(param_index_usize)
-                    }
-                    _ => unreachable!("Unexpected node met under Parameter"),
-                }
+fn try_get_param_index(pair: Pair<'_, Rule>) -> Result<Option<usize>, SbroadError> {
+    let inner_param = pair
+        .clone()
+        .into_inner()
+        .next()
+        .expect("Concrete param expected under Parameter node");
+    match inner_param.as_rule() {
+        Rule::TntParameter => Ok(None),
+        Rule::PgParameter => {
+            let inner_unsigned = inner_param
+                .into_inner()
+                .next()
+                .expect("Unsigned not found under PgParameter");
+            let value_idx = inner_unsigned.as_str().parse::<usize>().map_err(|_| {
+                SbroadError::Invalid(
+                    Entity::Query,
+                    Some(format_smolstr!(
+                        "{inner_unsigned} cannot be parsed as unsigned param number"
+                    )),
+                )
+            })?;
+            if value_idx == 0 {
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some("$n parameters are indexed from 1!".into()),
+                ));
             }
-            ParameterSource::Pair { pair } => {
-                let inner_param = pair
-                    .clone()
-                    .into_inner()
-                    .next()
-                    .expect("Concrete param expected under Parameter node");
-                match inner_param.as_rule() {
-                    Rule::TntParameter => None,
-                    Rule::PgParameter => {
-                        let inner_unsigned = inner_param
-                            .into_inner()
-                            .next()
-                            .expect("Unsigned not found under PgParameter");
-                        let value_idx = inner_unsigned.as_str().parse::<usize>().map_err(|_| {
-                            SbroadError::Invalid(
-                                Entity::Query,
-                                Some(format_smolstr!(
-                                    "{inner_unsigned} cannot be parsed as unsigned param number"
-                                )),
-                            )
-                        })?;
-                        if value_idx == 0 {
-                            return Err(SbroadError::Invalid(
-                                Entity::Query,
-                                Some("$n parameters are indexed from 1!".into()),
-                            ));
-                        }
-                        Some(value_idx)
-                    }
-                    _ => unreachable!("Unexpected Rule met under Parameter"),
-                }
-            }
-        };
-        Ok(param_index)
+            Ok(Some(value_idx))
+        }
+        _ => unreachable!("Unexpected Rule met under Parameter"),
     }
 }
 
@@ -1686,12 +1626,11 @@ enum Parameter {
 }
 
 fn parse_param<M: Metadata>(
-    param: &ParameterSource,
+    pair: Pair<'_, Rule>,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
-    let param_index = param.get_param_index()?;
-    let parameter = match param_index {
+    let parameter = match try_get_param_index(pair)? {
         None => {
             // Tarantool parameter.
             if worker.met_pg_param {
@@ -3061,7 +3000,7 @@ where
                     ParseExpression::Parentheses { child: Box::new(child_parse_expr) }
                 }
                 Rule::Parameter => {
-                    let plan_id = parse_param(&ParameterSource::Pair { pair: primary}, worker, plan)?;
+                    let plan_id = parse_param(primary, worker, plan)?;
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::IdentifierWithOptionalContinuation => {
@@ -3975,7 +3914,11 @@ impl AbstractSyntaxTree {
             }
 
             match stack_node.pair.as_rule() {
-                Rule::Expr | Rule::Row | Rule::Literal | Rule::SelectWithOptionalContinuation => {
+                Rule::Expr
+                | Rule::Row
+                | Rule::Literal
+                | Rule::SelectWithOptionalContinuation
+                | Rule::Parameter => {
                     // * `Expr`s are parsed using Pratt parser with a separate `parse_expr`
                     //   function call on the stage of `resolve_metadata`.
                     // * `Row`s are added to support parsing Row expressions under `Values` nodes.
@@ -4784,7 +4727,7 @@ impl AbstractSyntaxTree {
                         .children
                         .first()
                         .expect("no children for sql_vdbe_opcode_max option");
-                    let val = parse_option(self, *ast_child_id, &mut worker, &mut plan)?;
+                    let val = parse_option(self, *ast_child_id, pairs_map, &mut worker, &mut plan)?;
                     plan.raw_options.push(OptionSpec {
                         kind: OptionKind::MotionRowMax,
                         val,
@@ -4795,7 +4738,7 @@ impl AbstractSyntaxTree {
                         .children
                         .first()
                         .expect("no children for sql_vdbe_opcode_max option");
-                    let val = parse_option(self, *ast_child_id, &mut worker, &mut plan)?;
+                    let val = parse_option(self, *ast_child_id, pairs_map, &mut worker, &mut plan)?;
 
                     plan.raw_options.push(OptionSpec {
                         kind: OptionKind::VdbeOpcodeMax,
