@@ -494,6 +494,12 @@ pub(super) fn action_plan<'i>(
         )?;
         let (mut ops, ranges) = update_instance.expect("already checked target state != current");
 
+        // Bump tier configuration version, because the replicaset must now be
+        // removed from router configurations of all other replicasets
+        if let Some(bump) = Tier::get_vshard_config_version_bump_op_if_needed(tier)? {
+            ops.push(bump);
+        }
+
         // Mark replicaset as expelled
         let mut update_ops = UpdateOps::new();
         update_ops.assign(column_name!(Replicaset, state), ReplicasetState::Expelled)?;

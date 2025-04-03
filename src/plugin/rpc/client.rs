@@ -305,6 +305,12 @@ fn resolve_rpc_target(
     // Request to any replica in replicaset, multiple candidates
     //
     if let Some((tier, replicaset_uuid)) = tier_and_replicaset_uuid {
+        let replicaset = topology_ref.replicaset_by_uuid(replicaset_uuid)?;
+        if replicaset.state == ReplicasetState::Expelled {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::ReplicasetExpelled, format!("replicaset with id {replicaset_uuid} was expelled")).into());
+        }
+
         // Need to pick a replica from given replicaset
 
         let replicas = vshard::get_replicaset_priority_list(tier, replicaset_uuid)?;
@@ -327,12 +333,6 @@ fn resolve_rpc_target(
         // In case there's no other suitable candidates, fallback to calling self
         if skipped_self && all_instances_with_service.contains(&my_instance_name) {
             return Ok(my_instance_name.into());
-        }
-
-        let replicaset = topology_ref.replicaset_by_uuid(replicaset_uuid)?;
-        if replicaset.state == ReplicasetState::Expelled {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::ReplicasetExpelled, format!("replicaset with id {replicaset_uuid} was expelled")).into());
         }
 
         #[rustfmt::skip]

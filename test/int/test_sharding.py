@@ -379,6 +379,15 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
 
+    # Add some data
+    i1.sql("CREATE TABLE some_data (id INTEGER PRIMARY KEY, value TEXT)")
+    i1.sql("INSERT INTO some_data VALUES (1, 'foo'), (2, 'bar'), (3, 'baz'), (4, 'im feeling creative today')")
+
+    rows = i1.sql("SELECT * FROM some_data ORDER BY id")
+    assert rows == [[1, "foo"], [2, "bar"], [3, "baz"], [4, "im feeling creative today"]]
+
+    [[old_version]] = i1.sql("SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default'")
+
     # Expel one of the instances
     cluster.expel(i3, force=True)
     Retriable(timeout=30).call(i3.assert_process_dead)
@@ -392,6 +401,14 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     ]
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    # Vshard configuration was updated
+    [[new_version]] = i1.sql("SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default'")
+    assert old_version != new_version
+
+    # And select still works
+    rows = i1.sql("SELECT * FROM some_data ORDER BY id")
+    assert rows == [[1, "foo"], [2, "bar"], [3, "baz"], [4, "im feeling creative today"]]
 
 
 def assert_tier_bucket_count(cluster: Cluster, name: str, bucket_count: int, *instances: Instance):
