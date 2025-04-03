@@ -1434,7 +1434,7 @@ impl Plan {
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression, SbroadError> {
         match self.get_node(node_id)? {
             Node::Expression(Expression::Parameter(param)) => {
-                if let Some(Node64::Constant(constant)) = self.constants.get(node_id) {
+                if let Some(constant) = self.constants.get(node_id) {
                     Ok(Expression::Constant(constant))
                 } else {
                     Ok(Expression::Parameter(param))

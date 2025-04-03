@@ -84,17 +84,8 @@ impl Plan {
     /// # Errors
     /// - The parameters map is corrupted (parameters map points to invalid nodes).
     pub fn restore_constants(&mut self) -> Result<(), SbroadError> {
-        for (id, const_node) in self.constants.drain() {
-            if let Node64::Constant(_) = const_node {
-            } else {
-                return Err(SbroadError::Invalid(
-                    Entity::Expression,
-                    Some(format_smolstr!(
-                        "Restoring parameters filed: node {const_node:?} (id: {id:?}) is not of a constant type"
-                    )),
-                ));
-            }
-            self.nodes.replace(id, const_node)?;
+        for (id, constant) in self.constants.drain() {
+            self.nodes.replace(id, Node64::Constant(constant))?;
         }
         Ok(())
     }
@@ -112,7 +103,11 @@ impl Plan {
                     param_type: DerivedType::unknown(),
                 }),
             )?;
-            self.constants.insert(const_id, const_node);
+            if let Node64::Constant(constant) = const_node {
+                self.constants.insert(const_id, constant);
+            } else {
+                panic!("{const_node:?} is not a constant");
+            }
         }
         Ok(())
     }
