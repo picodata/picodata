@@ -305,17 +305,9 @@ lint:
   stage: test
   rules:
     - <<: *if-build-base-changes-on-dev-branch
-      changes:
-        - docs/**
-      when: never
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      changes:
-        - docs/**
-      when: never
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
@@ -340,6 +332,7 @@ lint-docs:
     name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
     pull_policy: always
   stage: test
+  needs: [build-docs-image]
   rules:
     - <<: *if-changes-on-docs
   script:
