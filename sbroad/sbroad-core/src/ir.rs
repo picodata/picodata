@@ -17,7 +17,6 @@ use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 use tree::traversal::LevelNode;
 
-use self::parameters::Parameters;
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
 use crate::errors::Entity::Query;
@@ -55,7 +54,6 @@ pub mod function;
 pub mod helpers;
 pub mod node;
 pub mod operator;
-pub mod parameters;
 pub mod relation;
 pub mod transformation;
 pub mod tree;
@@ -709,7 +707,7 @@ pub struct Plan {
     /// be used to revert the plan subtree to some previous snapshot if needed.
     pub(crate) undo: TransformationLog,
     /// Maps parameter to the corresponding constant node.
-    pub(crate) constants: Parameters,
+    pub(crate) constants: HashMap<NodeId, Constant>,
     /// Options that were passed by user in `Option` clause. Does not include
     /// options for DDL as those are handled separately. This field is used only
     /// for storing the order of options in `Option` clause, after `bind_params` is
@@ -866,7 +864,7 @@ impl Plan {
             top: None,
             is_explain: false,
             undo: TransformationLog::new(),
-            constants: Parameters::new(),
+            constants: HashMap::new(),
             raw_options: vec![],
             options: Options::default(),
             version_map: TableVersionMap::new(),
@@ -1434,7 +1432,7 @@ impl Plan {
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression, SbroadError> {
         match self.get_node(node_id)? {
             Node::Expression(Expression::Parameter(param)) => {
-                if let Some(constant) = self.constants.get(node_id) {
+                if let Some(constant) = self.constants.get(&node_id) {
                     Ok(Expression::Constant(constant))
                 } else {
                     Ok(Expression::Parameter(param))
