@@ -205,7 +205,12 @@ fn resolve_rpc_target(
             let instance_name = unsafe { name.as_str() };
 
             // A single instance was chosen
-            check_route_to_instance(topology, plugin, service, instance_name)?;
+            if let Err(code) =
+                check_route_to_instance(&topology.get(), plugin, service, instance_name)
+            {
+                return Err(make_route_check_error(code, plugin, service, instance_name).into());
+            }
+
             return Ok(instance_name.into());
         }
 
@@ -272,7 +277,10 @@ fn resolve_rpc_target(
         let instance_name = target_master_name.expect("set in one of ifs above");
 
         // A single instance was chosen
-        check_route_to_instance(topology, plugin, service, instance_name)?;
+        if let Err(code) = check_route_to_instance(&topology_ref, plugin, service, instance_name) {
+            return Err(make_route_check_error(code, plugin, service, instance_name).into());
+        }
+
         return Ok(instance_name.clone());
     }
 
@@ -280,24 +288,6 @@ fn resolve_rpc_target(
         let replicaset = topology_ref.replicaset_by_name(replicaset_name)?;
         tier_and_replicaset_uuid = Some((&replicaset.tier, &replicaset.uuid));
     }
-
-    // Get list of all possible targets
-    let mut all_instances_with_service: Vec<_> = topology_ref
-        .instances_running_service(&plugin.name, &plugin.version, service)
-        .collect();
-
-    // Remove non-online instances
-    filter_instances_by_state(&topology_ref, &mut all_instances_with_service)?;
-
-    #[rustfmt::skip]
-    if all_instances_with_service.is_empty() {
-        // TODO: put service definitions into TopologyCache as well
-        if node.storage.services.get(plugin, service)?.is_none() {
-            return Err(BoxError::new(ErrorCode::NoSuchService, format!("service '{plugin}.{service}' not found")).into());
-        } else {
-            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
-        }
-    };
 
     let my_instance_name = topology.my_instance_name();
 
@@ -313,26 +303,30 @@ fn resolve_rpc_target(
 
         // Need to pick a replica from given replicaset
 
-        let replicas = vshard::get_replicaset_priority_list(tier, replicaset_uuid)?;
+        let my_replicaset_uuid = topology.my_replicaset_uuid();
+        if replicaset_uuid == my_replicaset_uuid {
+            if check_route_to_instance(&topology_ref, plugin, service, my_instance_name).is_ok() {
+                return Ok(my_instance_name.into());
+            }
+        }
 
-        let mut skipped_self = false;
+        let replicas = vshard::get_replicaset_priority_list(tier, replicaset_uuid)?;
 
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates
         for instance_name in replicas {
-            if my_instance_name == &*instance_name {
-                // Prefer someone else instead of self
-                skipped_self = true;
+            if instance_name == my_instance_name {
+                // Already checked above
                 continue;
             }
-            if all_instances_with_service.contains(&&*instance_name) {
+            if check_route_to_instance(&topology_ref, plugin, service, &instance_name).is_ok() {
                 return Ok(instance_name);
             }
         }
 
-        // In case there's no other suitable candidates, fallback to calling self
-        if skipped_self && all_instances_with_service.contains(&my_instance_name) {
-            return Ok(my_instance_name.into());
+        if node.storage.services.get(plugin, service)?.is_none() {
+            #[rustfmt::skip]
+            return Err(BoxError::new(ErrorCode::NoSuchService, format!("service '{plugin}.{service}' not found")).into());
         }
 
         #[rustfmt::skip]
@@ -342,16 +336,32 @@ fn resolve_rpc_target(
     //
     // Request to any instance with given service, multiple candidates
     //
-    let mut candidates = all_instances_with_service;
+
+    if check_route_to_instance(&topology_ref, plugin, service, my_instance_name).is_ok() {
+        return Ok(my_instance_name.into());
+    }
+
+    // Get list of all possible targets
+    let mut candidates: Vec<_> = topology_ref
+        .instances_running_service(&plugin.name, &plugin.version, service)
+        .collect();
+
+    // Remove non-online instances
+    filter_instances_by_state(&topology_ref, &mut candidates)?;
+
+    #[rustfmt::skip]
+    if candidates.is_empty() {
+        // TODO: put service definitions into TopologyCache as well
+        if node.storage.services.get(plugin, service)?.is_none() {
+            return Err(BoxError::new(ErrorCode::NoSuchService, format!("service '{plugin}.{service}' not found")).into());
+        } else {
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
+        }
+    };
 
     // TODO: find a better strategy then just the random one
     let random_index = rand::random::<usize>() % candidates.len();
-    let mut instance_name = std::mem::take(&mut candidates[random_index]);
-    if instance_name == my_instance_name && candidates.len() > 1 {
-        // Prefer someone else instead of self
-        let index = (random_index + 1) % candidates.len();
-        instance_name = std::mem::take(&mut candidates[index]);
-    }
+    let instance_name = candidates[random_index];
     return Ok(instance_name.into());
 }
 
@@ -374,20 +384,19 @@ fn filter_instances_by_state(
 }
 
 fn check_route_to_instance(
-    topology: &TopologyCache,
+    topology_ref: &TopologyCacheRef,
     plugin: &PluginIdentifier,
     service: &str,
     instance_name: &str,
-) -> Result<(), Error> {
-    let topology_ref = topology.get();
-    let instance = topology_ref.instance_by_name(instance_name)?;
+) -> Result<(), ErrorCode> {
+    let Ok(instance) = topology_ref.instance_by_name(instance_name) else {
+        return Err(ErrorCode::NoSuchInstance);
+    };
     if has_states!(instance, Expelled -> *) {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::InstanceExpelled, format!("instance named '{instance_name}' was expelled")).into());
+        return Err(ErrorCode::InstanceExpelled);
     }
     if !instance.may_respond() {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::InstanceUnavaliable, format!("instance with instance_name \"{instance_name}\" can't respond due it's state"),).into());
+        return Err(ErrorCode::InstanceUnavaliable);
     }
 
     let check =
@@ -395,15 +404,36 @@ fn check_route_to_instance(
 
     match check {
         ServiceRouteCheck::Ok => {}
-        ServiceRouteCheck::RoutePoisoned => {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{plugin}.{service}' is poisoned on {instance_name}")).into());
-        }
-        ServiceRouteCheck::ServiceNotEnabled => {
-            #[rustfmt::skip]
-            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not running on {instance_name}")).into());
-        }
+        ServiceRouteCheck::RoutePoisoned => return Err(ErrorCode::ServicePoisoned),
+        ServiceRouteCheck::ServiceNotEnabled => return Err(ErrorCode::ServiceNotStarted),
     }
 
     Ok(())
+}
+
+#[track_caller]
+fn make_route_check_error(
+    code: ErrorCode,
+    plugin: &PluginIdentifier,
+    service: &str,
+    instance_name: &str,
+) -> BoxError {
+    let message = match code {
+        ErrorCode::InstanceExpelled => format!("instance named '{instance_name}' was expelled"),
+        ErrorCode::InstanceUnavaliable => {
+            format!("instance with instance_name '{instance_name}' can't respond due it's state")
+        }
+        ErrorCode::ServicePoisoned => {
+            format!("service '{plugin}.{service}' is poisoned on {instance_name}")
+        }
+        ErrorCode::ServiceNotStarted => {
+            format!("service '{plugin}.{service}' is not running on {instance_name}")
+        }
+        ErrorCode::NoSuchInstance => {
+            format!("instance with name '{instance_name}' not found")
+        }
+        _ => format!("unexpected error code: {}", code as u32),
+    };
+
+    BoxError::new(code, message)
 }

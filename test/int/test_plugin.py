@@ -331,6 +331,7 @@ def check_service_route_records(
 # ---------------------------------- } Test helper classes ----------------------------------------
 
 
+# DEPRECATED: don't use this, use CREATE PLUGIN etc. directly in your test
 def install_and_enable_plugin(
     instance,
     plugin,
@@ -2284,7 +2285,11 @@ cluster:
 
     plugin_name = "testplug_sdk"
     service_name = "service_with_rpc_tests"
-    install_and_enable_plugin(i1, plugin_name, [service_name], ["default", "router"], migrate=True)
+    i1.sql(f"CREATE PLUGIN {plugin_name} 0.1.0")
+    i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ADD SERVICE {service_name} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ADD SERVICE {service_name} TO TIER router")
+    i1.sql(f"ALTER PLUGIN {plugin_name} MIGRATE TO 0.1.0")
+    i1.sql(f"ALTER PLUGIN {plugin_name} 0.1.0 ENABLE")
 
     # Run test test_fiber_name_after_local_RPC
     i1.call(".proc_rpc_dispatch", "/test_fiber_name_after_local_RPC", b"", make_context())
@@ -2344,7 +2349,7 @@ cluster:
 
     i1.call("pico._inject_error", "RPC_NETWORK_ERROR", False)
 
-    # Check calling RPC to ANY instance via the plugin SDK
+    # Calling RPC to ANY instance
     context = make_context()
     input = dict(
         path="/ping",
@@ -2353,12 +2358,7 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_name in [
-        i2.name,
-        i3.name,
-        i4.name,
-        router_instance.name,
-    ]
+    assert instance_name == i1.name  # always local, if current instance has service
     assert echo == b"random-target"
 
     # Check calling RPC to a specific replicaset via the plugin SDK
@@ -2408,7 +2408,7 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_name == i2.name  # shouldn't call self
+    assert instance_name == i1.name  # should call self
     assert echo == b"bucket_id:any"
 
     # Check calling RPC by tier and bucket_id via the plugin SDK
@@ -2511,7 +2511,7 @@ cluster:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
         ErrorCode.NoSuchInstance,
-        'instance with name "NO_SUCH_INSTANCE" not found',
+        "instance with name 'NO_SUCH_INSTANCE' not found",
     )
 
     # Check requesting RPC to unknown replicaset
@@ -2626,7 +2626,7 @@ cluster:
 
     assert e.value.args[:2] == (
         ErrorCode.InstanceUnavaliable,
-        "instance with instance_name \"i2\" can't respond due it's state",
+        "instance with instance_name 'i2' can't respond due it's state",
     )
 
     # TODO: check calling to poisoned service

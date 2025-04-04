@@ -8,6 +8,7 @@
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::collapsible_if)]
 #![warn(clippy::perf)]
 // Prevents ok_or(BoxError::new(...))
 #![warn(clippy::or_fun_call)]

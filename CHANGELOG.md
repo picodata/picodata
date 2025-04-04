@@ -29,6 +29,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 - The WAIT APPLIED GLOBALLY option now waits for all instances rather than just replicaset masters.
 
+### Plugin API
+
+- Plugin RPC requests will now be executed locally whenever possible. Previously
+  the behavior was inverted - we preferred remote execution, which was counter
+  productive.
+
 ### ACL
 
 - For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.
