@@ -90,7 +90,6 @@ variables:
         - docker-build-base/**
         - .gitlab-ci.yml
       compare_to: *main-branch
-  - &else {}
 
   - &if-changes-on-docs
     if: $CI_PIPELINE_SOURCE != "schedule"
@@ -98,6 +97,9 @@ variables:
       paths:
         - docs/**/*
       compare_to: *main-branch
+
+  - &if-no-docs
+    if: ($CI_PIPELINE_SOURCE != "schedule") && ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_COMMIT_BRANCH !~ /^docs/)
 
 .base_cache: &base_cache
   paths:
@@ -224,10 +226,13 @@ build-stress-image:
       variables:
         RELEASE_PROFILE: &release-profile "release"
         RELEASE_TARGET: &release-target "release"
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+        CACHE_POLICY: pull-push
+    - <<: *if-no-docs
       variables:
         RELEASE_PROFILE: &release-profile "fast-release"
         RELEASE_TARGET: &release-target "fast-release"
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        CACHE_POLICY: pull
 
 .parallel:
   parallel:
@@ -247,17 +252,6 @@ test-linux:
   extends:
     - .test
     - .parallel
-  rules:
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-        CACHE_POLICY: pull
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      variables:
-        CACHE_POLICY: pull-push
-    - <<: *else
-      variables:
-        CACHE_POLICY: pull
   cache:
     - <<: *py_cache
       policy: $CACHE_POLICY
@@ -297,7 +291,7 @@ test-linux:
 lint:
   stage: test
   rules:
-    - <<: *if-build-base-changes-on-dev-branch
+    - <<: *if-no-docs
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
@@ -325,6 +319,8 @@ lint-docs:
     name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
     pull_policy: always
   stage: test
+  tags:
+    - docker-k8s
   needs: [build-docs-image]
   rules:
     - <<: *if-changes-on-docs
@@ -349,6 +345,8 @@ pack-doc:
     name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
     pull_policy: always
   stage: pack
+  tags:
+    - docker-k8s
   needs: [lint-docs]
   rules:
     - <<: *if-changes-on-docs
@@ -394,6 +392,8 @@ pack-doc:
 upload-doc-to-binary:
   image: docker.binary.picodata.io/curlimages/curl
   stage: pack
+  tags:
+    - docker-k8s
   rules:
     - <<: *if-changes-on-docs
   variables:
@@ -769,18 +769,9 @@ integration-sbroad:
     KUBERNETES_CPU_REQUEST: 6
     KUBERNETES_MEMORY_REQUEST: "6Gi"
   rules:
-    - <<: *if-build-base-changes-on-dev-branch
-      changes:
-        - docs/**
-      when: never
+    - <<: *if-no-docs
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      changes:
-        - docs/**
-      when: never
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   tags:
     - docker-k8s
   script:
