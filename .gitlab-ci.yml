@@ -435,7 +435,7 @@ deploy-doc-prod:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
       changes:
         paths:
-          - docs/**
+          - docs/**/*
         compare_to: *main-branch
   variables:
     STAGE: PROD
