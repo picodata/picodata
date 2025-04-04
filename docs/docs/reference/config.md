@@ -107,6 +107,7 @@ instance:
   pg:
     listen: 127.0.0.1:4327 # (21)!
     ssl: false # (22)!
+  activation_deadline: 7200 # (36)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -116,35 +117,36 @@ instance:
 5. [cluster.tier.<tier_name\>.bucket_count](#cluster_tier_tier_bucket_count)
 6. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 7. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-8. [instance.admin_socket](#instance_admin_socket)
-9. [instance.iproto_advertise](#instance_iproto_advertise)
-10. [instance.audit](#instance_audit)
-11. [instance.failure_domain](#instance_failure_domain)
-12. [instance.http_listen](#instance_http_listen)
-13. [instance.instance_dir](#instance_instance_dir)
-14. [instance.iproto_listen](#instance_iproto_listen)
-15. [instance.log.destination](#instance_log_destination)
-16. [instance.log.format](#instance_log_format)
-17. [instance.log.level](#instance_log_level)
-18. [instance.memtx.memory](#instance_memtx_memory)
-19. [instance.name](#instance_name)
-20. [instance.peer](#instance_peer)
-21. [instance.pg.listen](#instance_pg_listen)
-22. [instance.pg.ssl](#instance_pg_ssl)
-23. [instance.share_dir](#instance_share_dir)
-24. [instance.replicaset_name](#instance_replicaset_name)
-25. [instance.tier](#instance_tier)
-26. [instance.vinyl.cache](#instance_vinyl_cache)
-27. [instance.vinyl.memory](#instance_vinyl_memory)
-28. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-29. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-30. [instance.vinyl.page_size](#instance_vinyl_page_size)
-31. [instance.vinyl.range_size](#instance_vinyl_range_size)
-32. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-33. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-34. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-35. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-36. [instance.vinyl.timeout](#instance_vinyl_timeout)
+8. [instance.activation_deadline](#instance_activation_deadline)
+9. [instance.admin_socket](#instance_admin_socket)
+10. [instance.iproto_advertise](#instance_iproto_advertise)
+11. [instance.audit](#instance_audit)
+12. [instance.failure_domain](#instance_failure_domain)
+13. [instance.http_listen](#instance_http_listen)
+14. [instance.instance_dir](#instance_instance_dir)
+15. [instance.iproto_listen](#instance_iproto_listen)
+16. [instance.log.destination](#instance_log_destination)
+17. [instance.log.format](#instance_log_format)
+18. [instance.log.level](#instance_log_level)
+19. [instance.memtx.memory](#instance_memtx_memory)
+20. [instance.name](#instance_name)
+21. [instance.peer](#instance_peer)
+22. [instance.pg.listen](#instance_pg_listen)
+23. [instance.pg.ssl](#instance_pg_ssl)
+24. [instance.share_dir](#instance_share_dir)
+25. [instance.replicaset_name](#instance_replicaset_name)
+26. [instance.tier](#instance_tier)
+27. [instance.vinyl.cache](#instance_vinyl_cache)
+28. [instance.vinyl.memory](#instance_vinyl_memory)
+29. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+30. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+31. [instance.vinyl.page_size](#instance_vinyl_page_size)
+32. [instance.vinyl.range_size](#instance_vinyl_range_size)
+33. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+34. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+35. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+36. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+37. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -258,6 +260,21 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 
 ```bash
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
+```
+
+### instance.activation_deadline {: #instance_activation_deadline }
+
+Максимальное время *в секундах*, в течение которого `instance` может ожидать активации для присоединения к кластеру, после чего он автоматически отключается.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `7200` (2 часа)
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.activation_deadline=3600
 ```
 
 ### instance.admin_socket {: #instance_admin_socket }
