@@ -1,15 +1,13 @@
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::is_negative_number;
 use crate::ir::expression::{FunctionFeature, Substring};
-use crate::ir::node::block::{Block, MutBlock};
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::relational::{MutRelational, Relational};
+use crate::ir::node::relational::Relational;
+use crate::ir::node::ArithmeticExpr;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, GroupBy,
-    Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96, NodeId, Over, Parameter,
-    Procedure, Reference, Row, Selection, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
+    Alias, BoolExpr, Concat, Constant, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
+    NodeId, Parameter, Reference, Row, Selection, StableFunction, ValuesRow,
 };
-use crate::ir::operator::OrderByEntity;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::Value;
@@ -19,764 +17,152 @@ use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
-use ahash::{AHashMap, AHashSet, RandomState};
-use std::collections::HashMap;
+use ahash::{AHashMap, AHashSet};
 
-struct ParamsBinder<'binder> {
-    plan: &'binder mut Plan,
-    /// Plan nodes to traverse during binding.
-    nodes: Vec<LevelNode<NodeId>>,
-    /// Number of parameters met in the OPTIONs.
-    binded_options_counter: usize,
-    /// Flag indicating whether we use Tarantool parameters notation.
-    tnt_params_style: bool,
-    /// Map of { plan param_id -> corresponding value }.
-    pg_params_map: AHashMap<NodeId, usize>,
-    /// Plan nodes that correspond to Parameters.
-    param_node_ids: AHashSet<NodeId>,
-    /// Params transformed into constant Values.
-    value_ids: Vec<NodeId>,
-    /// Values that should be bind.
-    values: Vec<Value>,
-    /// We need to use rows instead of values in some cases (AST can solve
-    /// this problem for non-parameterized queries, but for parameterized
-    /// queries it is IR responsibility).
-    ///
-    /// Map of { param_id -> corresponding row }.
-    row_map: AHashMap<NodeId, NodeId, RandomState>,
+// Calculate the maximum parameter index value.
+// For example, the result for a query `SELECT $1, $1, $2` will be 2.
+fn count_max_parameter_index(
+    plan: &Plan,
+    param_node_ids: &AHashSet<NodeId>,
+) -> Result<usize, SbroadError> {
+    let mut params_count = 0;
+    for param_id in param_node_ids {
+        let param = plan.get_expression_node(*param_id)?;
+        if let Expression::Parameter(Parameter { index, .. }) = param {
+            params_count = std::cmp::max(*index, params_count);
+        }
+    }
+    Ok(params_count)
 }
 
-fn get_param_value(
-    tnt_params_style: bool,
-    param_id: NodeId,
-    param_index: usize,
-    value_ids: &[NodeId],
-    pg_params_map: &AHashMap<NodeId, usize>,
-) -> NodeId {
-    let value_index = if tnt_params_style {
-        // In case non-pg params are used, index is the correct position
-        param_index
-    } else {
-        value_ids.len()
-            - 1
-            - *pg_params_map.get(&param_id).unwrap_or_else(|| {
-                panic!("Value index not found for parameter with id: {param_id:?}.")
-            })
-    };
-    let val_id = value_ids
-        .get(value_index)
-        .unwrap_or_else(|| panic!("Parameter not found in position {value_index}."));
-    *val_id
+/// Build a map of parameters that should be covered with a row.
+#[allow(clippy::too_many_lines)]
+fn build_should_cover_with_row_map(
+    plan: &Plan,
+    nodes: &[LevelNode<NodeId>],
+    param_node_ids: &AHashSet<NodeId>,
+) -> Result<AHashSet<NodeId>, SbroadError> {
+    let mut row_ids = AHashSet::new();
+    for LevelNode(_, id) in nodes {
+        let node = plan.get_node(*id)?;
+        match node {
+            // Note: Parameter may not be met at the top of relational operators' expression
+            //       trees such as OrderBy and GroupBy, because it won't influence ordering and
+            //       grouping correspondingly. These cases are handled during parsing stage.
+            Node::Relational(rel) => match rel {
+                Relational::Having(Having {
+                    filter: ref param_id,
+                    ..
+                })
+                | Relational::Selection(Selection {
+                    filter: ref param_id,
+                    ..
+                })
+                | Relational::Join(Join {
+                    condition: ref param_id,
+                    ..
+                }) => {
+                    if param_node_ids.contains(param_id) {
+                        row_ids.insert(*param_id);
+                    }
+                }
+                _ => {}
+            },
+            Node::Expression(expr) => match expr {
+                Expression::Bool(BoolExpr {
+                    ref left,
+                    ref right,
+                    ..
+                })
+                | Expression::Arithmetic(ArithmeticExpr {
+                    ref left,
+                    ref right,
+                    ..
+                })
+                | Expression::Concat(Concat {
+                    ref left,
+                    ref right,
+                }) => {
+                    for param_id in &[*left, *right] {
+                        if param_node_ids.contains(param_id) {
+                            row_ids.insert(*param_id);
+                        }
+                    }
+                }
+                Expression::Like(Like {
+                    escape,
+                    left,
+                    right,
+                }) => {
+                    for param_id in &[*left, *right] {
+                        if param_node_ids.contains(param_id) {
+                            row_ids.insert(*param_id);
+                        }
+                    }
+                    if param_node_ids.contains(escape) {
+                        row_ids.insert(*escape);
+                    }
+                }
+                Expression::Trim(_)
+                | Expression::Row(_)
+                | Expression::StableFunction(_)
+                | Expression::Case(_)
+                | Expression::Window(_)
+                | Expression::Over(_)
+                | Expression::Alias(_)
+                | Expression::Cast(_)
+                | Expression::Unary(_)
+                | Expression::Reference(_)
+                | Expression::Constant(_)
+                | Expression::CountAsterisk(_)
+                | Expression::LocalTimestamp(_)
+                | Expression::Parameter(_) => {}
+            },
+            Node::Block(_) => {}
+            Node::Invalid(..)
+            | Node::Ddl(..)
+            | Node::Acl(..)
+            | Node::Tcl(..)
+            | Node::Plugin(_)
+            | Node::Deallocate(..) => {}
+        }
+    }
+    Ok(row_ids)
 }
 
-impl<'binder> ParamsBinder<'binder> {
-    fn new(plan: &'binder mut Plan, mut values: Vec<Value>) -> Result<Self, SbroadError> {
-        let capacity = plan.nodes.len();
-
-        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
-        //       the same nodes twice. See `update_values_row` for more info.
-        let mut tree = PostOrder::with_capacity(|node| plan.subtree_iter(node, false), capacity);
-        let top_id = plan.get_top()?;
-        tree.populate_nodes(top_id);
-        let nodes = tree.take_nodes();
-
-        let pg_params_map = plan.build_pg_param_map();
-        let tnt_params_style = pg_params_map.is_empty();
-
-        let mut binded_options_counter = 0;
-        if !plan.raw_options.is_empty() {
-            binded_options_counter = plan.bind_option_params(&mut values, &pg_params_map);
-        }
-
-        let param_node_ids = plan.get_param_set();
-
-        let binder = ParamsBinder {
-            plan,
-            nodes,
-            binded_options_counter,
-            tnt_params_style,
-            pg_params_map,
-            param_node_ids,
-            value_ids: Vec::new(),
-            values,
-            row_map: AHashMap::new(),
-        };
-        Ok(binder)
-    }
-
-    /// Copy values to bind for Postgres-style parameters.
-    fn handle_pg_parameters(&mut self) -> Result<(), SbroadError> {
-        if !self.tnt_params_style {
-            // Due to how we calculate hash for plan subtree and the
-            // fact that pg parameters can refer to same value multiple
-            // times we currently copy params that are referred more
-            // than once in order to get the same hash.
-            // See https://git.picodata.io/picodata/picodata/sbroad/-/issues/583
-            let mut used_values = vec![false; self.values.len()];
-            let initial_len = self.values.len();
-            let invalid_idx = |value_idx: usize| {
-                Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some(
-                        format!(
-                            "Parameter binding error: Index {} out of bounds. Valid range: 1..{}.",
-                            value_idx + 1,
-                            initial_len,
-                        )
-                        .into(),
-                    ),
-                ))
-            };
-            // NB: we can't use `param_node_ids`, we need to traverse
-            // parameters in the same order they will be bound,
-            // otherwise we may get different hashes for plans
-            // with tnt and pg parameters. See `subtree_hash*` tests,
-            for LevelNode(_, param_id) in &self.nodes {
-                if !matches!(
-                    self.plan.get_node(*param_id)?,
-                    Node::Expression(Expression::Parameter(..))
-                ) {
-                    continue;
-                }
-                let value_idx = *self.pg_params_map.get(param_id).unwrap_or_else(|| {
-                    panic!("Value index not found for parameter with id: {param_id:?}.");
-                });
-                if used_values.get(value_idx).copied().unwrap_or(true) {
-                    let Some(value) = self.values.get(value_idx) else {
-                        invalid_idx(value_idx - (self.values.len() - initial_len))?
-                    };
-                    self.values.push(value.clone());
-                    self.pg_params_map
-                        .values_mut()
-                        .filter(|value| **value >= self.values.len() - 1)
-                        .for_each(|value| *value += 1);
-                    self.pg_params_map
-                        .entry(*param_id)
-                        .and_modify(|value_idx| *value_idx = self.values.len() - 1);
-                } else if let Some(used) = used_values.get_mut(value_idx) {
-                    *used = true;
-                } else {
-                    invalid_idx(value_idx)?
-                }
+/// Replace parameters in the plan.
+fn bind_params(
+    plan: &mut Plan,
+    param_node_ids: &AHashSet<NodeId>,
+    values: &[Value],
+    shoud_cover_with_row: &AHashSet<NodeId>,
+) -> Result<(), SbroadError> {
+    for param_id in param_node_ids {
+        let node = plan.get_expression_node(*param_id)?;
+        if shoud_cover_with_row.contains(param_id) {
+            if let Expression::Parameter(Parameter { index, .. }) = node {
+                let value = values.get(index - 1).unwrap().clone();
+                let const_id = plan.add_const(value);
+                let list = vec![const_id];
+                let distribution = None;
+                let row_node = Node64::Row(Row { list, distribution });
+                plan.nodes.replace(*param_id, row_node)?;
             }
-        }
-        Ok(())
-    }
-
-    /// Transform parameters (passed by user) to values (plan constants).
-    /// The result values are stored in the opposite to parameters order.
-    ///
-    /// In case some redundant params were passed, they'll
-    /// be ignored (just not popped from the `value_ids` stack later).
-    fn create_parameter_constants(&mut self) {
-        self.value_ids = Vec::with_capacity(self.values.len());
-        while let Some(param) = self.values.pop() {
-            self.value_ids.push(self.plan.add_const(param));
-        }
-    }
-
-    /// Check that number of user passed params equal to the params nodes we have to bind.
-    fn check_params_count(&self) -> Result<(), SbroadError> {
-        let non_binded_params_len = self.param_node_ids.len() - self.binded_options_counter;
-        if self.tnt_params_style && non_binded_params_len > self.value_ids.len() {
-            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                "Expected at least {} values for parameters. Got {}.",
-                non_binded_params_len,
-                self.value_ids.len()
-            )));
-        }
-        Ok(())
-    }
-
-    /// Retrieve a corresponding value (plan constant node) for a parameter node.
-    fn get_param_value(&self, param_id: NodeId, param_index: usize) -> NodeId {
-        get_param_value(
-            self.tnt_params_style,
-            param_id,
-            param_index,
-            &self.value_ids,
-            &self.pg_params_map,
-        )
-    }
-
-    /// 1.) Increase binding param index.
-    /// 2.) In case `cover_with_row` is set to true, cover the param node with a row.
-    fn cover_param_with_row(
-        &self,
-        param_id: NodeId,
-        cover_with_row: bool,
-        param_index: &mut usize,
-        row_ids: &mut HashMap<NodeId, NodeId, RandomState>,
-    ) {
-        if self.param_node_ids.contains(&param_id) {
-            if row_ids.contains_key(&param_id) {
-                return;
-            }
-            *param_index = param_index.saturating_sub(1);
-            if cover_with_row {
-                let val_id = self.get_param_value(param_id, *param_index);
-                row_ids.insert(param_id, val_id);
+        } else {
+            let node = plan.get_expression_node(*param_id)?;
+            if let Expression::Parameter(Parameter { index, .. }) = node {
+                let value = values.get(index - 1).unwrap().clone();
+                let constant = Constant { value };
+                plan.nodes.replace(*param_id, Node64::Constant(constant))?;
             }
         }
     }
 
-    /// Traverse the plan nodes tree and cover parameter nodes with rows if needed.
-    #[allow(clippy::too_many_lines)]
-    fn cover_params_with_rows(&mut self) -> Result<(), SbroadError> {
-        // Len of `value_ids` - `param_index` = param index we are currently binding.
-        let mut param_index = self.value_ids.len();
-        let mut row_ids = HashMap::with_hasher(RandomState::new());
-
-        for LevelNode(_, id) in &self.nodes {
-            let node = self.plan.get_node(*id)?;
-            match node {
-                // Note: Parameter may not be met at the top of relational operators' expression
-                //       trees such as OrderBy and GroupBy, because it won't influence ordering and
-                //       grouping correspondingly. These cases are handled during parsing stage.
-                Node::Relational(rel) => match rel {
-                    Relational::Having(Having {
-                        filter: ref param_id,
-                        ..
-                    })
-                    | Relational::Selection(Selection {
-                        filter: ref param_id,
-                        ..
-                    })
-                    | Relational::Join(Join {
-                        condition: ref param_id,
-                        ..
-                    }) => {
-                        self.cover_param_with_row(*param_id, true, &mut param_index, &mut row_ids);
-                    }
-                    _ => {}
-                },
-                Node::Expression(expr) => match expr {
-                    Expression::Window(Window {
-                        partition,
-                        ordering,
-                        frame,
-                        ..
-                    }) => {
-                        if let Some(param_id) = partition {
-                            for param_id in param_id {
-                                self.cover_param_with_row(
-                                    *param_id,
-                                    false,
-                                    &mut param_index,
-                                    &mut row_ids,
-                                );
-                            }
-                        }
-                        if let Some(ordering) = ordering {
-                            for o_elem in ordering {
-                                if let OrderByEntity::Expression { expr_id } = o_elem.entity {
-                                    self.cover_param_with_row(
-                                        expr_id,
-                                        false,
-                                        &mut param_index,
-                                        &mut row_ids,
-                                    );
-                                }
-                            }
-                        }
-                        if let Some(frame) = frame {
-                            let mut bound_types = [None, None];
-                            match &frame.bound {
-                                Bound::Single(start) => {
-                                    bound_types[0] = Some(start);
-                                }
-                                Bound::Between(start, end) => {
-                                    bound_types[0] = Some(start);
-                                    bound_types[1] = Some(end);
-                                }
-                            }
-                            for b_type in bound_types.iter().flatten() {
-                                match b_type {
-                                    BoundType::PrecedingOffset(id)
-                                    | BoundType::FollowingOffset(id) => {
-                                        self.cover_param_with_row(
-                                            *id,
-                                            false,
-                                            &mut param_index,
-                                            &mut row_ids,
-                                        );
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                    Expression::Over(Over {
-                        func_args, filter, ..
-                    }) => {
-                        for param_id in func_args {
-                            self.cover_param_with_row(
-                                *param_id,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                        if let Some(param_id) = filter {
-                            self.cover_param_with_row(
-                                *param_id,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                    Expression::Alias(Alias {
-                        child: ref param_id,
-                        ..
-                    })
-                    | Expression::Cast(Cast {
-                        child: ref param_id,
-                        ..
-                    })
-                    | Expression::Unary(UnaryExpr {
-                        child: ref param_id,
-                        ..
-                    }) => {
-                        self.cover_param_with_row(*param_id, false, &mut param_index, &mut row_ids);
-                    }
-                    Expression::Bool(BoolExpr {
-                        ref left,
-                        ref right,
-                        ..
-                    })
-                    | Expression::Arithmetic(ArithmeticExpr {
-                        ref left,
-                        ref right,
-                        ..
-                    })
-                    | Expression::Concat(Concat {
-                        ref left,
-                        ref right,
-                    }) => {
-                        for param_id in &[*left, *right] {
-                            self.cover_param_with_row(
-                                *param_id,
-                                true,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                    Expression::Like(Like {
-                        escape,
-                        left,
-                        right,
-                    }) => {
-                        for param_id in &[*left, *right] {
-                            self.cover_param_with_row(
-                                *param_id,
-                                true,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                        self.cover_param_with_row(*escape, true, &mut param_index, &mut row_ids);
-                    }
-                    Expression::Trim(Trim {
-                        ref pattern,
-                        ref target,
-                        ..
-                    }) => {
-                        let params = match pattern {
-                            Some(p) => [Some(*p), Some(*target)],
-                            None => [None, Some(*target)],
-                        };
-                        for param_id in params.into_iter().flatten() {
-                            self.cover_param_with_row(
-                                param_id,
-                                true,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                    Expression::Row(Row { ref list, .. })
-                    | Expression::StableFunction(StableFunction {
-                        children: ref list, ..
-                    }) => {
-                        for param_id in list {
-                            // Parameter is already under row/function so that we don't
-                            // have to cover it with `add_row` call.
-                            self.cover_param_with_row(
-                                *param_id,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                    Expression::Case(Case {
-                        ref search_expr,
-                        ref when_blocks,
-                        ref else_expr,
-                    }) => {
-                        if let Some(search_expr) = search_expr {
-                            self.cover_param_with_row(
-                                *search_expr,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                        for (cond_expr, res_expr) in when_blocks {
-                            self.cover_param_with_row(
-                                *cond_expr,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                            self.cover_param_with_row(
-                                *res_expr,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                        if let Some(else_expr) = else_expr {
-                            self.cover_param_with_row(
-                                *else_expr,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                    Expression::Reference { .. }
-                    | Expression::Constant { .. }
-                    | Expression::CountAsterisk { .. }
-                    | Expression::LocalTimestamp { .. }
-                    | Expression::Parameter { .. } => {}
-                },
-                Node::Block(block) => match block {
-                    Block::Procedure(Procedure { ref values, .. }) => {
-                        for param_id in values {
-                            // We don't need to wrap arguments, passed into the
-                            // procedure call, into the rows.
-                            self.cover_param_with_row(
-                                *param_id,
-                                false,
-                                &mut param_index,
-                                &mut row_ids,
-                            );
-                        }
-                    }
-                },
-                Node::Invalid(..)
-                | Node::Ddl(..)
-                | Node::Acl(..)
-                | Node::Tcl(..)
-                | Node::Plugin(_)
-                | Node::Deallocate(..) => {}
-            }
-        }
-
-        let fixed_row_ids: AHashMap<NodeId, NodeId, RandomState> = row_ids
-            .iter()
-            .map(|(param_id, val_id)| {
-                let row_cover = self.plan.nodes.add_row(vec![*val_id], None);
-                (*param_id, row_cover)
-            })
-            .collect();
-        self.row_map = fixed_row_ids;
-
-        Ok(())
-    }
-
-    /// Replace parameters in the plan.
-    #[allow(clippy::too_many_lines)]
-    fn bind_params(&mut self) -> Result<(), SbroadError> {
-        // Len of `value_ids` - `param_index` = param index we are currently binding.
-        let mut param_index = self.value_ids.len();
-
-        let tnt_params_style = self.tnt_params_style;
-        let row_ids = std::mem::take(&mut self.row_map);
-        let value_ids = std::mem::take(&mut self.value_ids);
-        let pg_params_map = std::mem::take(&mut self.pg_params_map);
-
-        let bind_param = |param_id: &mut NodeId, is_row: bool, param_index: &mut usize| {
-            *param_id = if self.param_node_ids.contains(param_id) {
-                *param_index = param_index.saturating_sub(1);
-                let binding_node_id = if is_row {
-                    *row_ids
-                        .get(param_id)
-                        .unwrap_or_else(|| panic!("Row not found at position {param_id}"))
-                } else {
-                    get_param_value(
-                        tnt_params_style,
-                        *param_id,
-                        *param_index,
-                        &value_ids,
-                        &pg_params_map,
-                    )
-                };
-                binding_node_id
-            } else {
-                *param_id
-            }
-        };
-
-        for LevelNode(_, id) in &self.nodes {
-            let node = self.plan.get_mut_node(*id)?;
-            match node {
-                MutNode::Relational(rel) => match rel {
-                    MutRelational::Having(Having {
-                        filter: ref mut param_id,
-                        ..
-                    })
-                    | MutRelational::Selection(Selection {
-                        filter: ref mut param_id,
-                        ..
-                    })
-                    | MutRelational::Join(Join {
-                        condition: ref mut param_id,
-                        ..
-                    }) => {
-                        bind_param(param_id, true, &mut param_index);
-                    }
-                    MutRelational::GroupBy(GroupBy { gr_exprs, .. }) => {
-                        for expr_id in gr_exprs {
-                            bind_param(expr_id, false, &mut param_index);
-                        }
-                    }
-                    _ => {}
-                },
-                MutNode::Expression(expr) => match expr {
-                    MutExpression::Alias(Alias {
-                        child: ref mut param_id,
-                        ..
-                    })
-                    | MutExpression::Cast(Cast {
-                        child: ref mut param_id,
-                        ..
-                    })
-                    | MutExpression::Unary(UnaryExpr {
-                        child: ref mut param_id,
-                        ..
-                    }) => {
-                        bind_param(param_id, false, &mut param_index);
-                    }
-                    MutExpression::Bool(BoolExpr {
-                        ref mut left,
-                        ref mut right,
-                        ..
-                    })
-                    | MutExpression::Arithmetic(ArithmeticExpr {
-                        ref mut left,
-                        ref mut right,
-                        ..
-                    })
-                    | MutExpression::Concat(Concat {
-                        ref mut left,
-                        ref mut right,
-                    }) => {
-                        for param_id in [left, right] {
-                            bind_param(param_id, true, &mut param_index);
-                        }
-                    }
-                    MutExpression::Like(Like {
-                        ref mut escape,
-                        ref mut left,
-                        ref mut right,
-                    }) => {
-                        bind_param(escape, true, &mut param_index);
-                        for param_id in [left, right] {
-                            bind_param(param_id, true, &mut param_index);
-                        }
-                    }
-                    MutExpression::Trim(Trim {
-                        ref mut pattern,
-                        ref mut target,
-                        ..
-                    }) => {
-                        let params = match pattern {
-                            Some(p) => [Some(p), Some(target)],
-                            None => [None, Some(target)],
-                        };
-                        for param_id in params.into_iter().flatten() {
-                            bind_param(param_id, true, &mut param_index);
-                        }
-                    }
-                    MutExpression::Row(Row { ref mut list, .. })
-                    | MutExpression::StableFunction(StableFunction {
-                        children: ref mut list,
-                        ..
-                    }) => {
-                        for param_id in list {
-                            bind_param(param_id, false, &mut param_index);
-                        }
-                    }
-
-                    MutExpression::Window(Window {
-                        partition,
-                        ordering,
-                        frame,
-                        ..
-                    }) => {
-                        if let Some(frame) = frame {
-                            match frame.bound {
-                                Bound::Single(
-                                    BoundType::PrecedingOffset(mut id)
-                                    | BoundType::FollowingOffset(mut id),
-                                ) => {
-                                    bind_param(&mut id, false, &mut param_index);
-                                }
-                                Bound::Between(ref mut start, ref mut end) => {
-                                    for b_type in [start, end].iter_mut() {
-                                        match b_type {
-                                            BoundType::PrecedingOffset(ref mut id)
-                                            | BoundType::FollowingOffset(ref mut id) => {
-                                                bind_param(id, false, &mut param_index);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if let Some(ordering) = ordering {
-                            for o_elem in ordering {
-                                if let OrderByEntity::Expression { mut expr_id } = o_elem.entity {
-                                    bind_param(&mut expr_id, false, &mut param_index);
-                                }
-                            }
-                        }
-                        if let Some(param_id) = partition {
-                            for param_id in param_id {
-                                bind_param(param_id, false, &mut param_index);
-                            }
-                        }
-                    }
-                    MutExpression::Over(Over {
-                        func_args, filter, ..
-                    }) => {
-                        // TODO: we need to refactor Over and Window nodes to make them
-                        // more traversal friendly.
-                        if let Some(param_id) = filter {
-                            if self.param_node_ids.contains(param_id) {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Query,
-                                    Some(format_smolstr!(
-                                        "Parameter binding error: windo filter parameter is not allowed."
-                                    )),
-                                ));
-                            }
-                        }
-                        for param_id in func_args {
-                            if self.param_node_ids.contains(param_id) {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Query,
-                                    Some(format_smolstr!(
-                                        "Parameter binding error: window function argument parameters are not allowed."
-                                    )),
-                                ));
-                            }
-                        }
-                    }
-                    MutExpression::Case(Case {
-                        ref mut search_expr,
-                        ref mut when_blocks,
-                        ref mut else_expr,
-                    }) => {
-                        if let Some(param_id) = search_expr {
-                            bind_param(param_id, false, &mut param_index);
-                        }
-                        for (param_id_1, param_id_2) in when_blocks {
-                            bind_param(param_id_1, false, &mut param_index);
-                            bind_param(param_id_2, false, &mut param_index);
-                        }
-                        if let Some(param_id) = else_expr {
-                            bind_param(param_id, false, &mut param_index);
-                        }
-                    }
-                    MutExpression::Reference { .. }
-                    | MutExpression::Constant { .. }
-                    | MutExpression::CountAsterisk { .. }
-                    | MutExpression::Parameter { .. }
-                    | MutExpression::LocalTimestamp { .. } => {}
-                },
-                MutNode::Block(block) => match block {
-                    MutBlock::Procedure(Procedure { ref mut values, .. }) => {
-                        for param_id in values {
-                            bind_param(param_id, false, &mut param_index);
-                        }
-                    }
-                },
-                MutNode::Invalid(..)
-                | MutNode::Ddl(..)
-                | MutNode::Tcl(..)
-                | MutNode::Plugin(_)
-                | MutNode::Acl(..)
-                | MutNode::Deallocate(..) => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn update_value_rows(&mut self) -> Result<(), SbroadError> {
-        for LevelNode(_, id) in &self.nodes {
-            if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.plan.get_node(*id) {
-                self.plan.update_values_row(*id)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
-        let ref_nodes = {
-            let filter = |node_id| {
-                matches!(
-                    self.plan.get_node(node_id),
-                    Ok(Node::Expression(Expression::Reference(_)))
-                )
-            };
-            let mut tree = PostOrderWithFilter::with_capacity(
-                |node| self.plan.parameter_iter(node, true),
-                EXPR_CAPACITY,
-                Box::new(filter),
-            );
-            let top_id = self.plan.get_top()?;
-            tree.populate_nodes(top_id);
-            tree.take_nodes()
-        };
-
-        for LevelNode(_, id) in &ref_nodes {
-            // Before binding, references that referred to
-            // parameters had an unknown types,
-            // but in fact they should have the types of given parameters.
-            let new_type = if let Node::Expression(
-                ref mut expr @ Expression::Reference(Reference {
-                    parent: Some(_), ..
-                }),
-            ) = self.plan.get_node(*id)?
-            {
-                Some(expr.recalculate_ref_type(self.plan)?)
-            } else {
-                None
-            };
-
-            if let Some(new_type) = new_type {
-                let MutNode::Expression(ref mut expr @ MutExpression::Reference { .. }) =
-                    self.plan.get_mut_node(*id)?
-                else {
-                    panic!("Reference expected to set recalculated type")
-                };
-                expr.set_ref_type(new_type);
-            }
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 impl Plan {
-    pub fn add_param(&mut self, index: Option<usize>) -> NodeId {
+    pub fn add_param(&mut self, index: usize) -> NodeId {
         self.nodes.push(
             Parameter {
                 index,
@@ -787,36 +173,27 @@ impl Plan {
     }
 
     /// Bind params related to `Option` clause.
-    /// Returns the number of params binded to options.
-    pub fn bind_option_params(
-        &mut self,
-        values: &mut Vec<Value>,
-        pg_params_map: &AHashMap<NodeId, usize>,
-    ) -> usize {
-        // Bind parameters in options to values.
-        // Because the Option clause is the last clause in the
-        // query the parameters are located in the end of params list.
-        let mut binded_params_counter = 0usize;
-        for opt in self.raw_options.iter_mut().rev() {
+    fn bind_option_params(&mut self, values: &[Value]) {
+        let mut params = Vec::new();
+        for opt in self.raw_options.iter() {
             if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
-                if !pg_params_map.is_empty() {
-                    // PG-like params syntax
-                    let value_idx = *pg_params_map.get(&param_id).unwrap_or_else(|| {
-                        panic!("No value idx in map for option parameter: {opt:?}.");
-                    });
-                    let value = values.get(value_idx).unwrap_or_else(|| {
-                        panic!("Invalid value idx {value_idx}, for option: {opt:?}.");
-                    });
-                    opt.val = OptionParamValue::Value { val: value.clone() };
-                } else if let Some(v) = values.pop() {
-                    binded_params_counter += 1;
-                    opt.val = OptionParamValue::Value { val: v };
+                if let Expression::Parameter(Parameter { index, .. }) =
+                    self.get_expression_node(param_id).unwrap()
+                {
+                    params.push((param_id, *index));
                 } else {
-                    panic!("No parameter value specified for option: {}", opt.kind);
+                    panic!("OptionParamValue::Parameter does not reffer to parameter node");
                 }
             }
         }
-        binded_params_counter
+
+        for opt in self.raw_options.iter_mut() {
+            if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
+                let index = params.iter().find(|x| x.0 == param_id).unwrap();
+                let val = values[index.1 - 1].clone();
+                opt.val = OptionParamValue::Value { val };
+            }
+        }
     }
 
     // Gather all parameter nodes from the tree to a hash set.
@@ -839,18 +216,15 @@ impl Plan {
             .collect()
     }
 
-    /// Build a map { pg_parameter_node_id: param_idx }, where param_idx starts with 0.
+    /// Build a map { pg_parameter_node_id -> param_idx }, where param_idx starts with 0.
     #[must_use]
-    pub fn build_pg_param_map(&self) -> AHashMap<NodeId, usize> {
+    pub fn build_params_map(&self) -> AHashMap<NodeId, usize> {
         self.nodes
             .arena64
             .iter()
             .enumerate()
             .filter_map(|(id, node)| {
-                if let Node64::Parameter(Parameter {
-                    index: Some(index), ..
-                }) = node
-                {
+                if let Node64::Parameter(Parameter { index, .. }) = node {
                     Some((
                         NodeId {
                             offset: u32::try_from(id).unwrap(),
@@ -870,7 +244,7 @@ impl Plan {
     /// ValuesRow fields `data` and `output` are referencing the same nodes. We exclude
     /// their output from nodes traversing. And in case parameters are met under ValuesRow, we don't update
     /// references in its output. That why we have to traverse the tree one more time fixing output.
-    pub fn update_values_row(&mut self, id: NodeId) -> Result<(), SbroadError> {
+    fn update_values_row(&mut self, id: NodeId) -> Result<(), SbroadError> {
         let values_row = self.get_node(id)?;
         let (output_id, data_id) =
             if let Node::Relational(Relational::ValuesRow(ValuesRow { output, data, .. })) =
@@ -898,49 +272,103 @@ impl Plan {
         Ok(())
     }
 
+    fn update_value_rows(&mut self, nodes: &[LevelNode<NodeId>]) -> Result<(), SbroadError> {
+        for LevelNode(_, id) in nodes {
+            if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(*id) {
+                self.update_values_row(*id)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
+        let ref_nodes = {
+            let filter = |node_id| {
+                matches!(
+                    self.get_node(node_id),
+                    Ok(Node::Expression(Expression::Reference(_)))
+                )
+            };
+            let mut tree = PostOrderWithFilter::with_capacity(
+                |node| self.parameter_iter(node, true),
+                EXPR_CAPACITY,
+                Box::new(filter),
+            );
+            let top_id = self.get_top()?;
+            tree.populate_nodes(top_id);
+            tree.take_nodes()
+        };
+
+        for LevelNode(_, id) in &ref_nodes {
+            // Before binding, references that referred to
+            // parameters had an unknown types,
+            // but in fact they should have the types of given parameters.
+            let new_type = if let Node::Expression(
+                ref mut expr @ Expression::Reference(Reference {
+                    parent: Some(_), ..
+                }),
+            ) = self.get_node(*id)?
+            {
+                Some(expr.recalculate_ref_type(self)?)
+            } else {
+                None
+            };
+
+            if let Some(new_type) = new_type {
+                let MutNode::Expression(ref mut expr @ MutExpression::Reference { .. }) =
+                    self.get_mut_node(*id)?
+                else {
+                    panic!("Reference expected to set recalculated type")
+                };
+                expr.set_ref_type(new_type);
+            }
+        }
+        Ok(())
+    }
+
     /// Substitute parameters to the plan.
     /// The purpose of this function is to find every `Expression::Parameter` node and replace it
     /// with `Expression::Constant` (under the row).
     #[allow(clippy::too_many_lines)]
     pub fn bind_params(&mut self, values: Vec<Value>) -> Result<(), SbroadError> {
-        if values.is_empty() {
-            // Check there are no parameters in the plan,
-            // we must fail early here, rather than on
-            // later pipeline stages.
-            let mut param_count: usize = 0;
-            let filter = Box::new(|x: NodeId| -> bool {
-                if let Ok(Node::Expression(Expression::Parameter(_))) = self.get_node(x) {
-                    param_count += 1;
-                }
-                false
-            });
-            let mut dfs =
-                PostOrderWithFilter::with_capacity(|x| self.subtree_iter(x, false), 0, filter);
-            dfs.populate_nodes(self.get_top()?);
-            drop(dfs);
+        let param_node_ids = self.get_param_set();
+        // As parameter indexes are used as indexes in parameters array,
+        // we expect that the number of parameters is not less than the max index.
+        let params_count = count_max_parameter_index(self, &param_node_ids)?;
 
-            if param_count > 0 {
-                return Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!(
-                        "Expected at least {param_count} values for parameters. Got 0"
-                    )),
-                ));
-            }
-
-            // Nothing to do here.
+        if params_count == 0 {
             return Ok(());
         }
 
-        let mut binder = ParamsBinder::new(self, values)?;
-        binder.handle_pg_parameters()?;
-        binder.create_parameter_constants();
-        binder.check_params_count()?;
-        binder.cover_params_with_rows()?;
-        binder.bind_params()?;
-        binder.update_value_rows()?;
-        binder.recalculate_ref_types()?;
+        // Extra values are ignored.
+        if params_count > values.len() {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some(format_smolstr!(
+                    "expected {} values for parameters, got {}",
+                    params_count,
+                    values.len(),
+                )),
+            ));
+        }
 
+        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
+        //       the same nodes twice. See `update_values_row` for more info.
+        let mut tree =
+            PostOrder::with_capacity(|node| self.subtree_iter(node, false), self.nodes.len());
+        let top_id = self.get_top()?;
+        tree.populate_nodes(top_id);
+        let nodes = tree.take_nodes();
+
+        if !self.raw_options.is_empty() {
+            self.bind_option_params(&values);
+        }
+
+        let should_cover_with_row = build_should_cover_with_row_map(self, &nodes, &param_node_ids)?;
+        bind_params(self, &param_node_ids, &values, &should_cover_with_row)?;
+
+        self.update_value_rows(&nodes)?;
+        self.recalculate_ref_types()?;
         Ok(())
     }
 

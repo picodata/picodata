@@ -215,7 +215,7 @@ g.test_query_errored = function()
     local _, err = api:call("sbroad.execute", { [[SELECT * FROM "testing_space" where "id" = ?]], {} })
     t.assert_str_contains(
         tostring(err),
-        "Expected at least 1 values for parameters. Got 0"
+        "expected 1 values for parameters, got 0"
     )
 end
 

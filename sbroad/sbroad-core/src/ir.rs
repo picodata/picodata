@@ -1993,7 +1993,7 @@ impl Plan {
         &mut self,
         client_types: &[Option<Type>],
     ) -> Result<Vec<Type>, SbroadError> {
-        let pg_params_map = self.build_pg_param_map();
+        let pg_params_map = self.build_params_map();
         let params_count = Self::count_pg_parameters(&pg_params_map);
         if params_count < client_types.len() {
             return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(

@@ -351,7 +351,7 @@ def test_param_oids(pg_client: PgClient):
 
     sql = """ insert into "t" values (1, $1) """
     pg_client.parse("", sql, [25])
-    pg_client.bind("", "", [1, "a"], [])
+    pg_client.bind("", "", ["a"], [])
     desc = pg_client.describe_stmt("")
     assert desc["param_oids"] == [25]
     assert desc["query_type"] == 2

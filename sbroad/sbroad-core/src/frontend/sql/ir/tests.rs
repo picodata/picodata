@@ -2016,6 +2016,110 @@ fn front_sql_pg_style_params5() {
 }
 
 #[test]
+fn front_sql_pg_style_params6() {
+    // https://git.picodata.io/core/picodata/-/issues/1220
+    let input = r#"select $1 + $1"#;
+    let metadata = &RouterConfigurationMock::new();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let err = plan.bind_params(vec![]).unwrap_err();
+    assert_eq!(
+        "invalid query: expected 1 values for parameters, got 0",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_pg_style_params7() {
+    // https://git.picodata.io/core/picodata/-/issues/1220
+    let input = r#"select ((values ((select ((values ($1)))))))"#;
+    let metadata = &RouterConfigurationMock::new();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let err = plan.bind_params(vec![]).unwrap_err();
+    assert_eq!(
+        "invalid query: expected 1 values for parameters, got 0",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_pg_style_params8() {
+    // https://git.picodata.io/core/picodata/-/issues/1220
+    let input = r#"select $1 + $1 = $2"#;
+    let metadata = &RouterConfigurationMock::new();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let err = plan.bind_params(vec![Value::Unsigned(1)]).unwrap_err();
+    assert_eq!(
+        "invalid query: expected 2 values for parameters, got 1",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_pg_style_params9() {
+    // https://git.picodata.io/core/picodata/-/issues/1663
+    let input = "select $1, $2, $3 from (select $4) where $5 = (select $6) or exists (select $7)";
+
+    let params = (1..=7).into_iter().map(|x| Value::Unsigned(x)).collect();
+    let plan = sql_to_optimized_ir(input, params);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (1::unsigned -> "col_1", 2::unsigned -> "col_2", 3::unsigned -> "col_3")
+        selection (ROW(5::unsigned) = ROW($1)) or exists ROW($0)
+            scan
+                projection (4::unsigned -> "col_1")
+    subquery $0:
+    scan
+                projection (7::unsigned -> "col_1")
+    subquery $1:
+    scan
+                projection (6::unsigned -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_sql_tnt_style_params1() {
+    // https://git.picodata.io/core/picodata/-/issues/1663
+    let input = "select ?, ?, ? from (select ?) where ? = (select ?) or exists (select ?)";
+
+    let params = (1..=7).into_iter().map(|x| Value::Unsigned(x)).collect();
+    let plan = sql_to_optimized_ir(input, params);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (1::unsigned -> "col_1", 2::unsigned -> "col_2", 3::unsigned -> "col_3")
+        selection (ROW(5::unsigned) = ROW($1)) or exists ROW($0)
+            scan
+                projection (4::unsigned -> "col_1")
+    subquery $0:
+    scan
+                projection (7::unsigned -> "col_1")
+    subquery $1:
+    scan
+                projection (6::unsigned -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_sql_tnt_style_params2() {
+    // https://git.picodata.io/core/picodata/-/issues/1460
+    let input = "select ? between 1 and 2";
+
+    let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1)]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ((ROW(1::unsigned) >= ROW(1::unsigned)) and (ROW(1::unsigned) <= ROW(2::unsigned)) -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
 fn front_sql_option_defaults() {
     let input = r#"select * from "t" where "a" = ? and "b" = ?"#;
 
@@ -3972,7 +4076,7 @@ mod multi_queries {
         let mut map2 = HashMap::new();
         let mut map3 = HashMap::new();
         let mut standard_parse = AbstractSyntaxTree::empty();
-        standard_parse.fill(query, &mut map1, &mut map2, &mut map3)
+        standard_parse.fill(query, &mut map1, &mut map2, &mut map3, &mut Vec::new())
     }
 
     #[test]

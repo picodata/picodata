@@ -202,28 +202,28 @@ def test_pg_params(cluster: Cluster):
     )
     assert data == [[3, 2, 1, 2, 3]]
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1, 1 as c1 FROM t ORDER BY c1 DESC""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1 as c1 FROM (SELECT 1) ORDER BY 1 DESC""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1 + 0, 1 as c1 FROM t ORDER BY c1 DESC""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1, 1 as c1 FROM t""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 2 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 0"):
         i1.sql("""select coalesce($1, $2) from (values(1)) order by 1""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""select max($1) from (select 1)""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT MAX($1)""")
 
-    with pytest.raises(TarantoolError, match="Expected at least 1 values for parameters. Got 0"):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""select max(coalesce($1, 1)) from (select 1)""")
 
     # Test that using a numeric literal as an ordinal reference in GROUP BY
@@ -258,13 +258,10 @@ def test_pg_params(cluster: Cluster):
     with pytest.raises(TarantoolError, match="cannot be parsed as unsigned param number"):
         i1.sql("select $18446744073709551616", 1)
 
-    with pytest.raises(
-        TarantoolError,
-        match="Parameter binding error: Index 3333 out of bounds. Valid range: 1..2.",
-    ):
+    with pytest.raises(TarantoolError, match="expected 3333 values for parameters, got 2"):
         i1.sql("select $1, $2, $3333", 1, 2)
 
-    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+    with pytest.raises(TarantoolError, match="expected 5 values for parameters, got 1"):
         i1.sql(
             """
         with cte  as (select $1, $2, $2, $3, $4, $5) select $1, * from cte
@@ -272,7 +269,7 @@ def test_pg_params(cluster: Cluster):
             True,
         )
 
-    with pytest.raises(TarantoolError, match="Parameter binding error: Index 5 out of bounds."):
+    with pytest.raises(TarantoolError, match="expected 5 values for parameters, got 2"):
         i1.sql(
             """
         with cte  as (select $1, $1, $2, $2, $1, $5) select * from cte
@@ -281,7 +278,7 @@ def test_pg_params(cluster: Cluster):
             True,
         )
 
-    with pytest.raises(TarantoolError, match="Parameter binding error: Index 3 out of bounds."):
+    with pytest.raises(TarantoolError, match="expected 3 values for parameters, got 2"):
         i1.sql(
             """
         with cte  as (select $1, $1, $2, $2, $1, $3) select $1, (select (select $1)), * from cte
@@ -293,7 +290,7 @@ def test_pg_params(cluster: Cluster):
     data = i1.sql("""select $1, *, * from (select $1, (select $1))""", True)
     assert data == [[True] * 5]
 
-    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+    with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
         select $1, *, * from (select $1, (select $2))
@@ -2417,16 +2414,13 @@ def test_insert(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     # Wrong parameters number.
-    with pytest.raises(
-        TarantoolError,
-        match="Expected at least 1 values for parameters. Got 0",
-    ):
+    with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql(
             """
         insert into "t" values (?)
         """
         )
-    with pytest.raises(TarantoolError, match="Expected at least 2 values for parameters. Got 1"):
+    with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
         insert into "t" values (?), (?)
@@ -4899,7 +4893,7 @@ def test_cte(cluster: Cluster):
     )
     assert data == [[4], [5]]
 
-    with pytest.raises(TarantoolError, match="Parameter binding error: Index 2 out of bounds."):
+    with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
         with cte (t, kek) as (select $1, $2) select $1, * from cte

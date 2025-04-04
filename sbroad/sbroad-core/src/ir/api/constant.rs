@@ -99,7 +99,8 @@ impl Plan {
                 const_id,
                 Node64::Parameter(Parameter {
                     param_type: DerivedType::unknown(),
-                    index: None,
+                    // TODO: assign unique indexes
+                    index: 0,
                 }),
             )?;
             if let Node64::Constant(constant) = const_node {

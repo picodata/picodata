@@ -368,9 +368,8 @@ impl From<Case> for NodeAligned {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parameter {
     pub param_type: DerivedType,
-    // `Some` variant contains an index of pg parameter (starting with 1),
-    // `None` is used for tnt parameters.
-    pub index: Option<usize>,
+    // index of parameter (starting with 1)
+    pub index: usize,
 }
 
 impl From<Parameter> for NodeAligned {
