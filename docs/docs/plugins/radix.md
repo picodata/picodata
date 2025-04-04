@@ -32,7 +32,7 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
   RADIX_ADDR=0.0.0.0:7379`). Эта настройка также доступна для
   инвентарного файла Ansible (см. [ниже](#addr))
 - установку у [тиров][tier], на которые предполагается развернуть
-  плагин, 16384 [сегментов] (buckets). См. описание [bucket_count] и
+  плагин, 16384 [бакетов]. См. описание [bucket_count] и
   [default_bucket_count].
 - запуск инстанса Picodata с поддержкой плагинов (параметр [`--share-dir`])
 - распаковку архива Radix в директорию, указанную на предыдущем шаге
@@ -43,7 +43,7 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 [`--share-dir`]: ../reference/cli.md#run_share_dir
 [admin_console]: ../tutorial/connecting.md#admin_console
 [tier]: ../overview/glossary.md#tier
-[сегментов]: ../overview/glossary.md#segment
+[бакетов]: ../overview/glossary.md#bucket
 [bucket_count]: ../reference/config.md#cluster_tier_tier_bucket_count
 [default_bucket_count]: ../reference/config.md#cluster_default_bucket_count
 

@@ -788,7 +788,7 @@ fn proc_sharding(term, applied, timeout)
 
 В системной таблице [`_pico_tier`](system_tables.md#_pico_tier) хранятся
 две версии конфигурации распределения
-[сегментов](../overview/glossary.md#segment): текущая и целевая
+[бакетов](../overview/glossary.md#bucket): текущая и целевая
 (target). Этим версиям соответствуют колонки
 `current_vshard_config_version` и `target_vshard_config_version`.
 
@@ -808,7 +808,7 @@ fn proc_sharding_bootstrap(term, applied, timeout, tier)
 делать что-то еще, чтобы синхронизовать состояние [глобальных системных
 таблиц](./system_tables.md). Возвращает ошибку, если времени не хватило.
 
-Инициирует распределение [сегментов](../overview/glossary.md#segment)
+Инициирует распределение [бакетов](../overview/glossary.md#bucket)
 между [репликасетами](../overview/glossary.md#replicaset).
 
 Эту хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
@@ -894,7 +894,7 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 fn proc_wait_bucket_count(term, applied, timeout, expected_bucket_count)
 ```
 
-Обеспечивает перенос сегментов из исключаемого репликасета, пока их
+Обеспечивает перенос бакетов из исключаемого репликасета, пока их
 число в репликасете не станет равным нулю.
 
 Параметры:

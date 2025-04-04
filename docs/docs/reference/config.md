@@ -156,7 +156,7 @@ instance:
 
 ### cluster.default_bucket_count {: #cluster_default_bucket_count }
 
-Число сегментов в кластере по умолчанию.
+Число бакетов в кластере по умолчанию.
 
 Данные:
 
@@ -214,7 +214,7 @@ instance:
 
 ### cluster.tier.<tier_name\>.bucket_count {: #cluster_tier_tier_bucket_count }
 
-Число сегментов в данном тире.
+Число бакетов в данном тире.
 
 Данные:
 
