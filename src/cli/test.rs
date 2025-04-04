@@ -165,12 +165,7 @@ fn test_one(test: &TestCase) {
     let temp = tempfile::tempdir().expect("Failed creating a temp directory");
     std::env::set_current_dir(temp.path()).expect("Failed chainging current directory");
 
-    tarantool::exec(
-        "require 'compat' {
-            c_func_iproto_multireturn = 'new',
-        }",
-    )
-    .unwrap();
+    crate::set_tarantool_compat_options();
 
     let cfg = tarantool::Cfg {
         listen: Some("127.0.0.1:0".into()),

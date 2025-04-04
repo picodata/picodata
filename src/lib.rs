@@ -763,17 +763,12 @@ fn init_common(
         tarantool::xlog_set_remove_file_impl();
     }
 
+    set_tarantool_compat_options();
+
     // Load Lua libraries
     preload_vshard();
     preload_http();
     init_sbroad();
-
-    tarantool::exec(
-        "require 'compat' {
-            c_func_iproto_multireturn = 'new',
-        }",
-    )
-    .unwrap();
 
     set_console_prompt();
     redirect_interactive_sql();
@@ -1307,6 +1302,52 @@ fn postjoin(
     node.sentinel_loop.on_self_activate();
 
     Ok(())
+}
+
+/// Updates to tarantool-sys might bring incompatible changes.
+///
+/// Most of the time those changes are accompanied by the compatibility
+/// tweaks that give user a chance to revert to old behavior
+/// by setting a corresponding key to `'old'`.
+///
+/// Other times, we may want to enable upcoming breaking changes
+/// ahead of time using `'new'` where necessary.
+///
+/// Set the options we need for correct operation.
+fn set_tarantool_compat_options() {
+    tarantool::exec(
+        "require 'compat' {
+            c_func_iproto_multireturn = 'new',
+        }",
+    )
+    .unwrap();
+
+    // This setting was introduced in the following commits to tarantool-sys:
+    //
+    // - base64: add function to caclculate buffer size for decoding
+    // - yaml: use standard base64 encoder
+    // - lua: add varbinary type
+    //
+    // Their hashes will most certainly change after a regular
+    // rebase of tarantool-sys onto a newer release branch, so
+    // we list their names instead.
+    //
+    // Turns out those commits break traft & network.rs due
+    // to the changes around MP_BIN and varbinary.
+    //
+    // The affected tests include:
+    //
+    // - picodata::traft::network::tests::multiple_messages
+    // - picodata::traft::network::tests::unresponsive_connection
+    //
+    // TODO: properly support varbinary in crates tlua & tarantool.
+    // TODO: https://git.picodata.io/core/tarantool-module/-/issues/239
+    tarantool::exec(
+        "require 'compat' {
+            binary_data_decoding = 'old',
+        }",
+    )
+    .unwrap();
 }
 
 ::tarantool::define_enum_with_introspection! {
