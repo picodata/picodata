@@ -424,7 +424,7 @@ upload-doc-to-binary:
       artifacts: true
     - job: upload-doc-to-binary
 
-.deploy-doc-staging:
+deploy-doc-staging:
   extends:
     - .deploy-doc
 
