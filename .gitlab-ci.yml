@@ -231,6 +231,9 @@ build-stress-image:
       variables:
         RELEASE_PROFILE: &release-profile "fast-release"
         RELEASE_TARGET: &release-target "fast-release"
+        CACHE_POLICY: pull
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
         CACHE_POLICY: pull
 
@@ -292,8 +295,10 @@ lint:
   stage: test
   rules:
     - <<: *if-no-docs
+    - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        CACHE_POLICY: pull
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
@@ -321,7 +326,6 @@ lint-docs:
   stage: test
   tags:
     - docker-k8s
-  needs: [build-docs-image]
   rules:
     - <<: *if-changes-on-docs
   script:
