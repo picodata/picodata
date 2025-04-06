@@ -11,19 +11,25 @@ static GOVERNOR_CHANGE_COUNTER: LazyLock<IntCounter> = LazyLock::new(|| {
     .expect("Failed to create pico_governor_changes_total counter")
 });
 
-static SQL_QUERY_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(Opts::new(
-        "pico_sql_query_total",
-        "Total number of SQL queries executed",
-    ))
+static SQL_QUERY_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_query_total",
+            "Total number of SQL queries executed",
+        ),
+        &["tier", "replicaset"],
+    )
     .expect("Failed to create pico_sql_query_total counter")
 });
 
-static SQL_QUERY_ERRORS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    IntCounter::with_opts(Opts::new(
-        "pico_sql_query_errors_total",
-        "Total number of SQL queries that resulted in errors",
-    ))
+static SQL_QUERY_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    IntCounterVec::new(
+        Opts::new(
+            "pico_sql_query_errors_total",
+            "Total number of SQL queries that resulted in errors",
+        ),
+        &["tier", "replicaset"],
+    )
     .expect("Failed to create pico_sql_query_errors_total counter")
 });
 
@@ -109,12 +115,14 @@ pub fn record_governor_change() {
     GOVERNOR_CHANGE_COUNTER.inc();
 }
 
-pub fn record_sql_query_total() {
-    SQL_QUERY_TOTAL.inc();
+pub fn record_sql_query_total(tier: &str, replicaset: &str) {
+    SQL_QUERY_TOTAL.with_label_values(&[tier, replicaset]).inc();
 }
 
-pub fn record_sql_query_error() {
-    SQL_QUERY_ERRORS_TOTAL.inc();
+pub fn record_sql_query_error(tier: &str, replicaset: &str) {
+    SQL_QUERY_ERRORS_TOTAL
+        .with_label_values(&[tier, replicaset])
+        .inc();
 }
 
 pub fn observe_sql_query_duration(duration_ms: f64) {

@@ -139,8 +139,6 @@ pub(super) fn action_plan<'i>(
             rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
                 .with_current_state(instance.target_state);
 
-        metrics::report_instance_state(&tier.name, instance_name, "Offline");
-
         let cas_parameters = prepare_update_instance_cas_request(
             &req,
             instance,
@@ -635,8 +633,6 @@ pub(super) fn action_plan<'i>(
         let req =
             rpc::update_instance::Request::new(instance_name.clone(), cluster_name, cluster_uuid)
                 .with_current_state(target_state);
-            
-        metrics::report_instance_state(&tier.name, instance_name, "Online");
 
         let cas_parameters = prepare_update_instance_cas_request(
             &req,

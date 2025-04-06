@@ -30,6 +30,7 @@ use sbroad::executor::engine::helpers::{
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
     replace_metadata_in_dql_result, try_get_metadata_from_plan,
 };
+use sbroad::executor::engine::Router;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
@@ -609,13 +610,23 @@ pub fn sql_dispatch(
 
     let result = dispatch(query, override_deadline);
 
+    let tier: String = runtime
+        .get_current_tier_name()
+        .map_err(|e| Error::Other(e.into()))?
+        .unwrap_or_else(|| SmolStr::new("unknown_tier"))
+        .to_string();
+
+    let raft_id = node.raft_id;
+    let inst = node.storage.instances.get(&raft_id)?;
+    let replicaset_name = inst.replicaset_name.clone().to_smolstr();
+
     let duration = Instant::now_fiber().duration_since(start).as_millis();
     metrics::observe_sql_query_duration(duration as f64);
-    metrics::record_sql_query_total();
+    metrics::record_sql_query_total(tier.as_str(), replicaset_name.as_str());
     match result {
         Ok(tuple) => Ok(tuple),
         Err(e) => {
-            metrics::record_sql_query_error();
+            metrics::record_sql_query_error(tier.as_str(), replicaset_name.as_str());
             Err(e)
         }
     }

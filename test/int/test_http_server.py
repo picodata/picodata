@@ -360,18 +360,17 @@ def test_picodata_metrics(instance: Instance) -> None:
 
     metrics_output = response.text
     expected_metrics = [
-        "governor_changes_total",
-        "sql_query_total",
-        "sql_query_errors_total",
-        "sql_query_duration_seconds",
-        "rpc_request_total",
-        # "rpc_request_errors_total", # Only used with certain label
-        "rpc_request_duration_seconds",
-        "global_tables_ops_total",
-        # "global_tables_ops_errors_total", # Only used with certain labels
-        "global_tables_write_latency_seconds",
-        "global_tables_records_total",
-        "instance_state",
+        "pico_governor_changes_total",
+        "pico_sql_query_total",
+        "pico_sql_query_errors_total",
+        "pico_sql_query_duration",
+        "pico_rpc_request_total",
+        # "pico_rpc_request_errors_total", # Only used with certain label
+        "pico_rpc_request_duration",
+        "pico_global_tables_records_total",
+        # "pico_global_tables_errors_total", # Only used with certain labels
+        "pico_global_tables_write_duration",
+        "pico_instance_state",
     ]
 
     for metric in expected_metrics:
