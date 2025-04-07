@@ -672,9 +672,9 @@ pub enum Entrypoint {
 ///
 /// Returns
 /// - `Ok(Some(Entrypoint::StartBoot))` if the cluster is not yet bootstrapped
-///    and this instance is chosen as the bootstrap leader.
+///   and this instance is chosen as the bootstrap leader.
 /// - `Ok(Some(Entrypoint::StartJoin { .. }))` if the cluster is not yet bootstrapped
-///    and this instance is a bootstrap follower.
+///   and this instance is a bootstrap follower.
 /// - `Ok(None)` if the cluster is already initialized.
 ///
 /// May return an error. Will never return a `StartDiscover` as next entrypoint.

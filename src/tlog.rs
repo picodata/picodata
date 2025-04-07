@@ -32,8 +32,8 @@ pub fn init_core_logger(destination: Option<&str>, level: SayLevel, format: LogF
         ///
         /// Parameters:
         /// - `init_str`: Destination descriptor. Pass a `null` for default
-        ///    behavior of loggin to stderr.
-        ///    (see also <https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-logging-log>)
+        ///   behavior of loggin to stderr.
+        ///   (see also <https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-logging-log>)
         ///
         /// - `level`: Log level
         ///

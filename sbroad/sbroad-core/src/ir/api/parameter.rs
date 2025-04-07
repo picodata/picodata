@@ -737,7 +737,7 @@ impl<'binder> ParamsBinder<'binder> {
     }
 
     fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
-        let mut ref_nodes = Vec::new();
+        let ref_nodes;
         {
             let filter = |node_id| {
                 matches!(
