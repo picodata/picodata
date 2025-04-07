@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 
 """
 This script imitates default initialization performed by `pgbench -i` command.
@@ -27,7 +27,7 @@ def main():
 
     # Connect to the database
     conn = psycopg.connect(args.connection, autocommit=True)
-    
+
     # Create tables
     print("Creating tables...")
 
