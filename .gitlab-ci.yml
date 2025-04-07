@@ -774,6 +774,7 @@ integration-sbroad:
     KUBERNETES_MEMORY_REQUEST: "6Gi"
   rules:
     - <<: *if-no-docs
+    - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
   tags:
