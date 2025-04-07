@@ -641,7 +641,7 @@ fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult
 ```
 
 Разработка тестового плагина завершена.
-Его [исходный код](https://git.picodata.io/core/plugin-example) можно найти на нашем Gitlab.
+Его [исходный код](https://github.com/picodata/plugin-example) можно найти на нашем Gitlab.
 
 См. также:
 
