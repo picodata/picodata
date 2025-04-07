@@ -340,9 +340,9 @@ impl PgValue {
             }
             (Value::Integer(v), Type::FLOAT8) => {
                 // Convert NUMBER value represented as integer to float.
-                let v = v.as_f64().ok_or(EncodingError::new(format!(
-                    "couldn't encode NUMBER value {v:?} as FLOAT8"
-                )))?;
+                let v = v.as_f64().ok_or_else(|| {
+                    EncodingError::new(format!("couldn't encode NUMBER value {v:?} as FLOAT8"))
+                })?;
                 Ok(PgValue::Float(v))
             }
             (Value::Map(_) | Value::Array(_), Type::JSON | Type::JSONB) => {
@@ -361,9 +361,9 @@ impl PgValue {
             }
             (Value::Integer(v), Type::NUMERIC) => {
                 // Decimal values can be represented as integers in msgpack.
-                let v = v.as_i64().ok_or(EncodingError::new(format!(
-                    "couldn't encode DECIMAL value {v:?} as NUMERIC"
-                )))?;
+                let v = v.as_i64().ok_or_else(|| {
+                    EncodingError::new(format!("couldn't encode DECIMAL value {v:?} as NUMERIC"))
+                })?;
                 Ok(PgValue::Numeric(Decimal(v.into())))
             }
             (Value::F32(_) | Value::F64(_), Type::NUMERIC) => {

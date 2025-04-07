@@ -102,14 +102,11 @@ impl<S> PgStorage<S> {
         if self.len() >= capacity {
             let parameter = self.context.capacity_parameter;
             // TODO: it should be configuration_limit_exceeded error
-            return Err(PgError::Other(
-                format!(
-                    "{kind} storage is full. Current size limit: {capacity}. \
-                    Please, increase storage limit using: \
-                    ALTER SYSTEM SET \"{parameter}\" TO <new-limit>",
-                )
-                .into(),
-            ));
+            return Err(PgError::other(format!(
+                "{kind} storage is full. Current size limit: {capacity}. \
+                Please, increase storage limit using: \
+                ALTER SYSTEM SET \"{parameter}\" TO <new-limit>",
+            )));
         }
 
         if key.1.is_empty() {
@@ -133,10 +130,17 @@ impl<S> PgStorage<S> {
         }
     }
 
+    #[inline(always)]
+    pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<&S> {
+        self.map.get(key)
+    }
+
+    #[inline(always)]
     pub fn remove(&mut self, key: &(ClientId, Rc<str>)) -> Option<S> {
         self.map.remove(key)
     }
 
+    #[inline(always)]
     pub fn remove_by_client_id(&mut self, id: ClientId) {
         self.map.retain(|k, _| k.0 != id)
     }
@@ -152,6 +156,7 @@ impl<S> PgStorage<S> {
             .collect()
     }
 
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.map.len()
     }
@@ -166,13 +171,9 @@ impl StatementStorage {
         tlog!(Info, "creating statement storage with capacity {capacity}");
         PgStorage::with_context(context)
     }
-
-    pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<Statement> {
-        self.map.get(key).map(|h| h.statement.clone())
-    }
 }
 
-type PortalStorage = PgStorage<Portal>;
+type PortalStorage = PgStorage<Box<Portal>>;
 
 impl PortalStorage {
     pub fn new() -> Self {
@@ -190,7 +191,7 @@ impl PortalStorage {
 
 // TODO: those shoudn't be global variables; move them to some context (backend?).
 thread_local! {
-    pub static PG_STATEMENTS: Rc<RefCell<StatementStorage>> = Rc::new(RefCell::new(StatementStorage::new()));
+    pub static PG_STATEMENTS: RefCell<StatementStorage> = RefCell::new(StatementStorage::new());
     pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
 }
 
@@ -204,18 +205,22 @@ pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> PgResult<T>
 where
     F: FnOnce(&mut Portal) -> PgResult<T>,
 {
-    let mut portal: Portal = PG_PORTALS.with(|storage| {
-        storage.borrow_mut().remove(&key).ok_or(PgError::Other(
-            format!("Couldn't find portal \'{}\'.", key.1).into(),
-        ))
+    let mut portal: Box<Portal> = PG_PORTALS.with(|storage| {
+        storage
+            .borrow_mut()
+            .remove(&key)
+            .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))
     })?;
+
     let result = f(&mut portal);
+
     // Statement could be closed while the processing portal was running,
     // so the portal wasn't in the storage and wasn't removed.
     // In that case there is no need to put it back.
     if !portal.statement().is_closed() {
         PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
     }
+
     result
 }
 
@@ -227,57 +232,43 @@ pub struct StatementInner {
     is_closed: Cell<bool>,
 }
 
-impl StatementInner {
-    fn new(mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
-        let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
-        let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
-        Ok(Self {
-            plan,
-            describe,
-            is_closed: Cell::new(false),
-        })
-    }
-
-    fn plan(&self) -> &Plan {
-        &self.plan
-    }
-
-    fn describe(&self) -> &StatementDescribe {
-        &self.describe
-    }
-
-    fn is_closed(&self) -> bool {
-        self.is_closed.get()
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
-    pub fn new(plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
-        Ok(Self(Rc::new(StatementInner::new(
+    pub fn new(mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
+        let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
+        let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
+        let inner = StatementInner {
             plan,
-            specified_param_oids,
-        )?)))
+            describe,
+            is_closed: false.into(),
+        };
+
+        Ok(Self(inner.into()))
     }
 
+    #[inline(always)]
     pub fn plan(&self) -> &Plan {
-        self.0.plan()
+        &self.0.plan
     }
 
+    #[inline(always)]
     pub fn describe(&self) -> &StatementDescribe {
-        self.0.describe()
+        &self.0.describe
     }
 
+    #[inline(always)]
     pub fn is_closed(&self) -> bool {
-        self.0.is_closed()
+        self.0.is_closed.get()
     }
 
+    #[inline(always)]
     pub fn set_is_closed(&self, is_closed: bool) {
         self.0.is_closed.replace(is_closed);
     }
 
+    #[inline(always)]
     fn ptr_eq(&self, other: &Statement) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
@@ -296,6 +287,10 @@ impl StatementHolder {
     pub fn new(statement: Statement) -> StatementHolder {
         let portals = PG_PORTALS.with(Rc::downgrade);
         Self { statement, portals }
+    }
+
+    pub fn statement(&self) -> Statement {
+        self.statement.clone()
     }
 }
 
@@ -373,28 +368,6 @@ pub fn derive_param_oids(plan: &mut Plan, param_oids: Vec<Oid>) -> PgResult<Vec<
     Ok(oids)
 }
 
-#[derive(Debug, Default)]
-pub struct Portal {
-    plan: Plan,
-    statement: Statement,
-    describe: PortalDescribe,
-    state: PortalState,
-    id: ClientId,
-}
-
-#[derive(Debug, Default)]
-enum PortalState {
-    #[default]
-    /// Portal has just been created.
-    NotStarted,
-    /// Portal has been executed and contains rows to be sent in batches.
-    StreamingRows(IntoIter<Vec<PgValue>>),
-    /// Portal has been executed and contains a result ready to be sent.
-    ResultReady(ExecuteResult),
-    /// Portal has been executed, and a result has been sent.
-    Done,
-}
-
 /// Get rows from dql-like(dql or explain) query execution result.
 fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<Value>>> {
     #[derive(Deserialize, Default, Debug)]
@@ -434,12 +407,34 @@ fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<V
         .collect()
 }
 
+#[derive(Debug, Default)]
+enum PortalState {
+    #[default]
+    /// Portal has just been created.
+    NotStarted,
+    /// Portal has been executed and contains rows to be sent in batches.
+    StreamingRows(IntoIter<Vec<PgValue>>),
+    /// Portal has been executed and contains a result ready to be sent.
+    ResultReady(ExecuteResult),
+    /// Portal has been executed, and a result has been sent.
+    Done,
+}
+
+#[derive(Debug, Default)]
+pub struct Portal {
+    plan: Plan,
+    statement: Statement,
+    describe: PortalDescribe,
+    state: PortalState,
+    id: ClientId,
+}
+
 impl Portal {
     pub fn new(
+        id: ClientId,
         plan: Plan,
         statement: Statement,
         output_format: Vec<FieldFormat>,
-        id: ClientId,
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
@@ -456,31 +451,35 @@ impl Portal {
         loop {
             match &mut self.state {
                 PortalState::NotStarted => self.start()?,
-                PortalState::ResultReady(_) => {
-                    let state = std::mem::replace(&mut self.state, PortalState::Done);
-                    match state {
-                        PortalState::ResultReady(result) => return Ok(result),
-                        _ => unreachable!(),
-                    }
+                PortalState::ResultReady(result) => {
+                    let result = std::mem::replace(result, ExecuteResult::Empty);
+                    self.state = PortalState::Done;
+
+                    return Ok(result);
                 }
                 PortalState::StreamingRows(ref mut stored_rows) => {
                     let taken: Vec<_> = stored_rows.take(max_rows).collect();
                     let row_count = taken.len();
                     let rows = Rows::new(taken, self.describe.row_info());
-                    if stored_rows.len() == 0 {
-                        self.state = PortalState::Done;
-                        return Ok(ExecuteResult::FinishedDql {
-                            rows,
-                            tag: self.describe.command_tag(),
-                            row_count,
-                        });
-                    }
-                    return Ok(ExecuteResult::SuspendedDql { rows });
+
+                    return Ok(match stored_rows.len() {
+                        0 => {
+                            self.state = PortalState::Done;
+
+                            ExecuteResult::FinishedDql {
+                                rows,
+                                row_count,
+                                tag: self.describe.command_tag(),
+                            }
+                        }
+                        _ => ExecuteResult::SuspendedDql { rows },
+                    });
                 }
                 _ => {
-                    return Err(PgError::Other(
-                        format!("Can't execute portal in state {:?}", self.state).into(),
-                    ));
+                    return Err(PgError::other(format!(
+                        "Can't execute portal in state {:?}",
+                        self.state
+                    )));
                 }
             }
         }

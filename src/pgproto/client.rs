@@ -1,6 +1,5 @@
 use super::{
     backend::Backend,
-    client::simple_query::process_query_message,
     error::{PgError, PgResult},
     messages,
     stream::{BeMessage, FeMessage, PgStream},
@@ -109,7 +108,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         match message {
             FeMessage::Query(query) => {
                 tlog!(Debug, "executing simple query: {}", query.query);
-                process_query_message(&mut self.stream, &self.backend, query)?;
+                simple_query::process_query_message(&mut self.stream, &self.backend, query)?;
                 self.loop_state = MessageLoopState::ReadyForQuery;
             }
             FeMessage::Parse(parse) => {

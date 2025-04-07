@@ -1,3 +1,5 @@
+#![warn(clippy::or_fun_call)]
+
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::{
     address::PgprotoAddress, introspection::Introspection, static_ref, storage::Catalog, tlog,

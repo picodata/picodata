@@ -117,6 +117,7 @@ pub enum PgError {
 }
 
 impl PgError {
+    /// NOTE: new uses of this helper or [`PgError::Other`] are highly discouraged.
     pub fn other<E: Into<Box<dyn std::error::Error>>>(e: E) -> Self {
         Self::Other(e.into())
     }

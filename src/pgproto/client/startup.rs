@@ -31,8 +31,12 @@ impl ClientParams {
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
                 let mut pair = pair.split('=');
-                let name = pair.next().ok_or(PgError::other("option with no name"))?;
-                let val = pair.next().ok_or(PgError::other("option with no value"))?;
+                let name = pair
+                    .next()
+                    .ok_or_else(|| PgError::other("option without name"))?;
+                let val = pair
+                    .next()
+                    .ok_or_else(|| PgError::other("option without value"))?;
                 match name {
                     "sql_motion_row_max" => {
                         sql_motion_row_max = Some(val.parse().map_err(PgError::other)?)

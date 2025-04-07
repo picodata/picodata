@@ -117,19 +117,17 @@ fn apply_default_options(
 }
 
 pub fn bind(
-    client_id: ClientId,
+    id: ClientId,
     stmt_name: String,
     portal_name: String,
     params: Vec<Value>,
     result_format: Vec<FieldFormat>,
     default_options: Vec<OptionSpec>,
 ) -> PgResult<()> {
-    let key = (client_id, stmt_name.into());
-    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
-        return Err(PgError::Other(
-            format!("Couldn't find statement \'{}\'.", key.1).into(),
-        ));
-    };
+    let key = (id, stmt_name.into());
+    let statement: Statement = PG_STATEMENTS
+        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
+        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
 
     let mut plan = statement.plan().clone();
     let is_dql = matches!(statement.describe().query_type(), QueryType::Dql);
@@ -149,13 +147,11 @@ pub fn bind(
         plan.apply_options()?;
         plan.optimize()?;
     }
-    let portal = Portal::new(plan, statement.clone(), result_format, client_id)?;
 
-    PG_PORTALS.with(|storage| {
-        storage
-            .borrow_mut()
-            .put((client_id, portal_name.into()), portal)
-    })?;
+    let key = (id, portal_name.into());
+    let portal = Portal::new(id, plan, statement.clone(), result_format)?;
+    PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal.into()))?;
+
     Ok(())
 }
 
@@ -165,18 +161,23 @@ pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteRes
     with_portals_mut((id, name), |portal| portal.execute(max_rows as usize))
 }
 
-pub fn parse(cid: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
+pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
     let runtime = RouterRuntime::new().map_err(Error::from)?;
     let mut cache = runtime.cache().lock();
+
+    let key = (id, name.into());
+
     let cache_entry = with_su(ADMIN_ID, || cache.get(&query.to_smolstr()))??;
     if let Some(plan) = cache_entry {
         let statement = Statement::new(plan.clone(), param_oids)?;
-        PG_STATEMENTS.with(|cache| cache.borrow_mut().put((cid, name.into()), statement.into()))?;
+        PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
         return Ok(());
     }
-    let metadata = &*runtime.metadata().lock();
+
     let plan = with_su(ADMIN_ID, || -> PgResult<IrPlan> {
-        let mut plan = <RouterRuntime as Router>::ParseTree::transform_into_plan(query, metadata)?;
+        let metadata = runtime.metadata().lock();
+        let mut plan =
+            <RouterRuntime as Router>::ParseTree::transform_into_plan(query, &*metadata)?;
         if runtime.provides_versions() {
             let mut table_version_map = TableVersionMap::with_capacity(plan.relations.tables.len());
             for table in plan.relations.tables.keys() {
@@ -187,26 +188,24 @@ pub fn parse(cid: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> 
         }
         Ok(plan)
     })
-    .map_err(|e| PgError::Other(e.into()))??;
+    .map_err(PgError::other)??;
+
     if !plan.is_empty() && !plan.is_tcl()? && !plan.is_ddl()? && !plan.is_acl()? {
         cache.put(query.into(), plan.clone())?;
     }
+
     let statement = Statement::new(plan, param_oids)?;
-    PG_STATEMENTS.with(|storage| {
-        storage
-            .borrow_mut()
-            .put((cid, name.into()), statement.into())
-    })?;
+    PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
+
     Ok(())
 }
 
 pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescribe> {
     let key = (id, name.into());
-    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
-        return Err(PgError::Other(
-            format!("Couldn't find statement \'{}\'.", key.1).into(),
-        ));
-    };
+    let statement: Statement = PG_STATEMENTS
+        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
+        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
+
     Ok(statement.describe().clone())
 }
 
@@ -216,12 +215,14 @@ pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
 
 pub fn close_statement(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
+    let key = (id, name.into());
+    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
 pub fn close_portal(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
+    let key = (id, name.into());
+    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
 pub fn close_client_statements(id: ClientId) {
@@ -234,14 +235,11 @@ pub fn close_client_portals(id: ClientId) {
 
 pub fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
     // In contrast to closing, deallocation can cause an error in PG.
-    PG_STATEMENTS.with(|storage| {
-        storage
-            .borrow_mut()
-            .remove(&(id, name.into()))
-            .ok_or_else(|| {
-                PgError::Other(format!("prepared statement {} does not exist.", name).into())
-            })
-    })?;
+    let key = (id, name.into());
+    PG_STATEMENTS
+        .with(|storage| storage.borrow_mut().remove(&key))
+        .ok_or_else(|| PgError::other(format!("prepared statement {name} does not exist.")))?;
+
     Ok(())
 }
 
