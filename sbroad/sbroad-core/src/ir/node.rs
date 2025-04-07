@@ -17,7 +17,7 @@ use tcl::Tcl;
 
 use super::{
     ddl::AlterSystemType,
-    expression::{cast, FunctionFeature, TrimKind},
+    expression::{cast, FunctionFeature, TrimKind, VolatilityType},
     operator::{self, ConflictStrategy, JoinKind, OrderByElement, UpdateStrategy},
     relation::DerivedType,
 };
@@ -290,21 +290,17 @@ impl From<Row> for NodeAligned {
     }
 }
 
-/// Stable function cannot modify the database and
-/// is guaranteed to return the same results given
-/// the same arguments for all rows within a single
-/// statement.
-///
 /// Example: `bucket_id("1")` (the number of buckets can be
 /// changed only after restarting the cluster).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
-pub struct StableFunction {
+pub struct ScalarFunction {
     /// Function name.
     pub name: SmolStr,
     /// Function arguments.
     pub children: Vec<NodeId>,
     /// Optional function feature.
     pub feature: Option<FunctionFeature>,
+    pub volatility_type: VolatilityType,
     /// Function return type.
     pub func_type: DerivedType,
     /// Whether function is provided by tarantool,
@@ -314,9 +310,9 @@ pub struct StableFunction {
     pub is_system: bool,
 }
 
-impl From<StableFunction> for NodeAligned {
-    fn from(value: StableFunction) -> Self {
-        Self::Node96(Node96::StableFunction(value))
+impl From<ScalarFunction> for NodeAligned {
+    fn from(value: ScalarFunction) -> Self {
+        Self::Node96(Node96::ScalarFunction(value))
     }
 }
 
@@ -1328,7 +1324,7 @@ impl Node64 {
 pub enum Node96 {
     Reference(Reference),
     Invalid(Invalid),
-    StableFunction(StableFunction),
+    ScalarFunction(ScalarFunction),
     DropProc(DropProc),
     Insert(Insert),
     CreatePlugin(CreatePlugin),
@@ -1345,8 +1341,8 @@ impl Node96 {
             Node96::DropProc(drop_proc) => NodeOwned::Ddl(DdlOwned::DropProc(drop_proc)),
             Node96::Insert(insert) => NodeOwned::Relational(RelOwned::Insert(insert)),
             Node96::Invalid(inv) => NodeOwned::Invalid(inv),
-            Node96::StableFunction(stable_func) => {
-                NodeOwned::Expression(ExprOwned::StableFunction(stable_func))
+            Node96::ScalarFunction(scalar_func) => {
+                NodeOwned::Expression(ExprOwned::ScalarFunction(scalar_func))
             }
             Node96::DropPlugin(drop_plugin) => NodeOwned::Plugin(PluginOwned::Drop(drop_plugin)),
             Node96::CreatePlugin(create) => NodeOwned::Plugin(PluginOwned::Create(create)),

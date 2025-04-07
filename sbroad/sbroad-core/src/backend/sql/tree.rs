@@ -6,9 +6,9 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
     GroupBy, Having, Intersect, Join, Like, Limit, Motion, NamedWindows, Node, NodeId, OrderBy,
-    Over, Projection, Reference, ReferenceAsteriskSource, Row, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr, Union, UnionAll, Values,
-    ValuesRow, Window,
+    Over, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
+    Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -968,7 +968,7 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::Row { .. } => self.add_row(id),
                 Expression::Bool { .. } | Expression::Arithmetic { .. } => self.add_binary_op(id),
                 Expression::Unary { .. } => self.add_unary_op(id),
-                Expression::StableFunction { .. } => self.add_stable_func(id),
+                Expression::ScalarFunction { .. } => self.add_stable_func(id),
                 Expression::Trim { .. } => self.add_trim(id),
                 Expression::LocalTimestamp { .. } | Expression::Parameter { .. } => {}
             },
@@ -2136,7 +2136,7 @@ impl<'p> SyntaxPlan<'p> {
         let expr = plan
             .get_expression_node(id)
             .expect("node {id} must exist in the plan");
-        let Expression::StableFunction(StableFunction {
+        let Expression::ScalarFunction(ScalarFunction {
             children: args,
             feature,
             ..

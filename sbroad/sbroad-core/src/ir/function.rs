@@ -1,28 +1,18 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::aggregates::AggregateKind;
-use crate::ir::node::{NodeId, StableFunction};
+use crate::ir::node::{NodeId, ScalarFunction};
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
-use super::expression::FunctionFeature;
+use super::expression::{FunctionFeature, VolatilityType};
 use super::relation::DerivedType;
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum Behavior {
-    /// The function is a stable function, it does not have any side effects.
-    /// It cannot modify the database, and that within a single table scan it
-    /// will consistently return the same result for the same argument values,
-    /// but that its result could change across SQL statements.
-    /// This type of functions can be executed on any node.
-    Stable,
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Function {
     pub name: SmolStr,
-    pub behavior: Behavior,
+    pub volatility: VolatilityType,
     pub func_type: DerivedType,
     /// True if this function is provided by tarantool,
     /// when referencing this func in local sql, we must
@@ -32,10 +22,15 @@ pub struct Function {
 
 impl Function {
     #[must_use]
-    pub fn new(name: SmolStr, behavior: Behavior, func_type: DerivedType, is_system: bool) -> Self {
+    pub fn new(
+        name: SmolStr,
+        volatility: VolatilityType,
+        func_type: DerivedType,
+        is_system: bool,
+    ) -> Self {
         Self {
             name,
-            behavior,
+            volatility,
             func_type,
             is_system,
         }
@@ -43,12 +38,22 @@ impl Function {
 
     #[must_use]
     pub fn new_stable(name: SmolStr, func_type: DerivedType, is_system: bool) -> Self {
-        Self::new(name, Behavior::Stable, func_type, is_system)
+        Self::new(name, VolatilityType::Stable, func_type, is_system)
+    }
+
+    #[must_use]
+    pub fn new_volatile(name: SmolStr, func_type: DerivedType, is_system: bool) -> Self {
+        Self::new(name, VolatilityType::Volatile, func_type, is_system)
     }
 
     #[must_use]
     pub fn is_stable(&self) -> bool {
-        matches!(self.behavior, Behavior::Stable)
+        matches!(self.volatility, VolatilityType::Stable)
+    }
+
+    #[must_use]
+    pub fn is_volatile(&self) -> bool {
+        matches!(self.volatility, VolatilityType::Volatile)
     }
 }
 
@@ -66,12 +71,46 @@ impl Plan {
                 Some(format_smolstr!("function {} is not stable", function.name)),
             ));
         }
-        let func_expr = StableFunction {
+        let func_expr = ScalarFunction {
             name: function.name.to_smolstr(),
             children,
             feature,
             func_type: function.func_type,
             is_system: function.is_system,
+            volatility_type: function.volatility,
+        };
+        let func_id = self.nodes.push(func_expr.into());
+        Ok(func_id)
+    }
+
+    /// Adds a volatile function to the plan.
+    ///
+    /// # Errors
+    /// - Function is not volatile.
+    /// - Function is not found in the plan.
+    pub fn add_volatile_function(
+        &mut self,
+        function: &Function,
+        children: Vec<NodeId>,
+        feature: Option<FunctionFeature>,
+    ) -> Result<NodeId, SbroadError> {
+        if !function.is_volatile() {
+            return Err(SbroadError::Invalid(
+                Entity::VolatileFunction,
+                Some(format_smolstr!(
+                    "function {} is not volatile",
+                    function.name
+                )),
+            ));
+        }
+
+        let func_expr = ScalarFunction {
+            name: function.name.to_smolstr(),
+            children,
+            feature,
+            func_type: function.func_type,
+            is_system: function.is_system,
+            volatility_type: function.volatility,
         };
         let func_id = self.nodes.push(func_expr.into());
         Ok(func_id)
@@ -121,12 +160,13 @@ impl Plan {
         } else {
             None
         };
-        let func_expr = StableFunction {
+        let func_expr = ScalarFunction {
             name: function.to_lowercase().to_smolstr(),
             func_type: kind.get_type(self, &children)?,
             children,
             feature,
             is_system: true,
+            volatility_type: super::expression::VolatilityType::Stable,
         };
         let id = self.nodes.push(func_expr.into());
         Ok(id)

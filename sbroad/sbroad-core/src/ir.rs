@@ -28,7 +28,7 @@ use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
     Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId,
-    NodeOwned, OrderBy, Projection, Reference, Row, ScanRelation, Selection, StableFunction, Trim,
+    NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection, Trim,
     UnaryExpr, Values,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
@@ -151,8 +151,8 @@ impl Nodes {
                 Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
                 Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
                 Node96::Invalid(inv) => Node::Invalid(inv),
-                Node96::StableFunction(stable_func) => {
-                    Node::Expression(Expression::StableFunction(stable_func))
+                Node96::ScalarFunction(stable_func) => {
+                    Node::Expression(Expression::ScalarFunction(stable_func))
                 }
                 Node96::CreatePlugin(create) => Node::Plugin(Plugin::Create(create)),
                 Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
@@ -317,8 +317,8 @@ impl Nodes {
                     Node96::DropProc(drop_proc) => MutNode::Ddl(MutDdl::DropProc(drop_proc)),
                     Node96::Insert(insert) => MutNode::Relational(MutRelational::Insert(insert)),
                     Node96::Invalid(inv) => MutNode::Invalid(inv),
-                    Node96::StableFunction(stable_func) => {
-                        MutNode::Expression(MutExpression::StableFunction(stable_func))
+                    Node96::ScalarFunction(scalar_func) => {
+                        MutNode::Expression(MutExpression::ScalarFunction(scalar_func))
                     }
                     Node96::CreatePlugin(create) => MutNode::Plugin(MutPlugin::Create(create)),
                     Node96::EnablePlugin(enable) => MutNode::Plugin(MutPlugin::Enable(enable)),
@@ -1121,7 +1121,7 @@ impl Plan {
         let filter = |id: NodeId| -> bool {
             matches!(
                 self.get_node(id),
-                Ok(Node::Expression(Expression::StableFunction(_)))
+                Ok(Node::Expression(Expression::ScalarFunction(_)))
             )
         };
         let mut dfs = PostOrderWithFilter::with_capacity(
@@ -1134,7 +1134,7 @@ impl Plan {
             if !check_top && id == expr_id {
                 continue;
             }
-            if let Node::Expression(Expression::StableFunction(StableFunction { name, .. })) =
+            if let Node::Expression(Expression::ScalarFunction(ScalarFunction { name, .. })) =
                 self.get_node(id)?
             {
                 if Expression::is_aggregate_name(name) {
@@ -1690,7 +1690,7 @@ impl Plan {
                 }
             }
             MutExpression::Row(Row { list: arr, .. })
-            | MutExpression::StableFunction(StableFunction { children: arr, .. }) => {
+            | MutExpression::ScalarFunction(ScalarFunction { children: arr, .. }) => {
                 for child in arr.iter_mut() {
                     if *child == old_id {
                         *child = new_id;
@@ -1889,7 +1889,7 @@ impl Plan {
         let should_not_cover = matches!(
             (top, child),
             (
-                Expression::StableFunction(_)
+                Expression::ScalarFunction(_)
                     | Expression::LocalTimestamp(_)
                     | Expression::Row(_)
                     | Expression::Alias(_)
@@ -1900,7 +1900,7 @@ impl Plan {
                 _
             ) | (
                 _,
-                Expression::StableFunction(_)
+                Expression::ScalarFunction(_)
                     | Expression::Trim(_)
                     | Expression::LocalTimestamp(_)
                     | Expression::CountAsterisk(_)

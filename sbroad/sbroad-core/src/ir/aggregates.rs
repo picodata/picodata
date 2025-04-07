@@ -4,7 +4,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 use crate::errors::{Entity, SbroadError};
 use crate::ir::expression::cast::Type;
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{NodeId, Reference, StableFunction};
+use crate::ir::node::{NodeId, Reference, ScalarFunction};
 use crate::ir::operator::Arithmetic;
 use crate::ir::relation::Type as RelType;
 use crate::ir::Plan;
@@ -16,7 +16,7 @@ use std::rc::Rc;
 use super::expression::{
     ColumnPositionMap, Comparator, FunctionFeature, Position, EXPR_HASH_DEPTH,
 };
-use super::function::{Behavior, Function};
+use super::function::Function;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Having, Projection};
@@ -261,7 +261,7 @@ impl Aggregate {
         let children: Vec<NodeId> = match self.kind {
             AggregateKind::AVG => vec![plan.add_cast(ref_id, Type::Double)?],
             AggregateKind::GRCONCAT => {
-                let Expression::StableFunction(StableFunction { children, .. }) =
+                let Expression::ScalarFunction(ScalarFunction { children, .. }) =
                     plan.get_expression_node(self.fun_id)?
                 else {
                     unreachable!("Aggregate should reference expression by fun_id")
@@ -281,12 +281,13 @@ impl Aggregate {
             None
         };
         let func_type = self.kind.get_type(plan, &children)?;
-        let final_aggr = StableFunction {
+        let final_aggr = ScalarFunction {
             name: final_kind.to_smolstr(),
             children,
             feature,
             func_type,
             is_system: true,
+            volatility_type: super::expression::VolatilityType::Stable,
         };
         let aggr_id = plan.nodes.push(final_aggr.into());
         Ok(aggr_id)
@@ -398,7 +399,7 @@ impl<'plan> AggrCollector<'plan> {
 
     fn find(&mut self, current: NodeId, parent_expr: Option<NodeId>) -> Result<(), SbroadError> {
         let expr = self.plan.get_expression_node(current)?;
-        if let Expression::StableFunction(StableFunction { name, feature, .. }) = expr {
+        if let Expression::ScalarFunction(ScalarFunction { name, feature, .. }) = expr {
             let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
             let parent_expr = parent_expr.expect(
                 "Aggregate stable function under final relational node should have a parent expr",
@@ -516,9 +517,9 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let fun: Function = Function {
             name: kind.to_smolstr(),
-            behavior: Behavior::Stable,
             func_type: kind.get_type(self, arguments)?,
             is_system: true,
+            volatility: super::expression::VolatilityType::Stable,
         };
         // We can reuse aggregate expression between local aggregates, because
         // all local aggregates are located inside the same motion subtree and we
@@ -554,7 +555,7 @@ impl Plan {
                     continue;
                 }
 
-                let Expression::StableFunction(StableFunction {
+                let Expression::ScalarFunction(ScalarFunction {
                     children: arguments,
                     ..
                 }) = self.get_expression_node(aggr.fun_id)?

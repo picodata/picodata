@@ -6,8 +6,8 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NamedWindows, NodeId,
-    OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    StableFunction, Union, UnionAll, Update, Values, ValuesRow,
+    OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -248,7 +248,7 @@ fn subtree_next<'plan>(
                 Expression::Trim { .. } => iter.handle_trim(expr),
                 Expression::Like { .. } => iter.handle_like(expr),
                 Expression::Row(Row { list, .. })
-                | Expression::StableFunction(StableFunction { children: list, .. }) => {
+                | Expression::ScalarFunction(ScalarFunction { children: list, .. }) => {
                     let child_step = *iter.get_child().borrow();
                     return match list.get(child_step) {
                         None => None,

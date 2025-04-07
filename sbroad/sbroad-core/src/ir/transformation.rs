@@ -22,7 +22,7 @@ use super::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Join, NodeId, Row, Selection, StableFunction,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Join, NodeId, Row, ScalarFunction, Selection,
     Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
@@ -237,7 +237,7 @@ impl Plan {
                 | Expression::Row(_)
                 | Expression::Cast(_)
                 | Expression::Case(_)
-                | Expression::StableFunction(_)
+                | Expression::ScalarFunction(_)
                 | Expression::Unary(_),
             )) = self.get_node(node_id)
             {
@@ -390,7 +390,7 @@ impl Plan {
                     map.replace(target);
                 }
                 MutExpression::Row(Row { list, .. })
-                | MutExpression::StableFunction(StableFunction { children: list, .. }) => {
+                | MutExpression::ScalarFunction(ScalarFunction { children: list, .. }) => {
                     for id in list {
                         map.replace(id);
                     }

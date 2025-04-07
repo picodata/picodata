@@ -8,6 +8,7 @@ use tarantool::tuple::Tuple;
 
 use crate::cbo::histogram::Scalar;
 use crate::cbo::{ColumnStats, TableColumnPair, TableStats};
+use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::NodeId;
 use crate::utils::MutexLike;
 use std::any::Any;
@@ -77,13 +78,23 @@ pub fn get_builtin_functions() -> &'static [Function] {
 
     BUILTINS.get_or_init(|| {
         vec![
+            // stable functions
             Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
             Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
             Function::new_stable("substring".into(), DerivedType::new(Type::String), false),
+            // stable system functions
             Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
             Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
             Function::new_stable("upper".into(), DerivedType::new(Type::String), true),
             Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
+            // volatile functions
+            Function::new_volatile(
+                get_real_function_name("instance_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(Type::String),
+                false,
+            ),
         ]
     })
 }

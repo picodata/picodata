@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, Like,
-    LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row, StableFunction, Trim,
+    LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim,
     UnaryExpr, Window,
 };
 
@@ -23,7 +23,7 @@ pub enum ExprOwned {
     Like(Like),
     Reference(Reference),
     Row(Row),
-    StableFunction(StableFunction),
+    ScalarFunction(ScalarFunction),
     Trim(Trim),
     Unary(UnaryExpr),
     CountAsterisk(CountAsterisk),
@@ -50,7 +50,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Like(like) => like.into(),
             ExprOwned::Reference(reference) => reference.into(),
             ExprOwned::Row(row) => row.into(),
-            ExprOwned::StableFunction(stable_func) => stable_func.into(),
+            ExprOwned::ScalarFunction(stable_func) => stable_func.into(),
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
             ExprOwned::LocalTimestamp(lt) => lt.into(),
@@ -82,7 +82,7 @@ pub enum Expression<'a> {
     Like(&'a Like),
     Reference(&'a Reference),
     Row(&'a Row),
-    StableFunction(&'a StableFunction),
+    ScalarFunction(&'a ScalarFunction),
     Trim(&'a Trim),
     Unary(&'a UnaryExpr),
     CountAsterisk(&'a CountAsterisk),
@@ -105,7 +105,7 @@ pub enum MutExpression<'a> {
     Like(&'a mut Like),
     Reference(&'a mut Reference),
     Row(&'a mut Row),
-    StableFunction(&'a mut StableFunction),
+    ScalarFunction(&'a mut ScalarFunction),
     Trim(&'a mut Trim),
     Unary(&'a mut UnaryExpr),
     CountAsterisk(&'a mut CountAsterisk),
@@ -159,7 +159,7 @@ impl Expression<'_> {
     #[must_use]
     pub fn is_aggregate_fun(&self) -> bool {
         match self {
-            Expression::StableFunction(StableFunction { name, .. }) => {
+            Expression::ScalarFunction(ScalarFunction { name, .. }) => {
                 Expression::is_aggregate_name(name)
             }
             _ => false,
@@ -209,7 +209,7 @@ impl Expression<'_> {
             Expression::CountAsterisk(count) => ExprOwned::CountAsterisk((*count).clone()),
             Expression::Reference(reference) => ExprOwned::Reference((*reference).clone()),
             Expression::Row(row) => ExprOwned::Row((*row).clone()),
-            Expression::StableFunction(sfunc) => ExprOwned::StableFunction((*sfunc).clone()),
+            Expression::ScalarFunction(sfunc) => ExprOwned::ScalarFunction((*sfunc).clone()),
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
             Expression::LocalTimestamp(lt) => ExprOwned::LocalTimestamp((*lt).clone()),

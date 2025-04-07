@@ -105,6 +105,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### SQL
 - SQL supports `TRUNCATE` operation.
 - SQL supports `ALTER TABLE t ADD COLUMN` operation.
+- SQL supports volatile scalar functions: `instance_uuid`.
 
 ### Configuration
 

@@ -1,10 +1,11 @@
 use crate::errors::SbroadError;
+use crate::frontend::sql::get_real_function_name;
 use crate::ir::expression::cast::Type as CastType;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Frame, FrameType, Like,
-    NodeId, Over, Reference, Row, StableFunction, Trim, UnaryExpr, ValuesRow, Window,
+    NodeId, Over, Reference, Row, ScalarFunction, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::relation::Type as SbroadType;
@@ -243,7 +244,7 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Row(exprs);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::StableFunction(StableFunction {
+        Expression::ScalarFunction(ScalarFunction {
             name,
             children,
             feature: _,
@@ -412,6 +413,11 @@ fn default_type_system() -> TypeSystem {
         // String operations.
         Function::new_operator("||", [Text, Text], Text),
         // Functions.
+        Function::new_scalar(
+            get_real_function_name("instance_uuid").expect("shouldn't fail"),
+            [],
+            Text,
+        ),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),
         Function::new_scalar("trim", [Text, Text], Text),

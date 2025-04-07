@@ -276,7 +276,7 @@ impl Plan {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Escape")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *escape)?;
                 }
-                Expression::StableFunction(_) => writeln!(buf, "StableFunction")?,
+                Expression::ScalarFunction(_) => writeln!(buf, "ScalarFunction")?,
                 Expression::Unary(UnaryExpr { op, child }) => {
                     writeln!(buf, "Unary [op: {op}]")?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "Child")?;

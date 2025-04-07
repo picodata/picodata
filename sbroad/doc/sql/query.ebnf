@@ -31,6 +31,7 @@ expression  ::= ('NOT'* (
                     | like
                     | localtimestamp
                     | ilike
+                    | instance_uuid
                     | substr
                     | substring
                     | to_char
@@ -83,6 +84,7 @@ coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
+instance_uuid    ::= 'INSTANCE_UUID' '(' ')'
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'
 trim        ::= 'TRIM' '('

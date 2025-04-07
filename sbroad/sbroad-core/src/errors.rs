@@ -112,6 +112,8 @@ pub enum Entity {
     SpaceMetadata,
     /// corresponds to Function structs
     SQLFunction,
+    /// corresponds to Volatile structs
+    VolatileFunction,
     /// corresponds to struct Statement
     Statement,
     /// corresponds to CBO statistics
@@ -204,6 +206,7 @@ impl fmt::Display for Entity {
             Entity::SpaceEngine => "space engine".to_smolstr(),
             Entity::SpaceMetadata => "space metadata".to_smolstr(),
             Entity::SQLFunction => "SQL function".to_smolstr(),
+            Entity::VolatileFunction => "volatile function".to_smolstr(),
             Entity::Statement => "statement".to_smolstr(),
             Entity::Statistics => "statistics".to_smolstr(),
             Entity::SubQuery => "sub-query plan subtree".to_smolstr(),

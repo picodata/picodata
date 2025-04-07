@@ -19,7 +19,7 @@ use super::operator::OrderByEntity;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
     Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Relational, Row,
-    StableFunction, Trim, UnaryExpr, Value,
+    ScalarFunction, Trim, UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
@@ -41,6 +41,18 @@ pub enum FunctionFeature {
     Distinct,
     /// Current function is a substring function and has one of 5 substring variants.
     Substring(Substring),
+}
+
+#[derive(Clone, Debug, Hash, Deserialize, PartialEq, Eq, Serialize, Copy)]
+pub enum VolatilityType {
+    /// Stable function cannot modify the database and
+    /// is guaranteed to return the same results given
+    /// the same arguments for all rows within a single
+    /// statement.
+    Stable,
+    /// Volatile function can produce different results
+    /// on different instances in case of distributed plan.
+    Volatile,
 }
 
 #[derive(Clone, Debug, Hash, Deserialize, PartialEq, Eq, Serialize)]
@@ -582,25 +594,28 @@ impl<'plan> Comparator<'plan> {
                                 .all(|(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false)));
                         }
                     }
-                    Expression::StableFunction(StableFunction {
+                    Expression::ScalarFunction(ScalarFunction {
                         name: name_left,
                         children: children_left,
                         feature: feature_left,
                         func_type: func_type_left,
                         is_system: is_aggr_left,
+                        volatility_type: volatility_type_left,
                     }) => {
-                        if let Expression::StableFunction(StableFunction {
+                        if let Expression::ScalarFunction(ScalarFunction {
                             name: name_right,
                             children: children_right,
                             feature: feature_right,
                             func_type: func_type_right,
                             is_system: is_aggr_right,
+                            volatility_type: volatility_type_right,
                         }) = right
                         {
                             return Ok(name_left == name_right
                                 && feature_left == feature_right
                                 && func_type_left == func_type_right
                                 && is_aggr_left == is_aggr_right
+                                && volatility_type_left == volatility_type_right
                                 && children_left.iter().zip(children_right.iter()).all(
                                     |(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false),
                                 ));
@@ -812,12 +827,13 @@ impl<'plan> Comparator<'plan> {
                     self.hash_for_child_expr(*child, depth);
                 }
             }
-            Expression::StableFunction(StableFunction {
+            Expression::ScalarFunction(ScalarFunction {
                 name,
                 children,
                 func_type,
                 feature,
                 is_system: is_aggr,
+                ..
             }) => {
                 feature.hash(state);
                 func_type.hash(state);

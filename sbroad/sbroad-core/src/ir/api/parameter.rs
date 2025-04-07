@@ -6,7 +6,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::ArithmeticExpr;
 use crate::ir::node::{
     Alias, BoolExpr, Concat, Constant, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
-    NodeId, Parameter, Reference, Row, Selection, StableFunction, ValuesRow,
+    NodeId, Parameter, Reference, Row, ScalarFunction, Selection, ValuesRow,
 };
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
@@ -105,7 +105,7 @@ fn build_should_cover_with_row_map(
                 }
                 Expression::Trim(_)
                 | Expression::Row(_)
-                | Expression::StableFunction(_)
+                | Expression::ScalarFunction(_)
                 | Expression::Case(_)
                 | Expression::Window(_)
                 | Expression::Over(_)
@@ -417,7 +417,7 @@ impl Plan {
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
         for (id, node) in self.nodes.arena96.iter().enumerate() {
-            let Node96::StableFunction(_) = node else {
+            let Node96::ScalarFunction(_) = node else {
                 continue;
             };
             let node_id = NodeId {
@@ -425,7 +425,7 @@ impl Plan {
                 arena_type: ArenaType::Arena96,
             };
 
-            if let Node::Expression(Expression::StableFunction(StableFunction {
+            if let Node::Expression(Expression::ScalarFunction(ScalarFunction {
                 children,
                 feature,
                 ..
@@ -466,7 +466,7 @@ impl Plan {
         }
 
         for (node_id, new_name) in new_names {
-            if let MutNode::Expression(MutExpression::StableFunction(StableFunction {
+            if let MutNode::Expression(MutExpression::ScalarFunction(ScalarFunction {
                 name,
                 is_system,
                 ..
@@ -483,7 +483,7 @@ impl Plan {
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
         for (id, node) in self.nodes.arena96.iter().enumerate() {
-            let Node96::StableFunction(_) = node else {
+            let Node96::ScalarFunction(_) = node else {
                 continue;
             };
             let node_id = NodeId {
@@ -491,7 +491,7 @@ impl Plan {
                 arena_type: ArenaType::Arena96,
             };
 
-            if let Node::Expression(Expression::StableFunction(StableFunction {
+            if let Node::Expression(Expression::ScalarFunction(ScalarFunction {
                 name,
                 children,
                 feature: Some(FunctionFeature::Substring(substr)),
@@ -630,7 +630,7 @@ impl Plan {
         }
 
         for (node_id, new_name) in new_names {
-            if let MutNode::Expression(MutExpression::StableFunction(StableFunction {
+            if let MutNode::Expression(MutExpression::ScalarFunction(ScalarFunction {
                 name, ..
             })) = self.get_mut_node(node_id)?
             {

@@ -227,7 +227,7 @@ impl Plan {
                     expr_id
                 }
             }
-            Expression::StableFunction(_) | Expression::Cast(_) | Expression::Reference(_) => {
+            Expression::ScalarFunction(_) | Expression::Cast(_) | Expression::Reference(_) => {
                 self.cover_with_not(expr_id, &not_state)?
             }
             Expression::Row(Row { list, .. }) => {

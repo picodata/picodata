@@ -3,8 +3,8 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Reference, ScanRelation,
-    StableFunction,
+    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Reference, ScalarFunction,
+    ScanRelation,
 };
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -495,7 +495,7 @@ impl ExecutionPlan {
                                     }
                                     push_identifier(&mut sql, alias);
                                 }
-                                Expression::StableFunction(StableFunction {
+                                Expression::ScalarFunction(ScalarFunction {
                                     name,
                                     is_system,
                                     ..

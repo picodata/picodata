@@ -3,7 +3,7 @@ use crate::ir::expression::ExpressionId;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Like, NodeId, Reference, Row,
-    StableFunction, Trim, UnaryExpr,
+    ScalarFunction, Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::transformation::redistribution::BoolOp;
@@ -140,7 +140,7 @@ impl ReferredMap {
                     }
                 }
                 Expression::Row(Row { list: children, .. })
-                | Expression::StableFunction(StableFunction { children, .. }) => {
+                | Expression::ScalarFunction(ScalarFunction { children, .. }) => {
                     children.iter().fold(Referred::None, |acc, x| {
                         acc.add(referred.get(*x).unwrap_or(&Referred::None))
                     })

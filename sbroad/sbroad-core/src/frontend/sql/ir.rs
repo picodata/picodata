@@ -12,8 +12,8 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
     Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, NamedWindows, Node,
-    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScanCte, ScanRelation,
-    ScanSubQuery, SelectWithoutScan, Selection, StableFunction, Trim, UnaryExpr, Union, UnionAll,
+    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScalarFunction, ScanCte,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
     Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
@@ -288,7 +288,7 @@ impl SubtreeCloner {
                 list: ref mut children,
                 distribution: _,
             })
-            | ExprOwned::StableFunction(StableFunction {
+            | ExprOwned::ScalarFunction(ScalarFunction {
                 ref mut children, ..
             }) => {
                 *children = self.copy_list(&*children)?;

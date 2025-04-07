@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{NodeId, Row, StableFunction};
+use crate::ir::node::{NodeId, Row, ScalarFunction};
 use crate::ir::{Node, Nodes};
 
 trait ExpressionTreeIterator<'nodes>: TreeIterator<'nodes> {
@@ -41,7 +41,7 @@ impl<'n> Nodes {
     #[must_use]
     pub fn aggregate_iter(&'n self, current: NodeId, make_row_leaf: bool) -> AggregateIterator<'n> {
         let must_stop =
-            if let Some(Node::Expression(Expression::StableFunction(StableFunction {
+            if let Some(Node::Expression(Expression::ScalarFunction(ScalarFunction {
                 name, ..
             }))) = self.get(current)
             {
@@ -151,7 +151,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
 
                             None
                         }
-                        Expression::StableFunction(StableFunction { children, .. }) => {
+                        Expression::ScalarFunction(ScalarFunction { children, .. }) => {
                             let child_step = *iter.get_child().borrow();
                             match children.get(child_step) {
                                 None => None,

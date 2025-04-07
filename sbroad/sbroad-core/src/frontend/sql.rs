@@ -8,7 +8,7 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy, LocalTimestamp,
-    NamedWindows, Over, Reference, ReferenceAsteriskSource, StableFunction, TruncateTable, Window,
+    NamedWindows, Over, Reference, ReferenceAsteriskSource, ScalarFunction, TruncateTable, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
@@ -45,7 +45,7 @@ use crate::ir::ddl::{Language, ParamDef};
 use crate::ir::expression::cast::Type as CastType;
 use crate::ir::expression::{
     ColumnPositionMap, ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, FunctionFeature,
-    Position, TrimKind,
+    Position, TrimKind, VolatilityType,
 };
 use crate::ir::expression::{NewColumnsSource, Substring};
 use crate::ir::helpers::RepeatableState;
@@ -102,6 +102,38 @@ fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
         Rule::Md5 => AuthMethod::Md5,
         _ => unreachable!("got a non-auth parsing rule"),
     }
+}
+
+const NUM_OF_VOLATILE_FUNCTIONS: usize = 1;
+
+/// Names used by the user in SQL.
+static USER_FACING_NAMES_OF_FUNCTIONS: [&str; NUM_OF_VOLATILE_FUNCTIONS] = ["instance_uuid"];
+
+/// Names of functions in picodata .rs files, which annotated with `#[tarantool::proc]` and exposed to SQL.
+pub static NAMES_OF_FUNCTIONS_IN_SOURCES: [&str; NUM_OF_VOLATILE_FUNCTIONS] =
+    ["proc_instance_uuid"];
+
+/// '.' + name in sources. Plain name in sources (which is exported by picodata) doesn't work, because
+/// when tarantool executing box.func['proc_name']:call(..) (box.execute("select proc_name()")
+/// it try to find dynlib under the 'libproc_name' name with defined `proc_name` in it.
+/// With . as first symbol tarantool try to find proc symbol in current executable.
+static NAMES_OF_FUNCTIONS_IN_TARANTOOL: [&str; NUM_OF_VOLATILE_FUNCTIONS] = [".proc_instance_uuid"];
+
+// Kind of map from `user-facing names` to names in sources and names
+// in `_func` space.
+#[rustfmt::skip]
+static VOLATILE_FUNCTIONS_NAMINGS: [(&str, &str, &str); NUM_OF_VOLATILE_FUNCTIONS] = [
+    (USER_FACING_NAMES_OF_FUNCTIONS[0], NAMES_OF_FUNCTIONS_IN_SOURCES[0], NAMES_OF_FUNCTIONS_IN_TARANTOOL[0]),
+];
+
+/// Maps (maybe quoted or uppercased) name from user to real procedure name in tarantool.
+/// Real name stands for name in _func space.
+pub fn get_real_function_name(name_from_sql: &str) -> Option<&'static str> {
+    let normalized_name = normalize_name_from_sql(name_from_sql);
+    VOLATILE_FUNCTIONS_NAMINGS
+        .iter()
+        .find(|(key, _, _)| *key == normalized_name)
+        .map(|(_, _, value)| *value)
 }
 
 // Helper map to store CTE node ids by their names.
@@ -232,6 +264,7 @@ fn parse_call_proc<M: Metadata>(
                     &[],
                     worker,
                     plan,
+                    true,
                 )?
             }
             _ => unreachable!("Unexpected rule met under ProcValue"),
@@ -376,8 +409,14 @@ fn parse_alter_system<M: Metadata>(
 
             if let Some(param_value_node_id) = alter_system_type_node.children.get(1) {
                 let expr_pair = pairs_map.remove_pair(*param_value_node_id);
-                let expr_plan_node_id =
-                    parse_scalar_expr(Pairs::single(expr_pair), type_analyzer, &[], worker, plan)?;
+                let expr_plan_node_id = parse_scalar_expr(
+                    Pairs::single(expr_pair),
+                    type_analyzer,
+                    &[],
+                    worker,
+                    plan,
+                    true,
+                )?;
                 let value_node = plan.get_node(expr_plan_node_id)?;
                 if let Node::Expression(Expression::Constant(Constant { value })) = value_node {
                     AlterSystemType::AlterSystemSet {
@@ -1523,6 +1562,7 @@ fn parse_trim<M: Metadata>(
                     referred_relation_ids,
                     worker,
                     plan,
+                    true,
                 )?));
             }
             Rule::TrimTarget => {
@@ -1532,6 +1572,7 @@ fn parse_trim<M: Metadata>(
                     referred_relation_ids,
                     worker,
                     plan,
+                    true,
                 )?));
             }
             _ => {
@@ -2108,7 +2149,7 @@ impl Plan {
 
                     self.replace_const_with_reference(&final_proj_cols, upper, expr, pos)?;
                 }
-                Expression::StableFunction(StableFunction { name, .. }) => {
+                Expression::ScalarFunction(ScalarFunction { name, .. }) => {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
                         Some(format_smolstr!("aggregate functions are not allowed in GROUP BY. Got aggregate: {name}"))
@@ -2133,7 +2174,7 @@ impl Plan {
         let filter = |node_id: NodeId| -> bool {
             matches!(
                 self.get_node(node_id),
-                Ok(Node::Expression(Expression::StableFunction(_)))
+                Ok(Node::Expression(Expression::ScalarFunction(_)))
             )
         };
         let mut dfs = PostOrderWithFilter::with_capacity(
@@ -2144,7 +2185,7 @@ impl Plan {
 
         for LevelNode(_, node_id) in dfs.iter(group_expr) {
             let node = self.get_expression_node(node_id)?;
-            if let Expression::StableFunction(StableFunction { name, .. }) = node {
+            if let Expression::ScalarFunction(ScalarFunction { name, .. }) = node {
                 if Expression::is_aggregate_name(name) {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
@@ -2195,7 +2236,7 @@ impl Plan {
                         .add_ref(Some(groupby_id), Some(vec![0]), *position, *col_type, None);
 
                 *expr = ref_id;
-            } else if let Expression::StableFunction(StableFunction { name, .. }) = expr_node {
+            } else if let Expression::ScalarFunction(ScalarFunction { name, .. }) = expr_node {
                 return Err(SbroadError::Invalid(
                     Entity::Query,
                     Some(format_smolstr!(
@@ -2483,15 +2524,13 @@ impl ParseExpression {
                     ));
                 } else {
                     let func = worker.metadata.function(name)?;
-                    if func.is_stable() {
-                        plan.add_stable_function(func, plan_arg_ids, feature.clone())?
-                    } else {
-                        // At the moment we don't support any non-stable functions.
-                        // Later this code block should handle other function behaviors.
-                        return Err(SbroadError::Invalid(
-                            Entity::SQLFunction,
-                            Some(format_smolstr!("function {name} is not stable.")),
-                        ));
+                    match func.volatility {
+                        VolatilityType::Stable => {
+                            plan.add_stable_function(func, plan_arg_ids, feature.clone())?
+                        }
+                        VolatilityType::Volatile => {
+                            plan.add_volatile_function(func, plan_arg_ids, feature.clone())?
+                        }
                     }
                 }
             }
@@ -2803,6 +2842,7 @@ fn parse_window_func<M: Metadata>(
                         referred_relation_ids,
                         worker,
                         plan,
+                        true,
                     )?;
                     func_args.push(expr_plan_node_id);
                 }
@@ -2823,6 +2863,7 @@ fn parse_window_func<M: Metadata>(
             referred_relation_ids,
             worker,
             plan,
+            false,
         )?;
         Some(expr)
     } else {
@@ -2870,6 +2911,7 @@ fn parse_window_func<M: Metadata>(
                                 referred_relation_ids,
                                 worker,
                                 plan,
+                                false,
                             )?;
                             partition_exprs.push(part_expr_plan_node_id);
                         }
@@ -2888,6 +2930,7 @@ fn parse_window_func<M: Metadata>(
                                 referred_relation_ids,
                                 worker,
                                 plan,
+                                false,
                             )?;
 
                             // Check for DESC/ASC
@@ -3017,6 +3060,7 @@ fn parse_frame_bound<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             Ok(match rule {
@@ -3051,18 +3095,21 @@ fn parse_substring<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             Ok(ParseExpression::Function {
@@ -3079,18 +3126,21 @@ fn parse_substring<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             Ok(ParseExpression::Function {
@@ -3107,12 +3157,14 @@ fn parse_substring<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             let string_id = string_expr.populate_plan(plan, worker)?;
@@ -3139,12 +3191,14 @@ fn parse_substring<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             Ok(ParseExpression::Function {
@@ -3161,6 +3215,7 @@ fn parse_substring<M: Metadata>(
                 referred_relation_ids,
                 worker,
                 plan,
+                true,
             )?;
 
             let mut args = vec![];
@@ -3234,6 +3289,7 @@ fn parse_expr_pratt<M>(
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
+    safe_for_volatile_function: bool,
 ) -> Result<ParseExpression, SbroadError>
 where
     M: Metadata,
@@ -3244,7 +3300,7 @@ where
         .map_primary(|primary| {
             let parse_expr = match primary.as_rule() {
                 Rule::Expr | Rule::Literal => {
-                    parse_expr_pratt(primary.into_inner(), referred_relation_ids, worker, plan)?
+                    parse_expr_pratt(primary.into_inner(), referred_relation_ids, worker, plan, safe_for_volatile_function)?
                 }
                 Rule::ExpressionInParentheses => {
                     let mut inner_pairs = primary.into_inner();
@@ -3255,7 +3311,8 @@ where
                         Pairs::single(child_expr_pair),
                         referred_relation_ids,
                         worker,
-                        plan
+                        plan,
+                        safe_for_volatile_function,
                     )?
                 }
                 Rule::Parameter => {
@@ -3287,7 +3344,7 @@ where
                             }
                             Rule::FunctionInvocationContinuation => {
                                 // Handle function invocation case.
-                                let function_name = String::from(first_identifier);
+                                let mut function_name = String::from(first_identifier);
                                 let mut args_pairs = continuation.into_inner();
                                 let mut feature = None;
                                 let mut parse_exprs_args = Vec::new();
@@ -3310,9 +3367,34 @@ where
                                         Rule::FunctionArgs => {
                                             let mut args_inner = function_args.into_inner();
                                             let mut arg_pairs_to_parse = Vec::new();
+                                            let mut volatile = false;
+
+                                            // Exposed by picodata scalar function name should be 
+                                            // transformed to real name of representing it stored procedure.
+                                            if let Some(name) = get_real_function_name(&function_name) {
+                                                if !safe_for_volatile_function {
+                                                    return Err(SbroadError::NotImplemented(
+                                                        Entity::VolatileFunction, "is not allowed in filter clause".to_smolstr(),
+                                                        )
+                                                    );
+                                                }
+
+                                                function_name = name.to_string();
+                                                volatile = true;
+
+                                            }
 
                                             if let Some(first_arg_pair) = args_inner.next() {
                                                 if let Rule::Distinct = first_arg_pair.as_rule() {
+                                                    if volatile {
+                                                        return Err(SbroadError::Invalid(
+                                                            Entity::Query,
+                                                            Some(format_smolstr!(
+                                                                "\"distinct\" is not allowed inside VOLATILE function call",
+                                                            ))
+                                                        ));
+                                                    }
+
                                                     feature = Some(FunctionFeature::Distinct);
                                                 } else {
                                                     arg_pairs_to_parse.push(first_arg_pair);
@@ -3328,7 +3410,8 @@ where
                                                     arg.into_inner(),
                                                     referred_relation_ids,
                                                     worker,
-                                                    plan
+                                                    plan,
+                                                   safe_for_volatile_function,
                                                 )?;
                                                 parse_exprs_args.push(arg_expr);
                                             }
@@ -3440,7 +3523,8 @@ where
                             expr_pair.into_inner(),
                             referred_relation_ids,
                             worker,
-                            plan
+                            plan,
+                            safe_for_volatile_function,
                         )?;
                         children.push(child_parse_expr);
                     }
@@ -3474,7 +3558,8 @@ where
                         Pairs::single(expr_pair),
                         referred_relation_ids,
                         worker,
-                        plan
+                        plan,
+                      safe_for_volatile_function
                     )?;
                     ParseExpression::Exists { is_not: first_is_not, child: Box::new(child_parse_expr)}
                 }
@@ -3487,7 +3572,8 @@ where
                         expr_pair.into_inner(),
                         referred_relation_ids,
                         worker,
-                        plan
+                        plan,
+                       safe_for_volatile_function,
                     )?;
                     let type_pair = inner_pairs.next().expect("CastOp has no type child");
                     let cast_type = cast_type_from_pair(type_pair)?;
@@ -3505,6 +3591,7 @@ where
                             referred_relation_ids,
                             worker,
                             plan,
+                            safe_for_volatile_function,
                         )?;
                         Some(Box::new(expr))
                     } else {
@@ -3520,6 +3607,7 @@ where
                                 referred_relation_ids,
                                 worker,
                                 plan,
+                                safe_for_volatile_function,
                             )?;
                             else_expr = Some(Box::new(expr));
                         } else {
@@ -3537,6 +3625,7 @@ where
                                 referred_relation_ids,
                                 worker,
                                 plan,
+                               false,
                             )?;
 
                             let result_expr_pair = inner_pairs.next().expect("When block must contain result expression.");
@@ -3545,6 +3634,7 @@ where
                                 referred_relation_ids,
                                 worker,
                                 plan,
+                               safe_for_volatile_function,
                             )?;
 
                             Ok::<(Box<ParseExpression>, Box<ParseExpression>), SbroadError>((
@@ -3764,11 +3854,18 @@ fn parse_expr_no_type_check<M>(
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
+    safe_for_volatile_function: bool,
 ) -> Result<NodeId, SbroadError>
 where
     M: Metadata,
 {
-    let parse_expr = parse_expr_pratt(expression_pairs, referred_relation_ids, worker, plan)?;
+    let parse_expr = parse_expr_pratt(
+        expression_pairs,
+        referred_relation_ids,
+        worker,
+        plan,
+        safe_for_volatile_function,
+    )?;
     parse_expr.populate_plan(plan, worker)
 }
 
@@ -3782,11 +3879,18 @@ fn parse_scalar_expr<M>(
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
+    safe_for_volatile_function: bool,
 ) -> Result<NodeId, SbroadError>
 where
     M: Metadata,
 {
-    let expr_id = parse_expr_no_type_check(expression_pairs, referred_relation_ids, worker, plan)?;
+    let expr_id = parse_expr_no_type_check(
+        expression_pairs,
+        referred_relation_ids,
+        worker,
+        plan,
+        safe_for_volatile_function,
+    )?;
     type_system::analyze_scalar_expr(type_analyzer, expr_id, plan, &worker.subquery_replaces)?;
     Ok(expr_id)
 }
@@ -3809,7 +3913,7 @@ where
         // Consider the following queries:
         //  - `VALUES (1), ('text')`: both rows are fine, but their types cannot be matched
         //  - `VALUES ($1), (1)`: to infer parameter type in the 1st row we need the 2nd row
-        let expr_id = parse_expr_no_type_check(Pairs::single(row_pair), &[], worker, plan)?;
+        let expr_id = parse_expr_no_type_check(Pairs::single(row_pair), &[], worker, plan, true)?;
         let values_row_id = plan.add_values_row(expr_id, col_idx)?;
         plan.fix_subquery_rows(worker, values_row_id)?;
         values_rows_ids.push(values_row_id);
@@ -4355,6 +4459,7 @@ impl AbstractSyntaxTree {
                         &[plan_rel_child_id],
                         worker,
                         plan,
+                        true,
                     )?;
 
                     let alias_name: SmolStr =
@@ -4502,6 +4607,7 @@ impl AbstractSyntaxTree {
                         &[],
                         worker,
                         plan,
+                        true,
                     )?;
                     let alias_name = if let Some(alias_ast_node_id) = ast_column.children.get(1) {
                         parse_normalized_identifier(self, *alias_ast_node_id)?
@@ -4568,6 +4674,7 @@ impl AbstractSyntaxTree {
                 &[referred_rel_id],
                 worker,
                 plan,
+                false,
             )?;
 
             // In case index is specified as ordering element, we have to check that
@@ -4746,6 +4853,7 @@ impl AbstractSyntaxTree {
                             &[proj_child_id],
                             worker,
                             plan,
+                            false,
                         )?;
                         if let Some(ref mut partition) = partition {
                             partition.push(part_expr_plan_node_id)
@@ -4809,6 +4917,7 @@ impl AbstractSyntaxTree {
                                     &[proj_child_id],
                                     worker,
                                     plan,
+                                    true,
                                 )?;
 
                                 match frame_bound_node.rule {
@@ -5009,6 +5118,7 @@ impl AbstractSyntaxTree {
                             &[first_relational_child_plan_id],
                             &mut worker,
                             &mut plan,
+                            false,
                         )?;
 
                         children.push(expr_id);
@@ -5067,6 +5177,7 @@ impl AbstractSyntaxTree {
                             &[plan_left_id, plan_right_id],
                             &mut worker,
                             &mut plan,
+                            false,
                         )?
                     };
 
@@ -5075,7 +5186,7 @@ impl AbstractSyntaxTree {
                     plan.fix_subquery_rows(&mut worker, plan_join_id)?;
                     map.add(id, plan_join_id);
                 }
-                Rule::Selection | Rule::Having => {
+                Rule::Having | Rule::Selection => {
                     let ast_rel_child_id = node
                         .children
                         .first()
@@ -5093,6 +5204,7 @@ impl AbstractSyntaxTree {
                         &[plan_rel_child_id],
                         &mut worker,
                         &mut plan,
+                        false,
                     )?;
 
                     let plan_node_id = match &node.rule {
@@ -5251,6 +5363,7 @@ impl AbstractSyntaxTree {
                             &[rel_child_id],
                             &mut worker,
                             &mut plan,
+                            true,
                         )?;
 
                         if plan.contains_aggregates(expr_plan_node_id, true)? {
@@ -5364,6 +5477,7 @@ impl AbstractSyntaxTree {
                                 &[plan_scan_id],
                                 &mut worker,
                                 &mut plan,
+                                false,
                             )?;
 
                             let plan_select_id =
@@ -6013,7 +6127,7 @@ impl Plan {
             | Expression::Cast(_)
             | Expression::Case(_)
             | Expression::Concat(_)
-            | Expression::StableFunction(_),
+            | Expression::ScalarFunction(_),
         ) = self.get_node(expr_id)?
         {
             self.nodes.add_row(vec![expr_id], None)

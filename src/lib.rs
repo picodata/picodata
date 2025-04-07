@@ -16,6 +16,7 @@ use config::apply_parameter;
 use info::PICODATA_VERSION;
 use regex::Regex;
 use sbroad::frontend::sql::transform_to_regex_pattern;
+use sbroad::frontend::sql::NAMES_OF_FUNCTIONS_IN_SOURCES;
 use serde::{Deserialize, Serialize};
 use storage::ToEntryIter;
 
@@ -402,17 +403,32 @@ fn init_handlers() {
 
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
-        lua.exec_with(
-            "local name, is_public = ...
-            local proc_name = '.' .. name
-            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
-            if is_public then
-                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
-            end
-            ",
-            (proc.name(), proc.is_public()),
-        )
+        let proc_name = proc.name();
+        if NAMES_OF_FUNCTIONS_IN_SOURCES.contains(&proc_name) {
+            lua.exec_with(
+                "local name, is_public = ...
+                local proc_name = '.' .. name
+                box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, exports = {'LUA', 'SQL'}, returns = 'any'})
+                if is_public then
+                    box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+                end
+                ",
+                (proc_name, proc.is_public()),
+            )
         .expect("this shouldn't fail");
+        } else {
+            lua.exec_with(
+                "local name, is_public = ...
+                local proc_name = '.' .. name
+                box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
+                if is_public then
+                    box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+                end
+                ",
+                (proc_name, proc.is_public()),
+            )
+        .expect("this shouldn't fail");
+        }
     }
 
     lua.exec(

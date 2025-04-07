@@ -15,8 +15,8 @@ use crate::ir::expression::cast::Type as CastType;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, Insert, Join,
-    Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScanCte, ScanRelation, ScanSubQuery,
-    Selection, StableFunction, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
+    Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte, ScanRelation,
+    ScanSubQuery, Selection, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
 };
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
 use crate::ir::transformation::redistribution::{
@@ -51,7 +51,7 @@ enum ColExpr {
     Over(String, Vec<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
     Concat(Box<ColExpr>, Box<ColExpr>),
     Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
-    StableFunction(
+    ScalarFunction(
         SmolStr,
         Vec<ColExpr>,
         Option<FunctionFeature>,
@@ -119,7 +119,7 @@ impl Display for ColExpr {
                 res
             }
             ColExpr::Concat(l, r) => format!("{l} || {r}"),
-            ColExpr::StableFunction(name, args, feature, func_type, is_aggr) => {
+            ColExpr::ScalarFunction(name, args, feature, func_type, is_aggr) => {
                 let mut name = name.clone();
                 if !is_aggr {
                     name = to_user(name);
@@ -390,7 +390,7 @@ impl ColExpr {
                     let trim_expr = ColExpr::Trim(kind.clone(), pattern, Box::new(target));
                     stack.push((trim_expr, id));
                 }
-                Expression::StableFunction(StableFunction {
+                Expression::ScalarFunction(ScalarFunction {
                     name,
                     children,
                     feature,
@@ -406,7 +406,7 @@ impl ColExpr {
                         len -= 1;
                     }
                     args.reverse();
-                    let func_expr = ColExpr::StableFunction(
+                    let func_expr = ColExpr::ScalarFunction(
                         name.clone(),
                         args,
                         feature.clone(),

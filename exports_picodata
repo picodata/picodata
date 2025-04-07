@@ -22,6 +22,7 @@ proc_enable_plugin
 proc_enable_service
 proc_expel
 proc_expel_redirect
+proc_instance_uuid
 proc_get_config
 proc_get_index
 proc_get_vclock

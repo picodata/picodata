@@ -14,7 +14,7 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
     GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136, NodeId, NodeOwned,
-    OrderBy, Over, Reference, Row, ScanCte, ScanRelation, Selection, StableFunction, Trim,
+    OrderBy, Over, Reference, Row, ScalarFunction, ScanCte, ScanRelation, Selection, Trim,
     UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
@@ -842,7 +842,7 @@ impl ExecutionPlan {
                         list: ref mut children,
                         ..
                     })
-                    | ExprOwned::StableFunction(StableFunction {
+                    | ExprOwned::ScalarFunction(ScalarFunction {
                         ref mut children, ..
                     }) => {
                         for child in children {

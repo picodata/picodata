@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, Case, Cast, Constant, Expression, MutExpression, Node, NodeId,
-    Reference, Row, StableFunction,
+    Reference, Row, ScalarFunction,
 };
 
 impl Plan {
@@ -140,7 +140,7 @@ impl Expression<'_> {
                     DerivedType::new(Type::Array)
                 }
             }
-            Expression::StableFunction(StableFunction {
+            Expression::ScalarFunction(ScalarFunction {
                 name,
                 func_type,
                 children,
