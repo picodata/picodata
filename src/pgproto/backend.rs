@@ -1,7 +1,7 @@
 use self::{
     describe::{PortalDescribe, QueryType, StatementDescribe},
     result::ExecuteResult,
-    storage::{with_portals_mut, Portal, Statement, PG_PORTALS, PG_STATEMENTS},
+    storage::{Portal, Statement, PG_PORTALS, PG_STATEMENTS},
 };
 use super::{
     client::{ClientId, ClientParams},
@@ -30,7 +30,6 @@ use sbroad::{
 use smol_str::ToSmolStr;
 use std::{
     iter::zip,
-    rc::Rc,
     sync::atomic::{AtomicU32, Ordering},
 };
 use tarantool::session::with_su;
@@ -150,15 +149,19 @@ pub fn bind(
 
     let key = (id, portal_name.into());
     let portal = Portal::new(id, plan, statement.clone(), result_format)?;
-    PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal.into()))?;
+    PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
 
     Ok(())
 }
 
 pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
+    let key = (id, name.into());
+    let portal: Portal = PG_PORTALS
+        .with(|storage| storage.borrow_mut().get(&key).cloned())
+        .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
+
     let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
-    let name = Rc::from(name);
-    with_portals_mut((id, name), |portal| portal.execute(max_rows as usize))
+    portal.execute(max_rows as usize)
 }
 
 pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
@@ -210,7 +213,12 @@ pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescrib
 }
 
 pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
-    with_portals_mut((id, name.into()), |portal| Ok(portal.describe().clone()))
+    let key = (id, name.into());
+    let portal: Portal = PG_PORTALS
+        .with(|storage| storage.borrow_mut().get(&key).cloned())
+        .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
+
+    Ok(portal.describe().clone())
 }
 
 pub fn close_statement(id: ClientId, name: &str) {

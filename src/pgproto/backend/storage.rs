@@ -20,7 +20,7 @@ use sbroad::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, HashMap},
     iter::zip,
     ops::Bound,
@@ -173,7 +173,7 @@ impl StatementStorage {
     }
 }
 
-type PortalStorage = PgStorage<Box<Portal>>;
+type PortalStorage = PgStorage<Portal>;
 
 impl PortalStorage {
     pub fn new() -> Self {
@@ -185,7 +185,7 @@ impl PortalStorage {
 
     pub fn remove_portals_by_statement(&mut self, statement: &Statement) {
         self.map
-            .retain(|_, p| !Statement::ptr_eq(p.statement(), statement));
+            .retain(|_, portal| !portal.contains_statement(statement));
     }
 }
 
@@ -201,49 +201,20 @@ pub fn force_init_portals_and_statements() {
     PG_PORTALS.with(|_| {});
 }
 
-pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> PgResult<T>
-where
-    F: FnOnce(&mut Portal) -> PgResult<T>,
-{
-    let mut portal: Box<Portal> = PG_PORTALS.with(|storage| {
-        storage
-            .borrow_mut()
-            .remove(&key)
-            .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))
-    })?;
-
-    let result = f(&mut portal);
-
-    // Statement could be closed while the processing portal was running,
-    // so the portal wasn't in the storage and wasn't removed.
-    // In that case there is no need to put it back.
-    if !portal.statement().is_closed() {
-        PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
-    }
-
-    result
-}
-
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StatementInner {
     plan: Plan,
     describe: StatementDescribe,
-    // true when the statement is deleted from the storage
-    is_closed: Cell<bool>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
     pub fn new(mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
         let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
-        let inner = StatementInner {
-            plan,
-            describe,
-            is_closed: false.into(),
-        };
+        let inner = StatementInner { plan, describe };
 
         Ok(Self(inner.into()))
     }
@@ -256,16 +227,6 @@ impl Statement {
     #[inline(always)]
     pub fn describe(&self) -> &StatementDescribe {
         &self.0.describe
-    }
-
-    #[inline(always)]
-    pub fn is_closed(&self) -> bool {
-        self.0.is_closed.get()
-    }
-
-    #[inline(always)]
-    pub fn set_is_closed(&self, is_closed: bool) {
-        self.0.is_closed.replace(is_closed);
     }
 
     #[inline(always)]
@@ -302,7 +263,6 @@ impl From<Statement> for StatementHolder {
 
 impl Drop for StatementHolder {
     fn drop(&mut self) {
-        self.statement.set_is_closed(true);
         // The storage may have already been dropped, so we cannot access PG_PORTALS.
         if let Some(portals) = self.portals.upgrade() {
             portals
@@ -407,11 +367,12 @@ fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<V
         .collect()
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 enum PortalState {
-    #[default]
     /// Portal has just been created.
-    NotStarted,
+    /// Ideally, it should've been `Box<Plan>`, but we need to move it
+    /// from a mutable reference and we don't want to allocate a substitute.
+    NotStarted(Option<Box<Plan>>),
     /// Portal has been executed and contains rows to be sent in batches.
     StreamingRows(IntoIter<Vec<PgValue>>),
     /// Portal has been executed and contains a result ready to be sent.
@@ -420,40 +381,94 @@ enum PortalState {
     Done,
 }
 
-#[derive(Debug, Default)]
-pub struct Portal {
-    plan: Plan,
-    statement: Statement,
-    describe: PortalDescribe,
-    state: PortalState,
-    id: ClientId,
+// We use this instance in tests. Furthermore, stock debug print is too verbose.
+// See test/pgproto/cornerstone_test.py::test_interactive_portals
+impl std::fmt::Display for PortalState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use PortalState::*;
+        match self {
+            NotStarted(_) => f.debug_tuple("NotStarted").finish_non_exhaustive(),
+            StreamingRows(_) => f.debug_tuple("StreamingRows").finish_non_exhaustive(),
+            ResultReady(_) => f.debug_struct("ResultReady").finish_non_exhaustive(),
+            Done => f.debug_struct("Done").finish(),
+        }
+    }
 }
 
-impl Portal {
-    pub fn new(
-        id: ClientId,
-        plan: Plan,
-        statement: Statement,
-        output_format: Vec<FieldFormat>,
-    ) -> PgResult<Self> {
-        let stmt_describe = statement.describe();
-        let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
-        Ok(Self {
-            plan,
-            statement,
-            describe,
-            state: PortalState::NotStarted,
-            id,
-        })
+#[derive(Debug)]
+struct PortalInner {
+    id: ClientId,
+    statement: Statement,
+    describe: PortalDescribe,
+    state: RefCell<PortalState>,
+}
+
+impl PortalInner {
+    fn start(&self, plan: Box<Plan>) -> PgResult<PortalState> {
+        let runtime = RouterRuntime::new()?;
+        let query = Query::from_parts(
+            plan.is_explain(),
+            ExecutionPlan::from(*plan),
+            &runtime,
+            HashMap::new(),
+        );
+        let tuple = dispatch(query)?;
+
+        let state = match self.describe.query_type() {
+            QueryType::Acl | QueryType::Ddl => {
+                let tag = self.describe.command_tag();
+                PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
+            }
+            QueryType::Tcl => {
+                let tag = self.describe.command_tag();
+                PortalState::ResultReady(ExecuteResult::Tcl { tag })
+            }
+            QueryType::Dml => {
+                let row_count = get_row_count_from_tuple(&tuple)?;
+                let tag = self.describe.command_tag();
+                PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
+            }
+            QueryType::Dql | QueryType::Explain => {
+                let mp_rows = get_rows_from_tuple(&tuple)?;
+                let metadata = self.describe.metadata();
+                let pg_rows = mp_rows
+                    .into_iter()
+                    .map(|row| mp_row_into_pg_row(row, metadata))
+                    .collect::<PgResult<Vec<Vec<_>>>>()?;
+
+                PortalState::StreamingRows(pg_rows.into_iter())
+            }
+            QueryType::Deallocate => {
+                let tag = self.describe.command_tag();
+                let ir_plan = self.statement.plan();
+                let top_id = ir_plan.get_top()?;
+                let deallocate = ir_plan.get_deallocate_node(top_id)?;
+                let name = deallocate.name.as_ref().map(|name| name.as_str());
+                match name {
+                    Some(name) => deallocate_statement(self.id, name)?,
+                    None => close_client_statements(self.id),
+                };
+
+                PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
+            }
+            QueryType::Empty => PortalState::ResultReady(ExecuteResult::Empty),
+        };
+
+        Ok(state)
     }
 
-    pub fn execute(&mut self, max_rows: usize) -> PgResult<ExecuteResult> {
+    fn execute(&self, max_rows: usize) -> PgResult<ExecuteResult> {
+        let mut state = self.state.borrow_mut();
         loop {
-            match &mut self.state {
-                PortalState::NotStarted => self.start()?,
+            match &mut *state {
+                PortalState::NotStarted(plan) => {
+                    // We always provide the plan, see Portal::new.
+                    let plan = plan.take().expect("plan not found");
+                    *state = self.start(plan)?;
+                }
                 PortalState::ResultReady(result) => {
                     let result = std::mem::replace(result, ExecuteResult::Empty);
-                    self.state = PortalState::Done;
+                    *state = PortalState::Done;
 
                     return Ok(result);
                 }
@@ -464,7 +479,7 @@ impl Portal {
 
                     return Ok(match stored_rows.len() {
                         0 => {
-                            self.state = PortalState::Done;
+                            *state = PortalState::Done;
 
                             ExecuteResult::FinishedDql {
                                 rows,
@@ -477,69 +492,50 @@ impl Portal {
                 }
                 _ => {
                     return Err(PgError::other(format!(
-                        "Can't execute portal in state {:?}",
-                        self.state
+                        "Can't execute portal in state {state}",
                     )));
                 }
             }
         }
     }
+}
 
-    fn start(&mut self) -> PgResult<()> {
-        let runtime = RouterRuntime::new()?;
-        let query = Query::from_parts(
-            self.plan.is_explain(),
-            ExecutionPlan::from(std::mem::take(&mut self.plan)),
-            &runtime,
-            HashMap::new(),
-        );
-        let tuple = dispatch(query)?;
-        self.state = match self.describe().query_type() {
-            QueryType::Acl | QueryType::Ddl => {
-                let tag = self.describe().command_tag();
-                PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
-            }
-            QueryType::Tcl => {
-                let tag = self.describe().command_tag();
-                PortalState::ResultReady(ExecuteResult::Tcl { tag })
-            }
-            QueryType::Dml => {
-                let row_count = get_row_count_from_tuple(&tuple)?;
-                let tag = self.describe().command_tag();
-                PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
-            }
-            QueryType::Dql | QueryType::Explain => {
-                let mp_rows = get_rows_from_tuple(&tuple)?;
-                let metadata = self.describe.metadata();
-                let pg_rows = mp_rows
-                    .into_iter()
-                    .map(|row| mp_row_into_pg_row(row, metadata))
-                    .collect::<PgResult<Vec<Vec<_>>>>()?;
-                PortalState::StreamingRows(pg_rows.into_iter())
-            }
-            QueryType::Deallocate => {
-                let tag = self.describe().command_tag();
-                let ir_plan = self.statement().plan();
-                let top_id = ir_plan.get_top()?;
-                let deallocate = ir_plan.get_deallocate_node(top_id)?;
-                let name = deallocate.name.as_ref().map(|name| name.as_str());
-                match name {
-                    Some(name) => deallocate_statement(self.id, name)?,
-                    None => close_client_statements(self.id),
-                };
-                PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
-            }
-            QueryType::Empty => PortalState::ResultReady(ExecuteResult::Empty),
+#[derive(Debug, Clone)]
+pub struct Portal(Rc<PortalInner>);
+
+impl Portal {
+    pub fn new(
+        id: ClientId,
+        plan: Plan,
+        statement: Statement,
+        output_format: Vec<FieldFormat>,
+    ) -> PgResult<Self> {
+        let stmt_describe = statement.describe();
+        let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
+        let state = PortalState::NotStarted(Some(plan.into())).into();
+        let inner = PortalInner {
+            id,
+            statement,
+            describe,
+            state,
         };
-        Ok(())
+
+        Ok(Self(inner.into()))
     }
 
+    #[inline(always)]
     pub fn describe(&self) -> &PortalDescribe {
-        &self.describe
+        &self.0.describe
     }
 
-    pub fn statement(&self) -> &Statement {
-        &self.statement
+    #[inline(always)]
+    pub fn contains_statement(&self, statement: &Statement) -> bool {
+        Statement::ptr_eq(&self.0.statement, statement)
+    }
+
+    #[inline(always)]
+    pub fn execute(&self, max_rows: usize) -> PgResult<ExecuteResult> {
+        self.0.execute(max_rows)
     }
 }
 
