@@ -1135,7 +1135,7 @@ fn postjoin(
 
     let pg_config = &config.instance.pg;
     let instance_dir = config.instance.instance_dir();
-    pgproto::Context::init(pg_config, instance_dir, &node.storage)?;
+    pgproto::init_once(pg_config, instance_dir, &node.storage)?;
 
     let raft_id = node.raft_id();
     let cs = raft_storage.conf_state().unwrap();

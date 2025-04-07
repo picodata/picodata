@@ -10,7 +10,7 @@ pub(super) fn before_online_inner(req: Request) -> crate::traft::Result<Response
     node.wait_index(req.applied, req.timeout)?;
     node.status().check_term(req.term)?;
 
-    pgproto::start()?;
+    pgproto::start_once()?;
 
     let result = node.plugin_manager.handle_instance_online();
     if let Err(e) = result {

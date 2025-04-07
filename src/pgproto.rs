@@ -1,11 +1,12 @@
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::{
-    address::PgprotoAddress, introspection::Introspection, storage::Catalog, tlog,
+    address::PgprotoAddress, introspection::Introspection, static_ref, storage::Catalog, tlog,
     traft::error::Error,
 };
 use std::{
     os::fd::{AsRawFd, BorrowedFd},
     path::Path,
+    sync::atomic::{AtomicBool, Ordering},
 };
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
@@ -20,12 +21,12 @@ mod tls;
 mod value;
 
 /// Used to provide idempotency to enabling a PostgreSQL protocol.
-pub(crate) static mut IS_ENABLED: bool = false;
+static IS_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Initialized to enable PostgreSQL server protocol.
 /// WARNING: if it is initialized, it does not directly mean
 /// that PostgreSQL server protocol is currently running.
-pub(crate) static mut CONTEXT: Option<Context> = None;
+static mut CONTEXT: Option<Context> = None;
 
 /// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
@@ -125,18 +126,14 @@ fn do_handle_client(
 }
 
 /// Server execution context.
-pub struct Context {
+struct Context {
     server: CoIOListener,
     tls_acceptor: Option<TlsAcceptor>,
     storage: &'static Catalog,
 }
 
 impl Context {
-    pub fn new(
-        config: &Config,
-        instance_dir: &Path,
-        storage: &'static Catalog,
-    ) -> Result<Self, Error> {
+    fn new(config: &Config, instance_dir: &Path, storage: &'static Catalog) -> Result<Self, Error> {
         let listen = config.listen();
         let host = listen.host.as_str();
         let port = listen.port.parse::<u16>().map_err(|_| {
@@ -165,35 +162,47 @@ impl Context {
             storage,
         })
     }
-
-    /// Initialize PostgreSQL protocol server context. Sets up a global static
-    /// variable, instead of returning a context back to the caller.
-    /// WARNING: it will reinitialize context if it is already initialized.
-    pub fn init(
-        config: &Config,
-        instance_dir: &Path,
-        storage: &'static Catalog,
-    ) -> Result<(), Error> {
-        unsafe {
-            CONTEXT = Some(Context::new(config, instance_dir, storage)?);
-        }
-        Ok(())
-    }
 }
 
-/// Start a PostgreSQL server fiber, based on context from `pgproto::CONTEXT` variable.
-/// ATTENTION:
-/// - won't start if it is already enabled (started)
-/// - panics if context was not initialized using `pgproto::init`
-pub fn start() -> Result<(), Error> {
-    // SAFETY: safe as long as only called from tx thread
-    if unsafe { !IS_ENABLED } {
-        let context = unsafe { CONTEXT.as_ref().expect("should be initialized") };
+/// Initialize PostgreSQL protocol server context. Sets up a global static
+/// variable, instead of returning a context back to the caller.
+/// **XXX: panics if called more than once!**
+pub fn init_once(
+    config: &Config,
+    instance_dir: &Path,
+    storage: &'static Catalog,
+) -> Result<(), Error> {
+    let context = Context::new(config, instance_dir, storage)?;
+
+    // SAFETY: safe as long as only called from tx thread.
+    unsafe {
+        // This check protects us from use-after-free in client fibers.
+        if static_ref!(CONTEXT const).is_some() {
+            panic!("pgproto cannot be initialized more than once!");
+        }
+        CONTEXT = Some(context);
+    }
+
+    Ok(())
+}
+
+/// Start a PostgreSQL server fiber unless it's already running.
+/// This function should only be called after [`init_once`],
+/// **otherwise it will panic!**
+pub fn start_once() -> Result<(), Error> {
+    if !IS_RUNNING.load(Ordering::Relaxed) {
+        // SAFETY: safe as long as only called from tx thread.
+        let context = unsafe { static_ref!(CONTEXT const) }
+            .as_ref()
+            .expect("pgproto main context is uninitialized");
+
         tarantool::fiber::Builder::new()
             .name("pgproto")
             .func(|| server_start(context))
             .start_non_joinable()?;
-        unsafe { IS_ENABLED = true };
+
+        IS_RUNNING.store(true, Ordering::Relaxed);
     }
+
     Ok(())
 }
