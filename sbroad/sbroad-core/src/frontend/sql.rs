@@ -1645,7 +1645,7 @@ fn parse_param<M: Metadata>(
 // Helper structure used to resolve expression operators priority.
 lazy_static::lazy_static! {
     static ref PRATT_PARSER: PrattParser<Rule> = {
-        use pest::pratt_parser::{Assoc::{Left, Right}, Op};
+        use pest::pratt_parser::{Assoc::Left, Op};
         use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq, In, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Multiply, NotEq, Or, Subtract, UnaryNot};
 
         // Precedence is defined lowest to highest.
@@ -1659,9 +1659,9 @@ lazy_static::lazy_static! {
             .op(Op::infix(Similar, Left))
             .op(Op::infix(Between, Left))
             .op(
-                Op::infix(Eq, Right) | Op::infix(NotEq, Right) | Op::infix(NotEq, Right)
-                | Op::infix(Gt, Right) | Op::infix(GtEq, Right) | Op::infix(Lt, Right)
-                | Op::infix(LtEq, Right) | Op::infix(In, Right)
+                Op::infix(Eq, Left) | Op::infix(NotEq, Left)
+                | Op::infix(Gt, Left) | Op::infix(GtEq, Left) | Op::infix(Lt, Left)
+                | Op::infix(LtEq, Left) | Op::infix(In, Left)
             )
             .op(Op::infix(Add, Left) | Op::infix(Subtract, Left))
             .op(Op::infix(Multiply, Left) | Op::infix(Divide, Left) | Op::infix(ConcatInfixOp, Left))
