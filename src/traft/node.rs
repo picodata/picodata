@@ -778,7 +778,7 @@ impl NodeImpl {
                     // currently only parameters from _pico_db_config processed outside of transaction (here)
                     for AppliedDml { table, new_tuple } in dmls {
                         debug_assert!(table == DbConfig::TABLE_ID);
-                        apply_parameter(new_tuple, current_tier);
+                        apply_parameter(new_tuple, current_tier)?;
                     }
 
                     // Actually advance the iterator.
@@ -2342,7 +2342,7 @@ impl NodeImpl {
 
                 // apply changed dynamic parameters
                 for changed_parameter in changed_parameters {
-                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?, current_tier);
+                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?, current_tier)?;
                 }
             }
 

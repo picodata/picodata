@@ -653,7 +653,7 @@ fn set_on_access_denied_audit_trigger() {
 /// Apply all dynamic parameters from `_pico_db_config` via box.cfg
 fn reapply_dynamic_parameters(storage: &Catalog, current_tier: &str) -> Result<()> {
     for parameter in storage.db_config.iter()? {
-        apply_parameter(parameter, current_tier);
+        apply_parameter(parameter, current_tier)?;
     }
 
     Ok(())

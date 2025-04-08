@@ -1912,22 +1912,30 @@ pub fn get_defaults_for_all_alter_system_parameters(
 ///
 /// In case of dynamic parameter, apply parameter via box.cfg.
 ///
+/// Returns error in case of failed call to box.cfg or failed attempt to change
+/// picodata sql cache capacity.
+///
 /// Yields.
 ///
 /// Panic in following cases:
-///   - tuple is not key-value with predefined schema
-///   - while applying via box.cfg
-///     TODO: it shouldn't panic in some cases, for example
-///     TODO: adjusting capacity of LRU cache in sbroad
-pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
-    let name = tuple
-        .field::<&str>(AlterSystemParameters::FIELD_NAME)
-        .expect("there is always 3 fields in _pico_db_config tuple")
-        .expect("key is always present and it's type string");
+/// - invalid format tuple, format suppossed to be equal to _pico_db_config schema
+/// - unknown parameter name
+pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Result<(), Error> {
+    fn get_field<'a, T>(tuple: &'a Tuple, field_index: u32) -> T
+    where
+        T: serde::Deserialize<'a>,
+    {
+        tuple
+            .field::<T>(field_index)
+            .expect("specified type for field should be compatible with schema of _pico_db_config")
+            .expect("specified field index shouldn't be higher than numbers of fields")
+    }
+
+    let name = get_field::<&str>(&pico_db_config_tuple, AlterSystemParameters::FIELD_NAME);
 
     if name == SHREDDING_PARAM_NAME {
         // shredding is set up in init_common
-        return;
+        return Ok(());
     }
 
     if AlterSystemParameters::has_scope_tier(name)
@@ -1935,65 +1943,36 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
     {
         // There is only two scopes: clusterwide(global) and tier.
         // Clusterwide represented as empty string, and scope tier represented by it's name.
-        let target_tier_name = tuple
-            .field::<&str>(AlterSystemParameters::FIELD_SCOPE)
-            .expect("there is always 3 fields in _pico_db_config tuple")
-            .expect("key is always present and it's type string");
+        let target_tier_name =
+            get_field::<&str>(&pico_db_config_tuple, AlterSystemParameters::FIELD_SCOPE);
 
         if target_tier_name != current_tier {
-            return;
+            return Ok(());
         }
 
         if name == system_parameter_name!(memtx_checkpoint_count) {
-            let value = tuple
-                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
-                .expect("there is always 3 fields in _pico_db_config tuple")
-                .expect("type already checked");
-
-            set_cfg_field("checkpoint_count", value)
-                .expect("changing checkpoint_count shouldn't fail");
+            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+            set_cfg_field("checkpoint_count", value)?;
         } else if name == system_parameter_name!(memtx_checkpoint_interval) {
-            let value = tuple
-                .field::<f64>(AlterSystemParameters::FIELD_VALUE)
-                .expect("there is always 3 fields in _pico_db_config tuple")
-                .expect("type already checked");
-
-            set_cfg_field("checkpoint_interval", value)
-                .expect("changing checkpoint_interval shouldn't fail");
+            let value = get_field::<f64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+            set_cfg_field("checkpoint_interval", value)?;
         } else if name == system_parameter_name!(iproto_net_msg_max) {
-            let value = tuple
-                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
-                .expect("there is always 3 fields in _pico_db_config tuple")
-                .expect("type already checked");
-
-            set_cfg_field("net_msg_max", value).expect("changing net_msg_max shouldn't fail");
+            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+            set_cfg_field("net_msg_max", value)?;
         } else if name == system_parameter_name!(sql_storage_cache_size_max) {
-            let value = tuple
-                .field::<u64>(AlterSystemParameters::FIELD_VALUE)
-                .expect("there is always 3 fields in _pico_db_config tuple")
-                .expect("type already checked");
-
-            set_cfg_field("sql_cache_size", value).expect("changing sql_cache_size shouldn't fail");
+            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+            set_cfg_field("sql_cache_size", value)?;
         }
     } else if name == system_parameter_name!(pg_portal_max) {
-        let value = tuple
-            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
-            .expect("there is always 3 fields in _pico_db_config tuple")
-            .expect("type already checked");
+        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
         MAX_PG_PORTALS.store(value, Ordering::Relaxed);
     } else if name == system_parameter_name!(pg_statement_max) {
-        let value = tuple
-            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
-            .expect("there is always 3 fields in _pico_db_config tuple")
-            .expect("type already checked");
+        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
         MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
-        let value = tuple
-            .field::<usize>(AlterSystemParameters::FIELD_VALUE)
-            .expect("there is always 3 fields in _pico_db_config tuple")
-            .expect("type already checked");
+        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
 
         STATEMENT_CACHE.with(|cache| {
             // Yield might happen, but apply_parameter is not called from transaction.
@@ -2002,12 +1981,11 @@ pub fn apply_parameter(tuple: Tuple, current_tier: &str) {
             // Also changing capacity is a very rare operation, so it shouldn't be a problem.
             let mut cache = cache.lock();
             cache.capacity = value;
-            cache
-                .cache
-                .adjust_capacity(value)
-                .expect("can't fail with validated arguments");
-        });
+            cache.cache.adjust_capacity(value)
+        })?;
     }
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
