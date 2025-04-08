@@ -532,12 +532,9 @@ def test_admin_connection_info_and_help(cluster: Cluster):
 
 
 def test_connect_with_incorrect_url(cluster: Cluster):
-    i1 = cluster.add_instance()
-
     def connect_to(address):
         cli = pexpect.spawn(
-            cwd=i1.instance_dir,
-            command=i1.binary_path,
+            command=cluster.binary_path,
             args=["connect", address],
             encoding="utf-8",
             timeout=CLI_TIMEOUT,
@@ -564,12 +561,9 @@ def test_connect_with_incorrect_url(cluster: Cluster):
 
 
 def test_connect_timeout(cluster: Cluster):
-    i1 = cluster.add_instance()
-
     def connect_to(address, timeout=None):
         cli = pexpect.spawn(
-            cwd=i1.instance_dir,
-            command=i1.binary_path,
+            command=cluster.binary_path,
             args=[
                 "connect",
                 address,
@@ -594,19 +588,21 @@ def test_connect_timeout(cluster: Cluster):
     # * many others that depend on your/CI network settings and
     #   which we don't want to list here
 
-    cli = connect_to("100:1234")
+    TIMEOUT = 1
+
+    cli = connect_to("100:1234", timeout=TIMEOUT)
     cli.expect_exact("Connection Error (address 100:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("192.168.0.1:1234")
+    cli = connect_to("192.168.0.1:1234", timeout=TIMEOUT)
     cli.expect_exact("Connection Error (address 192.168.0.1:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("1000010002:1234")
+    cli = connect_to("1000010002:1234", timeout=TIMEOUT)
     cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("1000010002:1234", timeout=CLI_TIMEOUT)
+    cli = connect_to("1000010002:1234", timeout=TIMEOUT)
     cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
     cli.expect_exact(pexpect.EOF)
 
