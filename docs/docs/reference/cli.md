@@ -700,14 +700,14 @@ picodata plugin configure --service-names service_1,service_2
 picodata status [OPTIONS]
 ```
 
-Статус инстанса содержит следующие параметры:
+Вывод команды содержит следующие параметры:
 
-* `instance_name` — имя инстанса
-* `current_state` — текущее состояние инстанса
-* `target_state` — целевое состояние инстанса
-* `instance_uuid` — [UUID] инстанса
-* `replicaset_uuid` — [UUID] репликасета, которому принадлежит инстанс
-* `tier` — имя тира, которому принадлежит инстанс
+* `CLUSTER NAME` — имя кластера
+* `CLUSTER UUID` — [UUID] кластера
+* `TIER/DOMAIN` — имя тира и (при наличии) также [домен отказа](../overview/glossary.md#failure_domain)
+* `name` — имя инстанса
+* `state` — состояние инстанса
+* `uuid` — [UUID] инстанса
 * `uri` — публичный сетевой адрес инстанса
 
 [UUID]: sql_types.md#uuid
@@ -717,23 +717,19 @@ picodata status [OPTIONS]
 ```shell
 $ picodata status
 Enter password for pico_service:
+ CLUSTER NAME: my_cluster
+ CLUSTER UUID: ba894c85-41cf-479f-90ff-114ae370792f
+ TIER/DOMAIN: storage/MSK:RACK2
 
-
-CLUSTER NAME: demo
-
-
-+-----------+-----------+-----------+----------+----------+---------+----------+
-| instance_ | current_s | target_st | instance | replicas | tier    | uri      |
-| name      | tate      | ate       | _uuid    | et_uuid  |         |          |
-+==============================================================================+
-| default_1 | ["Online" | ["Online" | 38307bf4 | 50c2ed56 | default | 127.0.0. |
-| _1        | , 1]      | , 1]      | -33ec-47 | -ccd1-49 |         | 1:3301   |
-|           |           |           | 44-b830- | 73-b9f2- |         |          |
-|           |           |           | 8262a58d | 8aec11d8 |         |          |
-|           |           |           | cc9a     | dff5     |         |          |
-+-----------+-----------+-----------+----------+----------+---------+----------+
-(1 rows)
+ name   state    uuid                                   uri
+i1      Online   ce9870c3-e8f1-4ab3-88d4-c2ad10ef25ca   127.0.0.1:3301
+i2      Online   6866d9fc-ad48-4ea1-a1e3-f35e2b9e60a9   127.0.0.1:3302
+i3      Online   5d153ee3-dae3-4bea-a4de-06ac2cc4be22   127.0.0.1:3303
+i4      Online   9560e6ad-445c-4334-a01f-02ee2f1fb6a8   127.0.0.1:3304
 ```
+
+Для получения вывода `picodata status` требуется предоставить пароль
+системного пользователя `pico_service`.
 
 !!! note "Примечание"
     По умолчанию паролем системного пользователя `pico_service` является
