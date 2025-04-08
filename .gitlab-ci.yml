@@ -328,6 +328,7 @@ lint-docs:
     - docker-k8s
   rules:
     - <<: *if-changes-on-docs
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   script:
     - echo "Checking picodata doc..."
     - pushd docs && pipenv run lint
@@ -354,6 +355,7 @@ pack-doc:
   needs: [lint-docs]
   rules:
     - <<: *if-changes-on-docs
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   variables:
     SED_SLUG: 's/[^a-zA-Z0-9.]+/_/g'
   before_script:
@@ -400,6 +402,7 @@ upload-doc-to-binary:
     - docker-k8s
   rules:
     - <<: *if-changes-on-docs
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   variables:
     GIT_STRATEGY: none
   script:
@@ -437,10 +440,6 @@ deploy-doc-prod:
     - .deploy-doc
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-      changes:
-        paths:
-          - docs/**/*
-        compare_to: *main-branch
   variables:
     STAGE: PROD
 
