@@ -18,12 +18,8 @@ use tarantool::unwrap_ok_or;
 // proc_rpc_dispatch
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
-    let msgpack_args = msgpack_read_array(args)?;
-    let [path, mut input, context] = msgpack_args[..] else {
-        #[rustfmt::skip]
-        return Err(BoxError::new(TarantoolErrorCode::IllegalParams, format!("expected 3 arguments, got {}", msgpack_args.len())).into());
-    };
+fn decode_rpc_args(args: &[u8]) -> Result<(&str, &[u8], FfiSafeContext), TntError> {
+    let [path, mut input, context] = msgpack_read_array(args)?;
 
     // 1st argument is path
     let path: &str = unwrap_ok_or!(rmp_serde::from_slice(path),
@@ -46,6 +42,14 @@ pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntE
         return Err(BoxError::new(e.error_code(), format!("failed to decode third argument (context): {}", e.message())).into());
     };
 
+    Ok((path, input, context))
+}
+
+pub fn proc_rpc_dispatch_impl(
+    path: &str,
+    input: &[u8],
+    context: FfiSafeContext,
+) -> Result<&'static RawBytes, TntError> {
     // SAFETY: safe because `key` doesn't outlive `args`
     let key = unsafe {
         RpcHandlerKey {
@@ -105,7 +109,8 @@ pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntE
 
 #[tarantool::proc(packed_args)]
 pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
-    proc_rpc_dispatch_impl(args)
+    let (path, input, context) = decode_rpc_args(args)?;
+    proc_rpc_dispatch_impl(path, input, context)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -225,16 +230,22 @@ pub fn unregister_all_rpc_handlers(plugin_name: &str, service_name: &str, plugin
 // miscellaneous
 ////////////////////////////////////////////////////////////////////////////////
 
-fn msgpack_read_array(data: &[u8]) -> Result<Vec<&[u8]>, TntError> {
+fn msgpack_read_array<const N: usize>(data: &[u8]) -> Result<[&[u8]; N], TntError> {
     let mut iterator = std::io::Cursor::new(data);
+
     let count = rmp::decode::read_array_len(&mut iterator)?;
-    let mut result = Vec::with_capacity(count as _);
+    if count as usize != N {
+        #[rustfmt::skip]
+        return Err(BoxError::new(TarantoolErrorCode::IllegalParams, format!("expected {N} arguments, got {count}")).into());
+    }
+
+    let mut result = [b"".as_slice(); N];
     let mut start = iterator.position() as usize;
-    for _ in 0..count {
+    for i in 0..N {
         tarantool::msgpack::skip_value(&mut iterator)?;
         let end = iterator.position() as usize;
         let value = &data[start..end];
-        result.push(value);
+        result[i] = value;
         start = end;
     }
 
@@ -269,17 +280,10 @@ mod test {
     ) -> Result<&'static RawBytes, TntError> {
         let mut buffer = vec![];
         let request_id = tarantool::uuid::Uuid::random();
-        crate::plugin::rpc::client::encode_request_arguments(
-            &mut buffer,
-            path,
-            input,
-            &request_id,
-            plugin,
-            service,
-            version,
-        )
-        .unwrap();
-        proc_rpc_dispatch_impl(buffer.as_slice().into())
+        crate::plugin::rpc::client::encode_context_for_local_call(&mut buffer).unwrap();
+        let context =
+            FfiSafeContext::for_local_call(request_id, path, plugin, service, version, &buffer);
+        proc_rpc_dispatch_impl(path, input, context)
     }
 
     #[tarantool::test]

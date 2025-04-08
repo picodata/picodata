@@ -35,6 +35,11 @@ with the `YY.MINOR.MICRO` scheme.
   the behavior was inverted - we preferred remote execution, which was counter
   productive.
 
+- Plugin RPC context has new named field "call_was_local" which is set to `true`
+  when the call is made locally (without network access). Note that in the
+  opposite case "call_was_local" may be unset, so the absence of this fields
+  should be interpreted as a non local call.
+
 ### ACL
 
 - For all users with role `public` the privileges to `read` system tables `_pico_instance` and `_pico_peer_address` are now granted.

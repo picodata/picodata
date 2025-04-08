@@ -5,6 +5,8 @@ use crate::plugin::interface::PicoContext;
 use crate::plugin::interface::ServiceId;
 use crate::transport::context::Context;
 use crate::transport::context::FfiSafeContext;
+#[allow(unused_imports)]
+use crate::transport::rpc::client::RequestBuilder;
 use crate::util::FfiSafeBytes;
 use crate::util::FfiSafeStr;
 use std::mem::MaybeUninit;
@@ -17,6 +19,8 @@ use tarantool::error::TarantoolErrorCode;
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A helper struct for declaring RPC endpoints.
+///
+/// See also [`RequestBuilder`] for the client side of the RPC communication.
 #[derive(Debug, Clone)]
 pub struct RouteBuilder<'a> {
     plugin: &'a str,
@@ -76,6 +80,18 @@ impl<'a> RouteBuilder<'a> {
     /// so we must not hold any `&mut` references in those closures (other than
     /// ones allowed by rust semantics, see official reference on undefined
     /// behaviour [here]).
+    ///
+    /// Use [`RequestBuilder::send`] to invoke the RPC endpoint registerred with
+    /// this method.
+    ///
+    /// # Local execution
+    ///
+    /// Note that the RPC handler may be invoked locally if the caller specifies
+    /// the request target which matches the current instance. In that case
+    /// the handler is invoked in the same process without yielding from the
+    /// fiber. A special named field `"call_was_local": true` is added to the
+    /// [`Context`] argument of the handler if the call was local. Note that
+    /// this field may or may not be missing in case of non-local call.
     ///
     /// [here]: <https://doc.rust-lang.org/reference/behavior-considered-undefined.html>
     #[track_caller]

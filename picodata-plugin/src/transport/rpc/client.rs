@@ -2,6 +2,8 @@ use super::Request;
 use super::Response;
 use crate::internal::ffi;
 use crate::plugin::interface::PicoContext;
+#[allow(unused_imports)]
+use crate::transport::rpc::server::RouteBuilder;
 use crate::util::FfiSafeBytes;
 use crate::util::FfiSafeStr;
 use crate::util::RegionGuard;
@@ -17,6 +19,9 @@ use tarantool::time::Instant;
 // RequestBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A helper struct for sending RPC requests.
+///
+/// See also [`RouteBuilder`] for the server side of the RPC communication.
 #[derive(Debug)]
 pub struct RequestBuilder<'a> {
     target: FfiSafeRpcTargetSpecifier,
@@ -169,8 +174,17 @@ impl<'a> RequestBuilder<'a> {
         })
     }
 
-    /// Send the request with the current paramters. This will block the current
-    /// fiber until the response is received or the timeout is reached.
+    /// Send the request with the current parameters.
+    ///
+    /// Note that if the request target specification (see [`RequestTarget`])
+    /// matches the current instance then the request will be performed fully
+    /// locally, i.e. the request handler will be executed in the current
+    /// process without switching the fiber (although the fiber's name may
+    /// change).
+    ///
+    /// If the request target doesn't match the current instance, an iproto
+    /// request will be sent out and the current fiber will be blocked
+    /// until the response is received or the timeout is reached.
     ///
     /// Returns an error if some of the parameters are invalid.
     #[inline]

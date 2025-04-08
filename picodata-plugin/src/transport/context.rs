@@ -359,6 +359,26 @@ pub struct FfiSafeContext {
 }
 
 impl FfiSafeContext {
+    #[inline]
+    pub fn for_local_call(
+        request_id: Uuid,
+        path: &str,
+        plugin: &str,
+        service: &str,
+        version: &str,
+        raw: &[u8],
+    ) -> Self {
+        Self {
+            request_id: request_id.to_tt_uuid(),
+            path: path.into(),
+            plugin_name: plugin.into(),
+            service_name: service.into(),
+            plugin_version: version.into(),
+
+            raw: raw.into(),
+        }
+    }
+
     #[inline(always)]
     pub fn decode_msgpack(path: &str, raw: &[u8]) -> Result<Self, ()> {
         Self::decode_msgpack_impl(path, raw)

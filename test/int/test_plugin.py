@@ -2315,6 +2315,9 @@ cluster:
         int=420,
         array=[1, "two", 3.14],
         timeout=5.0,
+        # The call is not local, so `call_was_local` key is missing.
+        # We don't add it by default for optimization.
+        # call_was_local=False,
     )
 
     input: dict[str, Any]
@@ -2329,6 +2332,28 @@ cluster:
     )
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert msgpack.loads(output) == ["pong", i2.name, b"how are you?"]
+
+    # Check context when calling RPC locally
+    context = make_context()
+    input = dict(
+        path="/echo-context",
+        instance_name=i1.name,
+        input="can you believe the weather we're having?",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    echoed_context = msgpack.loads(output)
+    # Request id is generated in /proxy when initiating the request, so it's unique
+    assert echoed_context["request_id"] != str(context[REQUEST_ID])
+    del echoed_context["request_id"]
+    assert echoed_context == dict(
+        plugin_name=context[PLUGIN_NAME],
+        service_name=context[SERVICE_NAME],
+        plugin_version=context[PLUGIN_VERSION],
+        path="/echo-context",
+        # Call was local because i1 is calling itself which always results in a
+        # local call
+        call_was_local=True,
+    )
 
     i1.call("pico._inject_error", "RPC_NETWORK_ERROR", True)
     context = make_context()

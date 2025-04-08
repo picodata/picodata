@@ -12,6 +12,7 @@ use crate::traft::network::ConnectionPool;
 use crate::traft::node::Node;
 use crate::vshard;
 use picodata_plugin::transport::context::ContextFieldId;
+use picodata_plugin::transport::context::FfiSafeContext;
 use picodata_plugin::transport::rpc::client::FfiSafeRpcTargetSpecifier;
 use picodata_plugin::util::copy_to_region;
 use std::time::Duration;
@@ -67,6 +68,21 @@ pub(crate) fn send_rpc_request(
 
     let mut buffer = Vec::new();
     let request_id = Uuid::random();
+
+    if instance_name == my_instance_name {
+        encode_context_for_local_call(&mut buffer).expect("can't fail encoding into an array");
+        let context = FfiSafeContext::for_local_call(
+            request_id,
+            path,
+            &plugin_identity.name,
+            service,
+            &plugin_identity.version,
+            &buffer,
+        );
+        let output = rpc::server::proc_rpc_dispatch_impl(path, input, context)?;
+        return process_rpc_output(output);
+    };
+
     encode_request_arguments(
         &mut buffer,
         path,
@@ -79,11 +95,6 @@ pub(crate) fn send_rpc_request(
     .expect("can't fail encoding into an array");
     // Safe because buffer contains a msgpack array
     let args = unsafe { TupleBuffer::from_vec_unchecked(buffer) };
-
-    if instance_name == my_instance_name {
-        let output = rpc::server::proc_rpc_dispatch_impl(args.as_ref().into())?;
-        return process_rpc_output(output);
-    };
 
     crate::error_injection!("RPC_NETWORK_ERROR" => return Err(Error::other("injected error")));
     tlog!(Debug, "sending plugin RPC request";
@@ -180,6 +191,15 @@ pub(crate) fn encode_request_arguments(
         rmp::encode::write_uint(buffer, ContextFieldId::PluginVersion as _)?;
         rmp_serde::encode::write(buffer, plugin_version)?;
     }
+
+    Ok(())
+}
+
+pub(crate) fn encode_context_for_local_call(buffer: &mut Vec<u8>) -> Result<(), TntError> {
+    rmp::encode::write_map_len(buffer, 1)?;
+
+    rmp::encode::write_str(buffer, "call_was_local")?;
+    rmp::encode::write_bool(buffer, true)?;
 
     Ok(())
 }

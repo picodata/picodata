@@ -729,7 +729,13 @@ impl Service for ServiceWithRpcTests {
 
         rpc::RouteBuilder::from(context)
             .path("/get_fiber_name")
-            .register(|_, _| {
+            .register(|_, context| {
+                let local = context.get("call_was_local").unwrap().unwrap();
+                // NOTE: this is not necesarily so in general, but at this
+                // moment this RPC endpoint is only invoked locally, so this
+                // assertion holds
+                assert_eq!(local.bool(), Some(true));
+
                 let fiber_name = fiber::name();
                 rpc::Response::from_bytes(fiber_name.as_bytes())
             })
