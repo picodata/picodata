@@ -22,6 +22,8 @@ use rmp::Marker;
 use serde::Serialize;
 
 use crate::error::{self, Error, Result, TarantoolError};
+#[cfg(feature = "picodata")]
+use crate::ffi::sql::PortC;
 use crate::ffi::tarantool as ffi;
 use crate::index;
 use crate::tlua;
@@ -1208,6 +1210,17 @@ impl FunctionCtx {
             Ok(result)
         }
     }
+
+    #[cfg(feature = "picodata")]
+    #[inline]
+    pub fn mut_port_c(&mut self) -> &mut PortC {
+        unsafe {
+            let mut ctx = NonNull::new_unchecked(self.inner);
+            NonNull::new_unchecked(ctx.as_mut().port)
+                .as_mut()
+                .mut_port_c()
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1603,15 +1616,10 @@ mod picodata {
         /// Returns a slice of data contained in the tuple.
         #[inline]
         pub fn data(&self) -> &[u8] {
-            // Safety: safe because we only construct `Tuple` from valid pointers to `box_tuple_t`.
-            let tuple = unsafe { self.ptr.as_ref() };
-            // Safety: this is how tuple data is stored in picodata's tarantool-2.11.2-137-ga0f7c15f75
             unsafe {
-                let data_offset = tuple.data_offset();
-                let data = (tuple as *const ffi::BoxTuple)
-                    .cast::<u8>()
-                    .offset(data_offset as _);
-                std::slice::from_raw_parts(data, tuple.bsize())
+                // Safety: safe because we only construct `Tuple` from valid pointers to `box_tuple_t`.
+                let tuple = self.ptr.as_ref();
+                tuple.data()
             }
         }
     }

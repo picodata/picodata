@@ -537,6 +537,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             #[cfg(feature = "picodata")]
             {
                 tests.append(&mut tests![
+                    proc::return_port,
                     sql::prepared_source_query,
                     sql::prepared_invalid_query,
                     sql::prepared_no_params,
@@ -544,6 +545,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::prepared_with_unnamed_params,
                     sql::prepared_with_named_params,
                     sql::prepared_invalid_params,
+                    sql::port_c,
                     tuple_picodata::tuple_hash,
                 ])
             }

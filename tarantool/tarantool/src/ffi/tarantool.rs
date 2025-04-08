@@ -871,7 +871,7 @@ pub struct BoxTuple {
 #[cfg(feature = "picodata")]
 #[repr(C, packed)]
 pub struct BoxTuple {
-    pub(crate) refs: u8,
+    pub refs: u8,
     pub(crate) flags: u8,
     pub(crate) format_id: u16,
     pub(crate) data_offset: u16,
@@ -904,6 +904,17 @@ impl BoxTuple {
 impl BoxTuple {
     pub fn bsize(&self) -> usize {
         unsafe { box_tuple_bsize(self) }
+    }
+
+    /// # Safety
+    /// This is how tuple data is stored in tarantool.
+    #[inline]
+    pub unsafe fn data(&self) -> &[u8] {
+        unsafe {
+            let data_offset = self.data_offset() as isize;
+            let data = (self as *const BoxTuple).cast::<u8>().offset(data_offset);
+            std::slice::from_raw_parts(data, self.bsize())
+        }
     }
 }
 
@@ -1247,7 +1258,10 @@ extern "C" {
 
 #[repr(C)]
 pub struct BoxFunctionCtx {
+    #[cfg(not(feature = "picodata"))]
     _unused: [u8; 0],
+    #[cfg(feature = "picodata")]
+    pub(crate) port: *mut crate::ffi::sql::Port,
 }
 
 extern "C" {
@@ -1286,6 +1300,7 @@ extern "C" {
 }
 
 use crate::ffi::lua::lua_State;
+
 extern "C" {
     pub fn luaT_state() -> *mut lua_State;
     pub fn luaT_call(l: *mut lua_State, nargs: c_int, nreturns: c_int) -> isize;

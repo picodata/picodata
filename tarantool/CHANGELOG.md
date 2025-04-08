@@ -22,6 +22,9 @@
   seems to help with lua_error!() in release builds on recent versions of rust.
 
 ### Added (picodata)
+- `ffi::sql::PortC` either allows to append tuples and msgpacks to the port or
+  to iterate over the port data. It is also possible to manipulate with `PortC`
+  from the `FunctionCtx` of the called function.
 
 ### Changed (picodata)
 

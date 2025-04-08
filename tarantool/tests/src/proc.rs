@@ -74,6 +74,37 @@ pub fn return_tuple() {
     assert_eq!(data, ["hello", "sailor"]);
 }
 
+#[cfg(feature = "picodata")]
+pub fn return_port() {
+    use tarantool::error::TarantoolErrorCode;
+    use tarantool::set_error;
+    use tarantool::tuple::{FunctionArgs, FunctionCtx};
+
+    #[no_mangle]
+    unsafe extern "C" fn proc_port(mut ctx: FunctionCtx, args: FunctionArgs) -> i32 {
+        let (a, b) = match args.decode::<(i32, String)>() {
+            Ok(v) => v,
+            Err(e) => {
+                set_error!(TarantoolErrorCode::ProcC, "decode error: {}", e);
+                return -1;
+            }
+        };
+        let mut tuple = Tuple::new(&(a, b)).expect("tuple creation failed");
+        ctx.mut_port_c().add_tuple(&mut tuple);
+        ctx.mut_port_c().add_mp(b"\x91\xa5hello");
+        ctx.mut_port_c().add_mp(b"\xa6sailor");
+        0
+    }
+
+    let data: (Tuple, [String; 1], String) = call_proc("proc_port", (42, "magic")).unwrap();
+    assert_eq!(
+        data.0.decode::<(i32, String)>().unwrap(),
+        (42, "magic".to_string())
+    );
+    assert_eq!(data.1, ["hello"]);
+    assert_eq!(data.2, "sailor");
+}
+
 pub fn with_error() {
     #[tarantool::proc]
     fn proc_with_error(x: i32, y: String) -> Result<(i32, i32), String> {

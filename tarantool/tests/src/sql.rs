@@ -3,11 +3,13 @@
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::Read;
+use std::ptr::NonNull;
 use tarantool::error::{Error, TarantoolError};
-use tarantool::ffi::sql::IPROTO_DATA;
+use tarantool::ffi::sql::{PortC, IPROTO_DATA};
 use tarantool::index::IndexType;
 use tarantool::space::{Field, Space};
 use tarantool::sql::unprepare;
+use tarantool::tuple::Tuple;
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
     let space = Space::builder(name)
@@ -258,4 +260,56 @@ pub fn prepared_with_named_params() {
 
     unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
+}
+
+pub fn port_c() {
+    let tuple_refs = |tuple: &Tuple| unsafe { NonNull::new(tuple.as_ptr()).unwrap().as_ref() }.refs;
+    let mut port_c = PortC::default();
+
+    // Check that we can iterate over an empty port.
+    let mut iter = port_c.iter();
+    assert_eq!(iter.next(), None);
+
+    // Let's check that the data in the port can outlive
+    // the original tuples after dropping them.
+    {
+        let mut tuple1 = Tuple::new(&("A",)).unwrap();
+        port_c.add_tuple(&mut tuple1);
+        let mp1 = b"\x91\xa1B";
+        unsafe { port_c.add_mp(mp1.as_slice()) };
+        let mut tuple2 = Tuple::new(&("C", "D")).unwrap();
+        port_c.add_tuple(&mut tuple2);
+        let mp2 = b"\x91\xa1E";
+        unsafe { port_c.add_mp(mp2.as_slice()) };
+    }
+    let mut tuple3 = Tuple::new(&("F",)).unwrap();
+    // The tuple has two references and it should not surprise you.
+    // The first one is a long-live reference produces by the box_tuple_ref.
+    // The second is temporary produced by tuple_bless when the tuple is added
+    // to the output box_tuple_last pointer. The next tuple put to the
+    // box_tuple_last decreases the reference count of the previous tuple.
+    assert_eq!(tuple_refs(&tuple3), 2);
+    let _ = Tuple::new(&("G",)).unwrap();
+    assert_eq!(tuple_refs(&tuple3), 1);
+    port_c.add_tuple(&mut tuple3);
+    assert_eq!(tuple_refs(&tuple3), 2);
+
+    let expected: Vec<Vec<String>> = vec![
+        vec!["A".into()],
+        vec!["B".into()],
+        vec!["C".into(), "D".into()],
+        vec!["E".into()],
+        vec!["F".into()],
+    ];
+    let mut result = Vec::new();
+    for mp_bytes in port_c.iter() {
+        let entry: Vec<String> = rmp_serde::from_slice(mp_bytes).unwrap();
+        result.push(entry);
+    }
+    assert_eq!(result, expected);
+
+    // Check port destruction and the amount of references
+    // in the tuples.
+    drop(port_c);
+    assert_eq!(tuple_refs(&tuple3), 1);
 }
