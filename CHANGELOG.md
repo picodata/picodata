@@ -70,7 +70,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Minimal supported Rust version has been bumped from `1.76.0` to `1.85`.
 
-- Allow to configure `activation_deadline` parameter per-instance in config file (7200 sec default) for auto-shutdown.
+- Allow to configure `boot_timeout` parameter per-instance in config file (7200 sec by default) for auto-shutdown.
 
 ## [25.1.1] - 2025-02-21
 

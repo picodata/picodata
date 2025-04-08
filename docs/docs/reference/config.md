@@ -73,41 +73,41 @@ cluster:
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (13)!
-  name: null # (19)!
-  replicaset_name: null # (24)!
-  tier: default # (25!
-  failure_domain: {} # (11)!
-  peer: # (20)!
+  instance_dir: . # (14)!
+  name: null # (20)!
+  replicaset_name: null # (25)!
+  tier: default # (26)!
+  failure_domain: {} # (12)!
+  peer: # (21)!
   - 127.0.0.1:3301
-  iproto_listen: 127.0.0.1:3301 # (14)!
+  iproto_listen: 127.0.0.1:3301 # (15)!
   iproto_advertise: 127.0.0.1:3301 # (9)!
-  http_listen: null # (12)!
+  http_listen: null # (13)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (23)!
+  share_dir: null # (24)!
   audit: null # (10)!
   log:
-    level: info # (17)!
-    destination: null # (15)!
-    format: plain # (16)!
+    level: info # (18)!
+    destination: null # (16)!
+    format: plain # (17)!
   memtx:
-    memory: 64M # (18)!
+    memory: 64M # (19)!
   vinyl:
-    memory: 128M # (27)!
-    cache: 128M # (26)!
-    bloom_fpr: 0.05 # (28)!
-    max_tuple_size: 1M # (29)!
-    page_size: 8K # (30)!
-    range_size: 1G # (31)!
-    run_count_per_level: 2 # (32)!
-    run_size_ratio: 3.5 # (33)!
-    read_threads: 1 # (34)!
-    write_threads: 4 # (35)!
-    timeout: 60.0 # (36)!
+    memory: 128M # (28)!
+    cache: 128M # (27)!
+    bloom_fpr: 0.05 # (29)!
+    max_tuple_size: 1M # (30)!
+    page_size: 8K # (31)!
+    range_size: 1G # (32)!
+    run_count_per_level: 2 # (33)!
+    run_size_ratio: 3.5 # (34)!
+    read_threads: 1 # (35)!
+    write_threads: 4 # (36)!
+    timeout: 60.0 # (37)!
   pg:
-    listen: 127.0.0.1:4327 # (21)!
-    ssl: false # (22)!
-  activation_deadline: 7200 # (36)!
+    listen: 127.0.0.1:4327 # (22)!
+    ssl: false # (23)!
+  boot_timeout: 7200 # (11)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -117,10 +117,10 @@ instance:
 5. [cluster.tier.<tier_name\>.bucket_count](#cluster_tier_tier_bucket_count)
 6. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 7. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-8. [instance.activation_deadline](#instance_activation_deadline)
-9. [instance.admin_socket](#instance_admin_socket)
-10. [instance.iproto_advertise](#instance_iproto_advertise)
-11. [instance.audit](#instance_audit)
+8. [instance.admin_socket](#instance_admin_socket)
+9. [instance.iproto_advertise](#instance_iproto_advertise)
+10. [instance.audit](#instance_audit)
+11. [instance.boot_timeout](#instance_boot_timeout)
 12. [instance.failure_domain](#instance_failure_domain)
 13. [instance.http_listen](#instance_http_listen)
 14. [instance.instance_dir](#instance_instance_dir)
@@ -262,21 +262,6 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
 ```
 
-### instance.activation_deadline {: #instance_activation_deadline }
-
-Максимальное время *в секундах*, в течение которого `instance` может ожидать активации для присоединения к кластеру, после чего он автоматически отключается.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `7200` (2 часа)
-
-Аналогичная команда — [`picodata run --config-parameter`]. Пример:
-
-```bash
-picodata run -c instance.activation_deadline=3600
-```
-
 ### instance.admin_socket {: #instance_admin_socket }
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
@@ -311,6 +296,21 @@ picodata run -c instance.activation_deadline=3600
 Аналогичная команда: [`picodata run --audit`]
 
 [`picodata run --audit`]: cli.md#run_audit
+
+### instance.boot_timeout {: #instance_boot_timeout }
+
+Максимальное время *в секундах*, в течение которого `instance` может находиться в ожидании загрузки перед присоединением к кластеру, после чего он автоматически отключается.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `7200` (2 часа)
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.boot_timeout=3600
+```
 
 ### instance.failure_domain {: #instance_failure_domain }
 

@@ -1179,8 +1179,8 @@ fn postjoin(
 
     // We will shut down, if we don't receive a confirmation of target state
     // change from leader before this time.
-    let activation_deadline = Instant::now_fiber()
-        .saturating_add(Duration::from_secs(config.instance.activation_deadline()));
+    let boot_timeout =
+        Instant::now_fiber().saturating_add(Duration::from_secs(config.instance.boot_timeout()));
 
     // This will be doubled on each retry, until max_retry_timeout is reached.
     let mut retry_timeout = Duration::from_millis(250);
@@ -1189,7 +1189,7 @@ fn postjoin(
     // Activates instance
     loop {
         let now = fiber::clock();
-        if now > activation_deadline {
+        if now > boot_timeout {
             return Err(Error::other(
                 "failed to activate myself: timeout, shutting down...",
             ));
@@ -1256,7 +1256,7 @@ fn postjoin(
             proc_name!(rpc::update_instance::proc_update_instance),
             &req,
         )
-        .timeout(activation_deadline - now);
+        .timeout(boot_timeout - now);
         let error_message;
         match fiber::block_on(fut) {
             Ok(rpc::update_instance::Response {}) => {

@@ -1210,7 +1210,7 @@ pub struct InstanceConfig {
     pub pg: pgproto::Config,
 
     #[introspection(config_default = 2 * 60 * 60)]
-    pub activation_deadline: Option<u64>,
+    pub boot_timeout: Option<u64>,
 
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
@@ -1294,8 +1294,8 @@ impl InstanceConfig {
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
-    pub fn activation_deadline(&self) -> u64 {
-        self.activation_deadline
+    pub fn boot_timeout(&self) -> u64 {
+        self.boot_timeout
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
