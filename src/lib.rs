@@ -6,7 +6,6 @@
 #![allow(clippy::needless_return)]
 #![allow(clippy::needless_late_init)]
 #![allow(clippy::needless_range_loop)]
-#![allow(clippy::unwrap_or_default)]
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::vec_init_then_push)]

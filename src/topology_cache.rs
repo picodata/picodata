@@ -692,11 +692,11 @@ impl TopologyCacheMutable {
             // Create service route record or update an old one
             self.service_routes
                 .entry(new.plugin_name)
-                .or_insert_with(HashMap::default)
+                .or_default()
                 .entry(new.plugin_version)
-                .or_insert_with(HashMap::default)
+                .or_default()
                 .entry(new.service_name)
-                .or_insert_with(HashMap::default)
+                .or_default()
                 .insert(new.instance_name.into(), new.poison);
         } else if let Some(old) = old {
             // Delete a service route record

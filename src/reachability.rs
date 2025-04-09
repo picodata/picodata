@@ -44,7 +44,7 @@ impl InstanceReachabilityManager {
     /// a failure. Updates info for the given instance.
     pub fn report_result(&mut self, raft_id: RaftId, success: bool) {
         let now = fiber::clock();
-        let info = self.infos.entry(raft_id).or_insert_with(Default::default);
+        let info = self.infos.entry(raft_id).or_default();
         info.last_attempt = Some(now);
 
         // Even if it was previously reported as unreachable another message was
