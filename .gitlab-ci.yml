@@ -47,6 +47,7 @@ variables:
   CACHE_POLICY: pull-push
   GIT_DEPTH: 1
   GET_SOURCES_ATTEMPTS: 3
+  GIT_FETCH_TAGS_DIRS: ".,tarantool-sys,tarantool-sys/third_party/luajit"
   PICODATA_DESCRIBE: "25.2.0"
   PARENT_BRANCH: $CI_COMMIT_REF_NAME
   PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
@@ -201,7 +202,6 @@ build-stress-image:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: fetch
     GIT_DESCRIBE: $PICODATA_DESCRIBE
-    GIT_FETCH_TAGS_DIRS: ".,tarantool-sys,tarantool-sys/third_party/luajit"
     RUST_BACKTRACE: full
     KUBERNETES_CPU_REQUEST: 6
     KUBERNETES_MEMORY_REQUEST: "6Gi"
@@ -303,7 +303,6 @@ lint:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
-    GIT_FETCH_TAGS_DIRS: "tarantool-sys,tarantool-sys/third_party/luajit"
     TARGET: debug
   cache:
     - <<: *py_cache
@@ -357,7 +356,7 @@ pack-doc:
     - <<: *if-changes-on-docs
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   variables:
-    SED_SLUG: 's/[^a-zA-Z0-9.]+/_/g'
+    SED_SLUG: "s/[^a-zA-Z0-9.]+/_/g"
   before_script:
     - |
       if [ "$CI_COMMIT_BRANCH" == "main" ]; then
@@ -424,7 +423,7 @@ upload-doc-to-binary:
     PICODATA_DOC: $FNAME
     PICODATA_DOC_SUBDIR: $PICODATA_DOC_VER
   trigger:
-    project: 'picodata/web-site/infra'
+    project: "picodata/web-site/infra"
     strategy: depend
   needs:
     - job: pack-doc
@@ -893,4 +892,3 @@ deploy-luarocks:
     - echo "Deploying luarocks..."
     - scp -o stricthostkeychecking=no sbroad*rock luarocks@94.26.239.246:/data/nginx/www/packrepo/luarocks
     - ssh -o stricthostkeychecking=no luarocks@94.26.239.246 "luarocks-admin make_manifest /data/nginx/www/packrepo/luarocks"
-
