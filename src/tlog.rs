@@ -270,12 +270,12 @@ mod test {
         tlog!(Info, "start logging from non-tx threads");
         thread::scope(|s| {
             let mut jhs = Vec::new();
-            for i in 0..10 {
+            for (i, random_number) in random_numbers.into_iter().enumerate() {
                 let jh = thread::Builder::new()
                     .name(format!("test thread #{i}"))
                     .spawn_scoped(s, move || {
                         tlog!(Info, "test thread #{i} started");
-                        thread::sleep(Duration::from_millis(random_numbers[i]));
+                        thread::sleep(Duration::from_millis(random_number));
                         tlog!(Info, "test thread #{i} ended");
                     })
                     .unwrap();
