@@ -1732,9 +1732,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         let table = ir.dml_node_table(top)?;
         let table_name = &table.name;
         let table_id = Space::find(table_name.as_str())
-            .ok_or(Error::other(format!(
-                "failed to find table with name: {table_name}"
-            )))?
+            .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?
             .id();
 
         let node = ir.get_relation_node(top)?;

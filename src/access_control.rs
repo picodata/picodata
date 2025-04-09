@@ -96,13 +96,13 @@ fn make_no_such_user(name: &str) -> tarantool::error::Error {
 /// Get user by id. If there is no such user the last tarantool error is set to no such user
 /// and returned.
 pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
-    user_by_id_if_exists(id)?.ok_or(
+    user_by_id_if_exists(id)?.ok_or_else(|| {
         BoxError::new(
             TarantoolErrorCode::NoSuchUser,
             format!("no such user #{id}"),
         )
-        .into(),
-    )
+        .into()
+    })
 }
 
 /// Get user by id. If there is no such user None is returned.
@@ -190,7 +190,7 @@ fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::R
     let table_name = storage
         .tables
         .get(space_id)?
-        .map_or(format!("id={}", space_id), |table| table.name);
+        .map_or_else(|| format!("id={}", space_id), |table| table.name);
 
     return Err(BoxError::new(
         TarantoolErrorCode::AccessDenied,
@@ -228,7 +228,7 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
         let table_name = storage
             .tables
             .get(space_id)?
-            .map_or(format!("id={}", space_id), |table| table.name);
+            .map_or_else(|| format!("id={}", space_id), |table| table.name);
 
         return Err(tarantool::error::BoxError::new(
             TarantoolErrorCode::AccessDenied,
@@ -856,15 +856,10 @@ mod tests {
         grantee_id: UserId,
         grantor_id: Option<UserId>,
     ) {
-        let priv_def = PrivilegeDef::new(
-            grantor_id.unwrap_or(session::uid().unwrap()),
-            grantee_id,
-            privilege,
-            object_type,
-            object_id,
-            0,
-        )
-        .expect("must be valid");
+        let grantor_id = grantor_id.unwrap_or_else(|| session::uid().unwrap());
+        let priv_def =
+            PrivilegeDef::new(grantor_id, grantee_id, privilege, object_type, object_id, 0)
+                .expect("must be valid");
 
         access_check_op(
             storage,

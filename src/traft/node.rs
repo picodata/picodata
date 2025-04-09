@@ -2684,7 +2684,7 @@ pub fn global() -> Result<&'static Node, BoxError> {
     // std::sync::OnceLock, because we don't want to pay for the atomic read
     // which we don't need.
     unsafe { static_ref!(RAFT_NODE const).as_deref() }
-        .ok_or(BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
+        .ok_or_else(|| BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
 }
 
 #[proc(packed_args)]

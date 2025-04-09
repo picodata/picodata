@@ -13,6 +13,9 @@
 #![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::field_reassign_with_default)]
+// Prevents ok_or(BoxError::new(...))
+#![warn(clippy::or_fun_call)]
+
 use config::apply_parameter;
 use info::PICODATA_VERSION;
 use regex::Regex;
@@ -1125,10 +1128,12 @@ fn postjoin(
         let l = ::tarantool::lua_state();
         l.exec_with(
             "dofile(...)",
-            script.to_str().ok_or(Error::other(format!(
-                "postjoin script path {} is not encoded in UTF-8",
-                script.to_string_lossy()
-            )))?,
+            script.to_str().ok_or_else(|| {
+                Error::other(format!(
+                    "postjoin script path {} is not encoded in UTF-8",
+                    script.to_string_lossy()
+                ))
+            })?,
         )
         .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
     }

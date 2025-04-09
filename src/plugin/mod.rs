@@ -1158,7 +1158,7 @@ pub fn change_config_atom(
                 .iter()
                 .map(|(k, v)| {
                     let json = serde_json::from_str(v);
-                    let value = json.unwrap_or(rmpv::Value::from(*v));
+                    let value = json.unwrap_or_else(|_| rmpv::Value::from(*v));
                     (k.to_string(), value)
                 })
                 .collect();

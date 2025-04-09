@@ -794,11 +794,11 @@ impl PluginConfigRecord {
         };
 
         for (k, v) in map {
-            let key = k
-                .as_str()
-                .ok_or(<rmp_serde::decode::Error as serde::de::Error>::custom(
+            let key = k.as_str().ok_or_else(|| {
+                <rmp_serde::decode::Error as serde::de::Error>::custom(
                     "Only string keys allowed in plugin configuration",
-                ))?;
+                )
+            })?;
             result.push(Self {
                 plugin: ident.name.to_string(),
                 version: ident.version.to_string(),
@@ -2394,7 +2394,7 @@ impl CreateTableParams {
             DistributionParam::Global => Distribution::Global,
             DistributionParam::Sharded => {
                 // Case when tier wasn't specified explicitly. On that stage we sure that specified tier exists and isn't empty.
-                let tier = self.tier.unwrap_or(DEFAULT_TIER.into());
+                let tier = self.tier.unwrap_or_else(|| DEFAULT_TIER.into());
                 if let Some(field) = self.by_field {
                     Distribution::ShardedByField { field, tier }
                 } else {

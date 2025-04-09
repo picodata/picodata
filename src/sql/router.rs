@@ -65,10 +65,12 @@ pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
                     format_smolstr!("tier object by tier name: {e}"),
                 )
             })?
-            .ok_or(SbroadError::NotFound(
-                Entity::Metadata,
-                format_smolstr!("tier with name `{tier_name}` not found"),
-            ))
+            .ok_or_else(|| {
+                SbroadError::NotFound(
+                    Entity::Metadata,
+                    format_smolstr!("tier with name `{tier_name}` not found"),
+                )
+            })
     })??;
 
     Ok(Tier {
@@ -87,11 +89,13 @@ fn get_current_tier_name() -> Result<String, SbroadError> {
             .map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format_smolstr!("tier name: {e}"))
             })?
-            .ok_or(SbroadError::FailedTo(
-                Action::Get,
-                None,
-                format_smolstr!("tier name should be persisted at instance bootstrap"),
-            ))
+            .ok_or_else(|| {
+                SbroadError::FailedTo(
+                    Action::Get,
+                    None,
+                    format_smolstr!("tier name should be persisted at instance bootstrap"),
+                )
+            })
     })??;
 
     Ok(tier_name)

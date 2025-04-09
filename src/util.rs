@@ -414,10 +414,12 @@ pub fn validate_and_complete_unix_socket_path(
 ) -> Result<String, Error> {
     let l = ::tarantool::lua_state();
     let path = socket_path.as_ref();
-    let path_str = path.to_str().ok_or(Error::other(format!(
-        "socket_path {} is not encoded in UTF-8",
-        socket_path.as_ref().to_string_lossy()
-    )))?;
+    let path_str = path.to_str().ok_or_else(|| {
+        Error::other(format!(
+            "socket_path {} is not encoded in UTF-8",
+            socket_path.as_ref().to_string_lossy()
+        ))
+    })?;
     let path_str = if path.is_absolute() {
         format!("unix/:{path_str}")
     } else {
