@@ -323,7 +323,7 @@ def test_lua_completion(cluster: Cluster):
     # do not crash on failed completion request to tnt
     i1.terminate()
     cli.send("\t\t")
-    cli.expect_exact("Server probably is closed, try to reconnect")
+    cli.expect_exact("Getting completions failed: Broken pipe (os error 32)")
 
 
 def test_sql_explain_ok(cluster: Cluster):
@@ -458,7 +458,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
 
     i1.terminate()
     cli.sendline("ping;")
-    cli.expect("Connection Error. Try to reconnect: io error: unexpected end of file")
+    cli.expect("lost connection to the server: io error: unexpected end of file")
     cli.terminate()
 
     # test crash error when run with `picodata admin`
@@ -474,7 +474,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
 
     i2.terminate()
     cli.sendline("ping;")
-    cli.expect_exact("Server probably is closed, try to reconnect")
+    cli.expect_exact("lost connection to the server: Broken pipe (os error 32)")
 
 
 def test_input_with_delimiter(cluster: Cluster):

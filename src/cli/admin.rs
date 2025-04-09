@@ -116,9 +116,6 @@ impl UnixClient {
 
     /// Writes message appended with delimiter to tarantool console
     fn write(&mut self, line: &str) -> Result<(), UnixClientError> {
-        // check if socket is still alive
-        let _ = self.socket.write(&[])?;
-
         self.write_raw(&(line.to_owned() + Self::SERVER_DELIM))
     }
 

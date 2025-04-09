@@ -15,6 +15,7 @@ use tarantool::network::ClientError;
 
 use super::admin::LuaHelper;
 use super::admin::UnixClientError;
+use std::error::Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ReplError {
@@ -22,7 +23,7 @@ pub enum ReplError {
     Client(#[from] ClientError),
 
     #[error("{0}")]
-    UnixClient(#[from] UnixClientError),
+    UnixClient(UnixClientError),
 
     #[error("{0}")]
     Io(#[from] io::Error),
@@ -30,8 +31,20 @@ pub enum ReplError {
     #[error("{0}")]
     EditorError(#[from] ReadlineError),
 
+    #[error("lost connection to the server: {0}")]
+    LostConnectionToServer(Box<dyn Error>),
+
     #[error("{0}")]
     Other(String),
+}
+
+impl From<UnixClientError> for ReplError {
+    fn from(error: UnixClientError) -> Self {
+        if let UnixClientError::Io(e) = error {
+            return ReplError::LostConnectionToServer(e.into());
+        }
+        ReplError::UnixClient(error)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ReplError>;

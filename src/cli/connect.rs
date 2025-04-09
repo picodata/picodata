@@ -248,12 +248,8 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         Ctrl + D                        Quit interactive console";
 
     while let Some(command) = console.read()? {
-        if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
-            return Err(ReplError::Other(format!(
-                "Connection Error. Try to reconnect: {}",
-                err
-            )));
-        }
+        ::tarantool::fiber::block_on(client.ping())
+            .map_err(|e| ReplError::LostConnectionToServer(e.into()))?;
 
         match command {
             Command::Control(command) => {
@@ -296,11 +292,8 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
                             err.to_string()
                         }
-                        tarantool::network::ClientError::ConnectionClosed(_) => {
-                            return Err(ReplError::Other(
-                                "Server unexpectedly closed the connection. Try to reconnect."
-                                    .to_string(),
-                            ));
+                        tarantool::network::ClientError::ConnectionClosed(err) => {
+                            return Err(ReplError::LostConnectionToServer(err.into()));
                         }
                         e => return Err(e.into()),
                     },
