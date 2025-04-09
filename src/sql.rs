@@ -860,7 +860,7 @@ fn alter_user_ir_node_to_op_or_result(
             auth_method,
         } => {
             validate_password(password, auth_method, storage)?;
-            let data = AuthData::new(&auth_method, name, password);
+            let data = AuthData::new(auth_method, name, password);
             let auth = AuthDef::new(*auth_method, data.into_string());
 
             if user_def
@@ -1022,8 +1022,8 @@ fn acl_ir_node_to_op_or_result(
             check_name_emptyness(name)?;
             storage.users.check_user_limit()?;
 
-            validate_password(password, &auth_method, storage)?;
-            let data = AuthData::new(&auth_method, name, password);
+            validate_password(password, auth_method, storage)?;
+            let data = AuthData::new(auth_method, name, password);
             let auth = AuthDef::new(*auth_method, data.into_string());
 
             let user_def = storage.users.by_name(name)?;

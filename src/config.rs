@@ -1892,7 +1892,7 @@ pub fn get_defaults_for_all_alter_system_parameters(
             .expect("paths are correct");
         let default = default.expect("default must be specified explicitly for all parameters");
 
-        let scope_values = if AlterSystemParameters::has_scope_tier(&name)? {
+        let scope_values = if AlterSystemParameters::has_scope_tier(name)? {
             tier_names
         } else {
             &global_scope

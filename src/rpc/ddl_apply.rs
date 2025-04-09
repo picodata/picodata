@@ -209,7 +209,7 @@ pub fn apply_schema_change(
             ref new_format,
             ..
         } => {
-            if let Err(e) = ddl_change_format_on_master(table_id, &new_format) {
+            if let Err(e) = ddl_change_format_on_master(table_id, new_format) {
                 return Err(Error::Aborted(e.into()));
             }
         }

@@ -656,7 +656,7 @@ impl Loop {
                         if let Some(tier) = tier {
                             // DDL should be applied only on a specific tier
                             // (e.g. case of TRUNCATE on sharded tables).
-                            let map_callrw_res = vshard::ddl_map_callrw(&tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
+                            let map_callrw_res = vshard::ddl_map_callrw(tier, proc_name!(proc_apply_schema_change), rpc_timeout, &rpc);
 
                             // `ddl_map_callrw` sends requests to all replicaset masters in
                             // the tier to which ddl table belongs but we should update
