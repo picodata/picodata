@@ -3,8 +3,3 @@ rustflags = [
     "-C", "link-arg=-undefined",  "-C", "link-arg=dynamic_lookup"
 ]
 
-[source.binary]
-registry = "sparse+https://binary.picodata.io/repository/cargo-proxy/"
-
-[source.crates-io]
-replace-with = "binary"
