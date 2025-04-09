@@ -6,9 +6,9 @@
 #![allow(clippy::needless_late_init)]
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::redundant_pattern_matching)]
-#![allow(clippy::vec_init_then_push)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::field_reassign_with_default)]
+#![warn(clippy::perf)]
 // Prevents ok_or(BoxError::new(...))
 #![warn(clippy::or_fun_call)]
 

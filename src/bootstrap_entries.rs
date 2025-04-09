@@ -109,40 +109,32 @@ pub(super) fn prepare(
     //
     // Populate "_pico_property" with initial values for cluster-wide properties
     //
-    let mut ops = vec![];
-    ops.push(
+    let mut ops = vec![
         op::Dml::insert(
             storage::Properties::TABLE_ID,
             &(PropertyName::GlobalSchemaVersion, INITIAL_SCHEMA_VERSION),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
-    );
-
-    ops.push(
         op::Dml::insert(
             storage::Properties::TABLE_ID,
             &(PropertyName::NextSchemaVersion, INITIAL_SCHEMA_VERSION + 1),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
-    );
-    ops.push(
         op::Dml::insert(
             storage::Properties::TABLE_ID,
             &(PropertyName::SystemCatalogVersion, "25.1.0".to_owned()),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
-    );
-    ops.push(
         op::Dml::insert(
             storage::Properties::TABLE_ID,
             &(PropertyName::ClusterVersion, PICODATA_VERSION.to_string()),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
-    );
+    ];
 
     let tier_names = tiers.keys().map(AsRef::as_ref).collect::<Vec<_>>();
 
