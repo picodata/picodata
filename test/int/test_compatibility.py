@@ -5,6 +5,7 @@ from conftest import (
     Cluster,
     Compatibility,
     ProcessDead,
+    Retriable,
     log_crawler,
     copy_dir,
 )
@@ -136,6 +137,14 @@ def test_instances_of_different_versions_in_cluster(cluster: Cluster):
 
     # After all instances in the cluster has a new version, _cluster_version should be changed
     # new version is the same on all instances since _pico_property is a global table
+    def ensure_new_version():
+        new_picodata_version = i2.call("box.space._pico_property:get", "cluster_version")[1]
+        assert new_picodata_version == next_minor_version
+
+    Retriable(timeout=5).call(ensure_new_version)
+
     new_picodata_version = i2.call("box.space._pico_property:get", "cluster_version")[1]
     assert i2_version == new_picodata_version
     assert i3_version == new_picodata_version
+
+    assert new_picodata_version == next_minor_version
