@@ -10,7 +10,6 @@
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::vec_init_then_push)]
-#![allow(clippy::unused_io_amount)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::field_reassign_with_default)]
 // Prevents ok_or(BoxError::new(...))
