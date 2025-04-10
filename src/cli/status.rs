@@ -95,13 +95,8 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
         return Err("Invalid form of response".to_string().into());
     };
 
-    println!("\n");
-    println!("CLUSTER NAME: {}", instance_info.cluster_name);
-
-    println!();
-
-    println!("CLUSTER UUID: {}", instance_info.cluster_uuid);
-    println!("\n");
+    println!(" CLUSTER NAME: {}", instance_info.cluster_name);
+    println!(" CLUSTER UUID: {}", instance_info.cluster_uuid);
 
     let mut response = ::tarantool::fiber::block_on(client.call(
         crate::proc_name!(proc_sql_dispatch),

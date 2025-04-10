@@ -938,19 +938,11 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
 
 
 def strip(s: str) -> str:
-    """
-    Remove table decorations so variable length data wont be affected
-    by the table width calculations. An example would be port number
-    which is sometimes 4 symbols long and sometimes 5.
-    Additionaly replace | delimiter of columns with a space so even this
-    stripped down form is readable.
-    """
-    to_remove = [" ", "+", "=", "-"]
+    acc = ""
+    for line in s.splitlines():
+        acc += line.rstrip()
 
-    for c in to_remove:
-        s = s.replace(c, "")
-
-    return s.replace("|", " ")
+    return acc
 
 
 def test_picodata_status_basic(cluster: Cluster):
@@ -974,6 +966,10 @@ def test_picodata_status_basic(cluster: Cluster):
 
     cluster.wait_online()
     i1, i2, i3, i4 = sorted(cluster.instances, key=lambda i: i.name or "")
+
+    info = i1.instance_info()
+    cluster_uuid = info["cluster_uuid"]
+    cluster_name = info["cluster_name"]
 
     i1_address = f"{i1.host}:{i1.port}"
     i2_address = f"{i2.host}:{i2.port}"
@@ -999,25 +995,27 @@ def test_picodata_status_basic(cluster: Cluster):
     )
 
     output = f"""\
- CLUSTER NAME: cluster-0-0
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: router/MSK
 
  name         state    uuid                                   uri            
 {i1.name}    Online   {i1_uuid}   {i1_address} 
 
  TIER/DOMAIN: router/SPB
+
  name         state    uuid                                   uri            
 {i2.name}    Online   {i2_uuid}   {i2_address} 
 {i3.name}    Online   {i3_uuid}   {i3_address} 
 
  TIER/DOMAIN: storage/SPB
+
  name         state    uuid                                   uri            
 {i4.name}   Online   {i4_uuid}   {i4_address} 
 
 """
 
-    for line in data.decode():
-        assert line in output
+    assert strip(data.decode()) == strip(output)
 
     # let's kill i2, so after that it should be on last place in corresponding block
     i2.terminate()
@@ -1034,25 +1032,27 @@ def test_picodata_status_basic(cluster: Cluster):
     )
 
     output = f"""\
- CLUSTER NAME: cluster-0-0
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: router/MSK
 
- name         state    uuid                                   uri            
-{i1.name}    Online   {i1_uuid}   {i1_address} 
+ name         state     uuid                                   uri            
+{i1.name}    Online    {i1_uuid}   {i1_address} 
 
  TIER/DOMAIN: router/SPB
- name         state    uuid                                   uri            
-{i3.name}    Online   {i3_uuid}   {i3_address} 
+
+ name         state     uuid                                   uri            
+{i3.name}    Online    {i3_uuid}   {i3_address} 
 {i2.name}    Offline   {i2_uuid}   {i2_address} 
 
  TIER/DOMAIN: storage/SPB
- name         state    uuid                                   uri            
-{i4.name}   Online   {i4_uuid}   {i4_address} 
+
+ name         state     uuid                                   uri            
+{i4.name}   Online    {i4_uuid}   {i4_address} 
 
 """
 
-    for line in data.decode():
-        assert line in output
+    assert strip(data.decode()) == strip(output)
 
 
 def test_picodata_status_exit_code(cluster: Cluster):
