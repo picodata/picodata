@@ -8,8 +8,16 @@ use tarantool::error::BoxError;
 
 /// Performs a clusterwide compare and swap operation.
 ///
-/// E.g. it checks the `predicate` on leader, and if no conflicting entries were found
-/// appends the `op` to the raft log and returns its index and term.
+/// The `predicate` is checked on leader and if no conflicting entries were found
+/// the `op` is appended to the raft log. The function implicitly invokes [`wait_index`]
+/// to block until operation is applied locally. When this function successfully returns
+/// it is guaranteed that the `op` is applied locally.
+///
+/// Note that this function accounts for the case when election happened after proposal of
+/// the operation and another concurrently submitted operation was applied with the same index.
+/// In that case an error will be returned and operation needs to be retried.
+///
+/// **This function yields**
 pub fn compare_and_swap(
     op: Op,
     predicate: Predicate,
