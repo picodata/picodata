@@ -248,7 +248,7 @@ def test_pg_params(cluster: Cluster):
     assert data == [[3, 2, 1, 2, 3]]
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""SELECT $1, 1 as c1 FROM t ORDER BY c1 DESC""")
+        i1.sql("""SELECT $1, 1 AS c1 FROM t ORDER BY c1 DESC""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1 as c1 FROM (SELECT 1) ORDER BY 1 DESC""")
@@ -403,6 +403,117 @@ def test_pg_params(cluster: Cluster):
             4,
             5,
         )
+
+    # third table is created
+    data = i1.sql(
+        """
+        CREATE TABLE test_params_3(x INTEGER PRIMARY KEY, y TEXT)
+        using memtx
+        distributed by (x)
+        option (timeout = 3)
+    """
+    )
+    # check the creation of the third table
+    assert data["row_count"] == 1
+
+    data = i1.sql("""
+                 INSERT INTO test_params_3 VALUES (1, 'aaa'), (2, 'ccc'), (3, 'bbb');
+                 """)
+    assert data["row_count"] == 3
+
+    data = i1.sql(
+        """
+        select sum(x) OVER (ROWS BETWEEN 1 preceding and 1 FOLLOWING) from test_params_3
+    """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["rows"] == [[3], [6], [5]]
+
+    data = i1.sql(
+        """
+        select sum(x) OVER (rows $1 PRECEDING) from test_params_3
+    """,
+        2,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["rows"] == [[1], [3], [6]]
+
+    data = i1.sql(
+        """
+        select avg(b) OVER (ROWS BETWEEN $1 preceding and $1 FOLLOWING) from (select 1::int as b)
+    """,
+        1,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["rows"] == [[1]]
+
+    # Test complex PARTITION BY with expressions
+    data = i1.sql(
+        """
+        SELECT sum(x) OVER (
+                   PARTITION BY CASE WHEN y < 'bbb' THEN $1 ELSE $2 END
+                   ORDER BY x DESC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+               ) as running_sum
+        FROM test_params_3
+        ORDER BY 1
+        """,
+        1,
+        2,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "running_sum", "type": "any"}]
+    assert data["rows"] == [[1], [3], [5]]
+
+    # Test ORDER BY with complex expressions and FILTER
+    data = i1.sql(
+        """
+        SELECT count(*) FILTER (WHERE x + $1 > $2) OVER
+        ( ORDER BY y DESC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING )
+        as filtered_count FROM test_params_3 group by x
+        """,
+        1,
+        2,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "filtered_count", "type": "any"}]
+    assert data["rows"] == [[2], [1], [0]]
+
+    # Test nested window functions with complex FILTER and ORDER BY
+    data = i1.sql(
+        """
+        WITH windowed AS
+        (SELECT count(y) OVER (ORDER BY x) as rn,
+        (sum(x) FILTER (WHERE y != 'bbb')
+        OVER ( ORDER BY x ROWS BETWEEN $1 PRECEDING AND $1 FOLLOWING))::int as filtered_sum FROM test_params_3)
+        SELECT sum(filtered_sum) OVER ( ORDER BY filtered_sum DESC) as nested_sum FROM windowed
+        """,
+        1,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "nested_sum", "type": "any"}]
+    assert data["rows"] == [[6], [6], [8]]
+
+    # Test PARTITION BY with multiple expressions and FILTER
+    data = i1.sql(
+        """
+        SELECT avg(x) FILTER (WHERE x > 1) OVER (
+                   PARTITION BY 
+                       CASE WHEN x - 2 = 0 THEN 'even' ELSE 'odd' END,
+                       y LIKE '%a%'
+                   ORDER BY x
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+               ) as complex_avg
+        FROM test_params_3
+        ORDER BY 1
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [{"name": "complex_avg", "type": "any"}]
+    assert data["rows"] == [[None], [2], [3]]
 
 
 def test_read_from_global_tables(cluster: Cluster):

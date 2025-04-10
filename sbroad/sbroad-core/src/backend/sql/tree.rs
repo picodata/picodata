@@ -1689,10 +1689,10 @@ impl<'p> SyntaxPlan<'p> {
     }
 
     fn add_over(&mut self, id: NodeId) {
-        let (_, expr) = self.prologue_expr(id);
+        // Extract all needed values upfront to avoid holding the immutable borrow
+        let (plan, expr) = self.prologue_expr(id);
         let Expression::Over(Over {
-            func_name,
-            func_args,
+            stable_func,
             filter,
             window,
             ..
@@ -1700,22 +1700,32 @@ impl<'p> SyntaxPlan<'p> {
         else {
             panic!("Expected OVER node");
         };
+        let Ok(Expression::ScalarFunction(ScalarFunction {
+            name: func_name,
+            children: func_args,
+            ..
+        })) = self.plan.get_ir_plan().get_expression_node(*stable_func)
+        else {
+            panic!("ScalarFunction expression node expected, got {stable_func:?}")
+        };
 
-        let func_name = func_name.clone();
-        let func_args = func_args.clone();
         let filter = *filter;
         let window = *window;
 
+        // Get window name if it exists
+        let window_name = if let Expression::Window(Window { name, .. }) = plan
+            .get_expression_node(window)
+            .expect("Window expression node is expected for OVER expression")
+        {
+            name.clone()
+        } else {
+            panic!("WINDOW expression node expected")
+        };
+
         let mut right_children = Vec::new();
 
-        let plan = self.plan.get_ir_plan();
-        let window_plan_node = plan
-            .get_expression_node(window)
-            .expect("Window expression node is expected for OVER expression");
-        let Expression::Window(Window { name, .. }) = window_plan_node else {
-            panic!("WINDOW relational node expected, got {window_plan_node:?}")
-        };
-        if let Some(window_name) = name {
+        // Handle window name or window expression
+        if let Some(window_name) = window_name {
             let name_sn_id = self
                 .nodes
                 .push_sn_non_plan(SyntaxNode::new_inline(window_name.as_str()));
@@ -1730,6 +1740,7 @@ impl<'p> SyntaxPlan<'p> {
         }
         right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_over()));
 
+        // Handle filter if present
         if let Some(filter) = filter {
             let filter_sn_id = self.pop_expr_from_stack(filter, id);
             right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
@@ -1740,6 +1751,7 @@ impl<'p> SyntaxPlan<'p> {
             right_children.push(filter_sn_id);
         }
 
+        // Add the stable function
         right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
         if let Some((last_id, other_ids)) = func_args.split_first() {
             for other_id in other_ids.iter().rev() {
@@ -2145,29 +2157,33 @@ impl<'p> SyntaxPlan<'p> {
         let Expression::ScalarFunction(ScalarFunction {
             children: args,
             feature,
+            is_window,
             ..
         }) = expr
         else {
             panic!("Expected stable function node");
         };
-        // The arguments on the stack are in the reverse order.
-        let mut nodes = Vec::with_capacity(args.len() * 2 + 2);
-        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
-        if let Some((first, others)) = args.split_first() {
-            for child_id in others.iter().rev() {
-                nodes.push(self.pop_expr_from_stack(*child_id, id));
-                nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+        if !is_window {
+            // The arguments on the stack are in the reverse order.
+            let mut nodes = Vec::with_capacity(args.len() * 2 + 2);
+            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            if let Some((first, others)) = args.split_first() {
+                for child_id in others.iter().rev() {
+                    nodes.push(self.pop_expr_from_stack(*child_id, id));
+                    nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+                }
+
+                nodes.push(self.pop_expr_from_stack(*first, id));
             }
-            nodes.push(self.pop_expr_from_stack(*first, id));
+            if let Some(FunctionFeature::Distinct) = feature {
+                nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_distinct()));
+            }
+            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+            // Need to reverse the order of the children back.
+            nodes.reverse();
+            let sn = SyntaxNode::new_pointer(id, None, nodes);
+            self.nodes.push_sn_plan(sn);
         }
-        if let Some(FunctionFeature::Distinct) = feature {
-            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_distinct()));
-        }
-        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
-        // Need to reverse the order of the children back.
-        nodes.reverse();
-        let sn = SyntaxNode::new_pointer(id, None, nodes);
-        self.nodes.push_sn_plan(sn);
     }
 
     fn add_trim(&mut self, id: NodeId) {
@@ -2394,7 +2410,7 @@ impl<'p> SyntaxPlan<'p> {
                     let id = level_node.1;
                     // it works only for post-order traversal
                     sp.add_plan_node(id);
-                    let sn_id = sp.nodes.next_id() - 1;
+                    let sn_id = sp.nodes.next_id().saturating_sub(1);
                     if id == top {
                         sp.set_top(sn_id)?;
                     }

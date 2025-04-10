@@ -48,7 +48,7 @@ enum ColExpr {
         Option<Box<ColExpr>>,
     ),
     Window(Box<WindowExplain>),
-    Over(String, Vec<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
+    Over(Box<ColExpr>, Option<Box<ColExpr>>, Box<ColExpr>),
     Concat(Box<ColExpr>, Box<ColExpr>),
     Like(Box<ColExpr>, Box<ColExpr>, Option<Box<ColExpr>>),
     ScalarFunction(
@@ -67,7 +67,10 @@ impl Display for ColExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match &self {
             ColExpr::Window(window) => window.to_string(),
-            ColExpr::Over(func_name, args, filter, window) => {
+            ColExpr::Over(stable_func, filter, window) => {
+                let ColExpr::ScalarFunction(func_name, args, ..) = stable_func.as_ref() else {
+                    panic!("Expected ScalarFunction expression before OVER clause")
+                };
                 let formatted_args = format!("({})", args.iter().format(", "));
 
                 let prefix = if let Some(filter) = filter {
@@ -277,12 +280,7 @@ impl ColExpr {
                     let window_expr = ColExpr::Window(Box::new(window));
                     stack.push((window_expr, id));
                 }
-                Expression::Over(Over {
-                    func_name,
-                    func_args,
-                    filter,
-                    ..
-                }) => {
+                Expression::Over(Over { filter, .. }) => {
                     let window = stack.pop_expr(Some(id));
 
                     let filter = filter.map(|_| {
@@ -290,15 +288,9 @@ impl ColExpr {
                         Box::new(expr)
                     });
 
-                    let mut args = Vec::with_capacity(func_args.len());
-                    for _ in func_args {
-                        let expr = stack.pop_expr(Some(id));
-                        args.push(expr);
-                    }
-                    args.reverse();
+                    let stable_func = stack.pop_expr(Some(id));
 
-                    let over_expr =
-                        ColExpr::Over(func_name.to_string(), args, filter, Box::new(window));
+                    let over_expr = ColExpr::Over(Box::new(stable_func), filter, Box::new(window));
                     stack.push((over_expr, id));
                 }
                 Expression::Cast(Cast { to, .. }) => {

@@ -342,14 +342,12 @@ impl Plan {
                     }
                 }
                 MutExpression::Over(Over {
-                    func_args,
+                    stable_func,
                     filter,
                     window,
                     ..
                 }) => {
-                    for arg in func_args {
-                        map.replace(arg);
-                    }
+                    map.replace(stable_func);
                     if let Some(filter) = filter {
                         map.replace(filter);
                     }

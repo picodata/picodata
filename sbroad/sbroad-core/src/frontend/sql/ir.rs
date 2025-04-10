@@ -195,13 +195,12 @@ impl SubtreeCloner {
                 }
             }
             ExprOwned::Over(Over {
-                func_name: _,
-                ref mut func_args,
+                ref mut stable_func,
                 ref mut filter,
                 ref mut window,
                 ref_by_name: _,
             }) => {
-                *func_args = self.copy_list(func_args)?;
+                *stable_func = self.get_new_id(*stable_func)?;
                 if let Some(filter) = filter {
                     *filter = self.get_new_id(*filter)?;
                 }

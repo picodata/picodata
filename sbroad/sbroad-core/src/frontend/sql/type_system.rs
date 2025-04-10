@@ -262,20 +262,23 @@ pub fn to_type_expr(
             }
         },
         Expression::Over(Over {
-            func_name,
-            func_args,
+            stable_func,
             filter,
             window,
             ref_by_name: _,
         }) => {
-            let args = to_type_expr_many(func_args, plan, subquery_map)?;
-            let name = func_name.to_string();
+            let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
+                plan.get_expression_node(*stable_func)?
+            else {
+                panic!("Over should have stable func");
+            };
+            let args = to_type_expr_many(children, plan, subquery_map)?;
             let filter = filter
                 .map(|f| to_type_expr(f, plan, subquery_map))
                 .transpose()?;
             let over = to_type_expr(*window, plan, subquery_map)?;
             let kind = TypeExprKind::WindowFunction {
-                name,
+                name: name.to_string(),
                 args,
                 filter: filter.map(Box::new),
                 over: Box::new(over),

@@ -391,15 +391,13 @@ impl<'plan> Comparator<'plan> {
                         }
                     }
                     Expression::Over(Over {
-                        func_name: l_func_name,
-                        func_args: l_func_args,
+                        stable_func: l_stable_func,
                         filter: l_filter,
                         window: l_window,
                         ..
                     }) => {
                         if let Expression::Over(Over {
-                            func_name: r_func_name,
-                            func_args: r_func_args,
+                            stable_func: r_stable_func,
                             filter: r_filter,
                             window: r_window,
                             ..
@@ -413,8 +411,7 @@ impl<'plan> Comparator<'plan> {
                                 (None, None) => {}
                                 _ => return Ok(false),
                             }
-                            return Ok(l_func_name == r_func_name
-                                && cmp_expr_vec(l_func_args, r_func_args)?
+                            return Ok(l_stable_func == r_stable_func
                                 && filter_equal
                                 && l_window == r_window);
                         }
@@ -601,6 +598,7 @@ impl<'plan> Comparator<'plan> {
                         func_type: func_type_left,
                         is_system: is_aggr_left,
                         volatility_type: volatility_type_left,
+                        is_window: is_window_left,
                     }) => {
                         if let Expression::ScalarFunction(ScalarFunction {
                             name: name_right,
@@ -609,6 +607,7 @@ impl<'plan> Comparator<'plan> {
                             func_type: func_type_right,
                             is_system: is_aggr_right,
                             volatility_type: volatility_type_right,
+                            is_window: is_window_right,
                         }) = right
                         {
                             return Ok(name_left == name_right
@@ -616,6 +615,7 @@ impl<'plan> Comparator<'plan> {
                                 && func_type_left == func_type_right
                                 && is_aggr_left == is_aggr_right
                                 && volatility_type_left == volatility_type_right
+                                && is_window_left == is_window_right
                                 && children_left.iter().zip(children_right.iter()).all(
                                     |(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false),
                                 ));
@@ -733,15 +733,19 @@ impl<'plan> Comparator<'plan> {
                 }
             }
             Expression::Over(Over {
-                func_name,
-                func_args,
+                stable_func,
                 filter,
                 window,
                 ref_by_name,
             }) => {
-                func_name.hash(state);
+                let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
+                    self.plan.get_expression_node(*stable_func).unwrap()
+                else {
+                    panic!("Over should have stable func");
+                };
+                name.to_string().hash(state);
                 ref_by_name.hash(state);
-                for arg in func_args {
+                for arg in children {
                     self.hash_for_child_expr(*arg, depth);
                 }
                 if let Some(filter) = filter {

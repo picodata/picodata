@@ -78,6 +78,7 @@ impl Plan {
             func_type: function.func_type,
             is_system: function.is_system,
             volatility_type: function.volatility,
+            is_window: false,
         };
         let func_id = self.nodes.push(func_expr.into());
         Ok(func_id)
@@ -111,6 +112,7 @@ impl Plan {
             func_type: function.func_type,
             is_system: function.is_system,
             volatility_type: function.volatility,
+            is_window: false,
         };
         let func_id = self.nodes.push(func_expr.into());
         Ok(func_id)
@@ -167,6 +169,7 @@ impl Plan {
             feature,
             is_system: true,
             volatility_type: super::expression::VolatilityType::Stable,
+            is_window: false,
         };
         let id = self.nodes.push(func_expr.into());
         Ok(id)

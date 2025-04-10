@@ -288,6 +288,7 @@ impl Aggregate {
             func_type,
             is_system: true,
             volatility_type: super::expression::VolatilityType::Stable,
+            is_window: false,
         };
         let aggr_id = plan.nodes.push(final_aggr.into());
         Ok(aggr_id)
@@ -565,7 +566,7 @@ impl Plan {
                     ..
                 }) = self.get_expression_node(aggr.fun_id)?
                 else {
-                    unreachable!("Aggregate should reference StableFunction by fun_id")
+                    unreachable!("Aggregate should reference ScalarFunction by fun_id")
                 };
 
                 (

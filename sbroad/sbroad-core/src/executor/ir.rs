@@ -782,7 +782,7 @@ impl ExecutionPlan {
                         }
                     }
                     ExprOwned::Over(Over {
-                        ref mut func_args,
+                        ref mut stable_func,
                         ref mut filter,
                         ref mut window,
                         ..
@@ -790,9 +790,7 @@ impl ExecutionPlan {
                         if let Some(filter) = filter {
                             *filter = subtree_map.get_id(*filter)
                         }
-                        for arg in func_args {
-                            *arg = subtree_map.get_id(*arg);
-                        }
+                        *stable_func = subtree_map.get_id(*stable_func);
                         *window = subtree_map.get_id(*window);
                     }
                     ExprOwned::Alias(Alias { ref mut child, .. })

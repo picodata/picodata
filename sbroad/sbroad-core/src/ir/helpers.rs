@@ -126,22 +126,14 @@ impl Plan {
                     }
                 }
                 Expression::Over(Over {
-                    func_name,
-                    func_args,
+                    stable_func,
                     filter,
                     window,
                     ref_by_name,
                 }) => {
                     writeln!(buf, "Over")?;
-                    writeln_with_tabulation(
-                        buf,
-                        tabulation_number + 1,
-                        &format!("Function [name = {func_name}]"),
-                    )?;
-                    for arg in func_args {
-                        writeln_with_tabulation(buf, tabulation_number + 2, "Argument")?;
-                        self.formatted_arena_node(buf, tabulation_number + 2, *arg)?;
-                    }
+                    writeln_with_tabulation(buf, tabulation_number + 1, "StableFunc")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *stable_func)?;
                     if let Some(filter) = filter {
                         writeln_with_tabulation(buf, tabulation_number + 1, "Filter")?;
                         self.formatted_arena_node(buf, tabulation_number + 1, *filter)?;

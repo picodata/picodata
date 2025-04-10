@@ -11,7 +11,7 @@ use crate::ir::node::{
     LocalTimestamp, NamedWindows, Over, Reference, ReferenceAsteriskSource, ScalarFunction,
     TruncateTable, Window,
 };
-use crate::ir::relation::Type;
+use crate::ir::relation::{DerivedType, Type};
 use ahash::{AHashMap, AHashSet};
 use core::panic;
 use itertools::Itertools;
@@ -2243,8 +2243,11 @@ impl Plan {
 
         for LevelNode(_, node_id) in dfs.iter(group_expr) {
             let node = self.get_expression_node(node_id)?;
-            if let Expression::ScalarFunction(ScalarFunction { name, .. }) = node {
-                if Expression::is_aggregate_name(name) {
+            if let Expression::ScalarFunction(ScalarFunction {
+                name, is_window, ..
+            }) = node
+            {
+                if Expression::is_aggregate_name(name) && !is_window {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
                         Some(format_smolstr!("aggregate functions are not allowed inside grouping expression. Got aggregate: {name}"))
@@ -2910,6 +2913,18 @@ fn parse_window_func<M: Metadata>(
         }
     }
 
+    // Create ScalarFunction node
+    let stable_func = ScalarFunction {
+        name: func_name,
+        children: func_args,
+        feature: None,
+        func_type: DerivedType::new(Type::Any),
+        is_system: true,
+        is_window: true,
+        volatility_type: VolatilityType::Stable,
+    };
+    let stable_func_id = plan.nodes.push(stable_func.into());
+
     // Parse filter
     let filter_pair = inner.next().expect("Filter expected under Over");
     let filter = if let Some(filter_inner) = filter_pair.into_inner().next() {
@@ -3085,8 +3100,7 @@ fn parse_window_func<M: Metadata>(
     };
     worker.windows.push(window);
     let over = Over {
-        func_name,
-        func_args,
+        stable_func: stable_func_id,
         filter,
         window,
         ref_by_name,

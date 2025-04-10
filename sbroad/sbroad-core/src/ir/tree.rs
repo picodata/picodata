@@ -204,7 +204,7 @@ trait TreeIterator<'nodes> {
 
     fn handle_over_iter(&mut self, expr: Expression) -> Option<NodeId> {
         let Expression::Over(Over {
-            func_args,
+            stable_func,
             filter,
             window,
             ..
@@ -215,10 +215,10 @@ trait TreeIterator<'nodes> {
         let mut step = *self.get_child().borrow();
         *self.get_child().borrow_mut() += 1;
 
-        if step < func_args.len() {
-            return Some(func_args[step]);
+        if step == 0 {
+            return Some(*stable_func);
         }
-        step -= func_args.len();
+        step -= 1;
 
         if let Some(filter) = filter {
             if step == 0 {

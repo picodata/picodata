@@ -1587,7 +1587,7 @@ impl Plan {
                 };
             }
             MutExpression::Over(Over {
-                func_args,
+                stable_func,
                 filter,
                 window,
                 ..
@@ -1602,11 +1602,9 @@ impl Plan {
                     *window = new_id;
                     return Ok(());
                 }
-                for arg in func_args {
-                    if *arg == old_id {
-                        *arg = new_id;
-                        return Ok(());
-                    }
+                if *stable_func == old_id {
+                    *stable_func = new_id;
+                    return Ok(());
                 }
             }
             MutExpression::Unary(UnaryExpr { child, .. })

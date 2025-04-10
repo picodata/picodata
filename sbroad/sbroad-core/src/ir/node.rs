@@ -308,6 +308,8 @@ pub struct ScalarFunction {
     /// sql we must not use quotes.
     /// Examples: aggregates, substr
     pub is_system: bool,
+    /// Whether function is used as window function
+    pub is_window: bool,
 }
 
 impl From<ScalarFunction> for NodeAligned {
@@ -1075,10 +1077,7 @@ impl From<NamedWindows> for NodeAligned {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 
 pub struct Over {
-    // FIXME: we should rather use a stable function node here.
-    // It would make out life easier on the type derivation.
-    pub func_name: SmolStr,
-    pub func_args: Vec<NodeId>,
+    pub stable_func: NodeId,
     pub filter: Option<NodeId>,
     pub window: NodeId,
     pub ref_by_name: bool,
