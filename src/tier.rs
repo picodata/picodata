@@ -45,20 +45,15 @@ impl Tier {
     }
 
     /// Returns DML for updating `target_vshard_config_version` of corresponding tier record in '_pico_tier'
-    pub fn get_vshard_config_version_bump_op_if_needed(tier: &Tier) -> Result<Option<Dml>, Error> {
-        if tier.current_vshard_config_version == tier.target_vshard_config_version {
-            let mut uops = UpdateOps::new();
-            uops.assign(
-                column_name!(Tier, target_vshard_config_version),
-                tier.target_vshard_config_version + 1,
-            )?;
+    pub fn get_vshard_config_version_bump_op(tier: &Tier) -> Result<Dml, Error> {
+        let mut uops = UpdateOps::new();
+        uops.assign(
+            column_name!(Tier, target_vshard_config_version),
+            tier.target_vshard_config_version + 1,
+        )?;
+        let dml = Dml::update(Tiers::TABLE_ID, &[&tier.name], uops, ADMIN_ID)?;
 
-            let dml = Dml::update(Tiers::TABLE_ID, &[&tier.name], uops, ADMIN_ID)?;
-
-            return Ok(Some(dml));
-        }
-
-        Ok(None)
+        Ok(dml)
     }
 }
 

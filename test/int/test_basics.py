@@ -461,8 +461,11 @@ Update(_pico_replicaset, ["default_1"], [["=","target_config_version",1]]),
 Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",1]])|
-|  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]])|
-|  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",1]])|
+|  0  | 2  |BatchDml(
+Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]]),
+Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
+)|
+|  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",2]])|
 |  69 | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
 |  69 | 2  |Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+

@@ -210,10 +210,7 @@ pub fn prepare_update_instance_cas_request(
     let mut ops = vec![];
     ops.push(dml);
 
-    if version_bump_needed &&
-        // Don't bump version if it's already bumped
-        replicaset.current_config_version == replicaset.target_config_version
-    {
+    if version_bump_needed {
         let mut update_ops = UpdateOps::new();
         #[rustfmt::skip]
         update_ops.assign(column_name!(Replicaset, target_config_version), replicaset.target_config_version + 1)?;
@@ -223,10 +220,8 @@ pub fn prepare_update_instance_cas_request(
     }
 
     if version_bump_needed {
-        let vshard_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
-        if let Some(dml) = vshard_bump {
-            ops.push(dml);
-        }
+        let vshard_bump_dml = Tier::get_vshard_config_version_bump_op(tier)?;
+        ops.push(vshard_bump_dml);
     }
 
     let ranges = vec![

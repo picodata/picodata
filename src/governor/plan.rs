@@ -244,21 +244,16 @@ pub(super) fn action_plan<'i>(
 
         let mut bump_dml = vec![];
 
-        if let Some(bump) =
-            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_name)
-        {
-            bump_dml.push(bump);
-        }
+        let replicaset_config_version_bump = get_replicaset_config_version_bump_op(r);
+        bump_dml.push(replicaset_config_version_bump);
 
         let tier_name = &r.tier;
         let tier = tiers
             .get(tier_name.as_str())
             .expect("tier for instance should exists");
 
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
-        if let Some(bump) = vshard_config_version_bump {
-            bump_dml.push(bump);
-        }
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+        bump_dml.push(vshard_config_version_bump);
 
         let ranges = vec![
             // We make a decision based on this instance's state so the operation
@@ -334,11 +329,9 @@ pub(super) fn action_plan<'i>(
         ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
-        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
-        if let Some(bump) = vshard_config_version_bump {
-            ranges.push(cas::Range::for_dml(&bump)?);
-            ops.push(bump);
-        }
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+        ranges.push(cas::Range::for_dml(&vshard_config_version_bump)?);
+        ops.push(vshard_config_version_bump);
 
         let op = Op::single_dml_or_batch(ops);
         let predicate = cas::Predicate::new(applied, ranges);
@@ -496,9 +489,8 @@ pub(super) fn action_plan<'i>(
 
         // Bump tier configuration version, because the replicaset must now be
         // removed from router configurations of all other replicasets
-        if let Some(bump) = Tier::get_vshard_config_version_bump_op_if_needed(tier)? {
-            ops.push(bump);
-        }
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+        ops.push(vshard_config_version_bump);
 
         // Mark replicaset as expelled
         let mut update_ops = UpdateOps::new();
@@ -547,9 +539,8 @@ pub(super) fn action_plan<'i>(
         )?;
         ops.push(dml);
 
-        if let Some(bump) = Tier::get_vshard_config_version_bump_op_if_needed(tier)? {
-            ops.push(bump);
-        }
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+        ops.push(vshard_config_version_bump);
 
         let ranges = vec![
             // Decision was made based on this instance's state so we must make sure it was up to date.
@@ -1466,21 +1457,8 @@ pub fn get_first_ready_replicaset_in_tier<'r>(
 }
 
 /// Constructs a global Dml operation to bump the target_config_version field
-/// in the given replicaset, if it's not already bumped.
-fn get_replicaset_config_version_bump_op_if_needed(
-    replicasets: &HashMap<&ReplicasetName, &Replicaset>,
-    replicaset_name: &ReplicasetName,
-) -> Option<Dml> {
-    let Some(replicaset) = replicasets.get(replicaset_name) else {
-        warn_or_panic!("replicaset info for `{replicaset_name}` is missing");
-        return None;
-    };
-
-    // Only bump the version if it's not already bumped.
-    if replicaset.current_config_version != replicaset.target_config_version {
-        return None;
-    }
-
+/// in the given replicaset.
+fn get_replicaset_config_version_bump_op(replicaset: &Replicaset) -> Dml {
     let mut ops = UpdateOps::new();
     ops.assign(
         column_name!(Replicaset, target_config_version),
@@ -1489,12 +1467,13 @@ fn get_replicaset_config_version_bump_op_if_needed(
     .expect("won't fail");
     let dml = Dml::update(
         storage::Replicasets::TABLE_ID,
-        &[replicaset_name],
+        &[&replicaset.name],
         ops,
         ADMIN_ID,
     )
     .expect("can't fail");
-    Some(dml)
+
+    dml
 }
 
 pub fn get_replicaset_to_expel<'r>(

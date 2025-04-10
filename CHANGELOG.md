@@ -54,6 +54,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed secondary indexes not working after raft log compaction.
 
+- Fixed a bug where replication master switchover would sometimes fail.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
