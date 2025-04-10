@@ -5,8 +5,8 @@ use crate::has_states;
 use crate::instance::StateVariant::*;
 use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
+use crate::traft::node;
 use crate::traft::Result;
-use crate::traft::{error::Error, node};
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
 
@@ -27,13 +27,6 @@ crate::define_rpc_request! {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
         let cluster_name = raft_storage.cluster_name()?;
-
-        if req.cluster_name != cluster_name {
-            return Err(Error::ClusterNameMismatch {
-                instance_cluster_name: req.cluster_name,
-                cluster_name,
-            });
-        }
 
         let topology_ref = node.topology_cache.get();
         let instance = topology_ref.instance_by_uuid(&req.instance_uuid)?;
@@ -64,7 +57,7 @@ crate::define_rpc_request! {
         }
 
         let timeout = req.timeout;
-        let req = rpc::update_instance::Request::new(instance.name.clone(), req.cluster_name, raft_storage.cluster_uuid()?)
+        let req = rpc::update_instance::Request::new(instance.name.clone(), cluster_name.clone(), raft_storage.cluster_uuid()?)
             .with_target_state(Expelled);
 
         // Must not hold this reference across yields
@@ -79,7 +72,6 @@ crate::define_rpc_request! {
     ///
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
-        pub cluster_name: String,
         pub instance_uuid: String,
         pub force: bool,
         pub timeout: Duration,

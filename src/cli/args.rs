@@ -390,15 +390,6 @@ impl Tarantool {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Expel node from cluster")]
 pub struct Expel {
-    #[clap(
-        long,
-        value_name = "NAME",
-        env = "PICODATA_CLUSTER_NAME",
-        default_value = "demo"
-    )]
-    /// Name of the cluster from which the instance should be expelled.
-    pub cluster_name: String,
-
     #[clap(value_name = "INSTANCE_UUID")]
     /// UUID of the instance to expel.
     pub instance_uuid: String,

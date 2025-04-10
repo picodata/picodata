@@ -747,7 +747,6 @@ pub(crate) fn setup() {
                     crate::proc_name!(rpc::expel::proc_expel),
                     &rpc::expel::Request {
                         instance_uuid: instance.uuid,
-                        cluster_name,
                         force,
                         timeout,
                     },

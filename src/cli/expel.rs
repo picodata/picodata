@@ -25,7 +25,6 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     let timeout = deadline.duration_since(fiber::clock());
     let force = args.force;
     let req = ExpelRequest {
-        cluster_name: args.cluster_name,
         instance_uuid: args.instance_uuid.clone(),
         force,
         timeout,
