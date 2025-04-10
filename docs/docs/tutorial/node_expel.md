@@ -86,7 +86,7 @@ picodata expel 96e38675-30e7-4f0d-b8cf-72132a2aa726
 инстансов ([`--peer`]):
 
 ```shell
-picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<HOST:PORT>
+picodata expel <INSTANCE_UUID> --peer=<HOST:PORT>
 ```
 
 <!--
@@ -95,7 +95,7 @@ picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<HOST:PORT>
 `force`:
 
 ```shell
-picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<HOST:PORT> --force
+picodata expel <INSTANCE_UUID> --peer=<HOST:PORT> --force
 ```
  -->
 

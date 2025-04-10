@@ -390,6 +390,10 @@ impl Tarantool {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Expel node from cluster")]
 pub struct Expel {
+    #[clap(long, value_name = "NAME")]
+    /// Deprecated. The cluster_name parameter is no longer used and will be removed in the future major release (version 26).
+    pub cluster_name: Option<String>,
+
     #[clap(value_name = "INSTANCE_UUID")]
     /// UUID of the instance to expel.
     pub instance_uuid: String,

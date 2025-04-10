@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
   - this is technically a breaking change.
 - provide a more detailed message for address binding errors
 - set permissions of admin socket file to 0660 by default.
+- `picodata expel` no longer requires the `--cluster-name` parameter; it is now marked as deprecated and will be removed in the future major release (version 26).
 
 ### Pgproto
 
@@ -101,6 +102,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Deprecation
 
 - `.proc_enable_all_plugins` will be deprecated in the next major release.
+- `cluster_name` parameter from `.proc_expel` RPC call will be deprecated in the next major release.
 
 ### SQL
 - SQL supports `TRUNCATE` operation.

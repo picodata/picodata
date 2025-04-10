@@ -26,7 +26,6 @@ crate::define_rpc_request! {
     fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
-        let cluster_name = raft_storage.cluster_name()?;
 
         let topology_ref = node.topology_cache.get();
         let instance = topology_ref.instance_by_uuid(&req.instance_uuid)?;
@@ -57,7 +56,8 @@ crate::define_rpc_request! {
         }
 
         let timeout = req.timeout;
-        let req = rpc::update_instance::Request::new(instance.name.clone(), cluster_name.clone(), raft_storage.cluster_uuid()?)
+
+        let req = rpc::update_instance::Request::new(instance.name.clone(), raft_storage.cluster_name()?, raft_storage.cluster_uuid()?)
             .with_target_state(Expelled);
 
         // Must not hold this reference across yields
@@ -72,6 +72,8 @@ crate::define_rpc_request! {
     ///
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
+        /// The cluster_name parameter is no longer used and will be removed in next major release (version 26).
+        pub cluster_name: String,
         pub instance_uuid: String,
         pub force: bool,
         pub timeout: Duration,
