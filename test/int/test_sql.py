@@ -5928,7 +5928,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     # property expects different value type
     with pytest.raises(
         TarantoolError,
-        match="invalid value for 'auth_password_enforce_digits' expected boolean, got unsigned.",
+        match="invalid value for 'auth_password_enforce_digits': expected boolean, got unsigned.",
     ):
         dml = i1.sql(
             """

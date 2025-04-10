@@ -1119,6 +1119,22 @@ impl EncodedValue<'_> {
             _ => None,
         }
     }
+
+    pub fn unsigned(&self) -> Option<u64> {
+        match &self {
+            EncodedValue::Ref(MsgPackValue::Unsigned(value)) => Some(**value),
+            EncodedValue::Owned(Value::Unsigned(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn integer(&self) -> Option<i64> {
+        match &self {
+            EncodedValue::Ref(MsgPackValue::Integer(value)) => Some(**value),
+            EncodedValue::Owned(Value::Integer(value)) => Some(*value),
+            _ => None,
+        }
+    }
 }
 
 impl<'v> From<MsgPackValue<'v>> for EncodedValue<'v> {

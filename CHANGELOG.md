@@ -19,6 +19,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Support LDAP with TLS (StartTLS) for LDAP authentication menthod
   - use TT_LDAP_ENABLE_TLS=true environment variable to turn on
 
+### Fixes
+- Fixed numerous panics when setting invalid values for alter system parameters
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI

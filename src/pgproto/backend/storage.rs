@@ -117,7 +117,7 @@ impl<S> PgStorage<S> {
     pub fn put(&mut self, key: Key, value: S) -> PgResult<()> {
         let capacity = self.context.get_capacity();
         let kind = self.context.value_kind;
-        if self.len() >= capacity {
+        if capacity > 0 && self.len() >= capacity {
             let parameter = self.context.capacity_parameter;
             // TODO: it should be configuration_limit_exceeded error
             return Err(PgError::other(format!(

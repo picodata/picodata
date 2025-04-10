@@ -1553,22 +1553,22 @@ tarantool::define_str_enum! {
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct AlterSystemParameters {
-    /// Password should contain at least this many characters
+    /// Password should contain at least this many characters.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 8)]
     pub auth_password_length_min: u64,
 
-    /// Password should contain at least one uppercase letter
+    /// Password should contain at least one uppercase letter.
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
     pub auth_password_enforce_uppercase: bool,
 
-    /// Password should contain at least one lowercase letter
+    /// Password should contain at least one lowercase letter.
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
     pub auth_password_enforce_lowercase: bool,
 
-    /// Password should contain at least one digit
+    /// Password should contain at least one digit.
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = true)]
     pub auth_password_enforce_digits: bool,
@@ -1589,11 +1589,13 @@ pub struct AlterSystemParameters {
     pub auth_login_attempt_max: u64,
 
     /// PG statement storage size.
+    /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 1024)]
     pub pg_statement_max: u64,
 
     /// PG portal storage size.
+    /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 1024)]
     pub pg_portal_max: u64,
@@ -1614,7 +1616,7 @@ pub struct AlterSystemParameters {
     // NOTE: maybe we should instead track the instance/raft ids of
     // followers which requested the snapshots and automatically close the
     // read views if the corresponding instances are *deteremined* to not
-    // need them anymore. Or maybe timeouts is the better way..
+    // need them anymore. Or maybe timeouts is the better way.
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = (24 * 3600))]
     pub raft_snapshot_read_view_close_timeout: f64,
@@ -1662,17 +1664,21 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 10.0)]
     pub governor_plugin_rpc_timeout: f64,
 
+    /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 45000)]
     pub sql_vdbe_opcode_max: u64,
 
+    /// Maximum size of the virtual table that
+    /// this query can produce or use during query execution.
+    /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
     /// Tarantool statement cache size capacity in bytes.
     ///
-    /// Corresponds to `box.cfg.sql_cache_size`
+    /// Corresponds to `box.cfg.sql_cache_size`.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5242880)]
     #[introspection(scope = tier)]
@@ -1691,10 +1697,10 @@ pub struct AlterSystemParameters {
     /// snapshots.
     ///
     /// Corresponds to `box.cfg.checkpoint_count`.
-    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(sbroad_type = SbroadType::Integer)]
     #[introspection(config_default = 2)]
     #[introspection(scope = tier)]
-    pub memtx_checkpoint_count: u64,
+    pub memtx_checkpoint_count: i32,
 
     /// The interval in seconds between actions by the checkpoint daemon. If the
     /// option is set to a value greater than zero, and there is activity that
@@ -1733,7 +1739,7 @@ pub struct AlterSystemParameters {
     ///
     /// On typical systems, the default value (768) is correct.
     ///
-    /// Corresponds to `box.cfg.net_msg_max`
+    /// Corresponds to `box.cfg.net_msg_max`.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 0x300)]
     #[introspection(scope = tier)]
@@ -1865,7 +1871,7 @@ pub fn validate_alter_system_parameter_value<'v>(
     let Ok(casted_value) = value.cast_and_encode(&expected_type) else {
         let actual_type = value_type_str(value);
         #[rustfmt::skip]
-        return Err(Error::other(format!("invalid value for '{name}' expected {expected_type}, got {actual_type}",)));
+        return Err(Error::other(format!("invalid value for '{name}': expected {expected_type}, got {actual_type}",)));
     };
 
     // Not sure how I feel about this...
@@ -1876,6 +1882,84 @@ pub fn validate_alter_system_parameter_value<'v>(
 
         if value < 0.0 {
             return Err(Error::other("timeout value cannot be negative"));
+        }
+    }
+
+    if name == system_parameter_name!(iproto_net_msg_max) {
+        let net_msg_value = casted_value
+            .unsigned()
+            .expect("invalid value for iproto_net_msg_max");
+
+        i32::try_from(net_msg_value)
+            .ok()
+            .filter(|&x| x >= 2)
+            .ok_or_else(|| {
+                // we try to throw error from a single place
+                Error::other(format!(
+                    "invalid value for '{name}': value must be between 2 and {}",
+                    i32::MAX
+                ))
+            })?;
+    }
+
+    if name == system_parameter_name!(memtx_checkpoint_count) {
+        let cp_count = casted_value
+            .integer()
+            .expect("invalid value for memtx_checkpoint_count");
+
+        i32::try_from(cp_count)
+            .ok()
+            .filter(|&x| x >= 1)
+            .ok_or_else(|| {
+                // we try to throw error from a single place
+                Error::other(format!(
+                    "invalid value for '{name}': value must be between 1 and {}",
+                    i32::MAX,
+                ))
+            })?;
+    }
+
+    if name == system_parameter_name!(sql_storage_cache_size_max) {
+        let cache_size = casted_value
+            .unsigned()
+            .expect("invalid value for sql_storage_cache_size_max");
+
+        let cache_size = i32::try_from(cache_size)
+            .ok()
+            .filter(|&x| x >= 1)
+            .ok_or_else(|| {
+                // we try to throw error from a single place
+                Error::other(format!(
+                    "invalid value for '{name}': value must be between 1 and {}",
+                    i32::MAX,
+                ))
+            })?;
+
+        // Retrieve the current cache size
+        // to prevent setting a value smaller than the current cache size.
+        let lua = tarantool::lua_state();
+        let current_cache_size: i32 = lua
+            .eval("return box.info.sql().cache.size")
+            .expect("sql_cache_size should be available");
+
+        if cache_size < current_cache_size {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be greater than the current cache size {}",
+                current_cache_size
+            )));
+        }
+    }
+
+    if name == system_parameter_name!(sql_storage_cache_count_max) {
+        let cache_count = casted_value
+            .unsigned()
+            .expect("invalid value for sql_storage_cache_count_max");
+
+        if cache_count < 1 {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be between 1 and {}",
+                u64::MAX,
+            )));
         }
     }
 
