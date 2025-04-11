@@ -210,7 +210,7 @@ pub struct ReplicasetSpec {
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, Eq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
-struct ReplicaSpec {
+pub struct ReplicaSpec {
     uri: String,
     name: String,
     master: bool,

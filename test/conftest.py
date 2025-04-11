@@ -2686,7 +2686,8 @@ class log_crawler:
         # Basically this is just last N lines of output we've seen.
         self.current_window: List[bytes] = []
 
-        instance.on_output_line(self._cb)
+        self.instance = instance
+        self.instance.on_output_line(self._cb)
 
     def _cb(self, line: bytes):
         # exit early if match was already found
@@ -2728,7 +2729,12 @@ class log_crawler:
         def must_match():
             assert self.matched
 
-        Retriable(timeout=timeout, rps=4).call(func=must_match)
+        try:
+            Retriable(timeout=timeout, rps=4).call(func=must_match)
+        except Exception as e:
+            # Check if a panic happened while we were waiting for a message in logs
+            self.instance.check_process_alive()
+            raise e from e
 
     def __repr__(self):
         return f"log_crawler({self.instance}, '{self.search_str}')"

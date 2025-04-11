@@ -8,6 +8,7 @@ from conftest import (
     TarantoolError,
     log_crawler,
     ErrorCode,
+    assert_starts_with,
 )
 
 
@@ -837,6 +838,84 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
 
     # A master catches up by snapshot
     assert i4.call("box.space._space.index.name:get", space_name) is not None
+
+
+################################################################################
+def check_ddl_on_replica_at_catchup_with_raft_leader_switchover(cluster: Cluster, via_snapshot: bool):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            can_vote: true
+            replication_factor: 1
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+    # voter_1 has wait_online=True, because it needs to be the raft leader by
+    # virtue of being the first in the cluster
+    voter_1 = cluster.add_instance(tier="voter", wait_online=True)
+    # voter_2 has wait_online=False so that the rest of the instances boot up in
+    # parallel which should be faster
+    voter_2 = cluster.add_instance(tier="voter", wait_online=False)
+    # This is a master, who will be present at ddl.
+    storage_1 = cluster.add_instance(tier="storage", wait_online=False)
+    # This is a replica, who will become master and will catch up.
+    storage_2 = cluster.add_instance(tier="storage", wait_online=False)
+
+    cluster.wait_online()
+
+    storage_2.terminate()
+
+    # Propose a space creation which will succeed
+    voter_1.sql("CREATE TABLE top_g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY WAIT APPLIED LOCALLY")
+
+    if via_snapshot:
+        # Compact the log to trigger snapshot applying on the catching up instance
+        voter_1.raft_compact_log()
+        voter_2.raft_compact_log()
+        storage_1.raft_compact_log()
+
+    injection = "BROKEN_REPLICATION"
+    # Wake up the catching up instance, who will also become master.
+    storage_2.env[f"PICODATA_ERROR_INJECTION_{injection}"] = "1"
+    lc = log_crawler(storage_2, f"ERROR INJECTION '{injection}'")
+
+    # Start the replica instance and wait for it to block on the DdlCommit raft entry
+    storage_2.start()
+    lc.wait_matched()
+
+    # Switch the raft leader, to check that storage_2 handled it correctly while
+    # being blocked by raft entry application
+    voter_2.promote_or_fail()
+    assert cluster.leader() == voter_2
+
+    # Kill the replicaset master to trigger master switchover
+    storage_1.terminate()
+
+    # Governor is blocked trying to configure replication on the broken instance
+    voter_2.wait_governor_status("configure replication")
+    error = voter_2.call(".proc_runtime_info")["internal"]["governor_loop_last_error"]
+
+    # Replication cannot be configured, because the instance doesn't know raft
+    # leader has changed
+    assert error["code"] == ErrorCode.TermMismatch
+    assert_starts_with(error["message"], "operation request from different term")
+
+    # The DDL is not applied, because the instance is blocked not knowing it
+    # was promoted to replicaset master
+    assert storage_2.call("box.space._space.index.name:get", "top_g") is None
+
+
+def test_ddl_on_replica_at_catchup_via_log_with_raft_leader_switchover(cluster: Cluster):
+    check_ddl_on_replica_at_catchup_with_raft_leader_switchover(cluster, via_snapshot=False)
+
+
+def test_ddl_on_replica_at_catchup_via_snapshot_with_raft_leader_switchover(cluster: Cluster):
+    check_ddl_on_replica_at_catchup_with_raft_leader_switchover(cluster, via_snapshot=True)
 
 
 ################################################################################
