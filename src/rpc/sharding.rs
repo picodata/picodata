@@ -71,10 +71,13 @@ crate::define_rpc_request! {
             config.listen = Some(lua.eval("return box.info.listen")?);
             config.set_password_in_uris();
 
+            crate::error_injection!("BROKEN_REPLICATION" => { config.sharding.clear(); });
+
             // We do not want to configure the vshard router and storage each time
             // because these actions call box.cfg internally.
             // Therefore, we check for differences between the current and
             // new configurations before calling router:cfg() or storage:cfg().
+
             if current_instance_tier == tier.name {
                 let current_sharding_param: Option<HashMap<String, ReplicasetSpec>> = lua.eval(
                     "vshard = require('vshard')

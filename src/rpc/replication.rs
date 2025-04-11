@@ -82,6 +82,8 @@ crate::define_rpc_request! {
             replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"))
         }
 
+        crate::error_injection!("BROKEN_REPLICATION" => { replication_cfg.clear(); });
+
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
         set_cfg_field("replication", &replication_cfg)?;
