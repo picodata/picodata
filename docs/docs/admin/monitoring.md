@@ -310,7 +310,7 @@ scrape_configs:
 ![Picodata dashboard](../images/grafana/dashboard.png)
 
 [Grafana]: https://grafana.com/
-[Picodata.json]: https://binary.picodata.io/repository/raw/picodata/monitoring/Picodata.json
+[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/dashboard
 
 <!-- См. также:
 
