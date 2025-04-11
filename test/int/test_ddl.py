@@ -1271,11 +1271,8 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     i3.terminate()
 
     # Try to drop using WAIT APPLIED GLOBALLY
-    with pytest.raises(
-        TarantoolError,
-        match="ddl operation committed, but failed to receive acknowledgements from all instances",
-    ):
-        i1.sql("DROP TABLE drop_me_globally WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 3.0)")
+    i1.sql("DROP TABLE drop_me_globally WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 3.0)")
+    # It works, because Offline instances don't block the operation
 
     for space_name in ["replace_me", "drop_me"]:
         i1.sql(f"DROP TABLE {space_name} WAIT APPLIED LOCALLY OPTION (TIMEOUT = 3.0)")

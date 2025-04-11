@@ -11,7 +11,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::has_states;
 use crate::instance::InstanceName;
 use crate::rpc::RequestArgs;
 use crate::topology_cache::TopologyCache;
@@ -230,7 +229,7 @@ pub fn wait_for_index_globally(
         let topology_ref = topology.get();
         instances_values = topology_ref
             .all_instances()
-            .filter(|instance| !has_states!(instance, Expelled -> *))
+            .filter(|instance| instance.may_respond())
             .map(|instance| instance.name.clone())
             .collect();
         instances = instances_values.iter().collect();
