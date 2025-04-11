@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.3.9] - Unreleased
+
+### Fixes
+- DDL queries with WAIT APPLIED GLOBALLY option (on by default) will no longer
+  be blocked by Offline instances.
+
+
 ## [25.3.8] - 2025-10-23
 
 ### Fixes
