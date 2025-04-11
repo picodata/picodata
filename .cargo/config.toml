@@ -10,3 +10,5 @@ rustflags = [
   "-C", "link-arg=dynamic_lookup",
 ]
 
+[source.crates-io]
+registry = "sparse+https://proxy.picodata.io/api/v1/cratesio/"
