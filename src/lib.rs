@@ -113,11 +113,11 @@ macro_rules! lua_preload {
 /// to an immutable static, as it is considered safe by default.
 #[macro_export]
 macro_rules! static_ref {
-    ($var:ident mut) => {
-        &mut *&raw mut $var
-    };
-    ($var:ident const) => {
+    (const $var:ident) => {
         &*&raw const $var
+    };
+    (mut $var:ident) => {
+        &mut *&raw mut $var
     };
 }
 

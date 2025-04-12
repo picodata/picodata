@@ -165,7 +165,7 @@ fn discovery() -> Option<MutexGuard<'static, Discovery>> {
     // SAFETY:
     // - only called from main thread
     // - never mutated after initialization
-    unsafe { static_ref!(DISCOVERY const) }
+    unsafe { static_ref!(const DISCOVERY) }
         .as_ref()
         .map(|d| d.lock())
 }
@@ -176,7 +176,7 @@ pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
     // - only called from main thread
     // - never mutated after initialization
     unsafe {
-        assert!(static_ref!(DISCOVERY const).is_none());
+        assert!(static_ref!(const DISCOVERY).is_none());
         DISCOVERY = Some(Box::new(Mutex::new(d)));
     }
 }

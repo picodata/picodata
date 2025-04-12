@@ -162,8 +162,8 @@ Using configuration file '{args_path}'.");
 
         // Safe, because we only initialize config once in a single thread.
         let config_ref = unsafe {
-            assert!(static_ref!(GLOBAL_CONFIG const).is_none());
-            static_ref!(GLOBAL_CONFIG mut).insert(config)
+            assert!(static_ref!(const GLOBAL_CONFIG).is_none());
+            static_ref!(mut GLOBAL_CONFIG).insert(config)
         };
 
         Ok(config_ref)
@@ -175,7 +175,7 @@ Using configuration file '{args_path}'.");
         // - only called from main thread
         // - never mutated after initialization
         unsafe {
-            static_ref!(GLOBAL_CONFIG const)
+            static_ref!(const GLOBAL_CONFIG)
                 .as_ref()
                 .expect("shouldn't be called before config is initialized")
         }
@@ -814,7 +814,7 @@ Using configuration file '{args_path}'.");
         let config = Box::new(Self::with_defaults());
         // Safe, because we only initialize config once in a single thread.
         unsafe {
-            assert!(static_ref!(GLOBAL_CONFIG const).is_none());
+            assert!(static_ref!(const GLOBAL_CONFIG).is_none());
             GLOBAL_CONFIG = Some(config);
         };
     }

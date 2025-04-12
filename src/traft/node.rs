@@ -198,7 +198,7 @@ impl Node {
     ) -> Result<&'static Self, Error> {
         // SAFETY: only accessed from main thread, and never mutated after
         // initialization (initialization happens later in this function)
-        if unsafe { static_ref!(RAFT_NODE const).is_some() } {
+        if unsafe { static_ref!(const RAFT_NODE).is_some() } {
             return Err(Error::other("raft node is already initialized"));
         }
 
@@ -2683,7 +2683,7 @@ pub fn global() -> Result<&'static Node, BoxError> {
     // can't use it because it doesn't implement Sync, and we don't want to use
     // std::sync::OnceLock, because we don't want to pay for the atomic read
     // which we don't need.
-    unsafe { static_ref!(RAFT_NODE const).as_deref() }
+    unsafe { static_ref!(const RAFT_NODE).as_deref() }
         .ok_or_else(|| BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
 }
 

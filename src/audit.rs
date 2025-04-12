@@ -306,7 +306,7 @@ static mut CLOCK: OnceCell<LogicalClock> = OnceCell::new();
 /// Generate next unique record id.
 fn next_unique_id() -> Option<LogicalClock> {
     // SAFETY: we'll call this only from TX thread.
-    let clock = unsafe { static_ref!(CLOCK mut).get_mut().unwrap() };
+    let clock = unsafe { static_ref!(mut CLOCK).get_mut().unwrap() };
     clock.inc();
     Some(*clock)
 }
@@ -392,7 +392,7 @@ pub fn init(config: &str, raft_id: u64, raft_gen: u64) {
     // SAFETY: this is the first time we access this variable, and it's
     // always done from the main (TX) thread.
     unsafe {
-        static_ref!(CLOCK const)
+        static_ref!(const CLOCK)
             .set(LogicalClock::new(raft_id, raft_gen))
             .expect("failed to initialize global audit event id generator");
     }

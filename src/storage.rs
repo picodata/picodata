@@ -220,13 +220,13 @@ impl Catalog {
 
         // SAFETY: this is safe as long as we only use it in tx thread.
         unsafe {
-            if static_ref!(STORAGE const).is_none() {
+            if static_ref!(const STORAGE).is_none() {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
                 STORAGE = Some(Self::initialize()?);
             }
-            Ok(static_ref!(STORAGE const).as_ref().unwrap())
+            Ok(static_ref!(const STORAGE).as_ref().unwrap())
         }
     }
 
@@ -314,7 +314,7 @@ fn cached_key_def_impl(
     // it only lives for a short time during this function call which is only
     // called from main thread, and we know for a fact that the fiber doesn't
     // yield while holding this reference, because of the NoYieldsGuard above.
-    let system_key_defs: &'static mut _ = unsafe { static_ref!(SYSTEM_KEY_DEFS mut) };
+    let system_key_defs: &'static mut _ = unsafe { static_ref!(mut SYSTEM_KEY_DEFS) };
     let system_key_defs = system_key_defs.get_or_insert_with(HashMap::new);
     if SYSTEM_TABLES_ID_RANGE.contains(&space_id) {
         // System table definition's never change during a single
@@ -328,7 +328,7 @@ fn cached_key_def_impl(
     // it only lives for a short time during this function call which is only
     // called from main thread, and we know for a fact that the fiber doesn't
     // yield while holding this reference, because of the NoYieldsGuard above.
-    let user_key_defs: &'static mut _ = unsafe { static_ref!(USER_KEY_DEFS mut) };
+    let user_key_defs: &'static mut _ = unsafe { static_ref!(mut USER_KEY_DEFS) };
     let (schema_version, user_key_defs) = user_key_defs.get_or_insert_with(|| (0, HashMap::new()));
     let box_schema_version = box_schema_version();
     if *schema_version != box_schema_version {

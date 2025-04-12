@@ -130,7 +130,7 @@ pub(crate) fn init_handlers() {
 }
 
 unsafe fn handlers_mut() -> &'static mut RpcHandlerMap {
-    crate::static_ref!(HANDLERS mut)
+    crate::static_ref!(mut HANDLERS)
         .as_mut()
         .expect("should be initialized at startup")
 }

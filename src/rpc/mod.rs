@@ -77,7 +77,7 @@ pub fn init_static_proc_set() {
 
     // SAFETY: only called from main thread + never mutated after initialization
     unsafe {
-        assert!(static_ref!(STATIC_PROCS const).is_none());
+        assert!(static_ref!(const STATIC_PROCS).is_none());
         STATIC_PROCS = Some(map);
     }
 }
@@ -86,7 +86,7 @@ pub fn init_static_proc_set() {
 pub fn to_static_proc_name(name: &str) -> Option<&'static str> {
     // SAFETY: only called from main thread + never mutated after initialization
     let name_ref = unsafe {
-        static_ref!(STATIC_PROCS const)
+        static_ref!(const STATIC_PROCS)
             .as_ref()
             .expect("should be initialized at startup")
             .get(name)?

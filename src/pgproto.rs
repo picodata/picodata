@@ -179,7 +179,7 @@ pub fn init_once(
     // SAFETY: safe as long as only called from tx thread.
     unsafe {
         // This check protects us from use-after-free in client fibers.
-        if static_ref!(CONTEXT const).is_some() {
+        if static_ref!(const CONTEXT).is_some() {
             panic!("pgproto cannot be initialized more than once!");
         }
         CONTEXT = Some(context);
@@ -194,7 +194,7 @@ pub fn init_once(
 pub fn start_once() -> Result<(), Error> {
     if !IS_RUNNING.load(Ordering::Relaxed) {
         // SAFETY: safe as long as only called from tx thread.
-        let context = unsafe { static_ref!(CONTEXT const) }
+        let context = unsafe { static_ref!(const CONTEXT) }
             .as_ref()
             .expect("pgproto main context is uninitialized");
 

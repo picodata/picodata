@@ -21,7 +21,7 @@ pub(crate) fn pico_service_password() -> &'static str {
     // SAFETY:
     // - only accessed from main thread
     // - never mutated after initialization
-    unsafe { static_ref!(PICO_SERVICE_PASSWORD const).as_deref() }.unwrap_or("")
+    unsafe { static_ref!(const PICO_SERVICE_PASSWORD).as_deref() }.unwrap_or("")
 }
 
 pub(crate) fn read_pico_service_password_from_file(
@@ -74,7 +74,7 @@ pub(crate) fn read_pico_service_password_from_file(
     }
 
     unsafe {
-        assert!(static_ref!(PICO_SERVICE_PASSWORD const).is_none());
+        assert!(static_ref!(const PICO_SERVICE_PASSWORD).is_none());
         PICO_SERVICE_PASSWORD = Some(password.into());
     }
 
