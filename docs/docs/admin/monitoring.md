@@ -99,12 +99,13 @@ box.space._pico_property:get("current_schema_version");
 указан способ вывода отладочного журнала, то он выводится в ту же
 консоль.
 
-Если кластер развернут при помощи скриптов инстансов и файла
-конфигурации, то в них вывод отладочного журнала может быть настроен в
-файл или в службу `syslog`. Этим поведением управляет параметр
-конфигурации [`instance.log.destination`].
+Если кластер развернут при помощи [файла конфигурации], то в нем вывод
+отладочного журнала может быть настроен в файл или в службу `syslog`.
+Этим поведением управляет параметр конфигурации
+[`instance.log.destination`].
 
-[`instance.log.destination`]: ../reference/cli.md#run_log
+[`instance.log.destination`]: ../reference/config.md#instance_log_destination
+[файла конфигурации]: ../reference/config.md#config_file_description
 
 При развертывании кластера через Ansible отладочный журнал по умолчанию
 выводится в службу `syslog`.
