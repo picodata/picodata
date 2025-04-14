@@ -11,7 +11,13 @@ The proposed solution is to export API functions with `box.schema.func.create` b
 
 Existing API that we need to allow access to (some function names were changed according to our plans to rename them).
 
-1. Raft
+1. Public functions:
+  - picodata_version() -> string
+  - local_config() -> map
+  - sharding_config() -> map
+  - instance_uuid() -> string
+  - vclock() -> map
+2. Admin functions:
   - raft_term() -> unsigned
   - raft_commit_index() -> unsigned
   - raft_applied_index() -> unsigned
@@ -19,12 +25,6 @@ Existing API that we need to allow access to (some function names were changed a
   - raft_leader_uuid() -> uuid
   - raft_state() -> string (Follower | Leader | ...)
   - raft_id() -> unsigned
-2. Other
-  - picodata_version() -> string
-  - local_config() -> map
-  - sharding_config() -> map
-  - instance_uuid() -> uuid
-  - vclock() -> map
 
 ### Support in SQL
 
