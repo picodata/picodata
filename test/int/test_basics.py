@@ -873,3 +873,13 @@ def test_update_instance_cluster_uuid_protection(cluster: Cluster):
         )
 
     assert "cluster UUID mismatch" in str(e.value)
+
+
+def test_conflicting_pg_listen(cluster: Cluster):
+    cluster.add_instance(wait_online=True, pg_port=4711)
+
+    inst = cluster.add_instance(wait_online=False, pg_port=4711)
+    lc = log_crawler(inst, "Address already in use")
+    with pytest.raises(ProcessDead, match="process exited unexpectedly"):
+        cluster.wait_online()
+    lc.wait_matched()
