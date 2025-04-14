@@ -2,6 +2,7 @@
 name = "picodata-plugin"
 version = "25.2.0"
 edition = "2021"
+license = "BSD-2"
 license-file = "./../LICENSE"
 description = "Toolkit to build plugins for picodata.io DBMS"
 
