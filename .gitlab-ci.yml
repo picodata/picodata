@@ -359,7 +359,7 @@ pack-doc:
     SED_SLUG: "s/[^a-zA-Z0-9.]+/_/g"
   before_script:
     - |
-      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+      if [ "$CI_COMMIT_BRANCH" == "master" ]; then
         PICODATA_DOC_VER="devel"
       elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         PICODATA_DOC_VER="$MAIN_BRANCH"
