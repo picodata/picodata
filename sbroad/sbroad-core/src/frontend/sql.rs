@@ -1011,7 +1011,7 @@ fn parse_alter_table(
                                     _ => panic!("Unexpected rule met under ColumnDefIsNull."),
                                 }
                             } else {
-                                false
+                                true // column is nullable by default unless otherwise specified
                             };
 
                             add_ops.push(AlterTableOp::Add {

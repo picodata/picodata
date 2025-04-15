@@ -17,6 +17,18 @@ SELECT * FROM test_table;
 -- EXPECTED:
 1, 'Test', NULL
 
+-- TEST: add_column_null_implicit
+DROP TABLE IF EXISTS test_table;
+CREATE TABLE test_table(id INT PRIMARY KEY, name TEXT);
+ALTER TABLE test_table ADD COLUMN status TEXT;
+INSERT INTO test_table(id, name) VALUES (1, 'Test');
+
+-- TEST: verify_null_implicit
+-- SQL:
+SELECT * FROM test_table;
+-- EXPECTED:
+1, 'Test', NULL
+
 -- TEST: add_column_not_null_to_empty_table
 -- SQL:
 DROP TABLE IF EXISTS test_table;
@@ -47,13 +59,19 @@ Tuple field 4 (required_field) required by space format is missing
 DROP TABLE IF EXISTS test_table;
 CREATE TABLE test_table(id INT PRIMARY KEY);
 ALTER TABLE test_table ADD COLUMN first_name TEXT NULL, ADD COLUMN last_name TEXT NOT NULL, ADD COLUMN email TEXT;
-INSERT INTO test_table VALUES (1, NULL, 'Doe', 'john@example.com');
+INSERT INTO test_table VALUES (1, NULL, 'Kunkka', NULL);
+INSERT INTO test_table VALUES (2, NULL, 'Pork', 'john@call.me');
+INSERT INTO test_table VALUES (3, 'Brann', 'Bronzebeard', NULL);
+INSERT INTO test_table VALUES (4, 'Jastor', 'Gallywix', 'jastor@gallywix.com');
 
 -- TEST: verify_multiple_columns
 -- SQL:
-SELECT * FROM test_table;
+SELECT * FROM test_table ORDER BY id ASC;
 -- EXPECTED:
-1, NULL, 'Doe', 'john@example.com'
+1, NULL, 'Kunkka', NULL,
+2, NULL, 'Pork', 'john@call.me',
+3, 'Brann', 'Bronzebeard', NULL,
+4, 'Jastor', 'Gallywix', 'jastor@gallywix.com'
 
 -- TEST: add_column_to_nonexistent_table
 -- SQL:
@@ -128,12 +146,13 @@ column "required_field" must be specified
 -- SQL:
 DROP TABLE IF EXISTS test_table;
 CREATE TABLE test_table(id INT PRIMARY KEY);
-ALTER TABLE test_table ADD COLUMN implicit_non_nullable INT;
+ALTER TABLE test_table ADD COLUMN implicit_nullable INT;
 ALTER TABLE test_table ADD COLUMN explicit_nullable INT NULL;
-INSERT INTO test_table VALUES (1, 2, NULL);
+ALTER TABLE test_table ADD COLUMN explicit_non_nullable INT NOT NULL;
+INSERT INTO test_table VALUES (1, NULL, NULL, 52);
 
 -- TEST: verify_null_constraints
 -- SQL:
 SELECT * FROM test_table;
 -- EXPECTED:
-1, 2, NULL
+1, NULL, NULL, 52
