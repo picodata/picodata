@@ -197,3 +197,15 @@ false
 SELECT sum(a) FROM tb GROUP BY b HAVING b;
 -- EXPECTED:
 3
+
+-- TEST: select-distinct-asterisk
+-- SQL:
+SELECT DISTINCT * FROM t ORDER BY 1
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3
+
+-- TEST: select-asterisk-with-group-by
+-- SQL:
+SELECT * FROM t GROUP BY a, b ORDER BY 1
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3

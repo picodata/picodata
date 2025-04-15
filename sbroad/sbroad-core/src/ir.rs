@@ -1028,6 +1028,7 @@ impl Plan {
             Relational::Selection(Selection { output, .. })
             | Relational::Having(Having { output, .. })
             | Relational::OrderBy(OrderBy { output, .. })
+            | Relational::GroupBy(GroupBy { output, .. })
             | Relational::Limit(Limit { output, .. }) => {
                 let source_output_list = self.get_row_list(*output)?;
                 let source_ref_id = source_output_list[*position];
@@ -1038,7 +1039,6 @@ impl Plan {
             | Relational::Projection { .. }
             | Relational::SelectWithoutScan { .. }
             | Relational::ScanCte { .. }
-            | Relational::GroupBy { .. }
             | Relational::Motion { .. }
             | Relational::ScanSubQuery { .. }
             | Relational::Join { .. }
