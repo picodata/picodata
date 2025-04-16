@@ -106,7 +106,7 @@ pub enum ExprKind<Id> {
     /// Named parameter value. Parameters don't have a fixed type, but it can be inferred from the
     /// context. For examples, in expression `1 + $1` it's likely that parameter has integer type.
     /// Examples: `$1`, `$2`.
-    Parameter(String),
+    Parameter(u16),
     /// Function or expression (scalar or aggregate).
     /// Examples: `max(a)`, `substring('abc', 1, 1)`.
     Function(String, Vec<Expr<Id>>),

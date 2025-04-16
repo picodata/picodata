@@ -43,8 +43,8 @@ pub enum Error {
     #[error("{} {} does not exist", kind, name)]
     FunctionDoesNotExist { kind: FunctionKind, name: String },
 
-    #[error("could not determine data type of parameter {0}")]
-    CouldNotDetermineParameterType(String),
+    #[error("could not determine data type of parameter ${}", .0 + 1)]
+    CouldNotDetermineParameterType(u16),
 
     #[error("unequal number of entries in row expression: {0} and {1}")]
     UnequalNumberOfEntriesInRowExpression(usize, usize),

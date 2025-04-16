@@ -276,7 +276,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                 report.report(&expr.id, *ty);
                 Ok(report)
             }
-            ExprKind::Parameter(name) => {
+            ExprKind::Parameter(idx) => {
                 if let Some(desired_type) = desired_type {
                     // TODO: ensure type is not a pseudo-type
                     // https://www.postgresql.org/docs/current/datatype-pseudo.html
@@ -285,7 +285,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                     report.report(&expr.id, desired_type);
                     return Ok(report);
                 }
-                Err(Error::CouldNotDetermineParameterType(name.to_string()))
+                Err(Error::CouldNotDetermineParameterType(*idx))
             }
             ExprKind::Cast(inner, to) => {
                 let mut report = self.analyze(inner, Some(*to))?;

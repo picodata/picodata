@@ -104,8 +104,10 @@ mod tests {
         expr(ExprKind::Literal(ty))
     }
 
-    fn param(name: impl Into<String>) -> Expr {
-        expr(ExprKind::Parameter(name.into()))
+    fn param(name: &str) -> Expr {
+        let idx = name.strip_prefix("$").expect("params should start with $");
+        let idx = idx.parse::<u16>().unwrap() - 1;
+        expr(ExprKind::Parameter(idx))
     }
 
     fn binary(op: impl Into<String>, left: Expr, right: Expr) -> Expr {
