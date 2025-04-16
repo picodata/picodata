@@ -90,6 +90,8 @@ impl Display for ComparisonOperator {
     }
 }
 
+pub const MAX_PARAMETER_INDEX: usize = 1 << 15 - 1;
+
 /// ExprKind represents expressions that define types.
 /// There are no parenthesis or aliaes, as they do not influence typing.
 #[derive(Debug)]
@@ -103,8 +105,9 @@ pub enum ExprKind<Id> {
     /// Column reference.
     /// Examples: `a`, `col`.
     Reference(Type),
-    /// Named parameter value. Parameters don't have a fixed type, but it can be inferred from the
-    /// context. For examples, in expression `1 + $1` it's likely that parameter has integer type.
+    /// Indexed parameter value starting with 0.
+    /// Parameters don't have a fixed type, but it can be inferred from the context.
+    /// For examples, in expression `1 + $1` it's likely that parameter has integer type.
     /// Examples: `$1`, `$2`.
     Parameter(u16),
     /// Function or expression (scalar or aggregate).

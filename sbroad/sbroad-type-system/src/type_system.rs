@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::expr::{ComparisonOperator, Expr, ExprKind, Type, UnaryOperator};
+use crate::expr::{ComparisonOperator, Expr, ExprKind, Type, UnaryOperator, MAX_PARAMETER_INDEX};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -110,6 +110,12 @@ pub struct TypeReport<Id: Hash + Eq + Clone> {
     // TODO: consider using different hash table or different state.
     types: StableHashMap<Id, Type>,
     casts: StableHashMap<Id, Type>,
+    // Types of parameters met in expression.
+    // Note that these are the actual types of parameters, but parameters expressions can be
+    // coerced to other types.
+    // Consider `$1 = 1.5`, where $1 has int type:
+    // params will contain (0, Int) tuple, but `$1` will be coerced to the type of `1.5` (Numeric).
+    params: Vec<(u16, Type)>,
 }
 
 impl<Id: Hash + Eq + Clone> TypeReport<Id> {
@@ -117,6 +123,7 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         Self {
             types: StableHashMap::default(),
             casts: StableHashMap::default(),
+            params: Vec::new(),
         }
     }
 
@@ -133,11 +140,17 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
     pub fn extend(&mut self, other: Self) {
         self.types.extend(other.types);
         self.casts.extend(other.casts);
+        self.params.extend(other.params);
     }
 
     /// Report expression type.
     fn report(&mut self, id: &Id, ty: Type) {
         self.types.insert(id.clone(), ty);
+    }
+
+    /// Report parameter type by index.
+    pub fn report_param(&mut self, idx: u16, ty: Type) {
+        self.params.push((idx, ty))
     }
 
     /// Report required coercion for an expression.
@@ -188,27 +201,54 @@ impl TypeSystem {
 
 type TypeAnalyzerCache<Id> = StableHashMap<(Id, Option<Type>), TypeReport<Id>>;
 
-/// Analyzes and infers expression types using a provided `TypeSystem` which defines
-/// supported operations and type coercions.
-///
-/// WARNING: Analyzer caches intermediate results for efficiency. This caching is safe when the
-/// same expression is analyzed multiple times, or when analyzing a compound expression
-/// containing previously analyzed subexpressions (e.g analyzing 1 + b after analyzing 1 and b).
-/// The analyzer becomes invalid when previously analyzed expressions are modified. In than case
-/// a new analyzer instance must be created.
-pub struct TypeAnalyzer<'a, Id: Hash + Eq + Clone> {
+/// Implementation of the core logic of type analysis.
+pub struct TypeAnalyzerCore<'a, Id: Hash + Eq + Clone> {
     /// Type system providing functions and coercions.
     type_system: &'a TypeSystem,
     /// Cache for intermediate results to avoid redundant recalculations.
     cache: TypeAnalyzerCache<Id>,
+    /// Vector of parameters types.
+    /// Initially contains user-provided parameter types (if any).
+    /// Grows dynamically during analysis as new parameter types are inferred.
+    parameters: Vec<Type>,
 }
 
-impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
+impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     pub fn new(type_system: &'a TypeSystem) -> Self {
         Self {
             type_system,
+            parameters: Default::default(),
             cache: Default::default(),
         }
+    }
+
+    pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
+        assert!(parameters.len() < MAX_PARAMETER_INDEX);
+        self.parameters = parameters;
+        self
+    }
+
+    pub fn update_parameters(&mut self, report: &TypeReport<Id>) -> Result<(), Error> {
+        let max_idx = report.params.iter().map(|x| x.0 + 1).max().unwrap_or(0) as usize;
+        let new_len = std::cmp::max(self.parameters.len(), max_idx);
+        self.parameters.resize(new_len, Type::Unknown);
+
+        for (idx, new_type) in &report.params {
+            let old_type = self.parameters[*idx as usize];
+            if old_type == Type::Unknown {
+                self.parameters[*idx as usize] = *new_type;
+            } else if old_type != *new_type {
+                return Err(Error::InconsistentParameterTypesDeduced(
+                    *idx, old_type, *new_type,
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_parameters_types(&self) -> &[Type] {
+        &self.parameters
     }
 
     /// Perform type analysis. All expression types and coercions are reported in `TypeReport`.
@@ -220,7 +260,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         expr: &Expr<Id>,
         desired_type: Option<Type>,
     ) -> Result<TypeReport<Id>, Error> {
-        if let Some(report) = self.cache.borrow().get(&(expr.id.clone(), desired_type)) {
+        if let Some(report) = self.try_get_cached(expr, desired_type) {
             return Ok(report.clone());
         }
 
@@ -229,6 +269,26 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         self.cache
             .insert((expr.id.clone(), desired_type), report.clone());
         Ok(report)
+    }
+
+    fn try_get_cached(
+        &self,
+        expr: &Expr<Id>,
+        desired_type: Option<Type>,
+    ) -> Option<TypeReport<Id>> {
+        let report = self.cache.borrow().get(&(expr.id.clone(), desired_type))?;
+        for (idx, report_type) in &report.params {
+            // The report includes parameter types used for inference,
+            // but these may not be the final chosen types.
+            // So we need to verify that our inferred types match those in the report.
+            // See `ensure_no_caching_issues` test for an example.
+            if let Some(current_type) = self.parameters.get(*idx as usize) {
+                if *current_type != Type::Unknown && *report_type != *current_type {
+                    return None;
+                }
+            }
+        }
+        Some(report.clone())
     }
 
     fn analyze_expr(
@@ -277,15 +337,37 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                 Ok(report)
             }
             ExprKind::Parameter(idx) => {
-                if let Some(desired_type) = desired_type {
-                    // TODO: ensure type is not a pseudo-type
-                    // https://www.postgresql.org/docs/current/datatype-pseudo.html
-                    // TEST: `select $1 = null;`
-                    let mut report = TypeReport::new();
-                    report.report(&expr.id, desired_type);
-                    return Ok(report);
+                let mut report = TypeReport::new();
+                let param_type = match self.parameters.get(*idx as usize).cloned() {
+                    Some(Type::Unknown) => None,
+                    t => t,
+                };
+
+                match (param_type, desired_type) {
+                    (Some(param_type), Some(desired_type)) => {
+                        report.report_param(*idx, param_type);
+                        // Coerce parameter type to desired if possible.
+                        if param_type != desired_type && self.can_coerce(param_type, desired_type) {
+                            report.cast(&expr.id, desired_type);
+                            report.report(&expr.id, desired_type);
+                            Ok(report)
+                        } else {
+                            report.report(&expr.id, param_type);
+                            Ok(report)
+                        }
+                    }
+                    (None, Some(desired_type)) => {
+                        report.report_param(*idx, desired_type);
+                        report.report(&expr.id, desired_type);
+                        Ok(report)
+                    }
+                    (Some(param_type), None) => {
+                        report.report_param(*idx, param_type);
+                        report.report(&expr.id, param_type);
+                        Ok(report)
+                    }
+                    (None, None) => return Err(Error::CouldNotDetermineParameterType(*idx)),
                 }
-                Err(Error::CouldNotDetermineParameterType(*idx))
             }
             ExprKind::Cast(inner, to) => {
                 let mut report = self.analyze(inner, Some(*to))?;
@@ -906,4 +988,63 @@ fn select_best_overloads<'a, Id: Hash + Eq + Clone>(
     }
 
     best_matches
+}
+
+/// Analyzes and infers expression types using a provided `TypeSystem` which defines
+/// supported operations and type coercions.
+///
+/// WARNING: Analyzer caches intermediate results for efficiency. This caching is safe when the
+/// same expression is analyzed multiple times, or when analyzing a compound expression
+/// containing previously analyzed subexpressions (e.g analyzing 1 + b after analyzing 1 and b).
+/// The analyzer becomes invalid when previously analyzed expressions are modified. In than case
+/// a new analyzer instance must be created.
+pub struct TypeAnalyzer<'a, Id: Hash + Eq + Clone> {
+    // Implements core analysis logic.
+    core: TypeAnalyzerCore<'a, Id>,
+    // TODO: store report for all analyzed expressions here
+}
+
+impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
+    pub fn new(type_system: &'a TypeSystem) -> Self {
+        Self {
+            core: TypeAnalyzerCore::new(type_system),
+        }
+    }
+
+    pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
+        assert!(parameters.len() < MAX_PARAMETER_INDEX);
+        self.core = self.core.with_parameters(parameters);
+        self
+    }
+
+    pub fn get_parameters_types(&self) -> &[Type] {
+        self.core.get_parameters_types()
+    }
+
+    /// Infer expression and parameters types.
+    /// All expression types and coercions are reported in `TypeReport`.
+    /// `desired_type` gives a hint on what type is expected, but the inferred type can be
+    /// different. This is the caller responsibility to ensure that the expression has a
+    /// suitable type.
+    pub fn analyze(
+        &mut self,
+        expr: &Expr<Id>,
+        desired_type: Option<Type>,
+    ) -> Result<TypeReport<Id>, Error> {
+        let report = self.core.analyze(expr, desired_type)?;
+        self.core.update_parameters(&report)?;
+        Ok(report)
+    }
+
+    // TODO: support desired types
+    /// Infer rows and parameters types.
+    pub fn analyze_homogeneous_rows(
+        &mut self,
+        ctx: &'static str,
+        rows: &[Vec<Expr<Id>>],
+    ) -> Result<TypeReport<Id>, Error> {
+        let report = self.core.analyze_homogeneous_rows(ctx, rows)?;
+        self.core.update_parameters(&report)?;
+        Ok(report)
+    }
 }

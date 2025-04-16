@@ -46,6 +46,9 @@ pub enum Error {
     #[error("could not determine data type of parameter ${}", .0 + 1)]
     CouldNotDetermineParameterType(u16),
 
+    #[error("inconsistent types {} and {} deduced for parameter ${}", .1, .2, .0 + 1)]
+    InconsistentParameterTypesDeduced(u16, Type, Type),
+
     #[error("unequal number of entries in row expression: {0} and {1}")]
     UnequalNumberOfEntriesInRowExpression(usize, usize),
 
