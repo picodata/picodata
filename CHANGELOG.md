@@ -82,6 +82,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Fixes
 
+- Disallow DDL creation operations in a heterogeneous cluster. A cluster is considered 
+  heterogeneous if any instance differs from another by major or minor version.
+
 - Changed `picodata status` output format to more minimalistic and unix-stylished.
 
 - Fixed panic when dropping system user pico_service.

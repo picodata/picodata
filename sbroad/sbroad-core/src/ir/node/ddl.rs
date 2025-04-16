@@ -56,6 +56,29 @@ impl DdlOwned {
         }
     }
 
+    /// Drop operations removes existing object from schema,
+    /// so it's safe to execute drop operation on each instance even
+    /// in heterogeneous clusters.
+    pub fn is_drop_operation(&self) -> bool {
+        match self {
+            DdlOwned::CreateTable(_)
+            | DdlOwned::AlterTable(_)
+            | DdlOwned::TruncateTable(_)
+            | DdlOwned::CreateProc(_)
+            | DdlOwned::RenameRoutine(_)
+            | DdlOwned::AlterSystem(_)
+            | DdlOwned::CreateIndex(_)
+            | DdlOwned::CreateSchema
+            | DdlOwned::SetParam(_)
+            | DdlOwned::SetTransaction(_) => false,
+
+            DdlOwned::DropTable(_)
+            | DdlOwned::DropProc(_)
+            | DdlOwned::DropIndex(_)
+            | DdlOwned::DropSchema => true,
+        }
+    }
+
     pub fn wait_applied_globally(&self) -> bool {
         match self {
             DdlOwned::CreateTable(CreateTable {

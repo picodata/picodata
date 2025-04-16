@@ -1709,6 +1709,13 @@ pub enum DdlError {
     NoPendingDdl,
     #[error("{0}")]
     CreateIndex(#[from] CreateIndexError),
+    #[error("DDL in heterogeneous cluster is prohibited. Found `{first_instance_name}` with version `{first_instance_version}`, `{second_instance_name}` with version `{second_instance_version}`")]
+    ProhibitedInHeterogeneousCluster {
+        first_instance_name: String,
+        first_instance_version: String,
+        second_instance_name: String,
+        second_instance_version: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

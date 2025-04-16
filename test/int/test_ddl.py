@@ -1,3 +1,4 @@
+import re
 import pytest
 from conftest import (
     PICO_SERVICE_ID,
@@ -2392,3 +2393,96 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
     for instance in cluster.instances:
         rebalancing_is_active = instance.eval("return vshard.storage.internal.is_rebalancer_active")
         assert rebalancing_is_active
+
+
+def test_ddl_in_heterogeneous_cluster_is_prohibited(cluster: Cluster):
+    error_injection = "UPDATE_PICODATA_VERSION"
+    cluster.set_service_password("secret")
+
+    i1 = cluster.add_instance()
+    i1_version = i1.picodata_version()
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE drop (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    def upgrade_to_next_minor_version(version):
+        major = int(version.split(".")[0])
+        minor = int(version.split(".")[1]) + 1
+        return f"{major}.{minor}.0-xxxx"
+
+    def upgrade_to_next_patch_version(version):
+        major = int(version.split(".")[0])
+        minor = int(version.split(".")[1])
+        patch = int(version.split(".")[1]) + 1
+        return f"{major}.{minor}.{patch}-xxxx"
+
+    picodata_version = i1.call("box.space._pico_property:get", "cluster_version")[1]
+    i2_version = upgrade_to_next_patch_version(picodata_version)
+    i3_version = upgrade_to_next_minor_version(picodata_version)
+
+    # cluster still homogeneous
+    i2 = cluster.add_instance(wait_online=False)
+    i2.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    i2.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = i2_version
+    i2.start()
+    i2.wait_online()
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE test (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+        DISTRIBUTED GLOBALLY
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        DROP TABLE test
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    i3 = cluster.add_instance(wait_online=False)
+    i3.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    i3.env["PICODATA_INTERNAL_VERSION_OVERRIDE"] = i3_version
+    i3.start()
+    i3.wait_online()
+
+    # only i3 can conflict with others
+    instances = [(i3.name, i3_version, i1.name, i1_version), (i3.name, i3_version, i2.name, i2_version)]
+    mirrored = [(a2, v2, a1, v1) for (a1, v1, a2, v2) in instances]
+    instances.extend(mirrored)
+
+    pattern_parts = [
+        rf"DDL in heterogeneous cluster is prohibited\. Found `{i1_name}` with version `{i1_version}`, `{i2_name}` with version `{i2_version}`"
+        for i1_name, i1_version, i2_name, i2_version in instances
+    ]
+
+    pattern = re.compile("|".join(pattern_parts))
+
+    with pytest.raises(TarantoolError, match=pattern):
+        i1.sql(
+            """
+            CREATE TABLE ids (id UNSIGNED NOT NULL, PRIMARY KEY (id))
+            DISTRIBUTED GLOBALLY
+            WAIT APPLIED LOCALLY
+            OPTION (TIMEOUT = 10)
+            """
+        )
+
+    # but it's ok to drop
+    ddl = i1.sql(
+        """
+        DROP TABLE drop
+        """
+    )
+    assert ddl["row_count"] == 1

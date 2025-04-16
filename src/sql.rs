@@ -5,10 +5,10 @@ use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::config::AlterSystemParameters;
 use crate::schema::{
-    wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DistributionParam,
-    Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
-    RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn,
-    UserDef, ADMIN_ID,
+    wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
+    DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
+    RoutineDef, RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType,
+    ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
@@ -19,7 +19,8 @@ use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, plugin, tlog};
+use crate::version::Version;
+use crate::{cas, has_states, plugin, tlog};
 
 use picodata_plugin::error_code::ErrorCode;
 use sbroad::errors::{Action, Entity, SbroadError};
@@ -1842,11 +1843,64 @@ fn check_ddl_applied(
     }
 }
 
+/// Validates whether a DDL operation is allowed.
+///
+/// A cluster is considered heterogeneous if any instance differs from another by major or minor version.
+/// DDL execution in such cluster is prohibited, the only exception is the `DROP` operations.
+///
+/// Returns an error if the operation is not permitted under the current cluster conditions.
+fn ensure_ddl_allowed_in_cluster(node: &TraftNode, ir_node: &NodeOwned) -> traft::Result<()> {
+    match ir_node {
+        NodeOwned::Ddl(ref ddl) if !ddl.is_drop_operation() => {
+            let topology_ref = node.topology_cache.get();
+            let mut not_expelled_instances = topology_ref
+                .all_instances()
+                .filter(|instance| !has_states!(instance, Expelled -> *));
+
+            let first_instance = not_expelled_instances
+                .next()
+                .expect("cluster should consist of at least one instance");
+
+            let first_version = Version::try_from(first_instance.picodata_version.as_str())
+                .expect("got from system table, should be already verified");
+
+            for instance in not_expelled_instances {
+                let version = Version::try_from(instance.picodata_version.as_str())
+                    .expect("got from system table, should be already verified");
+
+                if first_version.cmp_up_to_minor(&version).is_ne() {
+                    let first_instance_name = first_instance.name.to_string();
+                    let first_instance_version = first_instance.picodata_version.to_string();
+                    let second_instance_name = instance.name.to_string();
+                    let second_instance_version = instance.picodata_version.to_string();
+
+                    let err = DdlError::ProhibitedInHeterogeneousCluster {
+                        first_instance_name,
+                        first_instance_version,
+                        second_instance_name,
+                        second_instance_version,
+                    };
+
+                    tlog!(Warning, "{}", err);
+
+                    return Err(err.into());
+                }
+            }
+        }
+        _ => (),
+    }
+
+    Ok(())
+}
+
 pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: NodeOwned,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
+
+    ensure_ddl_allowed_in_cluster(node, &ir_node)?;
+
     // Save current user as later user is switched to admin
     let current_user = effective_user_id();
 
