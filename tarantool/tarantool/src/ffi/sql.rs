@@ -53,6 +53,19 @@ crate::define_dlsym_reloc! {
         vdbe_max_steps: u64,
         obuf: *mut Obuf,
     ) -> c_int;
+    pub(crate) fn stmt_execute_into_port(
+        stmt_id: u32,
+        mp_params: *const u8,
+        vdbe_max_steps: u64,
+        port: *mut Port
+    ) -> c_int;
+    pub(crate) fn sql_execute_into_port(
+        sql: *const u8,
+        len: c_int,
+        mp_params: *const u8,
+        vdbe_max_steps: u64,
+        port: *mut Port,
+    ) -> c_int;
 }
 
 #[repr(C)]
@@ -187,6 +200,14 @@ impl Port {
     pub unsafe fn mut_port_c(&mut self) -> &mut PortC {
         unsafe { NonNull::new_unchecked(self as *mut Port as *mut PortC).as_mut() }
     }
+
+    pub fn as_ptr(&self) -> *const Port {
+        self as *const Port
+    }
+
+    pub fn as_mut(&mut self) -> *mut Port {
+        self as *mut Port
+    }
 }
 
 impl Port {
@@ -272,6 +293,14 @@ impl PortC {
 
     pub fn iter(&self) -> PortCIterator {
         PortCIterator::new(self)
+    }
+
+    pub fn as_ptr(&self) -> *const Port {
+        self as *const PortC as *const Port
+    }
+
+    pub fn as_mut(&mut self) -> *mut Port {
+        self as *mut PortC as *mut Port
     }
 }
 

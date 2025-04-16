@@ -3,62 +3,73 @@
 # [?.?.?] Unreleased
 
 ### Added
+
 - `AuthMethod::DEFAULT` represents the default value of `AuthMethod`, but is available in constant contexts.
 - Support MsgPack ExtType encoding and decoding via `ExtStruct`
 - Support Tuple msgpack decoding
 - Support Decimal, UUID, Datetime msgpack encoding and decoding
 
 ### Changed
+
 - MSRV is now 1.81 instead of 1.71.1 as it was.
 
 ### Fixed
+
 - `network::protocol::codec::Header::encode` will not truncate to `u8` an
   `network::protocol::codec::IProtoType` integer from an outside stream at decoding.
 
 ### Deprecated
 
 ### Breaking changes
+
 - Use `extern "C-unwind"` instead of `extern "C"` for lua ffi functions, which
   seems to help with lua_error!() in release builds on recent versions of rust.
 
 ### Added (picodata)
+
 - `ffi::sql::PortC` either allows to append tuples and msgpacks to the port or
   to iterate over the port data. It is also possible to manipulate with `PortC`
   from the `FunctionCtx` of the called function.
+- Introduce `sql::sql_execute_into_port` and `sql::Statement::execute_into_port`
+  methods. Now it is possible to store SQL results directly into the port.
 
 ### Changed (picodata)
 
 ### Fixed (picodata)
 
 ### Breaking changes (picodata)
+
 - `AuthMethod::default()` is now `Md5`, not `ChapSha1`.
 
 ### Deprecated (picodata)
 
 - `Tuple::as_named_buffer` is now deprecated without any alternative, same as `TupleFormat::{names, name_count}`.
 
-
 # [6.1.0] Dec 10 2024
 
 ### Added
+
 - `network::client::tcp::TcpStream` not supports async connection, provided with `connect_async` and `connect_timeout_async` methods
 - `impl Default for log::TarantoolLogger`
 
 ### Changed
+
 - `error::Result` type alias now has another generic parameter E, which defaults
   to `tarantool::error::Error`, but allows this type alias to be used as a drop
   in replacement from `std::result::Result`.
 
 ### Fixed
+
 - `network::client::tcp::TcpStream` does not close underlying fd anymore. Now fd will be closed only when the last copy of tcp stream is dropped.
 
 ### Deprecated
-- `network::client::tcp::UnsafeSendSyncTcpStream` is now deprected. `network::client::tcp::TcpStream` should be used instead.
 
+- `network::client::tcp::UnsafeSendSyncTcpStream` is now deprected. `network::client::tcp::TcpStream` should be used instead.
 
 # [6.0.0] Nov 20 2024
 
 ### Added
+
 - `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
 - `tlua::LuaRead` trait implementations for `OsString`, `PathBuf`
 - tlua::LuaTable::metatable which is a better alternative to the existing `tlua::LuaTable::get_or_create_metatable`
@@ -75,6 +86,7 @@ restricting time connection establishment.
 - `tlua::Nil` now supports (de)serialization via serde
 
 ### Changed
+
 - `network::protocol::codec::IProtoType` uses C language representation
 - `cbus::sync::std::ThreadWaker` now uses internal thread FIFO queue when blocking threads on send.
 - `#[tarantool::proc]` attribute doesn't add procs to a global array unless
@@ -82,6 +94,7 @@ restricting time connection establishment.
 - `proc::all_procs` will now panic if `stored_procs_slice` feature is disabled.
 
 ### Fixed
+
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
 - Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
 - Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.
@@ -89,18 +102,19 @@ restricting time connection establishment.
 - Impossible to use procedural macros(like `tarantool::proc`, `tarantool::test`) through reexporting tarantool.
 
 ### Deprecated
+
 - tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.
 
 ### Breaking changes
+
 - Use `extern "C-unwind"` instead of `extern "C"` for all trampolines which take `*mut ffi::lua_State`
   (checked with `rg 'extern "C".*lua_State'`). `tlua::error!` throws an exception to unwind the stack,
   hence we need to use a proper ABI to fix UB in picodata.
 
 ### Breaking changes (picodata)
+
 - Add session ID to the argument list of the `sql_prepare_ext`.
 - Replace `sql_unprepare` with `sql_unprepare_ext` (contains an additional session ID argument).
-
-
 
 # [5.0.0] Aug 06 2024
 
@@ -265,12 +279,14 @@ restricting time connection establishment.
   **experimental** rust allocated implementation of tuple virtual table.
 
 ### Changed (picodata)
+
 - `Tuple::decode` & `ToTupleBuffer` implementation for `Tuple` is now a bit more
   efficient because one redundant tuple data copy is removed.
 
 ### Fixed (picodata)
 
 ### Breaking changes (picodata)
+
 - SQL module was totally refactored: all its public structures functions and FFIs have
   been changed.
 
@@ -343,7 +359,7 @@ restricting time connection establishment.
 
 - `define_str_enum` will no longer produce warning "`&` without an explicit
   lifetime name cannot be used here". For more information, see
-  https://github.com/rust-lang/rust/issues/115010.
+  <https://github.com/rust-lang/rust/issues/115010>.
 - `#[tarantool::test]` declares a special static variable which is usually
   invisible to the users, but previously it would have a not so unique name
   which would sometimes lead to name conflicts with user-defined items.

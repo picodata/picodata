@@ -8,7 +8,7 @@ use tarantool::error::{Error, TarantoolError};
 use tarantool::ffi::sql::{PortC, IPROTO_DATA};
 use tarantool::index::IndexType;
 use tarantool::space::{Field, Space};
-use tarantool::sql::unprepare;
+use tarantool::sql::{sql_execute_into_port, unprepare};
 use tarantool::tuple::Tuple;
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
@@ -55,6 +55,18 @@ where
     rmpv::ext::from_value::<OUT>(data).unwrap()
 }
 
+fn decode_port<OUT>(port: &PortC) -> Vec<OUT>
+where
+    OUT: DeserializeOwned,
+{
+    let mut result = Vec::new();
+    for mp_bytes in port.iter() {
+        let entry: OUT = rmp_serde::from_slice(mp_bytes).unwrap();
+        result.push(entry);
+    }
+    result
+}
+
 pub fn prepared_invalid_query() {
     let maybe_stmt = tarantool::sql::prepare("SELECT * FROM UNKNOWN_SPACE".to_string());
     assert!(maybe_stmt.is_err());
@@ -93,11 +105,21 @@ pub fn prepared_no_params() {
     assert_eq!((3, "three".to_string()), result[2]);
     assert_eq!((4, "four".to_string()), result[3]);
 
+    let mut port_c = PortC::default();
+    stmt.execute_into_port(&(), 100, &mut port_c).unwrap();
+    let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
+    assert_eq!(decoded_port, result);
+
     let sql = "SELECT * FROM SQL_TEST WHERE ID = 1";
     let mut stream = tarantool::sql::prepare_and_execute_raw(sql, &(), 100).unwrap();
     let result = decode_dql_result::<Vec<(u64, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
+
+    let mut port_c = PortC::default();
+    sql_execute_into_port(sql, &(), 100, &mut port_c).unwrap();
+    let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
+    assert_eq!(decoded_port, result);
 
     unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
@@ -129,6 +151,11 @@ pub fn prepared_large_query() {
         i += 4;
     }
 
+    let mut port_c = PortC::default();
+    stmt.execute_into_port(&(), 0, &mut port_c).unwrap();
+    let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
+    assert_eq!(decoded_port, result);
+
     unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
@@ -145,10 +172,31 @@ pub fn prepared_invalid_params() {
         Error::Tarantool(TarantoolError { .. })
     ));
 
+    let mut port = PortC::default();
+    let result = stmt.execute_into_port(&("not uint value",), 0, &mut port);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.err().unwrap(),
+        Error::Tarantool(TarantoolError { .. })
+    ));
+
     let result = tarantool::sql::prepare_and_execute_raw(
         "SELECT * FROM SQL_TEST WHERE ID = ?",
         &("not uint value"),
         0,
+    );
+    assert!(result.is_err());
+    assert!(matches!(
+        result.err().unwrap(),
+        Error::Tarantool(TarantoolError { .. })
+    ));
+
+    let mut port = PortC::default();
+    let result = sql_execute_into_port(
+        "SELECT * FROM SQL_TEST WHERE ID = ?",
+        &("not uint value"),
+        0,
+        &mut port,
     );
     assert!(result.is_err());
     assert!(matches!(
@@ -176,10 +224,20 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!((103, "three".to_string()), result[0]);
     assert_eq!((104, "four".to_string()), result[1]);
 
+    let mut port = PortC::default();
+    stmt.execute_into_port(&(102,), 0, &mut port).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
+
     let mut stream = stmt.execute_raw(&(103,), 0).unwrap();
     let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((104, "four".to_string()), result[0]);
+
+    let mut port = PortC::default();
+    stmt.execute_into_port(&(103,), 0, &mut port).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
 
     let stmt2 =
         tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?".to_string())
@@ -188,6 +246,13 @@ pub fn prepared_with_unnamed_params() {
     let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
+
+    let mut port = PortC::default();
+    stmt2
+        .execute_into_port(&(102, "three"), 0, &mut port)
+        .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
 
     let mut stream = tarantool::sql::prepare_and_execute_raw(
         "SELECT * FROM SQL_TEST WHERE ID = ? AND VALUE = ?",
@@ -198,6 +263,17 @@ pub fn prepared_with_unnamed_params() {
     let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((101, "one".to_string()), result[0]);
+
+    let mut port = PortC::default();
+    sql_execute_into_port(
+        "SELECT * FROM SQL_TEST WHERE ID = ? AND VALUE = ?",
+        &(101, "one"),
+        0,
+        &mut port,
+    )
+    .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
 
     unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
@@ -232,10 +308,20 @@ pub fn prepared_with_named_params() {
     assert_eq!((3, "three".to_string()), result[0]);
     assert_eq!((4, "four".to_string()), result[1]);
 
+    let mut port = PortC::default();
+    stmt.execute_into_port(&[bind_id(2)], 0, &mut port).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
+
     let mut stream = stmt.execute_raw(&[bind_id(3)], 0).unwrap();
     let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((4, "four".to_string()), result[0]);
+
+    let mut port = PortC::default();
+    stmt.execute_into_port(&[bind_id(3)], 0, &mut port).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
 
     let stmt2 = tarantool::sql::prepare(
         "SELECT * FROM SQL_TEST WHERE ID > :ID AND VALUE = :NAME".to_string(),
@@ -248,6 +334,13 @@ pub fn prepared_with_named_params() {
     assert_eq!(1, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
 
+    let mut port = PortC::default();
+    stmt2
+        .execute_into_port(&(bind_id(2), bind_name("three")), 0, &mut port)
+        .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
+
     let mut stream = tarantool::sql::prepare_and_execute_raw(
         "SELECT * FROM SQL_TEST WHERE ID = :ID AND VALUE = :NAME",
         &(bind_id(1), bind_name("one")),
@@ -257,6 +350,17 @@ pub fn prepared_with_named_params() {
     let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
+
+    let mut port = PortC::default();
+    sql_execute_into_port(
+        "SELECT * FROM SQL_TEST WHERE ID = :ID AND VALUE = :NAME",
+        &(bind_id(1), bind_name("one")),
+        0,
+        &mut port,
+    )
+    .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    assert_eq!(decoded_port, result);
 
     unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
