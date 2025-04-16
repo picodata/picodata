@@ -6005,11 +6005,13 @@ def test_global_dml_cas_conflict(cluster: Cluster):
             while true do
                 local result = rawget(_G, 'result')
                 if result ~= nil then
+                    log.info("result is finally ready!")
                     if not result[1] then
                         error(result[2])
                     end
                     return result[2]
                 end
+                log.info("result is still not known, sleeping...")
                 fiber.sleep(.1)
             end
         end

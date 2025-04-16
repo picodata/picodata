@@ -21,6 +21,7 @@ use crate::traft::RaftEntryId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
 use crate::warn_or_panic;
+use raft::prelude as raft;
 use std::cell::UnsafeCell;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
@@ -842,6 +843,78 @@ pub struct SnapshotReadView {
     // accepts a raft id of the requestor) and clear the references when the
     // instance is *determined* to not need it.
     ref_count: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RaftSnapshot {
+    pub metadata: raft::SnapshotMetadata,
+    pub data: SnapshotData,
+    /// This is a message which should be sent out after the snapshot is applied.
+    pub response_message: raft::Message,
+}
+
+impl RaftSnapshot {
+    #[inline]
+    pub fn new(
+        metadata: raft::SnapshotMetadata,
+        data: SnapshotData,
+        persisted_messages: Vec<raft::Message>,
+        raft_status: crate::traft::node::Status,
+    ) -> Self {
+        // Sending a MsgAppendResponse in response to a snapshot makes it so
+        // raft-rs automatically resets our status from Snapshot to Replicate
+        // which is needed because otherwise raft leader will stop sending
+        // MsgAppend messages to us. Note that strictly speaking this is not the
+        // intended behavior of raft-rs, but that is the mechanism our raft
+        // snapshot implementation has always relied on.
+        // See also <https://www.hyrumslaw.com/>
+        let mut response_message = raft::Message::new();
+        let mut found_message_append_response = false;
+
+        debug_assert!(!persisted_messages.is_empty());
+        for message in persisted_messages {
+            if message.get_msg_type() != raft::MessageType::MsgAppendResponse {
+                continue;
+            }
+            found_message_append_response = true;
+            debug_assert_eq!(message.get_from(), raft_status.id);
+            debug_assert_eq!(message.get_index(), metadata.index);
+            // Note: it's theoretically possible that we've received a snapshot
+            // from someone who's not currently our leader (leader changed at an
+            // unfortunate moment).
+            response_message = message;
+        }
+
+        if !found_message_append_response {
+            // I'm expecting that there will always be that persisted
+            // MsgAppendResponse when we receive a raft snapshot, but I don't
+            // have any hard proof and don't want to have a random panic in
+            // production, so here's a fallback branch.
+            response_message.set_msg_type(raft::MessageType::MsgAppendResponse);
+            response_message.set_from(raft_status.id);
+            response_message.set_index(metadata.index);
+            if let Some(leader_id) = raft_status.leader_id {
+                response_message.set_to(leader_id);
+            } else {
+                // This is highly unlikely
+            }
+        }
+
+        if response_message.get_to() == 0 {
+            warn_or_panic!("MsgAppendResponse receiver should be known at this point");
+        }
+
+        Self {
+            metadata,
+            data,
+            response_message,
+        }
+    }
+
+    #[inline]
+    pub fn is_out_of_date_with(&self, metadata: &raft::SnapshotMetadata) -> bool {
+        self.metadata.index != metadata.index || self.metadata.term != metadata.term
+    }
 }
 
 #[derive(Clone, Debug, Default, ::serde::Serialize, ::serde::Deserialize)]
