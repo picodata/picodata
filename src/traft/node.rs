@@ -36,6 +36,7 @@ use crate::storage::schema::ddl_abort_on_master;
 use crate::storage::schema::ddl_meta_drop_routine;
 use crate::storage::schema::ddl_meta_drop_space;
 use crate::storage::schema::ddl_meta_space_update_operable;
+use crate::storage::snapshot::RaftSnapshot;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
 use crate::storage::DbConfig;
@@ -499,6 +500,9 @@ pub(crate) struct NodeImpl {
     commit: watch::Sender<RaftIndex>,
     instance_reachability: InstanceReachabilityManagerRef,
     plugin_manager: Rc<PluginManager>,
+
+    /// Stores the first snapshot chunk while snapshot application is blocked.
+    pending_raft_snapshot: Option<RaftSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -564,6 +568,7 @@ impl NodeImpl {
             applied,
             commit,
             plugin_manager,
+            pending_raft_snapshot: None,
         })
     }
 
@@ -2176,22 +2181,46 @@ impl NodeImpl {
     /// - Waiting until tarantool replication proceeds if this is a read-only replica;
     /// - Fetching the rest of the snashot chunks if the first one is not the only one;
     fn prepare_for_snapshot(
-        &self,
-        snapshot: &raft::Snapshot,
-    ) -> traft::Result<Option<SnapshotData>> {
-        if snapshot.is_empty() {
-            return Ok(None);
+        &mut self,
+        new_snapshot: &raft::Snapshot,
+        persisted_messages: &mut Vec<raft::Message>,
+    ) -> traft::Result<Option<RaftSnapshot>> {
+        let mut update_pending_snapshot = false;
+        if !new_snapshot.is_empty() {
+            if let Some(old_snapshot) = &self.pending_raft_snapshot {
+                update_pending_snapshot = old_snapshot.is_out_of_date_with(new_snapshot.metadata());
+            } else {
+                update_pending_snapshot = true;
+            }
+        }
+        if update_pending_snapshot {
+            let data = SnapshotData::decode(new_snapshot.data());
+            let data = match data {
+                Ok(v) => v,
+                Err(e) => {
+                    tlog!(
+                        Warning,
+                        "skipping snapshot, which failed to deserialize: {e}"
+                    );
+                    return Err(e.into());
+                }
+            };
+
+            let persisted_messages = std::mem::take(persisted_messages);
+            let pending_raft_snapshot = RaftSnapshot::new(
+                new_snapshot.get_metadata().clone(),
+                data,
+                persisted_messages,
+                self.status.get(),
+            );
+            self.pending_raft_snapshot = Some(pending_raft_snapshot);
         }
 
-        let snapshot_data = crate::unwrap_ok_or!(
-            SnapshotData::decode(snapshot.data()),
-            Err(e) => {
-                tlog!(Warning, "skipping snapshot, which failed to deserialize: {e}");
-                return Err(e.into());
-            }
-        );
+        let Some(snapshot) = &self.pending_raft_snapshot else {
+            return Ok(None);
+        };
 
-        let v_snapshot = snapshot_data.schema_version;
+        let v_snapshot = snapshot.data.schema_version;
 
         loop {
             let v_local = local_schema_version().expect("storage souldn't fail");
@@ -2212,7 +2241,7 @@ impl NodeImpl {
                     Warning,
                     "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
                     v_local,
-                    snapshot_data.schema_version,
+                    snapshot.data.schema_version,
                 );
                 return Ok(None);
             }
@@ -2239,21 +2268,25 @@ impl NodeImpl {
             return Err(BoxError::new(ErrorCode::Other, "blocked by replicaset sync").into());
         }
 
-        let mut snapshot_data = snapshot_data;
-        if snapshot_data.next_chunk_position.is_some() {
+        let mut snapshot = self
+            .pending_raft_snapshot
+            .take()
+            .expect("always present here");
+
+        if snapshot.data.next_chunk_position.is_some() {
             self.main_loop_status("receiving snapshot");
             let entry_id = RaftEntryId {
                 index: snapshot.metadata().index,
                 term: snapshot.metadata().term,
             };
-            if let Err(e) = self.fetch_chunkwise_snapshot(&mut snapshot_data, entry_id) {
+            if let Err(e) = self.fetch_chunkwise_snapshot(&mut snapshot.data, entry_id) {
                 // Error has been logged.
                 tlog!(Warning, "dropping snapshot data");
                 return Err(e);
             }
         }
 
-        Ok(Some(snapshot_data))
+        Ok(Some(snapshot))
     }
 
     #[inline(always)]
@@ -2369,10 +2402,27 @@ impl NodeImpl {
         self.handle_read_states(ready.read_states());
 
         // Raft snapshot has arrived, check if we need to apply it.
-        let snapshot = ready.snapshot();
-        let Ok(snapshot_data) = self.prepare_for_snapshot(snapshot) else {
-            // Error was already logged
-            return Ok(());
+        let mut persisted_messages = ready.take_persisted_messages();
+        let raw_snapshot = ready.snapshot();
+        let res = self.prepare_for_snapshot(raw_snapshot, &mut persisted_messages);
+        let snapshot = match res {
+            Ok(v) => v,
+            Err(e) => {
+                // Error was already logged
+                if let Some(hard_state) = ready.hs() {
+                    // Cannot persist this hard state change, because the snapshot
+                    // can't yet be applied, but we must update the `term` info
+                    // so that other fibers find out if raft leader has changed.
+                    // This is needed so that `proc_replication` doesn't stop
+                    // working if raft leader changes while we're blocked waiting on
+                    // tarantool replication.
+                    self.status
+                        .send_modify(|s| s.term = hard_state.term)
+                        .expect("status shouldn't ever be borrowed across yields");
+                }
+
+                return Err(e);
+            }
         };
 
         // Persist stuff raft wants us to persist.
@@ -2381,7 +2431,7 @@ impl NodeImpl {
 
         let have_hard_state = hard_state.is_some();
         let have_entries = !entries_to_persist.is_empty();
-        let have_snapshot = snapshot_data.is_some();
+        let have_snapshot = snapshot.is_some();
         if have_hard_state || have_entries || have_snapshot {
             self.main_loop_status_persisting(have_hard_state, have_entries, have_snapshot);
 
@@ -2403,12 +2453,12 @@ impl NodeImpl {
                 // Persist uncommitted entries in the raft log.
                 if !entries_to_persist.is_empty() {
                     #[rustfmt::skip]
-                    debug_assert!(snapshot.is_empty(), "can't have both the snapshot & log entries");
+                    debug_assert!(raw_snapshot.is_empty(), "can't have both the snapshot & log entries");
 
                     self.raft_storage.persist_entries(entries_to_persist)?;
                 }
 
-                if let Some(snapshot_data) = snapshot_data {
+                if let Some(snapshot) = &snapshot {
                     #[rustfmt::skip]
                     debug_assert!(entries_to_persist.is_empty(), "can't have both the snapshot & log entries");
 
@@ -2429,11 +2479,14 @@ impl NodeImpl {
                         let is_master = !self.is_readonly();
                         changed_parameters = self
                             .storage
-                            .apply_snapshot_data(&snapshot_data, is_master)?;
+                            .apply_snapshot_data(&snapshot.data, is_master)?;
                         new_applied = Some(meta.index);
                         received_snapshot = true;
                     }
 
+                    // FIXME: this following statement is no longer true, so we
+                    // need to somehow notify the raft leader that the snapshot
+                    // was handled...
                     // TODO: As long as the snapshot was sent to us in response to
                     // a rejected MsgAppend (which is the only possible case
                     // currently), we will send a MsgAppendResponse back which will
@@ -2508,10 +2561,23 @@ impl NodeImpl {
             }
         }
 
-        // These messages are only available on followers. They must be sent only
-        // AFTER the HardState, Entries and Snapshot are persisted
-        // to the stable storage.
-        self.handle_messages(ready.take_persisted_messages());
+        if let Some(snapshot) = snapshot {
+            // After applying the raft snapshot we send only the special
+            // response MsgAppendResponse message which will notify the leader
+            // that we are ready to receive the normal log append messages.
+            self.handle_messages(vec![snapshot.response_message]);
+            if !persisted_messages.is_empty() {
+                tlog!(
+                    Warning,
+                    "ignoring persisted_messages which came from `Ready`: {persisted_messages:?}"
+                );
+            }
+        } else {
+            // These messages are only available on followers. They must be sent only
+            // AFTER the HardState, Entries and Snapshot are persisted
+            // to the stable storage.
+            self.handle_messages(persisted_messages);
+        }
 
         let committed_entries = ready.take_committed_entries();
 
@@ -2820,6 +2886,7 @@ impl MainLoop {
 
         if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
             if has_states!(me, Expelled -> *) {
+                tlog!(Critical, "current instance is expelled from the cluster");
                 tlog!(Info, "expelled, shutting down");
                 crate::tarantool::exit(1);
             }
