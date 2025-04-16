@@ -191,8 +191,9 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
     // map from tier/fd -> instances info
     let mut aggregated_by_tier_fd: BTreeMap<String, Vec<Vec<Value>>> = BTreeMap::new();
 
-    let mut name_length_max = 0;
-    let mut state_length_max = 0;
+    // The column name shouldn't be trimmed.
+    let mut name_max_size_initial = 5;
+    let mut state_max_size_initial = 6;
 
     // Fill `aggregated_by_tier_fd` and also remove tier and fd from table.
     for row in &response.rows {
@@ -207,13 +208,13 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
 
         let name = other_cols.first().expect("name is the first column");
         let name = name.as_str().expect("type of name column is string");
-        name_length_max = max(name_length_max, name.len());
+        name_max_size_initial = max(name_max_size_initial, name.len());
 
         let state = other_cols
             .get(current_state_index)
             .expect("state column index is precalculated");
         let state = state.as_str().expect("type of state column is string");
-        state_length_max = max(state_length_max, state.len());
+        state_max_size_initial = max(state_max_size_initial, state.len());
 
         let mut fd = fd
             .as_map()
@@ -267,7 +268,7 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
 
         table.set_header(&metadata);
 
-        set_width_for_columns(&mut table, name_length_max, state_length_max);
+        set_width_for_columns(&mut table, name_max_size_initial, state_max_size_initial);
 
         for row in rows {
             let formatted_row: Vec<String> = row
@@ -293,7 +294,7 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
         for (index, line) in splitted.iter_mut().enumerate() {
             // Table header is the first line in table output.
             if index == 0 {
-                line.remove(name_length_max + 1);
+                line.remove(name_max_size_initial + 1);
             } else {
                 *line = line.split_at(1).1.to_string();
             }

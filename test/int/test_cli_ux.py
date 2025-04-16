@@ -1055,6 +1055,45 @@ def test_picodata_status_basic(cluster: Cluster):
         assert line in output
 
 
+def test_picodata_status_short_instance_name(cluster: Cluster):
+    short_name = "a"
+    service_password = "T3stP4ssword"
+    cluster.set_service_password(service_password)
+    # name with one symbol
+    instance = cluster.add_instance(name=short_name)
+
+    info = instance.instance_info()
+    cluster_uuid = info["cluster_uuid"]
+    cluster_name = info["cluster_name"]
+    i1_address = f"{instance.host}:{instance.port}"
+    i1_uuid = instance.uuid()
+
+    assert instance.service_password_file
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            instance.service_password_file,
+        ],
+    )
+
+    output = f"""\
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
+ TIER/DOMAIN: default
+
+ name   state    uuid                                   uri            
+{instance.name}       Online   {i1_uuid}   {i1_address} 
+
+"""
+
+    assert strip(data.decode()) == strip(output)
+
+
 def test_picodata_status_exit_code(cluster: Cluster):
     service_password = "T3stP4ssword"
     cluster.set_service_password(service_password)
