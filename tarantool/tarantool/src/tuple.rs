@@ -1589,15 +1589,16 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::*;
-    use crate::say_warn;
-    use crate::Result;
 
     ////////////////////////////////////////////////////////////////////////////
     // Tuple picodata extensions
     ////////////////////////////////////////////////////////////////////////////
 
     impl Tuple {
-        /// NO LONGER SUPPORTED!
+        /// !!!
+        /// WARNING:
+        /// NO LONGER SUPPORTED - PANICS WHEN USED!
+        /// !!!
         ///
         /// Returns messagepack encoded tuple with named fields (messagepack map).
         ///
@@ -1606,11 +1607,11 @@ mod picodata {
         /// fields in tuple format - then additional fields are  presents in the map with numeric keys.
         ///
         /// This function is useful if there is no information about tuple fields in program runtime.
+        #[deprecated = "did not find its use"]
         #[inline(always)]
         pub fn as_named_buffer(&self) -> Result<Vec<u8>> {
-            Err(crate::error::Error::other(
-                "Tuple::as_named_buffer is no longer supported",
-            ))
+            crate::say_error!("Tuple::as_named_buffer is no longer supported");
+            panic!("Tuple::as_named_buffer is no longer supported");
         }
 
         /// Returns a slice of data contained in the tuple.
@@ -1673,20 +1674,34 @@ mod picodata {
             unsafe { SINGLETON.as_ref().expect("just made sure it's there") }
         }
 
-        /// NO LONGER SUPPORTED.
+        /// !!!
+        /// WARNING:
+        /// NO LONGER SUPPORTED - PANICS WHEN USED!
+        /// !!!
         ///
         /// Return tuple field names count.
+        #[deprecated = "did not find its use"]
         pub fn name_count(&self) -> u32 {
-            say_warn!("TupleFormat::name_count is no longer supported");
-            0
+            crate::say_error!("TupleFormat::name_count is no longer supported");
+            panic!("TupleFormat::name_count is no longer supported");
         }
 
-        /// NO LONGER SUPPORTED.
+        /// !!!
+        /// WARNING:
+        /// NO LONGER SUPPORTED - PANICS WHEN USED!
+        /// !!!
         ///
         /// Return tuple field names.
+        #[deprecated = "did not find its use"]
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            say_warn!("TupleFormat::names is no longer supported");
-            std::iter::empty()
+            crate::say_error!("TupleFormat::names is no longer supported");
+            // weird hack over "never type does not implement all traits".
+            // if we just panic, it will infer the type of a function as a never type
+            // and it won't compile because `!` does not implement `Iterator` trait.
+            // wrapping in a closure will make it behave like `unwrap` on a failure
+            (|| panic!("TupleFormat::names is no longer supported"))();
+            // this is also part of a hack because we need correct type inference
+            Vec::new().into_iter()
         }
     }
 }
