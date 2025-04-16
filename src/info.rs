@@ -264,6 +264,8 @@ pub fn proc_instance_uuid() -> Result<String, Error> {
 pub struct InternalInfo<'a> {
     pub main_loop_status: Cow<'a, str>,
     pub governor_loop_status: Cow<'a, str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub governor_loop_last_error: Option<SerializableErrorInfo>,
     pub governor_step_counter: u64,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -287,7 +289,7 @@ impl tarantool::tuple::Encode for InternalInfo<'_> {}
 
 impl InternalInfo<'static> {
     pub fn get(node: &node::Node) -> Self {
-        let governor = node.governor_loop.status.get();
+        let governor = node.governor_loop.status.borrow();
 
         let mut info = InternalInfo {
             main_loop_status: node.status().main_loop_status.into(),
@@ -295,6 +297,10 @@ impl InternalInfo<'static> {
             governor_step_counter: governor.step_counter,
             ..Default::default()
         };
+
+        if let Some(error) = &governor.last_error {
+            info.governor_loop_last_error = Some(SerializableErrorInfo::new(error));
+        }
 
         let sentinel = node.sentinel_loop.stats.borrow();
         info.sentinel_last_action = sentinel.last_action_kind;
