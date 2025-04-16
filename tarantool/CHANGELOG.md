@@ -11,7 +11,7 @@
 
 ### Changed
 
-- MSRV is now 1.81 instead of 1.71.1 as it was.
+- 1.82 is now MSRV.
 
 ### Fixed
 
