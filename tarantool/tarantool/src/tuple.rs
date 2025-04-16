@@ -1589,6 +1589,7 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::*;
+    use crate::static_ref;
 
     ////////////////////////////////////////////////////////////////////////////
     // Tuple picodata extensions
@@ -1662,7 +1663,7 @@ mod picodata {
             static mut SINGLETON: Option<TupleFormat> = None;
 
             // Safety: only makes sense to call this from tx thread
-            if unsafe { SINGLETON.is_none() } {
+            if unsafe { static_ref!(mut SINGLETON) }.is_none() {
                 // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
                 unsafe {
                     let inner = ffi::box_tuple_format_new(std::ptr::null_mut(), 0);
@@ -1671,7 +1672,10 @@ mod picodata {
                     SINGLETON = Some(Self { inner });
                 }
             }
-            unsafe { SINGLETON.as_ref().expect("just made sure it's there") }
+
+            unsafe { static_ref!(const SINGLETON) }
+                .as_ref()
+                .expect("just made sure it's there")
         }
 
         /// !!!

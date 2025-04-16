@@ -219,10 +219,7 @@ where
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
-        let table = match LuaTable::lua_read_at_position(lua, index) {
-            Ok(table) => table,
-            Err(lua) => return Err(lua),
-        };
+        let table = LuaTable::lua_read_at_position(lua, index)?;
         let mut dict: BTreeMap<i32, T> = BTreeMap::new();
 
         let mut max_key = i32::MIN;
@@ -360,11 +357,7 @@ where
     T: 'static,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
-        let table = match LuaTable::lua_read_at_position(lua, index) {
-            Ok(table) => table,
-            Err(lua) => return Err(lua),
-        };
-
+        let table = LuaTable::lua_read_at_position(lua, index)?;
         let mut res = std::mem::MaybeUninit::uninit();
         let ptr = &mut res as *mut _ as *mut [T; N] as *mut T;
         let mut was_assigned = [false; N];

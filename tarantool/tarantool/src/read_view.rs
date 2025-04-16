@@ -129,7 +129,7 @@ impl<'a> Iterator for ReadViewIterator<'a> {
     }
 }
 
-impl<'a> Drop for ReadViewIterator<'a> {
+impl Drop for ReadViewIterator<'_> {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_read_view_iterator_free(self.inner.as_ptr()) }

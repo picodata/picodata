@@ -239,6 +239,7 @@ mod tests {
     use crate::cbus::Message;
     use crate::fiber;
     use crate::fiber::Cond;
+    use crate::static_ref;
     use std::thread;
     use std::thread::ThreadId;
 
@@ -280,9 +281,12 @@ mod tests {
         cond.wait();
 
         unsafe {
-            assert!(SENDER_THREAD_ID.is_some());
-            assert!(TX_THREAD_ID.is_some());
-            assert_ne!(SENDER_THREAD_ID, TX_THREAD_ID);
+            assert!(static_ref!(const SENDER_THREAD_ID).is_some());
+            assert!(static_ref!(const TX_THREAD_ID).is_some());
+            assert_ne!(
+                static_ref!(const SENDER_THREAD_ID),
+                static_ref!(const TX_THREAD_ID)
+            );
         }
 
         thread.join().unwrap();

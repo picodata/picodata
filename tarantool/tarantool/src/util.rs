@@ -3,6 +3,29 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::ffi::CString;
 
+/// Exists to optimize code burden with access to mutable statics
+/// and avoid annoying warnings by Clippy about in-place dereference.
+/// It is pretty much a `addr_of*`/`&raw` wrapper without warnings,
+/// so it is developer responsibility to use it correctly, but it
+/// is not marked as unsafe in an expansion to prevent silly mistakes
+/// and to have an opportunity for reviewers to blame someone easily.
+///
+/// Expects `mut` or `const` as a second parameter, to state whether
+/// you want mutable (exclusive) or constant (shared) reference to
+/// the provided mutable static variable as a first parameter.
+///
+/// NOTE: this macro is not that useful if you need a shared reference
+/// to an immutable static, as it is considered safe by default.
+#[macro_export]
+macro_rules! static_ref {
+    (const $var:ident) => {
+        &*&raw const $var
+    };
+    (mut $var:ident) => {
+        &mut *&raw mut $var
+    };
+}
+
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
 }
