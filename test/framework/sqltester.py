@@ -1,7 +1,9 @@
 import inspect
 from pathlib import Path
 from typing import Type
+from typing import Any
 import pytest
+from decimal import Decimal
 import re
 from conftest import Cluster, TarantoolError
 
@@ -40,26 +42,43 @@ def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
             instance.sql(query)
 
 
-def _parse_line(input_string):
-    result = []
-    elements = input_string.split(",")  # Split line by comma
+def do_explain_sql(cluster: Cluster, query: str, expected: list):
+    instance = cluster.leader()
+    result = instance.sql(query)
+    assert result == expected
+
+
+def _parse_line(input_string, lead_sym: Any, split_by: str):
+    result: list[Any] = []
+    elements = input_string.split(split_by)
 
     for element in elements:
-        element = element.strip()  # Remove leading and trailing whitespaces
+        if (
+            element.lower() != ""
+            and element.lower()[0] == " "
+            and element.lower() == len(element.lower()) * element.lower()[0]
+        ):
+            result.append(None)
+            continue
 
-        if element.lower() == "false":
-            result.append(False)
-        elif element.lower() == "true":
-            result.append(True)
+        element = element.strip(lead_sym)  # Remove leading and trailing whitespaces
+
+        if element.lower() == "":
+            continue
+
         elif element.startswith("'") and element.endswith("'"):
             # If element in single quotes, remove them and add as string
             result.append(element[1:-1])
-        elif element.lower() in {"null", "none", "nil", ""}:
+        elif element.lower() in {"null", "none", "nil"}:
             # If element is a null, add as None
             result.append(None)
         elif element.isdigit() or (element[0] == "-" and element[1:].isdigit()):
             # If element is a number, add as int
             result.append(int(element))
+        elif element.lower() == "true" or element.lower() == "false":
+            result.append(bool(element.lower() == "true"))
+        elif element.find("Decimal") != -1:
+            result.append(Decimal(element[9:-2]))
         else:
             try:
                 # Try to convert element to float
@@ -91,10 +110,16 @@ def parse_file(cls: Type, file_name: str) -> list:
             continue
         query = query.strip()
         assert query, "SQL query must be provided"
-        expected = _parse_line(match[2]) if match[2] else None
+        explain_flag = False
+        expected = None
+        if query.lower().startswith("explain"):
+            explain_flag = True
+            expected = _parse_line(match[2], "\n", "\n") if match[2] else None
+        else:
+            expected = _parse_line(match[2], None, ",") if match[2] else None
         error = match[3].strip().split("\n") if match[3] else None
         assert not (expected and error), "Cannot provide both expected result and error"
-        params.append(pytest.param(query, expected, error, id=name))
+        params.append(pytest.param(query, expected, explain_flag, error, id=name))
     return params
 
 
@@ -113,7 +138,7 @@ def pytest_generate_tests(metafunc):
         assert "query" in metafunc.fixturenames
         assert "expected" in metafunc.fixturenames
         assert "error" in metafunc.fixturenames
-        metafunc.parametrize(["query", "expected", "error"], metafunc.cls.params)
+        metafunc.parametrize(["query", "expected", "explain_flag", "error"], metafunc.cls.params)
 
 
 @pytest.fixture(scope="class")
@@ -127,8 +152,10 @@ def cluster_1(cluster: Cluster):
 class ClusterSingleInstance:
     params: list = []
 
-    def test_sql(self, cluster_1: Cluster, query: str, expected: list, error: str):
-        if expected:
+    def test_sql(self, cluster_1: Cluster, query: str, expected: list, explain_flag: bool, error: str):
+        if explain_flag:
+            do_explain_sql(cluster_1, query, expected)
+        elif expected:
             do_execsql(cluster_1, query, expected)
         else:
             do_catchsql(cluster_1, query, error)
@@ -147,8 +174,10 @@ def cluster_2(cluster: Cluster):
 class ClusterTwoInstances:
     params: list = []
 
-    def test_sql(self, cluster_2: Cluster, query: str, expected: list, error: str):
-        if expected:
+    def test_sql(self, cluster_2: Cluster, query: str, expected: list, explain_flag: bool, error: str):
+        if explain_flag:
+            do_explain_sql(cluster_2, query, expected)
+        elif expected:
             do_execsql(cluster_2, query, expected)
         else:
             do_catchsql(cluster_2, query, error)
