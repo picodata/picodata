@@ -3,6 +3,8 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
+use ::tarantool::error::BoxError;
+use ::tarantool::error::IntoBoxError;
 use ::tarantool::error::TarantoolErrorCode::Timeout;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
@@ -210,7 +212,7 @@ impl Loop {
             };
         }
 
-        macro_rules! governor_step {
+        macro_rules! governor_substep {
             ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
                 tlog!(Info, $desc $(; $($kv)*)?);
                 #[allow(redundant_semicolons)]
@@ -221,6 +223,11 @@ impl Loop {
                 .await;
                 if let Err(e) = res {
                     tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
+
+                    governor_status
+                        .send_modify(|s| s.last_error = Some(e.into_box_error()))
+                        .expect("status shouldn't ever be borrowed across yields");
+
                     waker.mark_seen();
                     _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                     return ControlFlow::Continue(());
@@ -249,10 +256,11 @@ impl Loop {
                 // will sometimes be handled and there's no need in timeout.
                 // It also guarantees that the notification will arrive only
                 // after the node leaves the joint state.
-                tlog!(Info, "proposing conf_change"; "cc" => ?conf_change);
-                if let Err(e) = node.propose_conf_change_and_wait(term, conf_change) {
-                    tlog!(Warning, "failed proposing conf_change: {e}");
-                    fiber::sleep(Loop::RETRY_TIMEOUT);
+                governor_substep! {
+                    "proposing conf_change" [ "cc" => ?conf_change ]
+                    async {
+                        node.propose_conf_change_and_wait(term, conf_change.clone())?;
+                    }
                 }
             }
 
@@ -265,7 +273,7 @@ impl Loop {
 
             Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { cas }) => {
                 set_status!("update target replication leader");
-                governor_step! {
+                governor_substep! {
                     "proposing replicaset target master change"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
@@ -276,7 +284,7 @@ impl Loop {
 
             Plan::UpdateClusterVersion(UpdateClusterVersion { cas }) => {
                 set_status!("update global cluster version");
-                governor_step! {
+                governor_substep! {
                     "updating cluster version"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
@@ -301,7 +309,7 @@ impl Loop {
                 );
 
                 let mut promotion_vclock = None;
-                governor_step! {
+                governor_substep! {
                     "getting promotion vclock from new master" [
                         "new_master_name" => %new_master_name,
                         "replicaset_name" => %replicaset_name,
@@ -314,7 +322,7 @@ impl Loop {
 
                 let promotion_vclock = promotion_vclock.expect("was just assigned");
                 let promotion_vclock = promotion_vclock.ignore_zero();
-                governor_step! {
+                governor_substep! {
                     "proposing replicaset current master change" [
                         "current_master_name" => %new_master_name,
                         "replicaset_name" => %replicaset_name,
@@ -359,7 +367,7 @@ impl Loop {
                 );
 
                 let mut demotion_vclock = None;
-                governor_step! {
+                governor_substep! {
                     "demoting old master and synchronizing new master" [
                         "old_master_name" => %old_master_name,
                         "new_master_name" => %new_master_name,
@@ -381,7 +389,7 @@ impl Loop {
                 let demotion_vclock = demotion_vclock.expect("is always set on a previous step");
                 if &demotion_vclock > promotion_vclock {
                     let new_promotion_vclock = demotion_vclock;
-                    governor_step! {
+                    governor_substep! {
                         "updating replicaset promotion vclock" [
                             "replicaset_name" => %replicaset_name,
                             "promotion_vclock" => ?new_promotion_vclock,
@@ -413,7 +421,7 @@ impl Loop {
                 } else {
                     // Vclock on the new master is up to date with old master,
                     // so switchover is compelete.
-                    governor_step! {
+                    governor_substep! {
                         "updating replicaset current master id" [
                             "replicaset_name" => %replicaset_name,
                             "current_master_name" => ?new_master_name,
@@ -442,7 +450,7 @@ impl Loop {
                 metrics::record_instance_state(tier, instance_name, new_current_state);
                 tlog!(Info, "downgrading instance {instance_name}");
 
-                governor_step! {
+                governor_substep! {
                     "handling instance state change" [
                         "instance_name" => %instance_name,
                         "current_state" => %new_current_state,
@@ -462,7 +470,7 @@ impl Loop {
                 replication_config_version_actualize,
             }) => {
                 set_status!("configure replication");
-                governor_step! {
+                governor_substep! {
                     "configuring replication"
                     async {
                         crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL");
@@ -503,7 +511,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "actualizing replicaset configuration version" [
                         "replicaset_name" => %replicaset_name,
                     ]
@@ -521,7 +529,7 @@ impl Loop {
                 tier_name,
             }) => {
                 set_status(governor_status, "bootstrap bucket distribution");
-                governor_step! {
+                governor_substep! {
                     "bootstrapping bucket distribution" [
                         "instance_name" => %target,
                         "tier" => %tier_name,
@@ -536,7 +544,7 @@ impl Loop {
 
             Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges { cas }) => {
                 set_status!("update replicaset state");
-                governor_step! {
+                governor_substep! {
                     "proposing replicaset state change"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
@@ -550,7 +558,7 @@ impl Loop {
                 cas,
             }) => {
                 set_status!("prepare replicaset for expel");
-                governor_step! {
+                governor_substep! {
                     "preparing replicaset for expel" [
                         "replicaset_name" => %replicaset_name,
                     ]
@@ -568,7 +576,7 @@ impl Loop {
                 cas,
             }) => {
                 set_status!("transfer buckets from replicaset");
-                governor_step! {
+                governor_substep! {
                     "waiting for replicaset to transfer all buckets" [
                         "replicaset_name" => %replicaset_name,
                     ]
@@ -577,7 +585,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "finalizing replicaset expel" [
                         "replicaset_name" => %replicaset_name,
                     ]
@@ -597,7 +605,7 @@ impl Loop {
             }) => {
                 set_status!("update instance state to online");
                 metrics::record_instance_state(tier, instance_name, new_current_state);
-                governor_step! {
+                governor_substep! {
                     "finalizing instance initialization" [
                         "instance_name" => %instance_name,
                     ]
@@ -606,7 +614,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "handling instance state change" [
                         "instance_name" => %instance_name,
                         "current_state" => %new_current_state,
@@ -621,7 +629,7 @@ impl Loop {
             Plan::ApplySchemaChange(ApplySchemaChange { tier, targets, rpc }) => {
                 set_status!("apply clusterwide schema change");
                 let mut next_op = Op::Nop;
-                governor_step! {
+                governor_substep! {
                     "applying pending schema change"
                     async {
                         // TODO: 1.) Passed not by reference, because I don't know how to specify
@@ -741,7 +749,7 @@ impl Loop {
                 }
 
                 let op_name = next_op.to_string();
-                governor_step! {
+                governor_substep! {
                     "finalizing schema change" [
                         "op" => &op_name,
                     ]
@@ -765,7 +773,7 @@ impl Loop {
                 set_status!("install new plugin");
 
                 let mut next_op = None;
-                governor_step! {
+                governor_substep! {
                     "checking if plugin is ready for installation on instances"
                     async {
                         let mut fs = vec![];
@@ -800,7 +808,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "finalizing plugin installing"
                     async {
                         let op = next_op.expect("is set on the first substep");
@@ -823,7 +831,7 @@ impl Loop {
                 set_status!("enable plugin");
                 let mut next_op = None;
 
-                governor_step! {
+                governor_substep! {
                     "enabling plugin"
                     async {
                         let mut fs = vec![];
@@ -875,7 +883,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "finalizing plugin enabling"
                     async {
                         let op = next_op.expect("is set on the first substep");
@@ -907,7 +915,7 @@ impl Loop {
                 // introducing the plugin healthcheck system, but it's
                 // nevertheless concerning that there could be cases where this
                 // type of inconsistency could lead to some scary things.
-                governor_step! {
+                governor_substep! {
                     "enabling/disabling service at new tiers"
                     async {
                         let mut fs = vec![];
@@ -961,7 +969,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "finalizing topology update"
                     async {
                         let op = next_op.expect("is set on the first substep");
@@ -980,7 +988,7 @@ impl Loop {
                 tier_name,
             }) => {
                 set_status(governor_status, "update current sharding configuration");
-                governor_step! {
+                governor_substep! {
                     "applying vshard config changes" [
                         "tier" => %tier_name
                     ]
@@ -1002,7 +1010,7 @@ impl Loop {
                     }
                 }
 
-                governor_step! {
+                governor_substep! {
                     "updating current vshard config"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
@@ -1019,8 +1027,12 @@ impl Loop {
             }
         }
 
+        // The step ended successfully
         governor_status
-            .send_modify(|s| s.step_counter += 1)
+            .send_modify(|s| {
+                s.step_counter += 1;
+                s.last_error = None;
+            })
             .expect("status shouldn't ever be borrowed across yields");
         ControlFlow::Continue(())
     }
@@ -1034,6 +1046,7 @@ impl Loop {
         let (waker_tx, waker_rx) = watch::channel(());
         let (governor_status_tx, governor_status_rx) = watch::channel(GovernorStatus {
             governor_loop_status: "initializing",
+            last_error: None,
             step_counter: 0,
         });
 
@@ -1057,6 +1070,7 @@ impl Loop {
         let (waker, _) = watch::channel(());
         let (_, status) = watch::channel(GovernorStatus {
             governor_loop_status: "uninitialized",
+            last_error: None,
             step_counter: 0,
         });
         Self {
@@ -1074,12 +1088,15 @@ impl Loop {
 
 #[inline(always)]
 fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
-    if status.get().governor_loop_status == msg {
+    let status_ref = status.borrow();
+    if status_ref.governor_loop_status == msg {
         return;
     }
 
-    let counter = status.get().step_counter;
+    let counter = status_ref.step_counter;
     tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");
+    drop(status_ref);
+
     status
         .send_modify(|s| s.governor_loop_status = msg)
         .expect("status shouldn't ever be borrowed across yields");
@@ -1108,12 +1125,18 @@ struct State {
     pool: Rc<ConnectionPool>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GovernorStatus {
     /// Current state of the governor loop.
     ///
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
+
+    /// If the last governor step ended with an error, this is the corresponding
+    /// error value.
+    ///
+    /// If the last governor step ended successfully this will be `None`.
+    pub last_error: Option<BoxError>,
 
     /// Number of times the current instance has successfully executed a
     /// governor step. Is reset on restart.
