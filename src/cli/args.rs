@@ -15,6 +15,7 @@ use tarantool::tlua;
 #[derive(Debug, Parser)]
 #[clap(name = "picodata", version = version_for_help())]
 pub enum Picodata {
+    Restore(Restore),
     Run(Box<Run>),
     #[clap(hide = true)]
     Tarantool(Tarantool),
@@ -32,6 +33,30 @@ pub enum Picodata {
 }
 
 pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
+
+////////////////////////////////////////////////////////////////////////////////
+// Restore
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser, PartialEq)]
+#[clap(about = "Restore the picodata instance from given backup path")]
+pub struct Restore {
+    #[clap(short = 'p', long = "path")]
+    /// Full path to the directory with backup files.
+    pub backup_path: String,
+
+    #[clap(short = 'c', long = "config")]
+    /// Name of the config file under backup
+    /// directory which should be used for restore.
+    pub config_name: Option<String>,
+}
+
+impl Restore {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Run
@@ -52,6 +77,12 @@ pub struct Run {
     ///
     /// By default this is the current working directory (".").
     pub instance_dir: Option<PathBuf>,
+
+    #[clap(long, value_name = "PATH", env = "PICODATA_BACKUP_DIR")]
+    /// Here the instance persists all of its **backup** data.
+    ///
+    /// By default this is "{instance_dir}/backup".
+    pub backup_dir: Option<PathBuf>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.

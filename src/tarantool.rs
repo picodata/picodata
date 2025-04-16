@@ -199,6 +199,32 @@ pub struct Cfg {
 }
 
 impl Cfg {
+    pub fn for_restore(config: &PicodataConfig) -> Result<Self, Error> {
+        let mut res: Cfg = Self {
+            // We don't need any of the fields below.
+            instance_uuid: None,
+            replicaset_uuid: None,
+            listen: None,
+
+            // On restore all storages should be writable.
+            read_only: false,
+
+            // During restore we don't set up the replication.
+            bootstrap_strategy: Some(BootstrapStrategy::Auto),
+            election_mode: ElectionMode::Off,
+
+            ..Default::default()
+        };
+
+        res.set_core_parameters(config)?;
+
+        // Leave only the one snapshot file.
+        res.user_configured_fields
+            .insert("checkpoint_count".into(), 1.into());
+
+        Ok(res)
+    }
+
     /// Temporary minimal configuration. After initializing with this
     /// configuration we either will go into discovery phase after which we will
     /// rebootstrap and go to the next phase (either boot or join), or if the

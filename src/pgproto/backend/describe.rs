@@ -84,6 +84,7 @@ pub enum CommandTag {
     SetTransaction = 21,
     TruncateTable = 40,
     Update = 13,
+    Backup = 56,
 }
 
 impl CommandTag {
@@ -139,6 +140,8 @@ impl CommandTag {
             // Response on an empty query is EmptyQueryResponse with no tag.
             // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-EMPTYQUERYRESPONSE
             Self::EmptyQuery => "",
+            // TODO: See https://git.picodata.io/core/picodata/-/issues/2181.
+            Self::Backup => "",
         }
     }
 }
@@ -156,6 +159,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::RevokeRole => QueryType::Acl,
             CommandTag::DropTable
             | CommandTag::TruncateTable
+            | CommandTag::Backup
             | CommandTag::AlterTable
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
@@ -212,6 +216,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
             Node::Ddl(ddl) => match ddl {
                 Ddl::AlterSystem { .. } => Ok(CommandTag::AlterSystem),
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),
+                Ddl::Backup { .. } => Ok(CommandTag::Backup),
                 Ddl::TruncateTable { .. } => Ok(CommandTag::TruncateTable),
                 Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
                 Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),

@@ -24,6 +24,7 @@ use std::collections::HashSet;
 
 pub mod before_online;
 pub mod ddl_apply;
+pub mod ddl_backup;
 pub mod disable_service;
 pub mod enable_all_plugins;
 pub mod enable_plugin;
@@ -185,6 +186,7 @@ where
     Ok(resp)
 }
 
+/// When adding new rpc, don't forget to update `exports_picodata` file and UPGRADE_OPERATIONS_MAP.
 #[macro_export]
 macro_rules! define_rpc_request {
     (

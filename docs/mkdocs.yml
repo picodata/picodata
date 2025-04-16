@@ -61,7 +61,7 @@ nav:
       - admin/cluster_mgmt.md
       - admin/configure.md
       - admin/monitoring.md
-      - admin/backup.md
+      - admin/backup_and_restore.md
       - admin/access_control.md
       - admin/ldap.md
       - admin/ssl.md
@@ -88,6 +88,7 @@ nav:
         - reference/sql/alter_system.md
         - reference/sql/alter_table.md
         - reference/sql/alter_user.md
+        - reference/sql/backup.md
         - reference/sql/call.md
         - reference/sql/create_index.md
         - reference/sql/create_plugin.md

@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use sbroad::ir::operator::ConflictStrategy;
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
@@ -977,6 +978,22 @@ impl ToEntryIter<MP_SERDE> for PeerAddresses {
 ::tarantool::define_str_enum! {
     /// An enumeration of [`SystemTable::Property`] key names.
     pub enum PropertyName {
+        /// Timestamp of the last backup.
+        ///
+        /// Used to:
+        /// * generate backup folder name
+        /// * get backup timestamp after restoring
+        ///
+        /// Saved on a stage of DdlCommit application.
+        ///
+        /// TODO: In case we need to save timestamp so that is can be
+        ///       seen after restore (which sees only the state of the db
+        ///       between DdlPrepare and DdlComit), we should add
+        ///       another property like PendingBackupTimestamp which
+        ///       would be generated on a stage of DdlPrepare application.
+        ///       See https://git.picodata.io/core/picodata/-/issues/2186.
+        LastBackupTimestamp = "last_backup_timestamp",
+
         /// Pending ddl operation which is to be either committed or aborted.
         ///
         /// Is only present during the time between the last ddl prepare
@@ -1078,6 +1095,10 @@ impl PropertyName {
             | Self::PendingGovernorOpId => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
+            }
+            Self::LastBackupTimestamp => {
+                // Check it's an signed integer.
+                _ = new.field::<i64>(1).map_err(map_err)?;
             }
             Self::PendingSchemaChange => {
                 // Check it decodes into Ddl.
@@ -1503,6 +1524,11 @@ impl Properties {
     }
 
     #[inline]
+    pub fn last_backup_timestamp(&self) -> tarantool::Result<Option<i64>> {
+        self.get(PropertyName::LastBackupTimestamp.as_str())
+    }
+
+    #[inline]
     pub fn pending_schema_version(&self) -> tarantool::Result<Option<u64>> {
         self.get(PropertyName::PendingSchemaVersion.as_str())
     }
@@ -1553,6 +1579,12 @@ impl Properties {
     pub fn pending_catalog_version(&self) -> tarantool::Result<Option<String>> {
         self.get(PropertyName::PendingCatalogVersion.as_str())
     }
+}
+
+pub fn get_backup_dir_name(timestamp: i64) -> String {
+    let datetime =
+        DateTime::from_timestamp(timestamp, 0).expect("Current datetime conversion should succeed");
+    datetime.format("%Y%m%dT%H%M%S").to_string()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3467,6 +3499,7 @@ pub fn local_schema_version() -> tarantool::Result<u64> {
 pub fn set_local_schema_version(v: u64) -> tarantool::Result<()> {
     let space_schema = Space::from(SystemSpace::Schema);
     space_schema.replace(&("local_schema_version", v))?;
+    tlog!(Info, "Updated local_schema_version to {v}");
     Ok(())
 }
 

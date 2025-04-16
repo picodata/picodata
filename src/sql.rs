@@ -15,7 +15,7 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::{space_by_name, DbConfig, SystemTable, ToEntryIter};
+use crate::storage::{get_backup_dir_name, space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
@@ -25,6 +25,7 @@ use crate::util::{duration_from_secs_f64_clamped, effective_user_id, AnyWithType
 use crate::version::Version;
 use crate::{cas, has_states, plugin, tlog};
 
+use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
@@ -34,7 +35,7 @@ use sbroad::executor::engine::helpers::{
 };
 use sbroad::executor::engine::Router;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
-use sbroad::executor::result::ConsumerResult;
+use sbroad::executor::result::{ConsumerResult, MetadataColumn, ProducerResult};
 use sbroad::executor::ExecutingQuery;
 use sbroad::ir::acl::{AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::{AlterSystemType, ParamDef};
@@ -50,6 +51,7 @@ use sbroad::ir::node::{
     RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
+use std::cmp::max;
 use std::collections::BTreeMap;
 use tarantool::decimal::Decimal;
 
@@ -278,9 +280,8 @@ fn dispatch_bound_statement_impl(
 
         let ir_node = ir_plan_mut.replace_with_stub(top_id);
         let node = node::global()?;
-        let result =
+        let tuple =
             reenterable_schema_change_request(node, ir_node, override_deadline, governor_op_id)?;
-        let tuple = Tuple::new(&(result,))?;
         Ok(tuple)
     } else if query.is_plugin()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
@@ -1302,6 +1303,23 @@ fn alter_system_ir_node_to_op_or_result(
     }
 }
 
+fn get_new_backup_timestamp(storage: &Catalog) -> i64 {
+    // TODO: See https://git.picodata.io/core/picodata/-/issues/2186.
+    let current_datetime = Utc::now();
+    let current_timestamp = current_datetime.timestamp();
+
+    let last_backup_timestamp = storage
+        .properties
+        .last_backup_timestamp()
+        .expect("read of _pico_property should succeed");
+
+    if let Some(last_backup_timestamp) = last_backup_timestamp {
+        max(current_timestamp, last_backup_timestamp + 1)
+    } else {
+        current_timestamp
+    }
+}
+
 fn ddl_ir_node_to_op_or_result(
     ddl: &DdlOwned,
     current_user: UserId,
@@ -1406,6 +1424,15 @@ fn ddl_ir_node_to_op_or_result(
                 id: table_def.id,
                 initiator: current_user,
             };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+                governor_op_id,
+            }))
+        }
+        DdlOwned::Backup(_) => {
+            let timestamp = get_new_backup_timestamp(storage);
+            let ddl = OpDdl::Backup { timestamp };
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
@@ -2069,6 +2096,27 @@ fn check_ddl_applied(
 
             Ok(true)
         }
+        OpDdl::Backup { timestamp } => {
+            let pending_schema_change = storage.properties.pending_schema_change()?;
+            if let Some(traft::op::Ddl::Backup {
+                timestamp: pending_timestamp,
+            }) = pending_schema_change
+            {
+                if pending_timestamp == *timestamp {
+                    return Ok(false);
+                }
+            }
+
+            let Some(last_backup_timestamp) = storage.properties.last_backup_timestamp()? else {
+                return error("abort for unknown reason: log compacted");
+            };
+
+            if last_backup_timestamp < *timestamp {
+                return error("abort for unknown reason: log compacted");
+            }
+
+            Ok(true)
+        }
     }
 }
 
@@ -2127,7 +2175,7 @@ pub(crate) fn reenterable_schema_change_request(
     ir_node: NodeOwned,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
-) -> traft::Result<ConsumerResult> {
+) -> traft::Result<Tuple> {
     let storage = &node.storage;
 
     ensure_ddl_allowed_in_cluster(node, &ir_node)?;
@@ -2169,7 +2217,12 @@ pub(crate) fn reenterable_schema_change_request(
         let index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
 
         if storage.properties.pending_schema_change()?.is_some() {
-            node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
+            let target_index = index + 1;
+            tlog!(
+                Info,
+                "Waiting for {target_index} pending_schema_change target index"
+            );
+            node.wait_index(target_index, deadline.duration_since(Instant::now_fiber()))?;
             continue 'retry;
         }
 
@@ -2195,7 +2248,10 @@ pub(crate) fn reenterable_schema_change_request(
         };
 
         let op = match op_or_result {
-            Break(consumer_result) => return Ok(consumer_result),
+            Break(consumer_result) => {
+                let tuple: Tuple = Tuple::new(&(consumer_result,))?;
+                return Ok(tuple);
+            }
             Continue(op) => op,
         };
 
@@ -2208,13 +2264,15 @@ pub(crate) fn reenterable_schema_change_request(
             cas::CasResult::RetriableError(_) => continue,
         };
 
-        if let Op::DdlPrepare { ddl, .. } = op {
+        if let Op::DdlPrepare { ref ddl, .. } = op {
             if governor_op_id.is_some() {
                 // It means we are running a governor operation
                 // (`sql_dispatch` was called from the governor)
                 // Returns early and continues to process DDL
                 // in the next governor's step
-                return Ok(ConsumerResult { row_count: 1 });
+                let res = ConsumerResult { row_count: 1 };
+                let tuple: Tuple = Tuple::new(&(res,))?;
+                return Ok(tuple);
             }
             // this is not a governor operation, so do all stuff here...
             let commit_index = loop {
@@ -2229,14 +2287,19 @@ pub(crate) fn reenterable_schema_change_request(
 
                         // If we will find our DDL result in metadata with corresponding version, then our DdlCommit was compacted,
                         // otherwise it may be aborted, not yet applied, recreated(schema_version will be higher than ours).
-                        match check_ddl_applied(storage, &ddl, schema_version) {
+                        match check_ddl_applied(storage, ddl, schema_version) {
                             // !!! commit index used only to wait for it applied globally,
                             // so we can use compacted_index.
                             Ok(true) => node.raft_storage.compacted_index()?,
                             Ok(false) => {
                                 let applied_index = node.get_index();
+                                let target_index = applied_index + 1;
+                                tlog!(
+                                    Info,
+                                    "Waiting for {target_index} unapplied ddl target index"
+                                );
                                 node.wait_index(
-                                    applied_index + 1,
+                                    target_index,
                                     deadline.duration_since(Instant::now_fiber()),
                                 )?;
                                 continue;
@@ -2266,7 +2329,35 @@ pub(crate) fn reenterable_schema_change_request(
             }
         }
 
-        return Ok(ConsumerResult { row_count: 1 });
+        let tuple = match op {
+            Op::DdlPrepare {
+                ddl: OpDdl::Backup { timestamp },
+                ..
+            } => {
+                let backup_dir_name = get_backup_dir_name(timestamp);
+                let metadata = vec![MetadataColumn::new(
+                    String::from("backup_dir_name"),
+                    String::from("string"),
+                )];
+                let rows = vec![vec![Value::String(backup_dir_name)]];
+                // For BACKUP we want to return the name of generated backup_dir_name.
+                // In order to match the existing output format (which can be parsed and written
+                // into user console) we return BACKUP result in a view of a DQL.
+                let res = ProducerResult { metadata, rows };
+
+                // See the logic of calling `ProducerResult::convert`
+                // under `build_final_dql_result` needed for correct
+                // Tuple construction.
+                let wrapped = vec![res];
+                let data = msgpack::encode(&wrapped);
+                Tuple::try_from_slice(&data)?
+            }
+            _ => {
+                let res = ConsumerResult { row_count: 1 };
+                Tuple::new(&(res,))?
+            }
+        };
+        return Ok(tuple);
     }
 }
 

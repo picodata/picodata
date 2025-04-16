@@ -352,6 +352,10 @@ ansible-playbook -i hosts.yml picodata.yml -t restore -e restore_dir=20250716203
     (т.е. когда резервные копии выкачиваются на станцию запуска Ansible). В
     остальных случаях необходимо указывать переменную `restore_dir`!
 
+См. также:
+
+- [Резервное копирование и восстановление](backup_and_restore.md)
+
 ## Управление плагинами {: #plugin_management }
 
 C помощью роли [picodata-ansible] можно также добавлять в кластер

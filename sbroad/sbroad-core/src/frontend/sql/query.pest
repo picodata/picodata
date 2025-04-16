@@ -84,7 +84,8 @@ ACL = _{ DropRole | DropUser | CreateRole | CreateUser | AlterUser | GrantPrivil
 
 DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | DropIndex | CreateSchema | DropSchema
          | CreateProc | DropProc | RenameProc | SetParam | SetTransaction | AlterSystem
-         | CreatePartition }
+         | CreatePartition | Backup }
+    Backup = ${ ^"backup" ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     CreatePartition = ${
         ^"create" ~ W ~ ^"table" ~ W ~ (IfNotExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ W ~ ^"partition" ~ W ~ ^"of" ~ W ~
         (PublicSchema)? ~ Identifier ~ W ~ PartitionOfSpec ~ (W ~ Partition)?

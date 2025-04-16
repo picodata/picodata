@@ -1015,6 +1015,18 @@ impl From<DropTable> for NodeAligned {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Backup {
+    pub wait_applied_globally: bool,
+    pub timeout: Decimal,
+}
+
+impl From<Backup> for NodeAligned {
+    fn from(value: Backup) -> Self {
+        Self::Node32(Node32::Backup(value))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct TruncateTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
@@ -1303,7 +1315,7 @@ pub enum Node32 {
     CreateSchema,
     DropSchema,
     SubQueryReference(SubQueryReference),
-
+    Backup(Backup),
     // begin the section to allow in-place swapping with Constant using the replace32()
     Parameter(Parameter),
     Constant(Constant),
@@ -1345,6 +1357,7 @@ impl Node32 {
             Node32::SubQueryReference(sub_query_reference) => {
                 NodeOwned::Expression(ExprOwned::SubQueryReference(sub_query_reference))
             }
+            Node32::Backup(backup) => NodeOwned::Ddl(DdlOwned::Backup(backup)),
             Node32::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
             Node32::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
             Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),

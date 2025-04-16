@@ -109,6 +109,7 @@ impl Nodes {
                 Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
                 Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
                 Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
+                Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
@@ -253,6 +254,7 @@ impl Nodes {
                         MutNode::Expression(MutExpression::Parameter(param))
                     }
                     Node32::Timestamp(lt) => MutNode::Expression(MutExpression::Timestamp(lt)),
+                    Node32::Backup(backup) => MutNode::Ddl(MutDdl::Backup(backup)),
                 }),
             ArenaType::Arena64 => self
                 .arena64

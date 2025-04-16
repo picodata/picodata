@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::ControlFlow;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::time::Instant;
@@ -21,6 +22,10 @@ use crate::proc_name;
 use crate::replicaset::Replicaset;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
+use crate::rpc::ddl_backup;
+use crate::rpc::ddl_backup::proc_apply_backup;
+use crate::rpc::ddl_backup::proc_backup_abort_clear;
+use crate::rpc::ddl_backup::RequestClear;
 use crate::rpc::disable_service::proc_disable_service;
 use crate::rpc::enable_all_plugins::proc_enable_all_plugins;
 use crate::rpc::enable_plugin::proc_enable_plugin;
@@ -35,9 +40,10 @@ use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
 use crate::sql;
 use crate::storage;
+use crate::storage::get_backup_dir_name;
 use crate::storage::Catalog;
 use crate::storage::SystemTable;
-use crate::storage::ToEntryIter as _;
+use crate::storage::ToEntryIter;
 use crate::sync::proc_get_vclock;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -46,6 +52,7 @@ use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
+use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
@@ -62,8 +69,145 @@ pub(crate) mod plan;
 mod queue;
 mod sharding;
 
+/// Helper enum for ApplySchemaChange handling.
+#[derive(Debug)]
+enum OnError {
+    Retry(Error),
+    Abort(ErrorInfo),
+}
+impl From<OnError> for Error {
+    fn from(e: OnError) -> Error {
+        match e {
+            OnError::Retry(e) => e,
+            OnError::Abort(_) => unreachable!("we never convert Abort to Error"),
+        }
+    }
+}
+
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
+
+    async fn collect_proc_apply_schema_change(
+        targets: Vec<(InstanceName, String)>,
+        rpc: rpc::ddl_apply::Request,
+        pool: Rc<ConnectionPool>,
+        rpc_timeout: Duration,
+    ) -> Result<Result<Vec<()>, OnError>, TraftError> {
+        let mut fs = vec![];
+        for (instance_name, _) in targets {
+            tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
+            let resp = pool.call(
+                &instance_name,
+                proc_name!(proc_apply_schema_change),
+                &rpc,
+                rpc_timeout,
+            )?;
+            fs.push(async move {
+                match resp.await {
+                    Ok(rpc::ddl_apply::Response::Ok) => {
+                        tlog!(Info, "applied schema change on instance";
+                            "instance_name" => %instance_name,
+                        );
+                        Ok(())
+                    }
+                    Ok(rpc::ddl_apply::Response::Abort { cause }) => {
+                        tlog!(Error, "failed to apply schema change on instance: {cause}";
+                            "instance_name" => %instance_name,
+                        );
+                        Err(OnError::Abort(cause))
+                    }
+                    Err(e) => {
+                        tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
+                            "instance_name" => %instance_name
+                        );
+                        Err(OnError::Retry(e))
+                    }
+                }
+            });
+        }
+
+        let res = try_join_all(fs).await;
+        Ok::<_, TraftError>(res)
+    }
+
+    async fn collect_proc_apply_backup(
+        targets: Vec<(InstanceName, String)>,
+        rpc: rpc::ddl_backup::Request,
+        pool: Rc<ConnectionPool>,
+        rpc_timeout: Duration,
+    ) -> Result<Result<Vec<(InstanceName, PathBuf)>, OnError>, TraftError> {
+        let mut fs = vec![];
+        for (instance_name, _) in targets {
+            tlog!(Info, "calling proc_apply_backup"; "instance_name" => %instance_name);
+            let resp = pool.call(
+                &instance_name,
+                proc_name!(proc_apply_backup),
+                &rpc,
+                rpc_timeout,
+            )?;
+            fs.push(async move {
+                match resp.await {
+                    Ok(rpc::ddl_backup::Response::BackupPath(r)) => {
+                        tlog!(Info, "applied backup on instance";
+                            "instance_name" => %instance_name,
+                        );
+                        Ok((instance_name, r))
+                    }
+                    Ok(rpc::ddl_backup::Response::Abort { cause }) => {
+                        tlog!(Error, "failed to apply backup on instance: {cause}";
+                            "instance_name" => %instance_name,
+                        );
+                        Err(OnError::Abort(cause))
+                    }
+                    Err(e) => {
+                        tlog!(Warning, "failed calling proc_apply_backup: {e}";
+                            "instance_name" => %instance_name
+                        );
+                        Err(OnError::Retry(e))
+                    }
+                }
+            });
+        }
+
+        let res = try_join_all(fs).await;
+        Ok::<_, TraftError>(res)
+    }
+
+    async fn collect_proc_backup_abort_clear(
+        targets: Vec<(InstanceName, String)>,
+        rpc: rpc::ddl_backup::RequestClear,
+        pool: Rc<ConnectionPool>,
+        rpc_timeout: Duration,
+    ) -> Result<Result<Vec<()>, OnError>, TraftError> {
+        let mut fs = vec![];
+        for (instance_name, _) in targets {
+            tlog!(Info, "calling proc_backup_abort_clear"; "instance_name" => %instance_name);
+            let resp = pool.call(
+                &instance_name,
+                proc_name!(proc_backup_abort_clear),
+                &rpc,
+                rpc_timeout,
+            )?;
+            fs.push(async move {
+                match resp.await {
+                    Ok(rpc::ddl_backup::ResponseClear::Ok) => {
+                        tlog!(Info, "cleared partially backuped data on instance";
+                            "instance_name" => %instance_name,
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        tlog!(Warning, "failed calling collect_proc_backup_abort_clear: {e}";
+                            "instance_name" => %instance_name
+                        );
+                        Err(OnError::Retry(e))
+                    }
+                }
+            });
+        }
+        let res = try_join_all(fs).await;
+        Ok::<_, TraftError>(res)
+    }
 
     async fn iter_fn(
         State {
@@ -212,7 +356,7 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
-            pending_schema_change,
+            &pending_schema_change,
             &tables,
             &plugins,
             &services,
@@ -233,6 +377,10 @@ impl Loop {
                 return ControlFlow::Continue(());
             }
         );
+
+        // Flag used to indicate whether ApplySchemaChange application for
+        // BACKUP has failed and we should abort it.
+        let mut backup_abort_info: Option<(String, ErrorInfo)> = None;
 
         // NOTE: this is a macro, because borrow checker is hot garbage
         macro_rules! set_status {
@@ -260,20 +408,6 @@ impl Loop {
                     waker.mark_seen();
                     _ = waker.changed().timeout(backoff_manager.timeout()).await;
                     return ControlFlow::Continue(());
-                }
-            }
-        }
-
-        #[derive(Debug)]
-        enum OnError {
-            Retry(Error),
-            Abort(ErrorInfo),
-        }
-        impl From<OnError> for Error {
-            fn from(e: OnError) -> Error {
-                match e {
-                    OnError::Retry(e) => e,
-                    OnError::Abort(_) => unreachable!("we never convert Abort to Error"),
                 }
             }
         }
@@ -657,44 +791,12 @@ impl Loop {
 
             Plan::ApplySchemaChange(ApplySchemaChange { tier, targets, rpc }) => {
                 set_status!("apply clusterwide schema change");
-                let mut next_op = Op::Nop;
+                let mut next_op: Op = Op::Nop;
                 governor_substep! {
                     "applying pending schema change"
                     async {
-                        // TODO: 1.) Passed not by reference, because I don't know how to specify
-                        //           returning type and fix problems with lifetimes.
-                        //       2.) Async closure is unstable so I can't use common await part inside.
-                        let collect_proc_apply = |targets: Vec<(InstanceName, String)>| {
-                            let mut fs = vec![];
-                            for (instance_name, _) in targets {
-                                tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                                let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
-                                fs.push(async move {
-                                    match resp.await {
-                                        Ok(rpc::ddl_apply::Response::Ok) => {
-                                            tlog!(Info, "applied schema change on instance";
-                                                "instance_name" => %instance_name,
-                                            );
-                                            Ok(())
-                                        }
-                                        Ok(rpc::ddl_apply::Response::Abort { cause }) => {
-                                            tlog!(Error, "failed to apply schema change on instance: {cause}";
-                                                "instance_name" => %instance_name,
-                                            );
-                                            Err(OnError::Abort(cause))
-                                        }
-                                        Err(e) => {
-                                            tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
-                                                "instance_name" => %instance_name
-                                            );
-                                            Err(OnError::Retry(e))
-                                        }
-                                    }
-                                });
-                            }
-
-                            Ok::<_, TraftError>(fs)
-                        };
+                        let ddl = pending_schema_change.expect("pending schema should exist");
+                        tlog!(Info, "handling ApplySchemaChange for {ddl:?}");
 
                         if let Some(tier) = tier {
                             // DDL should be applied only on a specific tier
@@ -711,14 +813,15 @@ impl Loop {
                                 .filter(|(_, tier_name)| tier_name != &tier)
                                 .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
                                 .collect();
-                            let other_fs = collect_proc_apply(other_targets)?;
-
-                            let res = try_join_all(other_fs).await;
+                            let res = Self::collect_proc_apply_schema_change(other_targets, rpc.clone(), pool.clone(), rpc_timeout).await?;
+                            // In case it's abort error, return Ok(()) so that governor_step
+                            // stop retrying execution
                             if let Err(OnError::Abort(cause)) = res {
                                 next_op = Op::DdlAbort { cause };
                                 crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
                                 return Ok(());
                             }
+                            // Otherwise unwrap Err so that next governor step is executed.
                             res?;
 
                             let proc_rpc_res_vec = match map_callrw_res {
@@ -759,21 +862,92 @@ impl Loop {
                                 .cloned()
                                 .map(|(i_name, tier_name)| (i_name.clone(), tier_name.clone()))
                                 .collect();
-                            let fs = collect_proc_apply(targets_cloned)?;
+                            if let Ddl::Backup { timestamp } = ddl {
+                                let backup_dir_name = get_backup_dir_name(timestamp);
 
-                            let res = try_join_all(fs).await;
-                            if let Err(OnError::Abort(cause)) = res {
-                                next_op = Op::DdlAbort { cause };
-                                crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
-                                return Ok(());
+                                let replicas: Vec<_> = storage
+                                    .instances
+                                    .iter()?
+                                    .map(|i| (i.name, i.tier))
+                                    .filter(|p| !targets_cloned.contains(p))
+                                    .collect();
+
+                                // Vec of pairs (instance_name, backup_path).
+                                let mut backup_paths = HashMap::<InstanceName, PathBuf>::new();
+
+                                let rpc_master = ddl_backup::Request {
+                                    term: rpc.term,
+                                    applied: rpc.applied,
+                                    timeout: rpc.timeout,
+                                    is_master: true
+                                };
+                                // 1. Call `proc_apply_schema_change` on all masters.
+                                tlog!(Info, "calling BACKUP on masters");
+                                let res = Self::collect_proc_apply_backup(targets_cloned.clone(), rpc_master.clone(), pool.clone(), rpc_timeout).await?;
+                                if let Err(OnError::Abort(ref cause)) = res {
+                                    backup_abort_info = Some((backup_dir_name, cause.clone()));
+                                    return Ok(());
+                                }
+                                backup_paths.extend(res?);
+
+                                // 2. Call `proc_apply_schema_change` on all replicas.
+                                if !replicas.is_empty() {
+                                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_BACKUP_ON_REPLICAS");
+
+                                    let mut rpc_replica = rpc_master.clone();
+                                    rpc_replica.is_master = false;
+
+                                    tlog!(Info, "calling BACKUP on replicas");
+                                    let res = Self::collect_proc_apply_backup(replicas.clone(), rpc_replica, pool.clone(), rpc_timeout).await?;
+                                    if let Err(OnError::Abort(ref cause)) = res {
+                                        backup_abort_info = Some((backup_dir_name, cause.clone()));
+                                        return Ok(())
+                                    }
+                                    backup_paths.extend(res?);
+                                }
+
+                                let backup_paths_yaml = serde_yaml::to_string(&backup_paths)
+                                    .expect("yaml conversion should not fail");
+                                tlog!(Info, "BACKUP is finished successfully with the following paths:\n{backup_paths_yaml}");
+                            } else {
+                                let res = Self::collect_proc_apply_schema_change(targets_cloned, rpc.clone(), pool.clone(), rpc_timeout).await?;
+                                if let Err(OnError::Abort(cause)) = res {
+                                    next_op = Op::DdlAbort { cause };
+                                    crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                                    return Ok(());
+                                }
+                                res?;
                             }
-
-                            res?;
                         }
 
                         next_op = Op::DdlCommit;
 
                         crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
+                    }
+                }
+
+                if let Some((backup_dir_name, cause)) = backup_abort_info {
+                    governor_substep! {
+                        "clearing backup"
+                        async {
+                            // In case backup finished with DdlAbort we have to make
+                            // additional rpc to clear partially backuped up data.
+                            let rpc_clear = RequestClear { backup_dir_name: backup_dir_name.clone() };
+                            // Retry infinitely until data is cleared.
+                            let targets = storage
+                                .instances
+                                .iter()?
+                                .map(|i| (i.name, i.tier))
+                                .collect();
+                            Self::collect_proc_backup_abort_clear(
+                                targets,
+                                rpc_clear,
+                                pool.clone(),
+                                rpc_timeout,
+                            ).await??;
+                            next_op = Op::DdlAbort { cause };
+                            crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
+                        }
                     }
                 }
 

@@ -15,6 +15,8 @@ pico_ffi_version
 pico_ffi_wait_index
 pico_internal_initialize_dummy
 proc_apply_schema_change
+proc_apply_backup
+proc_backup_abort_clear
 proc_before_online
 proc_cas
 proc_cas_v2

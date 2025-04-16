@@ -244,6 +244,10 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
 /// vanilla tarantool in on_replace_dd_space, on_replace_dd_index and on_replace_dd_func respectively
 fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
     match ddl {
+        op::Ddl::Backup { .. } => {
+            // TODO: Check that only admin have access.
+            Ok(())
+        }
         op::Ddl::CreateTable {
             id, name, owner, ..
         } => {

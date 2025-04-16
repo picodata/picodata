@@ -201,7 +201,6 @@ impl Serialize for ProducerResult {
 /// This impl allows to convert `ProducerResult` into `Tuple`, using `Tuple::new` method.
 impl Encode for ProducerResult {}
 
-/// Results of query execution for `INSERT`.
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Deserialize, Eq, Clone)]
 pub struct ConsumerResult {

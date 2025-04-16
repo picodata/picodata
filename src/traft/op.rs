@@ -113,6 +113,13 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
+                ddl: Ddl::Backup { timestamp },
+                ..
+            } => {
+                write!(f, "DdlPrepare({schema_version}, Backup({timestamp}))")
+            }
+            Self::DdlPrepare {
+                schema_version,
                 ddl: Ddl::CreateTable {
                     id, distribution, ..
                 },
@@ -818,6 +825,9 @@ pub enum Ddl {
         column_renames: RenameMapping,
         initiator_id: UserId,
         schema_version: u64,
+    },
+    Backup {
+        timestamp: i64,
     },
 }
 

@@ -1,3 +1,5 @@
+use crate::cli::run::PICODATA_COOKIE;
+use crate::config::InstanceConfig;
 use crate::schema::{fields_to_format, Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
@@ -7,12 +9,16 @@ use crate::storage::RoutineId;
 use crate::storage::{set_local_schema_version, space_by_id_unchecked};
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
-use crate::{column_name, traft};
+use crate::{column_name, tlog, traft};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tarantool::auth::AuthDef;
+use tarantool::coio::coio_call;
 use tarantool::decimal::Decimal;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::index::FieldType as IndexFieldType;
@@ -85,6 +91,11 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
     let sys_func = Space::from(SystemSpace::Func);
 
     match *ddl {
+        Ddl::Backup { .. } => {
+            // TODO: Should we update local_schema_version as other DDLs do?
+            //       See https://git.picodata.io/core/picodata/-/issues/2183.
+        }
+
         Ddl::CreateTable { id, .. } => {
             sys_index.delete(&[id, 1])?;
             sys_index.delete(&[id, 0])?;
@@ -511,6 +522,294 @@ pub fn ddl_truncate_space_on_master(space_id: SpaceId) -> traft::Result<Option<T
         Ok(())
     })();
     Ok(res.err())
+}
+
+/// Copy a file from `src` to `dst` without using hardlinks.
+///
+/// Used for restoring files from backup.
+pub fn copy_file(src: &PathBuf, dst: &PathBuf) -> traft::Result<()> {
+    if dst.exists() {
+        tlog!(
+            Info,
+            "Failed to copy file: {:?} -> {:?}. Already exists",
+            src,
+            dst
+        );
+        return Ok(());
+    }
+
+    // When restoring (copying files) from a backup folder which contains
+    // hardlinks to initial files located under instance_dir it's possible
+    // to truncate their content so that we use a trick with a temporary file.
+    let temp = dst.with_extension("tmp");
+
+    fs::copy(src, &temp).map_err(|e| {
+        Error::other(format!(
+            "Failed to copy file from {} to {}: {e}",
+            src.display(),
+            dst.display()
+        ))
+    })?;
+
+    fs::rename(&temp, dst).map_err(|e| {
+        Error::other(format!(
+            "Failed to rename file from {} to {}: {e}",
+            temp.display(),
+            dst.display()
+        ))
+    })?;
+
+    tlog!(Info, "Copied: {:?} -> {:?}", src, dst);
+    Ok(())
+}
+
+pub fn copy_file_async(src: &PathBuf, dst: &PathBuf) -> traft::Result<()> {
+    let mut f = |_| {
+        if copy_file(src, dst).is_err() {
+            1
+        } else {
+            0
+        }
+    };
+
+    if coio_call(&mut f, ()) != 0 {
+        return Err(Error::other(format!(
+            "Failed to copy file from {} to {}",
+            src.display(),
+            dst.display()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Copy a file from `src` to `dst`.
+/// If `src` and `dst` are on the same filesystem, use a hard link.
+/// Otherwise, fall back to a full copy.
+///
+/// Used for backup creation.
+pub fn copy_file_hardlink_fallback(src: &PathBuf, dst: &PathBuf) -> traft::Result<()> {
+    if dst.exists() {
+        tlog!(
+            Info,
+            "Failed to copy file (with hardlink): {:?} -> {:?}. Already exists",
+            src,
+            dst
+        );
+        return Ok(());
+    }
+    match fs::hard_link(src, dst) {
+        Ok(_) => {}
+        Err(e) if e.kind() == ErrorKind::CrossesDevices => {
+            // Fall back to actual copy.
+            copy_file(src, dst)?;
+        }
+        Err(e) => {
+            return Err(Error::other(format!(
+                "Failed to create hardlink from {} to {}: {e}",
+                src.display(),
+                dst.display()
+            )))
+        }
+    };
+
+    tlog!(Info, "Copied (with hardlink): {:?} -> {:?}", src, dst);
+    Ok(())
+}
+
+pub fn copy_file_hardlink_fallback_async(src: &PathBuf, dst: &PathBuf) -> traft::Result<()> {
+    let mut f = |_| {
+        if copy_file_hardlink_fallback(src, dst).is_err() {
+            1
+        } else {
+            0
+        }
+    };
+
+    if coio_call(&mut f, ()) != 0 {
+        return Err(Error::other(format!(
+            "Failed to copy file with hardlink from {} to {}",
+            src.display(),
+            dst.display()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Copy a directory from `src` to `dst`.
+/// Used for backup creation and for restoring from it.
+pub fn copy_dir(src: &Path, dst: &Path, use_hardlink: bool) -> traft::Result<()> {
+    fs::create_dir_all(dst)?;
+    let entries_iter = fs::read_dir(src).map_err(|e| {
+        Error::other(format!(
+            "Failed to read src directory {}: {e}",
+            src.display()
+        ))
+    })?;
+    for entry_result in entries_iter {
+        let entry = entry_result?;
+        let entry_path = entry.path();
+        let entry_type = entry.file_type()?;
+
+        let dir_dst_path_full = dst.join(entry.file_name());
+
+        if entry_type.is_dir() {
+            copy_dir(&entry_path, &dir_dst_path_full, use_hardlink)?;
+        } else if use_hardlink {
+            copy_file_hardlink_fallback(&entry_path, &dir_dst_path_full)?;
+        } else {
+            copy_file(&entry_path, &dir_dst_path_full)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn copy_dir_async(src: &Path, dst: &Path, use_hardlink: bool) -> traft::Result<()> {
+    let mut f = |_| {
+        if copy_dir(src, dst, use_hardlink).is_err() {
+            1
+        } else {
+            0
+        }
+    };
+
+    if coio_call(&mut f, ()) != 0 {
+        return Err(Error::other(format!(
+            "Failed to copy dir from {} to {}",
+            src.display(),
+            dst.display()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Returns errors in the following cases:
+/// 1. Instance is out of memory to create/copy additional files
+/// 2. Backup directory already exists (probably created by somebody manually)
+/// 3. Can't take snapshot (file already exists). Possible for vinyl files (e.g. .run)
+/// 4. Backup is already in progress (box.backup.start() is called twice)
+pub fn backup_local(
+    config: &InstanceConfig,
+    backup_path: &PathBuf,
+) -> traft::Result<Option<TntError>> {
+    let config_file = config.config_file.clone();
+    let instance_dir = config.instance_dir();
+    let share_dir = config.share_dir();
+
+    let lua = ::tarantool::lua_state();
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+    // Drop `box.backup.start` in case we've repeated the RPC
+    // because of timeout.
+    match lua.exec("box.backup.stop();") {
+        Ok(files_to_backup) => files_to_backup,
+        Err(e) => return Ok(Some(e.into())),
+    };
+
+    // Dump snapshots.
+    tlog!(Info, "Calling box.snapshot");
+    if let Err(e) = lua.exec("box.snapshot()") {
+        return Ok(Some(e.into()));
+    }
+
+    crate::error_injection!(block "BLOCK_BEFORE_BACKUP_START");
+
+    // Inform Tarantool not to drop .snap files during backup execution.
+    // Get names of the files that we should backup.
+    let box_backup_files: Vec<String> = match lua.eval("return box.backup.start();") {
+        Ok(box_backup_files) => box_backup_files,
+        Err(e) => {
+            // E.g. somebody have called box.backup.start() manually.
+            return Ok(Some(e.into()));
+        }
+    };
+
+    // Create current backup folder.
+    fs::create_dir_all(backup_path).map_err(|e| {
+        Error::other(format!(
+            "Failed to create backup folder for {}: {e}",
+            backup_path.display()
+        ))
+    })?;
+    tlog!(Info, "Created backup dir {}", backup_path.display());
+
+    // Backup files from box.backup.
+    for box_backup_path_str in box_backup_files {
+        let box_backup_path = PathBuf::from_str(&box_backup_path_str)
+            .expect("box.backup.start() should return correct file paths");
+
+        let box_backup_file_name = box_backup_path
+            .strip_prefix(instance_dir)
+            .expect("box.backup.start() should return valid path");
+        let dest_path = backup_path.join(box_backup_file_name);
+
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // TODO: See https://git.picodata.io/core/picodata/-/issues/2106.
+        copy_file_hardlink_fallback_async(&box_backup_path, &dest_path)?;
+    }
+
+    crate::error_injection!(block "BLOCK_AFTER_DATA_IS_BACKUPED");
+
+    // Backup config file.
+    if let Some(config_file_path) = config_file {
+        let config_file_name = config_file_path
+            .file_name()
+            .ok_or_else(|| Error::other(String::from("Invalid config_file to backup")))?;
+        let dest_path = backup_path.join(config_file_name);
+
+        copy_file_hardlink_fallback_async(&config_file_path, &dest_path)?;
+    } else {
+        tlog!(
+            Warning,
+            "config file not found: backups may miss runtime settings"
+        );
+    }
+
+    // Backup .picodata-cookie file.
+    let cookie_path = instance_dir.join(PICODATA_COOKIE);
+    if cookie_path.exists() {
+        let cookie_file_name = cookie_path
+            .file_name()
+            .ok_or_else(|| Error::other(String::from("Invalid cookie to backup")))?;
+        let dest_path = backup_path.join(cookie_file_name);
+
+        copy_file_hardlink_fallback_async(&cookie_path, &dest_path)?;
+    } else {
+        tlog!(
+            Info,
+            "Skiped backuping cookie: {} is missing",
+            cookie_path.display()
+        );
+    }
+
+    // Backup plugins data.
+    if share_dir.exists() {
+        let share_dir_name = share_dir.file_name().ok_or_else(|| {
+            Error::other(format!(
+                "Share dir path is not valid: {}",
+                share_dir.display()
+            ))
+        })?;
+
+        let dest_path = backup_path.join(share_dir_name);
+        copy_dir_async(share_dir, &dest_path, true)?;
+    } else {
+        tlog!(
+            Info,
+            "Skiped backuping share_dir: {} is missing",
+            share_dir.display()
+        );
+    }
+
+    lua.exec("box.backup.stop()")?;
+
+    Ok(None)
 }
 
 /// Change tarantool space format.

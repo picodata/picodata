@@ -49,6 +49,7 @@ article.md-typeset.md-typeset ul {
 
 <b>B</b>
 
+* [BACKUP](reference/sql/backup.md)
 * [BOOLEAN](reference/sql_types.md#boolean)
 
 <b>C</b>

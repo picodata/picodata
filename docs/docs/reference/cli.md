@@ -84,6 +84,22 @@ picodata run [OPTIONS]
 
 [`instance.audit`]: config.md#instance_audit
 
+### --backup-dir {: #run_backup_dir }
+
+`--backup-dir <PATH>`
+
+Путь к директории, в которой будут храниться резервные копии, создаваемые
+командой [`BACKUP`](sql/backup.md).
+Каждый инстанс сохраняет данные в  поддиректории внутри `backup-dir` в файле,
+имя которого формируется в формате `YYYYMMDDThhmmss`.
+
+По умолчанию используется директория `<instance-dir>/backup`.
+
+Аналогичная переменная окружения: `PICODATA_BACKUP_DIR`<br>
+Аналогичный параметр файла конфигурации: [`instance.backup_dir`]
+
+[`instance.backup_dir`]: config.md#instance_backup_dir
+
 ### --cluster-name {: #run_cluster_name }
 
 `--cluster-name <NAME>`
@@ -480,6 +496,24 @@ $ picodata admin ./admin.sock
 Connected to admin console by socket path "admin.sock"
 type '\help' for interactive help
 (admin) sql>
+```
+
+## picodata restore {: #restore }
+
+Восстанавливает данные из ранее созданной резервной копии, см.
+[Восстановление](sql/backup.md#restore).
+
+```shell
+picodata restore --path <BACKUP_PATH>
+```
+
+- `BACKUP_PATH`: Путь к директории резервной копии (например,
+  ./backup/20250101T120000)
+
+**Пример**
+
+```shell
+$ picodata restore --path ./backup/20250101T120000
 ```
 
 ## picodata config default {: #config_default }

@@ -35,9 +35,10 @@ use std::collections::HashMap;
 use std::convert::{From, Into};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
+use std::path::{Component, Path};
 use std::str::FromStr;
+use std::{env, fs};
 use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
@@ -86,7 +87,50 @@ fn validate_args(args: &args::Run) -> Result<(), Error> {
     Ok(())
 }
 
-static mut GLOBAL_CONFIG: Option<Box<PicodataConfig>> = None;
+pub static mut GLOBAL_CONFIG: Option<Box<PicodataConfig>> = None;
+
+fn to_absolute_path(path: &PathBuf) -> PathBuf {
+    let normalize_path = |path: &PathBuf| {
+        let mut parts = Vec::new();
+
+        for comp in path.components() {
+            match comp {
+                Component::CurDir => {
+                    // skip "."
+                }
+                Component::ParentDir => {
+                    if let Some(last) = parts.last() {
+                        if *last != Component::RootDir {
+                            parts.pop();
+                        }
+                    }
+                }
+                _ => parts.push(comp),
+            }
+        }
+
+        let mut normalized = PathBuf::new();
+        for comp in parts {
+            normalized.push(comp.as_os_str());
+        }
+        normalized
+    };
+
+    if path.exists() {
+        // Path exists -> use builtin fs function (otherwise it throws error).
+        fs::canonicalize(path).expect("fs canonicalization should succeed on existing path")
+    } else {
+        // Path doesn’t exist -> join with cwd and normalize syntactically.
+        let joined = if path.is_absolute() {
+            path
+        } else {
+            &env::current_dir()
+                .expect("cwd should be retrieved")
+                .join(path)
+        };
+        normalize_path(joined)
+    }
+}
 
 impl PicodataConfig {
     pub fn init(args: args::Run) -> Result<&'static Self, Error> {
@@ -147,6 +191,10 @@ Using configuration file '{args_path}'.");
 
             assert!(config_path.is_some());
             config.instance.config_file = config_path.cloned();
+
+            // Make the backup_dir an absolute path.
+            config.instance.backup_dir = config.instance.backup_dir.as_ref().map(to_absolute_path);
+
             config
         } else {
             Default::default()
@@ -262,6 +310,10 @@ Using configuration file '{args_path}'.");
 
         if let Some(instance_dir) = args.instance_dir {
             config_from_args.instance.instance_dir = Some(instance_dir);
+        }
+
+        if let Some(backup_dir) = args.backup_dir {
+            config_from_args.instance.backup_dir = Some(to_absolute_path(&backup_dir));
         }
 
         if let Some(cluster_name) = args.cluster_name {
@@ -1181,6 +1233,9 @@ pub struct InstanceConfig {
     #[introspection(config_default = PathBuf::from("."))]
     pub instance_dir: Option<PathBuf>,
 
+    #[introspection(config_default = self.instance_dir.as_ref().map(|dir| dir.join("backup")))]
+    pub backup_dir: Option<PathBuf>,
+
     // Skip serializing, so that default config doesn't contain this option,
     // which isn't allowed to be set from file.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1265,6 +1320,13 @@ pub struct InstanceConfig {
 }
 
 impl InstanceConfig {
+    #[inline]
+    pub fn backup_dir(&self) -> &PathBuf {
+        self.backup_dir
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
     #[inline]
     pub fn instance_dir(&self) -> &PathBuf {
         self.instance_dir
@@ -3067,5 +3129,53 @@ instance:
 "###;
         let config = setup_for_tests(Some(yaml), &["run", "--advertise", "localhost:3303"]);
         assert_eq!(config.unwrap_err().to_string(), "invalid configuration: instance.advertise_address is deprecated, use instance.iproto_advertise instead (cannot use both at the same time)");
+    }
+
+    #[test]
+    fn test_abs_path_existing_relative_path_is_canonicalized() {
+        // Use Cargo's "src" directory which should exist.
+        let rel = PathBuf::from("src");
+        let abs = to_absolute_path(&rel);
+        assert!(abs.is_absolute());
+        assert!(abs.ends_with("src"));
+        assert_eq!(abs, fs::canonicalize(rel).unwrap());
+    }
+
+    #[test]
+    fn test_abs_path_existing_absolute_path_is_canonicalized() {
+        let abs = fs::canonicalize("src").unwrap();
+        let res = to_absolute_path(&abs);
+        assert_eq!(res, abs);
+    }
+
+    #[test]
+    fn test_abs_path_non_existing_relative_path_is_normalized() {
+        let rel = PathBuf::from("foo/bar/../baz");
+        let abs = to_absolute_path(&rel);
+
+        let expected = env::current_dir().unwrap().join("foo/baz");
+
+        assert_eq!(abs, expected);
+    }
+
+    #[test]
+    fn test_abs_path_non_existing_absolute_path_is_normalized() {
+        let cwd = env::current_dir().unwrap();
+        let abs = cwd.join("foo/./bar/../baz");
+
+        let res = to_absolute_path(&abs);
+        let expected = cwd.join("foo/baz");
+
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_abs_path_parent_dir_at_root_stays() {
+        let root = Path::new("/");
+        let non_existing = root.join("..").join("foo");
+        let res = to_absolute_path(&non_existing);
+
+        // It should stay "/foo" and not remove root directory.
+        assert_eq!(res, Path::new("/foo"));
     }
 }

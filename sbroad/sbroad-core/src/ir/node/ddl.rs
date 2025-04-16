@@ -1,6 +1,6 @@
 use super::{
-    AlterSystem, AlterTable, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc, DropTable,
-    NodeAligned, RenameRoutine, SetParam, SetTransaction, TruncateTable,
+    AlterSystem, AlterTable, Backup, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc,
+    DropTable, NodeAligned, RenameRoutine, SetParam, SetTransaction, TruncateTable,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::Node32;
@@ -24,6 +24,7 @@ pub enum DdlOwned {
     DropSchema,
     SetParam(SetParam),
     SetTransaction(SetTransaction),
+    Backup(Backup),
 }
 
 impl DdlOwned {
@@ -36,6 +37,7 @@ impl DdlOwned {
             DdlOwned::CreateTable(CreateTable { ref timeout, .. })
             | DdlOwned::DropTable(DropTable { ref timeout, .. })
             | DdlOwned::TruncateTable(TruncateTable { ref timeout, .. })
+            | DdlOwned::Backup(Backup { ref timeout, .. })
             | DdlOwned::AlterTable(AlterTable { ref timeout, .. })
             | DdlOwned::CreateIndex(CreateIndex { ref timeout, .. })
             | DdlOwned::DropIndex(DropIndex { ref timeout, .. })
@@ -70,6 +72,7 @@ impl DdlOwned {
             | DdlOwned::CreateIndex(_)
             | DdlOwned::CreateSchema
             | DdlOwned::SetParam(_)
+            | DdlOwned::Backup(_)
             | DdlOwned::SetTransaction(_) => false,
 
             DdlOwned::DropTable(_)
@@ -90,6 +93,10 @@ impl DdlOwned {
                 ..
             })
             | DdlOwned::TruncateTable(TruncateTable {
+                wait_applied_globally,
+                ..
+            })
+            | DdlOwned::Backup(Backup {
                 wait_applied_globally,
                 ..
             })
@@ -139,6 +146,7 @@ impl From<DdlOwned> for NodeAligned {
             DdlOwned::RenameRoutine(rename) => rename.into(),
             DdlOwned::SetParam(set_param) => set_param.into(),
             DdlOwned::SetTransaction(set_trans) => set_trans.into(),
+            DdlOwned::Backup(backup) => backup.into(),
         }
     }
 }
@@ -160,6 +168,7 @@ pub enum MutDdl<'a> {
     DropSchema,
     SetParam(&'a mut SetParam),
     SetTransaction(&'a mut SetTransaction),
+    Backup(&'a mut Backup),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -179,6 +188,7 @@ pub enum Ddl<'a> {
     DropSchema,
     SetParam(&'a SetParam),
     SetTransaction(&'a SetTransaction),
+    Backup(&'a Backup),
 }
 
 impl Ddl<'_> {
@@ -191,6 +201,7 @@ impl Ddl<'_> {
             Ddl::CreateTable(CreateTable { ref timeout, .. })
             | Ddl::DropTable(DropTable { ref timeout, .. })
             | Ddl::TruncateTable(TruncateTable { ref timeout, .. })
+            | Ddl::Backup(Backup { ref timeout, .. })
             | Ddl::AlterTable(AlterTable { ref timeout, .. })
             | Ddl::CreateIndex(CreateIndex { ref timeout, .. })
             | Ddl::DropIndex(DropIndex { ref timeout, .. })
@@ -222,6 +233,10 @@ impl Ddl<'_> {
                 ..
             })
             | Ddl::TruncateTable(TruncateTable {
+                wait_applied_globally,
+                ..
+            })
+            | Ddl::Backup(Backup {
                 wait_applied_globally,
                 ..
             })
@@ -267,6 +282,7 @@ impl Ddl<'_> {
             Ddl::TruncateTable(truncate_table) => {
                 DdlOwned::TruncateTable((*truncate_table).clone())
             }
+            Ddl::Backup(backup) => DdlOwned::Backup((*backup).clone()),
             Ddl::AlterSystem(alter_system) => DdlOwned::AlterSystem((*alter_system).clone()),
             Ddl::RenameRoutine(rename) => DdlOwned::RenameRoutine((*rename).clone()),
             Ddl::SetParam(set_param) => DdlOwned::SetParam((*set_param).clone()),

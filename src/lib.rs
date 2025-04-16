@@ -13,6 +13,7 @@
 // Prevents ok_or(BoxError::new(...))
 #![warn(clippy::or_fun_call)]
 
+use ::raft::Storage;
 use config::apply_parameter;
 use info::PICODATA_VERSION;
 use regex::Regex;
@@ -33,6 +34,7 @@ use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
+use std::fs;
 use std::time::Duration;
 use storage::Catalog;
 use traft::RaftSpaceAccess;
@@ -42,8 +44,15 @@ use crate::address::HttpAddress;
 use crate::error_code::ErrorCode;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
+use crate::schema::system_table_definitions;
+use crate::schema::TableDef;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::storage::schema::copy_dir_async;
+use crate::storage::schema::copy_file_async;
+use crate::storage::schema::ddl_meta_space_update_operable;
+use crate::storage::PropertyName;
+use crate::tarantool::rm_tarantool_files;
 use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
@@ -858,6 +867,7 @@ fn ensure_marker_file_exists_durable(path: &Path, contents: &[u8]) -> std::io::R
 ///
 /// This function is called from:
 ///
+/// - `start_restore`
 /// - `start_discover`
 /// - `start_boot`
 /// - `start_pre_join`
@@ -1293,6 +1303,134 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     Ok(())
 }
 
+fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result<(), Error> {
+    tlog!(Info, "entering instance restore phase");
+
+    let instance_dir = config.instance.instance_dir();
+    let share_dir = config.instance.share_dir();
+    let share_dir_name = share_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("Share dir should be a valid name");
+
+    if backup_path == instance_dir {
+        return Err(Error::other(String::from(
+            "Chosen backup directory is currently used instance dir",
+        )));
+    }
+
+    // Cleanup the instance directory with WALs existing before BACKUP run.
+    rm_tarantool_files(instance_dir)?;
+
+    // Move data from backup dir to instance data dir.
+    for entry in fs::read_dir(backup_path)? {
+        let Ok(entry) = entry else {
+            return Err(Error::other(String::from(
+                "Unable to operate with entry under backup dir",
+            )));
+        };
+        let path_src = entry.path();
+        let entry_name = path_src
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("Entry from backup dir should have a file name");
+
+        if entry_name == share_dir_name {
+            // Currently it's the only dir of backup which we shouldn't
+            // copy to instance_dir.
+            copy_dir_async(&path_src, share_dir, false)?;
+            continue;
+        }
+
+        let path_dest = instance_dir.join(entry_name);
+
+        // We don't have to check extenstion here
+        // as we want to move all files from backup dir
+        // (including .picodata-cookie and config) into instance_dir.
+        if path_src.is_file() {
+            // TODO: Am I right that we want to copy files without using
+            //       hardlinks when restoring from a backup?
+            //       See https://git.picodata.io/core/picodata/-/issues/2184.
+            copy_file_async(&path_src, &path_dest)?;
+        } else {
+            copy_dir_async(&path_src, &path_dest, false)?;
+        }
+        tlog!(
+            Info,
+            "Restore moved {} to {}",
+            path_src.display(),
+            path_dest.display()
+        );
+    }
+
+    luamod::setup();
+    assert!(!tarantool::is_box_configured());
+
+    let cfg = tarantool::Cfg::for_restore(config)?;
+    init_common(config, &cfg, config.cluster.shredding())?;
+    let (storage, raft_storage) =
+        get_initialized_storage()?.expect("Initialized storage should be available on restore");
+
+    // Remove pending_schema_change flag that
+    // was set during BACKUP execution (so that
+    // BACKUP is not executed again when instance is restarted).
+    let properties = &storage.properties;
+    properties
+        .delete(PropertyName::PendingSchemaChange)
+        .expect("storage should not fail");
+    properties
+        .delete(PropertyName::PendingSchemaVersion)
+        .expect("storage should not fail");
+
+    // Decrease NextSchemaVersion that was set on DdlPrepare exectuion.
+    let current_schema_version: u64 = properties
+        .get(&PropertyName::NextSchemaVersion)
+        .expect("storage should not fail")
+        .expect("property should exist");
+    properties.put(
+        PropertyName::NextSchemaVersion,
+        &(current_schema_version - 1),
+    )?;
+
+    let _ = transaction(|| -> Result<()> {
+        // Call log compaction to remove stale DdlPrepare opcode saved during BACKUP execution
+        let last_index = raft_storage
+            .last_index()
+            .expect("last_index should be valid");
+        raft_storage
+            .compact_log(last_index + 1)
+            .expect("log compaction should not fail");
+        Ok(())
+    });
+
+    // Return tables to "opearable" state.
+    //
+    // TODO: It's possible that in future we'll use `operable` flag not only for
+    //       long-running DDL operations. In such a case execution of `restore`
+    //       will switch the flag where it shouldn't.
+    //       See https://git.picodata.io/core/picodata/-/issues/2185.
+    let system_table_defs: Vec<TableDef> = system_table_definitions()
+        .into_iter()
+        .map(|(td, _)| td)
+        .collect();
+
+    for table_def in storage.pico_table.iter().expect("storage should not fail") {
+        if system_table_defs.contains(&table_def) {
+            continue;
+        }
+
+        ddl_meta_space_update_operable(&storage, table_def.id, true)
+            .expect("storage shouldn't fail");
+    }
+
+    // Save updated version of .snap.
+    let lua = ::tarantool::lua_state();
+    lua.exec("box.snapshot()")
+        .expect("snapshot shouldn't fail on restore");
+
+    Ok(())
+}
+
 fn start_pre_join(
     config: &PicodataConfig,
     instance_address: String,
@@ -1627,6 +1765,7 @@ fn postjoin(
             fiber::sleep(timeout);
             continue;
         };
+        tlog!(Debug, "leader address is known: {leader_address}");
 
         #[allow(unused_mut)]
         let mut version = info::PICODATA_VERSION.to_string();

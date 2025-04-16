@@ -26,6 +26,7 @@ use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::rpc::snapshot::proc_raft_snapshot_next_chunk;
+use crate::schema::system_table_definitions;
 use crate::schema::RoutineDef;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
@@ -42,6 +43,7 @@ use crate::storage::snapshot::RaftSnapshot;
 use crate::storage::snapshot::SnapshotData;
 use crate::storage::space_by_id;
 use crate::storage::DbConfig;
+use crate::storage::ToEntryIter;
 use crate::storage::{self, Catalog, PropertyName, SystemTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
@@ -1079,6 +1081,8 @@ impl NodeImpl {
             } => {
                 crate::error_injection!("STALL_BEFORE_APPLYING_DDL_PREPARE" => return SleepAndRetry);
 
+                tlog!(Info, "Applying DdlPrepare for {ddl:?}");
+
                 self.apply_op_ddl_prepare(ddl, schema_version, governor_op_id)
                     .expect("storage should not fail");
             }
@@ -1093,10 +1097,22 @@ impl NodeImpl {
                     .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
 
+                tlog!(Info, "Applying DdlCommit for {ddl:?}");
+
                 // This instance is catching up to the cluster.
                 if v_local < v_pending {
+                    tlog!(
+                        Info,
+                        "Catching up from {v_local} to {v_pending} for {ddl:?}"
+                    );
                     if self.is_readonly() {
                         return SleepAndRetry;
+                    } else if matches!(ddl, Ddl::Backup { .. }) {
+                        // TODO: See https://git.picodata.io/core/picodata/-/issues/2183.
+
+                        // Backup should not be executed again when instance is catching up.
+                        // The only thing we need to do is to update the local_schema_version.
+                        set_local_schema_version(v_pending).expect("storage should not fail");
                     } else {
                         // Master applies schema change at this point.
                         // Note: Unlike RPC handler `proc_apply_schema_change`, there is no need
@@ -1121,13 +1137,32 @@ impl NodeImpl {
                                 );
                                 return SleepAndRetry;
                             }
-                            Ok(()) => {}
+                            Ok(_) => {}
                         }
                     }
                 }
 
                 // Update pico metadata.
                 match ddl {
+                    Ddl::Backup { timestamp } => {
+                        // Update `operable` flag as far as we've disabled it
+                        // when handling DdlPrepare.
+                        for table_def in self
+                            .storage
+                            .pico_table
+                            .iter()
+                            .expect("storage should not fail")
+                        {
+                            ddl_meta_space_update_operable(&self.storage, table_def.id, true)
+                                .expect("storage shouldn't fail");
+                        }
+
+                        self.storage
+                            .properties
+                            .put(PropertyName::LastBackupTimestamp, &timestamp)
+                            .expect("_pico_property update should not fail");
+                    }
+
                     Ddl::CreateTable {
                         id, name, owner, ..
                     } => {
@@ -1376,6 +1411,9 @@ impl NodeImpl {
                     .pending_schema_change()
                     .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
+
+                tlog!(Info, "Applying DdlAbort for {ddl:?}");
+
                 // This condition means, schema versions must always increase
                 // even after an DdlAbort
                 if v_local == v_pending {
@@ -1392,6 +1430,20 @@ impl NodeImpl {
 
                 // Update pico metadata.
                 match ddl {
+                    Ddl::Backup { .. } => {
+                        // Update `operable` flag as far as we've disabled it
+                        // when handling DdlPrepare.
+                        for table_def in self
+                            .storage
+                            .pico_table
+                            .iter()
+                            .expect("storage should not fail")
+                        {
+                            ddl_meta_space_update_operable(&self.storage, table_def.id, true)
+                                .expect("storage shouldn't fail");
+                        }
+                    }
+
                     Ddl::CreateTable { id, .. } => {
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
                     }
@@ -1498,6 +1550,7 @@ impl NodeImpl {
                     }
                 }
 
+                tlog!(Info, "Removing PendingSchemaChange");
                 storage_properties
                     .delete(PropertyName::PendingSchemaChange)
                     .expect("storage should not fail");
@@ -1812,6 +1865,27 @@ impl NodeImpl {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
         match ddl.clone() {
+            Ddl::Backup { .. } => {
+                let system_table_defs: Vec<TableDef> = system_table_definitions()
+                    .into_iter()
+                    .map(|(td, _)| td)
+                    .collect();
+
+                // Traverse all user spaces and
+                // set their `operable` flag to `false`.
+                for table_def in self
+                    .storage
+                    .pico_table
+                    .iter()
+                    .expect("storage should not fail")
+                {
+                    if system_table_defs.contains(&table_def) {
+                        continue;
+                    }
+                    ddl_meta_space_update_operable(&self.storage, table_def.id, false)
+                        .expect("storage shouldn't fail");
+                }
+            }
             Ddl::CreateTable {
                 id,
                 name,

@@ -52,6 +52,13 @@ static UPGRADE_OPERATIONS_MAP: LazyLock<HashMap<&'static str, Vec<(&'static str,
                 ],
             ),
             ("25.3.3", vec![("proc_name", "proc_runtime_info_v2")]),
+            (
+                "25.4.1",
+                vec![
+                    ("proc_name", "proc_backup_abort_clear"),
+                    ("proc_name", "proc_apply_backup"),
+                ],
+            ),
         ])
     });
 

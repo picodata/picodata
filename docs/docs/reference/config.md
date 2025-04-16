@@ -87,6 +87,7 @@ cluster:
   shredding: false # (4)!
 instance:
   instance_dir: . # (14)!
+  backup_dir: ./backup # (40)!
   name: null # (21)!
   replicaset_name: null # (27)!
   tier: default # (28)!
@@ -164,6 +165,7 @@ instance:
 37. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
 38. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
 39. [instance.vinyl.timeout](#instance_vinyl_timeout)
+40. [instance.backup_dir](#instance_backup_dir)
 
 См. также:
 
@@ -314,6 +316,23 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная команда: [`picodata run --audit`]
 
 [`picodata run --audit`]: cli.md#run_audit
+
+### instance.backup_dir {: #instance_backup_dir }
+
+Директория для хранения резервных копий, создаваемых командой [`BACKUP`](sql/backup.md).  
+Каждый инстанс сохраняет данные в поддиректории внутри `backup-dir` в файле, имя
+которого формируется в формате `YYYYMMDDThhmmss`.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `<instance-dir>/backup`
+
+Аналогичная переменная окружения: `PICODATA_BACKUP_DIR`<br>
+Аналогичная команда: [`picodata run --backup-dir`]
+
+[`picodata run --backup-dir`]: cli.md#run_backup_dir
+
 
 ### instance.boot_timeout {: #instance_boot_timeout }
 

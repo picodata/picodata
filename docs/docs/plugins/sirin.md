@@ -443,7 +443,7 @@ INSERT INTO sessions (id, user_id) VALUES (uuid(), 42) USING TTL 600;
 - [Установка плагинов](https://docs.picodata.io/picodata/stable/overview/glossary/#plugin)
 - [Развёртывание кластера](https://docs.picodata.io/picodata/stable/#run_deploy)
 - [Мониторинг и телеметрия](https://docs.picodata.io/picodata/stable/admin/monitoring/)
-- [Резервное копирование и восстановление](https://docs.picodata.io/picodata/stable/admin/backup/)
+- [Резервное копирование и восстановление](https://docs.picodata.io/picodata/stable/admin/backup_and_restore/)
 
 ### Конфигурация плагина {: #plugin_configuration }
 

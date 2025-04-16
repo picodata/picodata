@@ -4,7 +4,7 @@ use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
-use crate::rpc::ddl_apply::{Request, Response};
+use crate::rpc::ddl_apply::Response;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
 use crate::storage::Catalog;
@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
+use tarantool::tuple::ToTupleBuffer;
 
 use tarantool::tuple::Tuple;
 
@@ -89,12 +90,15 @@ pub struct DdlMapCallRwRes {
 }
 
 /// This function **yields**
-pub fn ddl_map_callrw(
+pub fn ddl_map_callrw<T>(
     tier: &str,
     function_name: &str,
     rpc_timeout: Duration,
-    req: &Request,
-) -> Result<Vec<DdlMapCallRwRes>, Error> {
+    req: &T,
+) -> Result<Vec<DdlMapCallRwRes>, Error>
+where
+    T: ToTupleBuffer + ?Sized,
+{
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
         .get("pico")

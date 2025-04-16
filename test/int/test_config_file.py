@@ -98,6 +98,7 @@ instance:
             audit=dict(value=f"{instance_dir}/audit.log", source="commandline_or_environment"),
             config_file=dict(value=f"{instance.config_path}", source="commandline_or_environment"),
             instance_dir=dict(value=instance_dir, source="config_file"),
+            backup_dir=dict(value=f"{instance_dir}/backup", source="default"),
             iproto_listen=dict(value=f"{host}:{port}", source="config_file"),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),

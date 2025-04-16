@@ -6,6 +6,7 @@ fn main() -> ! {
     picodata_plugin::internal::set_panic_hook();
 
     match Picodata::parse() {
+        Picodata::Restore(args) => cli::restore::main(args),
         Picodata::Run(args) => cli::run::main(*args),
         Picodata::Test(args) => cli::test::main(args),
         Picodata::Tarantool(args) => cli::tarantool::main(args),

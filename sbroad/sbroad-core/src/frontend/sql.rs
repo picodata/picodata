@@ -7,8 +7,8 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
+    Alias, AlterColumn, AlterTable, AlterTableOp, Backup, Bound, BoundType, Frame, FrameType,
+    GroupBy, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
     ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow,
     Window,
 };
@@ -1243,6 +1243,32 @@ fn parse_drop_table(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropTa
     Ok(DropTable {
         name: table_name,
         if_exists,
+        wait_applied_globally,
+        timeout,
+    })
+}
+
+fn parse_backup(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<Backup, SbroadError> {
+    let mut timeout = get_default_timeout();
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    for child_id in &node.children {
+        let child_node = ast.nodes.get_node(*child_id)?;
+        match child_node.rule {
+            Rule::Timeout => {
+                timeout = get_timeout(ast, *child_id)?;
+            }
+            Rule::WaitAppliedGlobally => {
+                wait_applied_globally = true;
+            }
+            Rule::WaitAppliedLocally => {
+                wait_applied_globally = false;
+            }
+            _ => {
+                panic!("BACKUP node contains unexpected child: {child_node:?}")
+            }
+        }
+    }
+    Ok(Backup {
         wait_applied_globally,
         timeout,
     })
@@ -6261,6 +6287,11 @@ impl AbstractSyntaxTree {
                 Rule::DropTable => {
                     let drop_table = parse_drop_table(self, node)?;
                     let plan_id = plan.nodes.push(drop_table.into());
+                    map.add(id, plan_id);
+                }
+                Rule::Backup => {
+                    let backup = parse_backup(self, node)?;
+                    let plan_id = plan.nodes.push(backup.into());
                     map.add(id, plan_id);
                 }
                 Rule::TruncateTable => {

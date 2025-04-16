@@ -34,7 +34,7 @@ use tarantool::transaction::{transaction, TransactionError};
 // Note: The issue was discovered in
 // `<https://git.picodata.io/picodata/picodata/picodata/-/issues/748>`.
 thread_local! {
-    static LOCK: Rc<fiber::Mutex<()>> = Rc::new(fiber::Mutex::new(()));
+    pub static LOCK_APPLY_SCHEMA_CHANGE: Rc<fiber::Mutex<()>> = Rc::new(fiber::Mutex::new(()));
 }
 
 crate::define_rpc_request! {
@@ -60,7 +60,7 @@ crate::define_rpc_request! {
         // While the schema change is being applied, repeated RPCs will be blocked by this lock.
         // Once the change is applied and the lock is released, repeated RPC will finish quickly
         // after checking the schema versions.
-        let lock = LOCK.with(Rc::clone);
+        let lock = LOCK_APPLY_SCHEMA_CHANGE.with(Rc::clone);
         let _guard = lock.lock();
 
         if node.is_readonly() {
@@ -165,6 +165,10 @@ pub fn apply_schema_change(
     crate::error_injection!(block "BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION");
 
     match *ddl {
+        Ddl::Backup { .. } => {
+            unreachable!("BACKUP should not be met under apply_schema_change call")
+        }
+
         Ddl::CreateTable { id, .. } => {
             let abort_reason = ddl_create_space_on_master(storage, id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {

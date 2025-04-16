@@ -16,7 +16,7 @@ use tarantool::error::Error as TntError;
 #[cfg(feature = "error_injection")]
 use crate::error_injection;
 
-const PICODATA_COOKIE: &'static str = ".picodata-cookie";
+pub const PICODATA_COOKIE: &'static str = ".picodata-cookie";
 
 pub fn main(mut args: args::Run) -> ! {
     // Save the argv before entering tarantool, because tarantool will fuss about with them

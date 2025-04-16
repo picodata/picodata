@@ -614,6 +614,7 @@ class Instance:
     share_dir: str | None = None
     cluster_name: str | None = None
     _instance_dir: Path | None = None
+    _backup_dir: Path | None = None
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
@@ -640,6 +641,10 @@ class Instance:
     def instance_dir(self):
         assert self._instance_dir
         return self._instance_dir
+
+    @property
+    def backup_dir(self):
+        return self._backup_dir if self._backup_dir is not None else os.path.join(self.instance_dir, "backup")
 
     @property
     def iproto_listen(self):
@@ -698,6 +703,7 @@ class Instance:
             *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
             *([f"--instance-dir={self._instance_dir}"] if self._instance_dir else []),
+            *([f"--backup-dir={self._backup_dir}"] if self._backup_dir else []),
             *([f"--share-dir={self.share_dir}"] if self.share_dir else []),
             *([f"--iproto-listen={self.iproto_listen}"] if self.iproto_listen else []),
             *([f"--pg-listen={self.pg_listen}"] if self.pg_listen else []),
@@ -1124,12 +1130,17 @@ class Instance:
 
         if remove_data:
             self.remove_data()
+            self.remove_backup()
 
         self.start()
 
     def remove_data(self):
         log.info(f"removing instance_dir of {self}")
         shutil.rmtree(self.instance_dir)
+
+    def remove_backup(self):
+        log.info(f"removing backup_dir of {self}")
+        shutil.rmtree(self.backup_dir)
 
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
@@ -1670,6 +1681,9 @@ class Instance:
             f.write(self._service_password)
         os.chmod(self.service_password_file, 0o600)
 
+    def set_config_file(self, config_path: str):
+        self.config_path = config_path
+
     @property
     def service_password(self) -> Optional[str]:
         if self.service_password_file is None:
@@ -1795,6 +1809,145 @@ class Cluster:
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
 
+    def set_unique_configs_for_instances(
+        self,
+        *,
+        init_replication_factor: int | None = None,
+        share_dir_path: Path | None = None,
+    ):
+        """Set instance config based on unique instance fields.
+
+        Initially after cluster deploy each instance is pointing to the single
+        cluster config file. This function is called after all instances deployment
+        in order to set unique config for each instance.
+        """
+
+        # Generate default config.
+        data = subprocess.check_output([self.binary_path, "config", "default"])
+        default_config = data.decode()
+        config_yaml_obj = yaml_lib.safe_load(default_config)
+
+        # Fix config values which we generate in our test framework.
+        for i in self.instances:
+            config_yaml_obj_i = config_yaml_obj
+
+            if share_dir_path:
+                config_yaml_obj_i["instance"]["share_dir"] = str(share_dir_path)
+
+            config_yaml_obj_i["instance"]["admin_socket"] = str(os.path.join(i.instance_dir, "admin.sock"))
+            config_yaml_obj_i["instance"]["name"] = i.name
+            config_yaml_obj_i["instance"]["replicaset_name"] = i.replicaset_name
+            config_yaml_obj_i["instance"]["tier"] = i.tier
+            config_yaml_obj_i["instance"]["instance_dir"] = str(i.instance_dir)
+            config_yaml_obj_i["instance"]["backup_dir"] = str(i.backup_dir)
+            config_yaml_obj_i["instance"]["iproto_listen"] = i.iproto_listen
+            config_yaml_obj_i["instance"]["iproto_advertise"] = i.iproto_listen
+            if init_replication_factor:
+                config_yaml_obj_i["cluster"]["default_replication_factor"] = init_replication_factor
+
+                if i.tier:
+                    tier_to_set = i.tier
+                else:
+                    tier_to_set = "default"
+                config_yaml_obj_i["cluster"]["tier"][tier_to_set]["replication_factor"] = init_replication_factor
+            config_yaml_obj_i["instance"]["peer"] = [i.iproto_listen]
+            config_yaml_obj_i["instance"]["pg"]["listen"] = i.pg_listen
+            config_yaml_obj_i["instance"]["pg"]["advertise"] = i.pg_listen
+
+            config_path = os.path.join(i.instance_dir, "picodata.yaml")
+            with open(config_path, "w") as f:
+                yaml_lib.safe_dump(config_yaml_obj_i, f, default_flow_style=False)
+
+            i.set_config_file(config_path)
+
+    def restore(
+        self,
+        backup_path: str,
+        masters_number: int | None = None,  # Passed for rebalancer awaiting.
+        *,
+        is_absolute: bool | None = None,
+        config_name: str | None = None,
+    ):
+        """Clusterwide restore.
+
+        Should be used as a landmark for creation of ansible role
+        responsible for clusterwide restore.
+        """
+
+        def get_instance_full_backup_path(i: Instance):
+            if is_absolute:
+                i_backup_full_path = backup_path
+            else:
+                backup_dir = i.backup_dir
+                i_backup_full_path = os.path.join(backup_dir, backup_path)
+            return i_backup_full_path
+
+        def restore_instance(i: Instance):
+            i_backup_full_path = get_instance_full_backup_path(i)
+            log.info(f"executing: `picodata restore` on instance {i} and backup path {i_backup_full_path}")
+            try:
+                command = [
+                    self.binary_path,
+                    "restore",
+                    "--path",
+                    i_backup_full_path,
+                    *(["--config", config_name] if config_name is not None else []),
+                ]
+
+                # TODO: See https://git.picodata.io/core/picodata/-/issues/2187.
+                subprocess.check_output(command, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as e:
+                raise CommandFailed(e.stdout, e.stderr) from e
+
+        # For each instance in cluster check that it contains needed backup dir.
+        # Probably clusterwide restore is executed on a cluster with different number of
+        # instances.
+        #
+        # TODO: At that moment we know the topology of
+        #       * current cluster
+        #       * cluster from which backup is taken
+        #       We should also compare them and throw error
+        #       in case they differ.
+        #       See https://git.picodata.io/core/picodata/-/issues/2188.
+        for i in self.instances:
+            i_backup_full_path = get_instance_full_backup_path(i)
+            assert os.path.exists(i_backup_full_path), (
+                f"Backup does not exist on the path: {i_backup_full_path} for {i}"
+            )
+
+        # Stop all instances
+        self.terminate()
+
+        # Call `picodata restore` on each instance
+        for i in self.instances:
+            restore_instance(i)
+
+        # Wait until all buckets are known and vshard functions normally.
+        # TODO: The reason of adding crawlers waiting is that
+        #       vshard is not initialized sometimes before
+        #       `wait_until_instance_has_this_many_active_buckets` call.
+        #       Why`wait_online` doesn't help with that?
+        #       See https://git.picodata.io/core/picodata/-/issues/2188.
+        log_crawlers = []
+
+        # Back instacnes to live
+        for i in self.instances:
+            i.start()
+        for i in self.instances:
+            if i.replicaset_master_name() == i.name:
+                lc = log_crawler(i, "Discovery enters idle mode, all buckets are known")
+                log_crawlers.append(lc)
+            i.wait_online()
+
+        for lc in log_crawlers:
+            lc.wait_matched(timeout=30)
+
+        # Wait for rebalance to complete
+        if masters_number:
+            for i in self.instances:
+                if i.replicaset_master_name() == i.name:
+                    self.wait_until_instance_has_this_many_active_buckets(i, int(3000 / masters_number))
+
     def deploy(
         self,
         *,
@@ -1803,6 +1956,7 @@ class Cluster:
         tier: str | None = None,
         service_password: str | None = None,
         audit: bool | str = True,
+        wait_online: bool = True,
     ) -> list[Instance]:
         """Deploy a cluster of instances.
 
@@ -1825,7 +1979,10 @@ class Cluster:
                 audit=audit,
             )
 
-        return self.wait_online()
+        if wait_online:
+            return self.wait_online()
+        else:
+            return self.instances
 
     def wait_online(self) -> list[Instance]:
         for instance in self.instances:
@@ -1850,6 +2007,12 @@ class Cluster:
         with open(self.config_path, "w") as yaml_file:
             yaml_file.write(yaml)
 
+    def set_share_dir(self, share_dir: str):
+        self.share_dir = share_dir
+
+        for i in self.instances:
+            i.share_dir = share_dir
+
     def set_service_password(self, service_password: str):
         self.service_password = service_password
         self.service_password_file = os.path.join(self.data_dir, ".picodata-cookie")
@@ -1870,6 +2033,7 @@ class Cluster:
         enable_http: bool = False,
         pg_port: int | None = None,
         service_password: str | None = None,
+        backup_dir: Path | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1898,13 +2062,16 @@ class Cluster:
             if bootstrap_port == pg_port or port == pg_port:
                 pg_port = self.port_distributor.get()
 
+        instance_dir = self.choose_instance_dir(name or str(port))
+
         instance = Instance(
             binary_path=self.binary_path,
             cwd=self.data_dir,
             cluster_name=self.id,
             name=name,
             replicaset_name=replicaset_name,
-            _instance_dir=self.choose_instance_dir(name or str(port)),
+            _instance_dir=instance_dir,
+            _backup_dir=backup_dir or Path(os.path.join(instance_dir, "backup")),
             share_dir=self.share_dir,
             host=self.base_host,
             port=port,
@@ -2208,7 +2375,7 @@ class Cluster:
                 return
 
             log.warning(
-                f"\x1b[33mwaiting for bucket rebalancing, was: {previous_active}, became: {actual_active} (#{attempt})\x1b[0m"  # noqa: E501
+                f"\x1b[33mwaiting for bucket rebalancing on {i.name}, was: {previous_active}, became: {actual_active} (#{attempt})\x1b[0m"  # noqa: E501
             )
 
             if actual_active == previous_active:
@@ -2218,7 +2385,7 @@ class Cluster:
                     if len(instances_with_rebalancer) == 0:
                         message = "vshard.rebalancer is not running anywhere!"
                     elif len(instances_with_rebalancer) == 1:
-                        message = f"vshard.rebalancer is lagging (running no {instances_with_rebalancer[0]})"
+                        message = f"vshard.rebalancer is lagging (running on {instances_with_rebalancer[0]})"
                     else:
                         message = f"more than 1 vshard.rebalancer: {instances_with_rebalancer}"
                     log.error(f"vshard.storage.info.bucket.active stopped changing: {message}")

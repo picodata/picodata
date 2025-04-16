@@ -46,7 +46,7 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     tiers: &HashMap<&str, &'i Tier>,
     my_raft_id: RaftId,
-    pending_schema_change: Option<Ddl>,
+    pending_schema_change: &Option<Ddl>,
     tables: &HashMap<SpaceId, &'i TableDef>,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
@@ -596,7 +596,7 @@ pub(super) fn action_plan<'i>(
             rpc::replicasets_masters(replicasets, instances);
 
         let tier = if let Ddl::TruncateTable { id, .. } = ddl {
-            let space = tables.get(&id).expect("failed to get space");
+            let space = tables.get(id).expect("failed to get space");
             match &space.distribution {
                 crate::schema::Distribution::Global => None,
                 crate::schema::Distribution::ShardedImplicitly { tier, .. }

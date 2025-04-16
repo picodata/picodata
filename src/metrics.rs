@@ -302,6 +302,9 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
             }
         }
         Op::DdlPrepare { ddl, .. } => match ddl {
+            Ddl::Backup { .. } => {
+                operations.push(("ddl_backup", String::new()));
+            }
             Ddl::CreateTable { name, .. } => {
                 operations.push(("ddl_create_table", name.clone()));
             }

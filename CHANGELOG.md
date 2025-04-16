@@ -121,6 +121,25 @@ with the `YY.MINOR.MICRO` scheme.
   - `Unsigned` no longer appears in `EXPLAIN` output
   - The type remains available only for column definitions in DDL (`CREATE TABLE`, `ALTER TABLE`)
 
+- A new `BACKUP` SQL command is now supported for performing consistent, clusterwide backups.
+  A new `--backup-dir` configuration parameter has been introduced (available via environment variable and
+  config file). By default, `--backup-dir` is set to `<instance-dir>/backup`. When `BACKUP` is executed,
+  each instance in the cluster saves its data into a subdirectory under `backup-dir`, named in the
+  format YYYYMMDDThhmmss. The following data is included in the backup:
+  * `.snap` files
+  * the instance configuration file
+  * `.picodata-cookie`
+  * plugin data from `share-dir`
+
+  **Note**: Backup cleanup is not automated — database administrators are responsible for
+  managing and deleting old backups
+- A new `picodata restore` CLI command has been added to restore data from previously created backups.
+  Use the `--path` parameter to specify the path to the backup directory. The recommended restore
+  procedure is:
+  * Stop all instances in the cluster
+  * Run `picodata restore --path <backup-path>` on each instance, using the same timestamped
+    backup folder (e.g., YYYYMMDDThhmmss)
+  * Restart all instances
 
 ### Pgproto
 
