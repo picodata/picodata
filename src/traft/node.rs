@@ -493,7 +493,10 @@ pub(crate) struct NodeImpl {
     pool: Rc<ConnectionPool>,
     lc: LogicalClock,
     status: watch::Sender<Status>,
+    /// Index of the last applied raft log entry.
     applied: watch::Sender<RaftIndex>,
+    /// Index of the last committed raft log entry.
+    commit: watch::Sender<RaftIndex>,
     instance_reachability: InstanceReachabilityManagerRef,
     plugin_manager: Rc<PluginManager>,
 }
@@ -515,6 +518,7 @@ impl NodeImpl {
             .raft_id()?
             .expect("raft_id should be set by the time the node is being initialized");
         let applied: RaftIndex = raft_storage.applied()?;
+        let commit: RaftIndex = raft_storage.commit()?;
         let term: RaftTerm = raft_storage.term()?;
         let lc = {
             let gen = raft_storage.gen().unwrap() + 1;
@@ -542,6 +546,7 @@ impl NodeImpl {
             main_loop_status: "idle",
         });
         let (applied, _) = watch::channel(applied);
+        let (commit, _) = watch::channel(commit);
 
         let topology_cache = Rc::new(TopologyCache::load(&storage, raft_id)?);
 
@@ -557,6 +562,7 @@ impl NodeImpl {
             lc,
             status,
             applied,
+            commit,
             plugin_manager,
         })
     }
@@ -714,24 +720,61 @@ impl NodeImpl {
         Ok(rx)
     }
 
-    fn handle_committed_entries(&mut self, entries: &[raft::Entry]) -> traft::Result<()> {
-        let mut entries = entries.iter().peekable();
+    /// Returns `Err` if an unexpected error happens.
+    /// Returns `Ok(false)` if raft entry is blocked, this can happen when a
+    /// DdlCommit is being applied on the read-only replica for example.
+    /// Return `Ok(true)` when everything is fine.
+    ///
+    /// TODO: this function should just return `Result<()>` and `Err` should
+    /// always cause a later retry of `NodeImpl::advance`, but we can't do this
+    /// until <https://git.picodata.io/core/picodata/-/issues/1149> if fixed.
+    fn handle_committed_entries(&mut self, entries: &[raft::Entry]) -> traft::Result<bool> {
+        let applied = self.applied.get();
+        let commit = self.commit.get();
 
-        while let Some(&entry) = entries.peek() {
-            let entry = match traft::Entry::try_from(entry) {
-                Ok(v) => v,
-                Err(e) => {
-                    tlog!(Error, "abnormal entry: {e}"; "entry" => ?entry);
-                    continue;
-                }
-            };
+        if commit == applied {
+            // Everything is applied
+            return Ok(true);
+        }
+
+        let next_applied = applied + 1;
+
+        let traft_entries;
+        if entries.is_empty() || entries[0].index > next_applied {
+            // This happens when we failed to apply an entry on last iteration.
+            // Raft-rs only reports newly committed entries, so we need to get
+            // the old ones directly from storage.
+            traft_entries = self
+                .raft_storage
+                .entries(next_applied, commit + 1, None)
+                .expect("raft entries should decode correctly");
+        } else {
+            traft_entries = entries
+                .iter()
+                .skip_while(|entry| entry.index < next_applied)
+                .map(|entry| {
+                    traft::Entry::try_from(entry).expect("raft entries should decode correctly")
+                })
+                .collect();
+        }
+
+        if traft_entries.is_empty() {
+            // This is unlikely, but not a problem, any committed unhandled
+            // entries will be handled on the next iteration of raft_main_loop
+            return Ok(true);
+        }
+
+        debug_assert_eq!(traft_entries[0].index, next_applied);
+
+        let mut last_applied = None;
+
+        for entry in traft_entries {
+            let entry_index = entry.index;
 
             let mut apply_entry_result = EntryApplied(vec![]);
-            let mut new_applied = None;
             transaction(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
 
-                let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
                         apply_entry_result = self.handle_committed_normal_entry(entry);
@@ -752,49 +795,48 @@ impl NodeImpl {
                         "index" => entry_index
                     );
                 }
-                new_applied = Some(entry_index);
 
                 Ok(())
             })?;
 
-            if let Some(new_applied) = new_applied {
-                self.applied
-                    .send(new_applied)
-                    .expect("applied shouldn't ever be borrowed across yields");
-
-                crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
-                    if self.topology_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
-                        crate::error_injection!(block "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE");
-                    }
-                });
-            }
-
-            match apply_entry_result {
+            let dmls = match apply_entry_result {
+                EntryApplied(v) => v,
                 SleepAndRetry => {
-                    self.main_loop_status("blocked by raft entry");
-                    let timeout = MainLoop::TICK * 4;
-                    fiber::sleep(timeout);
-                    continue;
+                    break;
                 }
-                EntryApplied(dmls) if dmls.is_empty() => {
-                    // Actually advance the iterator.
-                    let _ = entries.next();
-                }
-                EntryApplied(dmls) => {
-                    let current_tier = self.topology_cache.my_tier_name();
-                    // currently only parameters from _pico_db_config processed outside of transaction (here)
-                    for AppliedDml { table, new_tuple } in dmls {
-                        debug_assert!(table == DbConfig::TABLE_ID);
-                        apply_parameter(new_tuple, current_tier)?;
-                    }
+            };
 
-                    // Actually advance the iterator.
-                    let _ = entries.next();
-                }
+            let current_tier = self.topology_cache.my_tier_name();
+            // currently only parameters from _pico_db_config processed outside of transaction (here)
+            for AppliedDml { table, new_tuple } in dmls {
+                debug_assert!(table == DbConfig::TABLE_ID);
+                apply_parameter(new_tuple, current_tier)?;
             }
+
+            // Update node's applied index
+            self.applied
+                .send(entry_index)
+                .expect("applied shouldn't ever be borrowed across yields");
+
+            crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
+                if self.topology_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
+                    crate::error_injection!(block "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE");
+                }
+            });
+
+            last_applied = Some(entry_index);
         }
 
-        Ok(())
+        let Some(last_applied) = last_applied else {
+            return Ok(false);
+        };
+
+        // Advance the applied index.
+        self.raw_node.advance_apply_to(last_applied);
+
+        crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
+
+        Ok(true)
     }
 
     fn wake_governor_if_needed(&self, op: &Op) {
@@ -2193,8 +2235,8 @@ impl NodeImpl {
             self.main_loop_status("awaiting replication");
             // Replicaset follower needs to sync with leader via tarantool
             // replication.
-            let timeout = MainLoop::TICK * 4;
-            fiber::sleep(timeout);
+            tlog!(Warning, "blocked by replicaset sync");
+            return Err(BoxError::new(ErrorCode::Other, "blocked by replicaset sync").into());
         }
 
         let mut snapshot_data = snapshot_data;
@@ -2344,6 +2386,7 @@ impl NodeImpl {
             self.main_loop_status_persisting(have_hard_state, have_entries, have_snapshot);
 
             let mut new_term = None;
+            let mut new_commit = None;
             let mut new_applied = None;
             let mut received_snapshot = false;
             let mut changed_parameters = Vec::new();
@@ -2354,6 +2397,7 @@ impl NodeImpl {
                     tlog!(Debug, "hard state: {hard_state:?}");
                     self.raft_storage.persist_hard_state(hard_state)?;
                     new_term = Some(hard_state.term);
+                    new_commit = Some(hard_state.commit);
                 }
 
                 // Persist uncommitted entries in the raft log.
@@ -2412,6 +2456,12 @@ impl NodeImpl {
                     .expect("status shouldn't ever be borrowed across yields");
             }
 
+            if let Some(new_commit) = new_commit {
+                self.commit
+                    .send(new_commit)
+                    .expect("commit shouldn't ever be borrowed across yields");
+            }
+
             if let Some(new_applied) = new_applied {
                 // handle_snapshot_metadata persists applied index, so we update the watch channel
                 self.applied
@@ -2458,26 +2508,30 @@ impl NodeImpl {
             }
         }
 
-        // Apply committed entries.
-        let committed_entries = ready.committed_entries();
-        if !committed_entries.is_empty() {
-            let res = self.handle_committed_entries(committed_entries);
-            if let Err(e) = res {
-                tlog!(Warning, "dropping raft ready: {ready:#?}");
-                panic!("transaction failed: {e}");
-            }
-
-            crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
-        }
-
         // These messages are only available on followers. They must be sent only
         // AFTER the HardState, Entries and Snapshot are persisted
         // to the stable storage.
         self.handle_messages(ready.take_persisted_messages());
 
+        let committed_entries = ready.take_committed_entries();
+
         // Advance the Raft. Make it know, that the necessary entries have been persisted.
         // If this is a leader, it may commit some of the newly persisted entries.
-        let mut light_rd = self.raw_node.advance(ready);
+        let mut light_rd = self.raw_node.advance_append(ready);
+
+        // Apply committed entries.
+        let res = self.handle_committed_entries(&committed_entries);
+        let all_entries_applied = match res {
+            Ok(v) => v,
+            Err(e) => {
+                // FIXME don't panic <https://git.picodata.io/core/picodata/-/issues/1149>
+                panic!("transaction failed: {e}");
+            }
+        };
+
+        if !all_entries_applied {
+            return Err(BoxError::new(ErrorCode::Other, "failed to apply raft entry").into());
+        }
 
         // Send new message ASAP. (Only on leader)
         let messages = light_rd.take_messages();
@@ -2496,10 +2550,14 @@ impl NodeImpl {
                 tlog!(Debug, "commit index: {}", commit);
 
                 self.raft_storage.persist_commit(commit)?;
+                self.commit
+                    .send(commit)
+                    .expect("commit shouldn't ever be borrowed across yields");
 
                 Ok(())
             }) {
                 tlog!(Warning, "dropping raft light ready: {light_rd:#?}");
+                // FIXME don't panic <https://git.picodata.io/core/picodata/-/issues/1149>
                 panic!("transaction failed: {e}");
             }
 
@@ -2509,17 +2567,18 @@ impl NodeImpl {
         // Apply committed entries.
         // These are probably entries which we've just persisted.
         let committed_entries = light_rd.committed_entries();
-        if !committed_entries.is_empty() {
-            let res = self.handle_committed_entries(committed_entries);
-            if let Err(e) = res {
+        let res = self.handle_committed_entries(committed_entries);
+        let all_entries_applied = match res {
+            Ok(v) => v,
+            Err(e) => {
+                // FIXME don't panic <https://git.picodata.io/core/picodata/-/issues/1149>
                 panic!("transaction failed: {e}");
             }
+        };
 
-            crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
+        if !all_entries_applied {
+            return Err(BoxError::new(ErrorCode::Other, "failed to apply raft entry").into());
         }
-
-        // Advance the apply index.
-        self.raw_node.advance_apply();
 
         self.main_loop_status("idle");
 
@@ -2772,6 +2831,7 @@ impl MainLoop {
     }
 }
 
+#[inline(always)]
 #[track_caller]
 pub fn global() -> Result<&'static Node, BoxError> {
     // Uninitialized raft node is a regular case. This case may take
