@@ -182,8 +182,8 @@ picodata admin admin.sock
 ```
 [к консоли администратора]: connecting.md#admin_console
 
-Проверьте статус инстансов в кластере Picodata, прочитав системную таблицу
-[`_pico_instance`]:
+Проверьте статус инстансов в кластере Picodata, прочитав системную
+таблицу [`_pico_instance`]:
 
 ```
 (admin) sql> SELECT name, replicaset_name, current_state, tier

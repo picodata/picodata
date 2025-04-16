@@ -394,3 +394,29 @@ instance:
 регистра символов, поэтому, к примеру, два инстанса с зонами `{ "DC":"['DC1']" }`
 и `{ "DC":"['dc1']" }` будут относиться к одному региону и, следовательно, не
 попадут в один репликасет.
+
+## Проверка работы кластера {: #check_status }
+
+Для проверки работы кластера используйте команду [`picodata status`]. С
+ее помощью можно узнать основную информацию о кластере, а также
+состояние отдельных инстансов. Пример:
+
+```shell
+picodata status
+Enter password for pico_service:
+ CLUSTER NAME: my_cluster
+ CLUSTER UUID: ba894c85-41cf-479f-90ff-114ae370792f
+ TIER/DOMAIN: default
+
+ name   state    uuid                                   uri
+i1      Online   ce9870c3-e8f1-4ab3-88d4-c2ad10ef25ca   127.0.0.1:3301
+i2      Online   6866d9fc-ad48-4ea1-a1e3-f35e2b9e60a9   127.0.0.1:3302
+i3      Online   5d153ee3-dae3-4bea-a4de-06ac2cc4be22   127.0.0.1:3303
+i4      Online   9560e6ad-445c-4334-a01f-02ee2f1fb6a8   127.0.0.1:3304
+```
+
+!!! note "Примечание"
+    По умолчанию паролем системного пользователя `pico_service` является
+    пустая строка.
+
+[`picodata status`]: ../reference/cli.md#status

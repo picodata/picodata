@@ -102,6 +102,10 @@ picodata expel <INSTANCE_UUID> --cluster-name=<CLUSTER_NAME> --peer=<HOST:PORT> 
 С помощью [`picodata expel`] можно удалить любой узел кластера, в том
 числе и единственный.
 
+Для проверки успешного удаления инстанса из кластера используйте команду
+[`picodata status`].
+
+[`picodata status`]: ../reference/cli.md#status
 [`picodata expel`]: ../reference/cli.md#expel
 [`_pico_instance`]: ../architecture/system_tables.md#_pico_instance
 [консоль администратора]: connecting.md#admin_console
