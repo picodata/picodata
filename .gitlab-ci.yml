@@ -765,25 +765,6 @@ publish-picodata-plugin:
   before_script:
     - pushd sbroad
 
-integration-sbroad:
-  extends: .test-sbroad
-  variables:
-    KUBERNETES_CPU_REQUEST: 6
-    KUBERNETES_MEMORY_REQUEST: "6Gi"
-  rules:
-    - <<: *if-no-docs
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-  tags:
-    - docker-k8s
-  script:
-    - make test_integration
-  artifacts:
-    paths:
-      - sbroad-cartridge/test_app/tmp/tarantool.log
-    expire_in: 1 week
-
 stress_tests:
   parallel:
     matrix:

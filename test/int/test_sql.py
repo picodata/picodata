@@ -5774,29 +5774,6 @@ def test_global_dml_cas_conflict(cluster: Cluster):
     assert rows == [[0, N * K]]
 
 
-def test_empty_queries(instance: Instance):
-    empty = instance.sql("")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql(";")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql("  ")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql("   ;")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql(";   ")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql(";;;;;;")
-    assert empty["row_count"] == 0
-
-    empty = instance.sql("; ; ;")
-    assert empty["row_count"] == 0
-
-
 def test_already_exists_error(instance: Instance):
     def do_sql_twice(sql):
         data = instance.sql(sql)

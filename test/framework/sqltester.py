@@ -145,6 +145,8 @@ def pytest_generate_tests(metafunc):
 def cluster_1(cluster: Cluster):
     init_cluster(cluster, 1)
     assert len(cluster.instances) == 1
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 3000)
     yield cluster
     cluster.kill()
 
