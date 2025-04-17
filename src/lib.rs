@@ -290,7 +290,7 @@ fn preload_http() {
     preload!("http.mime_types", "http/mime_types.lua");
 }
 
-fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
+fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(), Error> {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
     lua.exec_with(
@@ -302,23 +302,38 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
         "#,
         (host, port),
     )
-    .unwrap_or_else(|err| {
-        panic!("failed to start http server on {}:{}: {}", host, port, err);
-    });
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to start http server on {}:{}: {}",
+            host, port, err
+        ))
+    })?;
+
     lua.exec_with(
         "pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, ...)",
         tlua::Function::new(|| -> _ {
             http_server::wrap_api_result!(http_server::http_api_tiers())
         }),
     )
-    .expect("failed to add route api/v1/tiers to http server");
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/tiers` to http server: {}",
+            err
+        ))
+    })?;
+
     lua.exec_with(
         "pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, ...)",
         tlua::Function::new(|| -> _ {
             http_server::wrap_api_result!(http_server::http_api_cluster())
         }),
     )
-    .expect("failed to add route api/v1/cluster to http server");
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route `/api/v1/cluster` to http server: {}",
+            err
+        ))
+    })?;
 
     lua.exec_with(
         r#"
@@ -330,7 +345,9 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
         end)"#,
         tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
     )
-    .expect("failed to add route metrics to http server");
+    .map_err(|err| Error::other(format!("failed to add route `/metrics`: {}", err)))?;
+
+    Ok(())
 }
 
 #[cfg(feature = "webui")]
@@ -1110,7 +1127,7 @@ fn postjoin(
     }
 
     if let Some(addr) = &config.instance.http_listen {
-        start_http_server(addr);
+        start_http_server(addr)?;
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
         } else {
