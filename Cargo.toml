@@ -4,6 +4,7 @@ version = "25.2.0"
 edition = "2021"
 autotests = false
 rust-version = "1.85"
+license-file = "./LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
