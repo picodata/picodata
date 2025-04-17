@@ -1113,7 +1113,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
         Ddl::CreateTable { id, .. } => *id == space,
         Ddl::DropTable { id, .. } => *id == space,
         Ddl::TruncateTable { id, .. } => *id == space,
-        Ddl::ChangeFormat { .. } => false,
+        Ddl::ChangeFormat { table_id, .. } => *table_id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
         Ddl::CreateProcedure { .. } => false,
