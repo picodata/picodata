@@ -2219,13 +2219,22 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
             """
         )
 
-    # proof that it is `not yet applied`
-    result = leader.sql("SELECT * FROM _pico_table WHERE name = 't1'")
-    assert result != []
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    # proof that it was `not yet applied` case - table should be operable
+    rows = leader.sql("SELECT operable from _pico_table where name = 't1'")
+    assert rows == [[True]]
+
+    initial_schema_version = leader.sql("SELECT schema_version FROM _pico_table WHERE name = 't1'")
+    initial_schema_version = int(initial_schema_version[0][0])
+
+    result = leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
+    assert result == [["next_schema_version", initial_schema_version + 1]]
 
     # Create a conflict to force ddl abort.
-    space_name = "conflict"
-    i2.eval("box.schema.space.create(...)", space_name)
+    conflict_table_name = "conflict"
+    i2.eval("box.schema.space.create(...)", conflict_table_name)
 
     # actually it's `abort` case
     with pytest.raises(
@@ -2233,20 +2242,23 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         match="Log compaction happened during DDL execution. Table creation is in progress.",
     ):
         leader.sql(
-            """
-            CREATE TABLE conflict (id INT PRIMARY KEY)
+            f"""
+            CREATE TABLE {conflict_table_name} (id INT PRIMARY KEY)
             OPTION (TIMEOUT = 3)
             """
         )
 
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
     # proof that it is `aborted`
-    result = leader.sql("SELECT * FROM _pico_table WHERE name = 'conflict'")
+    result = leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
     assert result == []
 
     result = leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
-    assert result == [["next_schema_version", 6]]
+    assert result == [["next_schema_version", initial_schema_version + 2]]
 
-    i2.eval("box.space.conflict:drop()")
+    i2.eval(f"box.space.{conflict_table_name}:drop()")
 
     leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 1000")
 
