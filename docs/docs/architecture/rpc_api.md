@@ -14,7 +14,7 @@ RPC API используется в следующих сценариях:
 - Инстансы взаимодействуют друг с другом под служебной учетной записью
   `pico_service`
 - Тестирование pytest использует для подключения клиент tarantool-python
-- Подключение `picodata connect` использует вызов [`.proc_sql_dispatch`](#proc_sql_dispatch)
+
 <!-- - Синтаксис вызова из Lua: `box.func[".proc_version_info"]:call()` -->
 <!-- - Команда `picodata expel` использует вызов [.proc_expel_instance](#proc_expel_instance) -->
 

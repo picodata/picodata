@@ -93,7 +93,7 @@ UNIX:
       iproto_advertise: '127.0.0.1:3301'
       http_listen: '0.0.0.0:8081'
       pg:
-        listen: '0.0.0.0:5432'
+        listen: '0.0.0.0:4327'
     ```
 
 [конфигурационного файла]: ../reference/config.md#config_file_description
@@ -163,9 +163,9 @@ ALTER USER "username" USING ldap;
 будет невозможна. Также важно понимать, что любые проблемы с удаленным
 LDAP-сервером немедленно отразятся на возможности аутентифицировать
 пользователей. Для решения этой проблемы администраторам предлагается
-временно изменить метод аутентификации (например, на `'chap-sha1'`) для
+временно изменить метод аутентификации (например, на `'md5'`) для
 затронутых пользователей при помощи функции смены пароля:
 
 ```sql
-ALTER USER "username" WITH PASSWORD 'new_password' USING chap-sha1;
+ALTER USER "username" WITH PASSWORD 'new_password' USING md5;
 ```

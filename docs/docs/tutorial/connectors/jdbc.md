@@ -240,7 +240,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
             props.setProperty("password", "P@ssw0rd");
             props.setProperty("sslmode", "disable");
 
-            var connstr = "jdbc:picodata://localhost:5432/";
+            var connstr = "jdbc:picodata://localhost:4327/";
             try (Connection conn = DriverManager.getConnection(connstr, props)) {
                 logger.info("Connected to the Picodata server successfully.");
 
@@ -308,11 +308,11 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         PICODATA_IPROTO_LISTEN: picodata-1:3301
         PICODATA_IPROTO_ADVERTISE: picodata-1:3301
         PICODATA_PEER: picodata-1:3301
-        PICODATA_PG_LISTEN: picodata-1:5432
+        PICODATA_PG_LISTEN: picodata-1:4327
         PICODATA_PG_SSL: "false"
         ports:
         - "3301:3301"
-        - "5432:5432"
+        - "4327:4327"
 
     picodata-2:
         image: docker-public.binary.picodata.io/picodata:24.4.1

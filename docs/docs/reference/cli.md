@@ -19,7 +19,6 @@ OPTIONS:
 SUBCOMMANDS:
     admin      Connect to the Admin console of a Picodata instance
     config     Subcommands related to working with the configuration file
-    connect    Connect to the Distributed SQL console
     expel      Expel node from cluster
     help       Print this message or the help of the given subcommand(s)
     plugin     Subcommand related to plugin management
@@ -29,8 +28,6 @@ SUBCOMMANDS:
 ```
 
 ## picodata run {: #run }
-
-<!-- Описание соответствует версии Picodata `24.7.0-1152-g27f3c263`. -->
 
 Запускает инстанс Picodata, см. [Запуск Picodata](../tutorial/run.md).
 
@@ -48,7 +45,7 @@ picodata run [OPTIONS]
 `--admin-sock <PATH>`
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
-команды [`picodata admin`](#admin). В отличие от `picodata connect`,
+команды [`picodata admin`](#admin). В отличие от [пользовательской консоли],
 коммуникация осуществляется в виде обычного текста и всегда происходит
 под учетной записью администратора.
 
@@ -58,6 +55,7 @@ picodata run [OPTIONS]
 Аналогичный параметр файла конфигурации: [`instance.admin_socket`]
 
 [`instance.admin_socket`]: config.md#instance_admin_socket
+[пользовательской консоли]: ../tutorial/connecting.md#postgresql
 
 ### --audit {: #run_audit }
 
@@ -321,7 +319,7 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 ### --pg-listen {: #run_pg_listen }
 
 Адрес сервера для подключения по протоколу
-[PostgreSQL](../tutorial/connecting.md#pgproto).
+[PostgreSQL](../tutorial/connecting.md#postgresql).
 
 Значение по умолчанию: `127.0.0.1:4327`
 
@@ -458,77 +456,6 @@ picodata config default -o picodata.yaml
 
 Подробнее об имени `picodata.yaml` — в описании команды [`picodata run`](#run).
 
-## picodata connect {: #connect }
-
-Подключается к кластерной SQL-консоли. См. [Пользовательская
-консоль](../tutorial/connecting.md#sql_console)
-
-```shell
-picodata connect [OPTIONS] <ADDRESS>
-```
-
-- `ADDRESS`: Адрес инстанса Picodata в формате `[USER@]HOST:PORT`,
-  соответствующий опции [`picodata run --iproto-advertise`](#run_iproto_advertise)
-
-**Пример**
-
-```shell
-$ picodata connect alice@127.0.0.1:3301;
-Enter password for alice:
-Connected to interactive console by address "127.0.0.1:3301" under "alice" user
-type '\help' for interactive help
-sql>
-```
-
-### -a, --auth-type {: #connect_auth_type }
-
-`-a, --auth-type <METHOD>`
-
-Метод аутентификации, см. [Аутентификация с помощью LDAP](../admin/ldap.md).
-
-Возможные значения: `chap-sha1`, `ldap`, `md5`<br>
-Значение по умолчанию: `md5`<br>
-
-### --password-file {: #connect_password_file }
-
-`--password-file <PATH>`
-
-Путь к файлу с паролем указанного пользователя (хранится в виде обычного
-текста). Без этого параметра пароль будет запрошен в интерактивном
-режиме.
-
-Аналогичная переменная окружения: `PICODATA_PASSWORD_FILE`
-
-### -u, --user {: #connect_user }
-
-`-u, --user <USER>`
-
-Имя пользователя, см. [Управление доступом](../admin/access_control.md#user_management).
-
-Игнорируется при указании имени пользователя в адресе<br>
-Значение по умолчанию: `guest`
-
-<!-- ### Число попыток неудачного входа {: #max_login_attempts }
-
-Число допустимых неудачных попыток входа определяется параметром
-`max_login_attempts`, который хранится в системной таблице
-[`_pico_property`](../architecture/system_tables.md#_pico_property). По
-умолчанию, значение равно `5`, но его можно изменить через запрос
-[pico.cas()](api.md#pico.cas), например, так:
-
-```lua
-(admin) lua> pico.cas({
-    kind = 'replace',
-    table = '_pico_property',
-    tuple = {'max_login_attempts', 6},
-});
-
-Данная настройка не персистентна и локальна для текущего инстанса:
-перезапуск инстанса сбрасывает счетчик попыток и позволяет
-разблокировать пользователя.
-```
--->
-
 ## picodata expel {: #expel }
 
 Исключает инстанс Picodata из состава кластера. По умолчанию (без
@@ -561,7 +488,7 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 
 Метод аутентификации, см. [Аутентификация с помощью LDAP](../admin/ldap.md).
 
-Возможные значения: `chap-sha1`, `ldap`, `md5`<br>
+Возможные значения: `md5`, `ldap`, `chap-sha1`<br>
 Значение по умолчанию: `md5`<br>
 
 ### --cluster-name {: #expel_cluster_name }

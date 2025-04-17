@@ -563,7 +563,7 @@ pico.sql([[
 pico.sql([[
   create user "alice"
   with password 't0tallysecret'
-  using chap-sha1
+  using md5
   ]]);
 ```
 

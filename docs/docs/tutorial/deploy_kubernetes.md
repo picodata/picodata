@@ -111,26 +111,25 @@ default-picodata-1   1/1     Running   1 (9h ago)   9h
 
 ### Протокол PostgreSQL (psql) {: #check_picodata_cluster_via_psql }
 
-Пробросьте локальный порт 5432 к тому же порту пода `default-picodata-0`:
+Пробросьте локальный порт 4327 к тому же порту пода `default-picodata-0`:
 
 ```bash
-$ kubectl port-forward -n picodata default-picodata-0 5432
-Forwarding from 127.0.0.1:5432 -> 5432
-Forwarding from [::1]:5432 -> 5432
+$ kubectl port-forward -n picodata default-picodata-0 4327
+Forwarding from 127.0.0.1:4327 -> 4327
+Forwarding from [::1]:4327 -> 4327
 ```
 
-Откройте еще один терминал и подключитесь к инстансу Picodata в поде
-`default-picodata-0` [по протоколу PostgreSQL]:
+Откройте еще один терминал и [подключитесь](connecting.md#postgresql) к
+инстансу Picodata в поде `default-picodata-0`:
 
 ```bash
-psql postgres://admin:T0psecret@127.0.0.1:5432
+psql postgres://admin:T0psecret@127.0.0.1:4327
 ```
 
 Для подключения используется учетная запись администратора, пароль которой
 задан переменной окружения `PICODATA_ADMIN_PASSWORD` в шаблоне чарта
 Picodata [`templates/picodata.yml`].
 
-[по протоколу PostgreSQL]: connecting.md#pgproto
 [`templates/picodata.yml`]: https://git.picodata.io/core/picodata-chart/-/blob/main/picodata/templates/picodata.yml
 
 Проверьте статус инстансов в кластере Picodata, прочитав системную таблицу

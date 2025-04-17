@@ -70,7 +70,7 @@
       iproto_advertise: '127.0.0.1:3301'
       http_listen: '0.0.0.0:8081'
       pg:
-        listen: '0.0.0.0:5432'
+        listen: '0.0.0.0:4327'
 
       memtx:
         memory: 64M
@@ -100,7 +100,7 @@
       iproto_advertise: '127.0.0.1:3302'
       http_listen: '0.0.0.0:8082'
       pg:
-        listen: '0.0.0.0:5433'
+        listen: '0.0.0.0:4328'
 
       memtx:
         memory: 64M
@@ -130,7 +130,7 @@
       iproto_advertise: '127.0.0.1:3303'
       http_listen: '0.0.0.0:8083'
       pg:
-        listen: '0.0.0.0:5434'
+        listen: '0.0.0.0:4329'
 
       memtx:
         memory: 64M
@@ -234,7 +234,7 @@ picodata run --config i3.yml
       iproto_advertise: '127.0.0.1:3301'
       http_listen: '0.0.0.0:8081'
       pg:
-        listen: '0.0.0.0:5432'
+        listen: '0.0.0.0:4327'
 
       memtx:
         memory: 64M
@@ -264,7 +264,7 @@ picodata run --config i3.yml
       iproto_advertise: '127.0.0.1:3302'
       http_listen: '0.0.0.0:8082'
       pg:
-        listen: '0.0.0.0:5433'
+        listen: '0.0.0.0:4328'
 
       memtx:
         memory: 1024M
@@ -294,7 +294,7 @@ picodata run --config i3.yml
       iproto_advertise: '127.0.0.1:3303'
       http_listen: '0.0.0.0:8083'
       pg:
-        listen: '0.0.0.0:5434'
+        listen: '0.0.0.0:4329'
 
       memtx:
         memory: 1024M

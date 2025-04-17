@@ -7,10 +7,9 @@
 [SSL]: https://ru.wikipedia.org/wiki/SSL
 [инстансом]: ../overview/glossary.md#instance
 
-Picodata поддерживает SSL при подключении по протоколу [PostgreSQL].
+Picodata поддерживает SSL при подключении по протоколу PostgreSQL.
 Безопасное соединение задействуется автоматически если оно
-поддерживается (и настроено) на стороне инстанса Picodata ("сервера
-PostgreSQL").
+поддерживается (и настроено) на стороне инстанса Picodata.
 
 !!! note "Примечание"
     Если в конфигурации инстанса включен параметр
@@ -21,7 +20,6 @@ PostgreSQL").
 для того, чтобы пароль пользователя не передавался по сети в открытом
 виде.
 
-[PostgreSQL]: ../tutorial/connecting.md#pgproto
 [LDAP]: ldap.md
 [instance.pg.ssl]: ../reference/config.md#instance_pg_ssl
 

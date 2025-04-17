@@ -31,7 +31,6 @@ Picodata предоставляет обособленный драйвер [pic
 [репозитории Picodata]: https://binary.picodata.io/service/rest/repository/browse/maven-releases/io/picodata/picodata-jdbc/
 [запущенному инстансу]: deploy.md
 [протоколу PostgreSQL]: ../reference/config.md#instance_pg_listen
-[PG_LISTEN]: ../reference/config.md#instance_pg_listen
 
 ## Подключение {: #enabling }
 
@@ -46,7 +45,10 @@ _База данных > Управление драйверами > Новый 
 - имя драйвера: `Picodata`
 - имя класса: `io.picodata.jdbc.Driver`
 - шаблон URL: `jdbc:picodata://{host}:{port}/?`
-- стандартный порт: укажите номер порта, заданный для параметра [PG_LISTEN] инстанса Picodata (обычно это `5432`)
+- стандартный порт: укажите номер порта для подключения по протоколу
+  PostgreSQL. По умолчанию в Picodata это `4327`. Порт может быть
+  переопределен с помощью параметра конфигурации
+  [`instance.pg.listen`](../reference/config.md#instance_pg_listen).
 - стандартный логин: укажите, под каким пользователем DBeaver будет предлагать подключиться к Picodata
 
 Также включите параметр `Propagate driver properties`. Остальные настройки оставьте как есть. Пример заполнения показан ниже:

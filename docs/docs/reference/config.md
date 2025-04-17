@@ -265,9 +265,9 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 ### instance.admin_socket {: #instance_admin_socket }
 
 Путь к unix-сокету для подключения к консоли администратора с помощью
-команды `picodata admin`. В отличие от `picodata connect`, коммуникация
-осуществляется в виде обычного текста и всегда происходит под учетной
-записью администратора.
+команды `picodata admin`. В отличие от [пользовательской консоли],
+коммуникация осуществляется в виде обычного текста и всегда происходит
+под учетной записью администратора.
 
 Данные:
 
@@ -278,6 +278,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная команда: [`picodata run --admin-sock`]
 
 [`picodata run --admin-sock`]: cli.md#run_admin_sock
+[пользовательской консоли]: ../tutorial/connecting.md#postgresql
 
 ### instance.audit {: #instance_audit }
 
@@ -524,7 +525,7 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 ### instance.pg.listen {: #instance_pg_listen }
 
 Адрес сервера для подключения по протоколу
-[PostgreSQL](../tutorial/connecting.md#pgproto).
+[PostgreSQL](../tutorial/connecting.md#postgresql).
 
 Данные:
 

@@ -44,11 +44,11 @@ picodata run
 выполните в двух соседних терминалах следующие команды:
 
 ```shell
-picodata run --instance-dir ./data/i1 --iproto-listen 127.0.0.1:3301 --pg-listen 127.0.0.1:5432
+picodata run --instance-dir ./data/i1 --iproto-listen 127.0.0.1:3301 --pg-listen 127.0.0.1:4327
 ```
 
 ```shell
-picodata run --instance-dir ./data/i2 --iproto-listen 127.0.0.1:3302 --pg-listen 127.0.0.1:5433 --peer 127.0.0.1:3301
+picodata run --instance-dir ./data/i2 --iproto-listen 127.0.0.1:3302 --pg-listen 127.0.0.1:4328 --peer 127.0.0.1:3301
 ```
 
 Обратите внимание на различия в запуске инстансов:
@@ -116,24 +116,17 @@ docker-compose up -d
 picodata admin pico/data/picodata-1-1/admin.sock
 ```
 
-Для подключения к [SQL-консоли](../tutorial/connecting.md#sql_console)
-используйте команду:
+Для подключения к пользовательской консоли по протоколу
+[PostgreSQL](../tutorial/connecting.md#postgresql) используйте команду:
 
 ```shell
-picodata connect admin@127.0.0.1:13301
+psql postgres://admin@127.0.0.1:4327
 ```
 
 Пароль администратора `T0psecret` задан через
 переменную окружения `PICODATA_ADMIN_PASSWORD`, см. [docker-compose.yml:17]
 
 [docker-compose.yml:17]: https://git.picodata.io/core/picodata/-/blob/master/docker/docker-compose.yml#L17
-
-Для подключения по протоколу [PostgreSQL](../tutorial/connecting.md#pgproto)
-используйте команду:
-
-```shell
-psql postgres://admin@127.0.0.1:55432?sslmode=disable
-```
 
 ## Безопасный запуск {: #secure_run }
 
