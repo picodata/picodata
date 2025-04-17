@@ -1185,10 +1185,16 @@ fn postjoin(
             );
         });
 
-    // Start admin console
+    // Start admin console, set permission mode on socket file to 0660
     let socket_uri = util::validate_and_complete_unix_socket_path(config.instance.admin_socket())?;
     let lua = ::tarantool::lua_state();
-    lua.exec_with(r#"require('console').listen(...)"#, &socket_uri)?;
+    lua.exec_with(
+        r#"
+    local uri, permissions  = ...;
+    require('console').listen(uri, tonumber(permissions, 8))
+    "#,
+        (&socket_uri, "660"),
+    )?;
 
     let res = on_shutdown::setup_on_shutdown_trigger();
     if let Err(e) = res {

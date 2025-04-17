@@ -17,6 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
   - disallow `HOST` or `:PORT`,
   - this is technically a breaking change.
 - provide a more detailed message for address binding errors
+- set permissions of admin socket file to 0660 by default.
 
 ### Pgproto
 

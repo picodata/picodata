@@ -1,5 +1,7 @@
+import os
 import pexpect  # type: ignore
 import pytest
+import stat
 import sys
 from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
 
@@ -371,6 +373,10 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
+
+    st = os.stat(f"{i1.instance_dir}/admin.sock")
+    mode = stat.S_IMODE(st.st_mode)
+    assert oct(mode) == "0o660"
 
     cli = pexpect.spawn(
         # For some uninvestigated reason, readline trims the propmt in CI
