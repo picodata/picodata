@@ -2,6 +2,7 @@
 name = "tarantool-build"
 version = "0.1.0"
 edition = "2021"
+license-file = "../LICENSE"
 
 [dependencies]
 build-rs-helpers = { path = "../build-rs-helpers" }
