@@ -9,7 +9,7 @@
 - роли
 - пользователи
 - процедуры
-- и т. д.
+- и т.д.
 
 Для всех них в SQL-командах выполняются общие правила и ограничения.
 
@@ -39,3 +39,28 @@
 приведено в нижний регистр. Например, команды `create table
 WAREHOUSE...` и `create table "warehouse"...` создадут одну и ту же
 таблицу `warehouse`.
+
+## Поддержка схемы public {: #public_schema_support }
+
+Для совместимости со сторонними СУБД, в первую очередь, с PostgreSQL, в
+Picodata реализована поддержка эфемерной схемы данных `public`
+(используется в PostgreSQL по умолчанию).
+
+Имя `public` можно указать в виде префикса для объектов, находящихся в
+схеме данных (таблиц, индексов, процедур и т.д.). Примеры равнозначных
+запросов:
+
+```sql title="Получение данных таблицы"
+SELECT * FROM _pico_table;
+SELECT * FROM public._pico_table;
+```
+
+```sql title="Получение данных колонки таблицы"
+SELECT _pico_table.id FROM _pico_table;
+SELECT public._pico_table.id FROM public._pico_table;
+```
+
+```sql title="Создание процедуры"
+CREATE PROCEDURE public.proc (int, text, text) AS $$INSERT INTO warehouse VALUES($1, $2, $3)$$;
+CREATE PROCEDURE "public".proc(int, text, text) AS $$INSERT INTO warehouse VALUES($1, $2, $3)$$;
+```
