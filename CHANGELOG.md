@@ -33,6 +33,40 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Forbid the granting of DROP privileges on system tables.
 
+### Type system
+
+- Improved type checking now catches more errors earlier with clearer error messages.
+  Valid queries should note no difference.
+
+  Example with `SELECT 1 = false`:
+
+  Old behavior:
+  ```sql
+  picodata> select 1 = false;
+  ---
+  - null
+  - 'sbroad: failed to create tarantool: Tarantool(BoxError { code: 171, message: Some("Type
+    mismatch: can not convert boolean(FALSE) to number"), error_type: Some("ClientError"),
+    errno: None, file: Some("./src/box/sql/mem.c"), line: Some(2784), fields: {}, cause:
+    None })'
+  ...
+  ```
+
+  New behavior:
+  ```sql
+  picodata> select 1 = false;
+  ---
+  - null
+  - 'sbroad: could not resolve operator overload for =(usigned, bool)'
+  ...
+  ```
+
+  Some queries with parameters or subqueries that previously worked might
+  now require explicit type casts. For instance, `select 1 + (select $1)`
+  now leads to "could not resolve operator overload for +(unsigned, unknown)"
+  error, that can be fixed with explicit type cast: `select 1 + (select $1)::int`
+
+
 ### Fixes
 
 - Changed `picodata status` output format to more minimalistic and unix-stylished.
