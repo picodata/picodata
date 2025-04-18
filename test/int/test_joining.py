@@ -1,4 +1,5 @@
 import pytest
+import uuid
 
 from conftest import (
     Cluster,
@@ -54,6 +55,19 @@ def raft_join(
 
 def replicaset_name(instance: Instance):
     return instance.eval("return box.space._pico_instance:get(...).replicaset_name", instance.name)
+
+
+def count_instances_by_uuid(instance, uuid_str: str) -> int:
+    return instance.eval(
+        """
+            local cnt = 0
+            for _, v in box.space._pico_instance:pairs() do
+                if v.uuid == ... then cnt = cnt + 1 end
+            end
+            return cnt
+        """,
+        uuid_str,
+    )
 
 
 def test_request_follower(cluster2: Cluster):
@@ -552,3 +566,31 @@ cluster:
         instance.wait_online()
 
     lc.wait_matched()
+
+
+def test_proc_raft_join_is_idempotent(cluster: Cluster):
+    """Calling .proc_raft_join multiple times with the same UUID should not
+    create duplicates and should return the same record."""
+
+    cluster.deploy(instance_count=1)
+    leader = cluster.instances[0]
+
+    instance = cluster.add_instance()
+    instance.assert_raft_status("Follower", leader_id=leader.raft_id)
+
+    instance_uuid = instance.uuid()
+
+    assert count_instances_by_uuid(leader, instance_uuid) == 1
+
+    instance.terminate()
+
+    for i in range(3):
+        result = raft_join(
+            instance=leader,
+            cluster_name=cluster.id,
+            instance_name=instance.name,
+            timeout_seconds=1,
+        )
+        assert result["instance"]["uuid"] == instance_uuid
+
+    assert count_instances_by_uuid(leader, instance_uuid) == 1
