@@ -42,6 +42,7 @@ article.md-typeset.md-typeset ul {
 * [ALTER PLUGIN](reference/sql/alter_plugin.md)
 * [ALTER PROCEDURE](reference/sql/alter_procedure.md)
 * [ALTER SYSTEM](reference/sql/alter_system.md)
+* [ALTER TABLE](reference/sql/alter_table.md)
 * [ALTER USER](reference/sql/alter_user.md)
 * [AVG](reference/sql/aggregate.md#functions)
 
@@ -159,6 +160,7 @@ article.md-typeset.md-typeset ul {
 * [TO_DATE](reference/sql/to_date.md)
 * [TOTAL](reference/sql/aggregate.md#functions)
 * [TRIM](reference/sql/trim.md)
+* [TRUNCATE TABLE](reference/sql/truncate_table.md)
 * [type](reference/sql_types.md)
 
 <b>U</b>

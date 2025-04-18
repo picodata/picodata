@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="709"
+   height="199"
+   version="1.1"
+   viewBox="0 0 709 199"
+   id="svg28"
+   sodipodi:docname="truncate_table.svg"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview28"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.5303244"
+     inkscape:cx="605.42719"
+     inkscape:cy="99.652074"
+     inkscape:window-width="1238"
+     inkscape:window-height="1014"
+     inkscape:window-x="162"
+     inkscape:window-y="29"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg28" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
+  </defs>
+  <polygon
+     points="9 17 1 13 1 21"
+     id="polygon1" />
+  <polygon
+     points="17 17 9 13 9 21"
+     id="polygon2" />
+  <rect
+     x="31"
+     y="3"
+     width="92"
+     height="32"
+     rx="10"
+     id="rect2" />
+  <rect
+     x="29"
+     y="1"
+     width="92"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect3" />
+  <text
+     class="terminal"
+     x="39"
+     y="21"
+     id="text3">TRUNCATE</text>
+  <rect
+     x="163"
+     y="35"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect4" />
+  <rect
+     x="161"
+     y="33"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect5" />
+  <text
+     class="terminal"
+     x="171"
+     y="53"
+     id="text5">TABLE</text>
+  <a
+     xlink:href="../object"
+     xlink:title="table"
+     id="a7">
+    <rect
+       x="265"
+       y="3"
+       width="52"
+       height="32"
+       id="rect6" />
+    <rect
+       x="263"
+       y="1"
+       width="52"
+       height="32"
+       class="nonterminal"
+       id="rect7" />
+    <text
+       class="nonterminal"
+       x="273"
+       y="21"
+       id="text7">table</text>
+  </a>
+  <rect
+     x="357"
+     y="35"
+     width="58"
+     height="32"
+     rx="10"
+     id="rect8" />
+  <rect
+     x="355"
+     y="33"
+     width="58"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect9" />
+  <text
+     class="terminal"
+     x="365"
+     y="53"
+     id="text9">WAIT</text>
+  <rect
+     x="435"
+     y="35"
+     width="80"
+     height="32"
+     rx="10"
+     id="rect10" />
+  <rect
+     x="433"
+     y="33"
+     width="80"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect11" />
+  <text
+     class="terminal"
+     x="443"
+     y="53"
+     id="text11">APPLIED</text>
+  <rect
+     x="555"
+     y="35"
+     width="92"
+     height="32"
+     rx="10"
+     id="rect12" />
+  <rect
+     x="553"
+     y="33"
+     width="92"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect13" />
+  <text
+     class="terminal"
+     x="563"
+     y="53"
+     id="text13">GLOBALLY</text>
+  <rect
+     x="555"
+     y="79"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect14" />
+  <rect
+     x="553"
+     y="77"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect15" />
+  <text
+     class="terminal"
+     x="563"
+     y="97"
+     id="text15">LOCALLY</text>
+  <rect
+     x="259"
+     y="165"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect16" />
+  <rect
+     x="257"
+     y="163"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect17" />
+  <text
+     class="terminal"
+     x="267"
+     y="183"
+     id="text17">OPTION</text>
+  <rect
+     x="355"
+     y="165"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect18" />
+  <rect
+     x="353"
+     y="163"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect19" />
+  <text
+     class="terminal"
+     x="363"
+     y="183"
+     id="text19">(</text>
+  <rect
+     x="401"
+     y="165"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect20" />
+  <rect
+     x="399"
+     y="163"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect21" />
+  <text
+     class="terminal"
+     x="409"
+     y="183"
+     id="text21">TIMEOUT</text>
+  <rect
+     x="503"
+     y="165"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect22" />
+  <rect
+     x="501"
+     y="163"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect23" />
+  <text
+     class="terminal"
+     x="511"
+     y="183"
+     id="text23">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a25">
+    <rect
+       x="553"
+       y="165"
+       width="62"
+       height="32"
+       id="rect24" />
+    <rect
+       x="551"
+       y="163"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect25" />
+    <text
+       class="nonterminal"
+       x="561"
+       y="183"
+       id="text25">double</text>
+  </a>
+  <rect
+     x="635"
+     y="165"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect26" />
+  <rect
+     x="633"
+     y="163"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect27" />
+  <text
+     class="terminal"
+     x="643"
+     y="183"
+     id="text27">)</text>
+  <path
+     class="line"
+     d="m17 17 h2 m0 0 h10 m92 0 h10 m20 0 h10 m0 0 h72 m-102 0 h20 m82 0 h20 m-122 0 q10 0 10 10 m102 0 q0 -10 10 -10 m-112 10 v12 m102 0 v-12 m-102 12 q0 10 10 10 m82 0 q10 0 10 -10 m-92 10 h10 m62 0 h10 m20 -32 h10 m52 0 h10 m20 0 h10 m0 0 h320 m-350 0 h20 m330 0 h20 m-370 0 q10 0 10 10 m350 0 q0 -10 10 -10 m-360 10 v12 m350 0 v-12 m-350 12 q0 10 10 10 m330 0 q10 0 10 -10 m-340 10 h10 m58 0 h10 m0 0 h10 m80 0 h10 m20 0 h10 m92 0 h10 m-132 0 h20 m112 0 h20 m-152 0 q10 0 10 10 m132 0 q0 -10 10 -10 m-142 10 v24 m132 0 v-24 m-132 24 q0 10 10 10 m112 0 q10 0 10 -10 m-122 10 h10 m82 0 h10 m0 0 h10 m42 -76 l2 0 m2 0 l2 0 m2 0 l2 0 m-492 130 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
+     id="path27" />
+  <polygon
+     points="699 147 707 143 707 151"
+     id="polygon27" />
+  <polygon
+     points="699 147 691 143 691 151"
+     id="polygon28" />
+</svg>
