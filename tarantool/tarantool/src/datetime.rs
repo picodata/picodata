@@ -1,7 +1,11 @@
 use crate::ffi::datetime as ffi;
+use crate::msgpack;
+use crate::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
+use std::io::Write;
 use time::{Duration, UtcOffset};
 
 type Inner = time::OffsetDateTime;
@@ -99,6 +103,39 @@ impl Datetime {
             tzindex: 0,
         }
     }
+
+    fn msgpack_bytes(&self) -> ([u8; 16], usize) {
+        let data = self.as_bytes_tt();
+        let mut len = data.len();
+        if data[8..] == [0, 0, 0, 0, 0, 0, 0, 0] {
+            len = 8;
+        }
+        (data, len)
+    }
+
+    fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
+        if tag != ffi::MP_DATETIME {
+            return Err(format!("Expected Datetime, found msgpack ext #{}", tag));
+        }
+
+        if bytes.len() != 8 && bytes.len() != 16 {
+            return Err(format!(
+                "Unexpected number of bytes for Datetime: expected 8 or 16, got {}",
+                bytes.len()
+            ));
+        }
+
+        Self::from_bytes_tt(bytes).map_err(|_| "Error decoding msgpack bytes".to_string())
+    }
+}
+
+impl<'a> TryFrom<msgpack::ExtStruct<'a>> for Datetime {
+    type Error = String;
+
+    #[inline(always)]
+    fn try_from(value: msgpack::ExtStruct<'a>) -> Result<Self, Self::Error> {
+        Self::from_ext_structure(value.tag, value.data)
+    }
 }
 
 impl From<Inner> for Datetime {
@@ -125,6 +162,20 @@ impl Display for Datetime {
 // Tuple
 ////////////////////////////////////////////////////////////////////////////////
 
+impl Encode for Datetime {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        let (data, len) = self.msgpack_bytes();
+        msgpack::ExtStruct::new(ffi::MP_DATETIME, &data[..len]).encode(w, context)
+    }
+}
+impl<'de> Decode<'de> for Datetime {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        msgpack::ExtStruct::decode(r, context)?
+            .try_into()
+            .map_err(DecodeError::new::<Self>)
+    }
+}
+
 impl serde::Serialize for Datetime {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -133,12 +184,9 @@ impl serde::Serialize for Datetime {
         #[derive(Serialize)]
         struct _ExtStruct<'a>((i8, &'a serde_bytes::Bytes));
 
-        let data = self.as_bytes_tt();
-        let mut data = data.as_slice();
-        if data[8..] == [0, 0, 0, 0, 0, 0, 0, 0] {
-            data = &data[..8];
-        }
-        _ExtStruct((ffi::MP_DATETIME, serde_bytes::Bytes::new(data))).serialize(serializer)
+        let (data, len) = self.msgpack_bytes();
+
+        _ExtStruct((ffi::MP_DATETIME, serde_bytes::Bytes::new(&data[..len]))).serialize(serializer)
     }
 }
 
@@ -152,23 +200,7 @@ impl<'de> serde::Deserialize<'de> for Datetime {
 
         let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
 
-        if kind != ffi::MP_DATETIME {
-            return Err(serde::de::Error::custom(format!(
-                "Expected Datetime, found msgpack ext #{}",
-                kind
-            )));
-        }
-
-        let data = bytes.as_slice();
-        if data.len() != 8 && data.len() != 16 {
-            return Err(serde::de::Error::custom(format!(
-                "Unexpected number of bytes for Datetime: expected 8 or 16, got {}",
-                data.len()
-            )));
-        }
-
-        Self::from_bytes_tt(data)
-            .map_err(|_| serde::de::Error::custom("Error decoding msgpack bytes"))
+        Self::from_ext_structure(kind, bytes.as_slice()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -239,6 +271,7 @@ impl<L: tlua::AsLua> tlua::PushOneInto<L> for Datetime {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::msgpack;
     use time_macros::datetime;
 
     #[test]
@@ -263,6 +296,32 @@ mod tests {
 
         let data = b"\xd7\x04\x00\xc4\x4e\x65\x00\x00\x00\x00";
         let only_date: Datetime = rmp_serde::from_slice(data).unwrap();
+        let expected: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
+        assert_eq!(only_date, expected);
+    }
+
+    #[test]
+    fn encode() {
+        let datetime: Datetime = datetime!(2023-11-11 2:03:19.35421 -3).into();
+        let data = msgpack::encode(&datetime);
+        let expected = b"\xd8\x04\x17\x0b\x4f\x65\x00\x00\x00\x00\xd0\xd0\x1c\x15\x4c\xff\x00\x00";
+        assert_eq!(data, expected);
+
+        let only_date: Datetime = datetime!(1993-05-19 0:00:0.0000 +0).into();
+        let data = msgpack::encode(&only_date);
+        let expected = b"\xd7\x04\x80\x78\xf9\x2b\x00\x00\x00\x00";
+        assert_eq!(data, expected);
+    }
+
+    #[test]
+    fn decode() {
+        let data = b"\xd8\x04\x46\x9f\r\x66\x00\x00\x00\x00\x50\x41\x7e\x3b\x4c\xff\x00\x00";
+        let datetime: Datetime = msgpack::decode(data).unwrap();
+        let expected: Datetime = datetime!(2024-04-03 15:26:14.99813 -3).into();
+        assert_eq!(datetime, expected);
+
+        let data = b"\xd7\x04\x00\xc4\x4e\x65\x00\x00\x00\x00";
+        let only_date: Datetime = msgpack::decode(data).unwrap();
         let expected: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
         assert_eq!(only_date, expected);
     }
