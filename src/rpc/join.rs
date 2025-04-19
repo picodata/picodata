@@ -52,6 +52,7 @@ crate::define_rpc_request! {
         pub failure_domain: FailureDomain,
         pub tier: String,
         pub picodata_version: String,
+        pub uuid: String,
     }
 
     pub struct Response {
@@ -121,6 +122,66 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
     compare_picodata_versions(&global_cluster_version, req.picodata_version.as_ref())?;
 
+    let instance = storage.instances.by_uuid(&req.uuid)?;
+    if let Some(instance) = instance {
+        if let Some(requested_name) = req.instance_name {
+            if requested_name != instance.name {
+                return Err(Error::other(format!("instance with UUID {} already exists but with different name", req.uuid)));
+            }
+        }
+
+        if let Some(name) = req.replicaset_name {
+            if name != instance.replicaset_name {
+                return Err(Error::other(format!("instance with UUID {} already exists but with different replicaset name", req.uuid)));
+            }
+        }
+
+        if req.tier != instance.tier {
+            return Err(Error::other(format!("instance with UUID {} already exists but with different tier", req.uuid)));
+        }
+
+        if req.failure_domain != instance.failure_domain {
+            return Err(Error::other(format!("instance with UUID {} already exists but with different failure domain", req.uuid)));
+        }
+
+        if req.picodata_version != instance.picodata_version {
+            return Err(Error::other(format!("instance with UUID {} already exists but with different picodata version", req.uuid)));
+        }
+
+        if has_states!(instance, * -> not Offline) || has_states!(instance, not Offline -> *) {
+            return Err(Error::other(format!(
+                "instance with UUID {} is not in Offline state",
+                req.uuid
+            )));
+        }
+
+        let peer_addresses = node
+            .storage
+            .peer_addresses
+            .iter()?
+            .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+            .collect();
+
+        let replicas = storage
+            .instances
+            .replicaset_instances(&instance.replicaset_name)
+            .expect("storage should not fail")
+            .filter(|i| !has_states!(i, Expelled -> *))
+            .map(|i| i.raft_id);
+        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
+        replication_addresses.insert(req.advertise_address.clone());
+
+        drop(guard);
+
+        return Ok(Response {
+            instance: Box::new(instance),
+            peer_addresses,
+            box_replication: replication_addresses.into_iter().collect(),
+            shredding: storage.db_config.shredding()?.expect("should be set"),
+            cluster_uuid,
+        });
+    }
+
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let instance = build_instance(
@@ -130,7 +191,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             storage,
             &req.tier,
             req.picodata_version.as_ref(),
+            &req.uuid,
         )?;
+
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
@@ -230,6 +293,7 @@ pub fn build_instance(
     storage: &Catalog,
     tier: &str,
     picodata_version: &str,
+    uuid: &str,
 ) -> Result<Instance> {
     // NOTE: currently we don't ever remove entries from `_pico_instance` even
     // when expelling instances. This makes it so we can get a unique raft_id by
@@ -332,8 +396,7 @@ pub fn build_instance(
         instance_name = choose_instance_name(storage, replicaset_name.clone());
     }
 
-    // Generate a unique instance_uuid
-    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+    let instance_uuid = uuid.to_string();
 
     Ok(Instance {
         raft_id,

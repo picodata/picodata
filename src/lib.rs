@@ -984,6 +984,9 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
     tlog!(Info, "joining cluster, peer address: {instance_address}");
 
+    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+    tlog!(Info, "generated instance uuid: {instance_uuid}");
+
     #[allow(unused_mut)]
     let mut version = info::PICODATA_VERSION.to_string();
     #[cfg(feature = "error_injection")]
@@ -1001,6 +1004,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         failure_domain: config.instance.failure_domain().clone(),
         tier: config.instance.tier().into(),
         picodata_version: version,
+        uuid: instance_uuid,
     };
 
     const INITIAL_DELAY: Duration = Duration::from_millis(100);
