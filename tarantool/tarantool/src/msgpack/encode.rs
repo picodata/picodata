@@ -116,6 +116,24 @@ pub enum StructStyle {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ExtStruct
+////////////////////////////////////////////////////////////////////////////////
+
+/// ExtStruct for serialization and deserialization MessagePack extension type
+#[derive(Clone)]
+pub struct ExtStruct<'a> {
+    pub tag: i8,
+    pub data: &'a [u8],
+}
+
+impl<'a> ExtStruct<'a> {
+    #[inline(always)]
+    pub fn new(tag: i8, data: &'a [u8]) -> Self {
+        Self { tag, data }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Decode
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -555,6 +573,26 @@ impl_simple_decode! {
 
 // TODO: Provide decode for tuples and serde json value
 
+impl<'de> Decode<'de> for ExtStruct<'de> {
+    #[inline]
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
+        let meta = rmp::decode::read_ext_meta(r).map_err(DecodeError::from_vre::<Self>)?;
+        let expected = meta.size as usize;
+        if r.len() < expected {
+            let actual = r.len();
+            *r = &r[actual..];
+            return Err(DecodeError::new::<Self>(format!(
+                "unexpected end of buffer (expected: {expected}, actual: {actual})"
+            )));
+        }
+
+        let (a, b) = r.split_at(expected);
+        *r = b;
+
+        Ok(Self::new(meta.typeid, a))
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Encode
 ////////////////////////////////////////////////////////////////////////////////
@@ -879,6 +917,15 @@ macro_rules! impl_tuple_encode {
 }
 
 impl_tuple_encode! { A B C D E F G H I J K L M N O P }
+
+impl Encode for ExtStruct<'_> {
+    #[inline]
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_ext_meta(w, self.data.len() as u32, self.tag)?;
+        w.write_all(self.data).map_err(EncodeError::from)?;
+        Ok(())
+    }
+}
 
 impl Encode for serde_json::Value {
     #[inline]
