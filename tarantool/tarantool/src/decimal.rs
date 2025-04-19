@@ -7,7 +7,11 @@ use crate::ffi::decimal as ffi;
 #[cfg(all(not(feature = "standalone_decimal"), feature = "picodata"))]
 mod tarantool_decimal {
     use super::ffi;
+    use crate::msgpack;
+    use crate::msgpack::{Decode, DecodeError, Encode, EncodeError};
     use serde::{Deserialize, Serialize};
+    use std::convert::TryInto;
+    use std::io::Write;
 
     /// A Decimal number implemented using the builtin tarantool api.
     ///
@@ -200,7 +204,37 @@ mod tarantool_decimal {
                 Some(self)
             }
         }
+
+        fn msgpack_bytes(&self) -> ([u8; MAX_MSGPACK_BYTES], usize) {
+            unsafe {
+                let mut data = [0u8; MAX_MSGPACK_BYTES];
+                let len = ffi::decimal_len(&self.inner) as usize;
+                ffi::decimal_pack(data.as_mut_ptr() as _, &self.inner);
+                (data, len)
+            }
+        }
+
+        fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
+            if tag != ffi::MP_DECIMAL {
+                return Err(format!("Expected Decimal, found msgpack ext #{}", tag));
+            }
+
+            let data_p = &mut bytes.as_ptr().cast();
+            let mut dec = std::mem::MaybeUninit::uninit();
+            let res = unsafe { ffi::decimal_unpack(data_p, bytes.len() as _, dec.as_mut_ptr()) };
+            if res.is_null() {
+                Err("Decimal out of range or corrupt".to_string())
+            } else {
+                unsafe { Ok(Self::from_raw(dec.assume_init())) }
+            }
+        }
     }
+
+    // from tarantool
+    // sizeof_scale  + ceil((digits + 1) / 2)
+    // sizeof_scale (max 9)
+    // digits (max 38)
+    pub const MAX_MSGPACK_BYTES: usize = 29;
 
     #[allow(clippy::non_canonical_partial_ord_impl)]
     impl std::cmp::PartialOrd for Decimal {
@@ -299,6 +333,15 @@ mod tarantool_decimal {
             let data = s.bytes().chain(std::iter::once(0)).collect::<Vec<_>>();
             let c_str = unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(&data) };
             std::convert::TryFrom::try_from(c_str)
+        }
+    }
+
+    impl<'a> std::convert::TryFrom<msgpack::ExtStruct<'a>> for Decimal {
+        type Error = String;
+
+        #[inline(always)]
+        fn try_from(value: msgpack::ExtStruct<'a>) -> Result<Self, Self::Error> {
+            Self::from_ext_structure(value.tag, value.data)
         }
     }
 
@@ -431,6 +474,24 @@ mod tarantool_decimal {
 
     impl_try_into_int! {i64 isize => ffi::decimal_to_int64}
     impl_try_into_int! {u64 usize => ffi::decimal_to_uint64}
+    impl Encode for Decimal {
+        fn encode(
+            &self,
+            w: &mut impl Write,
+            context: &msgpack::Context,
+        ) -> Result<(), EncodeError> {
+            let (data, size) = self.msgpack_bytes();
+            msgpack::ExtStruct::new(ffi::MP_DECIMAL, &data[..size]).encode(w, context)
+        }
+    }
+
+    impl<'de> Decode<'de> for Decimal {
+        fn decode(r: &mut &'de [u8], context: &msgpack::Context) -> Result<Self, DecodeError> {
+            msgpack::ExtStruct::decode(r, context)?
+                .try_into()
+                .map_err(DecodeError::new::<Self>)
+        }
+    }
 
     impl serde::Serialize for Decimal {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -438,16 +499,11 @@ mod tarantool_decimal {
             S: serde::Serializer,
         {
             #[derive(Serialize)]
-            struct _ExtStruct((i8, serde_bytes::ByteBuf));
+            struct _ExtStruct<'a>((i8, &'a serde_bytes::Bytes));
 
-            let data = unsafe {
-                let len = ffi::decimal_len(&self.inner) as usize;
-                let mut data = Vec::<u8>::with_capacity(len);
-                ffi::decimal_pack(data.as_mut_ptr() as _, &self.inner);
-                data.set_len(len);
-                data
-            };
-            _ExtStruct((ffi::MP_DECIMAL, serde_bytes::ByteBuf::from(data))).serialize(serializer)
+            let (data, len) = self.msgpack_bytes();
+            _ExtStruct((ffi::MP_DECIMAL, serde_bytes::Bytes::new(&data[..len])))
+                .serialize(serializer)
         }
     }
 
@@ -459,24 +515,8 @@ mod tarantool_decimal {
             #[derive(Deserialize)]
             struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
-            match serde::Deserialize::deserialize(deserializer)? {
-                _ExtStruct((ffi::MP_DECIMAL, bytes)) => {
-                    let data = bytes.into_vec();
-                    let data_p = &mut data.as_ptr().cast();
-                    let mut dec = std::mem::MaybeUninit::uninit();
-                    let res =
-                        unsafe { ffi::decimal_unpack(data_p, data.len() as _, dec.as_mut_ptr()) };
-                    if res.is_null() {
-                        Err(serde::de::Error::custom("Decimal out of range or corrupt"))
-                    } else {
-                        unsafe { Ok(Self::from_raw(dec.assume_init())) }
-                    }
-                }
-                _ExtStruct((kind, _)) => Err(serde::de::Error::custom(format!(
-                    "Expected Decimal, found msgpack ext #{}",
-                    kind
-                ))),
-            }
+            let _ExtStruct((tag, bytes)) = serde::Deserialize::deserialize(deserializer)?;
+            Self::from_ext_structure(tag, bytes.as_slice()).map_err(serde::de::Error::custom)
         }
     }
 
@@ -504,12 +544,13 @@ mod tarantool_decimal {
 
 #[cfg(feature = "standalone_decimal")]
 mod standalone_decimal {
-    use std::convert::TryInto;
-    use std::{convert::TryFrom, mem::size_of};
-
-    use once_cell::sync::Lazy;
-
     use super::ffi;
+    use crate::msgpack;
+    use crate::msgpack::{Decode, DecodeError, Encode, EncodeError};
+    use once_cell::sync::Lazy;
+    use std::convert::TryInto;
+    use std::io::{Cursor, Write};
+    use std::{convert::TryFrom, mem::size_of};
 
     /// A Decimal number implemented using the builtin tarantool api.
     ///
@@ -759,7 +800,34 @@ mod standalone_decimal {
             with_context(|ctx| ctx.pow(&mut self.inner, &pow.inner))?;
             Self::try_from(self.inner).ok()
         }
+
+        fn msgpack_bytes(&self) -> ([u8; MAX_MSGPACK_BYTES], usize) {
+            let mut data = [0u8; MAX_MSGPACK_BYTES];
+            let mut cursor = Cursor::new(&mut data[..]);
+            let (bcd, scale) = self.inner.clone().to_packed_bcd().unwrap();
+            rmp::encode::write_sint(&mut cursor, scale as i64).unwrap();
+            cursor.write_all(&bcd).unwrap();
+            let size = cursor.position() as usize;
+            (data, size)
+        }
+
+        fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
+            if tag != ffi::MP_DECIMAL {
+                return Err(format!("Expected Decimal, found msgpack ext #{}", tag));
+            }
+
+            let mut data = bytes;
+            let scale = rmp::decode::read_int(&mut data).unwrap();
+            let bcd = data;
+
+            DecimalImpl::from_packed_bcd(bcd, scale)
+                .map_err(|e| format!("Failed to unpack decimal: {e}"))?
+                .try_into()
+                .map_err(|e| format!("Failed to unpack decimal: {e}"))
+        }
     }
+    // (DECIMAL_MAX_DIGITS / 2) + 1 + 1 (msgpack header) + 8 (i64 representation)
+    const MAX_MSGPACK_BYTES: usize = 29;
 
     type DecimalImpl = dec::Decimal<{ ffi::DECNUMUNITS as _ }>;
 
@@ -769,6 +837,15 @@ mod standalone_decimal {
         Infinite,
         #[error("NaN decimals are not supported")]
         Nan,
+    }
+
+    impl<'a> TryFrom<msgpack::ExtStruct<'a>> for Decimal {
+        type Error = String;
+
+        #[inline(always)]
+        fn try_from(value: msgpack::ExtStruct<'a>) -> Result<Self, Self::Error> {
+            Self::from_ext_structure(value.tag, value.data)
+        }
     }
 
     impl TryFrom<DecimalImpl> for Decimal {
@@ -1135,6 +1212,24 @@ mod standalone_decimal {
         u64   => try_into_u64
         usize => try_into_usize
     }
+    impl Encode for Decimal {
+        fn encode(
+            &self,
+            w: &mut impl Write,
+            context: &msgpack::Context,
+        ) -> Result<(), EncodeError> {
+            let (data, len) = self.msgpack_bytes();
+            msgpack::ExtStruct::new(ffi::MP_DECIMAL, &data[..len]).encode(w, context)
+        }
+    }
+
+    impl<'de> Decode<'de> for Decimal {
+        fn decode(r: &mut &'de [u8], context: &msgpack::Context) -> Result<Self, DecodeError> {
+            msgpack::ExtStruct::decode(r, context)?
+                .try_into()
+                .map_err(DecodeError::new::<Self>)
+        }
+    }
 
     impl serde::Serialize for Decimal {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -1142,16 +1237,11 @@ mod standalone_decimal {
             S: serde::Serializer,
         {
             #[derive(serde::Serialize)]
-            struct _ExtStruct((i8, serde_bytes::ByteBuf));
+            struct _ExtStruct<'a>((i8, &'a serde_bytes::Bytes));
 
-            let data = {
-                let mut data = vec![];
-                let (bcd, scale) = self.inner.clone().to_packed_bcd().unwrap();
-                rmp::encode::write_sint(&mut data, scale as i64).unwrap();
-                data.extend(bcd);
-                data
-            };
-            _ExtStruct((ffi::MP_DECIMAL, serde_bytes::ByteBuf::from(data))).serialize(serializer)
+            let (data, len) = self.msgpack_bytes();
+            _ExtStruct((ffi::MP_DECIMAL, serde_bytes::Bytes::new(&data[..len])))
+                .serialize(serializer)
         }
     }
 
@@ -1164,21 +1254,8 @@ mod standalone_decimal {
             #[derive(serde::Deserialize)]
             struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
-            match serde::Deserialize::deserialize(deserializer)? {
-                _ExtStruct((ffi::MP_DECIMAL, bytes)) => {
-                    let mut data = bytes.as_slice();
-                    let scale = rmp::decode::read_int(&mut data).unwrap();
-                    let bcd = data;
-                    DecimalImpl::from_packed_bcd(bcd, scale)
-                        .map_err(|e| Error::custom(format!("Failed to unpack decimal: {e}")))?
-                        .try_into()
-                        .map_err(|e| Error::custom(format!("Failed to unpack decimal: {e}")))
-                }
-                _ExtStruct((kind, _)) => Err(serde::de::Error::custom(format!(
-                    "Expected Decimal, found msgpack ext #{}",
-                    kind
-                ))),
-            }
+            let _ExtStruct((tag, bytes)) = serde::Deserialize::deserialize(deserializer)?;
+            Self::from_ext_structure(tag, bytes.as_slice()).map_err(Error::custom)
         }
     }
 
@@ -1373,7 +1450,7 @@ impl std::error::Error for DecimalToIntError {
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{decimal, decimal::Decimal, tuple::Tuple};
+    use crate::{decimal, decimal::Decimal, msgpack, tuple::Tuple};
 
     #[crate::test(tarantool = "crate")]
     pub fn from_lua() {
@@ -1909,11 +1986,27 @@ mod tests {
             let new_value: Decimal =
                 rmp_serde::decode::from_slice(serialized).expect("cant deserialize decimal");
             assert_eq!(&new_value, value);
+
+            // new encode and decode
+
+            // serialized value has the same representation as expected
+            let new_serialized = msgpack::encode(value);
+            assert_eq!(
+                serialized, &new_serialized,
+                "{value} was not encoded correctly"
+            );
+            // we can deserialize from expected bytes to the same value
+            let new_value: Decimal = msgpack::decode(serialized).expect("cant deserialize decimal");
+            assert_eq!(&new_value, value);
         }
 
         // separately test that we can decode from the shape we used to encode decimals with standalonoe_decimal
         // see https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/200
         let value: Decimal = rmp_serde::decode::from_slice(&[199, 7, 1, 210, 0, 0, 0, 2, 3, 60])
+            .expect("cant deserialize decimal");
+        assert_eq!(value, decimal!(0.33));
+
+        let value: Decimal = msgpack::decode(&[199, 7, 1, 210, 0, 0, 0, 2, 3, 60])
             .expect("cant deserialize decimal");
         assert_eq!(value, decimal!(0.33));
     }
