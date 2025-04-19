@@ -1,5 +1,9 @@
 use crate::ffi::uuid as ffi;
+use std::convert::{TryFrom, TryInto};
+use std::io::Write;
 
+use crate::msgpack;
+use crate::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 pub use ::uuid::{adapter, Error};
 use serde::{Deserialize, Serialize};
 
@@ -165,6 +169,28 @@ impl Uuid {
     pub const fn to_urn_ref(&self) -> adapter::UrnRef<'_> {
         self.inner.to_urn_ref()
     }
+
+    fn from_ext_structure(tag: i8, bytes: &[u8]) -> Result<Self, String> {
+        if tag != ffi::MP_UUID {
+            return Err(format!("Expected UUID, found msgpack ext #{}", tag));
+        }
+
+        Self::try_from_slice(bytes).ok_or_else(|| {
+            format!(
+                "Not enough bytes for UUID: expected 16, got {}",
+                bytes.len()
+            )
+        })
+    }
+}
+
+impl<'a> TryFrom<msgpack::ExtStruct<'a>> for Uuid {
+    type Error = String;
+
+    #[inline(always)]
+    fn try_from(value: msgpack::ExtStruct<'a>) -> Result<Self, Self::Error> {
+        Self::from_ext_structure(value.tag, value.data)
+    }
 }
 
 impl From<Inner> for Uuid {
@@ -211,16 +237,30 @@ impl std::str::FromStr for Uuid {
 // Tuple
 ////////////////////////////////////////////////////////////////////////////////
 
+impl Encode for Uuid {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        msgpack::ExtStruct::new(ffi::MP_UUID, self.as_bytes()).encode(w, context)
+    }
+}
+
+impl<'de> Decode<'de> for Uuid {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        msgpack::ExtStruct::decode(r, context)?
+            .try_into()
+            .map_err(DecodeError::new::<Self>)
+    }
+}
+
 impl serde::Serialize for Uuid {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct _ExtStruct((i8, serde_bytes::ByteBuf));
+        struct _ExtStruct<'a>((i8, &'a serde_bytes::Bytes));
 
         let data = self.as_bytes();
-        _ExtStruct((ffi::MP_UUID, serde_bytes::ByteBuf::from(data as &[_]))).serialize(serializer)
+        _ExtStruct((ffi::MP_UUID, serde_bytes::Bytes::new(data))).serialize(serializer)
     }
 }
 
@@ -232,22 +272,9 @@ impl<'de> serde::Deserialize<'de> for Uuid {
         #[derive(Deserialize)]
         struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
-        let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
+        let _ExtStruct((tag, bytes)) = Deserialize::deserialize(deserializer)?;
 
-        if kind != ffi::MP_UUID {
-            return Err(serde::de::Error::custom(format!(
-                "Expected UUID, found msgpack ext #{}",
-                kind
-            )));
-        }
-
-        let data = bytes.into_vec();
-        Self::try_from_slice(&data).ok_or_else(|| {
-            serde::de::Error::custom(format!(
-                "Not enough bytes for UUID: expected 16, got {}",
-                data.len()
-            ))
-        })
+        Self::from_ext_structure(tag, bytes.as_slice()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -307,3 +334,36 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Uuid {
 }
 
 impl<L: tlua::AsLua> tlua::PushOneInto<L> for Uuid {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::msgpack;
+
+    #[test]
+    fn serialize() {
+        let result = [
+            216, 2, 227, 6, 158, 228, 241, 69, 78, 73, 160, 56, 166, 128, 14, 42, 161, 217,
+        ];
+        let uuid = Uuid::parse_str("e3069ee4-f145-4e49-a038-a6800e2aa1d9").unwrap();
+        let serde_data = rmp_serde::to_vec(&uuid).unwrap();
+        assert_eq!(serde_data, result);
+
+        let msgpack_data = msgpack::encode(&uuid);
+        assert_eq!(msgpack_data, result);
+    }
+
+    #[test]
+    fn deserialize() {
+        let uuid = Uuid {
+            inner: uuid::Uuid::NAMESPACE_DNS,
+        };
+        let serde_data = rmp_serde::to_vec(&uuid).unwrap();
+
+        let msgpack_uuid = msgpack::decode(serde_data.as_slice()).unwrap();
+        assert_eq!(uuid, msgpack_uuid);
+
+        let serde_uuid = rmp_serde::from_slice(serde_data.as_slice()).unwrap();
+        assert_eq!(uuid, serde_uuid);
+    }
+}
