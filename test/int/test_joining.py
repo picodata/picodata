@@ -29,6 +29,7 @@ def raft_join(
     instance: Instance,
     cluster_name: str,
     instance_name: str,
+    uuid: str,
     timeout_seconds: float | int,
     failure_domain: dict[str, str] = dict(),
 ):
@@ -49,6 +50,7 @@ def raft_join(
         failure_domain,
         instance.tier if instance.tier is not None else "default",
         picodata_version,
+        uuid,
         timeout=timeout_seconds,
     )
 
@@ -74,7 +76,14 @@ def test_request_follower(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i2.assert_raft_status("Follower")
 
-    actual = raft_join(instance=i2, cluster_name=cluster2.id, instance_name="fake-0", timeout_seconds=1)
+    generated_uuid = str(uuid.uuid4())
+    actual = raft_join(
+        instance=i2,
+        cluster_name=cluster2.id,
+        instance_name="fake-0",
+        uuid=generated_uuid,
+        timeout_seconds=1,
+    )
     # Even though a follower is called new instance is joined successfully
     assert actual["instance"]["raft_id"] == 3
 
@@ -215,6 +224,7 @@ def test_cluster_name_mismatch(instance: Instance):
             instance=instance,
             cluster_name=wrong_cluster_name,
             instance_name="whatever",
+            uuid=instance.uuid(),
             timeout_seconds=1,
         )
     assert e.value.args[:2] == (
@@ -311,11 +321,14 @@ def test_failure_domains(cluster: Cluster):
     assert replicaset_name(i1) == "default_1"
 
     assert i1.cluster_name
+
+    generated_uuid = str(uuid.uuid4())
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
         raft_join(
             instance=i1,
             cluster_name=i1.cluster_name,
             instance_name="x1",
+            uuid=generated_uuid,
             failure_domain=dict(os="Arch"),
             timeout_seconds=1,
         )
@@ -324,11 +337,13 @@ def test_failure_domains(cluster: Cluster):
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     assert replicaset_name(i2) == "default_1"
 
+    generated_uuid2 = str(uuid.uuid4())
     with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
         raft_join(
             instance=i1,
             cluster_name=i1.cluster_name,
             instance_name="x1",
+            uuid=generated_uuid2,
             failure_domain=dict(planet="Venus"),
             timeout_seconds=1,
         )
@@ -588,7 +603,8 @@ def test_proc_raft_join_is_idempotent(cluster: Cluster):
         result = raft_join(
             instance=leader,
             cluster_name=cluster.id,
-            instance_name=instance.name,
+            instance_name=str(instance.name),
+            uuid=instance_uuid,
             timeout_seconds=1,
         )
         assert result["instance"]["uuid"] == instance_uuid
