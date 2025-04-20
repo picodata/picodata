@@ -5586,6 +5586,17 @@ impl AbstractSyntaxTree {
                                 .push(parse_normalized_identifier(self, *col_id)?.to_smolstr());
                         }
 
+                        let mut existing_col_names: HashSet<&SmolStr> =
+                            HashSet::with_capacity(selected_col_names.len());
+                        for selected_col in &selected_col_names {
+                            if !existing_col_names.insert(selected_col) {
+                                return Err(SbroadError::DuplicatedValue(format_smolstr!(
+                                    "column {} specified more than once",
+                                    to_user(selected_col)
+                                )));
+                            }
+                        }
+
                         let rel = plan.relations.get(&relation).ok_or_else(|| {
                             SbroadError::NotFound(
                                 Entity::Table,

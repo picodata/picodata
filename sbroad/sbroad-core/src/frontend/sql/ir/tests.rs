@@ -3166,6 +3166,21 @@ fn front_sql_insert_9() {
 }
 
 #[test]
+fn front_sql_insert_duplicate_columns() {
+    let input = r#"insert into "hash_testing" ("identification_number", "product_code", "identification_number") values (1, 2, 3)"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let err = plan.unwrap_err();
+    assert_eq!(
+        true,
+        err.to_string().contains(
+            "duplicated value: column \"identification_number\" specified more than once"
+        )
+    );
+}
+
+#[test]
 fn front_sql_update1() {
     let input = r#"update "t" set "a" = 1"#;
 
