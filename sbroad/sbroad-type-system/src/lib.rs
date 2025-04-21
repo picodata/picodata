@@ -302,16 +302,16 @@ mod tests {
         for (expr, desired_type, result_type) in exprs {
             let mut analyzer = TypeAnalyzer::new(&type_system);
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
 
             // For the 2nd run result will be returned from cache and should not change.
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
 
             // Ensure that analysis result doesn't depends on functions order.
             let mut analyzer = TypeAnalyzer::new(&type_system_reordered);
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
         }
     }
 
@@ -584,16 +584,16 @@ mod tests {
         for (expr, desired_type, result_type) in tests {
             let mut analyzer = TypeAnalyzer::new(&type_system);
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
 
             // For the 2nd run result will be returned from cache and should not change.
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
 
             // Ensure that analysis result doesn't depends on functions order.
             let mut analyzer = TypeAnalyzer::new(&type_system_reordered);
             let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr), result_type);
+            assert_eq!(report.get_type(&expr.id), result_type);
         }
     }
 }

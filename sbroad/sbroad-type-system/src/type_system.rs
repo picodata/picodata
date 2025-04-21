@@ -125,8 +125,8 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
     /// # Panics
     /// Panics if there is no such id in the report.
     #[track_caller]
-    pub fn get_type(&self, expr: &Expr<Id>) -> Type {
-        self.types[&expr.id]
+    pub fn get_type(&self, id: &Id) -> Type {
+        self.types[id]
     }
 
     /// Merge 2 reports.
@@ -345,10 +345,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                         // TODO: ensure no variables, otherwise return
                         // "argument of ROWS must not contain variables" error
                         let report = self.analyze(offset, Some(Type::Integer))?;
-                        if report.get_type(offset) != Type::Integer {
+                        if report.get_type(&offset.id) != Type::Integer {
                             return Err(Error::IncorrectFrameArgumentType(
                                 frame.kind,
-                                report.get_type(offset),
+                                report.get_type(&offset.id),
                             ));
                         }
                     }
@@ -384,8 +384,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                 let mut report = match op {
                     UnaryOperator::Not => {
                         let report = self.analyze(child, Some(Type::Boolean))?;
-                        if report.get_type(child) != Type::Boolean {
-                            return Err(Error::UnexpectedNotArgumentType(report.get_type(child)));
+                        if report.get_type(&child.id) != Type::Boolean {
+                            return Err(Error::UnexpectedNotArgumentType(
+                                report.get_type(&child.id),
+                            ));
                         }
                         report
                     }
@@ -538,12 +540,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         let mut resolved_overloads = Vec::new();
         for overload in overloads {
             let mut report = self.analyze_many(args, &overload.args_types)?;
-            let args_types = args.iter().map(|e| report.get_type(e));
+            let args_types = args.iter().map(|e| report.get_type(&e.id));
 
             if zip(args_types, &overload.args_types).all(|(t1, t2)| self.can_coerce(t1, *t2)) {
                 // Make arguments match overload types.
                 for (arg, ty) in zip(args, &overload.args_types) {
-                    if report.get_type(arg) != *ty {
+                    if report.get_type(&arg.id) != *ty {
                         report.cast(&arg.id, *ty);
                         report.report(&arg.id, *ty);
                     }
@@ -601,7 +603,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
             .map(|e| e.borrow())
             .map(|e| {
                 if let Ok(report) = self.analyze(e, None) {
-                    report.get_type(e)
+                    report.get_type(&e.id)
                 } else {
                     Type::Unknown
                 }
@@ -662,7 +664,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
                 // TODO: It'd be better to infer row types first and then use these types
                 // as desired for a subquery.
                 let report = self.analyze_many(row, sq_types)?;
-                let row_types = row.iter().map(|e| report.get_type(e));
+                let row_types = row.iter().map(|e| report.get_type(&e.id));
 
                 // TODO: Avoid type reordering if subquery is on the left.
                 // Ensure types match.
@@ -766,14 +768,14 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         for arg in args {
             if desired_type.is_some() {
                 let report = self.analyze(arg.borrow(), desired_type)?;
-                types.insert(report.get_type(arg.borrow()));
+                types.insert(report.get_type(&arg.borrow().id));
             }
 
             // Desired type is None, so analysis may fail.
             // Consider parameter expressions.
             match self.analyze(arg.borrow(), None) {
                 Ok(report) => {
-                    types.insert(report.get_type(arg.borrow()));
+                    types.insert(report.get_type(&arg.borrow().id));
                 }
                 Err(err) => error = Some(err),
             }
@@ -792,12 +794,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         for ty in types {
             let desired_types = vec![ty; args.len()];
             let mut report = self.analyze_many(args, &desired_types)?;
-            let mut args_types = args.iter().map(|e| report.get_type(e.borrow()));
+            let mut args_types = args.iter().map(|e| report.get_type(&e.borrow().id));
             let can_coerce_all = args_types.all(|arg_type| self.can_coerce(arg_type, ty));
             if can_coerce_all {
                 // Make arguments match overload types.
                 for arg in args {
-                    if report.get_type(arg.borrow()) != ty {
+                    if report.get_type(&arg.borrow().id) != ty {
                         report.cast(&arg.borrow().id, ty);
                     }
                 }
