@@ -100,6 +100,7 @@ article.md-typeset.md-typeset ul {
 <b>I</b>
 
 * [ILIKE](reference/sql/ilike.md)
+* [INSTANCE_UUID](reference/sql/instance_uuid.md)
 * [INNER JOIN](reference/sql/join.md#inner_join)
 * [INSERT](reference/sql/insert.md)
 * [INTEGER](reference/sql_types.md#integer)

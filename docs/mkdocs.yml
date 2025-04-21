@@ -99,6 +99,7 @@ nav:
         - reference/sql/explain.md
         - reference/sql/grant.md
         - reference/sql/insert.md
+        - reference/sql/instance_uuid.md
         - reference/sql/revoke.md
         - reference/sql/select.md
         - reference/sql/update.md
