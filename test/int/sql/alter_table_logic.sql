@@ -18,6 +18,7 @@ SELECT * FROM test_table;
 1, 'Test', NULL
 
 -- TEST: add_column_null_implicit
+-- SQL:
 DROP TABLE IF EXISTS test_table;
 CREATE TABLE test_table(id INT PRIMARY KEY, name TEXT);
 ALTER TABLE test_table ADD COLUMN status TEXT;
