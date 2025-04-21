@@ -1546,12 +1546,12 @@ fn ddl_ir_node_to_op_or_result(
 
             for op in alter_table.ops.iter() {
                 match op {
-                    AlterTableOp::Add {
-                        column,
+                    &AlterTableOp::Add {
+                        ref column,
                         if_not_exists,
                     } => {
                         // due to unclear semantics of IF NOT EXISTS
-                        if *if_not_exists {
+                        if if_not_exists {
                             return Err(Error::Unsupported(error::Unsupported::new(
                                 "IF NOT EXISTS".into(),
                                 None,
@@ -1559,7 +1559,7 @@ fn ddl_ir_node_to_op_or_result(
                         }
 
                         // do not add this column with the same name
-                        for table_field in &table.format {
+                        for table_field in &new_table_format {
                             if table_field.name == column.name {
                                 return Err(
                                     error::AlreadyExists::Column(column.name.clone()).into()

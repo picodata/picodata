@@ -157,3 +157,13 @@ INSERT INTO test_table VALUES (1, NULL, NULL, 52);
 SELECT * FROM test_table;
 -- EXPECTED:
 1, NULL, NULL, 52
+
+-- TEST: add_conflicting_columns
+-- SQL:
+DROP TABLE IF EXISTS test_table;
+CREATE TABLE test_table(id INT PRIMARY KEY);
+ALTER TABLE test_table ADD COLUMN age INT, ADD COLUMN age TEXT;
+-- ERROR:
+-
+-
+column age already exists
