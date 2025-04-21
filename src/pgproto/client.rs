@@ -16,7 +16,8 @@ mod startup;
 
 pub use startup::ClientParams;
 
-pub type ClientId = u32;
+/// We generate those sequentially for every client connection.
+pub type ClientId = u64;
 
 /// Postgres client representation.
 pub struct PgClient<S> {

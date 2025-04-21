@@ -5,6 +5,7 @@ use super::{
 };
 use crate::{
     pgproto::{
+        client::ClientId,
         error::{PgError, PgErrorCode, PgResult},
         value::{FieldFormat, PgValue},
     },
@@ -32,9 +33,6 @@ use tarantool::{
     proc::{Return, ReturnMsgpack},
     tuple::{FunctionCtx, Tuple},
 };
-
-/// We generate those sequentially for every client connection.
-pub type ClientId = u32;
 
 /// Used to store portals in [`PG_PORTALS`] and statements in [`PG_STATEMENTS`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

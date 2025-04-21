@@ -30,7 +30,7 @@ use sbroad::{
 use smol_str::ToSmolStr;
 use std::{
     iter::zip,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::atomic::{AtomicU64, Ordering},
 };
 use tarantool::session::with_su;
 
@@ -264,7 +264,7 @@ impl Backend {
     pub fn new(params: ClientParams) -> Self {
         /// Generate a unique client id.
         fn unique_id() -> ClientId {
-            static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+            static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
             ID_COUNTER.fetch_add(1, Ordering::Relaxed)
         }
 
