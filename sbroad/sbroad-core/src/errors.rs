@@ -289,7 +289,7 @@ impl fmt::Display for Action {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
-    AmbiguousParameterType(usize, Type, Type),
+    AmbiguousParameterType(u16, Type, Type),
     CouldNotDetermineParameterType(usize),
     TypesCannotBeMatched(&'static str, Type, Type),
 }

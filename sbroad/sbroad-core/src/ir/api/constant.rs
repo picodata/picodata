@@ -8,6 +8,7 @@ use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::DerivedType;
 use crate::ir::{Nodes, Plan};
+use smol_str::format_smolstr;
 
 impl Expression<'_> {
     /// Gets value from const node
@@ -105,6 +106,13 @@ impl Plan {
     /// # Errors
     /// - The plan is corrupted (collected constants point to invalid arena positions).
     pub fn stash_constants(&mut self, snapshot: Snapshot) -> Result<(), SbroadError> {
+        // TODO: ensure that constants.len() does not exceed the limit on the number of parameters
+        // in tarantool
+        let index = |num: usize| -> Result<u16, _> {
+            (num + 1).try_into().map_err(|_| {
+                SbroadError::Other(format_smolstr!("too many parameters in local sql: {num}"))
+            })
+        };
         let constants = self.get_const_list(snapshot);
         for (num, const_id) in constants.iter().enumerate() {
             let param_type = self.calculate_expression_type(*const_id)?;
@@ -116,7 +124,7 @@ impl Plan {
                 *const_id,
                 Node64::Parameter(Parameter {
                     param_type,
-                    index: num + 1,
+                    index: index(num)?,
                 }),
             )?;
             if let Node64::Constant(constant) = const_node {

@@ -924,7 +924,7 @@ impl<'p> SyntaxPlan<'p> {
                 self.nodes.push_sn_plan(sn);
             }
             Node::Expression(Expression::Parameter(Parameter { index, .. })) => {
-                let sn = SyntaxNode::new_parameter(id, *index);
+                let sn = SyntaxNode::new_parameter(id, *index as _);
                 self.nodes.push_sn_plan(sn);
             }
             Node::Relational(ref rel) => match rel {

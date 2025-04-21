@@ -1974,10 +1974,10 @@ impl Plan {
         }
     }
 
-    fn count_pg_parameters(pg_params_map: &AHashMap<NodeId, usize>) -> usize {
+    fn count_pg_parameters(pg_params_map: &AHashMap<NodeId, u16>) -> usize {
         pg_params_map
             .values()
-            .fold(0, |p1, p2| std::cmp::max(p1, *p2 + 1)) // idx 0 stands for $1
+            .fold(0, |p1, p2| std::cmp::max(p1, (*p2 + 1) as usize)) // idx 0 stands for $1
     }
 
     /// Infer parameter types specified via cast.
@@ -2003,15 +2003,16 @@ impl Plan {
         let mut inferred_types = vec![None; params_count];
 
         for (node_id, param_idx) in &pg_params_map {
+            let param_index = *param_idx as usize;
             let param_type = *self.get_param_type(*node_id)?.get();
-            let inferred_type = inferred_types.get(*param_idx).unwrap_or_else(|| {
+            let inferred_type = inferred_types.get(param_index).unwrap_or_else(|| {
                 panic!("param idx {param_idx} exceeds params count {params_count}")
             });
-            let client_type = client_types.get(*param_idx).copied().flatten();
+            let client_type = client_types.get(param_index).copied().flatten();
             match (param_type, inferred_type, client_type) {
                 (_, _, Some(client_type)) => {
                     // Client provided an explicit type, no additional checks are required.
-                    inferred_types[*param_idx] = Some(client_type);
+                    inferred_types[param_index] = Some(client_type);
                 }
                 (Some(param_type), Some(inferred_type), None) => {
                     if &param_type != inferred_type {
@@ -2026,7 +2027,7 @@ impl Plan {
                 }
                 (Some(param_type), None, None) => {
                     // We've inferred a more specific type from the context.
-                    inferred_types[*param_idx] = Some(param_type);
+                    inferred_types[param_index] = Some(param_type);
                 }
                 _ => {}
             }
@@ -2043,7 +2044,7 @@ impl Plan {
         // like int and scalar are not supported for arithmetic expression, despite of the fact
         // that the type of parameter was specified.
         for (node_id, param_idx) in &pg_params_map {
-            self.set_param_type(*node_id, types[*param_idx])?;
+            self.set_param_type(*node_id, types[*param_idx as usize])?;
         }
 
         Ok(types)

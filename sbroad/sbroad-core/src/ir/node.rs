@@ -367,7 +367,7 @@ impl From<Case> for NodeAligned {
 pub struct Parameter {
     pub param_type: DerivedType,
     // index of parameter (starting with 1)
-    pub index: usize,
+    pub index: u16,
 }
 
 impl From<Parameter> for NodeAligned {

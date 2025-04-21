@@ -29,7 +29,7 @@ fn count_max_parameter_index(
     for param_id in param_node_ids {
         let param = plan.get_expression_node(*param_id)?;
         if let Expression::Parameter(Parameter { index, .. }) = param {
-            params_count = std::cmp::max(*index, params_count);
+            params_count = std::cmp::max(*index as usize, params_count);
         }
     }
     Ok(params_count)
@@ -141,7 +141,7 @@ fn bind_params(
         let node = plan.get_expression_node(*param_id)?;
         if shoud_cover_with_row.contains(param_id) {
             if let Expression::Parameter(Parameter { index, .. }) = node {
-                let value = values.get(index - 1).unwrap().clone();
+                let value = values[(index - 1) as usize].clone();
                 let const_id = plan.add_const(value);
                 let list = vec![const_id];
                 let distribution = None;
@@ -151,7 +151,7 @@ fn bind_params(
         } else {
             let node = plan.get_expression_node(*param_id)?;
             if let Expression::Parameter(Parameter { index, .. }) = node {
-                let value = values.get(index - 1).unwrap().clone();
+                let value = values[(index - 1) as usize].clone();
                 let constant = Constant { value };
                 plan.nodes.replace(*param_id, Node64::Constant(constant))?;
             }
@@ -162,7 +162,7 @@ fn bind_params(
 }
 
 impl Plan {
-    pub fn add_param(&mut self, index: usize) -> NodeId {
+    pub fn add_param(&mut self, index: u16) -> NodeId {
         self.nodes.push(
             Parameter {
                 index,
@@ -189,8 +189,8 @@ impl Plan {
 
         for opt in self.raw_options.iter_mut() {
             if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
-                let index = params.iter().find(|x| x.0 == param_id).unwrap();
-                let val = values[index.1 - 1].clone();
+                let index = params.iter().find(|x| x.0 == param_id).unwrap().1 as usize - 1;
+                let val = values[index].clone();
                 opt.val = OptionParamValue::Value { val };
             }
         }
@@ -218,7 +218,7 @@ impl Plan {
 
     /// Build a map { pg_parameter_node_id -> param_idx }, where param_idx starts with 0.
     #[must_use]
-    pub fn build_params_map(&self) -> AHashMap<NodeId, usize> {
+    pub fn build_params_map(&self) -> AHashMap<NodeId, u16> {
         self.nodes
             .arena64
             .iter()

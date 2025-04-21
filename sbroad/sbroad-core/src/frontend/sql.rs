@@ -89,6 +89,9 @@ const DEFAULT_IF_NOT_EXISTS: bool = false;
 
 const DEFAULT_WAIT_APPLIED_GLOBALLY: bool = true;
 
+// The same limit as in PostgreSQL (http://postgresql.org/docs/16/limits.html)
+pub const MAX_PARAMETER_INDEX: usize = 65535;
+
 fn get_default_timeout() -> Decimal {
     Decimal::from_str(&format!("{DEFAULT_TIMEOUT_F64}")).expect("default timeout casting failed")
 }
@@ -1755,7 +1758,15 @@ fn parse_param<M: Metadata>(
         position + 1
     };
 
-    Ok(plan.add_param(index))
+    if index > MAX_PARAMETER_INDEX {
+        return Err(SbroadError::Other(format_smolstr!(
+            "parameter index {} is too big (max: {})",
+            index,
+            MAX_PARAMETER_INDEX
+        )));
+    }
+
+    Ok(plan.add_param(index.try_into().expect("invalid parameter idnex")))
 }
 
 // Helper structure used to resolve expression operators priority.
