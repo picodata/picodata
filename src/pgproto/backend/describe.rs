@@ -27,13 +27,12 @@ use tarantool::{
     tuple::FunctionCtx,
 };
 
-#[derive(Debug, Clone, Copy, Default, Deserialize_repr, Serialize_repr)]
+#[derive(Debug, Clone, Copy, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
 pub enum QueryType {
     Acl = 0,
     Ddl = 1,
     Dml = 2,
-    #[default]
     Dql = 3,
     Explain = 4,
     Empty = 5,
@@ -41,7 +40,7 @@ pub enum QueryType {
     Deallocate = 7,
 }
 
-#[derive(Clone, Debug, Default, Deserialize_repr, Serialize_repr)]
+#[derive(Debug, Clone, Copy, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
 pub enum CommandTag {
     AddTrier = 37,
@@ -80,7 +79,6 @@ pub enum CommandTag {
     Revoke = 10,
     Rollback = 54,
     RevokeRole = 11,
-    #[default]
     Select = 12,
     SetParam = 20,
     SetTransaction = 21,
@@ -380,7 +378,7 @@ fn field_description(name: String, ty: Type, format: FieldFormat) -> FieldDescri
 }
 
 /// Contains a query description used by pgproto.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Describe {
     pub command_tag: CommandTag,
     pub query_type: QueryType,
@@ -389,19 +387,6 @@ pub struct Describe {
 }
 
 impl Describe {
-    #[inline]
-    pub fn with_command_tag(mut self, command_tag: CommandTag) -> Self {
-        self.command_tag = command_tag.clone();
-        self.query_type = command_tag.into();
-        self
-    }
-
-    #[inline]
-    pub fn with_metadata(mut self, metadata: Vec<MetadataColumn>) -> Self {
-        self.metadata = metadata;
-        self
-    }
-
     pub fn new(plan: &Plan) -> PgResult<Self> {
         let command_tag = if plan.is_empty() {
             CommandTag::EmptyQuery
@@ -412,20 +397,24 @@ impl Describe {
             let node = plan.get_node(top)?;
             CommandTag::try_from(&node)?
         };
-        let query_type = command_tag.clone().into();
-        match query_type {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Deallocate => {
-                Ok(Describe::default().with_command_tag(command_tag))
-            }
-            QueryType::Dql => Ok(Describe::default()
-                .with_command_tag(command_tag)
-                .with_metadata(dql_output_format(plan)?)),
-            QueryType::Tcl => Ok(Describe::default().with_command_tag(command_tag)),
-            QueryType::Explain => Ok(Describe::default()
-                .with_command_tag(command_tag)
-                .with_metadata(explain_output_format())),
-            QueryType::Empty => Ok(Describe::default().with_command_tag(command_tag)),
-        }
+        let query_type = command_tag.into();
+
+        let metadata = match query_type {
+            QueryType::Acl
+            | QueryType::Ddl
+            | QueryType::Dml
+            | QueryType::Tcl
+            | QueryType::Deallocate
+            | QueryType::Empty => vec![],
+            QueryType::Dql => dql_output_format(plan)?,
+            QueryType::Explain => explain_output_format(),
+        };
+
+        Ok(Describe {
+            command_tag,
+            query_type,
+            metadata,
+        })
     }
 }
 
@@ -435,7 +424,7 @@ impl Describe {
     }
 
     pub fn command_tag(&self) -> CommandTag {
-        self.command_tag.clone()
+        self.command_tag
     }
 
     pub fn row_description(&self) -> Option<RowDescription> {
@@ -446,6 +435,7 @@ impl Describe {
             | QueryType::Deallocate
             | QueryType::Tcl
             | QueryType::Empty => None,
+
             QueryType::Dql | QueryType::Explain => {
                 let row_description = self
                     .metadata
@@ -454,6 +444,7 @@ impl Describe {
                         field_description(col.name.clone(), col.ty.clone(), FieldFormat::Text)
                     })
                     .collect();
+
                 Some(RowDescription::new(row_description))
             }
         }
@@ -466,7 +457,7 @@ impl Return for Describe {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StatementDescribe {
     #[serde(flatten)]
     pub describe: Describe,
@@ -492,7 +483,7 @@ impl StatementDescribe {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PortalDescribe {
     #[serde(flatten)]
     pub describe: Describe,

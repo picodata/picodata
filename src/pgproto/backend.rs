@@ -123,7 +123,7 @@ pub fn bind(
     result_format: Vec<FieldFormat>,
     default_options: Vec<OptionSpec>,
 ) -> PgResult<()> {
-    let key = (id, stmt_name.into());
+    let key = storage::Key(id, stmt_name.into());
     let statement: Statement = PG_STATEMENTS
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
@@ -147,15 +147,15 @@ pub fn bind(
         plan.optimize()?;
     }
 
-    let key = (id, portal_name.into());
-    let portal = Portal::new(id, plan, statement.clone(), result_format)?;
+    let key = storage::Key(id, portal_name.into());
+    let portal = Portal::new(key.clone(), statement.clone(), result_format, plan)?;
     PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
 
     Ok(())
 }
 
 pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     let portal: Portal = PG_PORTALS
         .with(|storage| storage.borrow_mut().get(&key).cloned())
         .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
@@ -168,11 +168,11 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
     let runtime = RouterRuntime::new().map_err(Error::from)?;
     let mut cache = runtime.cache().lock();
 
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
 
     let cache_entry = with_su(ADMIN_ID, || cache.get(&query.to_smolstr()))??;
     if let Some(plan) = cache_entry {
-        let statement = Statement::new(plan.clone(), param_oids)?;
+        let statement = Statement::new(key.clone(), plan.clone(), param_oids)?;
         PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
         return Ok(());
     }
@@ -197,14 +197,14 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
         cache.put(query.into(), plan.clone())?;
     }
 
-    let statement = Statement::new(plan, param_oids)?;
+    let statement = Statement::new(key.clone(), plan, param_oids)?;
     PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
 
     Ok(())
 }
 
 pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescribe> {
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     let statement: Statement = PG_STATEMENTS
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
@@ -213,7 +213,7 @@ pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescrib
 }
 
 pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     let portal: Portal = PG_PORTALS
         .with(|storage| storage.borrow_mut().get(&key).cloned())
         .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
@@ -223,13 +223,13 @@ pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
 
 pub fn close_statement(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
 pub fn close_portal(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     PG_PORTALS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
@@ -243,7 +243,7 @@ pub fn close_client_portals(id: ClientId) {
 
 pub fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
     // In contrast to closing, deallocation can cause an error in PG.
-    let key = (id, name.into());
+    let key = storage::Key(id, name.into());
     PG_STATEMENTS
         .with(|storage| storage.borrow_mut().remove(&key))
         .ok_or_else(|| PgError::other(format!("prepared statement {name} does not exist.")))?;

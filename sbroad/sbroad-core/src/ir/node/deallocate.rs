@@ -29,10 +29,10 @@ impl Plan {
     /// # Errors
     /// - the node index is absent in arena
     /// - current node is not of Deallocate type
-    pub fn get_deallocate_node(&self, node_id: NodeId) -> Result<Deallocate, SbroadError> {
+    pub fn get_deallocate_node(&self, node_id: NodeId) -> Result<&Deallocate, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
-            Node::Deallocate(deallocate) => Ok(deallocate.clone()),
+            Node::Deallocate(deallocate) => Ok(deallocate),
             _ => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("node is not Deallocate type: {node:?}")),

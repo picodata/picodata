@@ -98,8 +98,9 @@ fn handle_client(
         .func(move || {
             let res = do_handle_client(client, tls_acceptor, storage);
             if let Err(e) = res {
-                tlog!(Error, "postgres client connection error: {e}");
+                tlog!(Error, "{e}");
             }
+            tlog!(Info, "connection closed");
         })
         .start_non_joinable()?;
 

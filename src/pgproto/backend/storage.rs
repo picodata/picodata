@@ -33,7 +33,22 @@ use tarantool::{
     tuple::{FunctionCtx, Tuple},
 };
 
+/// We generate those sequentially for every client connection.
 pub type ClientId = u32;
+
+/// Used to store portals in [`PG_PORTALS`] and statements in [`PG_STATEMENTS`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Key(pub ClientId, pub Rc<str>);
+
+impl std::fmt::Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (id, name) = (self.0, &self.1);
+        f.debug_tuple("")
+            .field(&format_args!("{id}"))
+            .field(&format_args!("{name:?}"))
+            .finish()
+    }
+}
 
 // Object that stores information specific to the portal or statement storage.
 struct StorageContext {
@@ -78,7 +93,7 @@ impl StorageContext {
 /// Storage for Statements and Portals.
 /// Essentially a map with custom logic for updates and unnamed elements.
 pub struct PgStorage<S> {
-    map: BTreeMap<(ClientId, Rc<str>), S>,
+    map: BTreeMap<Key, S>,
     // We reuse this empty name in range scans in order to avoid Rc allocations.
     // Note: see names_by_client_id.
     empty_name: Rc<str>,
@@ -96,7 +111,7 @@ impl<S> PgStorage<S> {
         }
     }
 
-    pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> PgResult<()> {
+    pub fn put(&mut self, key: Key, value: S) -> PgResult<()> {
         let capacity = self.context.get_capacity()?;
         let kind = self.context.value_kind;
         if self.len() >= capacity {
@@ -117,7 +132,7 @@ impl<S> PgStorage<S> {
 
         match self.map.entry(key) {
             Entry::Occupied(entry) => {
-                let (id, name) = entry.key();
+                let Key(id, name) = entry.key();
                 Err(PgError::WithExplicitCode(
                     self.context.dublicate_key_error_code,
                     format!("{kind} \'{name}\' for client {id} already exists"),
@@ -131,12 +146,12 @@ impl<S> PgStorage<S> {
     }
 
     #[inline(always)]
-    pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<&S> {
+    pub fn get(&self, key: &Key) -> Option<&S> {
         self.map.get(key)
     }
 
     #[inline(always)]
-    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) -> Option<S> {
+    pub fn remove(&mut self, key: &Key) -> Option<S> {
         self.map.remove(key)
     }
 
@@ -147,12 +162,12 @@ impl<S> PgStorage<S> {
 
     pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
         let range = (
-            Bound::Included((id, Rc::clone(&self.empty_name))),
-            Bound::Excluded((id + 1, Rc::clone(&self.empty_name))),
+            Bound::Included(Key(id, Rc::clone(&self.empty_name))),
+            Bound::Excluded(Key(id + 1, Rc::clone(&self.empty_name))),
         );
         self.map
             .range(range)
-            .map(|((_, name), _)| Rc::clone(name))
+            .map(|(Key(_, name), _)| Rc::clone(name))
             .collect()
     }
 
@@ -203,18 +218,41 @@ pub fn force_init_portals_and_statements() {
 
 #[derive(Debug)]
 pub struct StatementInner {
+    key: Key,
     plan: Plan,
     describe: StatementDescribe,
+}
+
+impl Drop for StatementInner {
+    fn drop(&mut self) {
+        tlog!(
+            Debug,
+            "dropped statement {} of type {:?}",
+            self.key,
+            self.describe.query_type()
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
-    pub fn new(mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
+    pub fn new(key: Key, mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
         let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
-        let inner = StatementInner { plan, describe };
+        let inner = StatementInner {
+            key,
+            plan,
+            describe,
+        };
+
+        tlog!(
+            Debug,
+            "created new statement {} of type {:?}",
+            inner.key,
+            inner.describe.query_type()
+        );
 
         Ok(Self(inner.into()))
     }
@@ -397,10 +435,21 @@ impl std::fmt::Display for PortalState {
 
 #[derive(Debug)]
 struct PortalInner {
-    id: ClientId,
+    key: Key,
     statement: Statement,
     describe: PortalDescribe,
     state: RefCell<PortalState>,
+}
+
+impl Drop for PortalInner {
+    fn drop(&mut self) {
+        tlog!(
+            Debug,
+            "dropped portal {} in state {}",
+            self.key,
+            self.state.borrow()
+        );
+    }
 }
 
 impl PortalInner {
@@ -439,16 +488,16 @@ impl PortalInner {
                 PortalState::StreamingRows(pg_rows.into_iter())
             }
             QueryType::Deallocate => {
-                let tag = self.describe.command_tag();
                 let ir_plan = self.statement.plan();
                 let top_id = ir_plan.get_top()?;
                 let deallocate = ir_plan.get_deallocate_node(top_id)?;
                 let name = deallocate.name.as_ref().map(|name| name.as_str());
                 match name {
-                    Some(name) => deallocate_statement(self.id, name)?,
-                    None => close_client_statements(self.id),
+                    Some(name) => deallocate_statement(self.key.0, name)?,
+                    None => close_client_statements(self.key.0),
                 };
 
+                let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
             }
             QueryType::Empty => PortalState::ResultReady(ExecuteResult::Empty),
@@ -505,20 +554,22 @@ pub struct Portal(Rc<PortalInner>);
 
 impl Portal {
     pub fn new(
-        id: ClientId,
-        plan: Plan,
+        key: Key,
         statement: Statement,
         output_format: Vec<FieldFormat>,
+        plan: Plan,
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
         let state = PortalState::NotStarted(Some(plan.into())).into();
         let inner = PortalInner {
-            id,
+            key,
             statement,
             describe,
             state,
         };
+
+        tlog!(Debug, "created new portal {}", inner.key);
 
         Ok(Self(inner.into()))
     }
@@ -541,7 +592,7 @@ impl Portal {
 
 #[derive(Debug, Serialize)]
 pub struct UserStatementNames {
-    // Available statements for the client with the given client id.
+    // Known statements for the client with the given client id.
     available: Vec<Rc<str>>,
     // Total number of statements in the storage (including other clients).
     total: usize,
@@ -567,7 +618,7 @@ impl Return for UserStatementNames {
 
 #[derive(Debug, Serialize)]
 pub struct UserPortalNames {
-    // Available portals for the client with the given client id.
+    // Known portals for the client with the given client id.
     available: Vec<Rc<str>>,
     // Total number of portals in the storage (including other clients).
     total: usize,
