@@ -97,7 +97,7 @@ impl Eq for GroupingExpression<'_> {}
 /// in the location relational operator, there will be a corresponding mapping for it.
 /// In case there is a reference (or expression containing it) in the final relational operator
 /// that doesn't correspond to any GroupBy expression, an error should have been thrown on the
-/// stage of `collect_grouping_expressions`.
+/// stage of `collect_grouping_exprs`.
 type GroupbyExpressionsMap = AHashMap<NodeId, Vec<ExpressionLocationId>>;
 
 /// Maps id of `GroupBy` expression used in `GroupBy` (from local stage)
@@ -208,6 +208,8 @@ impl<'plan> ExpressionMapper<'plan> {
     }
 }
 
+/// Generate alias for grouping expression used under local GroupBy.
+/// Read more about local aliases under `add_local_projection` comments.
 fn grouping_expr_local_alias(index: usize) -> Rc<String> {
     Rc::new(format!("gr_expr_{index}"))
 }
@@ -242,7 +244,7 @@ impl GroupByReduceInfo {
 struct GroupByInfo {
     id: NodeId,
     grouping_exprs: Vec<NodeId>,
-    gr_exprs_map: GroupbyExpressionsMap,
+    grouping_exprs_map: GroupbyExpressionsMap,
     /// Map of { grouping_expr under local GroupBy -> its alias }.
     grouping_expr_to_alias_map: OrderedMap<NodeId, Rc<String>, RepeatableState>,
     reduce_info: GroupByReduceInfo,
@@ -253,7 +255,7 @@ impl GroupByInfo {
         Self {
             id,
             grouping_exprs: Vec::with_capacity(GR_EXPR_CAPACITY),
-            gr_exprs_map: AHashMap::with_capacity(GR_EXPR_CAPACITY),
+            grouping_exprs_map: AHashMap::with_capacity(GR_EXPR_CAPACITY),
             grouping_expr_to_alias_map: OrderedMap::with_hasher(RepeatableState),
             reduce_info: GroupByReduceInfo::new(),
         }
@@ -395,7 +397,7 @@ impl Plan {
     /// Fill grouping expression map (see comments next to
     /// `GroupbyExpressionsMap` definition).
     #[allow(clippy::too_many_lines)]
-    fn fill_gr_exprs_map(
+    fn fill_grouping_exprs_map(
         &mut self,
         finals: &Vec<NodeId>,
         groupby_info: &mut GroupByInfo,
@@ -408,7 +410,7 @@ impl Plan {
                         &groupby_info.grouping_exprs,
                         self,
                         *rel_id,
-                        &mut groupby_info.gr_exprs_map,
+                        &mut groupby_info.grouping_exprs_map,
                     );
                     for col in self.get_row_list(*output)? {
                         mapper.find_matches(*col)?;
@@ -419,7 +421,7 @@ impl Plan {
                         &groupby_info.grouping_exprs,
                         self,
                         *rel_id,
-                        &mut groupby_info.gr_exprs_map,
+                        &mut groupby_info.grouping_exprs_map,
                     );
                     mapper.find_matches(*filter)?;
                 }
@@ -518,8 +520,88 @@ impl Plan {
         Ok(false)
     }
 
+    /// "Grouping exprs" are expressions that are used in GroupBy clause
+    /// (on both Map and Reduce stages of the algorithm). In this function we try
+    /// to identify which grouping exprs we have to add in order to
+    /// execute the query correctly.
+    fn collect_grouping_exprs(
+        &mut self,
+        groupby_info: &mut Option<GroupByInfo>,
+        aggrs: &mut [Aggregate],
+        finals: &Vec<NodeId>,
+    ) -> Result<(), SbroadError> {
+        let distinct_aggr_grouping_exprs =
+            self.collect_grouping_exprs_from_distinct_aggrs(aggrs)?;
+
+        // Index for generating local grouping expressions aliases.
+        let mut local_alias_index = 1;
+        // Map of { grouping_expr -> local_alias }.
+        // We are using an OrderedMap to get the same order of grouping exprs
+        // so that our tests are not flaky.
+        let mut unique_grouping_expr_to_alias_map: OrderedMap<
+            GroupingExpression,
+            Rc<String>,
+            RepeatableState,
+        > = OrderedMap::with_capacity_and_hasher(GR_EXPR_CAPACITY, RepeatableState);
+        // Grouping expressions for local GroupBy.
+        let mut grouping_exprs_local = Vec::with_capacity(GR_EXPR_CAPACITY);
+        if let Some(groupby_info) = groupby_info.as_mut() {
+            // Leave only unique expressions under local GroupBy.
+            let gr_exprs = self.get_grouping_exprs(groupby_info.id)?;
+            for gr_expr in gr_exprs {
+                let local_alias = grouping_expr_local_alias(local_alias_index);
+                let new_expr = GroupingExpression::new(*gr_expr, self);
+                if !unique_grouping_expr_to_alias_map.contains_key(&new_expr) {
+                    unique_grouping_expr_to_alias_map.insert(new_expr, local_alias);
+                    local_alias_index += 1;
+                }
+            }
+            for (expr, _) in unique_grouping_expr_to_alias_map.iter() {
+                let expr_id = expr.id;
+                grouping_exprs_local.push(expr_id);
+                groupby_info.grouping_exprs.push(expr_id);
+            }
+        }
+
+        // Set local aggregates aliases for distinct aggregatees. For non-distinct aggregates
+        // they would be set under `add_local_aggregates`.
+        for (gr_expr, aggr) in distinct_aggr_grouping_exprs {
+            let new_expr = GroupingExpression::new(gr_expr, self);
+            if let Some(local_alias) = unique_grouping_expr_to_alias_map.get(&new_expr) {
+                aggr.lagg_aliases.insert(aggr.kind, local_alias.clone());
+            } else {
+                let local_alias = grouping_expr_local_alias(local_alias_index);
+                local_alias_index += 1;
+                aggr.lagg_aliases.insert(aggr.kind, local_alias.clone());
+
+                // Add expressions used as arguments to distinct aggregates to local `GroupBy`.
+                //
+                // E.g: For query below, we should add b*b to local `GroupBy`
+                // `select a, sum(distinct b*b), count(c) from t group by a`
+                // Map: `select a as l1, b*b as l2, count(c) as l3 from t group by a, b, b*b`
+                // Reduce: `select l1, sum(distinct l2), sum(l3) from tmp_space group by l1`
+                grouping_exprs_local.push(gr_expr);
+                unique_grouping_expr_to_alias_map.insert(new_expr, local_alias);
+            }
+        }
+
+        if let Some(groupby_info) = groupby_info.as_mut() {
+            for (expr, local_alias) in unique_grouping_expr_to_alias_map.iter() {
+                groupby_info
+                    .grouping_expr_to_alias_map
+                    .insert(expr.id, local_alias.clone());
+            }
+
+            self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
+            self.fill_grouping_exprs_map(finals, groupby_info)?;
+
+            self.set_distribution(self.get_relational_output(groupby_info.id)?)?;
+        }
+        Ok(())
+    }
+
     /// In case we have distinct aggregates like `count(distinct a)` they result
-    /// in adding its argument expressions (expression a for the case above) under
+    /// in adding its argument expressions (expression `a` for the case above) under
     /// local GroupBy node.
     fn collect_grouping_exprs_from_distinct_aggrs<'aggr>(
         &self,
@@ -551,7 +633,7 @@ impl Plan {
             groupby_info.grouping_expr_to_alias_map.iter().enumerate()
         {
             let new_gr_expr = SubtreeCloner::clone_subtree(self, *gr_expr)?;
-            let new_alias = self.nodes.add_alias(&local_alias, new_gr_expr)?;
+            let new_alias = self.nodes.add_alias(local_alias, new_gr_expr)?;
             output_cols.push(new_alias);
             alias_to_pos.insert(local_alias.clone(), pos);
         }
@@ -606,51 +688,52 @@ impl Plan {
     /// Create Projection node for Map(local) stage of 2-stage aggregation
     ///
     /// # Arguments
-    ///
     /// * `upper_id` - id of child for Projection node to be created.
     /// * `aggrs` - vector of metadata for each aggregate function that was found in final
-    ///   projection. Each info specifies what kind of aggregate it is (sum, avg, etc) and location
-    ///   in final projection.
+    ///   projection.
     ///
-    /// Local Projection is created by creating columns for grouping expressions and columns
-    /// for local aggregates. If there is no `GroupBy` in the original query then `child_id` refers
-    /// to other node and in case there are distinct aggregates, `GroupBy` node will be created
-    /// to contain expressions from distinct aggregates:
+    /// Local Projection is created by creating columns for grouping exprs and columns
+    /// for local aggregates. If there is `GroupBy` in the original query, then distinct
+    /// expressions will be added to that. If there is no `GroupBy` in the original query
+    /// then `child_id` refers to other node and in case there are distinct aggregates,
+    /// `GroupBy` node will be created to contain expressions from distinct aggregates:
+    ///
+    /// E.g. for a query `select sum(distinct a + b) from t` plan before calling this function
+    /// would look like:
     /// ```text
-    /// select sum(distinct a + b) from t
-    /// // Plan before calling this function:
-    /// Projection sum(distinct a + b) from t
-    ///     Scan t
-    /// // After calling this function
-    /// Projection sum(distinct a + b) from t <- did not changed
-    ///     Projection a + b as l1 <- created local Projection
-    ///         GroupBy a <- created a GroupBy node for distinct aggregate
-    ///             Scan t
+    /// - Projection sum(distinct a + b) from t
+    /// -     Scan t
     /// ```
-    ///
-    /// If there is `GroupBy` in the original query, then distinct expressions will be added
-    /// to that.
+    /// After calling the this function:
+    /// ```text
+    /// - Projection sum(distinct a + b) from t <- did not changed
+    /// -     Projection a + b as l1            <- created local Projection
+    /// -         GroupBy a + b                 <- created a GroupBy node for distinct aggregate
+    /// -             Scan t
+    /// ```
     ///
     /// # Local aliases
-    /// For each column in local `Projection` alias is created. It is generated
-    /// as `{uuid}_{node_id}`, for the purpose of not matching to some of the user aliases.
-    /// Aggregates encapsulate this logic in themselves, see [`create_columns_for_local_proj`]
-    /// of [`SimpleAggregate`]. For grouping expressions it is done manually using
-    /// [`generate_local_alias`].
+    /// For each column in local `Projection` alias is created (see `grouping_expr_local_alias`).
+    /// Aggregates encapsulate this logic in themselves (see `aggr_local_alias`).
     /// These local aliases are used later in 2-stage aggregation pipeline to replace
-    /// original expressions in nodes like `Projection`, `Having`, `GroupBy`. For example:
+    /// original expressions in nodes like `Projection`, `Having`, `GroupBy`.
+    ///
+    /// E.g. if initially final Projection looked like
     /// ```text
-    /// // initially final Projection
-    /// Projection count(expr)
-    /// // when we create local Projection, we take expr from final Projection,
-    /// // and later(not in this function) replace expression in final
-    /// // Projection with corresponding local alias:
-    /// Projection sum(l1)
-    ///     ...
-    ///         Projection count(expr) as l1 // l1 - is generated local alias
+    /// - Projection count(expr)
+    /// -     ...
     /// ```
+    /// When we create local Projection, we take expr from final Projection,
+    /// and later(not in this function) replace expression in final
+    /// Projection with corresponding local alias:
+    /// ```text
+    /// - Projection sum(l1)
+    /// -     ...
+    /// -         Projection count(expr) as l1 <- l1 - is generated local alias
+    /// ```
+    ///
     /// The same logic must be applied to any node in final stage of 2-stage aggregation:
-    /// `Having`, `GroupBy`, `OrderBy`. See [`add_two_stage_aggregation`] for more details.
+    /// `Having`, `GroupBy`, `OrderBy`.
     fn add_local_projection(
         &mut self,
         upper_id: NodeId,
@@ -786,12 +869,9 @@ impl Plan {
     /// reduce query: `select l1 as user_alias from tmp_space group by l1`
     /// In above example this function will replace `a + b` expression in final `Projection`
     #[allow(clippy::too_many_lines)]
-    fn patch_grouping_expressions(
-        &mut self,
-        groupby_info: &GroupByInfo,
-    ) -> Result<(), SbroadError> {
+    fn patch_grouping_exprs(&mut self, groupby_info: &GroupByInfo) -> Result<(), SbroadError> {
         let local_aliases_map = &groupby_info.reduce_info.local_aliases_map;
-        let gr_exprs_map = &groupby_info.gr_exprs_map;
+        let gr_exprs_map = &groupby_info.grouping_exprs_map;
 
         type RelationalID = NodeId;
         type GroupByExpressionID = NodeId;
@@ -944,7 +1024,7 @@ impl Plan {
         }
 
         if let Some(groupby_info) = groupby_info {
-            self.patch_grouping_expressions(groupby_info)?;
+            self.patch_grouping_exprs(groupby_info)?;
         }
 
         let mut parent_to_aggrs: HashMap<NodeId, Vec<Aggregate>> =
@@ -1063,7 +1143,25 @@ impl Plan {
         Ok(())
     }
 
-    /// Adds 2-stage aggregation and returns `true` if there are any aggregate
+    /// Handle GroupBy, aggregates and distinct qualifier
+    /// in case they are present in the query. We have to create
+    /// additional relational nodes (including Motions) in order to guarantee
+    /// corectness of such query execution.
+    ///
+    /// We call this algorithm a "two" stage aggregation, because it assumes
+    /// execution of a GroupBy related logic being executed in MapReduce manner.
+    /// On a Map stage on each instance we execute:
+    /// * Grouping by needed expressions
+    /// * (if present) aggregates calculation
+    ///
+    /// On a Reduce stage we finalize calculation by gathering all the results
+    /// and applying the same logic (grouping or aggregation) on a whole set of
+    /// data. Map stage is present in order not to apply all the calculations
+    /// (e.g. aggregates) on the router but spread them between all instances.
+    ///
+    /// Among other, see `add_local_projection` comments.
+    ///
+    /// Returns `true` if there are any aggregate
     /// functions or `GroupBy` is present. Otherwise, returns `false` and
     /// does nothing.
     pub fn add_two_stage_aggregation(
@@ -1085,7 +1183,7 @@ impl Plan {
 
         if groupby_info.is_none() && aggrs.is_empty() {
             if let Some(groupby_id) = self.add_group_by_for_distinct(final_proj_id, upper_id)? {
-                // In case aggregates or GroupBy are present "distinct" qualifier under
+                // In case aggregates or GroupBy are present, "distinct" qualifier under
                 // Projection doesn't add any new features to the plan. Otherwise, we should add
                 // a new GroupBy node for a local map stage.
                 //
@@ -1104,89 +1202,35 @@ impl Plan {
             self.check_refs_out_of_aggregates(&finals)?;
         }
 
-        let distinct_grouping_exprs =
-            self.collect_grouping_exprs_from_distinct_aggrs(&mut aggrs)?;
-        if groupby_info.is_none() && !distinct_grouping_exprs.is_empty() {
+        let distinct_aggrs_are_present = aggrs.iter().any(|a| a.is_distinct);
+        if groupby_info.is_none() && distinct_aggrs_are_present {
             // GroupBy doesn't exist and we have to create it just for
             // distinct aggregates.
             //
             // Example: `select sum(distinct a) from t`
+            //
+            // Currently it's the only case when GroupBy will be present
+            // on a Map stage, but will not be generated for Reduce stage.
 
-            // grouping_exprs will be set few lines below.
             let groupby_id = self.add_groupby(upper_id, &[], None)?;
             upper_id = groupby_id;
             groupby_info = Some(GroupByInfo::new(upper_id));
         }
 
-        // Index for generating local grouping expressions aliases.
-        let mut local_alias_index = 1;
-        // Map of { grouping_expression -> (local_alias + parent_rel_id) }.
-        let mut unique_grouping_expr_to_alias_map: OrderedMap<
-            GroupingExpression,
-            Rc<String>,
-            RepeatableState,
-        > = OrderedMap::with_capacity_and_hasher(GR_EXPR_CAPACITY, RepeatableState);
-        // Grouping expressions for local GroupBy.
-        let mut grouping_exprs_local = Vec::with_capacity(GR_EXPR_CAPACITY);
-        if let Some(groupby_info) = groupby_info.as_mut() {
-            // Leave only unique expressions under local GroupBy.
-            let gr_exprs = self.get_grouping_exprs(groupby_info.id)?;
-            for gr_expr in gr_exprs {
-                let local_alias = grouping_expr_local_alias(local_alias_index);
-                let new_expr = GroupingExpression::new(*gr_expr, self);
-                if !unique_grouping_expr_to_alias_map.contains_key(&new_expr) {
-                    unique_grouping_expr_to_alias_map.insert(new_expr, local_alias);
-                    local_alias_index += 1;
-                }
-            }
-            for (expr, _) in unique_grouping_expr_to_alias_map.iter() {
-                let expr_id = expr.id;
-                grouping_exprs_local.push(expr_id);
-                groupby_info.grouping_exprs.push(expr_id);
-            }
+        // Note: All the cases in which a local GroupBy node is created (in
+        //       case there are no user-defined GroupBy) are handled above.
+        //       In case some new logic is added that requires generation of a
+        //       local GroupBy node, please try to implement it above (so that
+        //       such node creation is located in one place).
 
+        self.collect_grouping_exprs(&mut groupby_info, &mut aggrs, &finals)?;
+
+        if let Some(groupby_info) = groupby_info.as_ref() {
             if !groupby_info.grouping_exprs.is_empty()
                 && self.check_bucket_id_under_group_by(&groupby_info.grouping_exprs)?
             {
                 return Ok(false);
             }
-        }
-
-        // Set local aggregates aliases for distinct aggregatees. For non-distinct aggregates
-        // they would be set under `add_local_aggregates`.
-        for (gr_expr, aggr) in distinct_grouping_exprs {
-            let new_expr = GroupingExpression::new(gr_expr, self);
-            if let Some(local_alias) = unique_grouping_expr_to_alias_map.get(&new_expr) {
-                aggr.lagg_aliases.insert(aggr.kind, local_alias.clone());
-            } else {
-                let local_alias = grouping_expr_local_alias(local_alias_index);
-                local_alias_index += 1;
-                aggr.lagg_aliases.insert(aggr.kind, local_alias.clone());
-
-                // Add expressions used as arguments to distinct aggregates to local `GroupBy`.
-                //
-                // E.g: For query below, we should add b*b to local `GroupBy`
-                // `select a, sum(distinct b*b), count(c) from t group by a`
-                // Map: `select a as l1, b*b as l2, count(c) as l3 from t group by a, b, b*b`
-                // Reduce: `select l1, sum(distinct l2), sum(l3) from tmp_space group by l1`
-                grouping_exprs_local.push(gr_expr);
-                unique_grouping_expr_to_alias_map.insert(new_expr, local_alias);
-            }
-        }
-
-        if let Some(groupby_info) = groupby_info.as_mut() {
-            for (expr, local_alias) in unique_grouping_expr_to_alias_map.iter() {
-                groupby_info
-                    .grouping_expr_to_alias_map
-                    .insert(expr.id, local_alias.clone());
-            }
-
-            self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
-            self.fill_gr_exprs_map(&finals, groupby_info)?;
-        }
-
-        if let Some(groupby_info) = &groupby_info {
-            self.set_distribution(self.get_relational_output(groupby_info.id)?)?;
         }
 
         let local_proj_id = self.add_local_projection(upper_id, &mut aggrs, &mut groupby_info)?;
@@ -1199,6 +1243,7 @@ impl Plan {
         } else {
             local_proj_id
         };
+
         self.patch_finals(&finals, finals_child_id, &aggrs, &groupby_info)?;
 
         self.add_motion_to_two_stage(&groupby_info, finals_child_id, &finals)?;
