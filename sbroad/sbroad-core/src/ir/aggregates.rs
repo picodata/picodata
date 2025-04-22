@@ -488,6 +488,11 @@ impl Plan {
                     let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
                     aggrs.extend(collector.collect_aggregates(*filter)?);
                 }
+                // We should skip NamedWindows node in case Projection has no window functions
+                // e.g. `select * from t window win1 as ()`
+                Relational::NamedWindows(_) => {
+                    continue;
+                }
                 _ => {
                     unreachable!(
                         "Unexpected {node:?} met as final relational to collect aggregates"

@@ -1884,9 +1884,11 @@ where
     /// Map of named window definitions where key is the window name and value is the corresponding node ID.
     /// Used to store and look up window definitions that can be referenced by name in window functions.
     named_windows_map: HashMap<SmolStr, NodeId>,
-    /// Vector of all window nodes in the query plan.
+    /// Vec of all window nodes in the query plan.
     /// Stores window definitions in order of appearance, including both named and inline windows.
     windows: Vec<NodeId>,
+    /// Vec of named window NodeId's that are explicitly referenced in window functions.
+    referenced_named_window_ids: Vec<NodeId>,
 }
 
 impl<'worker, M> ExpressionsWorker<'worker, M>
@@ -1913,6 +1915,7 @@ where
             current_time: OffsetDateTime::now_utc(),
             named_windows_map: HashMap::new(),
             windows: Vec::new(),
+            referenced_named_window_ids: Vec::new(),
         }
     }
 
@@ -2936,7 +2939,15 @@ fn parse_window_func<M: Metadata>(
 
             ref_by_name = true;
 
-            worker.named_windows_map.get(&window_name).map_or(err, Ok)?
+            worker
+                .named_windows_map
+                .get(&window_name)
+                .map_or(err, |id| {
+                    if !worker.referenced_named_window_ids.contains(id) {
+                        worker.referenced_named_window_ids.push(*id);
+                    }
+                    Ok(*id)
+                })?
         }
         Rule::WindowBody => {
             let mut partition: Option<Vec<NodeId>> = None;
@@ -3068,16 +3079,16 @@ fn parse_window_func<M: Metadata>(
                 ordering,
                 frame,
             };
-            &plan.nodes.push(window.into())
+            plan.nodes.push(window.into())
         }
         _ => panic!("Unexpected rule met under Window: {window_pair:?}"),
     };
-    worker.windows.push(*window);
+    worker.windows.push(window);
     let over = Over {
         func_name,
         func_args,
         filter,
-        window: *window,
+        window,
         ref_by_name,
     };
 
@@ -4568,8 +4579,16 @@ impl AbstractSyntaxTree {
                 }
             }
         }
-        let windows = std::mem::take(&mut worker.windows);
 
+        if let MutRelational::NamedWindows(NamedWindows {
+            windows: named_windows,
+            ..
+        }) = plan.get_mut_relation_node(plan_rel_child_id)?
+        {
+            *named_windows = std::mem::take(&mut worker.referenced_named_window_ids);
+        }
+
+        let windows = std::mem::take(&mut worker.windows);
         let projection_id =
             plan.add_proj_internal(vec![plan_rel_child_id], &proj_columns, is_distinct, windows)?;
 
@@ -4618,7 +4637,7 @@ impl AbstractSyntaxTree {
             windows.push(window);
         }
         let named_windows_id = plan.add_named_windows(plan_rel_child_id, windows)?;
-        plan.fix_subquery_rows(worker, named_windows_id)?;
+
         map.add(node_id, named_windows_id);
         Ok(())
     }

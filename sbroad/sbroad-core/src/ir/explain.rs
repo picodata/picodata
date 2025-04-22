@@ -1420,8 +1420,13 @@ impl FullExplain {
 
             current_node.current = match &node {
                 Relational::NamedWindows(NamedWindows { child, windows, .. }) => {
-                    let sq_ref_map =
+                    let mut sq_ref_map =
                         result.get_sq_ref_map(&mut current_node, &mut stack, &[*child], 1);
+                    let proj = ir.find_parent_rel(id)?.unwrap();
+                    let children = ir.get_relational_children(proj)?;
+                    for (k, child) in children[1..].iter().rev().enumerate() {
+                        sq_ref_map.insert(*child, k);
+                    }
                     let window_exprs = NamedWindowsExplain::new(ir, windows, &sq_ref_map)?;
                     Some(ExplainNode::NamedWindows(window_exprs))
                 }

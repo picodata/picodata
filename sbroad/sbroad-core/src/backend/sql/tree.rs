@@ -1189,7 +1189,9 @@ impl<'p> SyntaxPlan<'p> {
             sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_as()));
             sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_inline(&name)));
         }
-        sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_window()));
+        if !windows.is_empty() {
+            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_window()));
+        }
         sn_children.reverse();
         let child_sn_id = self.pop_from_stack(child_plan_id, id);
         let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), sn_children);
