@@ -1,19 +1,15 @@
 import pytest
-import pg8000.native as pg  # type: ignore
 import os
 from conftest import Postgres
-from pg8000.exceptions import DatabaseError  # type: ignore
 
-# We use psycopg for parameterized queries because pg8000
-# doesn't send parameter oids, so we cannot decode them.
-# Postgres can infer the types from the context, but we can't do it.
-# So we treat any unspecified param id as text, just like pg does when
-# it cannot infer the type. It works with psycopg because it sends ids for
-# all the types, except strings (it cannot decide what type to use: TEXT or VARCHAR)
-# And we can't use TEXT everywhere, because we'll get a type mismatch error
-# if we try to bind a string when, for example, an integer is expected.
+# We use psycopg when we want the client to send parameters types explicitly.
 import psycopg
 from psycopg.pq import ExecStatus
+
+# We use pg8000 when we want to prepare statements explicitly or when we don't want the client
+# to send parameters types, which is useful when we test parameter types inference.
+import pg8000.native as pg  # type: ignore
+from pg8000.exceptions import DatabaseError  # type: ignore
 
 
 def test_extended_query(postgres: Postgres):
@@ -118,7 +114,7 @@ def test_parameterized_queries(postgres: Postgres):
     """
     )
 
-    # NOTE: psycopg sends parameters types for everything except strings,
+    # NOTE: psycopg sends parameter types for everything except strings,
     # so they need to be specified via cast (%s -> %s::text).
 
     params1 = (-1, "string", True, 3.141592)
@@ -163,93 +159,6 @@ def test_parameterized_queries(postgres: Postgres):
 
     rows = cur.fetchall()
     assert sorted([params1, params2]) == sorted(rows)
-
-
-def test_params_specified_via_cast(postgres: Postgres):
-    user = "postgres"
-    password = "P@ssw0rd"
-
-    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
-    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
-
-    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
-
-    conn.run(
-        """
-        create table "tall" (
-            "id" integer not null,
-            "str" string,
-            "bool" boolean,
-            "real" double,
-            primary key ("id")
-        )
-        using memtx distributed by ("id")
-        option (timeout = 3);
-    """
-    )
-
-    # Types were not specified, so the default type text is used,
-    # but parameters binding failed because the right type was integer.
-    with pytest.raises(DatabaseError, match="could not determine data type of parameter"):
-        conn.run(
-            """
-            INSERT INTO "tall" VALUES (:p1, :p2, :p3, :p4);
-            """,
-            p1=-2,
-            p2="string",
-            p3=True,
-            p4=3.141592,
-        )
-
-    # Now all the types were specified.
-    conn.run(
-        """
-        INSERT INTO "tall" VALUES (:p1::integer, :p2::text, :p3::bool, :p4::double);
-        """,
-        p1=-2,
-        p2="string",
-        p3=True,
-        p4=3.141592,
-    )
-
-    rows = conn.run(""" SELECT * FROM "tall"; """)
-    assert rows == [[-2, "string", True, 3.141592]]
-
-    # Test an ambiguous parameter type error.
-    with pytest.raises(DatabaseError, match=r"parameter \$1 is ambiguous"):
-        conn.run(
-            """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::unsigned; """,
-            p1=-1,
-        )
-
-    # Test an even more ambiguous parameter type error.
-    with pytest.raises(DatabaseError, match=r"parameter \$1 is ambiguous"):
-        conn.run(
-            """ SELECT "id" FROM "tall" \
-                WHERE "id" = :p1::integer + :p1::unsigned + :p1::decimal; """,
-            p1=-1,
-        )
-
-    rows = conn.run(""" SELECT * FROM "tall"; """)
-    assert rows == [[-2, "string", True, 3.141592]]
-
-    # Parameter can be cast to the same type in several places.
-    rows = conn.run(""" SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::integer; """, p1=-1)
-    assert rows == [[-2]]
-
-    # It's OK to cast parameter only once and then use it without any cast.
-    rows = conn.run(
-        """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1 + :p1 - :p1; """,
-        p1=-1,
-    )
-    assert rows == [[-2]]
-
-    # Test that we can calculate the type of an arithmetic expression like $1::integer + $1.
-    rows = conn.run(
-        """ SELECT :p1::integer + :p1 FROM "tall"; """,
-        p1=-1,
-    )
-    assert rows == [[-2]]
 
 
 def test_empty_queries(postgres: Postgres):

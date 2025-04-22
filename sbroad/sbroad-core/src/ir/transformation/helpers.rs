@@ -6,6 +6,7 @@ use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::executor::ir::ExecutionPlan;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::frontend::Ast;
+use crate::ir::relation::DerivedType;
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -30,16 +31,17 @@ pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
 #[track_caller]
 #[must_use]
 pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
-    let mut plan = sql_to_ir_without_bind(query);
+    let params_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
+    let mut plan = sql_to_ir_without_bind(query, &params_types);
     plan.bind_params(params).unwrap();
     plan.apply_options().unwrap();
     plan
 }
 
 #[track_caller]
-pub fn sql_to_ir_without_bind(query: &str) -> Plan {
+pub fn sql_to_ir_without_bind(query: &str, params_types: &[DerivedType]) -> Plan {
     let metadata = &RouterConfigurationMock::new();
-    AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap()
+    AbstractSyntaxTree::transform_into_plan(query, params_types, metadata).unwrap()
 }
 
 /// Compiles and transforms an SQL query to a new parameterized SQL.

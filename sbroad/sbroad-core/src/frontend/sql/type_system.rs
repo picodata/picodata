@@ -5,10 +5,10 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Frame, FrameType, Like,
-    NodeId, Over, Reference, Row, ScalarFunction, Trim, UnaryExpr, ValuesRow, Window,
+    NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
-use crate::ir::relation::Type as SbroadType;
+use crate::ir::relation::{DerivedType, Type as SbroadType};
 use crate::ir::Plan;
 use ahash::AHashMap;
 use sbroad_type_system::expr::{
@@ -43,6 +43,42 @@ impl From<SbroadType> for Type {
             SbroadType::Map => Type::Map,
         }
     }
+}
+
+impl From<DerivedType> for Type {
+    fn from(value: DerivedType) -> Self {
+        if let Some(ty) = value.get() {
+            Type::from(*ty)
+        } else {
+            Type::Unknown
+        }
+    }
+}
+
+impl From<Type> for DerivedType {
+    fn from(value: Type) -> Self {
+        match value {
+            Type::Unsigned => DerivedType::new(SbroadType::Unsigned),
+            Type::Integer => DerivedType::new(SbroadType::Integer),
+            Type::Double => DerivedType::new(SbroadType::Double),
+            Type::Numeric => DerivedType::new(SbroadType::Decimal),
+            Type::Text => DerivedType::new(SbroadType::String),
+            Type::Boolean => DerivedType::new(SbroadType::Boolean),
+            Type::Datetime => DerivedType::new(SbroadType::Datetime),
+            Type::Uuid => DerivedType::new(SbroadType::Uuid),
+            Type::Array => DerivedType::new(SbroadType::Array),
+            Type::Map => DerivedType::new(SbroadType::Map),
+            Type::Unknown => DerivedType::unknown(),
+        }
+    }
+}
+
+pub fn get_parameter_derived_types(analyzer: &TypeAnalyzer) -> Vec<DerivedType> {
+    analyzer
+        .get_parameter_types()
+        .iter()
+        .map(|t| (*t).into())
+        .collect()
 }
 
 impl From<CastType> for Type {
@@ -143,10 +179,8 @@ pub fn to_type_expr(
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<TypeExpr, SbroadError> {
     match plan.get_expression_node(node_id)? {
-        Expression::Parameter(_) => {
-            // Until parameter types inference is supported, we'll treat parameters as nulls to
-            // avoid breaking many existing queries and tests.
-            Ok(TypeExpr::new(node_id, TypeExprKind::Null))
+        Expression::Parameter(Parameter { index, .. }) => {
+            Ok(TypeExpr::new(node_id, TypeExprKind::Parameter(index - 1)))
         }
         Expression::Constant(value) => {
             let Some(sbroad_type) = *value.value.get_type().get() else {
@@ -528,8 +562,8 @@ fn default_type_system() -> TypeSystem {
     TypeSystem::new(functions)
 }
 
-pub fn new_analyzer() -> TypeAnalyzer {
-    TypeAnalyzer::new(&TYPE_SYSTEM)
+pub fn new_analyzer(param_types: Vec<Type>) -> TypeAnalyzer {
+    TypeAnalyzer::new(&TYPE_SYSTEM).with_parameters(param_types)
 }
 
 /// Perform type analysis for a scalar expressions.

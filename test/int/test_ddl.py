@@ -1633,7 +1633,7 @@ def test_wait_applied_options(cluster: Cluster):
         """
         CREATE PROCEDURE proc(INT)
         LANGUAGE SQL
-        AS $$INSERT INTO t VALUES(?)$$
+        AS $$INSERT INTO t VALUES(?::int)$$
         WAIT APPLIED GLOBALLY
         OPTION (TIMEOUT = 3)
         """

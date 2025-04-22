@@ -16,7 +16,7 @@ fn infer_not_null_on_pk1() {
     let input = r#"create table t (a int primary key) distributed globally"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -47,7 +47,7 @@ fn infer_not_null_on_pk2() {
         r#"create table t (a int, b int not null, c int, primary key (a, b)) distributed globally"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -89,7 +89,7 @@ fn infer_not_null_on_pk3() {
     let input = r#"create table t (a int null, b int not null, c int, primary key (a, b)) distributed globally"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         true,
@@ -103,7 +103,7 @@ fn infer_sk_from_pk() {
     let input = r#"create table t ("a" int, "b" int, c int, primary key ("a", "b"))"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -122,7 +122,7 @@ fn infer_alias_int2_int4_int8_bigint_smallint() {
     let input =
         r#"create table t ("a" int2 primary key, "b" int4, "c" int8, "d" bigint, "e" smallint)"#;
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -167,7 +167,7 @@ fn infer_alias_int2_int4_int8_bigint_smallint() {
 fn infer_alias_numeric_two_parameters() {
     let input = r#"create table t ("a" numeric(5, 2) primary key)"#;
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -188,7 +188,7 @@ fn infer_alias_numeric_two_parameters() {
 fn infer_alias_numeric_one_parameter() {
     let input = r#"create table t ("a" numeric(5) primary key)"#;
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 
@@ -209,7 +209,7 @@ fn infer_alias_numeric_one_parameter() {
 fn infer_alias_numeric_no_parameters() {
     let input = r#"create table t ("a" numeric primary key)"#;
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     let top_node = plan.get_ddl_node(top_id).unwrap();
 

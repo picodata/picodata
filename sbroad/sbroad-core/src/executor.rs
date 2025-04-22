@@ -121,7 +121,9 @@ where
         C::Cache: Cache<SmolStr, Plan>,
         C::ParseTree: Ast,
     {
-        let key = query_id(sql);
+        let param_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
+        let key = query_id(sql, &param_types);
+
         let mut cache = coordinator.cache().lock();
 
         let mut plan = Plan::new();
@@ -130,7 +132,7 @@ where
         }
         if plan.is_empty() {
             let metadata = coordinator.metadata().lock();
-            plan = C::ParseTree::transform_into_plan(sql, &*metadata)?;
+            plan = C::ParseTree::transform_into_plan(sql, &param_types, &*metadata)?;
             // Empty query.
             if plan.is_empty() {
                 return Ok(Query::empty(coordinator));

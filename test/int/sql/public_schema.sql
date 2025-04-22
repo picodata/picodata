@@ -4,7 +4,7 @@ DROP TABLE IF EXISTS t;
 DROP PROCEDURE IF EXISTS proc;
 DROP INDEX IF EXISTS i0;
 CREATE TABLE t (a INT PRIMARY KEY, b STRING, c STRING);
-CREATE PROCEDURE proc(int, text, text) AS $$INSERT INTO t VALUES($1, $2, $3)$$;
+CREATE PROCEDURE proc(int, text, text) AS $$INSERT INTO t VALUES($1::int, $2::text, $3::text)$$;
 CREATE INDEX i0 ON t (a);
 
 -- TEST: select-ok
@@ -29,8 +29,8 @@ rule PARTITION OF logic is not supported yet. not implemented
 
 -- TEST: create-procedure-error
 -- SQL:
-CREATE PROCEDURE public.proc(int, text, text) AS $$INSERT INTO t VALUES($1, $2, $3)$$;
-CREATE PROCEDURE "public".proc(int, text, text) AS $$INSERT INTO t VALUES($1, $2, $3)$$;
+CREATE PROCEDURE public.proc(int, text, text) AS $$INSERT INTO t VALUES($1::int, $2::text, $3::text)$$;
+CREATE PROCEDURE "public".proc(int, text, text) AS $$INSERT INTO t VALUES($1::int, $2::text, $3::text)$$;
 -- ERROR:
 procedure proc already exists
 procedure proc already exists

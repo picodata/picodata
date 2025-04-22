@@ -326,7 +326,7 @@ fn bench_pure_pest_parsing(crit: &mut Criterion) {
 
 fn parse(pattern: &str) -> Plan {
     let metadata = &RouterConfigurationMock::new();
-    AbstractSyntaxTree::transform_into_plan(pattern, metadata).unwrap()
+    AbstractSyntaxTree::transform_into_plan(pattern, &[], metadata).unwrap()
 }
 
 fn bench_full_parsing(crit: &mut Criterion) {

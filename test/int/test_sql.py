@@ -248,19 +248,19 @@ def test_pg_params(cluster: Cluster):
     assert data == [[3, 2, 1, 2, 3]]
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""SELECT $1, 1 AS c1 FROM t ORDER BY c1 DESC""")
+        i1.sql("""SELECT $1::int, 1 AS c1 FROM t ORDER BY c1 DESC""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""SELECT $1 as c1 FROM (SELECT 1) ORDER BY 1 DESC""")
+        i1.sql("""SELECT $1::int as c1 FROM (SELECT 1) ORDER BY 1 DESC""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""SELECT $1 + 0, 1 as c1 FROM t ORDER BY c1 DESC""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
-        i1.sql("""SELECT $1, 1 as c1 FROM t""")
+        i1.sql("""SELECT $1::int, 1 as c1 FROM t""")
 
     with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 0"):
-        i1.sql("""select coalesce($1, $2) from (values(1)) order by 1""")
+        i1.sql("""select coalesce($1, $2::int) from (values(1)) order by 1""")
 
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql("""select max($1 + 1) from (select 1)""")
@@ -297,19 +297,24 @@ def test_pg_params(cluster: Cluster):
         i1.sql(
             """
             select $1, ? from t
-            """
+            """,
+            1,
+            2,
         )
 
     with pytest.raises(TarantoolError, match="cannot be parsed as unsigned param number"):
         i1.sql("select $18446744073709551616", 1)
 
     with pytest.raises(TarantoolError, match="expected 3333 values for parameters, got 2"):
-        i1.sql("select $1, $2, $3333", 1, 2)
+        i1.sql("select $1::int, $2::int, $3333::int", 1, 2)
 
     with pytest.raises(TarantoolError, match="expected 5 values for parameters, got 1"):
         i1.sql(
             """
-        with cte  as (select $1, $2, $2, $3, $4, $5) select $1, * from cte
+        with
+        define_parameter_types as (select $1 = $2 = $3 = $4 = $5),
+        cte as (select $1, $2, $2, $3, $4, $5)
+        select $1, * from cte
         """,
             True,
         )
@@ -317,7 +322,10 @@ def test_pg_params(cluster: Cluster):
     with pytest.raises(TarantoolError, match="expected 5 values for parameters, got 2"):
         i1.sql(
             """
-        with cte  as (select $1, $1, $2, $2, $1, $5) select * from cte
+        with
+        define_parameter_types as (select $1::bool = $2 = $3 = $4 = $5),
+        cte as (select $1, $2, $2, $3, $4, $5)
+        select $1, * from cte
         """,
             True,
             True,
@@ -326,7 +334,10 @@ def test_pg_params(cluster: Cluster):
     with pytest.raises(TarantoolError, match="expected 3 values for parameters, got 2"):
         i1.sql(
             """
-        with cte  as (select $1, $1, $2, $2, $1, $3) select $1, (select (select $1)), * from cte
+        with
+        define_parameter_types as (select $1 = $2 = $3),
+        cte as (select $1, $1, $2, $2, $1, $3)
+        select $1, (select (select $1)), * from cte
         """,
             True,
             True,
@@ -338,7 +349,7 @@ def test_pg_params(cluster: Cluster):
     with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
-        select $1, *, * from (select $1, (select $2))
+        select $1, *, * from (select $1, (select $2::bool))
         """,
             True,
         )
@@ -401,7 +412,7 @@ def test_pg_params(cluster: Cluster):
             2,
             3,
             4,
-            5,
+            "5",
         )
 
     # third table is created
@@ -2578,13 +2589,13 @@ def test_insert(cluster: Cluster):
     with pytest.raises(TarantoolError, match="expected 1 values for parameters, got 0"):
         i1.sql(
             """
-        insert into "t" values (?)
+        insert into "t" values (?::int)
         """
         )
     with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
-        insert into "t" values (?), (?)
+        insert into "t" values (?::int), (?::int)
             """,
             1,
         )
@@ -3698,7 +3709,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values(?, ?)$$
+        as $$insert into t values($1::int, $1::int)$$
         """
     )
     assert data["row_count"] == 1
@@ -3716,7 +3727,7 @@ def test_create_drop_procedure(cluster: Cluster):
             """
             create procedure proc1(int)
             language SQL
-            as $$insert into t values(?, ?)$$
+            as $$insert into t values($1::int, $1::int)$$
             """
         )
 
@@ -3726,7 +3737,7 @@ def test_create_drop_procedure(cluster: Cluster):
             """
             create procedure proc1(int, text)
             language SQL
-            as $$insert into t values(?, ?)$$
+            as $$insert into t values($1::int, $2::text)$$
             option(timeout=3)
             """
         )
@@ -3781,7 +3792,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values(?, ?)$$
+        as $$insert into t values($1::int, $1::int)$$
         """
     )
     assert data["row_count"] == 1
@@ -3829,7 +3840,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values(?, ?)$$
+        as $$insert into t values($1::int, $1::int)$$
         """
     )
     cluster.raft_wait_index(i2.raft_get_index())
@@ -3850,7 +3861,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure FOO(int)
         language SQL
-        as $$insert into t values(?, ?)$$
+        as $$insert into t values($1::int, $1::int)$$
         """,
         sudo=True,
     )
@@ -3961,7 +3972,7 @@ def test_call_procedure(cluster: Cluster):
         """
         create procedure "proc1"(int, int)
         language SQL
-        as $$insert into t values(?, ?) on conflict do nothing$$
+        as $$insert into t values(?::int, ?::int) on conflict do nothing$$
         """
     )
     assert data["row_count"] == 1
@@ -3976,7 +3987,7 @@ def test_call_procedure(cluster: Cluster):
         """
         create procedure "proc2"(int)
         language SQL
-        as $$insert into t values(?, 42) on conflict do fail$$
+        as $$insert into t values(?::int, 42) on conflict do fail$$
         """
     )
     assert data["row_count"] == 1
@@ -4044,7 +4055,7 @@ def test_rename_procedure(cluster: Cluster):
         """
         create procedure foo(int)
         language SQL
-        as $$insert into t values(?, ?)$$
+        as $$insert into t values($1::int, $1::int)$$
         """
     )
     assert data["row_count"] == 1
@@ -4579,7 +4590,7 @@ def test_drop_user(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values(?, ?, ?)$$
+        as $$insert into t values(?::int, ?::int, ?::int)$$
         """,
         user=user,
         password=password,
@@ -4965,7 +4976,12 @@ def test_order_by(cluster: Cluster):
         TarantoolError,
         match="Using parameter as a standalone ORDER BY expression doesn't influence sorting",
     ):
-        i1.sql(""" select * from "null_t" order by ? """)
+        i1.sql(
+            """
+            with define_parameter_types as (select $1::int)
+            select * from "null_t" order by $1
+            """
+        )
 
 
 def test_cte(cluster: Cluster):
@@ -5057,7 +5073,10 @@ def test_cte(cluster: Cluster):
     with pytest.raises(TarantoolError, match="expected 2 values for parameters, got 1"):
         i1.sql(
             """
-        with cte (t, kek) as (select $1, $2) select $1, * from cte
+        with
+        define_parameter_types as (select $1 = $2),
+        cte (t, kek) as (select $1, $2)
+        select $1, * from cte
         """,
             True,
         )
@@ -5202,7 +5221,7 @@ def test_cte(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match=r"can not convert boolean\(FALSE\) to integer",
+        match=r"could not resolve operator overload for \+\(unsigned, bool\)",
     ):
         i1.sql(""" with cte as (select 1 + ?) select * from cte; """, False)
 
@@ -5949,7 +5968,7 @@ def test_already_exists_error(instance: Instance):
             """
         CREATE PROCEDURE my_proc(INT)
         LANGUAGE SQL
-        AS $$INSERT INTO my_table VALUES(?)$$
+        AS $$INSERT INTO my_table VALUES(?::int)$$
     """
         )
 
@@ -5957,7 +5976,7 @@ def test_already_exists_error(instance: Instance):
         """
     CREATE PROCEDURE IF NOT EXISTS my_proc(INT)
     LANGUAGE SQL
-    AS $$INSERT INTO my_table VALUES(?)$$
+    AS $$INSERT INTO my_table VALUES(?::int)$$
     """
     )
     assert ddl["row_count"] == 0
@@ -5967,7 +5986,7 @@ def test_already_exists_error(instance: Instance):
         """
     CREATE PROCEDURE IF NOT EXISTS my_proc(INT, INT, INT, INT)
     LANGUAGE SQL
-    AS $$INSERT INTO my_table VALUES(?)$$
+    AS $$INSERT INTO my_table VALUES(?::int)$$
     """
     )
 
@@ -6053,7 +6072,7 @@ def test_if_exists_no_early_return(instance: Instance):
     assert ddl["row_count"] == 1
 
     # DROP PROCEDURE IF EXISTS
-    ddl = instance.sql("CREATE PROCEDURE proc(INT) LANGUAGE SQL AS $$INSERT INTO t VALUES(?)$$")
+    ddl = instance.sql("CREATE PROCEDURE proc(INT) LANGUAGE SQL AS $$INSERT INTO t VALUES(?::int)$$")
     assert ddl["row_count"] == 1
     ddl = instance.sql("DROP PROCEDURE IF EXISTS proc")
     assert ddl["row_count"] == 1

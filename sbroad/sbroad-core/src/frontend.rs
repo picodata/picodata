@@ -5,6 +5,7 @@
 
 use crate::errors::SbroadError;
 use crate::executor::engine::Metadata;
+use crate::ir::relation::DerivedType;
 use crate::ir::Plan;
 
 pub trait Ast {
@@ -13,7 +14,11 @@ pub trait Ast {
     /// # Errors
     /// - Unable to fill `Ast` from pest pairs
     /// - Unable to resolve metadata
-    fn transform_into_plan<M>(query: &str, metadata: &M) -> Result<Plan, SbroadError>
+    fn transform_into_plan<M>(
+        query: &str,
+        param_types: &[DerivedType],
+        metadata: &M,
+    ) -> Result<Plan, SbroadError>
     where
         M: Metadata + Sized;
 }

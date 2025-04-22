@@ -6,7 +6,7 @@ use node::block::{Block, MutBlock};
 use node::ddl::{Ddl, MutDdl};
 use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
-use node::{Invalid, NodeAligned};
+use node::{Invalid, NodeAligned, Parameter};
 use operator::{Arithmetic, Unary};
 use relation::{Table, Type};
 use serde::{Deserialize, Serialize};
@@ -14,13 +14,13 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
-use std::slice::Iter;
+use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
 
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
 use crate::errors::Entity::Query;
-use crate::errors::{Action, Entity, SbroadError, TypeError};
+use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::TableVersionMap;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
@@ -41,7 +41,6 @@ use crate::ir::value::Value;
 use crate::warn;
 
 use self::node::{Bound, BoundType, Like, Over, Window};
-use ahash::AHashMap;
 
 // TODO: remove when rust version in bumped in module
 #[allow(elided_lifetimes_in_associated_constant)]
@@ -445,6 +444,10 @@ impl Nodes {
 
     pub fn iter64(&self) -> Iter<'_, Node64> {
         self.arena64.iter()
+    }
+
+    pub fn iter64_mut(&mut self) -> IterMut<'_, Node64> {
+        self.arena64.iter_mut()
     }
 
     pub fn iter96(&self) -> Iter<'_, Node96> {
@@ -1950,104 +1953,35 @@ impl Plan {
 }
 
 impl Plan {
-    fn get_param_type(&self, param_id: NodeId) -> Result<DerivedType, SbroadError> {
-        let node = self.get_node(param_id)?;
-        if let Node::Expression(Expression::Parameter(ty)) = node {
-            return Ok(ty.param_type);
-        }
-        Err(SbroadError::Invalid(
-            Entity::Node,
-            Some(format_smolstr!("node is not Parameter type: {node:?}")),
-        ))
-    }
-
-    fn set_param_type(&mut self, param_id: NodeId, ty: Type) -> Result<(), SbroadError> {
-        let node = self.get_mut_node(param_id)?;
-        if let MutNode::Expression(MutExpression::Parameter(param)) = node {
-            param.param_type.set(ty);
-            Ok(())
-        } else {
-            Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(format_smolstr!("node is not Parameter type: {node:?}")),
-            ))
-        }
-    }
-
-    fn count_pg_parameters(pg_params_map: &AHashMap<NodeId, u16>) -> usize {
-        pg_params_map
-            .values()
-            .fold(0, |p1, p2| std::cmp::max(p1, (*p2 + 1) as usize)) // idx 0 stands for $1
-    }
-
-    /// Infer parameter types specified via cast.
-    ///
-    /// # Errors
-    /// - Parameter type is ambiguous.
+    /// Traverse parameter nodes and collect their types.
     ///
     /// # Panics
-    /// - `self.pg_params_map` missed some parameters.
-    pub fn infer_pg_parameters_types(
-        &mut self,
-        client_types: &[Option<Type>],
-    ) -> Result<Vec<Type>, SbroadError> {
-        let pg_params_map = self.build_params_map();
-        let params_count = Self::count_pg_parameters(&pg_params_map);
-        if params_count < client_types.len() {
-            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                "client provided {} types for {} parameters",
-                client_types.len(),
-                params_count
-            )));
-        }
-        let mut inferred_types = vec![None; params_count];
+    /// - If there are parameters with unknown types.
+    pub fn collect_parameter_types(&self) -> Vec<Type> {
+        let params_count = self
+            .nodes
+            .iter64()
+            .map(|node| match node {
+                Node64::Parameter(Parameter { index, .. }) => *index,
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0) as usize;
 
-        for (node_id, param_idx) in &pg_params_map {
-            let param_index = *param_idx as usize;
-            let param_type = *self.get_param_type(*node_id)?.get();
-            let inferred_type = inferred_types.get(param_index).unwrap_or_else(|| {
-                panic!("param idx {param_idx} exceeds params count {params_count}")
-            });
-            let client_type = client_types.get(param_index).copied().flatten();
-            match (param_type, inferred_type, client_type) {
-                (_, _, Some(client_type)) => {
-                    // Client provided an explicit type, no additional checks are required.
-                    inferred_types[param_index] = Some(client_type);
-                }
-                (Some(param_type), Some(inferred_type), None) => {
-                    if &param_type != inferred_type {
-                        // We've inferred 2 different types for the same parameter.
-                        return Err(TypeError::AmbiguousParameterType(
-                            *param_idx,
-                            param_type,
-                            *inferred_type,
-                        )
-                        .into());
-                    }
-                }
-                (Some(param_type), None, None) => {
-                    // We've inferred a more specific type from the context.
-                    inferred_types[param_index] = Some(param_type);
-                }
-                _ => {}
+        let mut parameter_types = vec![Type::Any; params_count];
+
+        for node in self.nodes.iter64() {
+            if let Node64::Parameter(Parameter { param_type, index }) = node {
+                let index = (*index - 1) as usize;
+                // TODO: We need to introduce ParameterType that cannot be unknown and store it in
+                // Parameter nodes making parameters with unknown type impossible.
+                parameter_types[index] = param_type
+                    .get()
+                    .expect("types must be known at this moment");
             }
         }
 
-        let types = inferred_types
-            .into_iter()
-            .enumerate()
-            .map(|(idx, ty)| ty.ok_or(TypeError::CouldNotDetermineParameterType(idx).into()))
-            .collect::<Result<Vec<_>, SbroadError>>()?;
-
-        // Specify inferred types in all parameters nodes, allowing to calculate the result type
-        // for queries like `SELECT $1::int + $1`. Without this correction there will be an error
-        // like int and scalar are not supported for arithmetic expression, despite of the fact
-        // that the type of parameter was specified.
-        for (node_id, param_idx) in &pg_params_map {
-            self.set_param_type(*node_id, types[*param_idx as usize])?;
-        }
-
-        Ok(types)
+        parameter_types
     }
 }
 

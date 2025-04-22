@@ -8,8 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    LocalTimestamp, NamedWindows, Over, Reference, ReferenceAsteriskSource, ScalarFunction,
-    TruncateTable, Window,
+    LocalTimestamp, NamedWindows, Node64, Over, Parameter, Reference, ReferenceAsteriskSource,
+    ScalarFunction, TruncateTable, Window,
 };
 use crate::ir::relation::{DerivedType, Type};
 use ahash::{AHashMap, AHashSet};
@@ -73,10 +73,11 @@ use crate::ir::tree::traversal::{
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
 use crate::warn;
+use sbroad_type_system::error::Error as TypeSystemError;
 use tarantool::auth::AuthMethod;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
-use type_system::TypeAnalyzer;
+use type_system::{get_parameter_derived_types, TypeAnalyzer};
 
 // DDL timeout in seconds (1 day).
 const DEFAULT_TIMEOUT_F64: f64 = 24.0 * 60.0 * 60.0;
@@ -259,7 +260,9 @@ fn parse_call_proc<M: Metadata>(
     for proc_value_id in &proc_values.children {
         let proc_value = ast.nodes.get_node(*proc_value_id)?;
         let plan_value_id = match proc_value.rule {
-            Rule::Parameter => parse_param(pairs_map.remove_pair(*proc_value_id), worker, plan)?,
+            Rule::Parameter => {
+                parse_param(pairs_map.remove_pair(*proc_value_id), &[], worker, plan)?
+            }
             Rule::Literal => {
                 let literal_pair = pairs_map.remove_pair(*proc_value_id);
                 parse_scalar_expr(
@@ -1587,6 +1590,7 @@ fn parse_grant_revoke(
 
 fn parse_trim<M: Metadata>(
     pair: Pair<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -1617,6 +1621,7 @@ fn parse_trim<M: Metadata>(
                 let inner_pattern = child_pair.into_inner();
                 pattern = Some(Box::new(parse_expr_pratt(
                     inner_pattern,
+                    param_types,
                     referred_relation_ids,
                     worker,
                     plan,
@@ -1627,6 +1632,7 @@ fn parse_trim<M: Metadata>(
                 let inner_target = child_pair.into_inner();
                 target = Some(Box::new(parse_expr_pratt(
                     inner_target,
+                    param_types,
                     referred_relation_ids,
                     worker,
                     plan,
@@ -1670,6 +1676,7 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
 fn parse_option<M: Metadata>(
     ast: &AbstractSyntaxTree,
     option_node_id: usize,
+    param_types: &[DerivedType],
     pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -1677,7 +1684,12 @@ fn parse_option<M: Metadata>(
     let ast_node = ast.nodes.get_node(option_node_id)?;
     let value = match ast_node.rule {
         Rule::Parameter => {
-            let plan_id = parse_param(pairs_map.remove_pair(option_node_id), worker, plan)?;
+            let plan_id = parse_param(
+                pairs_map.remove_pair(option_node_id),
+                param_types,
+                worker,
+                plan,
+            )?;
             OptionParamValue::Parameter { plan_id }
         }
         Rule::Unsigned => {
@@ -1733,6 +1745,7 @@ fn try_get_param_index(pair: Pair<'_, Rule>) -> Result<Option<usize>, SbroadErro
 
 fn parse_param<M: Metadata>(
     pair: Pair<'_, Rule>,
+    param_types: &[DerivedType],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
@@ -1766,7 +1779,9 @@ fn parse_param<M: Metadata>(
         )));
     }
 
-    Ok(plan.add_param(index.try_into().expect("invalid parameter idnex")))
+    let ty = param_types.get((index - 1) as usize);
+    let ty = ty.cloned().unwrap_or(DerivedType::unknown());
+    Ok(plan.add_param(index.try_into().expect("invalid parameter idnex"), ty))
 }
 
 // Helper structure used to resolve expression operators priority.
@@ -2865,6 +2880,7 @@ pub fn transform_to_regex_pattern(pat_text: &str, esc_text: &str) -> Result<Stri
 
 fn parse_window_func<M: Metadata>(
     pair: Pair<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -2909,6 +2925,7 @@ fn parse_window_func<M: Metadata>(
                 for arg_pair in args_inner.into_inner() {
                     let expr_plan_node_id = parse_expr_no_type_check(
                         Pairs::single(arg_pair),
+                        param_types,
                         referred_relation_ids,
                         worker,
                         plan,
@@ -2941,6 +2958,7 @@ fn parse_window_func<M: Metadata>(
     let filter = if let Some(filter_inner) = filter_pair.into_inner().next() {
         let expr = parse_expr_no_type_check(
             Pairs::single(filter_inner),
+            param_types,
             referred_relation_ids,
             worker,
             plan,
@@ -2996,6 +3014,7 @@ fn parse_window_func<M: Metadata>(
                         for part_expr in body_part.into_inner() {
                             let part_expr_plan_node_id = parse_expr_no_type_check(
                                 Pairs::single(part_expr),
+                                param_types,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3014,6 +3033,7 @@ fn parse_window_func<M: Metadata>(
                                 .expect("Expected expression in ORDER BY");
                             let expr_id = parse_expr_no_type_check(
                                 Pairs::single(expr_pair.clone()),
+                                param_types,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3062,6 +3082,7 @@ fn parse_window_func<M: Metadata>(
                                 );
                                 let bound_type = parse_frame_bound(
                                     bound_inner,
+                                    param_types,
                                     referred_relation_ids,
                                     worker,
                                     plan,
@@ -3078,12 +3099,14 @@ fn parse_window_func<M: Metadata>(
                                 );
                                 let first_type = parse_frame_bound(
                                     first_bound,
+                                    param_types,
                                     referred_relation_ids,
                                     worker,
                                     plan,
                                 )?;
                                 let second_type = parse_frame_bound(
                                     second_bound,
+                                    param_types,
                                     referred_relation_ids,
                                     worker,
                                     plan,
@@ -3122,6 +3145,7 @@ fn parse_window_func<M: Metadata>(
 
 fn parse_frame_bound<M: Metadata>(
     bound: Pair<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -3138,6 +3162,7 @@ fn parse_frame_bound<M: Metadata>(
                 .expect("Expr node expected under Offset window bound");
             let offset_expr_id = parse_expr_no_type_check(
                 Pairs::single(offset_expr),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3156,6 +3181,7 @@ fn parse_frame_bound<M: Metadata>(
 
 fn parse_substring<M: Metadata>(
     pair: Pair<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -3173,6 +3199,7 @@ fn parse_substring<M: Metadata>(
             let mut pieces = variant.into_inner();
             let string_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3180,6 +3207,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3187,6 +3215,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3204,6 +3233,7 @@ fn parse_substring<M: Metadata>(
             let mut pieces = variant.into_inner();
             let string_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3211,6 +3241,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3218,6 +3249,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3235,6 +3267,7 @@ fn parse_substring<M: Metadata>(
             let mut pieces = variant.into_inner();
             let string_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3242,6 +3275,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let for_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3269,6 +3303,7 @@ fn parse_substring<M: Metadata>(
             let mut pieces = variant.into_inner();
             let string_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3276,6 +3311,7 @@ fn parse_substring<M: Metadata>(
             )?;
             let from_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3293,6 +3329,7 @@ fn parse_substring<M: Metadata>(
             let mut pieces = variant.into_inner();
             let similar_expr = parse_expr_pratt(
                 pieces.next().expect("Expected expression").into_inner(),
+                param_types,
                 referred_relation_ids,
                 worker,
                 plan,
@@ -3367,6 +3404,7 @@ pub fn is_negative_number(plan: &Plan, expr_id: NodeId) -> Result<bool, SbroadEr
 #[allow(clippy::too_many_lines)]
 fn parse_expr_pratt<M>(
     expression_pairs: Pairs<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -3381,7 +3419,7 @@ where
         .map_primary(|primary| {
             let parse_expr = match primary.as_rule() {
                 Rule::Expr | Rule::Literal => {
-                    parse_expr_pratt(primary.into_inner(), referred_relation_ids, worker, plan, safe_for_volatile_function)?
+                    parse_expr_pratt(primary.into_inner(), param_types, referred_relation_ids, worker, plan, safe_for_volatile_function)?
                 }
                 Rule::ExpressionInParentheses => {
                     let mut inner_pairs = primary.into_inner();
@@ -3390,6 +3428,7 @@ where
                         .expect("Expected to see inner expression under parentheses");
                     parse_expr_pratt(
                         Pairs::single(child_expr_pair),
+                        param_types,
                         referred_relation_ids,
                         worker,
                         plan,
@@ -3397,11 +3436,11 @@ where
                     )?
                 }
                 Rule::Parameter => {
-                    let plan_id = parse_param(primary, worker, plan)?;
+                    let plan_id = parse_param(primary, param_types, worker, plan)?;
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::Over => {
-                    let plan_id = parse_window_func(primary, referred_relation_ids, worker, plan)?;
+                    let plan_id = parse_window_func(primary, param_types, referred_relation_ids, worker, plan)?;
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::IdentifierWithOptionalContinuation => {
@@ -3489,6 +3528,7 @@ where
                                             for arg in arg_pairs_to_parse {
                                                 let arg_expr = parse_expr_pratt(
                                                     arg.into_inner(),
+                                                    param_types,
                                                     referred_relation_ids,
                                                     worker,
                                                     plan,
@@ -3602,6 +3642,7 @@ where
                     for expr_pair in primary.into_inner() {
                         let child_parse_expr = parse_expr_pratt(
                             expr_pair.into_inner(),
+                            param_types,
                             referred_relation_ids,
                             worker,
                             plan,
@@ -3637,6 +3678,7 @@ where
 
                     let child_parse_expr = parse_expr_pratt(
                         Pairs::single(expr_pair),
+                        param_types,
                         referred_relation_ids,
                         worker,
                         plan,
@@ -3644,13 +3686,14 @@ where
                     )?;
                     ParseExpression::Exists { is_not: first_is_not, child: Box::new(child_parse_expr)}
                 }
-                Rule::Trim => parse_trim(primary, referred_relation_ids, worker, plan)?,
-                Rule::Substring => parse_substring(primary, referred_relation_ids, worker, plan)?,
+                Rule::Trim => parse_trim(primary, param_types, referred_relation_ids, worker, plan)?,
+                Rule::Substring => parse_substring(primary, param_types, referred_relation_ids, worker, plan)?,
                 Rule::CastOp => {
                     let mut inner_pairs = primary.into_inner();
                     let expr_pair = inner_pairs.next().expect("Cast has no expr child.");
                     let child_parse_expr = parse_expr_pratt(
                         expr_pair.into_inner(),
+                        param_types,
                         referred_relation_ids,
                         worker,
                         plan,
@@ -3669,6 +3712,7 @@ where
                     let search_expr = if let Rule::Expr = first_pair.as_rule() {
                         let expr = parse_expr_pratt(
                             first_pair.into_inner(),
+                            param_types,
                             referred_relation_ids,
                             worker,
                             plan,
@@ -3685,6 +3729,7 @@ where
                         if Rule::CaseElseBlock == pair.as_rule() {
                             let expr = parse_expr_pratt(
                                 pair.into_inner(),
+                                param_types,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3703,6 +3748,7 @@ where
                             let condition_expr_pair = inner_pairs.next().expect("When block must contain condition expression.");
                             let condition_expr = parse_expr_pratt(
                                 condition_expr_pair.into_inner(),
+                                param_types,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3712,6 +3758,7 @@ where
                             let result_expr_pair = inner_pairs.next().expect("When block must contain result expression.");
                             let result_expr = parse_expr_pratt(
                                 result_expr_pair.into_inner(),
+                                param_types,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3932,6 +3979,7 @@ fn parse_select_set_pratt(
 
 fn parse_expr_no_type_check<M>(
     expression_pairs: Pairs<Rule>,
+    param_types: &[DerivedType],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -3942,6 +3990,7 @@ where
 {
     let parse_expr = parse_expr_pratt(
         expression_pairs,
+        param_types,
         referred_relation_ids,
         worker,
         plan,
@@ -3965,8 +4014,10 @@ fn parse_scalar_expr<M>(
 where
     M: Metadata,
 {
+    let param_types = get_parameter_derived_types(type_analyzer);
     let expr_id = parse_expr_no_type_check(
         expression_pairs,
+        &param_types,
         referred_relation_ids,
         worker,
         plan,
@@ -3987,6 +4038,7 @@ fn parse_values_rows<M>(
 where
     M: Metadata,
 {
+    let param_types = get_parameter_derived_types(type_analyzer);
     let mut values_rows_ids: Vec<NodeId> = Vec::with_capacity(rows.len());
     for ast_row_id in rows {
         let row_pair = pairs_map.remove_pair(*ast_row_id);
@@ -3994,7 +4046,14 @@ where
         // Consider the following queries:
         //  - `VALUES (1), ('text')`: both rows are fine, but their types cannot be matched
         //  - `VALUES ($1), (1)`: to infer parameter type in the 1st row we need the 2nd row
-        let expr_id = parse_expr_no_type_check(Pairs::single(row_pair), &[], worker, plan, true)?;
+        let expr_id = parse_expr_no_type_check(
+            Pairs::single(row_pair),
+            &param_types,
+            &[],
+            worker,
+            plan,
+            true,
+        )?;
         let values_row_id = plan.add_values_row(expr_id, col_idx)?;
         plan.fix_subquery_rows(worker, values_row_id)?;
         values_rows_ids.push(values_row_id);
@@ -5078,6 +5137,7 @@ impl AbstractSyntaxTree {
     #[allow(clippy::uninlined_format_args)]
     fn resolve_metadata<M>(
         &self,
+        param_types: &[DerivedType],
         metadata: &M,
         pairs_map: &mut ParsingPairsMap,
         pos_to_ast_id: &mut SelectChildPairTranslation,
@@ -5089,7 +5149,8 @@ impl AbstractSyntaxTree {
     {
         let mut plan = Plan::default();
 
-        let mut type_analyzer = type_system::new_analyzer();
+        let param_types = param_types.iter().map(|t| (*t).into()).collect();
+        let mut type_analyzer = type_system::new_analyzer(param_types);
 
         let Some(top) = self.top else {
             return Err(SbroadError::Invalid(Entity::AST, None));
@@ -5185,7 +5246,14 @@ impl AbstractSyntaxTree {
                         .children
                         .first()
                         .expect("no children for sql_vdbe_opcode_max option");
-                    let val = parse_option(self, *ast_child_id, pairs_map, &mut worker, &mut plan)?;
+                    let val = parse_option(
+                        self,
+                        *ast_child_id,
+                        &get_parameter_derived_types(&type_analyzer),
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
                     plan.raw_options.push(OptionSpec {
                         kind: OptionKind::MotionRowMax,
                         val,
@@ -5196,7 +5264,14 @@ impl AbstractSyntaxTree {
                         .children
                         .first()
                         .expect("no children for sql_vdbe_opcode_max option");
-                    let val = parse_option(self, *ast_child_id, pairs_map, &mut worker, &mut plan)?;
+                    let val = parse_option(
+                        self,
+                        *ast_child_id,
+                        &get_parameter_derived_types(&type_analyzer),
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
 
                     plan.raw_options.push(OptionSpec {
                         kind: OptionKind::VdbeOpcodeMax,
@@ -6178,6 +6253,9 @@ impl AbstractSyntaxTree {
 
         plan.tier = tiers.next().flatten().cloned();
 
+        let param_types = get_parameter_derived_types(&type_analyzer);
+        plan.set_types_in_parameter_nodes(&param_types)?;
+
         // The problem is that we crete Between structures before replacing subqueries.
         worker.fix_betweens(&mut plan)?;
         plan.replace_group_by_ordinals_with_references()?;
@@ -6186,7 +6264,11 @@ impl AbstractSyntaxTree {
 }
 
 impl Ast for AbstractSyntaxTree {
-    fn transform_into_plan<M>(query: &str, metadata: &M) -> Result<Plan, SbroadError>
+    fn transform_into_plan<M>(
+        query: &str,
+        param_types: &[DerivedType],
+        metadata: &M,
+    ) -> Result<Plan, SbroadError>
     where
         M: Metadata + Sized,
     {
@@ -6221,6 +6303,7 @@ impl Ast for AbstractSyntaxTree {
         }
 
         ast.resolve_metadata(
+            param_types,
             metadata,
             &mut ast_id_to_pairs_map,
             &mut pos_to_ast_id,
@@ -6250,6 +6333,33 @@ impl Plan {
             expr_id
         };
         Ok(row_id)
+    }
+
+    /// Set inferred parameter types in all parameters nodes.
+    fn set_types_in_parameter_nodes(&mut self, params: &[DerivedType]) -> Result<(), SbroadError> {
+        for node in self.nodes.iter64_mut() {
+            if let Node64::Parameter(Parameter {
+                ref mut param_type,
+                ref index,
+            }) = node
+            {
+                let could_not_determine_parameter_type =
+                    || TypeSystemError::CouldNotDetermineParameterType(*index - 1);
+
+                let index = (*index - 1) as usize;
+                let derived = params
+                    .get(index)
+                    .ok_or_else(could_not_determine_parameter_type)?;
+
+                if derived.get().is_none() {
+                    return Err(could_not_determine_parameter_type().into());
+                }
+
+                *param_type = *derived;
+            }
+        }
+
+        Ok(())
     }
 }
 

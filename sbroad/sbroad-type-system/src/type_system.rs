@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::expr::{ComparisonOperator, Expr, ExprKind, Type, UnaryOperator, MAX_PARAMETER_INDEX};
+use crate::expr::{ComparisonOperator, Expr, ExprKind, Type, UnaryOperator};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -207,7 +207,7 @@ pub struct TypeAnalyzerCore<'a, Id: Hash + Eq + Clone> {
     type_system: &'a TypeSystem,
     /// Cache for intermediate results to avoid redundant recalculations.
     cache: TypeAnalyzerCache<Id>,
-    /// Vector of parameters types.
+    /// Vector of parameter types.
     /// Initially contains user-provided parameter types (if any).
     /// Grows dynamically during analysis as new parameter types are inferred.
     parameters: Vec<Type>,
@@ -223,7 +223,6 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     }
 
     pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
-        assert!(parameters.len() < MAX_PARAMETER_INDEX);
         self.parameters = parameters;
         self
     }
@@ -247,7 +246,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Ok(())
     }
 
-    pub fn get_parameters_types(&self) -> &[Type] {
+    pub fn get_parameter_types(&self) -> &[Type] {
         &self.parameters
     }
 
@@ -278,10 +277,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     ) -> Option<TypeReport<Id>> {
         let report = self.cache.borrow().get(&(expr.id.clone(), desired_type))?;
         for (idx, report_type) in &report.params {
-            // The report includes parameter types used for inference,
+            // Reports include parameters' types used for inference,
             // but these may not be the final chosen types.
             // So we need to verify that our inferred types match those in the report.
-            // See `ensure_no_caching_issues` test for an example.
+            //
+            // `ensure_no_caching_issues` is a test for this check.
             if let Some(current_type) = self.parameters.get(*idx as usize) {
                 if *current_type != Type::Unknown && *report_type != *current_type {
                     return None;
@@ -366,7 +366,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                         report.report(&expr.id, param_type);
                         Ok(report)
                     }
-                    (None, None) => return Err(Error::CouldNotDetermineParameterType(*idx)),
+                    (None, None) => Err(Error::CouldNotDetermineParameterType(*idx)),
                 }
             }
             ExprKind::Cast(inner, to) => {
@@ -1012,16 +1012,15 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
     }
 
     pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
-        assert!(parameters.len() < MAX_PARAMETER_INDEX);
         self.core = self.core.with_parameters(parameters);
         self
     }
 
-    pub fn get_parameters_types(&self) -> &[Type] {
-        self.core.get_parameters_types()
+    pub fn get_parameter_types(&self) -> &[Type] {
+        self.core.get_parameter_types()
     }
 
-    /// Infer expression and parameters types.
+    /// Infer expression and parameter types.
     /// All expression types and coercions are reported in `TypeReport`.
     /// `desired_type` gives a hint on what type is expected, but the inferred type can be
     /// different. This is the caller responsibility to ensure that the expression has a
@@ -1037,7 +1036,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
     }
 
     // TODO: support desired types
-    /// Infer rows and parameters types.
+    /// Infer rows and parameter types.
     pub fn analyze_homogeneous_rows(
         &mut self,
         ctx: &'static str,

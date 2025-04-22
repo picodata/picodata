@@ -31,6 +31,7 @@ use tarantool::msgpack;
 
 use super::result::ProducerResult;
 
+use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::sql::Statement;
 
 pub mod helpers;
@@ -171,11 +172,24 @@ pub trait QueryCache {
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError>;
 }
 
-/// Calculate a key in the query cache for a given pattern.
+/// Compute a query cache key from the query pattern and parameter types.
+/// Parameter types affect column types and query validity, so they must be included.
+/// Some parameter types can be left unspecified. Such parameters will be inferred during
+/// type analysis and they are uniquely determined by the query and initial parameters.
 #[inline]
 #[must_use]
-pub fn query_id(pattern: &str) -> SmolStr {
-    Base64::encode_string(blake3::hash(pattern.as_bytes()).to_hex().as_bytes()).to_smolstr()
+pub fn query_id(pattern: &str, params: &[DerivedType]) -> SmolStr {
+    let params_hash = {
+        let mut hasher = DefaultHasher::new();
+        params.hash(&mut hasher);
+        hasher.finish()
+    };
+
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(pattern.as_bytes());
+    hasher.update(&params_hash.to_ne_bytes());
+    let hash = hasher.finalize();
+    Base64::encode_string(hash.to_hex().as_bytes()).to_smolstr()
 }
 
 /// Helper struct specifying in which format

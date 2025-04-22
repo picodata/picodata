@@ -514,7 +514,8 @@ mod test {
 
         for tc in test_cases {
             let metadata = &RouterConfigurationMock::new();
-            let plan: Plan = AbstractSyntaxTree::transform_into_plan(tc.sql, metadata).unwrap();
+            let plan: Plan =
+                AbstractSyntaxTree::transform_into_plan(tc.sql, &[], metadata).unwrap();
             let node = plan
                 .get_plugin_node(NodeId {
                     offset: 0,

@@ -17,7 +17,7 @@ use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 
 // Calculate the maximum parameter index value.
 // For example, the result for a query `SELECT $1, $1, $2` will be 2.
@@ -162,14 +162,8 @@ fn bind_params(
 }
 
 impl Plan {
-    pub fn add_param(&mut self, index: u16) -> NodeId {
-        self.nodes.push(
-            Parameter {
-                index,
-                param_type: DerivedType::unknown(),
-            }
-            .into(),
-        )
+    pub fn add_param(&mut self, index: u16, param_type: DerivedType) -> NodeId {
+        self.nodes.push(Parameter { index, param_type }.into())
     }
 
     /// Bind params related to `Option` clause.
@@ -209,29 +203,6 @@ impl Plan {
                         offset: u32::try_from(id).unwrap(),
                         arena_type: ArenaType::Arena64,
                     })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    /// Build a map { pg_parameter_node_id -> param_idx }, where param_idx starts with 0.
-    #[must_use]
-    pub fn build_params_map(&self) -> AHashMap<NodeId, u16> {
-        self.nodes
-            .arena64
-            .iter()
-            .enumerate()
-            .filter_map(|(id, node)| {
-                if let Node64::Parameter(Parameter { index, .. }) = node {
-                    Some((
-                        NodeId {
-                            offset: u32::try_from(id).unwrap(),
-                            arena_type: ArenaType::Arena64,
-                        },
-                        index - 1,
-                    ))
                 } else {
                     None
                 }

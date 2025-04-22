@@ -371,7 +371,7 @@ fn cte_name_conflict() {
         SELECT * FROM cte
     "#;
     let metadata = &RouterConfigurationMock::new();
-    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, metadata);
+    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
     assert_eq!(
         plan_error,
         Err(SbroadError::Invalid(
@@ -388,7 +388,7 @@ fn cte_column_mismatch() {
         SELECT * FROM cte
     "#;
     let metadata = &RouterConfigurationMock::new();
-    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, metadata);
+    let plan_error = AbstractSyntaxTree::transform_into_plan(sql, &[], metadata);
     assert_eq!(
         plan_error,
         Err(SbroadError::UnexpectedNumberOfValues(

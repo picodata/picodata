@@ -5,6 +5,7 @@ use crate::frontend::sql::ParsingPairsMap;
 use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
+use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
@@ -17,7 +18,7 @@ use time::{format_description, OffsetDateTime, Time};
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata).unwrap();
     plan.replace_in_operator().unwrap();
     plan.push_down_not().unwrap();
     plan.split_columns().unwrap();
@@ -548,7 +549,7 @@ fn front_sql_between_invalid() {
 
     for invalid_expr in invalid_between_expressions {
         let metadata = &RouterConfigurationMock::new();
-        let plan = AbstractSyntaxTree::transform_into_plan(invalid_expr, metadata);
+        let plan = AbstractSyntaxTree::transform_into_plan(invalid_expr, &[], metadata);
         let err = plan.unwrap_err();
 
         assert_eq!(
@@ -719,7 +720,8 @@ fn front_order_by_with_param() {
     let input = r#"select * from "test_space" order by ?"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let params_types = [DerivedType::new(Type::Integer)];
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &params_types, metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -735,7 +737,7 @@ fn front_order_by_without_position_and_reference() {
     let input = r#"select * from "test_space" order by 1 + 8 asc, true and 'value'"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -808,7 +810,7 @@ fn front_order_by_with_indices_bigger_than_projection_output_length() {
     let input = r#"select "id" from "test_space" order by 1 asc, 2 desc, 3"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -1505,7 +1507,7 @@ fn front_sql_groupby_invalid() {
     let input = r#"select "b", "a" from "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let res = plan.optimize();
 
     assert_eq!(true, res.is_err());
@@ -1516,7 +1518,7 @@ fn front_sql_distinct_invalid() {
     let input = r#"select "b", bucket_id(distinct cast("a" as string)) from "t" group by "b", bucket_id(distinct cast("a" as string))"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -1751,7 +1753,7 @@ fn front_sql_invalid_count_asterisk1() {
     let input = r#"SELECT sum(*) FROM "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -1844,7 +1846,7 @@ fn front_sql_aggregate_inside_aggregate() {
     let input = r#"select "b", count(sum("a")) from "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata)
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata)
         .unwrap()
         .optimize()
         .unwrap_err();
@@ -1860,7 +1862,7 @@ fn front_sql_column_outside_aggregate_no_groupby() {
     let input = r#"select "b", count("a") from "t""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata)
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata)
         .unwrap()
         .optimize()
         .unwrap_err();
@@ -1964,7 +1966,8 @@ fn front_sql_pg_style_params4() {
     let input = r#"select $1, ? from "t""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let params = [DerivedType::new(Type::Integer)];
+    let err = AbstractSyntaxTree::transform_into_plan(input, &params, metadata).unwrap_err();
 
     assert_eq!(
         "invalid parameters usage. Got $n and ? parameters in one query!",
@@ -1977,7 +1980,7 @@ fn front_sql_pg_style_params5() {
     let input = r#"select $0 from "t""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         "invalid query: $n parameters are indexed from 1!",
@@ -1990,7 +1993,7 @@ fn front_sql_pg_style_params6() {
     // https://git.picodata.io/core/picodata/-/issues/1220
     let input = r#"select $1 + $1"#;
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let err = plan.bind_params(vec![]).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
@@ -2003,7 +2006,8 @@ fn front_sql_pg_style_params7() {
     // https://git.picodata.io/core/picodata/-/issues/1220
     let input = r#"select ((values ((select ((values ($1)))))))"#;
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let params = [DerivedType::new(Type::Integer)];
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, &params, metadata).unwrap();
     let err = plan.bind_params(vec![]).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
@@ -2016,7 +2020,7 @@ fn front_sql_pg_style_params8() {
     // https://git.picodata.io/core/picodata/-/issues/1220
     let input = r#"select $1 + $1 = $2"#;
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap();
+    let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let err = plan.bind_params(vec![Value::Unsigned(1)]).unwrap_err();
     assert_eq!(
         "invalid query: expected 2 values for parameters, got 1",
@@ -2109,7 +2113,7 @@ fn front_sql_column_outside_aggregate() {
     let input = r#"select "b", "a", count("a") from "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata)
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata)
         .unwrap()
         .optimize()
         .unwrap_err();
@@ -3123,7 +3127,7 @@ fn front_sql_insert_7() {
     let input = r#"insert into "hash_testing" ("identification_number", "product_code", "bucket_id") values (1, 2, 3)"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
     assert_eq!(
         true,
@@ -3170,7 +3174,7 @@ fn front_sql_insert_duplicate_columns() {
     let input = r#"insert into "t3" ("a", "b", "a") values (1, 2, 3)"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
     assert_eq!(
         true,
@@ -3482,10 +3486,7 @@ fn front_sql_not_complex_query() {
                 on not "nid" or not false = cast((not not true) as bool)
             where not exists (select * from (values (1)) where not true = (?))
         "#;
-    let plan = sql_to_optimized_ir(
-        input,
-        vec![Value::from(1), Value::from(1), Value::from(true)],
-    );
+    let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(true)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (not ((not ROW('true'::string::bool)) and ((ROW(1::unsigned) + ROW(1::integer)) <> ROW(1::unsigned))) -> "col_1")
         selection not exists ROW($0)
@@ -3500,7 +3501,7 @@ fn front_sql_not_complex_query() {
     subquery $0:
     scan
                 projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-                    selection not (ROW(true::boolean) = ROW(1::integer))
+                    selection not (ROW(true::boolean) = ROW(true::boolean))
                         scan
                             values
                                 value row (data=ROW(1::unsigned))
@@ -3570,7 +3571,7 @@ fn front_sql_check_non_null_columns_specified() {
     let input = r#"insert into "test_space" ("sys_op") values (1)"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
     assert_eq!(
         true,
@@ -3585,7 +3586,7 @@ fn non_existent_references_in_values_do_not_panic() {
     let input = r#"insert into "test_space" values(1, "nonexistent_reference")"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert!(err
@@ -3598,7 +3599,7 @@ fn front_count_no_params() {
     let input = r#"select count() from "test_space""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(input, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
     assert_eq!(
@@ -3640,7 +3641,7 @@ fn front_mock_set_param_transaction() {
 
     let metadata = &RouterConfigurationMock::new();
     for query in queries_to_check {
-        let plan = AbstractSyntaxTree::transform_into_plan(query, metadata);
+        let plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata);
         assert!(plan.is_ok())
     }
 }
@@ -3655,7 +3656,7 @@ fn front_mock_partition_by() {
         r#"create table t(a int primary key) partition by range (a, b, c)"#,
     ];
     for query in queries_to_check {
-        let plan = AbstractSyntaxTree::transform_into_plan(query, metadata);
+        let plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata);
         assert!(plan.is_ok())
     }
 
@@ -3671,7 +3672,7 @@ fn front_mock_partition_by() {
         r#"create table tp partition of t for values with (modulus 1, remainder 2) partition by range (a, b, c)"#,
     ];
     for query in queries_to_check {
-        let err = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap_err();
+        let err = AbstractSyntaxTree::transform_into_plan(query, &[], metadata).unwrap_err();
         assert!(err
             .to_string()
             .contains("PARTITION OF logic is not supported yet"))
@@ -3688,7 +3689,7 @@ fn front_create_table_with_tier_syntax() {
         IN TIER "default";"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(query, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata);
     assert!(plan.is_ok());
 
     let query = r#"CREATE TABLE warehouse (
@@ -3699,7 +3700,7 @@ fn front_create_table_with_tier_syntax() {
         IN TIER;"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = AbstractSyntaxTree::transform_into_plan(query, metadata);
+    let plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata);
     assert!(plan.is_err());
 }
 
@@ -3724,7 +3725,7 @@ fn front_alter_system_check_parses_ok() {
     ];
     let metadata = &RouterConfigurationMock::new();
     for query in queries_to_check_ok {
-        let plan = AbstractSyntaxTree::transform_into_plan(query, metadata);
+        let plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata);
         assert!(plan.is_ok())
     }
 
@@ -3734,7 +3735,9 @@ fn front_alter_system_check_parses_ok() {
     ];
     let metadata = &RouterConfigurationMock::new();
     for query in queries_to_check_all_expressions_not_supported {
-        let err = AbstractSyntaxTree::transform_into_plan(query, metadata).unwrap_err();
+        let params_types = [DerivedType::new(Type::Integer)];
+        let err =
+            AbstractSyntaxTree::transform_into_plan(query, &params_types, metadata).unwrap_err();
         assert!(err
             .to_string()
             .contains("ALTER SYSTEM currently supports only literals as values."))
@@ -3869,7 +3872,7 @@ fn front_select_without_scan_3() {
     let input = r#"select *"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         "invalid type: expected a Column in SelectWithoutScan, got Asterisk.",
@@ -3882,7 +3885,7 @@ fn front_select_without_scan_4() {
     let input = r#"select distinct 1"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!(
         "invalid type: expected a Column in SelectWithoutScan, got Distinct.",
@@ -3949,7 +3952,7 @@ fn front_different_values_row_len() {
     let input = r#"values (1), (1,2)"#;
 
     let metadata = &RouterConfigurationMock::new();
-    let err = AbstractSyntaxTree::transform_into_plan(input, metadata).unwrap_err();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
 
     assert_eq!("VALUES lists must all be the same length", err.to_string());
 }

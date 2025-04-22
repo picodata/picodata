@@ -90,8 +90,6 @@ impl Display for ComparisonOperator {
     }
 }
 
-pub const MAX_PARAMETER_INDEX: usize = 1 << 15 - 1;
-
 /// ExprKind represents expressions that define types.
 /// There are no parenthesis or aliaes, as they do not influence typing.
 #[derive(Debug)]

@@ -17,7 +17,10 @@ use postgres_types::{Oid, Type as PgType};
 use rmpv::Value;
 use sbroad::{
     executor::{ir::ExecutionPlan, Query},
-    ir::{relation::Type as SbroadType, Plan},
+    ir::{
+        relation::{DerivedType, Type as SbroadType},
+        Plan,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -236,8 +239,8 @@ impl Drop for StatementInner {
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
-    pub fn new(key: Key, mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
-        let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
+    pub fn new(key: Key, plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
+        let param_oids = collect_param_oids(&plan, &specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
         let inner = StatementInner {
             key,
@@ -334,27 +337,36 @@ pub(super) fn pg_type_to_sbroad(ty: &PgType) -> PgResult<SbroadType> {
     }
 }
 
-pub fn derive_param_oids(plan: &mut Plan, param_oids: Vec<Oid>) -> PgResult<Vec<Oid>> {
-    let client_types = param_oids
-        .iter()
-        .map(|oid| {
-            PgType::from_oid(*oid)
-                .map(|ty| {
-                    pg_type_to_sbroad(&ty)
-                        .map_err(|_| PgError::FeatureNotSupported(format!("{ty} parameters")))
-                })
-                .transpose()
-        })
-        .collect::<PgResult<Vec<_>>>()?;
-    let inferred_types = plan.infer_pg_parameters_types(&client_types)?;
+pub(super) fn param_oid_to_derived_type(oid: Oid) -> PgResult<DerivedType> {
+    // 0 oid does not match any type, but it can be used to leave parameter type unspecified
+    // (https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY)
+    //
+    // TODO: not sure if oid of an unknown type can be used for parameters
+    if oid == 0 || oid == PgType::UNKNOWN.oid() {
+        return Ok(DerivedType::unknown());
+    }
+
+    let pg_type = PgType::from_oid(oid)
+        .ok_or_else(|| PgError::FeatureNotSupported(format!("parameter oid {oid}")))?;
+
+    pg_type_to_sbroad(&pg_type)
+        .map_err(|_| PgError::FeatureNotSupported(format!("{pg_type} parameters")))
+        .map(DerivedType::new)
+}
+
+// The only reason we need `client_params_oids` is to translate integer type from sbroad back
+// into original type from PostgreSQL (int2 vs int4 vs int8).
+pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> PgResult<Vec<Oid>> {
+    let inferred_types = plan.collect_parameter_types();
     let mut oids = inferred_types
         .iter()
         .map(|ty| sbroad_type_to_pg(ty).map(|pg| pg.oid()))
         .collect::<PgResult<Vec<_>>>()?;
+
     // Sbroad does not support PgType::INT2 and PgType::INT4 types, so we map them to
     // Sborad::Integer (8-byte integer), which is then mapped back to PgType::INT8, potentially
     // losing the original type information. Therefore, we need to restore the original types.
-    for (n, oid) in param_oids.iter().enumerate() {
+    for (n, oid) in client_params_oids.iter().enumerate() {
         if *oid == PgType::INT8.oid() || *oid == PgType::INT4.oid() || *oid == PgType::INT2.oid() {
             assert!(inferred_types[n] == SbroadType::Integer);
             oids[n] = *oid;

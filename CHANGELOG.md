@@ -79,6 +79,36 @@ with the `YY.MINOR.MICRO` scheme.
   now leads to "could not resolve operator overload for +(unsigned, unknown)"
   error, that can be fixed with explicit type cast: `select 1 + (select $1)::int`
 
+- Sbroad now infers parameter types from query context, allowing to
+  prepare statements in pgproto without explicit type specification,
+  which is a quite common case.
+
+  For iproto nothing actually changes, because parameter types are
+  inferred from the actual parameter values.
+
+  For example, query `SELECT * FROM t WHERE a = $1` used to fail in
+  pgproto with "could not determine datatype for parameter $1" error,
+  if parameter type wasn't specified by the client. Now the
+  parameter type is inferred from the context to the type of column `a`.
+
+  Note that there are 2 methods to fix inference errors:
+   1) Explicitly provide parameter type on protocol level.
+   2) Explicitly provide parameter type by using CAST.
+
+  Limitations:
+
+   - `INSERT INTO t VALUES ($1)`, `UPDATE t SET a = $1`
+   Parameter type could be inferred from the column type, but this
+   is not implemented yet.
+
+   - `SELECT $1`
+   Works in PostgreSQL, fails in sbroad, because there is no context
+   for type inference. Such queries require parameter type defaulting rules.
+
+   - `SELECT 1 UNION SELECT $1`
+   Parameter type could be inferred from the left select statement,
+   like PostgreSQL does, but this is not implemented yet.
+
 
 ### Fixes
 - Display correct value for "can_vote" property in webUI   

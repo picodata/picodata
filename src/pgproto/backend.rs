@@ -16,8 +16,11 @@ use crate::{
 use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
-use sbroad::ir::{value::Value as SbroadValue, OptionKind};
 use sbroad::{errors::SbroadError, ir::OptionSpec};
+use sbroad::{
+    executor::engine::query_id,
+    ir::{value::Value as SbroadValue, OptionKind},
+};
 use sbroad::{
     executor::{
         engine::{QueryCache, Router, TableVersionMap},
@@ -27,11 +30,11 @@ use sbroad::{
     ir::{value::Value, Plan as IrPlan},
     utils::MutexLike,
 };
-use smol_str::ToSmolStr;
 use std::{
     iter::zip,
     sync::atomic::{AtomicU64, Ordering},
 };
+use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
 
 mod pgproc;
@@ -165,12 +168,18 @@ pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteRes
 }
 
 pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
+    let param_types: Vec<_> = param_oids
+        .iter()
+        .map(|oid| param_oid_to_derived_type(*oid))
+        .collect::<PgResult<_>>()?;
+    let cache_key = query_id(query, &param_types);
+
     let runtime = RouterRuntime::new().map_err(Error::from)?;
     let mut cache = runtime.cache().lock();
 
     let key = storage::Key(id, name.into());
 
-    let cache_entry = with_su(ADMIN_ID, || cache.get(&query.to_smolstr()))??;
+    let cache_entry = with_su(ADMIN_ID, || cache.get(&cache_key))??;
     if let Some(plan) = cache_entry {
         let statement = Statement::new(key.clone(), plan.clone(), param_oids)?;
         PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
@@ -179,8 +188,11 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
 
     let plan = with_su(ADMIN_ID, || -> PgResult<IrPlan> {
         let metadata = runtime.metadata().lock();
-        let mut plan =
-            <RouterRuntime as Router>::ParseTree::transform_into_plan(query, &*metadata)?;
+        let mut plan = <RouterRuntime as Router>::ParseTree::transform_into_plan(
+            query,
+            &param_types,
+            &*metadata,
+        )?;
         if runtime.provides_versions() {
             let mut table_version_map = TableVersionMap::with_capacity(plan.relations.tables.len());
             for table in plan.relations.tables.keys() {
@@ -194,7 +206,7 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
     .map_err(PgError::other)??;
 
     if !plan.is_empty() && !plan.is_tcl()? && !plan.is_ddl()? && !plan.is_acl()? {
-        cache.put(query.into(), plan.clone())?;
+        cache.put(cache_key, plan.clone())?;
     }
 
     let statement = Statement::new(key.clone(), plan, param_oids)?;

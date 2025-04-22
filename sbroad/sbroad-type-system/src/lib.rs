@@ -606,31 +606,31 @@ mod tests {
         // infer parameter type
         let expr = binary("+", lit(Integer), param("$1"));
         let _report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // analyze the same expression, type shouldn't change
         let _report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // infer the same type from another expression
         let expr = binary("+", param("$1"), lit(Integer));
         let _report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure that we can use integer parameter in expressions with compatible types
         let expr = binary("+", param("$1"), lit(Numeric));
         let _report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // one more type with cache
         let expr = binary("+", param("$1"), lit(Numeric));
         let _report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure new desired type do not change parameter type
         let expr = binary("+", param("$1"), lit(Numeric));
         let _report = analyzer.analyze(&expr, Some(Numeric)).unwrap();
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure that int as an inferred parameter type cannot be matched with text
         let expr = binary("=", param("$1"), lit(Text));
@@ -648,25 +648,25 @@ mod tests {
         let expr = binary("+", param("$1"), param("$1"));
         let report = analyzer.analyze(&expr, None).unwrap();
         assert_eq!(report.get_type(&expr.id), Integer);
-        assert_eq!(analyzer.get_parameters_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // infer parameter type for $2 from $1
         let expr = binary("+", param("$1"), param("$2"));
         let report = analyzer.analyze(&expr, None).unwrap();
         assert_eq!(report.get_type(&expr.id), Integer);
-        assert_eq!(analyzer.get_parameters_types(), &[Integer, Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
 
         // ensure that parameter can be coerced to desired type without changing its type
         let expr = param("$1");
         let report = analyzer.analyze(&expr, Some(Double)).unwrap();
         assert_eq!(report.get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameters_types(), &[Integer, Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
 
         // ensure that parameter type coercion works in homogeneous expressions
         let expr = coalesce(vec![param("$1"), lit(Double), param("$2")]);
         let report = analyzer.analyze(&expr, None).unwrap();
         assert_eq!(report.get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameters_types(), &[Integer, Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
         if let ExprKind::Coalesce(children) = expr.kind {
             for child in &children {
                 assert_eq!(report.get_type(&child.id), Double)
@@ -682,12 +682,21 @@ mod tests {
         ]);
         let report = analyzer.analyze(&expr, None).unwrap();
         assert_eq!(report.get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameters_types(), &[Integer, Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
         if let ExprKind::Coalesce(children) = expr.kind {
             for child in &children {
                 assert_eq!(report.get_type(&child.id), Double)
             }
         }
+
+        // test for "inconsistent types deduced" error
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let expr = binary("+", cast(param("$1"), Integer), cast(param("$1"), Double));
+        let err = analyzer.analyze(&expr, None).unwrap_err();
+        assert_eq!(
+            err,
+            Error::InconsistentParameterTypesDeduced(0, Integer, Double)
+        );
     }
 
     #[test]
@@ -703,32 +712,38 @@ mod tests {
         let report = analyzer.analyze(&expr, None).unwrap();
         assert_eq!(report.get_type(&lid), Unsigned);
         assert_eq!(report.get_type(&rid), Unsigned);
-        assert_eq!(analyzer.get_parameters_types(), &[Unsigned, Unsigned]);
+        assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);
 
         // Cache {
-        //   (lid, Unsigned): Report { lid: Unsigned, $1::unsigned }
-        //   (lid, Double):   Report { lid: Double, $2:double }
+        //   (expr.id, None): Report {
+        //       expr.id: Unsigned, lid: Unsigned, rid: Unsigned, $1::unsigned, $2::unsigned
+        //   }
         //
+        //   (lid, Unsigned): Report { lid: Unsigned, $1::unsigned }
         //   (rid, Unsigned): Report { rid: Unsigned, $2::unsigned }
+        //
+        //   (lid, Double):   Report { lid: Double, $2::double }
         //   (rid, Double):   Report { rid: Double, $2::double }
         // }
 
         let report = analyzer.analyze(&expr, Some(Double)).unwrap();
         assert_eq!(report.get_type(&lid), Double);
         assert_eq!(report.get_type(&rid), Double);
-        assert_eq!(analyzer.get_parameters_types(), &[Unsigned, Unsigned]);
+        assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);
 
+        // inferred params: [Unsigned, Unsigned]
+        //
         // analyze($1 + $2):
         // 1) +(Unsigned, Unsigned):
         //   r[0] = analyze_many($1, $2, [Unsigned, Unsigned]) // cached
         //
         // 2) +(Double, Double):
-        //   // cached, but params are Double and Double, so this is actually a miss,
-        //   // thanks to the parameters types check in `TypeAnalyzerCore::try_get_cached`.
+        //   // double args are cached with Double and Double params, so this is actually a
+        //   // miss, because of the parameter types check in `TypeAnalyzerCore::try_get_cached`.
         //   r[1] = analyze_many($1, $2, [Double, Double])
-        //     $1::unsigned, desired = Double => $1::double (expr is coerced to double, but param type is unsigned)
-        //     $2::unsigned, desired = Double => $2::double (expr is coerced to double, but param type is unsigned)
+        //     $1::unsigned, desired = Double => $1::double (coerced to double, param type is unsigned)
+        //     $2::unsigned, desired = Double => $2::double (coerced to double, param type is unsigned)
         //
-        // return r[1] // r[1].returns = desired_type = Double
+        //   return r[1] // r[1].returns = desired_type = Double
     }
 }
