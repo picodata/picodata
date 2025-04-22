@@ -64,6 +64,7 @@ nav:
       - admin/audit_log.md
       - admin/sizing.md
       - admin/systemd.md
+      - admin/troubleshooting.md
   - Справочные материалы:
     - Язык SQL:
       - Команды и термины SQL: sql_index.md

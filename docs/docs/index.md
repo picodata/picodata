@@ -62,6 +62,7 @@ Picodata — это распределенная система промышле
 * [Использование журнала аудита](admin/audit_log.md)
 * [Рекомендации по сайзингу](admin/sizing.md)
 * [Настройка Systemd](admin/systemd.md)
+* [Устранение неполадок](admin/troubleshooting.md)
 
 ### Справочные материалы {: #reference }
 
