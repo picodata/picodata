@@ -1785,6 +1785,12 @@ where
     /// Time at the start of the plan building stage with timezone.
     /// It is used to replace CURRENT_DATE to actual value.
     current_time: OffsetDateTime,
+    /// Map of named window definitions where key is the window name and value is the corresponding node ID.
+    /// Used to store and look up window definitions that can be referenced by name in window functions.
+    named_windows_map: HashMap<SmolStr, NodeId>,
+    /// Vector of all window nodes in the query plan.
+    /// Stores window definitions in order of appearance, including both named and inline windows.
+    windows: Vec<NodeId>,
 }
 
 impl<'worker, M> ExpressionsWorker<'worker, M>
@@ -1809,6 +1815,8 @@ where
             met_pg_param: false,
             column_positions_cache: HashMap::with_capacity(COLUMN_POSITIONS_CACHE_CAPACITY),
             current_time: OffsetDateTime::now_utc(),
+            named_windows_map: HashMap::new(),
+            windows: Vec::new(),
         }
     }
 
@@ -2744,6 +2752,283 @@ pub fn transform_to_regex_pattern(pat_text: &str, esc_text: &str) -> Result<Stri
     Ok(result)
 }
 
+fn parse_window_func<M: Metadata>(
+    pair: Pair<Rule>,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<NodeId, SbroadError> {
+    let mut inner = pair.into_inner();
+    let mut type_analyzer = type_system::new_analyzer();
+
+    // Parse function name
+    let func_name_pair = inner.next().expect("Function name expected under Over");
+    let func_name = func_name_pair.as_str().to_smolstr();
+
+    // Parse function arguments
+    let args_pair = inner.next().expect("Function args expected under Over");
+    let mut func_args = if let Some(args_inner) = args_pair.clone().into_inner().next() {
+        match args_inner.as_rule() {
+            Rule::CountAsterisk => Vec::with_capacity(1),
+            Rule::WindowFunctionArgsInner => {
+                let args_count = args_inner.into_inner().count();
+                Vec::with_capacity(args_count)
+            }
+            _ => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+
+    if let Some(args_inner) = args_pair.into_inner().next() {
+        match args_inner.as_rule() {
+            Rule::CountAsterisk => {
+                let normalized_name = func_name.to_lowercase();
+                if "count" != normalized_name.as_str() {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!(
+                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {normalized_name}",
+                        ))
+                    ));
+                }
+                let count_asterisk_plan_id = plan.nodes.push(CountAsterisk {}.into());
+                func_args.push(count_asterisk_plan_id);
+            }
+            Rule::WindowFunctionArgsInner => {
+                for arg_pair in args_inner.into_inner() {
+                    let expr_plan_node_id = parse_scalar_expr(
+                        Pairs::single(arg_pair),
+                        &mut type_analyzer,
+                        referred_relation_ids,
+                        worker,
+                        plan,
+                    )?;
+                    func_args.push(expr_plan_node_id);
+                }
+            }
+            _ => panic!(
+                "Unexpected rule met under WindowFunction: {:?}",
+                args_inner.as_rule()
+            ),
+        }
+    }
+
+    // Parse filter
+    let filter_pair = inner.next().expect("Filter expected under Over");
+    let filter = if let Some(filter_inner) = filter_pair.into_inner().next() {
+        let expr = parse_scalar_expr(
+            Pairs::single(filter_inner),
+            &mut type_analyzer,
+            referred_relation_ids,
+            worker,
+            plan,
+        )?;
+        Some(expr)
+    } else {
+        None
+    };
+
+    // Parse window
+    let window_pair = inner.next().expect("Window expected under Over");
+    let mut ref_by_name = false;
+    let window = match window_pair.as_rule() {
+        Rule::Identifier => {
+            let window_name = window_pair.as_str().to_smolstr();
+
+            let err = Err(SbroadError::Invalid(
+                Entity::Expression,
+                Some(format_smolstr!("Window with name {window_name} not found")),
+            ));
+
+            ref_by_name = true;
+
+            worker.named_windows_map.get(&window_name).map_or(err, Ok)?
+        }
+        Rule::WindowBody => {
+            let mut partition: Option<Vec<NodeId>> = None;
+            let mut ordering = None;
+            let mut frame = None;
+
+            let err = Err(SbroadError::Invalid(
+                Entity::Expression,
+                Some(SmolStr::from("Invalid WINDOW body definition. Expected view of [BASE_WINDOW] [PARTITION BY] [ORDER BY] [FRAME]"))
+            ));
+
+            for body_part in window_pair.into_inner() {
+                match body_part.as_rule() {
+                    Rule::WindowPartition => {
+                        if partition.is_some() || ordering.is_some() || frame.is_some() {
+                            return err;
+                        }
+
+                        let mut partition_exprs = Vec::new();
+                        for part_expr in body_part.into_inner() {
+                            let part_expr_plan_node_id = parse_scalar_expr(
+                                Pairs::single(part_expr),
+                                &mut type_analyzer,
+                                referred_relation_ids,
+                                worker,
+                                plan,
+                            )?;
+                            partition_exprs.push(part_expr_plan_node_id);
+                        }
+                        partition = Some(partition_exprs);
+                    }
+                    Rule::WindowOrderBy => {
+                        let mut order_by_elements = Vec::new();
+                        for order_item in body_part.into_inner() {
+                            let mut order_item_inner = order_item.into_inner();
+                            let expr_pair = order_item_inner
+                                .next()
+                                .expect("Expected expression in ORDER BY");
+                            let expr_id = parse_scalar_expr(
+                                Pairs::single(expr_pair.clone()),
+                                &mut type_analyzer,
+                                referred_relation_ids,
+                                worker,
+                                plan,
+                            )?;
+
+                            // Check for DESC/ASC
+                            let order_type = if order_item_inner.any(|p| p.as_rule() == Rule::Desc)
+                            {
+                                OrderByType::Desc
+                            } else {
+                                OrderByType::Asc
+                            };
+
+                            order_by_elements.push(OrderByElement {
+                                entity: OrderByEntity::Expression { expr_id },
+                                order_type: Some(order_type),
+                            });
+                        }
+                        ordering = Some(order_by_elements)
+                    }
+                    Rule::WindowFrame => {
+                        if frame.is_some() {
+                            return err;
+                        }
+
+                        let mut frame_inner = body_part.into_inner();
+                        let frame_type = frame_inner
+                            .next()
+                            .expect("WindowFrame should have WindowFrameType child");
+                        let ty = match frame_type.as_rule() {
+                            Rule::WindowFrameTypeRange => FrameType::Range,
+                            Rule::WindowFrameTypeRows => FrameType::Rows,
+                            _ => panic!(
+                                "Expected FrameTypeRange or FrameTypeRows, got: {frame_type:?}"
+                            ),
+                        };
+
+                        let frame_bound = frame_inner
+                            .next()
+                            .expect("WindowFrame should have WindowFrameBound children");
+                        let bound = match frame_bound.as_rule() {
+                            Rule::WindowFrameSingle => {
+                                let bound_inner = frame_bound.into_inner().next().expect(
+                                    "WindowFrameSingle should contain WindowFrameBound as a child",
+                                );
+                                let bound_type = parse_frame_bound(
+                                    bound_inner,
+                                    &mut type_analyzer,
+                                    referred_relation_ids,
+                                    worker,
+                                    plan,
+                                )?;
+                                Bound::Single(bound_type)
+                            }
+                            Rule::WindowFrameBetween => {
+                                let mut between_bounds = frame_bound.into_inner();
+                                let first_bound = between_bounds.next().expect(
+                                    "WindowFrameBetween should contain an opening bound as a child",
+                                );
+                                let second_bound = between_bounds.next().expect(
+                                    "WindowFrameBetween should contain a closing bound as a child",
+                                );
+                                let first_type = parse_frame_bound(
+                                    first_bound,
+                                    &mut type_analyzer,
+                                    referred_relation_ids,
+                                    worker,
+                                    plan,
+                                )?;
+                                let second_type = parse_frame_bound(
+                                    second_bound,
+                                    &mut type_analyzer,
+                                    referred_relation_ids,
+                                    worker,
+                                    plan,
+                                )?;
+                                Bound::Between(first_type, second_type)
+                            }
+                            _ => panic!("Unexpected rule met under WindowFrame: {frame_bound:?}"),
+                        };
+
+                        frame = Some(Frame { ty, bound });
+                    }
+                    _ => panic!("Unexpected rule met under WindowBody: {body_part:?}"),
+                }
+            }
+
+            let window = Window {
+                name: None,
+                partition,
+                ordering,
+                frame,
+            };
+            &plan.nodes.push(window.into())
+        }
+        _ => panic!("Unexpected rule met under Window: {window_pair:?}"),
+    };
+    worker.windows.push(*window);
+    let over = Over {
+        func_name,
+        func_args,
+        filter,
+        window: *window,
+        ref_by_name,
+    };
+
+    Ok(plan.nodes.push(over.into()))
+}
+
+fn parse_frame_bound<M: Metadata>(
+    bound: Pair<Rule>,
+    type_analyzer: &mut TypeAnalyzer,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<BoundType, SbroadError> {
+    let rule = bound.as_rule();
+    match rule {
+        Rule::PrecedingUnbounded => Ok(BoundType::PrecedingUnbounded),
+        Rule::CurrentRow => Ok(BoundType::CurrentRow),
+        Rule::FollowingUnbounded => Ok(BoundType::FollowingUnbounded),
+        Rule::PrecedingOffset | Rule::FollowingOffset => {
+            let offset_expr = bound
+                .into_inner()
+                .next()
+                .expect("Expr node expected under Offset window bound");
+            let offset_expr_id = parse_scalar_expr(
+                Pairs::single(offset_expr),
+                type_analyzer,
+                referred_relation_ids,
+                worker,
+                plan,
+            )?;
+
+            Ok(match rule {
+                Rule::PrecedingOffset => BoundType::PrecedingOffset(offset_expr_id),
+                Rule::FollowingOffset => BoundType::FollowingOffset(offset_expr_id),
+                _ => unreachable!("Offset bound expected"),
+            })
+        }
+        _ => panic!("Unexpected rule met under WindowFrameBound: {rule:?}"),
+    }
+}
+
 fn parse_substring<M: Metadata>(
     pair: Pair<Rule>,
     referred_relation_ids: &[NodeId],
@@ -2975,6 +3260,10 @@ where
                 }
                 Rule::Parameter => {
                     let plan_id = parse_param(primary, worker, plan)?;
+                    ParseExpression::PlanId { plan_id }
+                }
+                Rule::Over => {
+                    let plan_id = parse_window_func(primary, referred_relation_ids, worker, plan)?;
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::IdentifierWithOptionalContinuation => {
@@ -4026,7 +4315,6 @@ impl AbstractSyntaxTree {
         let mut asterisk_id = 0;
 
         let mut named_windows = HashMap::new();
-        let mut windows = Vec::new();
         let rel_child = plan.get_relation_node(plan_rel_child_id)?;
         if let Relational::NamedWindows(NamedWindows {
             windows: window_ids,
@@ -4049,129 +4337,12 @@ impl AbstractSyntaxTree {
                 named_windows.insert(name, *window_id);
             }
         }
+        worker.named_windows_map = named_windows;
 
         for ast_column_id in other_children_ids {
             let ast_column = self.nodes.get_node(*ast_column_id)?;
+
             match ast_column.rule {
-                Rule::Over => {
-                    let over_children = &ast_column.children;
-                    let func_name_id = over_children
-                        .first()
-                        .expect("Function name expected under Over");
-                    let func_name = parse_identifier(self, *func_name_id)?;
-                    let func_args_node_id = over_children
-                        .get(1)
-                        .expect("Function args expected under Over");
-                    let func_args_node = self.nodes.get_node(*func_args_node_id)?;
-                    let mut func_args = Vec::new();
-                    if let Some(func_args_child_id) = func_args_node.children.first() {
-                        let func_args_child_node = self.nodes.get_node(*func_args_child_id)?;
-                        match func_args_child_node.rule {
-                            Rule::CountAsterisk => {
-                                let normalized_name = func_name.to_lowercase();
-                                if "count" != normalized_name.as_str() {
-                                    return Err(SbroadError::Invalid(
-                                        Entity::Query,
-                                        Some(format_smolstr!(
-                                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {normalized_name}",
-                                        ))
-                                    ));
-                                }
-                                let count_asterisk_plan_id = plan.nodes.push(CountAsterisk{}.into());
-                                func_args.push(count_asterisk_plan_id)
-                            }
-                            Rule::WindowFunctionArgsInner => {
-                                for arg_id in &func_args_child_node.children {
-                                    let expr_pair = pairs_map.remove_pair(*arg_id);
-                                    let expr_plan_node_id = parse_scalar_expr(
-                                        Pairs::single(expr_pair),
-                                        type_analyzer,
-                                        &[plan_rel_child_id],
-                                        worker,
-                                        plan
-                                    )?;
-                                    func_args.push(expr_plan_node_id);
-                                }
-                            }
-                            _ => panic!("Unexpected rule met under WindowFunction: {func_args_child_node:?}")
-                        }
-                    }
-
-                    let filter_node_id = over_children
-                        .get(2)
-                        .expect("Over should contain Filter child");
-                    let filter_node = self.nodes.get_node(*filter_node_id)?;
-                    let filter = if let Some(f_id) = filter_node.children.first() {
-                        let expr_pair = pairs_map.remove_pair(*f_id);
-                        let expr = parse_scalar_expr(
-                            Pairs::single(expr_pair),
-                            type_analyzer,
-                            &[plan_rel_child_id],
-                            worker,
-                            plan,
-                        )?;
-                        Some(expr)
-                    } else {
-                        None
-                    };
-
-                    let window_node_id = over_children
-                        .get(3)
-                        .expect("Window should be found under Over node");
-                    let window_node = self.nodes.get_node(*window_node_id)?;
-                    let mut ref_by_name = false;
-                    let window = match window_node.rule {
-                        Rule::Identifier => {
-                            let window_name = parse_identifier(self, *window_node_id)?;
-
-                            let err = Err(SbroadError::Invalid(
-                                Entity::Expression,
-                                Some(format_smolstr!("Window with name {window_name} not found")),
-                            ));
-
-                            ref_by_name = true;
-                            *named_windows.get(&window_name).map_or(err, Ok)?
-                        }
-                        Rule::WindowBody => self.parse_window_body(
-                            None,
-                            plan_rel_child_id,
-                            type_analyzer,
-                            plan,
-                            *window_node_id,
-                            map,
-                            pairs_map,
-                            worker,
-                        )?,
-                        _ => panic!("Unexpected rule met under Window: {window_node:?}"),
-                    };
-                    windows.push(window);
-
-                    let over = Over {
-                        func_name,
-                        func_args,
-                        filter,
-                        window,
-                        ref_by_name,
-                    };
-                    let over_plan_id = plan.nodes.push(over.into());
-                    type_system::analyze_scalar_expr(
-                        type_analyzer,
-                        over_plan_id,
-                        plan,
-                        &worker.subquery_replaces,
-                    )?;
-
-                    unnamed_col_pos += 1;
-                    let alias_name = if let Some(alias_node_id) = over_children.get(4) {
-                        let window_alias = self.nodes.get_node(*alias_node_id)?;
-                        let identifier = window_alias.children[0];
-                        parse_normalized_identifier(self, identifier)?
-                    } else {
-                        get_unnamed_column_alias(unnamed_col_pos)
-                    };
-                    let plan_alias_id = plan.nodes.add_alias(&alias_name, over_plan_id)?;
-                    proj_columns.push(plan_alias_id);
-                }
                 Rule::Column => {
                     let expr_ast_id = ast_column
                         .children
@@ -4247,6 +4418,7 @@ impl AbstractSyntaxTree {
                 }
             }
         }
+        let windows = std::mem::take(&mut worker.windows);
 
         let projection_id =
             plan.add_proj_internal(vec![plan_rel_child_id], &proj_columns, is_distinct, windows)?;

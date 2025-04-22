@@ -88,16 +88,16 @@ AND UNBOUNDED FOLLOWING) FROM t1 ORDER BY a);
 -- SQL:
 SELECT * FROM t1 WHERE sum(b) OVER ();
 -- ERROR:
-rule parsing error
+filter expression is not a trivalent expression
 
 -- TEST: window1-3.2
 -- SQL:
 SELECT * FROM t1 GROUP BY sum(b) OVER ();
 -- ERROR:
-rule parsing error
+misuse of window function SUM()
 
 -- TEST: window1-3.3
 -- SQL:
 SELECT * FROM t1 GROUP BY a HAVING sum(b) OVER ();
 -- ERROR:
-rule parsing error
+filter expression is not a trivalent expression

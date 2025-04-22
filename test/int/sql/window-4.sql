@@ -13,20 +13,20 @@ INSERT INTO t1 VALUES(9, 10);
 -- SQL:
 SELECT * FROM t1 WHERE row_number() OVER (ORDER BY y);
 -- ERROR:
-rule parsing error
+filter expression is not a trivalent expression
 
 -- TEST: window4-7.1.2
 -- SQL:
 SELECT count(*) FROM t1 GROUP BY y HAVING row_number()
 OVER (ORDER BY y);
 -- ERROR:
-rule parsing error
+filter expression is not a trivalent expression
 
 -- TEST: window4-7.1.4
 -- SQL:
 SELECT count(*) FROM t1 GROUP BY row_number() OVER (ORDER BY y);
 -- ERROR:
-rule parsing error
+misuse of window function ROW_NUMBER()
 
 -- TEST: window4-7.1.5
 -- SQL:
