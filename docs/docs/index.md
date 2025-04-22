@@ -61,6 +61,7 @@ Picodata — это распределенная система промышле
 * [Включение протокола SSL](admin/ssl.md)
 * [Использование журнала аудита](admin/audit_log.md)
 * [Рекомендации по сайзингу](admin/sizing.md)
+* [Настройка Systemd](admin/systemd.md)
 
 ### Справочные материалы {: #reference }
 

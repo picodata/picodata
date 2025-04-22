@@ -127,6 +127,7 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 См. также:
 
+- [Настройка Systemd](../admin/systemd.md)
 - [Подключение и работа в консоли](connecting.md)
 - [Создание кластера в ручном режиме](deploy.md)
 
