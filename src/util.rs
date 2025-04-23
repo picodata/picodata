@@ -1,27 +1,22 @@
-use crate::{
-    pico_service::pico_service_password, schema::PICO_SERVICE_USER_NAME, traft::error::Error,
-};
-use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
-use sbroad::errors::Entity;
-use sbroad::errors::SbroadError;
-use sbroad::ir::value::{EncodedValue, Value};
-use smol_str::format_smolstr;
-use smol_str::ToSmolStr;
-use std::{
-    any::{Any, TypeId},
-    cell::Cell,
-    io::{BufRead as _, BufReader, Write as _},
-    mem::replace,
-    panic::Location,
-    path::Path,
-    time::Duration,
-};
-use tarantool::{
-    network::Config,
-    session::{self, UserId},
-};
-
 use crate::config::SbroadType;
+use crate::pico_service::pico_service_password;
+use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::traft::error::Error;
+
+use std::any::{Any, TypeId};
+use std::cell::Cell;
+use std::io::{BufRead as _, BufReader, Write as _};
+use std::mem::replace;
+use std::panic::Location;
+use std::path::Path;
+use std::time::Duration;
+
+use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
+use sbroad::errors::{Entity, SbroadError};
+use sbroad::ir::value::Value;
+use smol_str::{format_smolstr, ToSmolStr};
+use tarantool::network::Config;
+use tarantool::session::{self, UserId};
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
@@ -873,7 +868,7 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
 pub fn cast_and_encode<'a>(
     value: &'a Value,
     column_type: &SbroadType,
-) -> Result<EncodedValue<'a>, SbroadError> {
+) -> Result<sbroad::ir::value::EncodedValue<'a>, SbroadError> {
     match (column_type, value) {
         (SbroadType::Any, value) => return Ok(value.into()),
         (SbroadType::Boolean, Value::Boolean(_)) => return Ok(value.into()),

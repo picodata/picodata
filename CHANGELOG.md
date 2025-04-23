@@ -40,6 +40,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Introduce automatic system catalog schema upgrade on new releases
   (automatically executing DDL/DML and creating internal functions).
 
+### CLI
+- `picodata plugin configure` now prints a message on success.
+
 ### ACL
 - The maximum number of users and roles that can be created has been increased from 32 to 128.
 

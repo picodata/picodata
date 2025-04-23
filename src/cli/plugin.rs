@@ -1,173 +1,186 @@
+use crate::cli;
+use crate::cli::args::{Plugin, ServiceConfigUpdate};
+use crate::cli::util::{determine_credentials_and_connect, RowSet};
+use crate::schema::{PluginConfigRecord, PICO_SERVICE_USER_NAME};
+use crate::sql::proc_sql_dispatch;
+
+use std::collections::HashMap;
+use std::fs::read_to_string;
 use std::time::Duration;
-use std::{collections::HashMap, fs::read_to_string};
 
-use crate::{
-    cli::{
-        args::{Plugin, ServiceConfigUpdate},
-        connect::determine_credentials_and_connect,
-        console::ReplError,
-    },
-    schema::PICO_SERVICE_USER_NAME,
-};
-
-use rmpv::{Utf8String, Value};
-use tarantool::{
-    auth::AuthMethod,
-    network::{AsClient, Client},
-};
+use tarantool::auth::AuthMethod;
+use tarantool::fiber;
+use tarantool::network::{AsClient, Client};
+use tarantool::tuple::Decode;
 
 fn fetch_current_parameters(
     client: &Client,
     plugin_name: &str,
     plugin_version: &str,
-) -> Vec<Vec<Value>> {
-    const ROWS_KEY_LENGTH: usize = 5;
-    const ROWS_KEY_VALUE: [u8; ROWS_KEY_LENGTH] = [0xA4, 0x72, 0x6F, 0x77, 0x73];
+) -> cli::Result<Vec<PluginConfigRecord>> {
+    let query = r#"SELECT * FROM _pico_plugin_config WHERE plugin=? AND version=?;"#;
+    let params = [plugin_name, plugin_version];
 
-    let query = "SELECT * FROM _pico_plugin_config;";
-    let raw_response =
-        ::tarantool::fiber::block_on(client.call(".proc_sql_dispatch", &(query, Vec::<()>::new())))
-            .expect("_pico_plugin_config table should be always available")
-            .to_vec();
+    let response_raw =
+        fiber::block_on(client.call(crate::proc_name!(proc_sql_dispatch), &(query, params)))?;
+    let response_full = response_raw.decode::<Vec<Vec<RowSet>>>()?;
 
-    let rows_msgpack_pos = raw_response
-        .windows(ROWS_KEY_LENGTH)
-        .position(|window| window == ROWS_KEY_VALUE)
-        .expect("msgpack representation of values from _pico_plugin_config cannot be invalid");
-    let positioned_response = &raw_response[rows_msgpack_pos + ROWS_KEY_LENGTH..];
+    let response_content = response_full
+        .first()
+        .expect("select should return at least empty response array")
+        .first()
+        .ok_or("no rows to modify in _pico_plugin_config table")?;
+    let response_records = &response_content.rows;
+    let response_length = response_records.len();
 
-    let unfiltered_response: Vec<Vec<Value>> =
-        tarantool::tuple::Decode::decode(positioned_response)
-            .expect("correctly positioned response decode cannot fail");
-    unfiltered_response
-        .into_iter()
-        .filter(|tuple| {
-            tuple[0] == Value::String(Utf8String::from(plugin_name))
-                && tuple[1] == Value::String(Utf8String::from(plugin_version))
-        })
-        .collect()
+    let mut result = Vec::with_capacity(response_length);
+    response_records.iter().for_each(|tuple| {
+        let record = rmp_serde::encode::to_vec(tuple)
+            .expect("values from _pico_plugin_config should be serializable");
+        let record: PluginConfigRecord = Decode::decode(&record)
+            .expect("values from _pico_plugin_config should be deserializable");
+        result.push(record);
+    });
+    Ok(result)
 }
 
-fn current_equal_to_new(current_parameters: &[Vec<Value>], new_key: &str, new_val: &str) -> bool {
-    #[inline]
-    fn strip_single_double_quotes(param: &str) -> &str {
-        param
-            .strip_prefix('"')
-            .and_then(|s| s.strip_suffix('"'))
-            .unwrap_or(param)
-    }
-
-    let new_key = strip_single_double_quotes(new_key);
-    let new_val = strip_single_double_quotes(new_val);
-
-    current_parameters.iter().any(|current_set| {
-        let curr_key = current_set[3].to_string();
-        let curr_key = strip_single_double_quotes(&curr_key);
-        if curr_key != new_key {
-            return false;
-        }
-
-        let curr_val = current_set[4].to_string();
-        let curr_val = strip_single_double_quotes(&curr_val);
-
-        let keys_equal = curr_key == new_key;
-        let vals_equal = curr_val == new_val;
-        keys_equal && vals_equal
+/// # Description
+///
+/// Compares passed keys and value with a set of current plugin
+/// config parameters.
+///
+/// # Warning
+///
+/// Passed value should be a string, converted from JSON!
+fn current_equal_to_new(
+    current_parameters: &[PluginConfigRecord],
+    new_key: &str,
+    new_value: &str,
+) -> bool {
+    current_parameters.iter().any(|parameter_record| {
+        let current_key = &parameter_record.key;
+        let current_value = serde_json::to_string(&parameter_record.value)
+            .expect("yaml to json deserialization should not have failed");
+        current_key == new_key && current_value == new_value
     })
 }
 
-fn main_impl(args: Plugin) -> Result<(), ReplError> {
+fn create_update_queries(
+    query_prefix: &str,
+    service_name: &str,
+    old_parameters: &[PluginConfigRecord],
+    new_parameters: &HashMap<String, serde_yaml::Value>,
+) -> cli::Result<(Vec<String>, Vec<String>)> {
+    let mut updated_parameters = Vec::new();
+    let mut update_queries = Vec::new();
+
+    for (new_key, new_value) in new_parameters {
+        let new_value = serde_json::to_string(new_value)?;
+
+        let parameter_changed = !current_equal_to_new(old_parameters, new_key, &new_value);
+        if parameter_changed {
+            updated_parameters.push(format!("{service_name}.{new_key}"));
+            update_queries.push(format!(
+                r#"{query_prefix} "{service_name}"."{new_key}"='{new_value}';"#
+            ));
+        }
+    }
+
+    Ok((updated_parameters, update_queries))
+}
+
+fn main_impl(args: Plugin) -> cli::Result<()> {
     match args {
         Plugin::Configure(cfg) => {
             type ConfigRepr = HashMap<String, HashMap<String, serde_yaml::Value>>;
 
             let ServiceConfigUpdate {
-                mut address,
+                mut peer_address,
                 plugin_name,
                 plugin_version,
                 config_file,
                 service_names,
                 password_file,
+                timeout,
             } = cfg;
-            // FIXME: should log a warning that the username specified by user
-            // is ignored
-            address.user = None; // ignore username, we will connect as `pico_service`
-            let password_file = password_file.as_ref().and_then(|path| path.to_str());
 
-            let config_raw = read_to_string(config_file)?;
-            let config_values: ConfigRepr = serde_yaml::from_str(&config_raw)
-                .map_err(|err| ReplError::Other(err.to_string()))?;
+            // validate config first for better ux
+            let config_string = read_to_string(config_file)?;
+            let config_values: ConfigRepr = serde_yaml::from_str(&config_string)?;
 
-            // FIXME: there should be a --timeout commandline parameter for this
-            // <https://git.picodata.io/core/picodata/-/issues/1234>
-            let timeout = Duration::from_secs(10);
+            println!("username is ignored because internal service user is used");
+            if let Some(username) = peer_address.user {
+                println!("user {username} is ignored, internal service user is used");
+                peer_address.user = None;
+            }
+            let password = password_file.as_ref().and_then(|path| path.to_str());
+            let timeout = Duration::from_secs(timeout);
 
-            let (client, _) = determine_credentials_and_connect(
-                &address,
+            // setup credentials and options for the connection
+            let (client, username) = determine_credentials_and_connect(
+                &peer_address,
                 Some(PICO_SERVICE_USER_NAME),
-                password_file,
+                password,
                 AuthMethod::ChapSha1,
                 timeout,
-            )
-            .map_err(|err| ReplError::Other(err.to_string()))?;
+            )?;
+            if username != PICO_SERVICE_USER_NAME {
+                unreachable!("internal authorization failure");
+            }
 
+            // setup buffers and current parameters to update them
+            let query_prefix = format!(r#"ALTER PLUGIN "{plugin_name}" {plugin_version} SET"#);
+            let mut updated_parameters = Vec::new();
+            let mut update_queries = Vec::new();
             let current_parameters =
-                fetch_current_parameters(&client, &plugin_name, &plugin_version);
+                fetch_current_parameters(&client, &plugin_name, &plugin_version)?;
 
-            // services values update logic
-            let mut queries = Vec::new();
-            match service_names {
-                // create queries to update all services from user config file
-                None => {
-                    let query_prefix = format!("ALTER PLUGIN {plugin_name} {plugin_version} SET");
+            // user specified (with a flag) a list of services to update from a config file
+            if let Some(service_names) = service_names {
+                for service_name in service_names {
+                    let service_parameters = config_values.get(&service_name).ok_or_else(|| {
+                        format!("service {service_name} from `--service-names` parameter not found in a new config")
+                    })?;
 
-                    for (service_name, service_parameters) in config_values {
-                        for (new_key, new_val) in service_parameters {
-                            let new_val = serde_json::to_string(&new_val)
-                                .map_err(|err| ReplError::Other(err.to_string()))?;
-                            if !current_equal_to_new(&current_parameters, &new_key, &new_val) {
-                                queries.push(format!(
-                                    "{query_prefix} {service_name}.{new_key}='{new_val}';"
-                                ));
-                            }
-                        }
-                    }
+                    let (parameters, queries) = create_update_queries(
+                        &query_prefix,
+                        &service_name,
+                        &current_parameters,
+                        service_parameters,
+                    )?;
+                    updated_parameters.extend_from_slice(&parameters);
+                    update_queries.extend_from_slice(&queries);
                 }
-                // create queries to update only specified services in a flag from user config file
-                Some(service_names) => {
-                    let query_prefix = format!("ALTER PLUGIN {plugin_name} {plugin_version} SET");
-
-                    for service_name in service_names {
-                        let config_subvalues = config_values.get(&service_name).ok_or_else(|| {
-                            ReplError::Other(
-                                format!("service {service_name} from `--service-names` parameter not found in a new configuration file")
-                            )
-                        })?;
-
-                        for (new_key, new_val) in config_subvalues {
-                            let new_val = serde_json::to_string(new_val)
-                                .map_err(|err| ReplError::Other(err.to_string()))?;
-                            if !current_equal_to_new(&current_parameters, new_key, &new_val) {
-                                queries.push(format!(
-                                    "{query_prefix} {service_name}.{new_key}='{new_val}';"
-                                ));
-                            }
-                        }
-                    }
+            // user have not specified anything so we update all services from a config file
+            } else {
+                for (service_name, service_parameters) in config_values {
+                    let (parameters, queries) = create_update_queries(
+                        &query_prefix,
+                        &service_name,
+                        &current_parameters,
+                        &service_parameters,
+                    )?;
+                    updated_parameters.extend_from_slice(&parameters);
+                    update_queries.extend_from_slice(&queries);
                 }
             }
 
-            if queries.is_empty() {
-                Err(ReplError::Other("no values to update".into()))?;
+            // run all update queries if they were created
+            assert_eq!(updated_parameters.len(), update_queries.len());
+            if update_queries.is_empty() {
+                Err("no values to update")?;
             } else {
-                // update values from created queries
-                queries.iter().for_each(|query| {
-                    ::tarantool::fiber::block_on(
-                        client.call(".proc_sql_dispatch", &(query, Vec::<()>::new())),
-                    )
-                    .expect("updating existing and correct values should be fine");
+                update_queries.iter().for_each(|query| {
+                    fiber::block_on(client.call(
+                        crate::proc_name!(proc_sql_dispatch),
+                        &(query, Vec::<()>::new()),
+                    ))
+                    .expect("updating existing and correct parameters of plugins should be fine");
                 })
             }
+
+            // output success message for better ux
+            println!("new configuration for plugin '{plugin_name}' successfully applied: {updated_parameters:?}");
         }
     }
 
@@ -176,9 +189,9 @@ fn main_impl(args: Plugin) -> Result<(), ReplError> {
 
 pub fn main(args: Plugin) -> ! {
     let tt_args = args.tt_args().unwrap();
-    super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
+    super::tarantool::main_cb(&tt_args, || -> cli::Result<()> {
         if let Err(error) = main_impl(args) {
-            println!("{error}");
+            eprintln!("{error}");
             std::process::exit(1);
         }
         std::process::exit(0)

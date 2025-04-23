@@ -1,3 +1,4 @@
+use crate::cli;
 use crate::cli::args;
 use crate::config::PicodataConfig;
 
@@ -10,7 +11,7 @@ pub fn main(args: args::ConfigDefault) -> ! {
     std::process::exit(0);
 }
 
-fn main_impl(args: args::ConfigDefault) -> Result<(), Box<dyn std::error::Error>> {
+fn main_impl(args: args::ConfigDefault) -> cli::Result<()> {
     let config = PicodataConfig::with_defaults();
 
     let yaml = serde_yaml::to_string(&config)

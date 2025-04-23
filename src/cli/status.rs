@@ -1,21 +1,22 @@
-use std::{cmp::max, collections::BTreeMap, time::Duration};
+use crate::cli;
+use crate::cli::args;
+use crate::cli::util::{determine_credentials_and_connect, RowSet};
+use crate::info::{proc_instance_info, InstanceInfo};
+use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::sql::proc_sql_dispatch;
+
+use std::cmp::max;
+use std::collections::BTreeMap;
+use std::time::Duration;
 
 use comfy_table::{ContentArrangement, Table};
 use rmpv::Value;
-use tarantool::{auth::AuthMethod, network::AsClient};
-
-use crate::{
-    cli::connect::determine_credentials_and_connect,
-    info::{proc_instance_info, InstanceInfo},
-    schema::PICO_SERVICE_USER_NAME,
-    sql::proc_sql_dispatch,
-};
-
-use super::{args, connect::RowSet};
+use tarantool::auth::AuthMethod;
+use tarantool::network::AsClient;
 
 pub fn main(args: args::Status) -> ! {
     let tt_args = args.tt_args().unwrap();
-    super::tarantool::main_cb(&tt_args, || -> Result<(), Box<dyn std::error::Error>> {
+    super::tarantool::main_cb(&tt_args, || -> cli::Result<()> {
         if let Err(error) = main_impl(args) {
             eprintln!("{error}");
             std::process::exit(1);
@@ -76,7 +77,7 @@ fn set_width_for_columns(table: &mut Table, name_length: usize, state_length: us
     }
 }
 
-fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
+fn main_impl(args: args::Status) -> cli::Result<()> {
     let password_file = args.password_file.as_ref().and_then(|path| path.to_str());
     let (client, _) = determine_credentials_and_connect(
         &args.peer_address,

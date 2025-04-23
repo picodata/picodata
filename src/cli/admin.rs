@@ -1,3 +1,7 @@
+use crate::cli::args;
+use crate::cli::console::{Command, Console, ConsoleLanguage, ReplError, SpecialCommand};
+use crate::cli::util::ResultSet;
+
 use std::cell::RefCell;
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -9,10 +13,6 @@ use rustyline::completion::{extract_word, Completer};
 use rustyline::error::ReadlineError;
 use rustyline::Context;
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter, Validator};
-
-use super::args;
-use super::connect::ResultSet;
-use super::console::{Command, Console, ConsoleLanguage, ReplError, SpecialCommand};
 
 pub struct LuaCompleter {
     client: Rc<RefCell<UnixClient>>,
