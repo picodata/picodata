@@ -1241,11 +1241,14 @@ fn parse_deallocate(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<Deallo
     Ok(Deallocate { name: param_name })
 }
 
-fn parse_select_full(
+fn parse_select_full<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node_id: usize,
     map: &mut Translation,
     plan: &mut Plan,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
 ) -> Result<(), SbroadError> {
     let node = ast.nodes.get_node(node_id)?;
     assert_eq!(node.rule, Rule::SelectFull);
@@ -1255,7 +1258,15 @@ fn parse_select_full(
         match child_node.rule {
             Rule::Cte => continue,
             Rule::SelectStatement => {
-                top_id = Some(parse_select_statement(ast, *child_id, map, plan)?);
+                top_id = Some(parse_select_statement(
+                    ast,
+                    *child_id,
+                    map,
+                    plan,
+                    type_analyzer,
+                    pairs_map,
+                    worker,
+                )?);
             }
             _ => unreachable!("Unexpected node: {child_node:?}"),
         }
@@ -1265,11 +1276,14 @@ fn parse_select_full(
     Ok(())
 }
 
-fn parse_select_statement(
+fn parse_select_statement<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node_id: usize,
     map: &mut Translation,
     plan: &mut Plan,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
 ) -> Result<NodeId, SbroadError> {
     let node = ast.nodes.get_node(node_id)?;
     assert_eq!(node.rule, Rule::SelectStatement);
@@ -1289,6 +1303,17 @@ fn parse_select_statement(
                     Rule::LimitAll => (), // LIMIT ALL is the same as omitting the LIMIT clause
                     _ => unreachable!("Unexpected limit child: {child_node:?}"),
                 }
+            }
+            Rule::OrderBy => {
+                top_id = Some(ast.parse_order_by(
+                    plan,
+                    top_id,
+                    *child_id,
+                    type_analyzer,
+                    map,
+                    pairs_map,
+                    worker,
+                )?);
             }
             _ => unreachable!("Unexpected node: {child_node:?}"),
         }
@@ -1342,12 +1367,16 @@ where
     Ok(())
 }
 
-fn parse_cte(
+#[allow(clippy::too_many_arguments)]
+fn parse_cte<M: Metadata>(
     ast: &AbstractSyntaxTree,
     node_id: usize,
     map: &mut Translation,
     ctes: &mut CTEs,
     plan: &mut Plan,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionsWorker<M>,
 ) -> Result<(), SbroadError> {
     let node = ast.nodes.get_node(node_id)?;
     assert_eq!(node.rule, Rule::Cte);
@@ -1369,7 +1398,15 @@ fn parse_cte(
                 top_id = Some(select_id);
             }
             Rule::SelectStatement => {
-                let select_id = parse_select_statement(ast, *child_id, map, plan)?;
+                let select_id = parse_select_statement(
+                    ast,
+                    *child_id,
+                    map,
+                    plan,
+                    type_analyzer,
+                    pairs_map,
+                    worker,
+                )?;
                 top_id = Some(select_id);
             }
             _ => unreachable!("Unexpected node: {child_node:?}"),
@@ -4785,34 +4822,36 @@ impl AbstractSyntaxTree {
         Ok(order_by_elements)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_order_by<M: Metadata>(
         &self,
         plan: &mut Plan,
+        child_rel_id: Option<NodeId>,
         node_id: usize,
         type_analyzer: &mut TypeAnalyzer,
         map: &mut Translation,
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionsWorker<M>,
-    ) -> Result<(), SbroadError> {
+    ) -> Result<NodeId, SbroadError> {
         let node = self.nodes.get_node(node_id)?;
-        let projection_ast_id = node.children.first().expect("OrderBy has no children.");
-        let projection_plan_id = map.get(*projection_ast_id)?;
+        let child_rel_id = child_rel_id.expect("Rel id must not be empty!");
 
-        let sq_plan_id = plan.add_sub_query(projection_plan_id, None)?;
+        let sq_plan_id = plan.add_sub_query(child_rel_id, None)?;
 
-        let order_by_elements_ids: Vec<usize> = node.children.clone().into_iter().skip(1).collect();
+        let order_by_elements_ids: Vec<usize> = node.children.clone().into_iter().collect();
         let order_by_elements = self.parse_order_by_elements(
             plan,
-            projection_plan_id,
+            child_rel_id,
             &order_by_elements_ids,
             type_analyzer,
             pairs_map,
             worker,
         )?;
+
         let (order_by_id, plan_node_id) = plan.add_order_by(sq_plan_id, order_by_elements)?;
         plan.fix_subquery_rows(worker, order_by_id)?;
         map.add(node_id, plan_node_id);
-        Ok(())
+        Ok(plan_node_id)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -5059,7 +5098,16 @@ impl AbstractSyntaxTree {
                     parse_scan_cte_or_table(self, metadata, id, &mut map, &mut ctes, &mut plan)?;
                 }
                 Rule::Cte => {
-                    parse_cte(self, id, &mut map, &mut ctes, &mut plan)?;
+                    parse_cte(
+                        self,
+                        id,
+                        &mut map,
+                        &mut ctes,
+                        &mut plan,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut worker,
+                    )?;
                 }
                 Rule::Table if resolve_table_names => {
                     // The thing is we don't want to normalize name.
@@ -5218,16 +5266,6 @@ impl AbstractSyntaxTree {
                     plan.fix_subquery_rows(&mut worker, plan_node_id)?;
                     map.add(id, plan_node_id);
                 }
-                Rule::OrderBy => {
-                    self.parse_order_by(
-                        &mut plan,
-                        id,
-                        &mut type_analyzer,
-                        &mut map,
-                        pairs_map,
-                        &mut worker,
-                    )?;
-                }
                 Rule::SelectWithOptionalContinuation => {
                     let select_pair = pairs_map.remove_pair(id);
                     let select_plan_node_id =
@@ -5235,7 +5273,15 @@ impl AbstractSyntaxTree {
                     map.add(id, select_plan_node_id);
                 }
                 Rule::SelectFull => {
-                    parse_select_full(self, id, &mut map, &mut plan)?;
+                    parse_select_full(
+                        self,
+                        id,
+                        &mut map,
+                        &mut plan,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut worker,
+                    )?;
                 }
                 Rule::Projection => {
                     let is_without_scan = {

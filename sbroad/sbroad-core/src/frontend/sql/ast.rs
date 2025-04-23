@@ -454,11 +454,14 @@ impl AbstractSyntaxTree {
         let mut selects: HashSet<usize> = HashSet::new();
         for id in 0..self.nodes.arena.len() {
             let node = self.nodes.get_node(id)?;
-            if node.rule == Rule::Select {
-                selects.insert(id);
-            }
-            if node.rule == Rule::Join {
-                self.normalize_join_ast(id)?;
+            match node.rule {
+                Rule::Select => {
+                    selects.insert(id);
+                }
+                Rule::Join => {
+                    self.normalize_join_ast(id)?;
+                }
+                _ => {}
             }
         }
         for node in &selects {
@@ -520,20 +523,18 @@ impl AbstractSyntaxTree {
         // 5. GroupBy: optional
         // 6. Having: optional
         // 7. NamedWindows: optional
-        // 8. OrderBy: optional
         //
         // But for projection without scan (like `select 1`)
         // Scan is optional, and all other nodes are not required.
         //
         // We need to reorder this sequence to the following:
-        // 1. OrderBy: optional
-        // 2. Projection: required
-        // 3. NamedWindows: optional
-        // 4. Having: optional
-        // 5. GroupBy: optional
-        // 6. Selection: optional
-        // 7. Join: optional (can be repeated multiple times)
-        // 8. Scan: required
+        // 1. Projection: required
+        // 2. NamedWindows: optional
+        // 3. Having: optional
+        // 4. GroupBy: optional
+        // 5. Selection: optional
+        // 6. Join: optional (can be repeated multiple times)
+        // 7. Scan: required
         let mut proj_id: Option<usize> = None;
         let mut scan_id: Option<usize> = None;
         let mut join_ids = if children.len() > 2 {
@@ -559,7 +560,6 @@ impl AbstractSyntaxTree {
                 Rule::Selection => filter_id = Some(*child_id),
                 Rule::GroupBy => group_id = Some(*child_id),
                 Rule::Having => having_id = Some(*child_id),
-                Rule::OrderBy => order_by_id = Some(*child_id),
                 _ => panic!("{} {:?}", "Unexpected rule in select children:", child.rule),
             }
         }
@@ -575,11 +575,6 @@ impl AbstractSyntaxTree {
         // OrderBy -> Projection -> NamedWindows -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
         let mut chain = Vec::with_capacity(children.len() - 1);
 
-        // Note that OrderBy must go above Projection because
-        // we need to operate with its (projection) output.
-        if let Some(order_by_id) = order_by_id {
-            chain.push(order_by_id);
-        }
         chain.push(proj_id);
         if let Some(named_windows_id) = named_windows_id {
             chain.push(named_windows_id);

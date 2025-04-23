@@ -3966,7 +3966,7 @@ fn front_sql_whitespaces_are_not_ignored() {
         r#"alter plugin "abc" 0.1.0 remove service "svc1" from tier "tier1" option(timeout=11)"#,
         r#"create table if not exists t(a int primary key,b int) using memtx distributed by(a,b) wait applied locally option(timeout=1)"#,
         r#"create procedure if not exists name(int,int,varchar(1)) language sql as $$insert into t values(1,2)$$ wait applied globally"#,
-        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b order by a union all select * from t"#,
+        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b union all select * from t order by a"#,
         r#"select cast(1 as int) or not exists (values(true)) and 1+1 and true or (a in (select * from t)) and i is not null"#,
     ];
 
@@ -4006,7 +4006,7 @@ mod multi_queries {
         r#"alter plugin "abc" 0.1.0 remove service "svc1" from tier "tier1" option(timeout=11)"#,
         r#"create table if not exists t(a int primary key,b int) using memtx distributed by(a,b) wait applied locally option(timeout=1)"#,
         r#"create procedure if not exists name(int,int,varchar(1)) language sql as $$insert into t values(1,2)$$ wait applied globally"#,
-        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b order by a union all select * from t"#,
+        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b union all select * from t order by a"#,
         r#"select cast(1 as int) or not exists (values(true)) and 1+1 and true or (a in (select * from t)) and i is not null"#,
     ];
 

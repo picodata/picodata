@@ -188,3 +188,9 @@ select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc
 3, 2, 3,
 1, 2, 1,
 4, 3, 1
+
+-- TEST: test-check-orderby-precedence
+-- SQL:
+with t(a) as (values (1), (2)) select a from t union all select a from t order by a asc;
+-- EXPECTED:
+1, 1, 2, 2

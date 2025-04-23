@@ -75,30 +75,23 @@ fn front_select_chaining_2() {
 fn front_select_chaining_3() {
     let input = r#"
     select "product_code" from "hash_testing"
-    order by "product_code"
     union all
     select "e" from "t2"
-    order by "e"
+    order by 1
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    union all
-        motion [policy: segment([ref("product_code")])]
-            projection ("product_code"::string -> "product_code")
-                order by ("product_code"::string)
-                    motion [policy: full]
-                        scan
-                            projection ("hash_testing"."product_code"::string -> "product_code")
-                                scan "hash_testing"
-        motion [policy: segment([ref("e")])]
-            projection ("e"::unsigned -> "e")
-                order by ("e"::unsigned)
-                    motion [policy: full]
-                        scan
-                            projection ("t2"."e"::unsigned -> "e")
-                                scan "t2"
+    projection ("product_code"::string -> "product_code")
+        order by (1)
+            motion [policy: full]
+                scan
+                    union all
+                        projection ("hash_testing"."product_code"::string -> "product_code")
+                            scan "hash_testing"
+                        projection ("t2"."e"::unsigned -> "e")
+                            scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

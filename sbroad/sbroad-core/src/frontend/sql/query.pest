@@ -256,7 +256,12 @@ ExplainQuery = _{ Explain }
 Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
     SelectFull = ${ (^"with" ~ W ~ Ctes ~ W)? ~ SelectStatement }
         Ctes = _{ Cte ~ (WO ~ "," ~ WO ~ Cte)* }
-    SelectStatement = ${ SelectWithOptionalContinuation ~ (W ~ Limit)? }
+    SelectStatement = ${ SelectWithOptionalContinuation  ~ (W ~ OrderBy)? ~ (W ~ Limit)? }
+    OrderBy = ${^"order" ~ W ~ ^"by" ~ W ~ OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)*}
+        OrderByElement = ${ Expr ~ (W ~ OrderFlag)? }
+        OrderFlag = _{ Asc | Desc }
+            Asc = { ^"asc" }
+            Desc = { ^"desc" }
     Limit = ${ ^"limit" ~ W ~ (Unsigned | LimitAll) }
       LimitAll = { ^"all" | Null }
     SelectWithOptionalContinuation = ${ Select ~ (W ~ SelectOp ~ W ~ Select)* }
@@ -272,8 +277,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
                             (W ~ WhereClause)? ~
                             (W ~ ^"group" ~ W ~ ^"by" ~ W ~ GroupBy)? ~
                             (W ~ ^"having" ~ W ~ Having)? ~
-                            (W ~ ^"window" ~ W ~ NamedWindows)? ~
-                            (W ~ ^"order" ~ W ~ ^"by" ~ W ~ OrderBy)?
+                            (W ~ ^"window" ~ W ~ NamedWindows)?
                            }
     Projection = ${ (Distinct ~ W)? ~ ProjectionElements }
         ProjectionElements = _{ ProjectionElement ~ (WO ~ "," ~ WO ~ ProjectionElement)* }
@@ -291,11 +295,6 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
     Having = { Expr }
     NamedWindows = { WindowDef ~ (WO ~ "," ~ WO ~ WindowDef)* }
     WindowDef = ${ Identifier ~ W ~ ^"as" ~ WO ~ WindowBody }
-    OrderBy = { OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
-        OrderByElement = ${ Expr ~ (W ~ OrderFlag)? }
-        OrderFlag = _{ Asc | Desc }
-            Asc = { ^"asc" }
-            Desc = { ^"desc" }
     SubQuery = !{ "(" ~ (SelectFull | Values) ~ ")" }
     Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ (PublicSchema)? ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | Values) ~ (W ~ OnConflict)? }
         TargetColumns = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
