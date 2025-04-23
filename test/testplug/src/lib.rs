@@ -449,6 +449,16 @@ impl Service for Service3 {
                     })
                     .unwrap();
             }
+            "authentication" => {
+                // md5
+                picodata_plugin::internal::authenticate("first", "F1rstUs3r").unwrap();
+
+                // sha1
+                picodata_plugin::internal::authenticate("second", "S3condUs3r").unwrap();
+
+                // ldap
+                picodata_plugin::internal::authenticate("ldapuser", "ldappass").unwrap();
+            }
             "no_test" => {}
             "metrics" => {
                 let drop_check = DropCheck;
