@@ -1,6 +1,6 @@
 #![cfg(any(feature = "picodata", doc))]
 
-use libc::{iovec, size_t};
+use libc::{iovec, size_t, ENOMEM};
 use std::cmp;
 use std::io::Read;
 use std::mem::MaybeUninit;
@@ -9,6 +9,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::{null, NonNull};
 use tlua::LuaState;
 
+use crate::error::TarantoolError;
 use crate::tuple::Tuple;
 
 use super::tarantool::BoxTuple;
@@ -28,6 +29,12 @@ crate::define_dlsym_reloc! {
 
     pub(crate) fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
     pub(crate) fn obuf_destroy(obuf: *mut Obuf);
+    pub(crate) fn obuf_reset(obuf: *mut Obuf);
+    pub(crate) fn obuf_dup(
+        obuf: *mut Obuf,
+        data: *const c_void,
+        size: size_t,
+    ) -> size_t;
 
     /// Free memory allocated by this buffer
     pub fn ibuf_reinit(ibuf: *mut Ibuf);
@@ -86,6 +93,18 @@ pub struct Ibuf {
     start_capacity: usize,
 }
 
+pub unsafe fn obuf_append(obuf: *mut Obuf, mp: &[u8]) -> crate::Result<()> {
+    let size = obuf_dup(obuf, mp.as_ptr() as *const c_void, mp.len() as size_t);
+    if size != mp.len() as size_t {
+        return Err(TarantoolError::new(
+            ENOMEM as u32,
+            format!("Failed to allocate {} bytes in obuf for data", mp.len()),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 pub(crate) struct ObufWrapper {
     pub inner: Obuf,
     read_pos: usize,
@@ -94,7 +113,7 @@ pub(crate) struct ObufWrapper {
 }
 
 impl ObufWrapper {
-    pub fn new(start_capacity: usize) -> Self {
+    pub(crate) fn new(start_capacity: usize) -> Self {
         let inner_buf = unsafe {
             let slab_c = cord_slab_cache();
 
@@ -109,6 +128,18 @@ impl ObufWrapper {
             read_iov_n: 0,
             read_iov_pos: 0,
         }
+    }
+
+    pub(crate) unsafe fn append_mp(&mut self, mp: &[u8]) -> crate::Result<()> {
+        obuf_append(self.obuf(), mp)?;
+        Ok(())
+    }
+
+    pub(crate) fn reset(&mut self) {
+        unsafe { obuf_reset(self.obuf()) }
+        self.read_pos = 0;
+        self.read_iov_n = 0;
+        self.read_iov_pos = 0;
     }
 
     pub(crate) fn obuf(&mut self) -> *mut Obuf {
@@ -395,5 +426,27 @@ mod tests {
         assert_eq!(offset_of_last, offset_of!(PortC, last));
         assert_eq!(offset_of_first_entry, offset_of!(PortC, first_entry));
         assert_eq!(offset_of_size, offset_of!(PortC, size));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn test_obuf() {
+        let mut obuf = ObufWrapper::new(1024);
+
+        //Check appending data.
+        let mp = b"\x92\x01\x02";
+        unsafe {
+            obuf.append_mp(mp).unwrap();
+        }
+        assert_eq!(obuf.read_pos, 0);
+        let mut buf = [0u8; 3];
+        let read = obuf.read(&mut buf).unwrap();
+        assert_eq!(read, 3);
+        assert_eq!(&buf, mp);
+        // Check that the read position is updated.
+        assert_eq!(obuf.read_pos, 3);
+
+        // Check reset.
+        obuf.reset();
+        assert_eq!(obuf.read_pos, 0);
     }
 }
