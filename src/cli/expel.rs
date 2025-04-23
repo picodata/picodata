@@ -1,12 +1,14 @@
 use crate::cli::args;
-use crate::cli::connect::determine_credentials_and_connect;
+use crate::cli::util::determine_credentials_and_connect;
 use crate::error_code::ErrorCode;
 use crate::rpc::expel::redirect::proc_expel_redirect;
 use crate::rpc::expel::Request as ExpelRequest;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
 use crate::traft::error::Error;
+
 use std::time::Duration;
+
 use tarantool::error::IntoBoxError;
 use tarantool::fiber;
 use tarantool::network::client::AsClient;

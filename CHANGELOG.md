@@ -10,6 +10,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.3] - TBA
 
+### CLI
+- `picodata plugin configure` now prints a message on success.
+
 ### Features
 - Pgproto now reports more verbose TLS error messages
 

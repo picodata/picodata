@@ -1,21 +1,19 @@
-use crate::{
-    config::SbroadType, pico_service::pico_service_password, schema::PICO_SERVICE_USER_NAME,
-    traft::error::Error,
-};
+use crate::config::SbroadType;
+use crate::pico_service::pico_service_password;
+use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::traft::error::Error;
+
+use std::any::{Any, TypeId};
+use std::cell::Cell;
+use std::io::{BufRead as _, BufReader, Write as _};
+use std::mem::replace;
+use std::panic::Location;
+use std::path::Path;
+use std::time::Duration;
+
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
-use std::{
-    any::{Any, TypeId},
-    cell::Cell,
-    io::{BufRead as _, BufReader, Write as _},
-    mem::replace,
-    panic::Location,
-    path::Path,
-    time::Duration,
-};
-use tarantool::{
-    network::Config,
-    session::{self, UserId},
-};
+use tarantool::network::Config;
+use tarantool::session::{self, UserId};
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 

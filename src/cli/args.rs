@@ -2,10 +2,12 @@ use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
 use crate::info::version_for_help;
 use crate::util::Uppercase;
-use clap::Parser;
+
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
+
+use clap::Parser;
 use tarantool::auth::AuthMethod;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
@@ -698,11 +700,9 @@ impl Plugin {
 #[derive(Debug, Parser)]
 #[clap(about = "Update plugin's service configuration")]
 pub struct ServiceConfigUpdate {
-    #[clap(value_name = "ADDRESS")]
-    /// Instance address to connect
-    /// as `pico_service` in `host:port` format.
-    /// If `[user@]` is specified, it is ignored.
-    pub address: IprotoAddress,
+    #[clap(env = "PICODATA_PEER", value_name = "[USER@]HOST:PORT")]
+    /// Address of any Picodata instance.
+    pub peer_address: IprotoAddress,
 
     #[clap(value_name = "PLUGIN_NAME")]
     /// Name of a plugin that has a service
@@ -735,6 +735,15 @@ pub struct ServiceConfigUpdate {
     /// is printed to a user. If the password isn't provided,
     /// it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
+
+    #[clap(
+        long = "timeout",
+        value_name = "TIMEOUT",
+        env = "PICODATA_CONNECT_TIMEOUT",
+        default_value = "10"
+    )]
+    /// Client connection timeout in seconds.
+    pub timeout: u64,
 
     #[clap(
         long = "service-names",

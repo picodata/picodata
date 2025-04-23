@@ -197,8 +197,8 @@ testservice_1:
 testservice_2:
     foo: 13
 
-i_dont_care_about_this_service:
-    fuck_off: "bullshit"
+unknown_service:
+    unknown_field: "unknown_value"
 """
         )
 

@@ -1,38 +1,17 @@
 use crate::address::IprotoAddress;
-use crate::cli::args;
-use crate::cli::console::{Command, Console, ReplError, SpecialCommand};
+use crate::cli::console::ReplError;
 use crate::config::DEFAULT_USERNAME;
+use crate::traft;
 use crate::traft::error::Error;
 use crate::util::prompt_password;
 
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::time::Duration;
 
 use comfy_table::{ContentArrangement, Table};
-use nix::unistd::isatty;
 use serde::{Deserialize, Serialize};
 use tarantool::auth::AuthMethod;
-use tarantool::network::{AsClient, Client, Config};
-
-fn get_password_from_file(path: &str) -> Result<String, Error> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        Error::other(format!(
-            r#"can't read password from password file by "{path}", reason: {e}"#
-        ))
-    })?;
-
-    let password = content
-        .lines()
-        .next()
-        .ok_or_else(|| Error::other("Empty password file"))?
-        .trim();
-
-    if password.is_empty() {
-        return Ok(String::new());
-    }
-
-    Ok(password.into())
-}
+use tarantool::network::{Client, Config};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ColumnDesc {
@@ -100,7 +79,7 @@ pub struct ExplainResult {
 impl Display for ExplainResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for i in self.explain_result.iter() {
-            f.write_fmt(format_args!("{i}\n"))?
+            f.write_fmt(format_args!("{}\n", i))?
         }
 
         Ok(())
@@ -141,6 +120,26 @@ impl Display for ResultSet {
     }
 }
 
+fn get_password_from_file(path: &str) -> traft::Result<String> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        Error::other(format!(
+            r#"can't read password from password file by "{path}", reason: {e}"#
+        ))
+    })?;
+
+    let password = content
+        .lines()
+        .next()
+        .ok_or_else(|| Error::other("Empty password file"))?
+        .trim();
+
+    if password.is_empty() {
+        return Ok(String::new());
+    }
+
+    Ok(password.into())
+}
+
 /// Determines the username and password from the provided arguments and uses
 /// these credentials to establish a connection to a remote instance at given `address`.
 ///
@@ -161,7 +160,7 @@ pub fn determine_credentials_and_connect(
     password_file: Option<&str>,
     auth_method: AuthMethod,
     timeout: Duration,
-) -> Result<(Client, String), Error> {
+) -> traft::Result<(Client, String)> {
     let user = if let Some(user) = &address.user {
         user
     } else if let Some(user) = user {
@@ -199,119 +198,4 @@ pub fn determine_credentials_and_connect(
         ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
 
     Ok((client, user.into()))
-}
-
-fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
-    let (client, user) = determine_credentials_and_connect(
-        &args.address,
-        Some(&args.user),
-        args.password_file.as_deref(),
-        args.auth_method,
-        Duration::from_secs(args.timeout),
-    )
-    .map_err(|err| {
-        ReplError::Other(format!(
-            "Connection Error (address {}). Try to reconnect: {}",
-            args.address, err
-        ))
-    })?;
-
-    // Check if connection is valid. We need to do it because connect is lazy
-    // and we want to check whether authentication have succeeded or not
-    if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
-        return Err(ReplError::Other(format!(
-            "Connection Error (address {}). Try to reconnect: {}",
-            args.address, err
-        )));
-    }
-
-    let mut console = Console::new()?;
-
-    console.greet(&format!(
-        "Connected to interactive console by address \"{}:{}\" under \"{}\" user",
-        args.address.host, args.address.port, user
-    ));
-
-    const HELP_MESSAGE: &'static str = "
-    Available backslash commands:
-        \\e                              Open the editor specified by the EDITOR environment variable
-        \\help                           Show this screen
-        \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
-        \\set delimiter default          Reset console delimiter to default (;)
-        \\set delimiter enter            Reset console delimiter to enter
-
-    Available hotkeys:
-        Enter                           Submit the request
-        Alt  + Enter                    Insert a newline character
-        Ctrl + C                        Discard current input
-        Ctrl + D                        Quit interactive console";
-
-    while let Some(command) = console.read()? {
-        ::tarantool::fiber::block_on(client.ping())
-            .map_err(|e| ReplError::LostConnectionToServer(e.into()))?;
-
-        match command {
-            Command::Control(command) => {
-                match command {
-                    SpecialCommand::PrintHelp => console.write(HELP_MESSAGE),
-                    SpecialCommand::SwitchLanguage(_) => {
-                        // picodata connect doesn't know about language switching
-                        console.write("Unknown special sequence")
-                    }
-                }
-            }
-            Command::Expression(line) => {
-                let response = ::tarantool::fiber::block_on(
-                    client.call(".proc_sql_dispatch", &(line, Vec::<()>::new())),
-                );
-
-                let res = match response {
-                    Ok(tuple) => {
-                        let res = tuple.decode::<Vec<ResultSet>>().map_err(|err| {
-                            ReplError::Other(format!(
-                                "Error occurred while decoding response: {err}",
-                            ))
-                        })?;
-
-                        // There should always be exactly one element in the outer tuple
-                        let Some(res) = res.first() else {
-                            return Err(ReplError::Other("Invalid form of response".to_string()));
-                        };
-
-                        res.to_string()
-                    }
-
-                    Err(err) => match err {
-                        tarantool::network::ClientError::ErrorResponse(err) => {
-                            let is_terminal = isatty(0).unwrap_or(false);
-                            if !is_terminal {
-                                return Err(ReplError::Other(err.to_string()));
-                            }
-
-                            err.to_string()
-                        }
-                        tarantool::network::ClientError::ConnectionClosed(err) => {
-                            return Err(ReplError::LostConnectionToServer(err.into()));
-                        }
-                        e => return Err(e.into()),
-                    },
-                };
-
-                console.write(&res);
-            }
-        };
-    }
-
-    Ok(())
-}
-
-pub fn main(args: args::Connect) -> ! {
-    let tt_args = args.tt_args().unwrap();
-    super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
-        if let Err(error) = sql_repl(args) {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        std::process::exit(0)
-    })
 }
