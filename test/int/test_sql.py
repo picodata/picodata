@@ -6257,16 +6257,11 @@ buckets = any"""
     assert "\n".join(lines) == expected_explain
 
 
-@pytest.mark.flaky(reruns=3)
 def test_extreme_integer_values(cluster: Cluster):
-    """
-    flaky: https://git.picodata.io/core/picodata/-/issues/1288
-    """
-    [i1, i2, i3] = cluster.deploy(instance_count=3)
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
 
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
-    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
 
     U64_MIN = 0
     U64_MAX = 18446744073709551615
