@@ -134,6 +134,7 @@ nav:
     - reference/audit_events.md
     - reference/db_config.md
     - reference/metrics.md
+    - reference/settings.md
     - reference/limitations.md
   - Архитектура:
     - architecture/distributed_sql.md

@@ -39,6 +39,13 @@ body {
        min-height: 100%; */
 }
 
+.md-typeset__table {
+   max-width: 100%;
+}
+
+.md-typeset table:not([class]) {
+    display: table;
+}
 .md-typeset h1, h2, h3, h4, h5, h6 {
     font-family: "Montserrat", sans-serif;
     font-weight: 700 !important;
