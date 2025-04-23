@@ -280,7 +280,7 @@ fn global_tbl_sq2() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::All, buckets);
+    assert_eq!(Buckets::Any, buckets);
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn global_tbl_sq4() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::All, buckets);
+    assert_eq!(Buckets::Any, buckets);
 }
 
 #[test]
@@ -375,7 +375,7 @@ fn global_tbl_join2() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    assert_eq!(Buckets::All, buckets);
+    assert_eq!(Buckets::Any, buckets);
 }
 
 #[test]

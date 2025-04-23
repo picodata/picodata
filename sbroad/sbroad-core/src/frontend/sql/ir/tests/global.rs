@@ -125,14 +125,15 @@ fn front_sql_global_tbl_multiple_sqs1() {
                         projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
-    scan
-                projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
-                    scan "t"
+    motion [policy: full]
+                scan
+                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                        scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     "#);
-    check_selection_dist(&plan, DistMock::Any);
+    check_selection_dist(&plan, DistMock::Global);
 }
 
 #[test]
@@ -185,14 +186,15 @@ fn front_sql_global_tbl_sq2() {
         selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
             scan "global_t"
     subquery $0:
-    scan
-                projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
-                    scan "t"
+    motion [policy: full]
+                scan
+                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                        scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     "#);
-    check_selection_dist(&plan, DistMock::Any);
+    check_selection_dist(&plan, DistMock::Global);
 }
 
 #[test]
@@ -654,7 +656,7 @@ fn front_sql_global_join11() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    check_join_dist(&plan, &[DistMock::Any]);
+    check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::integer -> "e")
@@ -666,9 +668,10 @@ fn front_sql_global_join11() {
                 projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
                     scan "global_t"
     subquery $0:
-    scan
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
-                    scan "t2"
+    motion [policy: full]
+                scan
+                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+                        scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -761,18 +764,16 @@ fn front_sql_global_aggregate5() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("gr_expr_1"::integer -> "col_1", sum(("sum_1"::decimal))::decimal -> "col_2")
-        having ROW(sum(("avg_2"::decimal::double))::decimal / sum(("avg_3"::decimal::double))::decimal) > ROW(3::unsigned)
-            group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1", "avg_2"::decimal -> "avg_2", "avg_3"::unsigned -> "avg_3", "sum_1"::decimal -> "sum_1")
-                motion [policy: segment([ref("gr_expr_1")])]
-                    projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "gr_expr_1", sum(("global_t"."b"::integer))::decimal -> "avg_2", count(("global_t"."b"::integer))::unsigned -> "avg_3", sum(("global_t"."a"::integer))::decimal -> "sum_1")
-                        group by (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer)) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-                            selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
-                                scan "global_t"
+    projection (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer) -> "col_1", sum(("global_t"."a"::integer))::decimal -> "col_2")
+        having ROW(avg(("global_t"."b"::integer))::decimal) > ROW(3::unsigned)
+            group by (ROW("global_t"."b"::integer) + ROW("global_t"."a"::integer)) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
+                    scan "global_t"
     subquery $0:
-    scan
-                                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
-                                        scan "t2"
+    motion [policy: full]
+                        scan
+                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+                                scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

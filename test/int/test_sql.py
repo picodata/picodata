@@ -161,6 +161,48 @@ def test_uuid(
     }
 
 
+def test_select_with_scan(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table tmp (value INT primary key)
+        using memtx
+        distributed by (value)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i1.sql("""insert into tmp (value) values (123);""")
+    assert data["row_count"] == 1
+
+    data = i1.sql("""
+                  WITH v(other) AS (VALUES (123))
+                    SELECT
+                      CASE
+                        WHEN v.other IN (SELECT value FROM tmp)
+                        THEN 1
+                        ELSE 0
+                      END
+                    FROM v;
+                  """)
+    assert data == [[1]]
+
+    data = i2.sql("""
+                  WITH v(other) AS (VALUES (123))
+                    SELECT
+                      CASE
+                        WHEN v.other IN (SELECT value FROM tmp)
+                        THEN 1
+                        ELSE 0
+                      END
+                    FROM v;
+                  """)
+    assert data == [[1]]
+
+
 def test_pg_params(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

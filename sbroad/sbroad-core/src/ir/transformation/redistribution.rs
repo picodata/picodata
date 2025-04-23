@@ -579,11 +579,15 @@ impl Plan {
                         |key| Ok(MotionPolicy::Segment(key.into())),
                     );
                 }
-                Distribution::Global => {
-                    if let Distribution::Segment { .. } | Distribution::Single = inner_dist {
+                Distribution::Global => match inner_dist {
+                    Distribution::Single => {
                         return Ok(MotionPolicy::None);
                     }
-                }
+                    Distribution::Segment { .. } => {
+                        return Ok(MotionPolicy::Full);
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
