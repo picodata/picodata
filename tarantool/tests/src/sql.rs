@@ -412,6 +412,14 @@ pub fn port_c() {
     }
     assert_eq!(result, expected);
 
+    // Check the last msgpack in the port.
+    let last_mp = port_c.last_mp().unwrap();
+    assert_eq!(last_mp, b"\x91\xa1F");
+
+    // Check the first msgpack in the port.
+    let first_mp = port_c.first_mp().unwrap();
+    assert_eq!(first_mp, b"\x91\xa1A");
+
     // Check port destruction and the amount of references
     // in the tuples.
     drop(port_c);

@@ -274,6 +274,16 @@ struct PortCEntry {
     tuple_format: *const c_void,
 }
 
+impl PortCEntry {
+    unsafe fn data(&self) -> &[u8] {
+        if self.mp_sz == 0 {
+            let tuple_data = self.data.tuple.as_ref().data();
+            return std::slice::from_raw_parts(tuple_data.as_ptr(), tuple_data.len());
+        }
+        std::slice::from_raw_parts(self.data.mp, self.mp_sz as usize)
+    }
+}
+
 #[repr(C)]
 pub struct PortC {
     pub vtab: *const PortVTable,
@@ -333,6 +343,22 @@ impl PortC {
     pub fn as_mut(&mut self) -> *mut Port {
         self as *mut PortC as *mut Port
     }
+
+    pub fn first_mp(&self) -> Option<&[u8]> {
+        if self.first.is_null() {
+            return None;
+        }
+        let entry = unsafe { &*(self.first as *const PortCEntry) };
+        Some(unsafe { entry.data() })
+    }
+
+    pub fn last_mp(&self) -> Option<&[u8]> {
+        if self.last.is_null() {
+            return None;
+        }
+        let entry = unsafe { &*(self.last as *const PortCEntry) };
+        Some(unsafe { entry.data() })
+    }
 }
 
 #[allow(dead_code)]
@@ -367,12 +393,7 @@ impl<'port> Iterator for PortCIterator<'port> {
         // The code was inspired by `port_c_dump_msgpack` function from `box/port.c`.
         let entry = unsafe { &*self.entry };
         self.entry = entry.next;
-        if entry.mp_sz == 0 {
-            let tuple_data = unsafe { entry.data.tuple.as_ref().data() };
-            return Some(tuple_data);
-        }
-        let mp_data = unsafe { std::slice::from_raw_parts(entry.data.mp, entry.mp_sz as usize) };
-        Some(mp_data)
+        Some(unsafe { entry.data() })
     }
 }
 
