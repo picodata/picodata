@@ -1,16 +1,21 @@
 //! Value module.
 
+use rmp::Marker;
+use serde::{Deserialize, Serialize, Serializer};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::hash::Hash;
+use std::io::Write;
 use std::num::NonZeroI32;
 use std::str::FromStr;
-
-use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::datetime::Datetime;
 use tarantool::decimal::Decimal;
-use tarantool::tlua::{self, LuaRead};
+use tarantool::ffi::datetime::MP_DATETIME;
+use tarantool::ffi::decimal::MP_DECIMAL;
+use tarantool::ffi::uuid::MP_UUID;
+use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError, ExtStruct};
+use tarantool::tlua;
 use tarantool::tuple::{FieldType, KeyDefPart};
 use tarantool::uuid::Uuid;
 
@@ -22,7 +27,9 @@ use crate::ir::value::double::Double;
 
 use super::relation::Type;
 
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(
+    Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Encode, Decode,
+)]
 pub struct Tuple(pub(crate) Vec<Value>);
 
 impl Display for Tuple {
@@ -139,6 +146,107 @@ pub enum Value {
     Tuple(Tuple),
     /// Uuid type
     Uuid(Uuid),
+}
+
+impl<'de> Decode<'de> for Value {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        if r.is_empty() {
+            return Err(DecodeError::new::<Self>("empty stream on value decode"));
+        }
+
+        let marker = Marker::from_u8(r[0]);
+        match marker {
+            Marker::Null => {
+                rmp::decode::read_nil(r).map_err(DecodeError::from_vre::<Self>)?;
+                Ok(Value::Null)
+            }
+            Marker::True | Marker::False => {
+                let v = rmp::decode::read_bool(r).map_err(DecodeError::from_vre::<Self>)?;
+                Ok(Value::Boolean(v))
+            }
+            Marker::FixPos(val) => {
+                rmp::decode::read_pfix(r).map_err(DecodeError::from_vre::<Self>)?;
+                Ok(Value::from(val as u64))
+            }
+            Marker::FixNeg(val) => {
+                rmp::decode::read_nfix(r).map_err(DecodeError::from_vre::<Self>)?;
+                Ok(Value::from(val as i64))
+            }
+            Marker::U8 => Ok(Value::from(u8::decode(r, context)? as u64)),
+            Marker::U16 => Ok(Value::from(u16::decode(r, context)? as u64)),
+            Marker::U32 => Ok(Value::from(u32::decode(r, context)? as u64)),
+            Marker::U64 => Ok(Value::from(u64::decode(r, context)?)),
+            Marker::I8 => Ok(Value::from(i8::decode(r, context)? as i64)),
+            Marker::I16 => Ok(Value::from(i16::decode(r, context)? as i64)),
+            Marker::I32 => Ok(Value::from(i32::decode(r, context)? as i64)),
+            Marker::I64 => Ok(Value::from(i64::decode(r, context)?)),
+            Marker::F32 => Ok(Value::from(f32::decode(r, context)? as f64)),
+            Marker::F64 => Ok(Value::from(f64::decode(r, context)?)),
+            Marker::FixStr(_) | Marker::Str8 | Marker::Str16 | Marker::Str32 => {
+                Ok(Value::String(String::decode(r, context)?))
+            }
+            Marker::FixArray(_) | Marker::Array16 | Marker::Array32 => {
+                Ok(Vec::decode(r, context)?.into())
+            }
+            Marker::FixExt1
+            | Marker::FixExt2
+            | Marker::FixExt4
+            | Marker::FixExt8
+            | Marker::FixExt16
+            | Marker::Ext8
+            | Marker::Ext16
+            | Marker::Ext32 => {
+                let ext: ExtStruct = Decode::decode(r, context)?;
+
+                match ext.tag {
+                    MP_DECIMAL => Ok(Value::Decimal(
+                        ext.try_into().map_err(DecodeError::new::<Self>)?,
+                    )),
+                    MP_UUID => Ok(Value::Uuid(
+                        ext.try_into().map_err(DecodeError::new::<Self>)?,
+                    )),
+                    MP_DATETIME => Ok(Value::Datetime(
+                        ext.try_into().map_err(DecodeError::new::<Self>)?,
+                    )),
+                    tag => Err(DecodeError::new::<Self>(format_smolstr!(
+                        "value with an unknown tag {tag}"
+                    ))),
+                }
+            }
+            Marker::FixMap(_)
+            | Marker::Map16
+            | Marker::Map32
+            | Marker::Bin8
+            | Marker::Bin16
+            | Marker::Bin32 => {
+                let value = rmpv::decode::read_value(r).map_err(DecodeError::new::<Self>)?;
+                Err(DecodeError::new::<Self>(format_smolstr!(
+                    "unexpected value: {value:?}"
+                )))
+            }
+            Marker::Reserved => {
+                rmp::decode::read_marker(r).map_err(|e| DecodeError::new::<Self>(e.0))?;
+                Err(DecodeError::new::<Self>("shouldn't be used"))
+            }
+        }
+    }
+}
+
+impl Encode for Value {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        match self {
+            Value::Boolean(v) => v.encode(w, context),
+            Value::Decimal(v) => v.encode(w, context),
+            Value::Double(v) => v.encode(w, context),
+            Value::Datetime(v) => v.encode(w, context),
+            Value::Integer(v) => v.encode(w, context),
+            Value::Null => ().encode(w, context),
+            Value::String(v) => v.encode(w, context),
+            Value::Unsigned(v) => v.encode(w, context),
+            Value::Tuple(v) => v.encode(w, context),
+            Value::Uuid(v) => v.encode(w, context),
+        }
+    }
 }
 
 /// Custom Ordering using Trivalent instead of simple Equal.
@@ -271,7 +379,11 @@ impl From<f64> for Value {
         if v.is_nan() {
             return Value::Null;
         }
-        Value::Double(v.into())
+        if v.is_subnormal() || v.is_infinite() || v.is_finite() && v.fract().abs() >= f64::EPSILON {
+            Value::Double(v.into())
+        } else {
+            Value::Integer(v as i64)
+        }
     }
 }
 
@@ -947,25 +1059,40 @@ impl ToHashString for Value {
 
 /// A helper enum to encode values into `MessagePack`.
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
+#[derive(Debug)]
 pub enum EncodedValue<'v> {
     Ref(MsgPackValue<'v>),
-    Owned(LuaValue),
+    Owned(Value),
+}
+
+impl Serialize for EncodedValue<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            EncodedValue::Ref(v) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Boolean(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Decimal(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Double(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Datetime(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Integer(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Null) => ().serialize(serializer),
+            EncodedValue::Owned(Value::String(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Unsigned(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Tuple(v)) => v.serialize(serializer),
+            EncodedValue::Owned(Value::Uuid(v)) => v.serialize(serializer),
+        }
+    }
 }
 
 impl EncodedValue<'_> {
     /// Try to convert to double underlying value.
     pub fn double(&self) -> Option<f64> {
         match &self {
-            EncodedValue::Ref(msg_pack_value) => match msg_pack_value {
-                MsgPackValue::Double(value) => Some(**value),
-                _ => None,
-            },
-            EncodedValue::Owned(lua_value) => match lua_value {
-                LuaValue::Double(value) => Some(*value),
-                _ => None,
-            },
+            EncodedValue::Ref(MsgPackValue::Double(value)) => Some(**value),
+            EncodedValue::Owned(Value::Double(value)) => Some(value.value),
+            _ => None,
         }
     }
 }
@@ -973,12 +1100,6 @@ impl EncodedValue<'_> {
 impl<'v> From<MsgPackValue<'v>> for EncodedValue<'v> {
     fn from(value: MsgPackValue<'v>) -> Self {
         EncodedValue::Ref(value)
-    }
-}
-
-impl From<LuaValue> for EncodedValue<'_> {
-    fn from(value: LuaValue) -> Self {
-        EncodedValue::Owned(value)
     }
 }
 
@@ -990,7 +1111,7 @@ impl<'v> From<&'v Value> for EncodedValue<'v> {
 
 impl From<Value> for EncodedValue<'_> {
     fn from(value: Value) -> Self {
-        EncodedValue::from(LuaValue::from(value))
+        EncodedValue::Owned(value)
     }
 }
 
@@ -1039,97 +1160,8 @@ impl<'v> From<EncodedValue<'v>> for Value {
             EncodedValue::Ref(MsgPackValue::String(v)) => Value::String(v.clone()),
             EncodedValue::Ref(MsgPackValue::Tuple(v)) => Value::Tuple(v.clone()),
             EncodedValue::Ref(MsgPackValue::Uuid(v)) => Value::Uuid(*v),
-            EncodedValue::Owned(LuaValue::Boolean(v)) => Value::Boolean(v),
-            EncodedValue::Owned(LuaValue::Datetime(v)) => Value::Datetime(v),
-            EncodedValue::Owned(LuaValue::Decimal(v)) => Value::Decimal(v),
-            EncodedValue::Owned(LuaValue::Double(v)) => Value::Double(v.into()),
-            EncodedValue::Owned(LuaValue::Integer(v)) => Value::Integer(v),
-            EncodedValue::Owned(LuaValue::Unsigned(v)) => Value::Unsigned(v),
-            EncodedValue::Owned(LuaValue::String(v)) => Value::String(v),
-            EncodedValue::Owned(LuaValue::Tuple(v)) => Value::Tuple(v),
-            EncodedValue::Owned(LuaValue::Uuid(v)) => Value::Uuid(v),
-            EncodedValue::Ref(MsgPackValue::Null(())) | EncodedValue::Owned(LuaValue::Null(())) => {
-                Value::Null
-            }
-        }
-    }
-}
-
-#[allow(clippy::module_name_repetitions)]
-#[derive(Clone, LuaRead, PartialEq, Debug, Deserialize, Serialize)]
-#[serde(try_from = "RmpvValue", untagged)]
-pub enum LuaValue {
-    Boolean(bool),
-    Datetime(Datetime),
-    Decimal(Decimal),
-    Double(f64),
-    Integer(i64),
-    Unsigned(u64),
-    String(String),
-    Uuid(Uuid),
-    Tuple(Tuple),
-    Null(()),
-}
-
-impl fmt::Display for LuaValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            LuaValue::Boolean(v) => write!(f, "{v}"),
-            LuaValue::Datetime(v) => write!(f, "{v}"),
-            LuaValue::Decimal(v) => fmt::Display::fmt(v, f),
-            LuaValue::Double(v) => write!(f, "{v}"),
-            LuaValue::Integer(v) => write!(f, "{v}"),
-            LuaValue::Unsigned(v) => write!(f, "{v}"),
-            LuaValue::String(v) => write!(f, "'{v}'"),
-            LuaValue::Tuple(v) => write!(f, "{v}"),
-            LuaValue::Uuid(v) => write!(f, "{v}"),
-            LuaValue::Null(()) => write!(f, "NULL"),
-        }
-    }
-}
-
-impl From<Value> for LuaValue {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Boolean(v) => LuaValue::Boolean(v),
-            Value::Datetime(v) => LuaValue::Datetime(v),
-            Value::Decimal(v) => LuaValue::Decimal(v),
-            Value::Double(v) => LuaValue::Double(v.value),
-            Value::Integer(v) => LuaValue::Integer(v),
-            Value::Null => LuaValue::Null(()),
-            Value::String(v) => LuaValue::String(v),
-            Value::Tuple(v) => LuaValue::Tuple(v),
-            Value::Uuid(v) => LuaValue::Uuid(v),
-            Value::Unsigned(v) => LuaValue::Unsigned(v),
-        }
-    }
-}
-
-impl From<LuaValue> for Value {
-    #[allow(clippy::cast_possible_truncation)]
-    fn from(value: LuaValue) -> Self {
-        match value {
-            LuaValue::Unsigned(v) => Value::Unsigned(v),
-            LuaValue::Integer(v) => Value::Integer(v),
-            LuaValue::Datetime(v) => Value::Datetime(v),
-            LuaValue::Decimal(v) => Value::Decimal(v),
-            LuaValue::Double(v) => {
-                if v.is_nan() {
-                    Value::Null
-                } else if v.is_subnormal()
-                    || v.is_infinite()
-                    || v.is_finite() && v.fract().abs() >= f64::EPSILON
-                {
-                    Value::Double(Double::from(v))
-                } else {
-                    Value::Integer(v as i64)
-                }
-            }
-            LuaValue::Boolean(v) => Value::Boolean(v),
-            LuaValue::String(v) => Value::String(v),
-            LuaValue::Tuple(v) => Value::Tuple(v),
-            LuaValue::Uuid(v) => Value::Uuid(v),
-            LuaValue::Null(()) => Value::Null,
+            EncodedValue::Ref(MsgPackValue::Null(())) => Value::Null,
+            EncodedValue::Owned(v) => v,
         }
     }
 }
@@ -1189,78 +1221,6 @@ where
             Value::Uuid(v) => v.push_into_lua(lua),
             Value::Null => tlua::Null.push_into_lua(lua),
         }
-    }
-}
-
-/// Wrapper over rmpv::Value for deserialization of msgpack encoded values into LuaValue.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(transparent)]
-struct RmpvValue(pub rmpv::Value);
-
-fn value_try_from_rmpv(value: rmpv::Value) -> Result<Value, SbroadError> {
-    match value {
-        rmpv::Value::Nil => Ok(Value::Null),
-        rmpv::Value::Boolean(inner) => Ok(Value::from(inner)),
-        rmpv::Value::Integer(inner) => {
-            if let Some(value) = inner.as_i64() {
-                Ok(Value::from(value))
-            } else if let Some(value) = inner.as_u64() {
-                Ok(Value::from(value))
-            } else {
-                Err(SbroadError::Other(format_smolstr!(
-                    "expected integer value of type i64 or u64, got: {value:?}"
-                )))
-            }
-        }
-        rmpv::Value::F32(inner) => Ok(Value::from(inner as f64)),
-        rmpv::Value::F64(inner) => Ok(Value::from(inner)),
-        rmpv::Value::String(inner) => {
-            // First, check if it's a valid UTF-8 string, to avoid consuming it by into_str,
-            // so we can report this string in the error message.
-            if inner.as_str().is_none() {
-                return Err(SbroadError::Other(format_smolstr!(
-                    "invalid UTF-8 string: {inner:?}"
-                )));
-            }
-            Ok(Value::from(inner.into_str().unwrap()))
-        }
-        rmpv::Value::Array(array) => {
-            let converted: Vec<Value> = array
-                .into_iter()
-                .map(value_try_from_rmpv)
-                .collect::<Result<_, _>>()?;
-            Ok(Value::from(converted))
-        }
-        rmpv::Value::Ext(tag, _) => {
-            fn ext_from_value<T>(value: rmpv::Value) -> Result<T, SbroadError>
-            where
-                T: for<'de> Deserialize<'de>,
-            {
-                rmpv::ext::from_value(value).map_err(|e| {
-                    SbroadError::Other(format_smolstr!("failed to deserialize: {e:?}"))
-                })
-            }
-
-            match tag {
-                1 => Ok(Value::from(ext_from_value::<Decimal>(value)?)),
-                2 => Ok(Value::from(ext_from_value::<Uuid>(value)?)),
-                4 => Ok(Value::from(ext_from_value::<Datetime>(value)?)),
-                tag => Err(SbroadError::Other(format_smolstr!(
-                    "value with an unknown tag {tag}: {value:?}"
-                ))),
-            }
-        }
-        rmpv::Value::Map(_) | rmpv::Value::Binary(_) => Err(SbroadError::Other(format_smolstr!(
-            "unexpected value: {value:?}"
-        ))),
-    }
-}
-
-impl TryFrom<RmpvValue> for LuaValue {
-    type Error = SbroadError;
-
-    fn try_from(value: RmpvValue) -> Result<Self, Self::Error> {
-        value_try_from_rmpv(value.0).map(Into::into)
     }
 }
 

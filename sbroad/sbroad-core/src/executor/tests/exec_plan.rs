@@ -1067,8 +1067,8 @@ fn global_except() {
         .unwrap();
     let mut expected = ProducerResult::new();
     expected.rows.extend(vec![vec![
-        LuaValue::String("Execute query locally".to_string()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query locally".to_string()),
+        Value::String(String::from(PatternWithParams::new(
             r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_test_0136""#
                 .into(),
             vec![],

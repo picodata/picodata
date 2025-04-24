@@ -8,7 +8,7 @@ use std::{
 
 use tarantool::{
     ffi::sql::{ibuf_reinit, Ibuf},
-    fiber,
+    fiber, msgpack,
     tlua::StringInLua,
 };
 
@@ -376,8 +376,8 @@ impl TryFrom<OneRSResult<'_>> for ProducerResult {
     fn try_from(res: OneRSResult) -> Result<Self, Self::Error> {
         let (start, size) = res.to_start_and_size();
         // SAFETY:
-        let mut reader = unsafe { std::slice::from_raw_parts(start, size) };
-        let wrapped: Vec<ProducerResult> = rmp_serde::from_read(&mut reader)
+        let reader = unsafe { std::slice::from_raw_parts(start, size) };
+        let wrapped: Vec<ProducerResult> = msgpack::decode(reader)
             .map_err(|e| SbroadError::Other(format_smolstr!("failed to decode tuple: {e:?}")))?;
         let value = wrapped
             .into_iter()

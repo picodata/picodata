@@ -35,7 +35,7 @@ use crate::ir::node::NodeId;
 use crate::ir::relation::DerivedType;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table, Type};
 use crate::ir::tree::Snapshot;
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
 
@@ -2050,8 +2050,8 @@ fn exec_on_some(bucket: u64, query: &str) -> ProducerResult {
     let mut result = ProducerResult::new();
 
     result.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(String::from(query)),
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(String::from(query)),
     ]);
 
     result
@@ -2061,8 +2061,8 @@ fn exec_locally(query: &str) -> ProducerResult {
     let mut result = ProducerResult::new();
 
     result.rows.push(vec![
-        LuaValue::String("Execute query locally".into()),
-        LuaValue::String(String::from(query)),
+        Value::String("Execute query locally".into()),
+        Value::String(String::from(query)),
     ]);
 
     result
@@ -2072,8 +2072,8 @@ fn exec_on_all(query: &str) -> ProducerResult {
     let mut result = ProducerResult::new();
 
     result.rows.push(vec![
-        LuaValue::String(String::from("Execute query on all buckets")),
-        LuaValue::String(String::from(query)),
+        Value::String(String::from("Execute query on all buckets")),
+        Value::String(String::from(query)),
     ]);
 
     result

@@ -24,6 +24,7 @@ use std::{
 use tarantool::transaction::transaction;
 use tarantool::{
     error::{Error, TarantoolErrorCode},
+    msgpack,
     tuple::RawBytes,
 };
 use tarantool::{space::Space, tuple::TupleBuffer};
@@ -34,7 +35,7 @@ use crate::executor::engine::{QueryCache, StorageCache};
 use crate::executor::protocol::{EncodedTables, SchemaInfo};
 use crate::ir::node::Node;
 use crate::ir::operator::ConflictStrategy;
-use crate::ir::value::{EncodedValue, LuaValue, MsgPackValue};
+use crate::ir::value::{EncodedValue, MsgPackValue};
 use crate::utils::ByteCounter;
 use crate::{
     backend::sql::{
@@ -1596,8 +1597,8 @@ where
             format_smolstr!("motion node {child_id:?}. {e:?}"),
         )
     })?;
-    let mut reader = bytes.as_ref().as_slice();
-    let mut data: Vec<ProducerResult> = rmp_serde::decode::from_read(&mut reader).map_err(|e| {
+    let reader = bytes.as_ref().as_slice();
+    let mut data: Vec<ProducerResult> = msgpack::decode(reader).map_err(|e| {
         SbroadError::FailedTo(
             Action::Decode,
             Some(Entity::Tuple),
@@ -1792,7 +1793,7 @@ pub fn build_update_args<'t>(
                 })?;
                 let op = [
                     EncodedValue::Ref(MsgPackValue::from(eq_op())),
-                    EncodedValue::Owned(LuaValue::Unsigned(*table_col as u64)),
+                    EncodedValue::Owned(Value::Unsigned(*table_col as u64)),
                     EncodedValue::Ref(MsgPackValue::from(value)),
                 ];
                 ops.push(op);
@@ -1830,7 +1831,7 @@ pub fn build_update_args<'t>(
                 })?;
                 let op = [
                     EncodedValue::Ref(MsgPackValue::from(eq_op())),
-                    EncodedValue::Owned(LuaValue::Unsigned(*table_col as u64)),
+                    EncodedValue::Owned(Value::Unsigned(*table_col as u64)),
                     value.cast_and_encode(table_type)?,
                 ];
                 ops.push(op);

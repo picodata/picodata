@@ -9,7 +9,7 @@ use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use smol_str::SmolStr;
 
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 
 use super::*;
 
@@ -40,8 +40,8 @@ fn shard_query() {
     let param1 = Value::from(1_u64);
     let bucket = coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
@@ -79,8 +79,8 @@ fn shard_union_query() {
     let param1 = Value::from(1_u64);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}{} {} {}{} {}",
                 r#"SELECT *"#,
@@ -121,8 +121,8 @@ fn map_reduce_query() {
         .unwrap();
 
     expected.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(
             String::from(
                 PatternWithParams::new(
                     format!(
@@ -172,8 +172,8 @@ fn linker_test() {
 
     expected.rows.extend(vec![
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket3}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket3}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {}",
                     r#"SELECT "test_space"."FIRST_NAME""#,
@@ -184,8 +184,8 @@ fn linker_test() {
             ))),
         ],
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket2}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket2}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {}",
                     r#"SELECT "test_space"."FIRST_NAME""#,
@@ -243,8 +243,8 @@ fn union_linker_test() {
 
     expected.rows.extend(vec![
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket3}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket3}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {}{} {} {} {} {} {} {}{} {}",
                     r#"SELECT *"#,
@@ -263,8 +263,8 @@ fn union_linker_test() {
             ))),
         ],
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket2}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket2}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {}{} {} {} {} {} {} {}{} {}",
                     r#"SELECT *"#,
@@ -335,8 +335,8 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
     expected.rows.extend(vec![vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket2}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket2}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}{} {} {} {} {} {} {}{} {} {}{} {} {}",
                 r#"SELECT *"#,
@@ -406,8 +406,8 @@ fn join_linker2_test() {
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
     expected.rows.extend(vec![vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket1}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket1}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {} {} {}",
                 r#"SELECT "t1"."id" FROM (SELECT"#,
@@ -463,8 +463,8 @@ fn join_linker3_test() {
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
     expected.rows.extend(vec![vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket1}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket1}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {} {}",
                 r#"SELECT "t2"."id1" FROM"#,
@@ -536,8 +536,8 @@ fn join_linker4_test() {
 
     expected.rows.extend(vec![
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket2}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket2}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {} {} {} {} {}",
                     r#"SELECT "T1"."id" FROM (SELECT"#,
@@ -552,8 +552,8 @@ fn join_linker4_test() {
             ))),
         ],
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket1}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket1}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {} {} {} {} {}",
                     r#"SELECT "T1"."id" FROM (SELECT"#,
@@ -618,8 +618,8 @@ on q."f" = "t1"."b""#;
     let mut expected = ProducerResult::new();
 
     expected.rows.extend(vec![vec![
-        LuaValue::String("Execute query on all buckets".to_string()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query on all buckets".to_string()),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {}",
                 r#"SELECT * FROM"#,
@@ -657,8 +657,8 @@ fn dispatch_order_by() {
     let mut expected = ProducerResult::new();
 
     expected.rows.extend(vec![vec![
-        LuaValue::String("Execute query locally".to_string()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query locally".to_string()),
+        Value::String(String::from(PatternWithParams::new(
             r#"SELECT "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "id""#.to_string(),
             vec![],
         ))),
@@ -708,8 +708,8 @@ fn anonymous_col_index_test() {
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
     expected.rows.extend(vec![
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket3}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket3}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {} {} {} {}",
                     r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
@@ -723,8 +723,8 @@ fn anonymous_col_index_test() {
             ))),
         ],
         vec![
-            LuaValue::String(format!("Execute query on a bucket [{bucket2}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{bucket2}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {} {} {} {}",
                     "SELECT",
@@ -758,8 +758,8 @@ fn sharding_column1_test() {
     let param1 = Value::from(1_u64);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
@@ -788,8 +788,8 @@ fn sharding_column2_test() {
     let param1 = Value::from(1_u64);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
-        LuaValue::String(format!("Execute query on a bucket [{bucket}]")),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String(format!("Execute query on a bucket [{bucket}]")),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op","#,
@@ -841,8 +841,8 @@ pub(crate) fn broadcast_check(sql: &str, pattern: &str, params: Vec<Value>) {
     let mut expected = ProducerResult::new();
 
     expected.rows.push(vec![
-        LuaValue::String("Execute query on all buckets".to_string()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query on all buckets".to_string()),
+        Value::String(String::from(PatternWithParams::new(
             pattern.to_string(),
             params,
         ))),
@@ -891,8 +891,8 @@ fn groupby_linker_test() {
     let mut expected = ProducerResult::new();
     for buc in buckets {
         expected.rows.extend(vec![vec![
-            LuaValue::String(format!("Execute query on a bucket [{buc}]")),
-            LuaValue::String(String::from(PatternWithParams::new(
+            Value::String(format!("Execute query on a bucket [{buc}]")),
+            Value::String(String::from(PatternWithParams::new(
                 format!(
                     "{} {} {}",
                     r#"SELECT "gr_expr_1" as "ii" FROM"#,

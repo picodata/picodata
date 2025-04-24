@@ -8,6 +8,7 @@ use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::rc::Rc;
 use std::vec;
+use tarantool::msgpack;
 use tarantool::tuple::TupleBuilder;
 
 use crate::errors::{Entity, SbroadError};
@@ -18,7 +19,7 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
 use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
 use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Target};
-use crate::ir::value::{EncodedValue, LuaValue, MsgPackValue, Value};
+use crate::ir::value::{EncodedValue, MsgPackValue, Value};
 use crate::utils::{write_u32_array_len, ByteCounter};
 
 use super::ir::ExecutionPlan;
@@ -212,7 +213,7 @@ impl VirtualTable {
                     EncodedValue::Ref(_) => {
                         // Value type is already ok.
                     }
-                    EncodedValue::Owned(v_o) => *v = v_o.into(),
+                    EncodedValue::Owned(v_o) => *v = v_o,
                 }
             }
         }
@@ -638,14 +639,7 @@ impl VirtualTable {
         }
 
         let tuples = std::mem::take(&mut self.tuples);
-        let mut rows: Vec<ExecutorTuple> = Vec::with_capacity(tuples.len());
-        for tuple in tuples {
-            let mut row = Vec::with_capacity(self.columns.len());
-            for value in tuple {
-                row.push(value.into());
-            }
-            rows.push(row);
-        }
+        let rows: Vec<ExecutorTuple> = tuples;
 
         let res = vec![ProducerResult {
             metadata,
@@ -658,12 +652,15 @@ impl VirtualTable {
         }
         #[cfg(not(feature = "mock"))]
         {
-            Ok(Box::new(Tuple::new(&res).map_err(|e| {
-                SbroadError::Invalid(
-                    Entity::VirtualTable,
-                    Some(format_smolstr!("failed to create tuple from vtable: {e}")),
-                )
-            })?))
+            let data = msgpack::encode(&res);
+            Ok(Box::new(Tuple::try_from_slice(data.as_slice()).map_err(
+                |e| {
+                    SbroadError::Invalid(
+                        Entity::VirtualTable,
+                        Some(format_smolstr!("failed to create tuple from vtable: {e}")),
+                    )
+                },
+            )?))
         }
     }
 }
@@ -695,7 +692,7 @@ impl<'t> TupleIterator<'t> {
         for value in vt_tuple {
             self.buf.push(MsgPackValue::from(value).into());
         }
-        self.buf.push(LuaValue::Unsigned(pk).into());
+        self.buf.push(Value::Unsigned(pk).into());
 
         self.row_id += 1;
         Some(&self.buf)

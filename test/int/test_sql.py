@@ -341,7 +341,7 @@ def test_pg_params(cluster: Cluster):
         )
 
     data = i1.sql("""select * from (select $1 union select ($1 * 2))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
     assert data["rows"] == [[1], [2]]
 
     data = i1.sql("""select (select $1::int) + 1""", 1, strip_metadata=False)
@@ -352,7 +352,7 @@ def test_pg_params(cluster: Cluster):
     assert data["metadata"] == [{"name": "col_1", "type": "string"}]
 
     data = i1.sql("""select * from (select * from (select $1))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
 
     data = i1.sql("""select * from (select * from (select $1))""", -1, strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "integer"}]

@@ -7,7 +7,7 @@ use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::tests::get_motion_id;
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 
 use super::*;
 
@@ -49,8 +49,8 @@ fn not_in1_test() {
     // Validate the result.
     let mut expected = ProducerResult::new();
     expected.rows.extend(vec![vec![
-        LuaValue::String("Execute query on all buckets".to_string()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query on all buckets".to_string()),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {}",
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,

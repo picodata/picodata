@@ -1,6 +1,6 @@
-use pretty_assertions::{assert_eq, assert_ne};
-
 use super::*;
+use pretty_assertions::{assert_eq, assert_ne};
+use tarantool::msgpack::encode;
 
 #[test]
 fn box_execute_result_serialize() {
@@ -11,13 +11,13 @@ fn box_execute_result_serialize() {
             MetadataColumn::new("count".into(), "unsigned".into()),
         ],
         rows: vec![vec![
-            LuaValue::Integer(1),
-            LuaValue::String("тест".into()),
-            LuaValue::Unsigned(1),
+            Value::Integer(1),
+            Value::String("тест".into()),
+            Value::Unsigned(1),
         ]],
     };
 
-    let actual = rmp_serde::to_vec(&r).unwrap();
+    let actual = encode::encode(&r);
 
     // Incorrect serialize message with default msgpack serializer
     let default_serialize_msg = vec![

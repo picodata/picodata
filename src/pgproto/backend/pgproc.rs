@@ -11,9 +11,10 @@ use crate::pgproto::{
 };
 use ::tarantool::proc;
 use postgres_types::Oid;
-use sbroad::ir::value::{LuaValue, Value};
-use serde::{Deserialize, Serialize};
-use tarantool::tuple::{Encode, Tuple};
+use sbroad::ir::value::Value;
+use serde::Serialize;
+use tarantool::msgpack;
+use tarantool::tuple::{Decode, Encode, Tuple};
 
 struct BindArgs {
     id: ClientId,
@@ -23,31 +24,26 @@ struct BindArgs {
     encoding_format: Vec<FieldFormat>,
 }
 
-impl<'de> Deserialize<'de> for BindArgs {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct EncodedBindArgs(ClientId, String, String, Option<Vec<LuaValue>>, Vec<i16>);
+impl<'de> Decode<'de> for BindArgs {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        let (id, stmt_name, portal_name, params, encoding_format): (
+            ClientId,
+            String,
+            String,
+            Option<Vec<Value>>,
+            Vec<i16>,
+        ) = msgpack::decode(data)?;
 
-        let EncodedBindArgs(id, stmt_name, portal_name, params, encoding_format) =
-            EncodedBindArgs::deserialize(deserializer)?;
-
-        let params = params
-            .unwrap_or_default()
-            .into_iter()
-            .map(Value::from)
-            .collect();
-
-        let format = encoding_format.into_iter().map(FieldFormat::from).collect();
+        let params = params.unwrap_or_default();
+        // FieldFormat is represented by i16 in the wire
+        let encoding_format = encoding_format.into_iter().map(FieldFormat::from).collect();
 
         Ok(Self {
             id,
             stmt_name,
             portal_name,
             params,
-            encoding_format: format,
+            encoding_format,
         })
     }
 }
@@ -99,12 +95,12 @@ pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tu
             rmp_serde::to_vec_named(&vec![result])
         }
         ExecuteResult::FinishedDql { rows, .. } | ExecuteResult::SuspendedDql { rows } => {
-            #[derive(Serialize)]
+            #[derive(msgpack::Encode)]
+            #[encode(as_map)]
             struct ProcResult {
-                rows: Vec<Vec<LuaValue>>,
+                rows: Vec<Vec<Value>>,
                 is_finished: bool,
             }
-            impl Encode for ProcResult {}
 
             let is_finished = matches!(result, ExecuteResult::FinishedDql { .. });
             let rows = rows
@@ -114,7 +110,8 @@ pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tu
                 .map(|values| values.into_iter().map(|v| v.try_into().unwrap()).collect())
                 .collect();
             let result = ProcResult { rows, is_finished };
-            rmp_serde::to_vec_named(&vec![result])
+
+            Ok(msgpack::encode(&vec![result]))
         }
     };
 

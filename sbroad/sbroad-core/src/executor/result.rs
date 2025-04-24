@@ -4,7 +4,7 @@
 //! When executing DQL (SELECT) we will get `ProducerResult`, which fields are:
 //! * `metadata` (Vec of `MetadataColumn`): information about
 //!   names and types of gotten columns (even if the number of returned columns is 0)
-//! * `rows` (Vec of `ExecutorTuple` (Vec of `LuaValue`)): resulting tuples of values
+//! * `rows` (Vec of `ExecutorTuple` (Vec of `Value`)): resulting tuples of values
 //!
 //! When executing DML (INSERT) we will get `ConsumerResult`, which fields are:
 //! * `row_count` (u64): the number of tuples inserted (that may be equal to 0)
@@ -13,6 +13,7 @@ use core::fmt::Debug;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use tarantool::msgpack;
 use tarantool::tlua::{self, LuaRead};
 use tarantool::tuple::Encode;
 
@@ -22,12 +23,13 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
 use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
 use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 use crate::ir::Plan;
 
-pub type ExecutorTuple = Vec<LuaValue>;
+pub type ExecutorTuple = Vec<Value>;
 
-#[derive(LuaRead, Debug, PartialEq, Eq, Clone)]
+#[derive(LuaRead, Debug, PartialEq, Eq, Clone, msgpack::Encode, msgpack::Decode)]
+#[encode(as_map)]
 pub struct MetadataColumn {
     name: String,
     r#type: String,
@@ -84,14 +86,16 @@ impl TryInto<Column> for &MetadataColumn {
 /// Results of query execution for `SELECT`.
 /// Infromation returned to as from local Tarantool query execution.
 #[allow(clippy::module_name_repetitions)]
-#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone)]
+#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
+#[encode(as_map)]
 pub struct ProducerResult {
     pub metadata: Vec<MetadataColumn>,
     pub rows: Vec<ExecutorTuple>,
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone)]
+#[derive(LuaRead, Debug, Deserialize, PartialEq, Clone, msgpack::Encode, msgpack::Decode)]
+#[encode(as_map)]
 pub struct DQLQueryResult {
     pub metadata: Vec<MetadataColumn>,
     pub rows: Vec<ExecutorTuple>,
@@ -154,7 +158,6 @@ impl ProducerResult {
             let mut tuple = Vec::with_capacity(encoded_tuple.len());
             for (i, value) in encoded_tuple.drain(..).enumerate() {
                 let column = &columns[i];
-                let value = Value::from(value);
 
                 // TODO: Seems like logic of casting may be removed and replaced with
                 //       `cast_values` call after vtable is built.

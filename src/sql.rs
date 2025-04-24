@@ -56,12 +56,12 @@ use sbroad::ir::node::Node;
 use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
-use sbroad::ir::value::{LuaValue, Value};
+use sbroad::ir::value::Value;
 use sbroad::ir::{Options, Plan as IrPlan};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
-use tarantool::tuple::ToTupleBuffer;
+use tarantool::tuple::{Decode, ToTupleBuffer};
 
 use crate::storage::Catalog;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
@@ -76,7 +76,7 @@ use ::tarantool::tuple::{RawBytes, Tuple};
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
 use std::rc::Rc;
 use std::time::Duration;
-use tarantool::session;
+use tarantool::{msgpack, session};
 
 pub mod router;
 pub mod storage;
@@ -549,14 +549,27 @@ fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     }
 }
 
-/// Dispatches an SQL query to the cluster.
-/// Part of public RPC API.
-#[proc]
-pub fn proc_sql_dispatch(pattern: String, params: Vec<LuaValue>) -> traft::Result<Tuple> {
-    sql_dispatch(&pattern, params).map_err(err_for_tnt_console)
+struct BindArgs {
+    pattern: String,
+    params: Vec<Value>,
 }
 
-pub fn sql_dispatch(pattern: &str, params: Vec<LuaValue>) -> traft::Result<Tuple> {
+impl<'de> Decode<'de> for BindArgs {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        let (pattern, params): (String, Vec<Value>) = msgpack::decode(data)?;
+
+        Ok(BindArgs { pattern, params })
+    }
+}
+
+/// Dispatches an SQL query to the cluster.
+/// Part of public RPC API.
+#[proc(packed_args)]
+pub fn proc_sql_dispatch(args: BindArgs) -> traft::Result<Tuple> {
+    sql_dispatch(&args.pattern, args.params).map_err(err_for_tnt_console)
+}
+
+pub fn sql_dispatch(pattern: &str, params: Vec<Value>) -> traft::Result<Tuple> {
     let runtime = RouterRuntime::new()?;
     let node = node::global()?;
     // Admin privileges are need for reading tables metadata.
@@ -564,12 +577,7 @@ pub fn sql_dispatch(pattern: &str, params: Vec<LuaValue>) -> traft::Result<Tuple
         let sql_vdbe_opcode_max = node.storage.db_config.sql_vdbe_opcode_max()?;
         let sql_motion_row_max = node.storage.db_config.sql_motion_row_max()?;
         let default_options = Some(Options::new(sql_motion_row_max, sql_vdbe_opcode_max));
-        Query::with_options(
-            &runtime,
-            pattern,
-            params.into_iter().map(Into::into).collect(),
-            default_options,
-        )
+        Query::with_options(&runtime, pattern, params, default_options)
     })??;
     dispatch(query)
 }

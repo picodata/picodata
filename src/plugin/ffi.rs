@@ -22,7 +22,7 @@ use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::FfiSafeBytes;
 use picodata_plugin::util::FfiSafeStr;
 use sbroad::ir::value::double::Double;
-use sbroad::ir::value::{LuaValue, Tuple, Value};
+use sbroad::ir::value::{Tuple, Value};
 use std::time::Duration;
 use std::{mem, slice};
 use tarantool::datetime::Datetime;
@@ -249,10 +249,6 @@ extern "C" fn pico_ffi_wait_index(index: u64, timeout: RDuration) -> RResult<ROp
     }
 }
 
-/// Wrapper over `sbroad::ir::value::LuaValue`, using for transformation between
-/// a ffi and `sbroad` type.
-struct SBroadLuaValue(LuaValue);
-
 /// Wrapper over `sbroad::ir::value::Value`, using for transformation between
 /// a ffi and `sbroad` type.
 struct SBroadValue(Value);
@@ -287,38 +283,6 @@ impl From<SqlValue> for SBroadValue {
     }
 }
 
-impl From<SqlValue> for SBroadLuaValue {
-    fn from(value: SqlValue) -> Self {
-        match value.into_inner() {
-            SqlValueInner::Boolean(b) => SBroadLuaValue(LuaValue::Boolean(b)),
-            SqlValueInner::Decimal(raw_dec) => {
-                let dec = unsafe {
-                    tarantool::decimal::Decimal::from_raw(tarantool::ffi::decimal::decNumber::from(
-                        raw_dec,
-                    ))
-                };
-                SBroadLuaValue(LuaValue::Decimal(dec))
-            }
-            SqlValueInner::Double(f) => SBroadLuaValue(LuaValue::Double(f)),
-            SqlValueInner::Datetime(dt_raw) => SBroadLuaValue(LuaValue::Datetime(
-                Datetime::from_ffi_dt(dt_raw.into()).unwrap(),
-            )),
-            SqlValueInner::Integer(i) => SBroadLuaValue(LuaValue::Integer(i)),
-            SqlValueInner::Null => SBroadLuaValue(LuaValue::Null(())),
-            SqlValueInner::String(s) => SBroadLuaValue(LuaValue::String(s.to_string())),
-            SqlValueInner::Unsigned(u) => SBroadLuaValue(LuaValue::Unsigned(u)),
-            SqlValueInner::Array(arr) => SBroadLuaValue(LuaValue::Tuple(Tuple::from(
-                arr.into_iter()
-                    .map(|v| SBroadValue::from(v).0)
-                    .collect::<Vec<_>>(),
-            ))),
-            SqlValueInner::Uuid(raw_uuid) => {
-                SBroadLuaValue(LuaValue::Uuid(Uuid::from_bytes(raw_uuid)))
-            }
-        }
-    }
-}
-
 #[no_mangle]
 #[sabi_extern_fn]
 extern "C" fn pico_ffi_sql_query(
@@ -328,10 +292,7 @@ extern "C" fn pico_ffi_sql_query(
 ) -> RResult<*mut BoxTuple, ()> {
     // SAFETY: caller (picodata_plugin) should provide a pointer to valid utf8 string
     let query = unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(query, query_len)) };
-    let params = params
-        .into_iter()
-        .map(|v| SBroadLuaValue::from(v).0)
-        .collect();
+    let params = params.into_iter().map(|v| SBroadValue::from(v).0).collect();
 
     let dispatch_result = sql::sql_dispatch(query, params);
     match dispatch_result {

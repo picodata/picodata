@@ -681,41 +681,54 @@ fn iproto_execute_handle_prepared_statement(mut body: &[u8]) -> traft::Result<Tu
     ))
 }
 
-/// Handles sql query from IPROTO_EXECUTE request body.
+/// Decodes an `IPROTO_EXECUTE` request body to extract and execute an SQL query.
+/// Validates the presence of SQL_TEXT, then dispatches the query with parameters to the SQL engine.
+/// Returns either the execution result tuple or an error if decoding fails or SQL_TEXT is missing.
+/// See <https://www.tarantool.io/en/doc/2.11/dev_guide/internals/iproto/sql/#internals-iproto-sql>
+/// on "SQL string" (p.s. prepared statements are handled with [`iproto_execute_handle_prepared_statement`]).
 #[inline]
-fn iproto_execute_handle_sql_query(mut body: &[u8]) -> traft::Result<Tuple> {
+fn iproto_execute_handle_sql_query(body: &[u8]) -> traft::Result<Tuple> {
+    // this algorithm looks over the data with cursor and
+    // decodes directly on a slice from data: that means
+    // we use the cursor position to specify start of a
+    // deserializable data (value of messagepack map entry)
+
     let mut pattern = None;
     let mut bind = None;
 
     let cur = &mut Cursor::new(body);
+
+    // step 1: look over the map length
     let map_len = rmp::decode::read_map_len(cur)
         .map_err(|err| traft::error::Error::Tarantool(tarantool::error::Error::ValueRead(err)))?;
+    // step 2: iterate over each entry of messagepack map
     for _ in 0..map_len {
+        // step 3: look over the key of current map entry
         let diff_byte = rmp::decode::read_pfix(cur).map_err(|err| {
             traft::error::Error::Tarantool(tarantool::error::Error::ValueRead(err))
         })?;
+        // step 4: take only the part of data where value of current map entry starts
+        let mut remaining_data = &body[cur.position() as usize..];
+        let old_len = remaining_data.len();
+        // step 5: decode the value data part (or skip if unknown)
         match diff_byte {
             iproto_key::SQL_TEXT => {
-                let old_len = body.len();
-                body = &body[cur.position() as usize..];
-                pattern =
-                    Some(msgpack::decode(body).map_err(tarantool::error::Error::MsgpackDecode)?);
-                let displacement = old_len - body.len();
-                cur.set_position(cur.position() + displacement as u64);
+                pattern = Some(
+                    msgpack::Decode::decode(&mut remaining_data, &msgpack::Context::DEFAULT)
+                        .map_err(tarantool::error::Error::MsgpackDecode)?,
+                );
             }
             iproto_key::SQL_BIND => {
-                let old_len = cur.get_ref().len();
                 bind = Some(
-                    rmp_serde::decode::from_read::<_, sbroad::executor::result::ExecutorTuple>(
-                        *cur.get_ref(),
-                    )
-                    .map_err(|err| traft::error::Error::Tarantool(err.into()))?,
+                    msgpack::Decode::decode(&mut remaining_data, &msgpack::Context::DEFAULT)
+                        .map_err(tarantool::error::Error::MsgpackDecode)?,
                 );
-                let displacement = old_len - cur.get_ref().len();
-                cur.set_position(cur.position() + displacement as u64);
             }
             _ => msgpack::skip_value(cur)?,
         }
+        // step 6: calculate the amount of decoded bytes to put cursor on the correct placement
+        let displacement = old_len - remaining_data.len();
+        cur.set_position(cur.position() + displacement as u64);
     }
 
     let Some(pattern) = pattern else {

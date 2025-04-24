@@ -27,6 +27,8 @@ use crate::ir::relation::Type;
 use crate::ir::relation::{DerivedType, Table};
 use crate::ir::value::Value;
 
+use tarantool::msgpack;
+
 use super::result::ProducerResult;
 
 use tarantool::sql::Statement;
@@ -218,7 +220,8 @@ impl ConvertToDispatchResult for ProducerResult {
                 }
                 #[cfg(not(feature = "mock"))]
                 {
-                    Box::new(Tuple::new(&wrapped).map_err(|e| {
+                    let data = msgpack::encode(&wrapped);
+                    Box::new(Tuple::try_from_slice(&data).map_err(|e| {
                         SbroadError::Other(format_smolstr!(
                             "create tuple from producer result: {e}"
                         ))
@@ -236,7 +239,7 @@ impl ConvertToDispatchResult for Tuple {
         let res: Box<dyn Any> = match format {
             DispatchReturnFormat::Tuple => Box::new(self),
             DispatchReturnFormat::Inner => {
-                let wrapped = self.decode::<Vec<ProducerResult>>().map_err(|e| {
+                let wrapped = msgpack::decode::<Vec<ProducerResult>>(self.data()).map_err(|e| {
                     SbroadError::FailedTo(
                         Action::Decode,
                         Some(Entity::Tuple),

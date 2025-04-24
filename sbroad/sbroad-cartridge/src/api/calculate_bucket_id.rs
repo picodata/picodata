@@ -3,14 +3,15 @@ use std::collections::HashMap;
 use sbroad::errors::{Entity, SbroadError};
 use serde::{de::Deserializer, Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
-use tarantool::tuple::{RawBytes, Tuple};
+use tarantool::msgpack;
+use tarantool::tuple::{Decode, RawBytes, Tuple};
 
 use crate::api::helper::load_config;
 use crate::api::COORDINATOR_ENGINE;
 use crate::utils::{wrap_proc_result, ProcResult};
 
 use sbroad::executor::engine::Router;
-use sbroad::ir::value::{LuaValue, Value};
+use sbroad::ir::value::Value;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 /// Tuple with space name and `key:value` map of values
@@ -21,27 +22,18 @@ pub struct ArgsMap {
     pub space: SmolStr,
 }
 
-/// Custom deserializer of the input function arguments
-impl<'de> Deserialize<'de> for ArgsMap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename = "FunctionArgs")]
-        struct StructHelper(HashMap<SmolStr, LuaValue>, SmolStr);
+/// Custom decode of the input function arguments
+impl<'de> Decode<'de> for ArgsMap {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        let (mut rec, space): (HashMap<String, Value>, String) = msgpack::decode(data)?;
 
-        let mut struct_helper = StructHelper::deserialize(deserializer)?;
-        let rec: HashMap<SmolStr, Value> = struct_helper
-            .0
+        let rec: HashMap<SmolStr, Value> = rec
             .drain()
-            .map(|(key, encoded)| (key, Value::from(encoded)))
+            .map(|(key, value)| (SmolStr::from(key), value))
             .collect();
+        let space = SmolStr::from(space);
 
-        Ok(ArgsMap {
-            rec,
-            space: struct_helper.1,
-        })
+        Ok(ArgsMap { rec, space })
     }
 }
 
@@ -54,23 +46,14 @@ pub struct ArgsTuple {
     pub space: SmolStr,
 }
 
-/// Custom deserializer of the input function arguments
-impl<'de> Deserialize<'de> for ArgsTuple {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename = "FunctionArgs")]
-        struct StructHelper(Vec<LuaValue>, SmolStr);
+/// Custom decode of the input function arguments
+impl<'de> Decode<'de> for ArgsTuple {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        let (rec, space): (Vec<Value>, String) = msgpack::decode(data)?;
 
-        let mut struct_helper = StructHelper::deserialize(deserializer)?;
-        let rec: Vec<Value> = struct_helper.0.drain(..).map(Value::from).collect();
+        let space = SmolStr::from(space);
 
-        Ok(ArgsTuple {
-            rec,
-            space: struct_helper.1,
-        })
+        Ok(ArgsTuple { rec, space })
     }
 }
 

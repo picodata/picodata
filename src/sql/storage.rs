@@ -22,6 +22,7 @@ use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
 
+use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
 use once_cell::sync::Lazy;
@@ -31,8 +32,7 @@ use sbroad::ir::tree::Snapshot;
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::{any::Any, rc::Rc};
-
-use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
+use tarantool::msgpack;
 
 thread_local!(
     // We need Lazy, because cache can be initialized only after raft node.
@@ -278,9 +278,8 @@ impl Vshard for StorageRuntime {
                 Box::new(Tuple::from(&tup_buf))
             }
             DispatchReturnFormat::Inner => {
-                let mut reader = bytes.as_ref().as_slice();
-                let mut data: Vec<ProducerResult> = rmp_serde::decode::from_read(&mut reader)
-                    .map_err(|e| {
+                let mut data: Vec<ProducerResult> =
+                    msgpack::decode(bytes.as_slice()).map_err(|e| {
                         SbroadError::Other(format_smolstr!("decode bytes into inner format: {e:?}"))
                     })?;
                 let inner = data.get_mut(0).ok_or_else(|| {

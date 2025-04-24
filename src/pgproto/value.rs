@@ -2,7 +2,7 @@ use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::{api::results::DataRowEncoder, error::PgWireResult, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
-use sbroad::ir::value::{LuaValue, Value as SbroadValue};
+use sbroad::ir::value::Value as SbroadValue;
 use smol_str::{StrExt, ToSmolStr};
 use std::{
     error::Error,
@@ -300,14 +300,6 @@ impl TryFrom<PgValue> for SbroadValue {
                 )))
             }
         }
-    }
-}
-
-impl TryFrom<PgValue> for LuaValue {
-    type Error = PgError;
-
-    fn try_from(value: PgValue) -> Result<Self, Self::Error> {
-        SbroadValue::try_from(value).map(Into::into)
     }
 }
 

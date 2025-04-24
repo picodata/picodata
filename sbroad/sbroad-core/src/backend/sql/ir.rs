@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use tarantool::msgpack;
+use tarantool::msgpack::{Context, DecodeError};
 use tarantool::tlua::{self, Push};
 use tarantool::tuple::{FunctionArgs, Tuple};
 
@@ -20,7 +22,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::table_name;
 use crate::executor::ir::ExecutionPlan;
 use crate::ir::operator::OrderByType;
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 
 use super::space::{create_table, TableGuard};
 use super::tree::SyntaxData;
@@ -59,7 +61,7 @@ impl TryFrom<&Tuple> for PatternWithParams {
             Option::from("argument parsing"),
             &format!("Query parameters: {value:?}"),
         );
-        match value.decode::<EncodedPatternWithParams>() {
+        match msgpack::decode::<EncodedPatternWithParams>(value.data()) {
             Ok(encoded) => Ok(PatternWithParams::try_from(encoded)?),
             Err(e) => Err(SbroadError::ParsingError(
                 Entity::PatternWithParams,
@@ -69,26 +71,35 @@ impl TryFrom<&Tuple> for PatternWithParams {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct EncodedPatternWithParams(String, Option<Vec<LuaValue>>);
+struct EncodedPatternWithParams(String, Option<Vec<Value>>);
+
+impl<'de> msgpack::Decode<'de> for EncodedPatternWithParams {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        let len = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)?;
+        if len != 2 {
+            return Err(DecodeError::new::<Self>(format!(
+                "unexpected length. expected 2, actual {:?}",
+                len
+            )));
+        }
+
+        let str = tarantool::msgpack::Decode::decode(r, context)?;
+        let params: Option<Vec<Value>> = tarantool::msgpack::Decode::decode(r, context)?;
+
+        Ok(EncodedPatternWithParams(str, params))
+    }
+}
 
 impl From<PatternWithParams> for EncodedPatternWithParams {
-    fn from(mut value: PatternWithParams) -> Self {
-        let encoded_params: Vec<LuaValue> = value.params.drain(..).map(LuaValue::from).collect();
-        EncodedPatternWithParams(value.pattern, Some(encoded_params))
+    fn from(value: PatternWithParams) -> Self {
+        EncodedPatternWithParams(value.pattern, Some(value.params))
     }
 }
 
 impl TryFrom<EncodedPatternWithParams> for PatternWithParams {
     type Error = SbroadError;
     fn try_from(mut value: EncodedPatternWithParams) -> Result<Self, Self::Error> {
-        let params: Vec<Value> = match value.1.take() {
-            Some(mut encoded_params) => encoded_params
-                .drain(..)
-                .map(Value::from)
-                .collect::<Vec<Value>>(),
-            None => Vec::new(),
-        };
+        let params: Vec<Value> = value.1.take().unwrap_or_default();
         let res = PatternWithParams {
             pattern: value.0,
             params,

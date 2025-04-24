@@ -6,7 +6,7 @@ use crate::executor::result::ProducerResult;
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::value::{LuaValue, Value};
+use crate::ir::value::Value;
 
 use super::*;
 
@@ -46,8 +46,8 @@ fn empty_motion1_test() {
 
     let mut expected = ProducerResult::new();
     expected.rows.extend(vec![vec![
-        LuaValue::String("Execute query on all buckets".into()),
-        LuaValue::String(String::from(PatternWithParams::new(
+        Value::String("Execute query on all buckets".into()),
+        Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 r#"SELECT * FROM"#,

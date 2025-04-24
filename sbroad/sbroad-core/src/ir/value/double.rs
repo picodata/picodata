@@ -2,17 +2,34 @@
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::num::NonZeroI32;
 use std::str::FromStr;
 
 use crate::errors::{Entity, SbroadError};
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
+use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 use tarantool::tlua;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[serde(transparent)]
 pub struct Double {
     pub value: f64,
+}
+
+impl<'de> Decode<'de> for Double {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+        let v = f64::decode(r, context)?;
+
+        Ok(Self::from(v))
+    }
+}
+
+impl Encode for Double {
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        self.value.encode(w, context)
+    }
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
