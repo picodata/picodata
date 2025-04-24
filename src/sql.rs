@@ -1596,6 +1596,7 @@ fn ddl_ir_node_to_op_or_result(
                             old_format: current_table_format,
                             new_format: new_table_format,
                             initiator_id: current_user,
+                            schema_version,
                         },
                     }))
                 }

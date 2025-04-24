@@ -776,6 +776,7 @@ pub enum Ddl {
         new_format: Vec<Field>,
         old_format: Vec<Field>,
         initiator_id: UserId,
+        schema_version: u64,
     },
 }
 

@@ -1127,9 +1127,16 @@ impl NodeImpl {
                     Ddl::ChangeFormat {
                         table_id,
                         initiator_id,
+                        schema_version,
                         ..
                     } => {
                         ddl_meta_space_update_operable(&self.storage, table_id, true)
+                            .expect("storage shouldn't fail");
+                        // TODO: it would be nice to fuse the update of `operable` field with the update of `schema_version`
+                        // this needs some API design though
+                        self.storage
+                            .tables
+                            .update_schema_version(table_id, schema_version)
                             .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");

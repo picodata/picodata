@@ -553,6 +553,24 @@ impl Tables {
         Ok(())
     }
 
+    /// Change the field value of `schema_version` in the metadata of the specified table
+    ///
+    /// Changing the `schema_version` is necessary when changing the schema of the table to
+    /// invalidate various caches, like the prepared statement cache.
+    ///
+    /// # Usage Example
+    ///
+    /// ```no_run
+    /// # use tarantool::space::SpaceId;
+    /// let tables = picodata::storage::Tables::new().unwrap();
+    ///
+    /// let table_id = 28;
+    /// let new_schema_version = 42;
+    ///
+    /// tables
+    ///     .update_schema_version(table_id, new_schema_version)
+    ///     .expect("updating schema_version failed");
+    /// ```
     #[inline]
     pub fn update_schema_version(&self, id: SpaceId, schema_version: u64) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
