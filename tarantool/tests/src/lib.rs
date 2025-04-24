@@ -546,6 +546,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::prepared_with_named_params,
                     sql::prepared_invalid_params,
                     sql::port_c,
+                    sql::port_c_vtab,
                     tuple_picodata::tuple_hash,
                 ])
             }

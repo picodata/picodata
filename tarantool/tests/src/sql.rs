@@ -2,13 +2,18 @@
 
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Cursor, Read};
+use std::os::raw::{c_char, c_void};
 use std::ptr::NonNull;
 use tarantool::error::{Error, TarantoolError};
-use tarantool::ffi::sql::{PortC, IPROTO_DATA};
+use tarantool::ffi::sql::{
+    obuf_append, port_c_destroy, Obuf, ObufWrapper, Port, PortC, PortVTable, IPROTO_DATA,
+};
 use tarantool::index::IndexType;
+use tarantool::msgpack::write_array_len;
 use tarantool::space::{Field, Space};
 use tarantool::sql::{sql_execute_into_port, unprepare};
+use tarantool::tlua::LuaState;
 use tarantool::tuple::Tuple;
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
@@ -379,12 +384,16 @@ pub fn port_c() {
     {
         let mut tuple1 = Tuple::new(&("A",)).unwrap();
         port_c.add_tuple(&mut tuple1);
+        assert_eq!(port_c.size(), 1);
         let mp1 = b"\x91\xa1B";
         unsafe { port_c.add_mp(mp1.as_slice()) };
+        assert_eq!(port_c.size(), 2);
         let mut tuple2 = Tuple::new(&("C", "D")).unwrap();
         port_c.add_tuple(&mut tuple2);
+        assert_eq!(port_c.size(), 3);
         let mp2 = b"\x91\xa1E";
         unsafe { port_c.add_mp(mp2.as_slice()) };
+        assert_eq!(port_c.size(), 4);
     }
     let mut tuple3 = Tuple::new(&("F",)).unwrap();
     // The tuple has two references and it should not surprise you.
@@ -424,4 +433,144 @@ pub fn port_c() {
     // in the tuples.
     drop(port_c);
     assert_eq!(tuple_refs(&tuple3), 1);
+}
+
+pub fn port_c_vtab() {
+    #[no_mangle]
+    unsafe extern "C" fn dump_msgpack(port: *mut Port, out: *mut Obuf) {
+        // When we write data from the port to the out buffer we treat
+        // the first msgpack as a header. All the other ones are treated
+        // as an array of data. So, the algorithm:
+        // 1. Write the first msgpack from the port.
+        // 2. Write an array with the size of all other msgpacks.
+        // 3. Write all other msgpacks to the out buffer.
+        // If the port is empty, write MP_NULL.
+        // If the port has only a single msgpack, write the msgpack and an empty array.
+
+        let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
+        if port_c.size() == 0 {
+            obuf_append(out, b"\xC0").expect("Failed to append MP_NULL");
+            return;
+        }
+
+        // Write the first msgpack from the port.
+        let first_mp = port_c.first_mp().expect("Failed to get first msgpack");
+        obuf_append(out, first_mp).expect("Failed to append first msgpack");
+
+        // Write an array with the size of all other msgpacks.
+        let size = (port_c.size() - 1) as u32;
+        let mut array_len_buf = [0u8; 5];
+        let mut cursor = Cursor::new(&mut array_len_buf[..]);
+        write_array_len(&mut cursor, size).expect("Failed to write array length");
+        let buf_len = cursor.position() as usize;
+        obuf_append(out, &array_len_buf[..buf_len]).expect("Failed to append array length");
+
+        for (idx, mp_bytes) in port_c.iter().enumerate() {
+            // Skip the first msgpack.
+            if idx == 0 {
+                continue;
+            }
+            obuf_append(out, mp_bytes).expect("Failed to append msgpack");
+        }
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn dump_msgpack_16(_port: *mut Port, _out: *mut Obuf) {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn dump_lua(_port: *mut Port, _l: *mut LuaState, _is_flat: bool) {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn dump_plain(_port: *mut Port, _size: *mut u32) -> *const c_char {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn get_vdbemem(_port: *mut Port, _size: *mut u32) -> *const c_void {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn destroy(_port: *mut Port) {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn manual_destroy(port: *mut Port) {
+        port_c_destroy(port);
+    }
+
+    let vtab = PortVTable {
+        dump_msgpack,
+        dump_msgpack_16,
+        dump_lua,
+        dump_plain,
+        get_vdbemem,
+        destroy,
+    };
+    let mut out = ObufWrapper::new(100);
+
+    // Check an empty port.
+    let mut port_c = PortC::default();
+    port_c.vtab = &vtab as *const PortVTable;
+    unsafe { dump_msgpack(port_c.as_mut(), out.obuf()) };
+    let mut result = [0u8; 1];
+    let len = out
+        .read(&mut result)
+        .expect("Failed to read from out buffer");
+    assert_eq!(len, 1);
+    assert_eq!(result[0], 0xC0);
+    out.reset();
+
+    // Check a port with a single msgpack.
+    let header_mp = b"\xd96HEADER";
+    unsafe { port_c.add_mp(header_mp) };
+    unsafe { ((*port_c.vtab).dump_msgpack)(port_c.as_mut(), out.obuf()) };
+    let expected = b"\xd96HEADER\x90";
+    let mut result = [0u8; 9];
+    let len = out
+        .read(&mut result)
+        .expect("Failed to read from out buffer");
+    assert_eq!(len, expected.len());
+    assert_eq!(&result[..], expected);
+    out.reset();
+    drop(port_c);
+
+    // Check a port with multiple msgpacks.
+    let mut port_c = PortC::default();
+    port_c.vtab = &vtab as *const PortVTable;
+    let header_mp = b"\xd96HEADER";
+    unsafe { port_c.add_mp(header_mp) };
+    let mp1 = b"\xd95DATA1";
+    unsafe { port_c.add_mp(mp1) };
+    let mp2 = b"\xd95DATA2";
+    unsafe { port_c.add_mp(mp2) };
+    // Check that the C wrapper over the virtual `dump_msgpack` method works.
+    unsafe { dump_msgpack(port_c.as_mut(), out.obuf()) };
+    let expected = b"\xd96HEADER\x92\xd95DATA1\xd95DATA2";
+    let mut result = [0u8; 23];
+    let len = out
+        .read(&mut result)
+        .expect("Failed to read from out buffer");
+    assert_eq!(len, expected.len());
+    assert_eq!(&result[..], expected);
+
+    // Check a manual drop of the port.
+    let vtab = PortVTable {
+        dump_msgpack,
+        dump_msgpack_16,
+        dump_lua,
+        dump_plain,
+        get_vdbemem,
+        destroy: manual_destroy,
+    };
+    let mut port = Port::zeroed();
+    port.vtab = &vtab as *const PortVTable;
+    let port_c = unsafe { port.mut_port_c() };
+    unsafe { port_c.add_mp(b"\xd94DATA") };
+    unsafe { ((*port.vtab).destroy)(port.as_mut()) };
 }

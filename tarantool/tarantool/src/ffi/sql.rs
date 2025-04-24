@@ -1,6 +1,6 @@
 #![cfg(any(feature = "picodata", doc))]
 
-use libc::{iovec, size_t, ENOMEM};
+use libc::{iovec, size_t};
 use std::cmp;
 use std::io::Read;
 use std::mem::MaybeUninit;
@@ -9,7 +9,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::{null, NonNull};
 use tlua::LuaState;
 
-use crate::error::TarantoolError;
+use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::tuple::Tuple;
 
 use super::tarantool::BoxTuple;
@@ -20,10 +20,11 @@ pub const IPROTO_DATA: u8 = 0x30;
 // even if they're only used in this file. This is because the `define_dlsym_reloc`
 // macro doesn't support private function declarations because rust's macro syntax is trash.
 crate::define_dlsym_reloc! {
-    pub(crate) fn port_destroy(port: *mut Port);
-    pub(crate) fn port_c_create(port: *mut Port);
+    pub fn port_destroy(port: *mut Port);
     pub(crate) fn port_c_add_tuple(port: *mut Port, tuple: *mut BoxTuple);
     pub(crate) fn port_c_add_mp(port: *mut Port, mp: *const c_char, mp_end: *const c_char);
+    pub(crate) fn port_c_create(port: *mut Port);
+    pub fn port_c_destroy(port: *mut Port);
 
     pub(crate) fn cord_slab_cache() -> *const SlabCache;
 
@@ -97,7 +98,7 @@ pub unsafe fn obuf_append(obuf: *mut Obuf, mp: &[u8]) -> crate::Result<()> {
     let size = obuf_dup(obuf, mp.as_ptr() as *const c_void, mp.len() as size_t);
     if size != mp.len() as size_t {
         return Err(TarantoolError::new(
-            ENOMEM as u32,
+            TarantoolErrorCode::MemoryIssue,
             format!("Failed to allocate {} bytes in obuf for data", mp.len()),
         )
         .into());
@@ -105,7 +106,7 @@ pub unsafe fn obuf_append(obuf: *mut Obuf, mp: &[u8]) -> crate::Result<()> {
     Ok(())
 }
 
-pub(crate) struct ObufWrapper {
+pub struct ObufWrapper {
     pub inner: Obuf,
     read_pos: usize,
     read_iov_n: usize,
@@ -113,7 +114,10 @@ pub(crate) struct ObufWrapper {
 }
 
 impl ObufWrapper {
-    pub(crate) fn new(start_capacity: usize) -> Self {
+    /// Create a new `ObufWrapper` with the given initial capacity.
+    /// The capacity must be greater than 0.
+    pub fn new(start_capacity: usize) -> Self {
+        assert!(start_capacity > 0);
         let inner_buf = unsafe {
             let slab_c = cord_slab_cache();
 
@@ -130,19 +134,19 @@ impl ObufWrapper {
         }
     }
 
-    pub(crate) unsafe fn append_mp(&mut self, mp: &[u8]) -> crate::Result<()> {
+    pub unsafe fn append_mp(&mut self, mp: &[u8]) -> crate::Result<()> {
         obuf_append(self.obuf(), mp)?;
         Ok(())
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         unsafe { obuf_reset(self.obuf()) }
         self.read_pos = 0;
         self.read_iov_n = 0;
         self.read_iov_pos = 0;
     }
 
-    pub(crate) fn obuf(&mut self) -> *mut Obuf {
+    pub fn obuf(&mut self) -> *mut Obuf {
         &mut self.inner as *mut Obuf
     }
 }
@@ -252,14 +256,6 @@ impl Port {
     }
 }
 
-impl Drop for Port {
-    fn drop(&mut self) {
-        if !self.vtab.is_null() {
-            unsafe { port_destroy(self as *mut Port) }
-        }
-    }
-}
-
 #[repr(C)]
 union U {
     tuple: NonNull<BoxTuple>,
@@ -295,7 +291,7 @@ pub struct PortC {
 
 impl Drop for PortC {
     fn drop(&mut self) {
-        unsafe { port_destroy(self as *mut PortC as *mut Port) }
+        unsafe { port_c_destroy(self as *mut PortC as *mut Port) }
     }
 }
 
@@ -310,6 +306,10 @@ impl Default for PortC {
 }
 
 impl PortC {
+    pub fn size(&self) -> i32 {
+        self.size
+    }
+
     pub fn add_tuple(&mut self, tuple: &mut Tuple) {
         unsafe {
             port_c_add_tuple(
