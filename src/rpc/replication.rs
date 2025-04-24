@@ -36,6 +36,7 @@
 use crate::governor;
 #[allow(unused_imports)]
 use crate::governor::plan;
+use crate::has_states;
 use crate::pico_service::pico_service_password;
 #[allow(unused_imports)]
 use crate::rpc;
@@ -49,7 +50,10 @@ use crate::traft::node::{Node, NodeImpl};
 use crate::traft::op::Op;
 use crate::traft::{node, RaftTerm, Result};
 use std::time::Duration;
+use tarantool::index::IteratorType;
+use tarantool::space::{Space, SystemSpace};
 use tarantool::tlua;
+use tarantool::transaction::transaction;
 use tarantool::vclock::Vclock;
 
 crate::define_rpc_request! {
@@ -84,6 +88,14 @@ crate::define_rpc_request! {
 
         if req.is_master {
             promote_to_master()?;
+            // _cluster is replicated from master to replicas, so we need to
+            // update it on the master only.
+            // Errors are not fatal here, we do not need to stop the process,
+            // because cleaning up _cluster is not critical and we can do
+            // it later.
+            if let Err(e) = update_sys_cluster() {
+                tlog!(Error, "failed to update sys_cluster: {e}");
+            }
         } else {
             // Everybody else should be read-only
             set_cfg_field("read_only", true)?;
@@ -146,6 +158,46 @@ fn is_read_only() -> Result<bool> {
     let lua = tarantool::lua_state();
     let ro = lua.eval("return box.info.ro")?;
     Ok(ro)
+}
+
+// Updates space._cluster to remove expelled or non-existing instances.
+// Tarantool uses this space to store replication configuration.
+// Tarantool only adds new instances to this space, but never removes them.
+// So we have to do it manually here.
+fn update_sys_cluster() -> Result<()> {
+    let sys_cluster = Space::from(SystemSpace::Cluster);
+    let node = node::global()?;
+    let topology_ref = node.topology_cache.get();
+
+    let mut ids_to_delete = Vec::new();
+    for tuple in sys_cluster.select(IteratorType::All, &())? {
+        let instance_id: u32 = tuple.field(0)?.ok_or_else(|| {
+            Error::other("failed to decode 'instance_id' field of table _cluster")
+        })?;
+        let instance_uuid: &str = tuple.field(1)?.ok_or_else(|| {
+            Error::other("failed to decode 'instance_uuid' field of table _cluster")
+        })?;
+        let Ok(instance) = topology_ref.instance_by_uuid(instance_uuid) else {
+            ids_to_delete.push(instance_id);
+            continue;
+        };
+        if has_states!(instance, Expelled -> *) {
+            ids_to_delete.push(instance_id);
+        }
+    }
+    // Must not hold this reference across yields
+    drop(topology_ref);
+
+    // All operations on _cluster are done in a single transaction
+    // to be written to WAL in one batch.
+    transaction(|| -> Result<()> {
+        for id in ids_to_delete {
+            sys_cluster.delete(&[id])?;
+        }
+        Ok(())
+    })?;
+
+    Ok(())
 }
 
 /// Promotes the target instance from read-only replica to master.

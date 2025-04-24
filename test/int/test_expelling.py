@@ -339,3 +339,42 @@ rerun with --force if you still want to expel the instance"""
     )
     assert storage_2_state != "expelled"
     assert storage_2_old_uuid != storage_2_new_uuid
+
+
+def test_join_replicaset_after_two_expel(cluster: Cluster):
+    # test specific scenario with two expels and one join after that
+    # test for problem described in https://git.picodata.io/core/picodata/-/issues/1455
+
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        raft:
+            replication_factor: 1
+        storage:
+            replication_factor: 3
+"""
+    )
+    cluster.set_service_password("secret")
+
+    [leader] = cluster.deploy(instance_count=1, tier="raft")
+
+    # Deploy a cluster with at least one full replicaset
+    storage_1_1 = cluster.add_instance(name="storage_1_1", wait_online=False, tier="storage")
+    storage_1_2 = cluster.add_instance(name="storage_1_2", wait_online=False, tier="storage")
+    storage_1_3 = cluster.add_instance(name="storage_1_3", wait_online=False, tier="storage")
+    cluster.wait_online()
+    assert storage_1_1.replicaset_name == "storage_1"
+    assert storage_1_2.replicaset_name == "storage_1"
+    assert storage_1_3.replicaset_name == "storage_1"
+
+    # Expel two of the replicas in the full replicaset, wait until the change is finalized
+    counter = leader.governor_step_counter()
+    cluster.expel(storage_1_2, force=True)
+    cluster.expel(storage_1_1, force=True)
+    leader.wait_governor_status("idle", old_step_counter=counter)
+
+    # Add another instance, it should be assigned to the no longer filled replicaset
+    storage_4 = cluster.add_instance(name="storage_4", wait_online=True, tier="storage")
+    assert storage_4.replicaset_name == "storage_1"

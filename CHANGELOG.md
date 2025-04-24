@@ -109,6 +109,8 @@ with the `YY.MINOR.MICRO` scheme.
   to exclude situations when election caused different entry to become applied at expected index.
   With new behavior users of the API do not need to take that into account.
 
+- Fixed an issue where an instance cannot join after we expelled another instance.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
