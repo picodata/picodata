@@ -197,12 +197,16 @@ mod tests {
             .map(|i| i.raft_id).collect()
     }
 
+    fn extract_instance(result: (Instance, bool)) -> Instance {
+        result.0
+    }
+
     #[::tarantool::test]
     fn test_simple() {
         let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
 
-        let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-1").unwrap();
+        let i1 = extract_instance(build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-1").unwrap());
         assert_eq!(i1.raft_id, 1);
         assert_eq!(i1.name, "default_1_1");
         assert_eq!(i1.replicaset_name, "default_1");
@@ -212,19 +216,19 @@ mod tests {
         assert_eq!(i1.tier, DEFAULT_TIER);
         add_instance(&storage, &i1).unwrap();
 
-        let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-2").unwrap();
+        let i2 = extract_instance(build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-2").unwrap());
         assert_eq!(i2.raft_id, 2);
         assert_eq!(i2.name, "default_2_1");
         assert_eq!(i2.replicaset_name, "default_2");
         add_instance(&storage, &i2).unwrap();
 
-        let i3 = build_instance(None, Some(&ReplicasetName::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-3").unwrap();
+        let i3 = extract_instance(build_instance(None, Some(&ReplicasetName::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-3").unwrap());
         assert_eq!(i3.raft_id, 3);
         assert_eq!(i3.name, "R3_1");
         assert_eq!(i3.replicaset_name, "R3");
         add_instance(&storage, &i3).unwrap();
 
-        let i4 = build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-4").unwrap();
+        let i4 = extract_instance(build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-4").unwrap());
         assert_eq!(i4.raft_id, 4);
         assert_eq!(i4.name, "I4");
         assert_eq!(i4.replicaset_name, "default_3");
@@ -256,7 +260,7 @@ mod tests {
         //      not, if replication_factor / failure_domain were edited.
         // - Even if it's an impostor, rely on auto-expel policy.
         //   Disruption isn't destructive if auto-expel allows (TODO).
-        let instance = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-6").unwrap();
+        let instance = extract_instance(build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-6").unwrap());
         assert_eq!(instance.raft_id, 3);
         assert_eq!(instance.name, "i2");
         // Attention: generated replicaset_name differs from the original
@@ -285,7 +289,7 @@ mod tests {
         add_instance(&storage, &dummy_instance(2, "i3", "r3", &State::new(Online, 1))).unwrap();
         // Attention: i3 has raft_id=2
 
-        let instance = build_instance(None, Some(&ReplicasetName::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-7").unwrap();
+        let instance = extract_instance(build_instance(None, Some(&ReplicasetName::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-7").unwrap());
         assert_eq!(instance.raft_id, 3);
         assert_eq!(instance.name, "r2_1");
         assert_eq!(instance.replicaset_name, "r2");
@@ -295,8 +299,8 @@ mod tests {
     fn test_uuid_randomness() {
         let storage = Catalog::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
-        let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-8").unwrap();
-        let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-9").unwrap();
+        let i1a = extract_instance(build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-8").unwrap());
+        let i1b = extract_instance(build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-9").unwrap());
         assert_eq!(i1a.name, "default_1_1");
         assert_eq!(i1b.name, "default_1_1");
 
@@ -313,7 +317,7 @@ mod tests {
         add_instance(&storage, &dummy_instance(9, "i9", "default_1", &State::new(Online, 1))).unwrap();
         add_instance(&storage, &dummy_instance(10, "i10", "default_1", &State::new(Online, 1))).unwrap();
 
-        let i1 = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-10").unwrap();
+        let i1 = extract_instance(build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-10").unwrap());
         assert_eq!(i1.raft_id, 11);
         assert_eq!(i1.name, "i1");
         assert_eq!(i1.replicaset_name, "default_2");
@@ -321,7 +325,7 @@ mod tests {
 
         assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11]));
 
-        let i2 = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-11").unwrap();
+        let i2 = extract_instance(build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-11").unwrap());
         assert_eq!(i2.raft_id, 12);
         assert_eq!(i2.name, "i2");
         assert_eq!(i2.replicaset_name, "default_2");
@@ -329,14 +333,14 @@ mod tests {
         add_instance(&storage, &i2).unwrap();
         assert_eq!(replication_names(&ReplicasetName::from("default_2"), &storage), HashSet::from([11, 12]));
 
-        let i3 = build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-12").unwrap();
+        let i3 = extract_instance(build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-12").unwrap());
         assert_eq!(i3.raft_id, 13);
         assert_eq!(i3.name, "i3");
         assert_eq!(i3.replicaset_name, "default_3");
         add_instance(&storage, &i3).unwrap();
         assert_eq!(replication_names(&ReplicasetName::from("default_3"), &storage), HashSet::from([13]));
 
-        let i4 = build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-13").unwrap();
+        let i4 = extract_instance(build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-13").unwrap());
         assert_eq!(i4.raft_id, 14);
         assert_eq!(i4.name, "i4");
         assert_eq!(i4.replicaset_name, "default_3");
@@ -533,32 +537,32 @@ mod tests {
         add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-14")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-14")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-15")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-15")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-16")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-16")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-17")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-17")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-18")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-18")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
@@ -566,20 +570,20 @@ mod tests {
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-20")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-20")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-21")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-21")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_2");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-22")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-22")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_3");
         add_instance(&storage, &instance).unwrap();
 
@@ -596,7 +600,7 @@ mod tests {
         //
         // first instance
         //
-        let instance1 = build_instance(Some(&InstanceName::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-24").unwrap();
+        let instance1 = extract_instance(build_instance(Some(&InstanceName::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-24").unwrap());
         add_instance(&storage, &instance1).unwrap();
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
@@ -637,7 +641,7 @@ mod tests {
         //
         let fd = faildoms! {planet: Mars, owner: Mike};
         #[rustfmt::skip]
-        let instance2 = build_instance(Some(&InstanceName::from("i2")), None, &fd, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-26").unwrap();
+        let instance2 = extract_instance(build_instance(Some(&InstanceName::from("i2")), None, &fd, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-26").unwrap());
         add_instance(&storage, &instance2).unwrap();
         let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance2.failure_domain, fd);
@@ -663,8 +667,8 @@ mod tests {
         // add instance with new subdivision
         //
         #[rustfmt::skip]
-        let instance3_v1 = build_instance(Some(&InstanceName::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-27")
-            .unwrap();
+        let instance3_v1 = extract_instance(build_instance(Some(&InstanceName::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage, DEFAULT_TIER, PICODATA_VERSION, "test-uuid-27")
+            .unwrap());
         add_instance(&storage, &instance3_v1).unwrap();
         assert_eq!(
             instance3_v1.failure_domain,
@@ -693,32 +697,32 @@ mod tests {
         add_tier(&storage, third_tier, 2, true).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier, PICODATA_VERSION, "test-uuid-29")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier, PICODATA_VERSION, "test-uuid-29")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, second_tier, PICODATA_VERSION, "test-uuid-30")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Mars}, &storage, second_tier, PICODATA_VERSION, "test-uuid-30")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "compute_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Mars}, &storage, first_tier, PICODATA_VERSION, "test-uuid-31")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Mars}, &storage, first_tier, PICODATA_VERSION, "test-uuid-31")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "default_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Pluto}, &storage, third_tier, PICODATA_VERSION, "test-uuid-32")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Pluto}, &storage, third_tier, PICODATA_VERSION, "test-uuid-32")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 
         let instance =
-            build_instance(None, None, &faildoms! {planet: Venus}, &storage, third_tier, PICODATA_VERSION, "test-uuid-33")
-                .unwrap();
+            extract_instance(build_instance(None, None, &faildoms! {planet: Venus}, &storage, third_tier, PICODATA_VERSION, "test-uuid-33")
+                .unwrap());
         assert_eq!(instance.replicaset_name, "trash_1");
         add_instance(&storage, &instance).unwrap();
 

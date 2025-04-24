@@ -122,69 +122,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
     compare_picodata_versions(&global_cluster_version, req.picodata_version.as_ref())?;
 
-    let instance = storage.instances.by_uuid(&req.uuid)?;
-    if let Some(instance) = instance {
-        if let Some(requested_name) = req.instance_name {
-            if requested_name != instance.name {
-                return Err(Error::other(format!("instance with UUID {} already exists but with different name", req.uuid)));
-            }
-        }
-
-        if let Some(name) = req.replicaset_name {
-            if name != instance.replicaset_name {
-                return Err(Error::other(format!("instance with UUID {} already exists but with different replicaset name", req.uuid)));
-            }
-        }
-
-        if req.tier != instance.tier {
-            return Err(Error::other(format!("instance with UUID {} already exists but with different tier", req.uuid)));
-        }
-
-        if req.failure_domain != instance.failure_domain {
-            return Err(Error::other(format!("instance with UUID {} already exists but with different failure domain", req.uuid)));
-        }
-
-        if req.picodata_version != instance.picodata_version {
-            return Err(Error::other(format!("instance with UUID {} already exists but with different picodata version", req.uuid)));
-        }
-
-        if has_states!(instance, * -> not Offline) || has_states!(instance, not Offline -> *) {
-            return Err(Error::other(format!(
-                "instance with UUID {} is not in Offline state",
-                req.uuid
-            )));
-        }
-
-        let peer_addresses = node
-            .storage
-            .peer_addresses
-            .iter()?
-            .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
-            .collect();
-
-        let replicas = storage
-            .instances
-            .replicaset_instances(&instance.replicaset_name)
-            .expect("storage should not fail")
-            .filter(|i| !has_states!(i, Expelled -> *))
-            .map(|i| i.raft_id);
-        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
-        replication_addresses.insert(req.advertise_address.clone());
-
-        drop(guard);
-
-        return Ok(Response {
-            instance: Box::new(instance),
-            peer_addresses,
-            box_replication: replication_addresses.into_iter().collect(),
-            shredding: storage.db_config.shredding()?.expect("should be set"),
-            cluster_uuid,
-        });
-    }
-
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let instance = build_instance(
+        let (instance, instance_exists) = build_instance(
             req.instance_name.as_ref(),
             req.replicaset_name.as_ref(),
             &req.failure_domain,
@@ -193,6 +133,34 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             req.picodata_version.as_ref(),
             &req.uuid,
         )?;
+
+        if instance_exists {
+            let peer_addresses = node
+                .storage
+                .peer_addresses
+                .iter()?
+                .filter(|peer| peer.connection_type == traft::ConnectionType::Iproto)
+                .collect();
+
+            let replicas = storage
+                .instances
+                .replicaset_instances(&instance.replicaset_name)
+                .expect("storage should not fail")
+                .filter(|i| !has_states!(i, Expelled -> *))
+                .map(|i| i.raft_id);
+            let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
+            replication_addresses.insert(req.advertise_address.clone());
+
+            drop(guard);
+
+            return Ok(Response {
+                instance: Box::new(instance),
+                peer_addresses,
+                box_replication: replication_addresses.into_iter().collect(),
+                shredding: storage.db_config.shredding()?.expect("should be set"),
+                cluster_uuid,
+            });
+        }
 
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
@@ -294,7 +262,58 @@ pub fn build_instance(
     tier: &str,
     picodata_version: &str,
     uuid: &str,
-) -> Result<Instance> {
+) -> Result<(Instance, bool)> {
+    let existing_instance = storage.instances.by_uuid(uuid)?;
+    if let Some(instance) = existing_instance {
+        if let Some(requested_name) = requested_instance_name {
+            if requested_name != &instance.name {
+                return Err(Error::other(format!(
+                    "instance with UUID {} already exists but with different name",
+                    uuid
+                )));
+            }
+        }
+
+        if let Some(name) = requested_replicaset_name {
+            if name != &instance.replicaset_name {
+                return Err(Error::other(format!(
+                    "instance with UUID {} already exists but with different replicaset name",
+                    uuid
+                )));
+            }
+        }
+
+        if tier != instance.tier {
+            return Err(Error::other(format!(
+                "instance with UUID {} already exists but with different tier",
+                uuid
+            )));
+        }
+
+        if failure_domain != &instance.failure_domain {
+            return Err(Error::other(format!(
+                "instance with UUID {} already exists but with different failure domain",
+                uuid
+            )));
+        }
+
+        if picodata_version != instance.picodata_version {
+            return Err(Error::other(format!(
+                "instance with UUID {} already exists but with different picodata version",
+                uuid
+            )));
+        }
+
+        if has_states!(instance, * -> not Offline) || has_states!(instance, not Offline -> *) {
+            return Err(Error::other(format!(
+                "instance with UUID {} is not in Offline state",
+                uuid
+            )));
+        }
+
+        return Ok((instance, true));
+    }
+
     // NOTE: currently we don't ever remove entries from `_pico_instance` even
     // when expelling instances. This makes it so we can get a unique raft_id by
     // selecting max raft_id from _pico_instance and adding one. However in the
@@ -398,7 +417,7 @@ pub fn build_instance(
 
     let instance_uuid = uuid.to_string();
 
-    Ok(Instance {
+    let instance = Instance {
         raft_id,
         name: instance_name,
         uuid: instance_uuid,
@@ -409,7 +428,9 @@ pub fn build_instance(
         failure_domain: failure_domain.clone(),
         tier: tier.name.clone(),
         picodata_version: picodata_version.to_string(),
-    })
+    };
+
+    Ok((instance, false))
 }
 
 /// Choose [`InstanceName`] based on `tier name`.
