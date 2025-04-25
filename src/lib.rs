@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use storage::ToEntryIter;
 
 use ::raft::prelude as raft;
+use ::tarantool::error::BoxError;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::error::IntoBoxError;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
@@ -1462,7 +1463,11 @@ fn postjoin(
         };
 
         if has_states!(instance, Expelled -> *) {
-            return Err(Error::Expelled);
+            return Err(BoxError::new(
+                ErrorCode::InstanceExpelled,
+                "current instance is expelled from the cluster",
+            )
+            .into());
         }
 
         let cluster_name = raft_storage

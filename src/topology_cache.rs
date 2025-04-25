@@ -415,6 +415,16 @@ impl TopologyCacheMutable {
         })
     }
 
+    /// Return info about the currently running instance.
+    ///
+    /// This value should almost always be available. It may be `None` for a
+    /// short period of time when an instance is booting up before it had time
+    /// to apply the corresponding raft log entries.
+    #[inline(always)]
+    pub fn try_this_instance(&self) -> Option<&Instance> {
+        self.this_instance.get()
+    }
+
     #[inline(always)]
     pub fn this_instance(&self) -> &Instance {
         self.this_instance
