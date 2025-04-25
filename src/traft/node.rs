@@ -714,11 +714,7 @@ impl NodeImpl {
         Ok(rx)
     }
 
-    fn handle_committed_entries(
-        &mut self,
-        entries: &[raft::Entry],
-        expelled: &mut bool,
-    ) -> traft::Result<()> {
+    fn handle_committed_entries(&mut self, entries: &[raft::Entry]) -> traft::Result<()> {
         let mut entries = entries.iter().peekable();
 
         while let Some(&entry) = entries.peek() {
@@ -738,7 +734,7 @@ impl NodeImpl {
                 let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
-                        apply_entry_result = self.handle_committed_normal_entry(entry, expelled);
+                        apply_entry_result = self.handle_committed_normal_entry(entry);
                         if !matches!(apply_entry_result, EntryApplied(_)) {
                             return Ok(());
                         }
@@ -838,7 +834,7 @@ impl NodeImpl {
     /// Actions needed when applying a DML entry.
     ///
     /// Returns Ok(_) if entry was applied successfully
-    fn handle_dml_entry(&self, op: &Dml, expelled: &mut bool) -> Result<Option<AppliedDml>, ()> {
+    fn handle_dml_entry(&self, op: &Dml) -> Result<Option<AppliedDml>, ()> {
         let space = op.space();
 
         // In order to implement the audit log events, we have to compare
@@ -913,11 +909,6 @@ impl NodeImpl {
                     let initiator_def = user_by_id(initiator).expect("user must exist");
 
                     do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
-
-                    if has_states!(new, Expelled -> *) && new.raft_id == self.raft_id() {
-                        // cannot exit during a transaction
-                        *expelled = true;
-                    }
                 }
 
                 self.topology_cache.update_instance(old, new);
@@ -968,11 +959,7 @@ impl NodeImpl {
     }
 
     /// Is called during a transaction
-    fn handle_committed_normal_entry(
-        &mut self,
-        entry: traft::Entry,
-        expelled: &mut bool,
-    ) -> ApplyEntryResult {
+    fn handle_committed_normal_entry(&mut self, entry: traft::Entry) -> ApplyEntryResult {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
         let index = entry.index;
         let op = entry.into_op().unwrap_or(Op::Nop);
@@ -989,7 +976,7 @@ impl NodeImpl {
             Op::BatchDml { ops } => {
                 let mut applied_dmls = Vec::with_capacity(ops.len());
                 for op in ops.into_iter() {
-                    match self.handle_dml_entry(&op, expelled) {
+                    match self.handle_dml_entry(&op) {
                         Ok(Some(applied_dml)) => applied_dmls.push(applied_dml),
                         Err(()) => return SleepAndRetry,
                         _ => (),
@@ -998,7 +985,7 @@ impl NodeImpl {
 
                 res = EntryApplied(applied_dmls);
             }
-            Op::Dml(op) => match self.handle_dml_entry(&op, expelled) {
+            Op::Dml(op) => match self.handle_dml_entry(&op) {
                 Ok(applied_dml) => res = EntryApplied(Vec::from_iter(applied_dml)),
                 Err(()) => return SleepAndRetry,
             },
@@ -2294,8 +2281,6 @@ impl NodeImpl {
             return Ok(());
         }
 
-        let mut expelled = false;
-
         let mut ready: raft::Ready = self.raw_node.ready();
 
         // Apply soft state changes before anything else, so that this info is
@@ -2451,7 +2436,7 @@ impl NodeImpl {
         // Apply committed entries.
         let committed_entries = ready.committed_entries();
         if !committed_entries.is_empty() {
-            let res = self.handle_committed_entries(committed_entries, &mut expelled);
+            let res = self.handle_committed_entries(committed_entries);
             if let Err(e) = res {
                 tlog!(Warning, "dropping raft ready: {ready:#?}");
                 panic!("transaction failed: {e}");
@@ -2500,7 +2485,7 @@ impl NodeImpl {
         // These are probably entries which we've just persisted.
         let committed_entries = light_rd.committed_entries();
         if !committed_entries.is_empty() {
-            let res = self.handle_committed_entries(committed_entries, &mut expelled);
+            let res = self.handle_committed_entries(committed_entries);
             if let Err(e) = res {
                 panic!("transaction failed: {e}");
             }
@@ -2512,10 +2497,6 @@ impl NodeImpl {
         self.raw_node.advance_apply();
 
         self.main_loop_status("idle");
-
-        if expelled {
-            return Err(Error::Expelled);
-        }
 
         Ok(())
     }
@@ -2742,6 +2723,9 @@ impl MainLoop {
         let old_last_index = res.ok();
 
         let res = node_impl.advance(); // yields
+        if let Err(e) = res {
+            tlog!(Error, "error during raft main loop iteration: {e}");
+        }
 
         if let Some(old_last_index) = old_last_index {
             let res = node_impl.do_raft_log_auto_compaction(old_last_index);
@@ -2750,26 +2734,14 @@ impl MainLoop {
             }
         }
 
-        // TODO:
-        // if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
-        //     if has_states!(me, Expelled -> *) {
-        //         tlog!(Info, "expelled, shutting down");
-        //         crate::tarantool::exit(0);
-        //     }
-        // }
+        if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
+            if has_states!(me, Expelled -> *) {
+                tlog!(Info, "expelled, shutting down");
+                crate::tarantool::exit(1);
+            }
+        }
 
         drop(node_impl);
-
-        match res {
-            Err(e @ Error::Expelled) => {
-                tlog!(Info, "{e}, shutting down");
-                crate::tarantool::exit(0);
-            }
-            Err(e) => {
-                tlog!(Error, "error during raft main loop iteration: {e}");
-            }
-            Ok(()) => {}
-        }
 
         ControlFlow::Continue(())
     }
