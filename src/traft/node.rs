@@ -2296,10 +2296,6 @@ impl NodeImpl {
 
         let mut expelled = false;
 
-        // Save the index of last entry before applying any changes.
-        // This is used later when doing raft log auto-compaction.
-        let old_last_index = self.raft_storage.last_index()?;
-
         let mut ready: raft::Ready = self.raw_node.ready();
 
         // Apply soft state changes before anything else, so that this info is
@@ -2514,8 +2510,6 @@ impl NodeImpl {
 
         // Advance the apply index.
         self.raw_node.advance_apply();
-
-        self.do_raft_log_auto_compaction(old_last_index)?;
 
         self.main_loop_status("idle");
 
@@ -2739,7 +2733,31 @@ impl MainLoop {
             node_impl.raw_node.tick();
         }
 
+        // Save the index of last entry before applying any changes.
+        // This is used later when doing raft log auto-compaction.
+        let res = node_impl.raft_storage.last_index();
+        if let Err(e) = &res {
+            tlog!(Error, "failed getting last index: {e}");
+        }
+        let old_last_index = res.ok();
+
         let res = node_impl.advance(); // yields
+
+        if let Some(old_last_index) = old_last_index {
+            let res = node_impl.do_raft_log_auto_compaction(old_last_index);
+            if let Err(e) = res {
+                tlog!(Error, "raft log auto-compaction failed: {e}");
+            }
+        }
+
+        // TODO:
+        // if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
+        //     if has_states!(me, Expelled -> *) {
+        //         tlog!(Info, "expelled, shutting down");
+        //         crate::tarantool::exit(0);
+        //     }
+        // }
+
         drop(node_impl);
 
         match res {
