@@ -77,6 +77,12 @@
 - инстанс инициализирует локальную БД и актуализирует свое состояние
   относительно других реплик
 
+!!! note "Примечание"
+    Если кластер состоит из инстансов разных версий
+    (например, различающихся в минорной части версии), то
+    [DDL](../reference/sql/ddl.md) будет автоматически ограничен только
+    DROP-операциями.
+
 [`picodata run`]: ../reference/cli.md#run
 [discovery]: ../architecture/discovery.md
 [instance_lifecycle]: ../architecture/instance_lifecycle.md
