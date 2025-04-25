@@ -493,6 +493,15 @@ impl Tables {
         })
     }
 
+    #[inline(always)]
+    pub fn rename(&self, id: u32, new_name: &str) -> tarantool::Result<()> {
+        // We can't use UpdateOps as we use custom encoding
+        let mut table_def = self.get(id)?.expect("should exist");
+        table_def.name = new_name.to_string();
+        self.put(&table_def)?;
+        Ok(())
+    }
+
     #[inline]
     pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
         use ::tarantool::msgpack;
@@ -541,6 +550,14 @@ impl Tables {
         let mut table_def = self.get(id)?.expect("should exist");
         table_def.format = format.to_vec();
         self.put(&table_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn update_schema_version(&self, id: SpaceId, schema_version: u64) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(column_name!(TableDef, schema_version), schema_version)?;
+        self.space.update(&[id], ops)?;
         Ok(())
     }
 

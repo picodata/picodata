@@ -233,30 +233,17 @@ truncate_table ::= 'TRUNCATE' ('TABLE')? table
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_table    ::= 'ALTER' 'TABLE' table
                    (
-                       ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
-                       | ('RENAME' 'COLUMN'? column 'TO' column)
-                       | ('DROP' 'COLUMN'? ('IF' 'EXISTS')? column)
-                       | ('ALTER' 'COLUMN'? column
-                           (
-                               (('SET' 'DATA')? 'TYPE' type)
-                               | (('SET' | 'DROP') 'NOT' 'NULL')
-                           )
+                       ('RENAME' 'TO' table)
+                       | (
+                            ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
+                            (
+                            ','
+                                (
+                                    ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
+                                )
+                            )*
                        )
                    )
-                   (
-                       ','
-                       (
-                           ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
-                           | ('RENAME' 'COLUMN'? column 'TO' column)
-                           | ('DROP' 'COLUMN'? ('IF' 'EXISTS')? column)
-                           | ('ALTER' 'COLUMN'? column
-                               (
-                                   (('SET' 'DATA')? 'TYPE' type)
-                                   | (('SET' | 'DROP') 'NOT' 'NULL')
-                               )
-                           )
-                       )
-                   )*
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_role      ::= 'DROP' 'ROLE' ('IF' 'EXISTS')? role

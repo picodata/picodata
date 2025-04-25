@@ -126,6 +126,21 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
+                ddl:
+                    Ddl::RenameTable {
+                        table_id,
+                        old_name,
+                        new_name,
+                        ..
+                    },
+            } => {
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, RenameTable({table_id}, {old_name} -> {new_name}))"
+                )
+            }
+            Self::DdlPrepare {
+                schema_version,
                 ddl: Ddl::TruncateTable { id, .. },
             } => {
                 write!(f, "DdlPrepare({schema_version}, TruncateTable({id}))")
@@ -185,7 +200,7 @@ impl std::fmt::Display for Op {
             } => {
                 write!(
                     f,
-                    "DdlPrepare({schema_version}, CreateProcedure({routine_id}, {old_name} -> {new_name}))"
+                    "DdlPrepare({schema_version}, RenameProcedure({routine_id}, {old_name} -> {new_name}))"
                 )
             }
             Self::DdlCommit => write!(f, "DdlCommit"),
@@ -742,6 +757,14 @@ pub enum Ddl {
     },
     RenameProcedure {
         routine_id: u32,
+        old_name: String,
+        new_name: String,
+        initiator_id: UserId,
+        owner_id: UserId,
+        schema_version: u64,
+    },
+    RenameTable {
+        table_id: u32,
         old_name: String,
         new_name: String,
         initiator_id: UserId,

@@ -1096,6 +1096,34 @@ impl NodeImpl {
                         );
                     }
 
+                    Ddl::RenameTable {
+                        table_id,
+                        old_name,
+                        new_name,
+                        initiator_id,
+                        schema_version,
+                        ..
+                    } => {
+                        self.storage
+                            .tables
+                            .update_operable(table_id, true)
+                            .expect("storage shouldn't fail");
+                        self.storage
+                            .tables
+                            .update_schema_version(table_id, schema_version)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator_id).expect("user must exist");
+                        crate::audit!(
+                            message: "renamed table `{old_name}` to `{new_name}`",
+                            title: "rename_table",
+                            severity: Medium,
+                            old_name: &old_name,
+                            new_name: &new_name,
+                            initiator: initiator_def.name,
+                        );
+                    }
+
                     Ddl::ChangeFormat {
                         table_id,
                         initiator_id,
@@ -1266,6 +1294,19 @@ impl NodeImpl {
 
                     Ddl::DropTable { id, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
+                            .expect("storage shouldn't fail");
+                    }
+
+                    Ddl::RenameTable {
+                        table_id, old_name, ..
+                    } => {
+                        self.storage
+                            .tables
+                            .rename(table_id, old_name.as_str())
+                            .expect("storage shouldn't fail");
+                        self.storage
+                            .tables
+                            .update_operable(table_id, true)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1780,6 +1821,19 @@ impl NodeImpl {
             }
             Ddl::DropTable { id, .. } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
+                    .expect("storage shouldn't fail");
+            }
+            Ddl::RenameTable {
+                table_id, new_name, ..
+            } => {
+                self.storage
+                    .tables
+                    .rename(table_id, new_name.as_str())
+                    .expect("table existence must have been checked before commit");
+
+                self.storage
+                    .tables
+                    .update_operable(table_id, false)
                     .expect("storage shouldn't fail");
             }
             Ddl::TruncateTable { id, .. } => {

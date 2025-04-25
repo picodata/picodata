@@ -129,9 +129,12 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
             PartitionBySpec = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
     DropTable = ${ ^"drop" ~ W ~ ^"table" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     TruncateTable = ${ ^"truncate" ~ W ~ (^"table" ~ W)? ~ (PublicSchema)? ~ Table ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
-    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableColumnAction ~ (WO ~ "," ~ WO ~ AlterTableColumnAction)* ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}
+    AlterTable = ${ ^"alter" ~ W ~ ^"table" ~ W ~ (PublicSchema)? ~ TableNameIdentifier ~ W ~ AlterTableAction ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?}
             TableNameIdentifier = @{ Identifier }
             ColumnNameIdentifier = @{ Identifier }
+        AlterTableAction = _{ AlterTableRename | AlterTableColumnActions } 
+        AlterTableRename = { ^"rename" ~ W ~ ^"to" ~ W ~ (PublicSchema)? ~ TableNameIdentifier }
+        AlterTableColumnActions = _{ AlterTableColumnAction ~ (WO ~ "," ~ WO ~ AlterTableColumnAction)* }
         AlterTableColumnAction = _{ AlterTableColumnAdd | AlterTableColumnDrop | AlterTableColumnAlter | AlterTableColumnRename }
             // examples:
             // - "address TEXT": add a single column with only a type

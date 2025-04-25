@@ -105,3 +105,18 @@ sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+
+
+-- TEST: rename table
+-- SQL:
+ALTER TABLE nonexistent_table RENAME TO no_matter;
+ALTER TABLE t RENAME TO t;
+ALTER TABLE t RENAME TO public._pico_tier;
+ALTER TABLE public.t RENAME TO _pico_tier;
+ALTER TABLE public.t RENAME TO public._pico_tier;
+-- ERROR:
+table nonexistent_table does not exist
+table t already exists
+table _pico_tier already exists
+table _pico_tier already exists
+table _pico_tier already exists

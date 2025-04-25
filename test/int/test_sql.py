@@ -6859,3 +6859,108 @@ def test_scalar_function_instance_uuid(cluster: Cluster):
         password,
     )
     assert query == [[i2_uuid]]
+
+
+def test_alter_table_rename(cluster: Cluster):
+    i1 = cluster.add_instance()
+    i2 = cluster.add_instance()
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    user = "dmitry"
+    password = "Password1"
+    i1.create_user(with_name=user, with_password=password, with_auth="chap-sha1")
+
+    distributions_and_names = [("BY (id)", "sharded"), ("GLOBALLY", "global")]
+
+    for distribution_and_name in distributions_and_names:
+        distribution = distribution_and_name[0]
+        table_name = distribution_and_name[1]
+        new_table_name = "new_" + table_name
+
+        # sharded table
+        ddl = i1.sql(
+            f"""
+            CREATE TABLE {table_name} (id INTEGER NOT NULL, PRIMARY KEY (id))
+            USING memtx DISTRIBUTED {distribution}
+            OPTION (TIMEOUT = 3.0);
+            """
+        )
+        assert ddl["row_count"] == 1
+
+        result = i1.sql(
+            f"""
+            INSERT INTO {table_name} VALUES (1)
+            """
+        )
+        assert result["row_count"] == 1
+
+        # user doesn't have privilege to rename this table
+        with pytest.raises(TarantoolError, match=f"Alter access to space '{table_name}' is denied for user 'dmitry'"):
+            i1.sql(
+                f"""
+                ALTER TABLE {table_name} RENAME TO no_matter
+                """,
+                user=user,
+                password=password,
+            )
+
+        acl = i1.sql(
+            f"""
+            GRANT ALTER ON TABLE {table_name} TO dmitry
+            """
+        )
+        assert acl["row_count"] == 1
+        acl = i1.sql(
+            f"""
+            GRANT WRITE ON TABLE {table_name} TO dmitry
+            """
+        )
+        assert acl["row_count"] == 1
+        acl = i1.sql(
+            f"""
+            GRANT READ ON TABLE {table_name} TO dmitry
+            """
+        )
+        assert acl["row_count"] == 1
+
+        # after grant it's ok to rename
+        ddl = i1.sql(
+            f"""
+            ALTER TABLE {table_name} RENAME TO {new_table_name}
+            """,
+            user=user,
+            password=password,
+        )
+        assert ddl["row_count"] == 1
+
+        # renamed table content is present
+        for intance in [i1, i2]:
+            query = i1.sql(
+                f"""
+                SELECT * FROM {new_table_name}
+                """,
+                user=user,
+                password=password,
+            )
+            assert sorted(query) == [[1]]
+
+        result = i2.sql(
+            f"""
+            INSERT INTO {new_table_name} VALUES (2);
+            """,
+            user=user,
+            password=password,
+        )
+        assert result["row_count"] == 1
+
+        for intance in [i1, i2]:
+            query = i1.sql(
+                f"""
+                SELECT * FROM {new_table_name}
+                """,
+                user=user,
+                password=password,
+            )
+            assert sorted(query) == [[1], [2]]

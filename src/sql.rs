@@ -39,10 +39,10 @@ use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::node::{
-    AlterSystem, AlterTableOp, AlterUser, Constant, CreateIndex, CreateProc, CreateRole,
-    CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole, DropTable, DropUser,
-    GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege,
-    ScanRelation, SetParam, Update,
+    AlterColumn, AlterSystem, AlterTableOp, AlterUser, Constant, CreateIndex, CreateProc,
+    CreateRole, CreateTable, CreateUser, Delete, DropIndex, DropProc, DropRole, DropTable,
+    DropUser, GrantPrivilege, Insert, Node as IrNode, NodeOwned, Procedure, RenameRoutine,
+    RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
 use tarantool::decimal::Decimal;
@@ -1541,52 +1541,74 @@ fn ddl_ir_node_to_op_or_result(
                 return Err(error::DoesNotExist::Table(alter_table.name.clone()).into());
             };
 
-            let current_table_format = table.format.clone();
-            let mut new_table_format = current_table_format.clone(); // inevitable clone
+            match &alter_table.op {
+                AlterTableOp::AlterColumn(columns) => {
+                    let current_table_format = table.format.clone();
+                    let mut new_table_format = current_table_format.clone(); // inevitable clone
 
-            for op in alter_table.ops.iter() {
-                match op {
-                    &AlterTableOp::Add {
-                        ref column,
-                        if_not_exists,
-                    } => {
-                        // due to unclear semantics of IF NOT EXISTS
-                        if if_not_exists {
-                            return Err(Error::Unsupported(error::Unsupported::new(
-                                "IF NOT EXISTS".into(),
-                                None,
-                            )));
-                        }
+                    for op in columns.iter() {
+                        match op {
+                            &AlterColumn::Add {
+                                ref column,
+                                if_not_exists,
+                            } => {
+                                // due to unclear semantics of IF NOT EXISTS
+                                if if_not_exists {
+                                    return Err(Error::Unsupported(error::Unsupported::new(
+                                        "IF NOT EXISTS".into(),
+                                        None,
+                                    )));
+                                }
 
-                        // do not add this column with the same name
-                        for table_field in &new_table_format {
-                            if table_field.name == column.name {
-                                return Err(
-                                    error::AlreadyExists::Column(column.name.clone()).into()
-                                );
+                                // do not add this column with the same name
+                                for table_field in &new_table_format {
+                                    if table_field.name == column.name {
+                                        return Err(error::AlreadyExists::Column(
+                                            column.name.clone(),
+                                        )
+                                        .into());
+                                    }
+                                }
+
+                                // append this new column
+                                let field = tarantool::space::Field {
+                                    name: column.name.to_string(),
+                                    field_type: FieldType::from(&column.data_type),
+                                    is_nullable: column.is_nullable,
+                                };
+                                new_table_format.push(field);
                             }
                         }
-
-                        // append this new column
-                        let field = tarantool::space::Field {
-                            name: column.name.to_string(),
-                            field_type: FieldType::from(&column.data_type),
-                            is_nullable: column.is_nullable,
-                        };
-                        new_table_format.push(field);
                     }
+
+                    Ok(Continue(Op::DdlPrepare {
+                        schema_version,
+                        ddl: OpDdl::ChangeFormat {
+                            table_id: table.id,
+                            old_format: current_table_format,
+                            new_format: new_table_format,
+                            initiator_id: current_user,
+                        },
+                    }))
+                }
+                AlterTableOp::RenameTable { new_table_name } => {
+                    if storage.tables.by_name(new_table_name)?.is_some() {
+                        return Err(error::AlreadyExists::Table(new_table_name.clone()).into());
+                    };
+
+                    Ok(Continue(Op::DdlPrepare {
+                        schema_version,
+                        ddl: OpDdl::RenameTable {
+                            table_id: table.id,
+                            old_name: table.name.clone(),
+                            new_name: new_table_name.to_string(),
+                            initiator_id: current_user,
+                            owner_id: table.owner,
+                            schema_version,
+                        },
+                    }))
                 }
             }
-
-            Ok(Continue(Op::DdlPrepare {
-                schema_version,
-                ddl: OpDdl::ChangeFormat {
-                    table_id: table.id,
-                    old_format: current_table_format,
-                    new_format: new_table_format,
-                    initiator_id: current_user,
-                },
-            }))
         }
         DdlOwned::SetParam(SetParam { param_value, .. }) => {
             tlog!(
@@ -1634,14 +1656,14 @@ fn check_ddl_applied(
 
             if table_def.schema_version != schema_version {
                 #[rustfmt::skip]
-                tlog!(Warning, "Table `{name}` has changed, schema version: {}", table_def.schema_version);
+                            tlog!(Warning, "Table `{name}` has changed, schema version: {}", table_def.schema_version);
                 #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but table was changed afterwards.");
+                            return error("Can't find out the result of the operation, but table was changed afterwards.");
             }
 
             if !table_def.operable {
                 tlog!(Warning, "Table `{name}` is not operable. Try to found it's definition in _pico_table with schema_version={schema_version}. \
-                    If it's found there with operable=true, then operation was ended successfully, otherwise operation still in progress.");
+                            If it's found there with operable=true, then operation was ended successfully, otherwise operation still in progress.");
                 return error("Table creation is in progress.");
             }
 
@@ -1655,12 +1677,32 @@ fn check_ddl_applied(
 
             if table_def.operable {
                 #[rustfmt::skip]
-                tlog!(Warning, "Table with id `{id}` is operable while awaiting for result of DropTable");
+                    tlog!(Warning, "Table with id `{id}` is operable while awaiting for result of DropTable");
                 return error("Operation was aborted or table was recreated afterwards.");
             }
 
             tlog!(Warning, "Table with id `{id}` is not operable");
             error("DropTable is not yet applied or another DDL on this table is in progress.")
+        }
+        OpDdl::RenameTable {
+            old_name, new_name, ..
+        } => {
+            // New name should exists
+            let Some(new_table_def) = storage.tables.by_name(&new_name)? else {
+                #[rustfmt::skip]
+                tlog!(Warning, "While renaming table `{old_name}` to `{new_name}` can't find it in _pico_table");
+                return error("RenameTable aborted or renamed table manually deleted after successfull operation.");
+            };
+
+            if !new_table_def.operable {
+                #[rustfmt::skip]
+                tlog!(Warning, "Table `{new_name}` is not operable");
+                #[rustfmt::skip]
+                return error("RenameTable still in progress or other operation on this routine in progress.");
+            }
+
+            // Can't guarantee that result of our operation anyway.
+            error("Table with new name is found, but not sure that it's result of our operation.")
         }
         OpDdl::CreateIndex { name, .. } => {
             let Some(index_def) = storage.indexes.by_name(&name)? else {
@@ -1670,9 +1712,9 @@ fn check_ddl_applied(
 
             if index_def.schema_version != schema_version {
                 #[rustfmt::skip]
-                tlog!(Warning, "Index `{name}` has changed, schema version: {}", index_def.schema_version);
+                    tlog!(Warning, "Index `{name}` has changed, schema version: {}", index_def.schema_version);
                 #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but index was changed afterwards.");
+                    return error("Can't find out the result of the operation, but index was changed afterwards.");
             }
 
             if !index_def.operable {
@@ -1694,12 +1736,12 @@ fn check_ddl_applied(
 
             if index_def.operable {
                 #[rustfmt::skip]
-                tlog!(Warning, "Index with id `{index_id}` on space with id `{space_id}` is operable while awaiting for result of DropIndex");
+                    tlog!(Warning, "Index with id `{index_id}` on space with id `{space_id}` is operable while awaiting for result of DropIndex");
                 return error("Operation was aborted or after successfull operation was recreated");
             }
 
             #[rustfmt::skip]
-            tlog!(Warning, "Index with id `{index_id}` on space with space_id `{space_id}` is not operable");
+                tlog!(Warning, "Index with id `{index_id}` on space with space_id `{space_id}` is not operable");
             error("DropIndex not yet applied or another DropIndex on this index is in progress.")
         }
         OpDdl::CreateProcedure { name, .. } => {
@@ -1710,9 +1752,9 @@ fn check_ddl_applied(
 
             if routine_def.schema_version != schema_version {
                 #[rustfmt::skip]
-                tlog!(Warning, "Routine `{name}` has changed, schema version: {}", routine_def.schema_version);
+                    tlog!(Warning, "Routine `{name}` has changed, schema version: {}", routine_def.schema_version);
                 #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but routine was changed afterwards.");
+                    return error("Can't find out the result of the operation, but routine was changed afterwards.");
             }
 
             if !routine_def.operable {
@@ -1731,12 +1773,12 @@ fn check_ddl_applied(
 
             if routine_def.operable {
                 #[rustfmt::skip]
-                tlog!(Warning, "Routine with id `{id}` is operable while awaiting for result of DropTable");
+                    tlog!(Warning, "Routine with id `{id}` is operable while awaiting for result of DropTable");
                 return error("Operation was aborted or after successfull operation was recreated");
             }
 
             #[rustfmt::skip]
-            tlog!(Warning, "Routine with id `{id}` is not operable");
+                tlog!(Warning, "Routine with id `{id}` is not operable");
             error("DropRoutine not yet applied or another DropRoutine on this routine is in progress.")
         }
         OpDdl::RenameProcedure {
@@ -1745,13 +1787,13 @@ fn check_ddl_applied(
             // New name should exists
             let Some(new_routine_def) = storage.routines.by_name(&new_name)? else {
                 #[rustfmt::skip]
-                tlog!(Warning, "While renaming routine `{old_name}` to `{new_name}` can't find it in _pico_routine");
+                    tlog!(Warning, "While renaming routine `{old_name}` to `{new_name}` can't find it in _pico_routine");
                 return error("RenameRoutine aborted or renamed routine manually deleted after successfull operation.");
             };
 
             if !new_routine_def.operable {
                 #[rustfmt::skip]
-                tlog!(Warning, "Routine `{new_name}` is not operable");
+                    tlog!(Warning, "Routine `{new_name}` is not operable");
                 return error("RenameRoutine still in progress or other operation on this routine in progress.");
             }
 
@@ -1770,7 +1812,7 @@ fn check_ddl_applied(
 
             if new_format != table_def.format {
                 #[rustfmt::skip]
-                tlog!(Warning, "Table `{}` has old format `{:?}`", table_def.name, table_def.format);
+                    tlog!(Warning, "Table `{}` has old format `{:?}`", table_def.name, table_def.format);
                 return error("ChangeFormat could have been automaticaly aborted or after successfull execution format manually changed back.");
             }
 

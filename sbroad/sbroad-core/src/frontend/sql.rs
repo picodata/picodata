@@ -7,8 +7,9 @@ use crate::ir::node::ddl::DdlOwned;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy, LocalTimestamp,
-    NamedWindows, Over, Reference, ReferenceAsteriskSource, ScalarFunction, TruncateTable, Window,
+    Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
+    LocalTimestamp, NamedWindows, Over, Reference, ReferenceAsteriskSource, ScalarFunction,
+    TruncateTable, Window,
 };
 use crate::ir::relation::Type;
 use ahash::{AHashMap, AHashSet};
@@ -1015,20 +1016,20 @@ fn parse_alter_table(
         node.rule
     );
 
-    let mut table_name = parse_identifier(ast, node.first_child())?;
+    let mut table_name = None;
+    let mut op = None;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut timeout = get_default_timeout();
-
-    let mut add_ops = Vec::new();
 
     for id in &node.children {
         let node = ast.nodes.get_node(*id)?;
         match node.rule {
             Rule::TableNameIdentifier => {
-                table_name = parse_identifier(ast, *id)?;
+                table_name = Some(parse_identifier(ast, *id)?);
             }
             Rule::AlterTableColumnAdd => {
                 let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
+                let mut add_ops = Vec::new();
                 for id in &node.children {
                     let node = ast.nodes.get_node(*id)?;
                     match node.rule {
@@ -1064,7 +1065,7 @@ fn parse_alter_table(
                                 true // column is nullable by default unless otherwise specified
                             };
 
-                            add_ops.push(AlterTableOp::Add {
+                            add_ops.push(AlterColumn::Add {
                                 column: ColumnDef {
                                     name,
                                     data_type,
@@ -1076,6 +1077,25 @@ fn parse_alter_table(
                         rule => unreachable!("pest should not allow rule: {rule:?}"),
                     }
                 }
+
+                match &mut op {
+                    Some(op) => {
+                        let AlterTableOp::AlterColumn(alter_column_ops) = op else {
+                            unreachable!("Single alter table statement consists of several AlterColumns or single RenameTable");
+                        };
+
+                        alter_column_ops.extend(add_ops.into_iter());
+                    }
+                    None => {
+                        op = Some(AlterTableOp::AlterColumn(add_ops));
+                    }
+                };
+            }
+            Rule::AlterTableRename => {
+                // it's the only child
+                let id = node.first_child();
+                let new_table_name = parse_identifier(ast, id)?;
+                op = Some(AlterTableOp::RenameTable { new_table_name });
             }
             Rule::AlterTableColumnDrop
             | Rule::AlterTableColumnAlter
@@ -1098,14 +1118,11 @@ fn parse_alter_table(
         }
     }
 
-    let mut ops = Vec::new();
-    ops.append(&mut add_ops);
-
     Ok(AlterTable {
-        name: table_name,
+        name: table_name.expect("should be initialized"),
         wait_applied_globally,
         timeout,
-        ops,
+        op: op.expect("should be initialized"),
     })
 }
 

@@ -859,7 +859,7 @@ pub struct AlterTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
     pub timeout: Decimal,
-    pub ops: Vec<AlterTableOp>,
+    pub op: AlterTableOp,
 }
 
 impl From<AlterTable> for NodeAligned {
@@ -870,6 +870,12 @@ impl From<AlterTable> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum AlterTableOp {
+    AlterColumn(Vec<AlterColumn>),
+    RenameTable { new_table_name: SmolStr },
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum AlterColumn {
     Add {
         column: ColumnDef,
         if_not_exists: bool,

@@ -11,6 +11,7 @@ use crate::traft::Result;
 use crate::{column_name, traft};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::str::FromStr;
 use tarantool::auth::AuthDef;
 use tarantool::decimal::Decimal;
@@ -94,6 +95,14 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
 
         Ddl::DropTable { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+        }
+        Ddl::RenameTable {
+            table_id,
+            ref old_name,
+            ..
+        } => {
+            ddl_rename_table_on_master(table_id, old_name)?;
+            set_local_schema_version(version)?;
         }
         Ddl::TruncateTable { .. } => {
             unreachable!("TRUNCATE execution should not reach `ddl_abort_on_master` call")
@@ -254,6 +263,28 @@ pub fn ddl_create_function_on_master(storage: &Catalog, func_id: u32) -> traft::
 
     func_space.put(&FunctionMetadata::from(&routine_def))?;
     Ok(())
+}
+
+pub fn ddl_rename_table_on_master(table_id: u32, new_name: &str) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+    let new_name_c_string =
+        CString::new(new_name).expect("table name shouldn't contain interior null byte");
+    let rc = unsafe { sql_rename_table(table_id, new_name_c_string.as_ptr()) };
+    if rc == -1 {
+        return Err(Error::other(format!(
+            "error while renaming table with id {table_id} to {new_name}",
+        )));
+    }
+
+    return Ok(());
+
+    extern "C" {
+        fn sql_rename_table(
+            table_id: core::ffi::c_uint,
+            new_table_name: *const core::ffi::c_char,
+        ) -> core::ffi::c_int;
+    }
 }
 
 pub fn ddl_rename_function_on_master(

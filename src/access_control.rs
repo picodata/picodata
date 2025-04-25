@@ -377,6 +377,19 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
             PrivType::Alter,
             as_user,
         ),
+        op::Ddl::RenameTable {
+            table_id,
+            old_name,
+            owner_id,
+            ..
+        } => box_access_check_ddl_as_user(
+            old_name,
+            *table_id,
+            *owner_id,
+            TntSchemaObjectType::Space,
+            PrivType::Alter,
+            as_user,
+        ),
     }
 }
 

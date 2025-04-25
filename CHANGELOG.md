@@ -124,6 +124,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### SQL
 - SQL supports `TRUNCATE` operation.
 - SQL supports `ALTER TABLE t ADD COLUMN` operation.
+- SQL supports `ALTER TABLE old_table_name RENAME TO new_table_name` operation.
 - SQL supports volatile scalar functions: `instance_uuid`.
 
 ### Configuration

@@ -7,6 +7,7 @@ use crate::storage::schema::ddl_drop_function_on_master;
 use crate::storage::schema::ddl_drop_index_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::schema::ddl_rename_function_on_master;
+use crate::storage::schema::ddl_rename_table_on_master;
 use crate::storage::schema::ddl_truncate_space_on_master;
 use crate::storage::Catalog;
 use crate::storage::{local_schema_version, set_local_schema_version};
@@ -174,6 +175,16 @@ pub fn apply_schema_change(
             let abort_reason = ddl_drop_space_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
                 return Err(Error::Aborted(e.into()));
+            }
+        }
+
+        Ddl::RenameTable {
+            table_id,
+            ref new_name,
+            ..
+        } => {
+            if let Err(e) = ddl_rename_table_on_master(table_id, new_name) {
+                return Err(Error::Aborted(e));
             }
         }
 

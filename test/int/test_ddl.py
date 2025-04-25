@@ -2258,3 +2258,89 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+
+
+def test_alter_table_rename_ddl_execution(cluster: Cluster):
+    r1_leader = cluster.add_instance(replicaset_name="r1", init_replication_factor=2)
+    _ = cluster.add_instance(replicaset_name="r1", init_replication_factor=2)
+    r2_leader = cluster.add_instance(replicaset_name="r2", init_replication_factor=2)
+    r2_slave = cluster.add_instance(replicaset_name="r2", init_replication_factor=2)
+
+    table_name = "t1"
+    r1_leader.sql(
+        f"""
+        CREATE TABLE {table_name} (id INT PRIMARY KEY)
+        OPTION (TIMEOUT = 3)
+        """
+    )
+
+    table_id = r1_leader.sql(f"SELECT id FROM _pico_table WHERE name = '{table_name}'")
+    table_id = int(table_id[0][0])
+
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+
+    initial_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{table_name}'")
+    initial_schema_version = int(initial_schema_version[0][0])
+
+    result = r1_leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
+    assert result == [["next_schema_version", initial_schema_version + 1]]
+
+    # Create a conflict to force ddl abort.
+    conflict_table_name = "conflict_name"
+    r2_leader.eval("box.schema.space.create(...)", conflict_table_name)
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"error while renaming table with id {table_id} to conflict_name",
+    ):
+        r1_leader.sql(
+            f"""
+            ALTER TABLE {table_name} RENAME TO {conflict_table_name}
+            """
+        )
+
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+
+    # proof that it is `aborted`
+    result = r1_leader.sql(f"SELECT * FROM _pico_table WHERE name = '{conflict_table_name}'")
+    assert result == []
+
+    table_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{table_name}'")
+    table_schema_version = int(table_schema_version[0][0])
+    assert table_schema_version == initial_schema_version
+
+    result = r1_leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
+    assert result == [["next_schema_version", initial_schema_version + 2]]
+
+    new_table_name = "new_" + table_name
+    r1_leader.sql(
+        f"""
+        ALTER TABLE {table_name} RENAME TO {new_table_name}
+        """
+    )
+
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r2_leader)
+
+    renamed_schema_version = r1_leader.sql(f"SELECT schema_version FROM _pico_table WHERE name = '{new_table_name}'")
+    renamed_schema_version = int(renamed_schema_version[0][0])
+    assert renamed_schema_version != initial_schema_version
+
+    result = r1_leader.sql("SELECT * FROM _pico_property WHERE key = 'next_schema_version'")
+    assert result == [["next_schema_version", renamed_schema_version + 1]]
+
+    # ensure that `rename` replicated via tarantool replication
+    r2_leader_vclock = r2_leader.get_vclock()
+    r2_slave.wait_vclock(r2_leader_vclock)
+
+    def check_for_local_table_existence(instance, table_name):
+        return instance.eval(f"return box.space['{table_name}'] ~= nil")
+
+    # actually, same situation with r1_slave, but it will slow down test
+    assert check_for_local_table_existence(r2_slave, new_table_name)
+    assert not check_for_local_table_existence(r2_slave, table_name)
