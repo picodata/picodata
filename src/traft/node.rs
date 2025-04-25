@@ -2118,8 +2118,7 @@ impl NodeImpl {
             let resp = fiber::block_on(fut);
             let mut resp = unwrap_ok_or!(resp,
                 Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("read view not available") {
+                    if e.error_code() == ErrorCode::RaftSnapshotReadViewNotAvailable as u32 {
                         tlog!(Warning, "aborting snapshot retrieval: {e}");
                         return Err(e);
                     }

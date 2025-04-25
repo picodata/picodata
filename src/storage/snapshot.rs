@@ -1,4 +1,5 @@
 use crate::access_control::{user_by_id, UserMetadataKind};
+use crate::error_code::ErrorCode;
 use crate::schema::Distribution;
 use crate::schema::IndexDef;
 use crate::schema::PrivilegeDef;
@@ -26,6 +27,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::Peekable;
+use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode as TntErrorCode;
 use tarantool::fiber;
@@ -211,9 +213,11 @@ impl Catalog {
 
         let Some(rv) = self.snapshot_cache.read_views().get_mut(&entry_id) else {
             warn_or_panic!("read view for entry {entry_id} is not available");
-            return Err(Error::other(format!(
-                "read view not available for {entry_id}"
-            )));
+            return Err(BoxError::new(
+                ErrorCode::RaftSnapshotReadViewNotAvailable,
+                format!("read view not available for {entry_id}"),
+            )
+            .into());
         };
 
         let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
