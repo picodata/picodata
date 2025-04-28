@@ -4,6 +4,9 @@
 
 ### Added
 - `AuthMethod::DEFAULT` represents the default value of `AuthMethod`, but is available in constant contexts.
+- Support MsgPack ExtType encoding and decoding via `ExtStruct`
+- Support Tuple msgpack decoding
+- Support Decimal, UUID, Datetime msgpack encoding and decoding
 
 ### Changed
 - MSRV is now 1.81 instead of 1.71.1 as it was.
