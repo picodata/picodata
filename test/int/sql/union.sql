@@ -139,3 +139,47 @@ union
 select "id" from "testing_space"
 where false
 -- EXPECTED:
+
+
+-- TEST: test_union_with_window_func
+-- SQL:
+select row_number() over () from t union select 1;
+-- EXPECTED:
+1
+
+-- TEST: test_explain_union_with_window_func
+-- SQL:
+explain select row_number() over () from t union select 1;
+-- EXPECTED:
+motion [policy: full]
+    union
+        projection (row_number() over () -> "col_1")
+            motion [policy: full]
+                projection ("t"."a"::integer -> "a", "t"."bucket_id"::unsigned -> "bucket_id", "t"."b"::integer -> "b")
+                    scan "t"
+        projection (1::unsigned -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test_union_all_with_window_func
+-- SQL:
+select row_number() over () from t union all select 1;
+-- EXPECTED:
+1
+
+-- TEST: test_explain_union_all_with_window_func
+-- SQL:
+explain select row_number() over () from t union all select 1;
+-- EXPECTED:
+union all
+    projection (row_number() over () -> "col_1")
+        motion [policy: full]
+            projection ("t"."a"::integer -> "a", "t"."bucket_id"::unsigned -> "bucket_id", "t"."b"::integer -> "b")
+                scan "t"
+    projection (1::unsigned -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]

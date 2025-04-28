@@ -428,7 +428,10 @@ impl From<(NodeId, usize)> for ChildColumnReference {
 impl Plan {
     /// Sets distribution for output tuple of projection.
     /// Applied in case two stage aggregation is not present.
-    pub fn set_projection_distribution(&mut self, proj_id: NodeId) -> Result<(), SbroadError> {
+    pub(crate) fn set_projection_distribution(
+        &mut self,
+        proj_id: NodeId,
+    ) -> Result<(), SbroadError> {
         if !matches!(
             self.get_relation_node(proj_id)?,
             Relational::Projection { .. }
@@ -438,31 +441,28 @@ impl Plan {
 
         let output_id = self.get_relational_output(proj_id)?;
         let child_id = self.get_relational_child(proj_id, 0)?;
-
-        let mut only_compound_exprs = true;
-        for id in self.get_row_list(output_id)? {
-            let child_id = self.get_child_under_alias(*id)?;
-            if let Expression::Reference(_) = self.get_expression_node(child_id)? {
-                only_compound_exprs = false;
-                break;
-            }
-        }
-        if only_compound_exprs {
-            // The projection looks like this: `select 1, a + b, 10 * b`
-            // i.e no bare references like in `select a, b, c`
-            self.set_dist(output_id, Distribution::Any)?;
-            return Ok(());
-        }
-
-        // Projection has some bare references: `select a + b, b, c ..`
-        // It may have Segment distribution, to check that we need a mapping
-        // between referenced columns in child and column position in projection's
-        // output.
         let children = self.get_relational_children(proj_id)?;
         let ref_info = ReferenceInfo::new(output_id, self, &children)?;
         let child_dist = self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?;
-        self.set_dist(output_id, child_dist)?;
 
+        if let Distribution::Segment { .. } = child_dist {
+            let mut only_compound_exprs = true;
+            for id in self.get_row_list(output_id)? {
+                let child_id = self.get_child_under_alias(*id)?;
+                if let Expression::Reference(_) = self.get_expression_node(child_id)? {
+                    only_compound_exprs = false;
+                    break;
+                }
+            }
+            if only_compound_exprs {
+                // The projection looks like this: `select 1, a + b, 10 * b`
+                // i.e no bare references like in `select a, b, c`
+                self.set_dist(output_id, Distribution::Any)?;
+                return Ok(());
+            }
+        }
+
+        self.set_dist(output_id, child_dist)?;
         Ok(())
     }
 
