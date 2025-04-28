@@ -702,6 +702,7 @@ fn parse_column_def_type(node: &ParseNode) -> Result<RelationType, SbroadError> 
         Rule::TypeInt => RelationType::Integer,
         Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => RelationType::String,
         Rule::TypeUnsigned => RelationType::Unsigned,
+        Rule::TypeJSON => RelationType::Map,
         Rule::TypeUuid => RelationType::Uuid,
         _ => {
             panic!("Met unexpected rule under ColumnDef: {:?}.", node.rule);
