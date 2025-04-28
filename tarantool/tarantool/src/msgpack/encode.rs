@@ -571,7 +571,40 @@ impl_simple_decode! {
     (bool, read_bool)
 }
 
-// TODO: Provide decode for tuples and serde json value
+macro_rules! impl_tuple_decode {
+    () => {};
+    ($h:ident $($t:ident)*) => {
+        #[allow(non_snake_case)]
+        impl<'de, $h, $($t),*> Decode<'de> for ($h, $($t),*)
+        where
+            $h: Decode<'de>,
+            $($t: Decode<'de>,)*
+        {
+            fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
+                let array_len = rmp::decode::read_array_len(r)
+                    .map_err(DecodeError::from_vre::<Self>)?;
+                let expected_len = crate::expr_count!($h $(, $t)*);
+
+                if array_len != expected_len {
+                            return Err(DecodeError::new::<Self>(format!(
+                                "Tuple length mismatch: expected: {}; actual: {}",
+                                expected_len, array_len
+                            )));
+                }
+                let $h : $h = Decode::decode(r, context)?;
+                $(
+                    let $t : $t = Decode::decode(r, context)?;
+                )*
+                Ok(($h, $($t),*))
+            }
+       }
+       impl_tuple_decode! { $($t)* }
+    }
+}
+
+impl_tuple_decode! { A B C D E F G H I J K L M N O P }
+
+// TODO: Provide decode for serde json value
 
 impl<'de> Decode<'de> for ExtStruct<'de> {
     #[inline]
@@ -2269,5 +2302,16 @@ mod tests {
         assert_eq!(decode::<u16>(b"\xcd\xff\xff").unwrap(), u16::MAX);
         assert_eq!(decode::<u32>(b"\xce\xff\xff\xff\xff").unwrap(), u32::MAX);
         assert_eq!(decode::<u64>(b"\xcf\xff\xff\xff\xff\xff\xff\xff\xff").unwrap(), u64::MAX);
+    }
+
+    #[test]
+    fn decode_tuple() {
+        let value: (Option<i8>, Vec<u8>, String) = (None, vec![0, 1, 2], "hello".to_string());
+
+        let encoded = rmp_serde::encode::to_vec(&value).unwrap();
+
+        let actual: (Option<i8>, Vec<u8>, String) = decode(&encoded).unwrap();
+
+        assert_eq!(actual, value);
     }
 }
