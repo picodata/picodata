@@ -325,6 +325,18 @@ mod tests {
         let expected: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
         assert_eq!(only_date, expected);
     }
+
+    #[test]
+    fn decode_inside_structure() {
+        let expected = (
+            123,
+            datetime!(2023-11-11 0:00:0.0000 -0).into(),
+            "foobar".into(),
+        );
+        let data = b"\x93{\xd7\x04\x00\xc4Ne\x00\x00\x00\x00\xa6foobar";
+        let actual: (i32, Datetime, String) = msgpack::decode(data).unwrap();
+        assert_eq!(expected, actual);
+    }
 }
 
 #[cfg(feature = "internal_test")]
