@@ -302,17 +302,17 @@ mod tests {
 
         for (expr, desired_type, result_type) in exprs {
             let mut analyzer = TypeAnalyzer::new(&type_system);
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
 
             // For the 2nd run result will be returned from cache and should not change.
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
 
             // Ensure that analysis result doesn't depends on functions order.
             let mut analyzer = TypeAnalyzer::new(&type_system_reordered);
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
         }
     }
 
@@ -584,17 +584,17 @@ mod tests {
 
         for (expr, desired_type, result_type) in tests {
             let mut analyzer = TypeAnalyzer::new(&type_system);
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
 
             // For the 2nd run result will be returned from cache and should not change.
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
 
             // Ensure that analysis result doesn't depends on functions order.
             let mut analyzer = TypeAnalyzer::new(&type_system_reordered);
-            let report = analyzer.analyze(&expr, desired_type).unwrap();
-            assert_eq!(report.get_type(&expr.id), result_type);
+            analyzer.analyze(&expr, desired_type).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
         }
     }
 
@@ -605,31 +605,31 @@ mod tests {
 
         // infer parameter type
         let expr = binary("+", lit(Integer), param("$1"));
-        let _report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // analyze the same expression, type shouldn't change
-        let _report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // infer the same type from another expression
         let expr = binary("+", param("$1"), lit(Integer));
-        let _report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure that we can use integer parameter in expressions with compatible types
         let expr = binary("+", param("$1"), lit(Numeric));
-        let _report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // one more type with cache
         let expr = binary("+", param("$1"), lit(Numeric));
-        let _report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure new desired type do not change parameter type
         let expr = binary("+", param("$1"), lit(Numeric));
-        let _report = analyzer.analyze(&expr, Some(Numeric)).unwrap();
+        analyzer.analyze(&expr, Some(Numeric)).unwrap();
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // ensure that int as an inferred parameter type cannot be matched with text
@@ -646,25 +646,26 @@ mod tests {
 
         // ensure that expression is resolved to parameter type
         let expr = binary("+", param("$1"), param("$1"));
-        let report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(report.get_type(&expr.id), Integer);
+        analyzer.analyze(&expr, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&expr.id), Integer);
         assert_eq!(analyzer.get_parameter_types(), &[Integer]);
 
         // infer parameter type for $2 from $1
         let expr = binary("+", param("$1"), param("$2"));
-        let report = analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(report.get_type(&expr.id), Integer);
+        analyzer.analyze(&expr, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&expr.id), Integer);
         assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
 
         // ensure that parameter can be coerced to desired type without changing its type
         let expr = param("$1");
-        let report = analyzer.analyze(&expr, Some(Double)).unwrap();
-        assert_eq!(report.get_type(&expr.id), Double);
+        analyzer.analyze(&expr, Some(Double)).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&expr.id), Double);
         assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
 
         // ensure that parameter type coercion works in homogeneous expressions
         let expr = coalesce(vec![param("$1"), lit(Double), param("$2")]);
-        let report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
+        let report = analyzer.get_report();
         assert_eq!(report.get_type(&expr.id), Double);
         assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
         if let ExprKind::Coalesce(children) = expr.kind {
@@ -680,7 +681,8 @@ mod tests {
             binary("+", param("$2"), param("$1")),
             binary("+", lit(Double), param("$1")),
         ]);
-        let report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
+        let report = analyzer.get_report();
         assert_eq!(report.get_type(&expr.id), Double);
         assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
         if let ExprKind::Coalesce(children) = expr.kind {
@@ -709,7 +711,8 @@ mod tests {
         let expr = binary("+", lparam, rparam);
         let mut analyzer = TypeAnalyzer::new(&type_system);
 
-        let report = analyzer.analyze(&expr, None).unwrap();
+        analyzer.analyze(&expr, None).unwrap();
+        let report = analyzer.get_report();
         assert_eq!(report.get_type(&lid), Unsigned);
         assert_eq!(report.get_type(&rid), Unsigned);
         assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);
@@ -726,7 +729,8 @@ mod tests {
         //   (rid, Double):   Report { rid: Double, $2::double }
         // }
 
-        let report = analyzer.analyze(&expr, Some(Double)).unwrap();
+        analyzer.analyze(&expr, Some(Double)).unwrap();
+        let report = analyzer.get_report();
         assert_eq!(report.get_type(&lid), Double);
         assert_eq!(report.get_type(&rid), Double);
         assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);

@@ -101,11 +101,10 @@ def test_uuid(
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    # declaration uuid for test
-    t1_id1 = "7055211c-826d-4da2-921b-7133811239f0"
-    t1_id2 = "5bc3cc1c-1819-4ab7-adfe-ee0fa2c0cde0"
-    t2_id1 = "e4166fc5-e113-46c5-8ae9-970882ca8842"
-    t2_id2 = "6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1"
+    t1_id1 = uuid.UUID("7055211c-826d-4da2-921b-7133811239f0")
+    t1_id2 = uuid.UUID("5bc3cc1c-1819-4ab7-adfe-ee0fa2c0cde0")
+    t2_id1 = uuid.UUID("e4166fc5-e113-46c5-8ae9-970882ca8842")
+    t2_id2 = uuid.UUID("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1")
 
     # first table with uuid is creating
     ddl = i1.sql(
@@ -149,15 +148,15 @@ def test_uuid(
     # checking virtual table creation
     data = i1.sql(
         """select * from t1 where id in (select t1_id from t2 where id = (?))""",
-        uuid.UUID(t2_id1),
+        t2_id1,
     )
-    assert data == [[uuid.UUID(t1_id1)]]
+    assert data == [[t1_id1]]
 
     # checking cast uuid as text
     data = i1.sql("""select cast(id as Text) from t1""", t1_id1, strip_metadata=False)
     assert data == {
         "metadata": [{"name": "col_1", "type": "string"}],
-        "rows": [[t1_id2], [t1_id1]],
+        "rows": [[str(t1_id2)], [str(t1_id1)]],
     }
 
 
@@ -3709,7 +3708,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values($1::int, $1::int)$$
+        as $$insert into t values($1, $1)$$
         """
     )
     assert data["row_count"] == 1
@@ -3725,9 +3724,9 @@ def test_create_drop_procedure(cluster: Cluster):
     with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
         i2.sql(
             """
-            create procedure proc1(int)
+            create procedure proc1(int, int)
             language SQL
-            as $$insert into t values($1::int, $1::int)$$
+            as $$insert into t values($1, $2)$$
             """
         )
 
@@ -3735,9 +3734,9 @@ def test_create_drop_procedure(cluster: Cluster):
     with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
         i2.sql(
             """
-            create procedure proc1(int, text)
+            create procedure proc1(int, int)
             language SQL
-            as $$insert into t values($1::int, $2::text)$$
+            as $$insert into t values($1, $2)$$
             option(timeout=3)
             """
         )
@@ -3792,7 +3791,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values($1::int, $1::int)$$
+        as $$insert into t values($1, $1)$$
         """
     )
     assert data["row_count"] == 1
@@ -3840,7 +3839,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure proc1(int)
         language SQL
-        as $$insert into t values($1::int, $1::int)$$
+        as $$insert into t values($1, $1)$$
         """
     )
     cluster.raft_wait_index(i2.raft_get_index())
@@ -3861,7 +3860,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create procedure FOO(int)
         language SQL
-        as $$insert into t values($1::int, $1::int)$$
+        as $$insert into t values($1, $1)$$
         """,
         sudo=True,
     )
@@ -4588,9 +4587,9 @@ def test_drop_user(cluster: Cluster):
     # User creates a procedure
     data = i1.sql(
         """
-        create procedure proc1(int)
+        create procedure proc1(text, text, text)
         language SQL
-        as $$insert into t values(?::int, ?::int, ?::int)$$
+        as $$insert into t values(?::text, ?::text, ?::text)$$
         """,
         user=user,
         password=password,

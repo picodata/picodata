@@ -35,19 +35,6 @@ def test_params_specified_via_cast(postgres: Postgres):
     """
     )
 
-    # Types were not specified, so the default type text is used,
-    # but parameter binding failed because the right type was integer.
-    with pytest.raises(DatabaseError, match="could not determine data type of parameter"):
-        conn.run(
-            """
-            INSERT INTO "tall" VALUES (:p1, :p2, :p3, :p4);
-            """,
-            p1=-2,
-            p2="string",
-            p3=True,
-            p4=3.141592,
-        )
-
     # Now all the types were specified.
     conn.run(
         """
@@ -246,22 +233,57 @@ def test_params_inference_in_insert(postgres: Postgres):
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
-    conn.run("CREATE TABLE t (i INT PRIMARY KEY, f DOUBLE, t TEXT, u UUID, d datetime);")
+    conn.run("CREATE TABLE t (i INT PRIMARY KEY, f DOUBLE, t TEXT);")
 
-    # Cannot infer types from table columns in INSERT
-    # https://git.picodata.io/core/picodata/-/work_items/1644
-    with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$1"):
-        conn.run("INSERT INTO t (i) VALUES (:p)", p="1")
+    # Infer parameter types from column types.
+    conn.run("INSERT INTO t VALUES (:p1, :p2, :p3)", p1="1", p2="2", p3="3")
+    rows = conn.run("SELECT * FROM t")
+    assert rows == [[1, 2.0, "3"]]
 
-    # Infer parameter type from neighbor expression.
-    conn.run("INSERT INTO t (i) SELECT :p + 1", p="1")
-    rows = conn.run("SELECT i FROM t")
-    assert rows == [[2]]
+    # Infer parameter types from explicit column types.
+    conn.run("INSERT INTO t (t, f, i) VALUES (:p1, :p2, :p3)", p1="1", p2="2", p3="3")
+    rows = conn.run("SELECT * FROM t WHERE t = :p", p="1")
+    assert rows == [[3, 2.0, "1"]]
 
-    # Infer parameter type from neighbor expression.
-    conn.run("INSERT INTO t (i) VALUES (:p * 0)", p="1")
-    rows = conn.run("SELECT i FROM t")
-    assert rows == [[0], [2]]
+    # Parameterized VALUES with 2 rows.
+    conn.run(
+        "INSERT INTO t VALUES (:p1, :p2, :p3), (:p4, :p5, :p6)", p1="11", p2="22", p3="33", p4="12", p5="23", p6="34"
+    )
+    rows = conn.run("SELECT * FROM t WHERE i > 10")
+    assert sorted(rows) == [[11, 22.0, "33"], [12, 23.0, "34"]]
+
+    # Parameterized VALUES with 2 rows.
+    conn.run(
+        "INSERT INTO t (i, f, t) VALUES (:p1, :p2, :p3), (:p4, :p5, :p6)",
+        p1="91",
+        p2="92",
+        p3="93",
+        p4="92",
+        p5="93",
+        p6="94",
+    )
+    rows = conn.run("SELECT * FROM t WHERE i > 90")
+    assert sorted(rows) == [[91, 92.0, "93"], [92, 93.0, "94"]]
+
+    # Ensure inferred types are consistent.
+    with pytest.raises(DatabaseError, match=r"inconsistent types int and text deduced for parameter \$3"):
+        conn.run(
+            "INSERT INTO t VALUES (:p1, :p2, :p3), (:p3, :p2, :p1)",
+            p1="1",
+            p2="2",
+            p3="3",
+        )
+
+    # Complicate VALUES expressions.
+    conn.run("INSERT INTO t VALUES (:p1 - 100, :p2 - 100, :p3 || :p3)", p1="1", p2="2.5", p3="3")
+    rows = conn.run("SELECT * FROM t WHERE i < 0")
+    assert rows == [[-99, -97.5, "33"]]
+
+    # Infer unsuitable type.
+    with pytest.raises(
+        DatabaseError, match="INSERT column at position 1 is of type int, but expression is of type text"
+    ):
+        conn.run("INSERT INTO t (i) VALUES (:p1::text)", p1="1")
 
 
 def test_params_inference_in_update_and_delete(postgres: Postgres):

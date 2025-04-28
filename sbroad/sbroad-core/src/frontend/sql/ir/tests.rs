@@ -3124,7 +3124,7 @@ fn front_sql_insert_6() {
 #[test]
 fn front_sql_insert_7() {
     // Check system column can't be inserted
-    let input = r#"insert into "hash_testing" ("identification_number", "product_code", "bucket_id") values (1, 2, 3)"#;
+    let input = r#"insert into "hash_testing" ("identification_number", "product_code", "bucket_id") values (1, '2', 3)"#;
 
     let metadata = &RouterConfigurationMock::new();
     let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata);

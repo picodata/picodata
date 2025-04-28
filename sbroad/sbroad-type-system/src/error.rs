@@ -64,6 +64,9 @@ pub enum Error {
     #[error("{0} lists must all be the same length")]
     ListsMustAllBeTheSameLentgh(&'static str),
 
+    #[error("{0} desired types cannot be matched with {1} expressions")]
+    DesiredTypesCannotBeMatchedWithExprs(usize, usize),
+
     #[error("subquery must return only one column")]
     SubqueryMustReturnOnlyOneColumn,
 

@@ -84,7 +84,7 @@ fn test_query_explain_5() {
 
 #[test]
 fn test_query_explain_6() {
-    let sql = r#"insert into t1 values (1, 1)"#;
+    let sql = r#"insert into t1 values ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
@@ -92,7 +92,7 @@ fn test_query_explain_6() {
     insert "t1" on conflict: fail
         motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
             values
-                value row (data=ROW(1::unsigned, 1::unsigned))
+                value row (data=ROW('1'::string, 1::unsigned))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

@@ -299,7 +299,9 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
     NamedWindows = { WindowDef ~ (WO ~ "," ~ WO ~ WindowDef)* }
     WindowDef = ${ Identifier ~ W ~ ^"as" ~ WO ~ WindowBody }
     SubQuery = !{ "(" ~ (SelectFull | Values) ~ ")" }
-    Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ (PublicSchema)? ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | Values) ~ (W ~ OnConflict)? }
+    Insert = ${ ^"insert" ~ W ~ ^"into" ~ W ~ (PublicSchema)? ~ Table ~ WO ~ (TargetColumns ~ W)? ~ (SelectFull | InsertValues) ~ (W ~ OnConflict)? }
+        // VALUES under INSERT cannot be parsed in a regular post order manner, because we also need to consider the column types.
+        InsertValues = { ^"values" ~ WO ~ ValuesRows }
         TargetColumns = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
         OnConflict = _{ ^"on" ~ W ~ ^"conflict" ~ W ~ ^"do" ~ W ~ (DoNothing | DoReplace | DoFail) }
         DoReplace = { ^"replace" }

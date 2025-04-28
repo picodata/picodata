@@ -239,7 +239,7 @@ INSERT INTO s VALUES (1, '{
     }
 }');
 -- ERROR:
-invalid transaction
+INSERT column at position 2 is of type map, but expression is of type text
 
 -- TEST: test-json-is-not-keyword-1
 -- SQL:

@@ -249,8 +249,10 @@ def test_unsigned(postgres: Postgres):
     cur = conn.execute(""" SELECT 1 FROM T; """, binary=True)
     assert sorted(cur.fetchall()) == [(1,)]
 
-    # Note: u64::MAX can be sent because psycopg sends it as numeric
-    conn.execute(""" INSERT INTO T VALUES(%t); """, (u64_max,))
+    # Note: u64::MAX can be sent, despite the fact, that PostgreSQL supports only
+    # signed integers, because psycopg sends it as numeric. Also it explicitly sets
+    # parameter type, so cast is needed to make type system happy,
+    conn.execute(""" INSERT INTO T VALUES(%t::unsigned); """, (u64_max,))
 
     # text encoding fails as u64::MAX can't be encoded as i64
     with pytest.raises(

@@ -8,8 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    LocalTimestamp, NamedWindows, Node64, Over, Parameter, Reference, ReferenceAsteriskSource,
-    ScalarFunction, TruncateTable, Window,
+    LocalTimestamp, NamedWindows, Node64, Over, Parameter, Reference, ReferenceAsteriskSource, Row,
+    ScalarFunction, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::relation::{DerivedType, Type};
 use ahash::{AHashMap, AHashSet};
@@ -1450,6 +1450,243 @@ fn parse_cte<M: Metadata>(
     ctes.insert(name, cte_id);
     map.add(node_id, cte_id);
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_insert<M: Metadata>(
+    node: &ParseNode,
+    ast: &AbstractSyntaxTree,
+    map: &Translation,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    col_idx: &mut usize,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<NodeId, SbroadError> {
+    let ast_table_id = node.children.first().expect("Insert has no children.");
+    let relation = parse_normalized_identifier(ast, *ast_table_id)?;
+
+    let ast_child_id = node
+        .children
+        .get(1)
+        .expect("Second child not found among Insert children");
+    let get_conflict_strategy = |child_idx: usize| -> Result<ConflictStrategy, SbroadError> {
+        let Some(child_id) = node.children.get(child_idx).copied() else {
+            return Ok(ConflictStrategy::DoFail);
+        };
+        let rule = &ast.nodes.get_node(child_id)?.rule;
+        let res = match rule {
+            Rule::DoNothing => ConflictStrategy::DoNothing,
+            Rule::DoReplace => ConflictStrategy::DoReplace,
+            Rule::DoFail => ConflictStrategy::DoFail,
+            _ => {
+                return Err(SbroadError::Invalid(
+                    Entity::AST,
+                    Some(format_smolstr!(
+                        "expected conflict strategy on \
+                                AST id ({child_id}). Got: {rule:?}"
+                    )),
+                ))
+            }
+        };
+        Ok(res)
+    };
+    let ast_child = ast.nodes.get_node(*ast_child_id)?;
+
+    let rel = plan.relations.get(&relation).ok_or_else(|| {
+        SbroadError::NotFound(
+            Entity::Table,
+            format_smolstr!("{relation} among plan relations"),
+        )
+    })?;
+
+    if let Rule::TargetColumns = ast_child.rule {
+        // insert into t (a, b, c) ...
+        let mut selected_col_names: Vec<SmolStr> = Vec::with_capacity(ast_child.children.len());
+        for col_id in &ast_child.children {
+            selected_col_names.push(parse_normalized_identifier(ast, *col_id)?.to_smolstr());
+        }
+
+        if selected_col_names.len() > 1 {
+            let mut existing_col_names: HashSet<&str, RepeatableState> =
+                HashSet::with_capacity_and_hasher(selected_col_names.len(), RepeatableState);
+            for selected_col in &selected_col_names {
+                if !existing_col_names.insert(selected_col) {
+                    return Err(SbroadError::DuplicatedValue(format_smolstr!(
+                        "column {} specified more than once",
+                        to_user(selected_col)
+                    )));
+                }
+            }
+        }
+
+        for column in &rel.columns {
+            if let ColumnRole::Sharding = column.get_role() {
+                continue;
+            }
+            if !column.is_nullable && !selected_col_names.contains(&column.name) {
+                return Err(SbroadError::Invalid(
+                    Entity::Column,
+                    Some(format_smolstr!(
+                        "NonNull column {} must be specified",
+                        to_user(&column.name)
+                    )),
+                ));
+            }
+        }
+
+        let mut desired_types = Vec::with_capacity(selected_col_names.len());
+        for name in &selected_col_names {
+            let column = rel
+                .columns
+                .iter()
+                .find(|c| &c.name == name)
+                .ok_or_else(|| {
+                    SbroadError::Other(format_smolstr!(
+                        "column {} of table {} does not exist",
+                        name,
+                        &relation
+                    ))
+                })?;
+            desired_types.push(column.r#type);
+        }
+
+        let ast_rel_child_id = node
+            .children
+            .get(2)
+            .expect("Third child not found among Insert children");
+        let plan_rel_child_id = parse_insert_source(
+            *ast_rel_child_id,
+            ast,
+            &desired_types,
+            map,
+            type_analyzer,
+            pairs_map,
+            col_idx,
+            worker,
+            plan,
+        )?;
+        let conflict_strategy = get_conflict_strategy(3)?;
+        plan.add_insert(
+            &relation,
+            plan_rel_child_id,
+            &selected_col_names,
+            conflict_strategy,
+        )
+    } else {
+        // insert into t ...
+        let mut desired_types = Vec::with_capacity(rel.columns.len());
+        for column in &rel.columns {
+            if column.name != "bucket_id" {
+                desired_types.push(column.r#type);
+            }
+        }
+
+        let plan_child_id = parse_insert_source(
+            *ast_child_id,
+            ast,
+            &desired_types,
+            map,
+            type_analyzer,
+            pairs_map,
+            col_idx,
+            worker,
+            plan,
+        )?;
+        let conflict_strategy = get_conflict_strategy(2)?;
+        plan.add_insert(&relation, plan_child_id, &[], conflict_strategy)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_insert_source<M: Metadata>(
+    node_id: usize,
+    ast: &AbstractSyntaxTree,
+    column_types: &[DerivedType],
+    map: &Translation,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    col_idx: &mut usize,
+    worker: &mut ExpressionsWorker<M>,
+    plan: &mut Plan,
+) -> Result<NodeId, SbroadError> {
+    use sbroad_type_system::expr::Type;
+
+    let node = ast.nodes.get_node(node_id)?;
+    match node.rule {
+        Rule::SelectFull => map.get(node_id),
+        Rule::InsertValues => {
+            let values_rows_ids = parse_values_rows(
+                &node.children,
+                type_analyzer,
+                column_types,
+                pairs_map,
+                col_idx,
+                worker,
+                plan,
+            )
+            .map_err(|err| match err {
+                SbroadError::TypeSystemError(
+                    TypeSystemError::DesiredTypesCannotBeMatchedWithExprs(types, exprs),
+                ) => SbroadError::Invalid(
+                    Entity::Query,
+                    Some(format_smolstr!(
+                        "INSERT expects {types} columns, got {exprs}"
+                    )),
+                ),
+                other => other,
+            })?;
+
+            let values_id = plan.add_values(values_rows_ids)?;
+
+            let Relational::Values(Values { children, .. }) = plan.get_relation_node(values_id)?
+            else {
+                panic!("Expected to insert Values, got something else");
+            };
+
+            let report = type_analyzer.get_report();
+            for row_id in children {
+                if let Relational::ValuesRow(ValuesRow { data, .. }) =
+                    plan.get_relation_node(*row_id)?
+                {
+                    let Expression::Row(Row { list, .. }) = plan.get_expression_node(*data)? else {
+                        panic!("Expected to get Row as ValuesRow child, got something else");
+                    };
+
+                    for (idx, expr_id) in list.iter().enumerate() {
+                        let coltype = column_types[idx].get().expect("column type must be known");
+                        let exprtype = report.get_type(expr_id);
+                        if !can_assign(exprtype.into(), coltype) {
+                            return Err(SbroadError::Other(format_smolstr!(
+                                "INSERT column at position {} is of type {}, but expression is of type {}",
+                                idx + 1,
+                                Type::from(coltype),
+                                exprtype,
+                            )));
+                        }
+                    }
+                }
+            }
+
+            Ok(values_id)
+        }
+        rule => panic!("unexpected insert source {rule:?}"),
+    }
+}
+
+/// Check if an expression of type `src` can be assigned to a column of type `dst`.
+fn can_assign(src: DerivedType, dst: Type) -> bool {
+    let Some(src) = *src.get() else {
+        // TODO: We should probably check nullability here.
+        return true;
+    };
+
+    use Type::*;
+    match dst {
+        Unsigned => matches!(src, Integer | Unsigned),
+        Integer => matches!(src, Integer | Unsigned),
+        _ => dst == src,
+    }
 }
 
 /// Get String value under node that is considered to be an identifier
@@ -4030,6 +4267,7 @@ where
 fn parse_values_rows<M>(
     rows: &[usize],
     type_analyzer: &mut TypeAnalyzer,
+    desired_types: &[DerivedType],
     pairs_map: &mut ParsingPairsMap,
     col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
@@ -4063,6 +4301,7 @@ where
         type_analyzer,
         &values_rows_ids,
         plan,
+        desired_types,
         &worker.subquery_replaces,
     )?;
 
@@ -5453,6 +5692,7 @@ impl AbstractSyntaxTree {
                     let values_rows_ids = parse_values_rows(
                         &node.children,
                         &mut type_analyzer,
+                        &[],
                         pairs_map,
                         &mut col_idx,
                         &mut worker,
@@ -5720,101 +5960,17 @@ impl AbstractSyntaxTree {
                     map.add(id, plan_delete_id);
                 }
                 Rule::Insert => {
-                    let ast_table_id = node.children.first().expect("Insert has no children.");
-                    let relation = parse_normalized_identifier(self, *ast_table_id)?;
-
-                    let ast_child_id = node
-                        .children
-                        .get(1)
-                        .expect("Second child not found among Insert children");
-                    let get_conflict_strategy =
-                        |child_idx: usize| -> Result<ConflictStrategy, SbroadError> {
-                            let Some(child_id) = node.children.get(child_idx).copied() else {
-                                return Ok(ConflictStrategy::DoFail);
-                            };
-                            let rule = &self.nodes.get_node(child_id)?.rule;
-                            let res = match rule {
-                                Rule::DoNothing => ConflictStrategy::DoNothing,
-                                Rule::DoReplace => ConflictStrategy::DoReplace,
-                                Rule::DoFail => ConflictStrategy::DoFail,
-                                _ => {
-                                    return Err(SbroadError::Invalid(
-                                        Entity::AST,
-                                        Some(format_smolstr!(
-                                            "expected conflict strategy on \
-                                AST id ({child_id}). Got: {rule:?}"
-                                        )),
-                                    ))
-                                }
-                            };
-                            Ok(res)
-                        };
-                    let ast_child = self.nodes.get_node(*ast_child_id)?;
-                    let plan_insert_id = if let Rule::TargetColumns = ast_child.rule {
-                        // insert into t (a, b, c) ...
-                        let mut selected_col_names: Vec<SmolStr> =
-                            Vec::with_capacity(ast_child.children.len());
-                        for col_id in &ast_child.children {
-                            selected_col_names
-                                .push(parse_normalized_identifier(self, *col_id)?.to_smolstr());
-                        }
-
-                        if selected_col_names.len() > 1 {
-                            let mut existing_col_names: HashSet<&str, RepeatableState> =
-                                HashSet::with_capacity_and_hasher(
-                                    selected_col_names.len(),
-                                    RepeatableState,
-                                );
-                            for selected_col in &selected_col_names {
-                                if !existing_col_names.insert(selected_col) {
-                                    return Err(SbroadError::DuplicatedValue(format_smolstr!(
-                                        "column {} specified more than once",
-                                        to_user(selected_col)
-                                    )));
-                                }
-                            }
-                        }
-
-                        let rel = plan.relations.get(&relation).ok_or_else(|| {
-                            SbroadError::NotFound(
-                                Entity::Table,
-                                format_smolstr!("{relation} among plan relations"),
-                            )
-                        })?;
-                        for column in &rel.columns {
-                            if let ColumnRole::Sharding = column.get_role() {
-                                continue;
-                            }
-                            if !column.is_nullable && !selected_col_names.contains(&column.name) {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Column,
-                                    Some(format_smolstr!(
-                                        "NonNull column {} must be specified",
-                                        to_user(&column.name)
-                                    )),
-                                ));
-                            }
-                        }
-
-                        let ast_rel_child_id = node
-                            .children
-                            .get(2)
-                            .expect("Third child not found among Insert children");
-                        let plan_rel_child_id = map.get(*ast_rel_child_id)?;
-                        let conflict_strategy = get_conflict_strategy(3)?;
-                        plan.add_insert(
-                            &relation,
-                            plan_rel_child_id,
-                            &selected_col_names,
-                            conflict_strategy,
-                        )?
-                    } else {
-                        // insert into t ...
-                        let plan_child_id = map.get(*ast_child_id)?;
-                        let conflict_strategy = get_conflict_strategy(2)?;
-                        plan.add_insert(&relation, plan_child_id, &[], conflict_strategy)?
-                    };
-                    map.add(id, plan_insert_id);
+                    let insert_id = parse_insert(
+                        node,
+                        self,
+                        &map,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut col_idx,
+                        &mut worker,
+                        &mut plan,
+                    )?;
+                    map.add(id, insert_id);
                 }
                 Rule::Explain => {
                     plan.mark_as_explain();

@@ -25,8 +25,9 @@ fn front_invalid_sql2() {
     let plan_err = Query::new(metadata, query, vec![]).unwrap_err();
 
     assert_eq!(
-        SbroadError::UnexpectedNumberOfValues(
-            r#"invalid number of values: 4. Table t expects 3 column(s)."#.into()
+        SbroadError::Invalid(
+            Entity::Query,
+            Some("INSERT expects 3 columns, got 4".into())
         ),
         plan_err
     );
@@ -55,8 +56,9 @@ fn front_invalid_sql4() {
     let plan_err = Query::new(metadata, query, vec![]).unwrap_err();
 
     assert_eq!(
-        SbroadError::UnexpectedNumberOfValues(
-            r#"invalid number of values: 2. Table t expects 4 column(s)."#.into()
+        SbroadError::Invalid(
+            Entity::Query,
+            Some("INSERT expects 4 columns, got 2".into())
         ),
         plan_err
     );

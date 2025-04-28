@@ -507,18 +507,25 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         }
     }
 
-    // TODO: support desired types
     /// Analyze rows and ensure they have homogeneous types and equal lengths.
     pub fn analyze_homogeneous_rows(
         &mut self,
         ctx: &'static str,
         rows: &[Vec<Expr<Id>>],
+        desired_types: &[Type],
     ) -> Result<TypeReport<Id>, Error> {
         let ncolumns = rows.first().map(|r| r.len()).unwrap_or(0);
         for row in rows {
             if row.len() != ncolumns {
                 return Err(Error::ListsMustAllBeTheSameLentgh(ctx));
             }
+        }
+
+        if !desired_types.is_empty() && desired_types.len() != ncolumns {
+            return Err(Error::DesiredTypesCannotBeMatchedWithExprs(
+                desired_types.len(),
+                ncolumns,
+            ));
         }
 
         // TODO: Avoid temporary allocation by creating a columns iterator that yields ith
@@ -531,8 +538,9 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         }
 
         let mut report = TypeReport::new();
-        for column in columns {
-            let (_, r) = self.analyze_homogeneous_exprs(ctx, &column, None)?;
+        for (idx, column) in columns.iter().enumerate() {
+            let desired_type = desired_types.get(idx).cloned();
+            let (_, r) = self.analyze_homogeneous_exprs(ctx, column, desired_type)?;
             report.extend(r);
         }
 
@@ -999,15 +1007,17 @@ fn select_best_overloads<'a, Id: Hash + Eq + Clone>(
 /// The analyzer becomes invalid when previously analyzed expressions are modified. In than case
 /// a new analyzer instance must be created.
 pub struct TypeAnalyzer<'a, Id: Hash + Eq + Clone> {
-    // Implements core analysis logic.
+    /// Implements core analysis logic.
     core: TypeAnalyzerCore<'a, Id>,
-    // TODO: store report for all analyzed expressions here
+    /// Accumulated report for all analyzed expressions.
+    report: TypeReport<Id>,
 }
 
 impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
     pub fn new(type_system: &'a TypeSystem) -> Self {
         Self {
             core: TypeAnalyzerCore::new(type_system),
+            report: TypeReport::new(),
         }
     }
 
@@ -1020,30 +1030,34 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         self.core.get_parameter_types()
     }
 
+    pub fn get_report(&self) -> &TypeReport<Id> {
+        &self.report
+    }
+
     /// Infer expression and parameter types.
-    /// All expression types and coercions are reported in `TypeReport`.
+    /// All expression types and coercions are accumulated in analyzer's report.
     /// `desired_type` gives a hint on what type is expected, but the inferred type can be
     /// different. This is the caller responsibility to ensure that the expression has a
     /// suitable type.
-    pub fn analyze(
-        &mut self,
-        expr: &Expr<Id>,
-        desired_type: Option<Type>,
-    ) -> Result<TypeReport<Id>, Error> {
+    pub fn analyze(&mut self, expr: &Expr<Id>, desired_type: Option<Type>) -> Result<(), Error> {
         let report = self.core.analyze(expr, desired_type)?;
         self.core.update_parameters(&report)?;
-        Ok(report)
+        self.report.extend(report);
+        Ok(())
     }
 
-    // TODO: support desired types
     /// Infer rows and parameter types.
     pub fn analyze_homogeneous_rows(
         &mut self,
         ctx: &'static str,
         rows: &[Vec<Expr<Id>>],
-    ) -> Result<TypeReport<Id>, Error> {
-        let report = self.core.analyze_homogeneous_rows(ctx, rows)?;
+        desired_types: &[Type],
+    ) -> Result<(), Error> {
+        let report = self
+            .core
+            .analyze_homogeneous_rows(ctx, rows, desired_types)?;
         self.core.update_parameters(&report)?;
-        Ok(report)
+        self.report.extend(report);
+        Ok(())
     }
 }

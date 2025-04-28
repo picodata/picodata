@@ -91,13 +91,17 @@ with the `YY.MINOR.MICRO` scheme.
   if parameter type wasn't specified by the client. Now the
   parameter type is inferred from the context to the type of column `a`.
 
+  In addition, parameter types can be inferred from the column types
+  when inserting values. For instance, in `INSERT INTO t (int_col) VALUES ($1)`
+  query, parameter type will be inferred to the type of the column (int).
+
   Note that there are 2 methods to fix inference errors:
    1) Explicitly provide parameter type on protocol level.
    2) Explicitly provide parameter type by using CAST.
 
   Limitations:
 
-   - `INSERT INTO t VALUES ($1)`, `UPDATE t SET a = $1`
+   - `UPDATE t SET a = $1`
    Parameter type could be inferred from the column type, but this
    is not implemented yet.
 

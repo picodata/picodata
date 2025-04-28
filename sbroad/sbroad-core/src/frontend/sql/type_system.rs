@@ -588,6 +588,7 @@ pub fn analyze_values_rows(
     type_analyzer: &mut TypeAnalyzer,
     rows: &[NodeId],
     plan: &Plan,
+    desired_types: &[DerivedType],
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
     let mut type_rows = Vec::with_capacity(rows.len());
@@ -600,6 +601,7 @@ pub fn analyze_values_rows(
         }
     }
 
-    type_analyzer.analyze_homogeneous_rows("VALUES", &type_rows)?;
+    let desired_types: Vec<_> = desired_types.iter().map(|t| Type::from(*t)).collect();
+    type_analyzer.analyze_homogeneous_rows("VALUES", &type_rows, &desired_types)?;
     Ok(())
 }
