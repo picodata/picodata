@@ -2176,36 +2176,8 @@ cluster:
 def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     leader, i2, _ = cluster.deploy(instance_count=3)
 
-    # -- bad scenario with `ddl finalizer was compacted` in client console --
-    # DDL `create table t1 ...`
-    # reenterable schema change request body | .............
-    #                                        | prepare_index = cas(Prepare)
-    #                                        | wait_for_ddl_commit(prepare_index) | ..........
-    #                                        |                                    | exec of successfull call of proc_apply_schema_change by governor
-    #                                        |                                    | exec iteration of raft main loop without corresponding to t1 DdlCommit
-    #                                        |                                    | returns there and again yields
-    #                                        |                                    | exec iteration of raft main loop with corresponding to t1 DdlCommit and compact log
-    #                                        |                                    | returns there and do not find corresponding to t1 DdlCommit, because it was compacted
-    #                                        |                                    | (another DDL `create table t2`)
-    #                                        |                                    | (`corresponding to second DDL arriving to "empty" log and...`)
-    #                                        |                                    | returns there find corresponding to t2 (Prepare, DdlCommit...) entries
-
-    # following test is repro of situation above
-
-    # Trigger log compaction
+    # Trigger log compaction on each raft op
     leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 0")
-
-    # original repro
-
-    # it hangs on wait_index inside reenterable_schema_change_request/wait_for_ddl_commit
-    # because can't find corresponding DdlPrepare, which was compacted
-    # with pytest.raises(TarantoolError, match="timeout"):
-    #     i2.sql(
-    #         """
-    #         CREATE TABLE t1 (id INT PRIMARY KEY)
-    #         OPTION (TIMEOUT = 3)
-    #         """
-    #     )
 
     # actually it's `not yet applied` case
     with pytest.raises(
