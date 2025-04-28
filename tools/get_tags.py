@@ -6,60 +6,62 @@ import pathlib
 import os
 import time
 
+import logging
 
-GET_SOURCES_ATTEMPTS = int(os.environ.get('GET_SOURCES_ATTEMPTS', 3))
+logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
+
+GET_SOURCES_ATTEMPTS = int(os.environ.get("GET_SOURCES_ATTEMPTS", 3))
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
 
-DEFAULT_FETCH_DIRS = ['tarantool-sys', 'tarantool-sys/third_party/luajit']
-GIT_FETCH_TAGS_DIRS = os.environ.get('GIT_FETCH_TAGS_DIRS', DEFAULT_FETCH_DIRS)
-if type(GIT_FETCH_TAGS_DIRS) is str:
-    GIT_FETCH_TAGS_DIRS = GIT_FETCH_TAGS_DIRS.split(",")
+DEFAULT_FETCH_DIRS = ["tarantool-sys", "tarantool-sys/third_party/luajit"]
+
+DEEPEN_LIMIT = 1000
 
 
-def run_shell(path, shell=True, executable='/bin/bash', text=True):
-    retry = GET_SOURCES_ATTEMPTS
-    limit = 100
-    timeout = 3
-    while retry > 0:
-        try:
-            while True:
-                result = ""
-                print(path)
-                proc = subprocess.run("git describe",
-                                      shell=shell, executable=executable, text=text,
-                                      cwd="{}/{}".format(PROJECT_DIR, path))
-                result = proc.stdout
-                code = proc.returncode
-                if not code:
-                    return
+def get_fetch_dirs():
+    fetch_dirs = os.environ.get("GIT_FETCH_TAGS_DIRS")
+    if fetch_dirs is not None:
+        return fetch_dirs.split(",")
 
-                print("fetching tag for", path)
-                proc = subprocess.run(
-                    "git fetch --deepen 50",
-                    shell=shell,
-                    executable=executable,
-                    text=text,
-                    cwd="{}/{}".format(PROJECT_DIR, path),
-                )
-                print("stdout={}, stderr={}, code={}".format(
-                    proc.stdout, proc.stderr, proc.returncode))
-                limit -= 1
-                if limit < 0:
-                    print("can't fetch tags")
-                    return 2
-        except Exception as e:
-            print("can't run: " + str(e))
-            retry -= 1
-            time.sleep(timeout)
-    return result
+    return DEFAULT_FETCH_DIRS
+
+
+def run(cmd: str, cwd_in_project_dir: pathlib.Path):
+    logging.info(f"Running: '{cmd}' in '{cwd_in_project_dir}'")
+    return subprocess.run(cmd, shell=True, executable="/bin/bash", text=True, cwd=PROJECT_DIR / cwd_in_project_dir)
+
+
+def deepen(path: pathlib.Path):
+    for i in range(GET_SOURCES_ATTEMPTS):
+        completed = run("git fetch --deepen 50", path)
+        if completed.returncode == 0:
+            return
+
+        logging.info(f"Sleeping for {2**i}s")
+        time.sleep(2**i)
+
+    raise Exception(f"out of attempts for git fetch on {path}")
+
+
+def ensure_describe(path: pathlib.Path):
+    for _ in range(DEEPEN_LIMIT):
+        completed = run("git describe", path)
+        if completed.returncode == 0:
+            return
+
+        logging.info("Describe failed, fetching more")
+
+        deepen(path)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="GetGitTags", description="Get project tags")
-    parser.add_argument("dirs", nargs="*", default=GIT_FETCH_TAGS_DIRS, type=str)
+    parser = argparse.ArgumentParser(
+        prog="GetGitTags", description="Fetch enough commits for specified paths for git describe to return proper tag"
+    )
+    parser.add_argument("dirs", nargs="*", default=get_fetch_dirs(), type=str)
     args = parser.parse_args()
 
     for path in args.dirs:
         t0 = time.time()
-        run_shell(path)
-        print(path, "elapsed", time.time() - t0)
+        ensure_describe(path)
+        logging.info(f"Completed tag fetching for '{path}'. Took: {time.time() - t0:.2f}s")
