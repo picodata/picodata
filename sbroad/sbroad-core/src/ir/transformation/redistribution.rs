@@ -1410,26 +1410,21 @@ impl Plan {
                 (Expression::Arithmetic(_), _) | (_, Expression::Arithmetic(_)) => {
                     MotionPolicy::Full
                 }
-                (Expression::Row { .. }, Expression::Row { .. }) => {
-                    match bool_op.op {
-                        Bool::Between => {
-                            unreachable!("Between in redistribution")
-                        }
-                        Bool::Eq | Bool::In => {
-                            self.join_policy_for_eq(rel_id, bool_op.left, bool_op.right)?
-                        }
-                        Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::NotEq => {
-                            MotionPolicy::Full
-                        }
-                        Bool::And | Bool::Or => {
-                            // "a and 1" or "a or 1" expressions make no sense.
-                            return Err(SbroadError::Unsupported(
-                                Entity::Operator,
-                                Some("unsupported boolean operation And or Or".into()),
-                            ));
-                        }
+                (Expression::Row { .. }, Expression::Row { .. }) => match bool_op.op {
+                    Bool::Between => {
+                        unreachable!("Between in redistribution")
                     }
-                }
+                    Bool::Eq | Bool::In => {
+                        self.join_policy_for_eq(rel_id, bool_op.left, bool_op.right)?
+                    }
+                    Bool::Gt
+                    | Bool::GtEq
+                    | Bool::Lt
+                    | Bool::LtEq
+                    | Bool::NotEq
+                    | Bool::And
+                    | Bool::Or => MotionPolicy::Full,
+                },
                 (
                     Expression::Bool(_) | Expression::Unary(_) | Expression::Row(_),
                     Expression::Bool(_) | Expression::Unary(_) | Expression::Row(_),

@@ -33,3 +33,16 @@ select *
 5, 'b', 2, 5, 5,
 6, 'b', 3, 6, 6,
 7, 'c', 4, 7, 7
+
+
+-- TEST: test-check-condition-types-1
+-- SQL:
+with t(b) as (select true) select * from t t1 join t t2 on t1.b or false
+-- EXPECTED:
+true, true
+
+-- TEST: test-check-condition-types-2
+-- SQL:
+with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1
+-- ERROR:
+could not resolve operator overload for or(bool, unsigned)
