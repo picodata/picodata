@@ -241,11 +241,11 @@ fn msgpack_read_array<const N: usize>(data: &[u8]) -> Result<[&[u8]; N], TntErro
 
     let mut result = [b"".as_slice(); N];
     let mut start = iterator.position() as usize;
-    for i in 0..N {
+    for r in &mut result {
         tarantool::msgpack::skip_value(&mut iterator)?;
         let end = iterator.position() as usize;
         let value = &data[start..end];
-        result[i] = value;
+        *r = value;
         start = end;
     }
 
