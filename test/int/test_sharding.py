@@ -356,26 +356,25 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
         assert get_table_size(instance, "sharded_table") > 0
 
 
-@pytest.mark.flaky(reruns=3)
 def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
     """
     flaky: https://git.picodata.io/core/picodata/-/issues/1124
+    NOTE: It seems that sometimes the rebalancing process takes too much time,
+    NOTE: and `wait_until_instance_has_this_many_active_buckets` returns
+    NOTE: an error before rebalancing completes.
+    NOTE: Try increasing the number of retries below.
+    TODO: If it works, remove the "flaky" marker and close the ticket.
     """
-    # Need 3 instances for quorum
-    cluster.set_service_password("secret")
-    i1 = cluster.add_instance(wait_online=False, replicaset_name="r1")
-    i2 = cluster.add_instance(wait_online=False, replicaset_name="r2")
-    i3 = cluster.add_instance(wait_online=False, replicaset_name="r3")
-    cluster.wait_online()
+    i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # We have 3 replicasets 1 replica each
     rows = i1.sql(""" SELECT name, weight FROM _pico_replicaset ORDER BY name """)
-    assert rows == [
-        ["r1", 1.0],
-        ["r2", 1.0],
-        ["r3", 1.0],
-    ]
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
+    assert dict(rows) == {
+        i1.replicaset_name: 1.0,
+        i2.replicaset_name: 1.0,
+        i3.replicaset_name: 1.0,
+    }
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000, max_retries=15)
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
 
@@ -394,12 +393,12 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
 
     # We now have 2 replicasets 1 replica each
     rows = i1.sql(""" SELECT name, weight FROM _pico_replicaset ORDER BY name """)
-    assert rows == [
-        ["r1", 1.0],
-        ["r2", 1.0],
-        ["r3", 0.0],
-    ]
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    assert dict(rows) == {
+        i1.replicaset_name: 1.0,
+        i2.replicaset_name: 1.0,
+        i3.replicaset_name: 0.0,
+    }
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500, max_retries=15)
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
     # Vshard configuration was updated
