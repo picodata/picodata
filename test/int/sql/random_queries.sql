@@ -305,3 +305,55 @@ sbroad: table 'no_such_table' not found
 SELECT "t1".* FROM t AS t1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
+-- TEST: test-json-is-not-keyword-3
+-- SQL:
+DROP TABLE tc;
+
+-- TEST: test-filter-keyword-1
+-- SQL:
+select 1 as int
+-- EXPECTED:
+1
+
+-- TEST: test-filter-keyword-2
+-- SQL:
+CREATE TABLE int8 (int int, bigint smallint, uuid text, primary key (bigint, uuid));
+INSERT INTO int8 VALUES (8, 1, 'kek'), (10, 5, 'lol');
+
+-- TEST: test-filter-keyword-3
+-- SQL:
+SELECT uuid from int8;
+-- EXPECTED:
+'kek', 'lol'
+
+-- TEST: test-filter-keyword-4
+-- SQL:
+SELECT CAST(int as int) from int8;
+-- EXPECTED:
+8, 10
+
+-- TEST: test-filter-keyword-5
+-- SQL:
+UPDATE int8 set int = 9;
+
+-- TEST: test-filter-keyword-6
+-- SQL:
+CREATE UNIQUE INDEX unsigned ON int8 USING HASH (bigint, uuid)
+
+-- TEST: test-filter-keyword-7
+-- SQL:
+CREATE PROCEDURE array (string)
+LANGUAGE SQL
+AS $$
+    INSERT INTO int8 VALUES (10, 7, 'kek2')
+$$
+
+-- TEST: test-filter-keyword-8
+-- SQL:
+DELETE FROM int8 where uuid = 'kek';
+
+-- TEST: test-filter-keyword-9
+-- SQL:
+SELECT * FROM int8;
+-- EXPECTED:
+9, 5, 'lol'

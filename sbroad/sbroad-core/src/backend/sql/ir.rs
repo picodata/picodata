@@ -316,7 +316,7 @@ impl ExecutionPlan {
                     sql.push_str("as ");
                     push_identifier(&mut sql, s);
                 }
-                SyntaxData::UnquotedAlias(s) => {
+                SyntaxData::CastType(s) => {
                     sql.push_str("as ");
                     sql.push_str(s);
                 }

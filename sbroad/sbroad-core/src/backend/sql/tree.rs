@@ -27,8 +27,8 @@ pub enum SyntaxData {
     Alias(SmolStr),
     /// "*" or "table.*"
     Asterisk(Option<SmolStr>),
-    /// "as alias_name"
-    UnquotedAlias(SmolStr),
+    /// "as type"
+    CastType(SmolStr),
     /// "cast"
     Cast,
     // "case"
@@ -173,9 +173,9 @@ impl SyntaxNode {
         }
     }
 
-    fn new_unquoted_alias(name: SmolStr) -> Self {
+    fn new_cast_type(name: SmolStr) -> Self {
         SyntaxNode {
-            data: SyntaxData::UnquotedAlias(name),
+            data: SyntaxData::CastType(name),
             left: None,
             right: Vec::new(),
         }
@@ -1823,7 +1823,7 @@ impl<'p> SyntaxPlan<'p> {
         let children = vec![
             arena.push_sn_non_plan(SyntaxNode::new_open()),
             child_sn_id,
-            arena.push_sn_non_plan(SyntaxNode::new_unquoted_alias(to_alias)),
+            arena.push_sn_non_plan(SyntaxNode::new_cast_type(to_alias)),
             arena.push_sn_non_plan(SyntaxNode::new_close()),
         ];
         let cast_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast());
