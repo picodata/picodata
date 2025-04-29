@@ -84,7 +84,7 @@ impl SubtreeMap {
         *self
             .inner
             .get(&expr_id)
-            .unwrap_or_else(|| panic!("Could not find expr with id {expr_id:?} in subtree map"))
+            .unwrap_or_else(|| panic!("Could not find node with id {expr_id:?} in subtree map"))
     }
 
     fn contains_key(&self, expr_id: NodeId) -> bool {

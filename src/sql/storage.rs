@@ -339,7 +339,7 @@ impl StorageRuntime {
         match required.query_type {
             QueryType::DML => helpers::execute_dml(self, required, raw_optional.get_mut()?),
             QueryType::DQL => {
-                let mut info = EncodedQueryInfo::new(raw_optional, required);
+                let mut info: EncodedQueryInfo<'_> = EncodedQueryInfo::new(raw_optional, required);
                 match cache_info {
                     CacheInfo::CacheableFirstRequest => {
                         execute_first_cacheable_request(self, &mut info)

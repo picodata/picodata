@@ -573,7 +573,38 @@ impl<'plan> Comparator<'plan> {
                             ..
                         }) = right
                         {
-                            return Ok(t_left == t_right && p_left == p_right);
+                            // TODO: It's assumed that comparison is taking place for relational
+                            //       operators which have the same output order (just cloned). E.g.
+                            //       this function shouldn't work in case references are compared from
+                            //       the output of two subqueries reading from different
+                            //       tables (but it will return true).
+
+                            // Note: Logic below won't work for query like
+                            //       `select distinct 1 (select 2), a + (select 1) from t group by a + (select 1)`
+                            //       because of the following reasons:
+                            //       1. For Projection and GroupBy scalar subquery `(select 1)` will have different targets
+                            //       2. They are referencing different relations.
+
+                            let base_equal = t_left == t_right && p_left == p_right;
+                            // When we call `add_update` we have to compare references
+                            // without parent relation being added yet. That's why we don't unwrap
+                            // results here.
+                            let rel_left = self.plan.get_relational_from_reference_node(lhs);
+                            let rel_right = self.plan.get_relational_from_reference_node(rhs);
+                            let (Ok(rel_left), Ok(rel_right)) = (rel_left, rel_right) else {
+                                return Ok(base_equal);
+                            };
+                            let res = if self.plan.is_additional_child(rel_left)?
+                                && self.plan.is_additional_child(rel_right)?
+                            {
+                                // E.g. additional subqueries may be equal in case we've copied one under DISTINCT
+                                // qualifier of Projection into local GroupBy (`select distinct (select 1) from t`).
+                                base_equal && rel_left == rel_right
+                            } else {
+                                base_equal
+                            };
+
+                            return Ok(res);
                         }
                     }
                     Expression::Row(Row {
@@ -1574,7 +1605,12 @@ impl Plan {
         })) = self.get_node(ref_id)?
         {
             let Some(referred_rel_id) = parent else {
-                panic!("Reference ({ref_id}) parent node not found.");
+                return Err(SbroadError::Invalid(
+                    Entity::Node,
+                    Some(format_smolstr!(
+                        "Reference ({ref_id}) parent node not found."
+                    )),
+                ));
             };
             let rel = self.get_relation_node(*referred_rel_id)?;
             if let Relational::Insert { .. } = rel {
@@ -1587,9 +1623,9 @@ impl Plan {
                         "Reference node has no targets".into(),
                     ))
                 }
-                Some(positions) => match (positions.first(), positions.get(1)) {
-                    (Some(first), None) => {
-                        if let Some(child_id) = children.get(*first) {
+                Some(targets) => match (targets.first(), targets.get(1)) {
+                    (Some(target_index), None) => {
+                        if let Some(child_id) = children.get(*target_index) {
                             return Ok(*child_id);
                         }
                         // When we dispatch IR to the storage, we truncate the
@@ -1601,7 +1637,7 @@ impl Plan {
                             return Ok(*referred_rel_id);
                         }
                         return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                            "Relational node {rel:?} has no children"
+                            "Relational node {rel:?} does not have a child on index {target_index}"
                         )));
                     }
                     _ => {
@@ -1616,11 +1652,6 @@ impl Plan {
     }
 
     /// Get relational nodes referenced in the row.
-    ///
-    /// # Errors
-    /// - node is not a row
-    /// - row is invalid
-    /// - `relational_map` is not initialized
     pub fn get_relational_nodes_from_row(
         &self,
         row_id: NodeId,

@@ -161,3 +161,151 @@ INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
             (4, '2', 2),
             (5, '123', 2),
             (6, '2', 4);
+
+-- TEST: test-scalar-subquery-with-group-by
+-- SQL:
+SELECT (VALUES (1)) FROM testing_space GROUP BY product_units
+-- EXPECTED:
+1,
+1,
+1
+
+-- TEST: test-scalar-subquery-with-aggregates
+-- SQL:
+SELECT (VALUES (1)), SUM(id) FROM testing_space
+-- EXPECTED:
+1, 21
+
+-- TEST: test-subquery-under-aggregate
+-- SQL:
+SELECT SUM((SELECT id FROM testing_space WHERE id = 1)) FROM testing_space
+-- EXPECTED:
+6
+
+-- TEST: test-subquery-the-only-output-with-group-by
+-- SQL:
+SELECT (SELECT 1) FROM testing_space GROUP BY product_units
+-- EXPECTED:
+1,
+1,
+1
+
+-- TEST: test-subquery-second-output-with-group-by
+-- SQL:
+SELECT product_units, (SELECT 1) FROM testing_space GROUP BY product_units ORDER BY product_units
+-- EXPECTED:
+1, 1,
+2, 1,
+4, 1
+
+-- TEST: test-subquery-under-group-by
+-- SQL:
+SELECT (SELECT 1) FROM testing_space GROUP BY (SELECT 1)
+-- EXPECTED:
+1
+
+-- TEST: test-subquery-under-group-by-with-column
+-- SQL:
+SELECT (SELECT 1) FROM testing_space GROUP BY product_units, (SELECT 1)
+-- EXPECTED:
+1,
+1,
+1
+
+-- TEST: test-subquery-under-group-by-with-column-under-output
+-- SQL:
+SELECT product_units, (SELECT 1) FROM testing_space GROUP BY product_units, (SELECT 1) ORDER BY product_units
+-- EXPECTED:
+1, 1,
+2, 1,
+4, 1
+
+-- TEST: test-subquery-under-group-by-column-not-found
+-- SQL:
+SELECT id, (SELECT 1) FROM testing_space GROUP BY (SELECT 1)
+-- ERROR:
+invalid query: column "id" is not found in grouping expressions!
+
+-- TEST: test-subquery-with-distinct
+-- SQL:
+SELECT DISTINCT (SELECT 1) FROM testing_space
+-- EXPECTED:
+1
+
+-- TEST: test-subquery-with-distinct-and-column
+-- SQL:
+SELECT DISTINCT (SELECT 1), product_units FROM testing_space ORDER BY product_units
+-- EXPECTED:
+1, 1,
+1, 2,
+1, 4,
+
+-- TEST: test-subquery-under-having
+-- SQL:
+SELECT DISTINCT product_units, (SELECT 1) FROM testing_space HAVING (SELECT true) ORDER BY product_units
+-- EXPECTED:
+1, 1,
+2, 1,
+4, 1
+
+-- TEST: test-several-subqueries-in-output
+-- SQL:
+SELECT DISTINCT (SELECT 1), SUM((SELECT SUM(product_units) FROM testing_space)) FROM testing_space
+-- EXPECTED:
+1, 66
+
+-- TEST: test-several-subqueries-under-subtree
+-- SQL:
+SELECT DISTINCT (SELECT 1) + (SELECT 1) FROM testing_space
+-- EXPECTED:
+2
+
+-- TEST: test-subquery-under-distinct-aggregate
+-- SQL:
+SELECT SUM(DISTINCT (SELECT 1)) FROM testing_space
+-- EXPECTED:
+1
+
+-- TEST: test-subquery-under-distinct-aggregate-subtree
+-- SQL:
+SELECT SUM(DISTINCT (SELECT 1) + (SELECT 2)) FROM testing_space
+-- EXPECTED:
+3
+
+-- TEST: test-subquery-under-distinct-aggregate-and-outside
+-- SQL:
+SELECT (SELECT 1), SUM(DISTINCT (SELECT 2)), (SELECT 3) FROM testing_space
+-- EXPECTED:
+1, 2, 3
+
+-- TEST: test-subquery-under-several-aggregates
+-- SQL:
+SELECT product_units, AVG((SELECT SUM(id) FROM testing_space)), product_units + 1, SUM((SELECT SUM(id) FROM testing_space)) FROM testing_space GROUP BY product_units
+-- EXPECTED:
+1, 21, 2, 63,
+2, 21, 3, 42,
+4, 21, 5, 21
+
+-- TEST: test-subquery-under-having-aggregate
+-- SQL:
+SELECT sum((select 1)) FROM testing_space HAVING sum((select id from testing_space limit 1)) > (select 1)
+-- EXPECTED:
+6
+
+-- TEST: test-subquery-under-having-aggregate-and-projection
+-- SQL:
+SELECT sum((select id from testing_space where id = 3)) FROM testing_space HAVING sum((select id from testing_space limit 1)) > (select 1)
+-- EXPECTED:
+18
+
+-- TEST: test-single-sum-with-subquery
+-- SQL:
+SELECT SUM((SELECT * FROM (VALUES(1)))) FROM testing_space
+-- EXPECTED:
+6
+
+-- TEST: test-distinct-aggr-and-group-by-with-subquery
+-- SQL:
+SELECT SUM(DISTINCT (SELECT MIN(id) FROM testing_space)) FROM testing_space GROUP BY (select 1)
+-- EXPECTED:
+1

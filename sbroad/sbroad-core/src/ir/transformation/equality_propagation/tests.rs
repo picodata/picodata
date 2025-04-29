@@ -6,7 +6,6 @@ use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
-use crate::ir::node::NodeId;
 use pretty_assertions::assert_eq;
 
 use super::{EqClass, EqClassChain, EqClassConst, EqClassExpr, EqClassRef};

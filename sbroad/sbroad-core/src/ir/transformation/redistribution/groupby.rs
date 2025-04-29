@@ -7,7 +7,7 @@ use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::aggregates::Aggregate;
 use crate::ir::distribution::Distribution;
 use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
-use crate::ir::node::expression::Expression;
+use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference};
 use crate::ir::transformation::redistribution::{
@@ -154,16 +154,18 @@ impl<'plan> ExpressionMapper<'plan> {
             self.plan.get_expression_node(current),
             Ok(Expression::Reference(_))
         );
-        let is_sq_ref = is_ref
-            && self.plan.is_additional_child_of_rel(
-                self.rel_id,
-                self.plan.get_relational_from_reference_node(current)?,
-            )?;
-        // Because subqueries are replaced with References, we must not
-        // try to match these references against any GroupBy expressions
-        if is_sq_ref {
-            return Ok(());
+
+        if is_ref {
+            // Because subqueries are replaced with References, we must not
+            // try to match these references against any GroupBy expressions.
+            // Except those which are added from DISTINCT qualifier (but they
+            // will be matched earlier on a stage of ROWs comparison).
+            let referred_rel = self.plan.get_relational_from_reference_node(current)?;
+            if self.plan.is_additional_child(referred_rel)? {
+                return Ok(());
+            }
         }
+
         let comparator = Comparator::new(self.plan);
         if let Some(gr_expr) = self
             .gr_exprs
@@ -188,9 +190,9 @@ impl<'plan> ExpressionMapper<'plan> {
             // and it is not a grouping expression:
             // select a from t group by b - is invalid
             let column_name = {
-                let node = self.plan.get_expression_node(current)?;
+                let ref_node: Expression<'_> = self.plan.get_expression_node(current)?;
                 self.plan
-                    .get_alias_from_reference_node(&node)
+                    .get_alias_from_reference_node(&ref_node)
                     .unwrap_or("'failed to get column name'")
             };
             return Err(SbroadError::Invalid(
@@ -263,6 +265,24 @@ impl GroupByInfo {
 }
 
 impl Plan {
+    /// Helper function used only for two stage aggregation logic that helps retrieve
+    /// `parent` and `targets` fields from a Reference.
+    fn get_ref_parent_and_target(&self, ref_id: NodeId) -> Result<(NodeId, usize), SbroadError> {
+        let Reference {
+            parent, targets, ..
+        } = self
+            .get_reference(ref_id)
+            .expect("Reference should exist for aggregate");
+        let parent = parent.expect("Parent should exist for reference");
+        let targets = targets
+            .as_deref()
+            .expect("Targets should exist for reference");
+        let target = targets
+            .first()
+            .expect("Targets should not be empty for reference");
+        Ok((parent, *target))
+    }
+
     /// Used to create a `GroupBy` IR node from AST.
     /// The added `GroupBy` node is local - meaning
     /// that it is part of local stage in 2-stage
@@ -360,6 +380,7 @@ impl Plan {
         &mut self,
         proj_id: NodeId,
         upper: NodeId,
+        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
     ) -> Result<Option<NodeId>, SbroadError> {
         let Relational::Projection(Projection {
             is_distinct,
@@ -373,6 +394,7 @@ impl Plan {
         let groupby_id = if *is_distinct {
             let proj_cols_len = self.get_row_list(*output)?.len();
             let mut grouping_exprs: Vec<NodeId> = Vec::with_capacity(proj_cols_len);
+
             for i in 0..proj_cols_len {
                 let aliased_col = self.get_proj_col(proj_id, i)?;
                 let proj_col_id = if let Expression::Alias(Alias { child, .. }) =
@@ -382,6 +404,18 @@ impl Plan {
                 } else {
                     aliased_col
                 };
+
+                // For query like `SELECT DISTINCT (values (1)), a FROM t`
+                // we should remove scalar subquery from the final projection children
+                // and move it to the GroupBy expression (and children).
+                for ref_id in self.get_refs_from_subtree(proj_col_id)? {
+                    let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
+                    if self.is_additional_child(referred_rel_id)? {
+                        let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
+                        scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                    }
+                }
+
                 // Copy expression from Projection to GroupBy.
                 let col = SubtreeCloner::clone_subtree(self, proj_col_id)?;
                 grouping_exprs.push(col);
@@ -459,6 +493,12 @@ impl Plan {
                             let id = level_node.1;
                             let n = self.get_expression_node(id)?;
                             if let Expression::Reference(_) = n {
+                                let referred_rel_node =
+                                    self.get_relational_from_reference_node(id)?;
+                                if self.is_additional_child(referred_rel_node)? {
+                                    continue;
+                                }
+
                                 let alias = match self.get_alias_from_reference_node(&n) {
                                     Ok(v) => v.to_smolstr(),
                                     Err(e) => e.to_smolstr(),
@@ -484,6 +524,10 @@ impl Plan {
                     for level_node in nodes {
                         let id = level_node.1;
                         if let Expression::Reference(_) = self.get_expression_node(id)? {
+                            let referred_rel_node = self.get_relational_from_reference_node(id)?;
+                            if self.is_additional_child(referred_rel_node)? {
+                                continue;
+                            }
                             return Err(SbroadError::Invalid(
                                 Entity::Query,
                                 Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
@@ -520,6 +564,85 @@ impl Plan {
         Ok(false)
     }
 
+    /// Fix `target` field of references under final nodes.
+    /// Some of the final node children should be removed and we fix the offsets here.
+    fn fix_references_targets_in_subtree_final(
+        &mut self,
+        final_node_id: NodeId,
+        children_to_save: &[NodeId],
+        subtree_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        // Map of { old_child_index -> new_child_index }.
+        let ref_targets_remap = {
+            let mut inner = AHashMap::new();
+            let mut index_new = 1;
+            let final_node_children = self.children(final_node_id);
+            for (index_prev, child_id) in final_node_children.iter().enumerate() {
+                if index_prev == 0 || !children_to_save.contains(child_id) {
+                    continue;
+                }
+                inner.insert(index_prev, index_new);
+                index_new += 1;
+            }
+            inner
+        };
+
+        for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
+            let ref_node = self.get_mut_expression_node(ref_to_fix)?;
+            let MutExpression::Reference(Reference {
+                targets: Some(targets),
+                ..
+            }) = ref_node
+            else {
+                unreachable!("Reference with targets should be met under Projection output")
+            };
+            let prev_index = targets.first().expect("Reference targets should be empty");
+            if let Some(new_index) = ref_targets_remap.get(prev_index) {
+                *targets
+                    .first_mut()
+                    .expect("Targets vec should not be empty") = *new_index;
+            }
+        }
+        Ok(())
+    }
+
+    /// Fix `target` field of references under local nodes.
+    fn fix_references_targets_in_subtree_local(
+        &mut self,
+        local_rel_id: NodeId,
+        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        subtree_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let local_rel_children_list = self.children(local_rel_id).to_vec();
+        for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
+            let (parent, prev_index) = self.get_ref_parent_and_target(ref_to_fix)?;
+            let ref_node = self.get_mut_expression_node(ref_to_fix)?;
+            let MutExpression::Reference(Reference {
+                targets: Some(targets),
+                ..
+            }) = ref_node
+            else {
+                unreachable!("Reference with targets should be met under Projection output")
+            };
+
+            for ((par, tar), sq_id) in scalar_sqs_to_fix.iter() {
+                // It's important to compare here because references
+                // may have come from different final nodes.
+                if *par == parent && *tar == prev_index {
+                    let new_index = local_rel_children_list
+                        .iter()
+                        .position(|child_id| *child_id == *sq_id)
+                        .expect("Sq should be find under local relational node");
+
+                    *targets
+                        .first_mut()
+                        .expect("Targets vec should not be empty") = new_index;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// "Grouping exprs" are expressions that are used in GroupBy clause
     /// (on both Map and Reduce stages of the algorithm). In this function we try
     /// to identify which grouping exprs we have to add in order to
@@ -529,9 +652,10 @@ impl Plan {
         groupby_info: &mut Option<GroupByInfo>,
         aggrs: &mut [Aggregate],
         finals: &Vec<NodeId>,
+        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         let distinct_aggr_grouping_exprs =
-            self.collect_grouping_exprs_from_distinct_aggrs(aggrs)?;
+            self.collect_grouping_exprs_from_distinct_aggrs(aggrs, scalar_sqs_to_fix)?;
 
         // Index for generating local grouping expressions aliases.
         let mut local_alias_index = 1;
@@ -592,11 +716,51 @@ impl Plan {
                     .insert(expr.id, local_alias.clone());
             }
 
+            // Move scalar subqueries that came from DISTINCT qualifier to GroupBy children.
+            let groupby = self.get_mut_relation_node(groupby_info.id)?;
+            let MutRelational::GroupBy(GroupBy { children, .. }) = groupby else {
+                unreachable!("GroupBy node should be met for groupby info")
+            };
+            children.extend(scalar_sqs_to_fix.iter().map(|(_, sq_id)| sq_id));
+
+            for gr_expr_local in &grouping_exprs_local {
+                self.fix_references_targets_in_subtree_local(
+                    groupby_info.id,
+                    scalar_sqs_to_fix,
+                    *gr_expr_local,
+                )?;
+                self.set_parent_in_subtree(*gr_expr_local, groupby_info.id)?;
+
+                // For query `SELECT 1 FROM t GROUP BY (SELECT 1)`
+                // we'd like to clone scalar subquery from local GroupBy
+                // to local Projection node.
+                for ref_id in self.get_refs_from_subtree(*gr_expr_local)? {
+                    let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
+
+                    // If `scalar_sqs_to_fix` contains sq that came from DISTINCT qualifier
+                    // or distinct aggregates, we should remove it and add again with new
+                    // (parent, target) key from local GroupBy.
+                    let sq_key = scalar_sqs_to_fix
+                        .iter()
+                        .find(|(_, sq_id)| *sq_id == referred_rel_id)
+                        .map(|(key, _)| *key);
+                    if let Some(sq_key) = sq_key {
+                        scalar_sqs_to_fix.remove(&sq_key);
+                    }
+
+                    if self.is_additional_child(referred_rel_id)? {
+                        let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
+                        scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                    }
+                }
+            }
+
             self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
             self.fill_grouping_exprs_map(finals, groupby_info)?;
 
             self.set_distribution(self.get_relational_output(groupby_info.id)?)?;
         }
+
         Ok(())
     }
 
@@ -606,6 +770,7 @@ impl Plan {
     fn collect_grouping_exprs_from_distinct_aggrs<'aggr>(
         &self,
         aggrs: &'aggr mut [Aggregate],
+        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
     ) -> Result<Vec<(NodeId, &'aggr mut Aggregate)>, SbroadError> {
         let mut res = Vec::with_capacity(aggrs.len());
         for aggr in aggrs.iter_mut().filter(|x| x.is_distinct) {
@@ -615,6 +780,16 @@ impl Plan {
                 .collect::<Vec<NodeId>>()
                 .first()
                 .expect("Number of args for aggregate should have been already checked");
+
+            // For such aggregates we should move their sqs from final Projection to local GroupBy.
+            for ref_id in self.get_refs_from_subtree(arg)? {
+                let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
+                if self.is_additional_child(referred_rel_id)? {
+                    let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
+                    scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                }
+            }
+
             res.push((arg, aggr));
         }
         Ok(res)
@@ -738,33 +913,17 @@ impl Plan {
     fn add_local_projection(
         &mut self,
         upper_id: NodeId,
-        aggrs: &mut Vec<Aggregate>,
+        aggrs: &mut [Aggregate],
         groupby_info: &mut Option<GroupByInfo>,
+        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
     ) -> Result<NodeId, SbroadError> {
         let proj_output_cols = self.create_columns_for_local_proj(aggrs, groupby_info)?;
         let proj_output: NodeId = self.nodes.add_row(proj_output_cols, None);
 
-        let ref_rel_nodes = self.get_relational_nodes_from_row(proj_output)?;
-
         let mut children = vec![upper_id];
-
-        // Handle subqueries.
-        for ref_rel_node_id in ref_rel_nodes {
-            let rel_node = self.get_relation_node(ref_rel_node_id)?;
-            if matches!(rel_node, Relational::ScanSubQuery { .. })
-                && self.is_additional_child(ref_rel_node_id)?
-            {
-                // Note: For queries like `select sum((VALUES (1))) from t` it may be a problem
-                //       that we don't make a copy of a SubQuery node, but just copy its id so that
-                //       several Relational node consider it to be a child.
-                //       It may be a problem on a `take_subtree` call for the query above:
-                //       * `take_subtree` will replace SQ with Invalid while traversing Local(Map)
-                //         stage
-                //       * Later Final(Reduce) stage won't see the SubQuery.
-                // TODO: Solution would be to use `SubtreeCloner::clone`?
-                children.push(ref_rel_node_id);
-            }
-        }
+        // Handle scalar subqueries which we have to move
+        // from final Projection to this local one.
+        children.extend(scalar_sqs_to_fix.iter().map(|(_, sq_id)| sq_id));
 
         let proj = Projection {
             output: proj_output,
@@ -776,22 +935,15 @@ impl Plan {
         };
         let proj_id = self.add_relational(proj.into())?;
 
-        // We take expressions inside aggregate functions from Final projection,
-        // so we need to update parent.
-        for aggr in aggrs {
-            self.replace_parent_in_subtree(aggr.fun_id, Some(aggr.parent_rel), Some(proj_id))?;
-        }
-        if let Some(groupby_info) = groupby_info.as_mut() {
-            let local_projection_output = self.get_row_list(proj_output)?.clone();
+        // In case we've cloned some reference from final Projection or Having to the local Projection
+        // and in case final Projection or Having contains scalar subqueries (which we want to move here)
+        // we have to fix `target` field for the references under local Projection.
+        self.fix_references_targets_in_subtree_local(proj_id, scalar_sqs_to_fix, proj_output)?;
 
-            for (new_gr_expr_pos, _) in groupby_info.grouping_expr_to_alias_map.iter().enumerate() {
-                let new_gr_expr_id = *local_projection_output
-                    .get(new_gr_expr_pos)
-                    .expect("Grouping expression should be found under local Projection output");
+        // Expressions used under newly created output are referencing final Projection. We
+        // have to fix it so that they reference newly created Projection.
+        self.set_parent_in_subtree(proj_output, proj_id)?;
 
-                self.set_parent_in_subtree(new_gr_expr_id, proj_id)?;
-            }
-        };
         self.set_distribution(proj_output)?;
 
         Ok(proj_id)
@@ -995,6 +1147,7 @@ impl Plan {
         finals_child_id: NodeId,
         aggrs: &Vec<Aggregate>,
         groupby_info: &Option<GroupByInfo>,
+        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         // Update relational child of the last final.
         let last_final_id = finals.last().expect("last final node should exist");
@@ -1031,8 +1184,8 @@ impl Plan {
         let mut parent_to_aggrs: HashMap<NodeId, Vec<Aggregate>> =
             HashMap::with_capacity(finals.len());
         for aggr in aggrs {
-            if let Some(v) = parent_to_aggrs.get_mut(&aggr.parent_rel) {
-                v.push(aggr.clone());
+            if let Some(parent_aggrs_vec) = parent_to_aggrs.get_mut(&aggr.parent_rel) {
+                parent_aggrs_vec.push(aggr.clone());
             } else {
                 parent_to_aggrs.insert(aggr.parent_rel, vec![aggr.clone()]);
             }
@@ -1043,7 +1196,9 @@ impl Plan {
                 .get(0)
                 .expect("final relational node should have a child");
 
-            // AggrKind -> LocalAlias -> Pos in the output
+            // We construct mapping { AggrKind -> Pos in the output }
+            // out of maps
+            // { AggrKind -> LocalAlias } and { LocalAlias -> Pos in the output }.
             let alias_to_pos_map: ColumnPositionMap = ColumnPositionMap::new(self, child_id)?;
             for aggr in aggrs {
                 // Position in the output with aggregate kind.
@@ -1052,6 +1207,54 @@ impl Plan {
                 self.replace_expression(aggr.parent_expr, aggr.fun_id, final_expr)?;
             }
         }
+
+        // In case final Projection or Having had an aggregate referencing scalar SubQuery,
+        // we have to remove this SubQuery from children.
+        // After this we have to fix `target` fields of references because of
+        // children shift.
+        // Note that we are doing it after there are no references that we've copied to other operators
+        // left (e.g. for aggregates they are replaced with aliases above).
+        for final_id in finals.iter().rev() {
+            let final_node = self.get_relation_node(*final_id)?;
+            let (children, subtree_id) = match final_node {
+                Relational::Projection(Projection {
+                    children,
+                    output: subtree_id,
+                    ..
+                })
+                | Relational::Having(Having {
+                    children,
+                    filter: subtree_id,
+                    ..
+                }) => (children, subtree_id),
+                _ => unreachable!("Unexpected node in reduce stage: {final_node:?}"),
+            };
+
+            let fixed_children = {
+                let mut fixed_children = Vec::with_capacity(children.len());
+                fixed_children.push(children[0]);
+                for (index_prev, child_id) in children.iter().enumerate() {
+                    if index_prev == 0
+                        || scalar_sqs_to_fix
+                            .iter()
+                            .map(|(_, sq_id)| sq_id)
+                            .any(|sq_id| *sq_id == *child_id)
+                    {
+                        continue;
+                    }
+                    fixed_children.push(*child_id);
+                }
+                self.fix_references_targets_in_subtree_final(
+                    *final_id,
+                    &fixed_children,
+                    *subtree_id,
+                )?;
+                fixed_children
+            };
+            let mut final_node_mut = self.get_mut_relation_node(*final_id)?;
+            final_node_mut.set_children(fixed_children);
+        }
+
         Ok(())
     }
 
@@ -1067,7 +1270,7 @@ impl Plan {
             unreachable!("Projection should be the first node in reduce stage")
         }
 
-        // In case we have local GroupBy, then `finals_child_id`` is local GroupBy.
+        //  `finals_child_id`` is final GroupBy or a local Projection.
         let finals_child_node = self.get_relation_node(finals_child_id)?;
         let has_local_group_by = matches!(finals_child_node, Relational::GroupBy(_));
 
@@ -1096,7 +1299,7 @@ impl Plan {
             // actual child (Motion) wasn't created yet.
             self.set_distribution(self.get_relational_output(finals_child_id)?)?;
         } else {
-            // No local GroupBy.
+            // No final GroupBy.
             let last_final_id = *finals.last().unwrap();
             let mut strategy = Strategy::new(last_final_id);
             strategy.add_child(finals_child_id, MotionPolicy::Full, Program::default());
@@ -1182,8 +1385,20 @@ impl Plan {
 
         let mut aggrs = self.collect_aggregates(&finals)?;
 
+        // In case scalar sq are met in queries like
+        // * `select distinct (select 1) from t`
+        // * `select sum((select 1)) from t`
+        // they should be moved from final Projection/Having to the local Projection/GroupBy
+        // (we remove them from additional children of final node when call `patch_finals`).
+        //
+        // Here is a map of { (ref_parent, ref_target) -> sq_id }.
+        // Mapping is needed only for the stage of local targets fixing (not for final nodes fixing).
+        let mut scalar_sqs_to_fix = OrderedMap::with_hasher(RepeatableState);
+
         if groupby_info.is_none() && aggrs.is_empty() {
-            if let Some(groupby_id) = self.add_group_by_for_distinct(final_proj_id, upper_id)? {
+            if let Some(groupby_id) =
+                self.add_group_by_for_distinct(final_proj_id, upper_id, &mut scalar_sqs_to_fix)?
+            {
                 // In case aggregates or GroupBy are present, "distinct" qualifier under
                 // Projection doesn't add any new features to the plan. Otherwise, we should add
                 // a new GroupBy node for a local map stage.
@@ -1224,7 +1439,12 @@ impl Plan {
         //       local GroupBy node, please try to implement it above (so that
         //       such node creation is located in one place).
 
-        self.collect_grouping_exprs(&mut groupby_info, &mut aggrs, &finals)?;
+        self.collect_grouping_exprs(
+            &mut groupby_info,
+            &mut aggrs,
+            &finals,
+            &mut scalar_sqs_to_fix,
+        )?;
 
         if let Some(groupby_info) = groupby_info.as_ref() {
             if !groupby_info.grouping_exprs.is_empty()
@@ -1234,7 +1454,26 @@ impl Plan {
             }
         }
 
-        let local_proj_id = self.add_local_projection(upper_id, &mut aggrs, &mut groupby_info)?;
+        // We have to move scalar subqueries from non distinct aggregates to local Projection.
+        for aggr in aggrs.iter().filter(|x| !x.is_distinct) {
+            let arg: NodeId = *self
+                .nodes
+                .expr_iter(aggr.fun_id, false)
+                .collect::<Vec<NodeId>>()
+                .first()
+                .expect("Number of args for aggregate should have been already checked");
+
+            for ref_id in self.get_refs_from_subtree(arg)? {
+                let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
+                if self.is_additional_child(referred_rel_id)? {
+                    let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
+                    scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                }
+            }
+        }
+
+        let local_proj_id =
+            self.add_local_projection(upper_id, &mut aggrs, &mut groupby_info, &scalar_sqs_to_fix)?;
         let finals_child_id = if let Some(groupby_info) = groupby_info.as_ref() {
             if groupby_info.grouping_exprs.is_empty() {
                 local_proj_id
@@ -1245,7 +1484,13 @@ impl Plan {
             local_proj_id
         };
 
-        self.patch_finals(&finals, finals_child_id, &aggrs, &groupby_info)?;
+        self.patch_finals(
+            &finals,
+            finals_child_id,
+            &aggrs,
+            &groupby_info,
+            &scalar_sqs_to_fix,
+        )?;
 
         self.add_motion_to_two_stage(&groupby_info, finals_child_id, &finals)?;
 

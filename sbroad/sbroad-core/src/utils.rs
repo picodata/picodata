@@ -141,6 +141,11 @@ impl<K: Clone + Hash + Eq, V: Clone, S: BuildHasher> OrderedMap<K, V, S> {
         self.map.remove(key)
     }
 
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.order.clear();
+    }
+
     pub fn insert(&mut self, key: K, value: V) {
         if self.map.insert(key.clone(), value.clone()).is_none() {
             self.order.push((key, value));

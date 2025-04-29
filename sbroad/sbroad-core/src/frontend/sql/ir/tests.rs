@@ -3857,17 +3857,13 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
             motion [policy: segment([ref("gr_expr_1")])]
-                projection ("test_space"."id"::unsigned + ROW($1) -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
+                projection ("test_space"."id"::unsigned + ROW($0) -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
                     group by ("test_space"."id"::unsigned + ROW($0)) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                         scan "test_space"
     subquery $0:
     scan
                             values
                                 value row (data=ROW(1::unsigned))
-    subquery $1:
-    scan
-                        values
-                            value row (data=ROW(1::unsigned))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

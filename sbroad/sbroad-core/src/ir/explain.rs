@@ -23,8 +23,10 @@ use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Target as IrTarget,
 };
 use crate::ir::{node, OptionKind, Plan};
+use crate::utils::OrderedMap;
 
 use super::expression::FunctionFeature;
+use super::helpers::RepeatableState;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Bound, BoundType, Frame, FrameType, Limit, NamedWindows, Over, Window};
@@ -33,7 +35,7 @@ use super::relation::DerivedType;
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::value::Value;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum ColExpr {
     Parentheses(Box<ColExpr>),
     Alias(Box<ColExpr>, SmolStr),
@@ -470,13 +472,13 @@ impl ColExpr {
 /// index will indicate to which of them Reference is pointing).
 type SubQueryRefMap = HashMap<NodeId, usize>;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Projection {
     /// List of colums in sql query
     cols: Vec<ColExpr>,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum BoundTypeExplain {
     PrecedingUnbounded,
     PrecedingOffset(ColExpr),
@@ -517,7 +519,7 @@ impl Display for BoundTypeExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum BoundExplain {
     Single(BoundTypeExplain),
     Between(BoundTypeExplain, BoundTypeExplain),
@@ -547,7 +549,7 @@ impl Display for BoundExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct FrameExplain {
     ty: FrameType,
     bound: BoundExplain,
@@ -569,7 +571,7 @@ impl Display for FrameExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct WindowExplain {
     name: Option<SmolStr>,
     partition: Vec<ColExpr>,
@@ -644,7 +646,7 @@ impl Display for Projection {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct NamedWindowsExplain {
     windows: Vec<ColExpr>,
 }
@@ -667,7 +669,7 @@ impl NamedWindowsExplain {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct GroupBy {
     /// List of colums in sql query
     gr_exprs: Vec<ColExpr>,
@@ -724,7 +726,7 @@ impl Display for GroupBy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum OrderByExpr {
     Expr { expr: ColExpr },
     Index { value: usize },
@@ -739,7 +741,7 @@ impl Display for OrderByExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct OrderByPair {
     expr: OrderByExpr,
     order_type: Option<OrderByType>,
@@ -755,7 +757,7 @@ impl Display for OrderByPair {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct OrderBy {
     order_by_elements: Vec<OrderByPair>,
 }
@@ -800,7 +802,7 @@ impl Display for OrderBy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Update {
     /// List of columns in sql query
     table: SmolStr,
@@ -892,7 +894,7 @@ impl Display for Update {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Scan {
     /// Table name
     table: SmolStr,
@@ -922,7 +924,7 @@ impl Display for Scan {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Ref {
     /// Reference to subquery/window index in `FullExplain` parts
     number: usize,
@@ -941,7 +943,7 @@ impl Display for Ref {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum RowVal {
     ColumnExpr(ColExpr),
     SqRef(Ref),
@@ -958,7 +960,7 @@ impl Display for RowVal {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Row {
     /// List of sql values in `WHERE` cause
     cols: Vec<RowVal>,
@@ -1028,7 +1030,7 @@ impl Display for Row {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct SubQuery {
     /// Subquery alias. For subquery in `WHERE` cause alias is `None`.
     alias: Option<String>,
@@ -1052,7 +1054,7 @@ impl Display for SubQuery {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct Motion {
     policy: MotionPolicy,
 }
@@ -1069,7 +1071,7 @@ impl Display for Motion {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum MotionPolicy {
     None,
     Full,
@@ -1090,7 +1092,7 @@ impl Display for MotionPolicy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct MotionKey {
     pub targets: Vec<Target>,
 }
@@ -1108,7 +1110,7 @@ impl Display for MotionKey {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 enum Target {
     Reference(String),
     Value(Value),
@@ -1123,7 +1125,7 @@ impl Display for Target {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 struct InnerJoin {
     condition: ColExpr,
     kind: JoinKind,
@@ -1143,7 +1145,7 @@ impl Display for InnerJoin {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[allow(dead_code)]
 enum ExplainNode {
     Delete(SmolStr),
@@ -1209,7 +1211,7 @@ impl Display for ExplainNode {
 }
 
 /// Describe sql query (or subquery) as recursive type
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct ExplainTreePart {
     /// Level helps to detect count of idents
     #[serde(skip_serializing)]
@@ -1264,12 +1266,11 @@ impl ExplainTreePart {
     }
 }
 
-#[derive(Debug, Default)]
 struct FullExplain {
     /// Main sql subtree
     main_query: ExplainTreePart,
     /// Independent sub-trees of main sql query (e.g. sub-queries in `WHERE` cause, CTEs, etc.)
-    subqueries: Vec<ExplainTreePart>,
+    subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
     /// Windows under Projection.
     windows: Vec<ExplainTreePart>,
     /// Options imposed during query execution
@@ -1320,7 +1321,7 @@ impl Display for FullExplain {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut s = self.main_query.to_string();
 
-        for (pos, sq) in self.subqueries.iter().enumerate() {
+        for (pos, (_, sq)) in self.subqueries.iter().enumerate() {
             writeln!(s, "subquery ${pos}:")?;
             s.push_str(&sq.to_string());
         }
@@ -1355,6 +1356,16 @@ impl Display for FullExplain {
 }
 
 impl FullExplain {
+    fn empty() -> Self {
+        Self {
+            main_query: ExplainTreePart::default(),
+            subqueries: OrderedMap::with_hasher(RepeatableState),
+            windows: Vec::new(),
+            exec_options: Vec::new(),
+            buckets_info: None,
+        }
+    }
+
     /// Retrieve SubQueryRefMap from relational node children and update
     /// `current_node` children.
     fn get_sq_ref_map(
@@ -1372,8 +1383,16 @@ impl FullExplain {
             let sq_node = stack
                 .pop()
                 .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
-            self.subqueries.push(sq_node);
-            let offset = self.subqueries.len() - 1;
+            if !self.subqueries.contains_key(sq_id) {
+                self.subqueries.insert(*sq_id, sq_node);
+            }
+            let offset = self
+                .subqueries
+                .iter()
+                .enumerate()
+                .find(|(_, (sq_id_inner, _))| sq_id_inner == sq_id)
+                .map(|(offset, _)| offset)
+                .expect("sq should be found for explain");
             sq_ref_map.insert(*sq_id, offset);
         }
 
@@ -1397,7 +1416,7 @@ impl FullExplain {
     #[allow(clippy::too_many_lines)]
     pub fn new(ir: &Plan, top_id: NodeId) -> Result<Self, SbroadError> {
         let mut stack: Vec<ExplainTreePart> = Vec::new();
-        let mut result = FullExplain::default();
+        let mut result = FullExplain::empty();
         result.exec_options.push((
             OptionKind::VdbeOpcodeMax,
             Value::Unsigned(ir.options.sql_vdbe_opcode_max),
@@ -1493,11 +1512,14 @@ impl FullExplain {
                     );
                     Some(ExplainNode::Scan(s))
                 }
-                Relational::ScanCte(ScanCte { alias, .. }) => {
-                    let child = stack.pop().expect("CTE node must have exactly one child");
-                    let existing_pos = result.subqueries.iter().position(|sq| *sq == child);
+                Relational::ScanCte(ScanCte { alias, child, .. }) => {
+                    let child_tree = stack.pop().expect("CTE node must have exactly one child");
+                    let existing_pos = result
+                        .subqueries
+                        .iter()
+                        .position(|(_, sq)| *sq == child_tree);
                     let pos = existing_pos.unwrap_or_else(|| {
-                        result.subqueries.push(child);
+                        result.subqueries.insert(*child, child_tree);
                         result.subqueries.len() - 1
                     });
                     Some(ExplainNode::Cte(alias.clone(), Ref::new(pos)))

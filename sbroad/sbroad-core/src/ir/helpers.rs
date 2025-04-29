@@ -18,8 +18,9 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, ScalarFunction,
-    Timestamp, Window};
+use super::node::{
+    ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, ScalarFunction, Timestamp, Window,
+};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.

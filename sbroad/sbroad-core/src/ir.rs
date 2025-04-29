@@ -1477,6 +1477,24 @@ impl Plan {
         }
     }
 
+    /// Get vec of references from the subtree of the given expression.
+    pub fn get_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            matches!(
+                self.get_node(node_id),
+                Ok(Node::Expression(Expression::Reference(_)))
+            )
+        };
+        let mut dfs = PostOrderWithFilter::with_capacity(
+            |x| self.nodes.expr_iter(x, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+        dfs.populate_nodes(expr_id);
+        let ref_ids: Vec<NodeId> = dfs.take_nodes().iter().map(|n| n.1).collect();
+        Ok(ref_ids)
+    }
+
     /// Gets list of `Row` children ids
     ///
     /// # Errors
