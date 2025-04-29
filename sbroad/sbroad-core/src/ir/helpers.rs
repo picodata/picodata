@@ -18,7 +18,8 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, Timestamp, Window};
+use super::node::{ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, ScalarFunction,
+    Timestamp, Window};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.
@@ -146,15 +147,9 @@ impl Plan {
                     )?;
                 }
                 Expression::Alias(Alias { name, child }) => {
-                    let child_node = self.get_node(*child).expect("Alias must have a child node");
-                    let child = match child_node {
-                        Node::Expression(Expression::Parameter(..)) => String::from("parameter"),
-                        Node::Expression(child_expr) => format!("{child_expr:?}"),
-                        Node::Relational(rel) => format!("{rel:?}"),
-                        // TODO: fix `fix_betweens` logic to cover SubQueries with References.
-                        _ => unreachable!("unexpected Alias child node"),
-                    };
-                    writeln!(buf, "Alias [name = {name}, child = {child}]")?;
+                    writeln!(buf, "Alias [name = {name}]")?;
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Child:")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *child)?;
                 }
                 Expression::Case(Case {
                     search_expr,
@@ -195,14 +190,17 @@ impl Plan {
                     col_type,
                     ..
                 }) => {
-                    let alias_name = self.get_alias_from_reference_node(&expr).unwrap();
-
                     writeln!(buf, "Reference")?;
-                    writeln_with_tabulation(
-                        buf,
-                        tabulation_number + 1,
-                        format!("Alias: {alias_name}").as_str(),
-                    )?;
+                    if targets.is_some() {
+                        let alias = self.get_alias_from_reference_node(&expr);
+                        if let Result::Ok(alias) = alias {
+                            writeln_with_tabulation(
+                                buf,
+                                tabulation_number + 1,
+                                format!("Alias: {alias}").as_str(),
+                            )?;
+                        }
+                    }
 
                     // See explain logic for Reference node
                     let rel_id = self.get_relational_from_reference_node(node_id);
@@ -219,11 +217,13 @@ impl Plan {
                         }
                     }
 
-                    writeln_with_tabulation(
-                        buf,
-                        tabulation_number + 1,
-                        format!("Parent: {parent:?}").as_str(),
-                    )?;
+                    if let Some(parent) = parent {
+                        writeln_with_tabulation(
+                            buf,
+                            tabulation_number + 1,
+                            format!("Parent: {parent}").as_str(),
+                        )?;
+                    }
 
                     if let Some(targets) = targets {
                         for target_id in targets {
@@ -233,9 +233,13 @@ impl Plan {
                                 format!("target_id: {target_id}").as_str(),
                             )?;
                         }
-                    } else {
-                        writeln!(buf, "NO TARGETS")?;
                     }
+
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        format!("Position: {position:?}").as_str(),
+                    )?;
 
                     let col_type_str = col_type.to_string();
                     writeln_with_tabulation(
@@ -245,10 +249,15 @@ impl Plan {
                     )?;
                 }
                 Expression::Row(Row { list, distribution }) => {
-                    writeln!(buf, "Row [distribution = {distribution:?}]")?;
+                    write!(buf, "Row")?;
+                    if let Some(distribution) = distribution {
+                        writeln!(buf, " [distribution = {distribution:?}]")?;
+                    } else {
+                        writeln!(buf)?;
+                    }
                     writeln_with_tabulation(buf, tabulation_number + 1, "List:")?;
                     for value in list {
-                        self.formatted_arena_node(buf, tabulation_number + 2, *value)?;
+                        self.formatted_arena_node(buf, tabulation_number + 1, *value)?;
                     }
                 }
                 Expression::Cast(_) => writeln!(buf, "Cast")?,
@@ -267,7 +276,13 @@ impl Plan {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Escape")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *escape)?;
                 }
-                Expression::ScalarFunction(_) => writeln!(buf, "ScalarFunction")?,
+                Expression::ScalarFunction(ScalarFunction { children, .. }) => {
+                    writeln!(buf, "ScalarFunction")?;
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Arguments:")?;
+                    for arg in children {
+                        self.formatted_arena_node(buf, tabulation_number + 1, *arg)?;
+                    }
+                }
                 Expression::Unary(UnaryExpr { op, child }) => {
                     writeln!(buf, "Unary [op: {op}]")?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "Child")?;
@@ -392,13 +407,7 @@ impl Plan {
                         writeln!(buf, "GroupBy")?;
                         writeln_with_tabulation(buf, tabulation_number + 1, "Gr_cols:")?;
                         for expr_id in gr_exprs {
-                            let expr = self.get_expression_node(*expr_id);
-                            let text = if let Ok(expr) = expr {
-                                format!("Gr_col: {expr:?}")
-                            } else {
-                                format!("Gr_col: {expr_id}")
-                            };
-                            writeln_with_tabulation(buf, tabulation_number + 2, text.as_str())?;
+                            self.formatted_arena_node(buf, tabulation_number + 2, *expr_id)?;
                         }
                     }
                     Relational::OrderBy(OrderBy {
@@ -504,12 +513,8 @@ impl Plan {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Output: NONE")?;
                 } else {
                     let output = relation.output();
-                    writeln_with_tabulation(
-                        buf,
-                        tabulation_number + 1,
-                        format!("Output_id: {output}").as_str(),
-                    )?;
-                    self.formatted_arena_node(buf, tabulation_number + 2, output)?;
+                    write_with_tabulation(buf, tabulation_number + 1, "Output:")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, output)?;
                 }
                 writeln!(buf, "---------------------------------------------")?;
             }
