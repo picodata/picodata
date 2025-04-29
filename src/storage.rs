@@ -13,6 +13,7 @@ use tarantool::tlua;
 use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
 
+use crate::catalog::governor_queue::GovernorQueue;
 use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
 use crate::info::PICODATA_VERSION;
@@ -113,6 +114,32 @@ pub fn storage_is_initialized() -> bool {
         && space_by_name(crate::traft::raft_storage::RaftSpaceAccess::SPACE_RAFT_STATE).is_ok()
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// System tables IDs
+////////////////////////////////////////////////////////////////////////////////
+/// 512 - _pico_table
+/// 513 - _pico_index
+/// 514 - _pico_peer_address
+/// 515 - _pico_instance
+/// 516 - _pico_property
+/// 517 - _pico_replicaset
+/// 518 - _raft_log
+/// 519 - _raft_state
+/// 520 - _pico_user
+/// 521 - _pico_privilege
+/// 522 - _pico_governor_queue
+/// 523 - _pico_tier
+/// 524 - _pico_routine
+/// 525 - AVAILABLE_SPACE_ID
+/// 526 - _pico_plugin
+/// 527 - _pico_service
+/// 528 - _pico_service_route
+/// 529 - _pico_plugin_migration
+/// 530 - _pico_plugin_config
+/// 531 - _pico_db_config
+/// 532 - _bucket
+/// 533 or first available space id - can be used in tests (testplug)
+////////////////////////////////////////////////////////////////////////////////
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
 /// The latest system catalog version this version of picodata is aware of.
@@ -120,7 +147,7 @@ pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_
 /// If this version of the executable bootstraps a new picodata cluster this
 /// will be the value of 'system_catalog_version' field in `_pico_property`.
 /// Otherwise this will be the version the cluster is going to be upgrading to.
-pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.2.1";
+pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.3.1";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Catalog
@@ -148,6 +175,7 @@ pub struct Catalog {
     pub plugin_migrations: PluginMigrations,
     pub plugin_config: PluginConfig,
     pub db_config: DbConfig,
+    pub governor_queue: GovernorQueue,
 }
 
 /// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
@@ -188,6 +216,7 @@ impl Catalog {
             plugin_migrations: PluginMigrations::new()?,
             plugin_config: PluginConfig::new()?,
             db_config: DbConfig::new()?,
+            governor_queue: GovernorQueue::new()?,
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
         })
@@ -211,6 +240,7 @@ impl Catalog {
             PluginMigrations::TABLE_ID => Some(PluginMigrations::TABLE_NAME),
             PluginConfig::TABLE_ID => Some(PluginConfig::TABLE_NAME),
             DbConfig::TABLE_ID => Some(DbConfig::TABLE_NAME),
+            GovernorQueue::TABLE_ID => Some(GovernorQueue::TABLE_NAME),
             _ => None,
         }
     }
@@ -270,6 +300,7 @@ impl Catalog {
     /// Should only be used in tests.
     pub(crate) fn for_tests() -> Self {
         let storage = Self::try_get(true).unwrap();
+        storage.governor_queue.create_space().unwrap();
 
         if storage.tables.space.len().unwrap() != 0 {
             // Already initialized by other tests.
@@ -991,6 +1022,19 @@ impl ToEntryIter<MP_SERDE> for PeerAddresses {
         /// Note that picodata only supports clusters of instances with 2 successive versions.
         /// Therefore, each instance's version is either equal to `cluster_version` or `cluster_version + 1`.
         ClusterVersion = "cluster_version",
+
+        /// The id of the governor operation which is currently being applied.
+        ///
+        /// This is id from the `_pico_governor_queue` table.
+        /// Used to track the progress of the DDL operations.
+        PendingGovernorOpId = "pending_governor_operation_id",
+
+        /// Pending system catalog version.
+        ///
+        /// This indicates that all nodes in the cluster have been updated
+        /// to the new cluster version, and the system catalog now needs
+        /// to be upgraded to the pending version (`PendingCatalogVersion`).
+        PendingCatalogVersion = "pending_catalog_version",
     }
 }
 
@@ -1029,7 +1073,8 @@ impl PropertyName {
             #[rustfmt::skip]
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
-            | Self::GlobalSchemaVersion => {
+            | Self::GlobalSchemaVersion
+            | Self::PendingGovernorOpId => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
             }
@@ -1041,7 +1086,7 @@ impl PropertyName {
                 // Check it decodes into `PluginOp`.
                 _ = new.field::<PluginOp>(1).map_err(map_err)?;
             }
-            Self::ClusterVersion | Self::SystemCatalogVersion => {
+            Self::ClusterVersion | Self::SystemCatalogVersion | Self::PendingCatalogVersion => {
                 // Check it's a String
                 _ = new.field::<String>(1).map_err(map_err)?;
             }
@@ -1495,8 +1540,17 @@ impl Properties {
 
     #[inline]
     pub fn system_catalog_version(&self) -> tarantool::Result<Option<String>> {
-        let res = self.get(PropertyName::SystemCatalogVersion.as_str())?;
-        Ok(res)
+        self.get(PropertyName::SystemCatalogVersion.as_str())
+    }
+
+    #[inline]
+    pub fn pending_governor_op_id(&self) -> tarantool::Result<Option<u64>> {
+        self.get(PropertyName::PendingGovernorOpId.as_str())
+    }
+
+    #[inline]
+    pub fn pending_catalog_version(&self) -> tarantool::Result<Option<String>> {
+        self.get(PropertyName::PendingCatalogVersion.as_str())
     }
 }
 

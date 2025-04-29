@@ -66,7 +66,12 @@ pub enum Op {
     ///
     /// The provided DDL operation will be set as pending.
     /// Only one pending DDL operation can exist at the same time.
-    DdlPrepare { schema_version: u64, ddl: Ddl },
+    DdlPrepare {
+        schema_version: u64,
+        ddl: Ddl,
+        #[serde(default)]
+        governor_op_id: Option<u64>,
+    },
     /// Commit the pending DDL operation.
     ///
     /// Only one pending DDL operation can exist at the same time.
@@ -111,6 +116,7 @@ impl std::fmt::Display for Op {
                 ddl: Ddl::CreateTable {
                     id, distribution, ..
                 },
+                ..
             } => {
                 let distr = match distribution {
                     Distribution::Global => "Global",
@@ -125,6 +131,7 @@ impl std::fmt::Display for Op {
             Self::DdlPrepare {
                 schema_version,
                 ddl: Ddl::DropTable { id, .. },
+                ..
             } => {
                 write!(f, "DdlPrepare({schema_version}, DropTable({id}))")
             }
@@ -137,6 +144,7 @@ impl std::fmt::Display for Op {
                         new_name,
                         ..
                     },
+                ..
             } => {
                 write!(
                     f,
@@ -146,12 +154,14 @@ impl std::fmt::Display for Op {
             Self::DdlPrepare {
                 schema_version,
                 ddl: Ddl::TruncateTable { id, .. },
+                ..
             } => {
                 write!(f, "DdlPrepare({schema_version}, TruncateTable({id}))")
             }
             Self::DdlPrepare {
                 schema_version,
                 ddl: Ddl::ChangeFormat { table_id, .. },
+                ..
             } => {
                 write!(f, "DdlPrepare({schema_version}, ChangeFormat({table_id}))")
             }
@@ -160,6 +170,7 @@ impl std::fmt::Display for Op {
                 ddl: Ddl::CreateIndex {
                     space_id, index_id, ..
                 },
+                ..
             } => {
                 write!(
                     f,
@@ -171,6 +182,7 @@ impl std::fmt::Display for Op {
                 ddl: Ddl::DropIndex {
                     space_id, index_id, ..
                 },
+                ..
             } => {
                 write!(
                     f,
@@ -180,6 +192,7 @@ impl std::fmt::Display for Op {
             Self::DdlPrepare {
                 schema_version,
                 ddl: Ddl::CreateProcedure { id, name, .. },
+                ..
             } => {
                 write!(
                     f,
@@ -189,6 +202,7 @@ impl std::fmt::Display for Op {
             Self::DdlPrepare {
                 schema_version,
                 ddl: Ddl::DropProcedure { id, .. },
+                ..
             } => {
                 write!(f, "DdlPrepare({schema_version}, DropProcedure({id}))")
             }
@@ -201,6 +215,7 @@ impl std::fmt::Display for Op {
                         new_name,
                         ..
                     },
+                ..
             } => {
                 write!(
                     f,
@@ -984,6 +999,7 @@ impl DdlBuilder {
         Op::DdlPrepare {
             schema_version: self.schema_version,
             ddl: op,
+            governor_op_id: None,
         }
     }
 }

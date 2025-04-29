@@ -128,7 +128,7 @@ impl Version {
     /// assert_eq!(version.rest, None);
     /// ```
     #[inline(always)]
-    pub fn new_clean(major: u64, minor: u64, patch: u64) -> Self {
+    pub const fn new_clean(major: u64, minor: u64, patch: u64) -> Self {
         Self {
             major,
             minor,

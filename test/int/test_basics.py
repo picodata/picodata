@@ -365,7 +365,7 @@ Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","d
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
-Insert(_pico_property, ["system_catalog_version","25.2.1"]),
+Insert(_pico_property, ["system_catalog_version","25.3.1"]),
 Insert(_pico_property, ["cluster_version","{picodata_version}"]),
 Replace(_pico_db_config, ["auth_password_length_min","",8]),
 Replace(_pico_db_config, ["auth_password_enforce_uppercase","",true]),
@@ -463,7 +463,9 @@ Insert(_pico_table, [{_pico_plugin_config},"_pico_plugin_config",{{"Global":null
 Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{"unique":true}}],[["plugin","string",null,false,null],["version","string",null,false,null],["entity","string",null,false,null],["key","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_db_config},"_pico_db_config",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"string","is_nullable":false,"name":"scope"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_pk","tree",[{{"unique":true}}],[["key","string",null,false,null],["scope","string",null,false,null]],true,0]),
-Insert(_pico_index, [{_pico_db_config},1,"_pico_db_config_key","tree",[{{"unique":false}}],[["key","string",null,false,null]],true,0])
+Insert(_pico_index, [{_pico_db_config},1,"_pico_db_config_key","tree",[{{"unique":false}}],[["key","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_governor_queue},"_pico_governor_queue",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"batch_id"}},{{"field_type":"string","is_nullable":false,"name":"op"}},{{"field_type":"string","is_nullable":false,"name":"op_format"}},{{"field_type":"string","is_nullable":false,"name":"status"}},{{"field_type":"string","is_nullable":false,"name":"status_description"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores governor operations."]),
+Insert(_pico_index, [{_pico_governor_queue},0,"_pico_governor_queue_pkey","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0])
 )|
 |69|1|GrantPrivilege(2, 1, 2, table, Some(515), read)|
 |69|1|GrantPrivilege(3, 1, 2, table, Some(514), read)|
@@ -506,6 +508,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
         _pico_plugin_migration=space_id("_pico_plugin_migration"),
         _pico_plugin_config=space_id("_pico_plugin_config"),
         _pico_db_config=space_id("_pico_db_config"),
+        _pico_governor_queue=space_id("_pico_governor_queue"),
     )
     try:
         assert preprocess(raft_log) == preprocess(expected)

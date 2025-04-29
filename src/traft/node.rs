@@ -7,6 +7,8 @@
 
 use crate::access_control::user_by_id;
 use crate::access_control::UserMetadata;
+use crate::catalog;
+use crate::catalog::governor_queue::GovernorOpStatus;
 use crate::config::apply_parameter;
 use crate::config::PicodataConfig;
 use crate::error_code::ErrorCode;
@@ -860,6 +862,7 @@ impl NodeImpl {
                     | storage::Replicasets::TABLE_ID
                     | storage::Instances::TABLE_ID
                     | storage::Tiers::TABLE_ID
+                    | catalog::governor_queue::GovernorQueue::TABLE_ID
             )
         }
 
@@ -1039,10 +1042,11 @@ impl NodeImpl {
             Op::DdlPrepare {
                 ddl,
                 schema_version,
+                governor_op_id,
             } => {
                 crate::error_injection!("STALL_BEFORE_APPLYING_DDL_PREPARE" => return SleepAndRetry);
 
-                self.apply_op_ddl_prepare(ddl, schema_version)
+                self.apply_op_ddl_prepare(ddl, schema_version, governor_op_id)
                     .expect("storage should not fail");
             }
             Op::DdlCommit => {
@@ -1314,6 +1318,19 @@ impl NodeImpl {
                 storage_properties
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)
                     .expect("storage should not fail");
+
+                if let Some(governor_op_id) = storage_properties
+                    .pending_governor_op_id()
+                    .expect("getting of pending governor operation id should not fail")
+                {
+                    self.storage
+                        .governor_queue
+                        .update_status(governor_op_id, GovernorOpStatus::Done)
+                        .expect("update governor operation status should not fail");
+                    storage_properties
+                        .delete(PropertyName::PendingGovernorOpId)
+                        .expect("delete pending governor operation id should not fail");
+                }
             }
             Op::DdlAbort { .. } => {
                 crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_ABORT");
@@ -1454,6 +1471,19 @@ impl NodeImpl {
                 storage_properties
                     .delete(PropertyName::PendingSchemaVersion)
                     .expect("storage should not fail");
+
+                if let Some(governor_op_id) = storage_properties
+                    .pending_governor_op_id()
+                    .expect("getting of pending governor operation id should not fail")
+                {
+                    self.storage
+                        .governor_queue
+                        .update_status(governor_op_id, GovernorOpStatus::Failed)
+                        .expect("update governor operation status should not fail");
+                    storage_properties
+                        .delete(PropertyName::PendingGovernorOpId)
+                        .expect("delete pending governor operation id should not fail");
+                }
             }
 
             Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
@@ -1740,7 +1770,12 @@ impl NodeImpl {
         res
     }
 
-    fn apply_op_ddl_prepare(&self, ddl: Ddl, schema_version: u64) -> traft::Result<()> {
+    fn apply_op_ddl_prepare(
+        &self,
+        ddl: Ddl,
+        schema_version: u64,
+        governor_op_id: Option<u64>,
+    ) -> traft::Result<()> {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
         match ddl.clone() {
@@ -1987,6 +2022,11 @@ impl NodeImpl {
         self.storage
             .properties
             .put(PropertyName::NextSchemaVersion, &(schema_version + 1))?;
+        if let Some(governor_op_id) = governor_op_id {
+            self.storage
+                .properties
+                .put(PropertyName::PendingGovernorOpId, &governor_op_id)?;
+        }
 
         Ok(())
     }

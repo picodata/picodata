@@ -1105,6 +1105,7 @@ mod tests {
                     id: space_grant.id(),
                     initiator,
                 },
+                governor_op_id: None,
             };
             let write_op = |initiator| {
                 Op::Dml(Dml::Insert {

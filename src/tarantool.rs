@@ -771,7 +771,7 @@ fn iproto_execute_handle_sql_query(body: &[u8]) -> traft::Result<Tuple> {
     };
 
     let bind = bind.unwrap_or_default();
-    crate::sql::sql_dispatch(pattern, bind, None)
+    crate::sql::sql_dispatch(pattern, bind, None, None)
 }
 
 /// Returns swapped `MP_FIXSTR` representation of keys in [`tarantool::tuple::Tuple`]

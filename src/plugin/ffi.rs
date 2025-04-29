@@ -308,7 +308,7 @@ extern "C" fn pico_ffi_sql_query(
     let query = unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(query, query_len)) };
     let params = params.into_iter().map(|v| SBroadValue::from(v).0).collect();
 
-    let dispatch_result = sql::sql_dispatch(query, params, None);
+    let dispatch_result = sql::sql_dispatch(query, params, None, None);
     match dispatch_result {
         Ok(t) => {
             let ptr = t.as_ptr();

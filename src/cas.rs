@@ -818,11 +818,14 @@ pub fn check_predicate(
     Ok(())
 }
 
-const SCHEMA_RELATED_PROPERTIES: [&str; 4] = [
-    crate::storage::PropertyName::PendingSchemaChange.as_str(),
-    crate::storage::PropertyName::PendingSchemaVersion.as_str(),
-    crate::storage::PropertyName::GlobalSchemaVersion.as_str(),
-    crate::storage::PropertyName::NextSchemaVersion.as_str(),
+const SCHEMA_RELATED_PROPERTIES: &'static [&str] = &[
+    storage::PropertyName::PendingSchemaChange.as_str(),
+    storage::PropertyName::PendingSchemaVersion.as_str(),
+    storage::PropertyName::GlobalSchemaVersion.as_str(),
+    storage::PropertyName::NextSchemaVersion.as_str(),
+    // Governor operations can be DDL operations.
+    storage::PropertyName::PendingGovernorOpId.as_str(),
+    storage::PropertyName::PendingCatalogVersion.as_str(),
 ];
 
 /// Returns a slice of tuples representing keys of space _pico_property which

@@ -7,7 +7,6 @@ use crate::storage::RoutineId;
 use crate::storage::{set_local_schema_version, space_by_id_unchecked};
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
-use crate::traft::Result;
 use crate::{column_name, traft};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -533,6 +532,45 @@ pub fn ddl_change_format_on_master(
     Ok(())
 }
 
+pub fn ddl_create_tt_proc_on_master(proc_name: &str) -> traft::Result<()> {
+    let lua = ::tarantool::lua_state();
+    let proc = ::tarantool::proc::all_procs()
+        .iter()
+        .find(|p| p.name() == proc_name)
+        .ok_or_else(|| {
+            Error::other(format!(
+                "cannot find procedure {proc_name} in `proc::all_procs` for schema creation"
+            ))
+        })?;
+    if sbroad::frontend::sql::NAMES_OF_FUNCTIONS_IN_SOURCES.contains(&proc_name) {
+        lua.exec_with(
+            "local name, is_public = ...
+            local proc_name = '.' .. name
+            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, exports = {'LUA', 'SQL'}, returns = 'any'})
+            if is_public then
+                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+            end
+            ",
+            (proc_name, proc.is_public()),
+        )
+        .map_err(LuaError::from)?;
+    } else {
+        lua.exec_with(
+            "local name, is_public = ...
+            local proc_name = '.' .. name
+            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
+            if is_public then
+                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+            end
+            ",
+            (proc_name, proc.is_public()),
+        )
+        .map_err(LuaError::from)?;
+    }
+
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // acl
 ////////////////////////////////////////////////////////////////////////////////
@@ -728,7 +766,11 @@ pub mod acl {
 
     /// Remove a role definition and any entities owned by it from the internal
     /// clusterwide storage.
-    pub fn global_drop_role(storage: &Catalog, role_id: UserId, initiator: UserId) -> Result<()> {
+    pub fn global_drop_role(
+        storage: &Catalog,
+        role_id: UserId,
+        initiator: UserId,
+    ) -> traft::Result<()> {
         let role_def = storage.users.by_id(role_id)?.expect("role should exist");
         storage.privileges.delete_all_by_grantee_id(role_id)?;
         storage.privileges.delete_all_by_granted_role(role_id)?;

@@ -3,6 +3,8 @@
 use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
+use crate::catalog::governor_queue;
+use crate::column_name;
 use crate::config::AlterSystemParameters;
 use crate::metrics;
 use crate::schema::{
@@ -73,7 +75,7 @@ use ::tarantool::auth::{AuthData, AuthDef};
 use ::tarantool::error::BoxError;
 use ::tarantool::error::TarantoolErrorCode;
 use ::tarantool::session::{with_su, UserId};
-use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
+use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::Tuple;
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
@@ -233,6 +235,7 @@ fn empty_query_response() -> traft::Result<Tuple> {
 pub fn dispatch(
     mut query: Query<RouterRuntime>,
     override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
     if query.is_empty() {
         return empty_query_response();
@@ -280,7 +283,8 @@ pub fn dispatch(
 
         let ir_node = ir_plan_mut.replace_with_stub(top_id);
         let node = node::global()?;
-        let result = reenterable_schema_change_request(node, ir_node, override_deadline)?;
+        let result =
+            reenterable_schema_change_request(node, ir_node, override_deadline, governor_op_id)?;
         let tuple = Tuple::new(&(result,))?;
         Ok(tuple)
     } else if query.is_plugin()? {
@@ -481,7 +485,7 @@ pub fn dispatch(
                 // Take options from the original query.
                 let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
                 stmt_ir_plan.raw_options = options;
-                dispatch(stmt_query, override_deadline)
+                dispatch(stmt_query, override_deadline, None)
             }
         }
     } else {
@@ -518,7 +522,7 @@ pub fn dispatch(
         })??;
 
         if plan.is_dml_on_global_table()? {
-            let res = do_dml_on_global_tbl(query, override_deadline)?;
+            let res = do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
             return Ok(Tuple::new(&(res,))?);
         }
 
@@ -601,7 +605,7 @@ pub unsafe extern "C" fn proc_sql_dispatch(
         Err(e) => return report("", Error::from(e)),
     };
     let result =
-        sql_dispatch(&bind_args.pattern, bind_args.params, None).map_err(err_for_tnt_console);
+        sql_dispatch(&bind_args.pattern, bind_args.params, None, None).map_err(err_for_tnt_console);
 
     tarantool::proc::Return::ret(result, ctx)
 }
@@ -610,6 +614,7 @@ pub fn sql_dispatch(
     pattern: &str,
     params: Vec<Value>,
     override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
     let start = Instant::now_fiber();
 
@@ -623,7 +628,7 @@ pub fn sql_dispatch(
         Query::with_options(&runtime, pattern, params, Some(default_options))
     })??;
 
-    let result = dispatch(query, override_deadline);
+    let result = dispatch(query, override_deadline, governor_op_id);
 
     let tier: String = runtime
         .get_current_tier_name()
@@ -1290,6 +1295,7 @@ fn ddl_ir_node_to_op_or_result(
     schema_version: u64,
     node: &TraftNode,
     storage: &Catalog,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
         DdlOwned::AlterSystem(AlterSystem { ty, tier_name, .. }) => {
@@ -1350,12 +1356,13 @@ fn ddl_ir_node_to_op_or_result(
 
             params.check_tier_exists(storage)?;
 
-            params.choose_id_if_not_specified()?;
+            params.choose_id_if_not_specified(name, governor_op_id)?;
             params.test_create_space(storage)?;
             let ddl = params.into_ddl()?;
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::DropTable(DropTable {
@@ -1375,6 +1382,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::TruncateTable(TruncateTable { name, .. }) => {
@@ -1388,6 +1396,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::CreateProc(CreateProc {
@@ -1436,6 +1445,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::DropProc(DropProc {
@@ -1464,6 +1474,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::RenameRoutine(RenameRoutine {
@@ -1508,8 +1519,9 @@ fn ddl_ir_node_to_op_or_result(
             };
 
             Ok(Continue(Op::DdlPrepare {
-                ddl,
                 schema_version,
+                ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::CreateIndex(CreateIndex {
@@ -1581,6 +1593,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::DropIndex(DropIndex {
@@ -1601,6 +1614,7 @@ fn ddl_ir_node_to_op_or_result(
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
                 ddl,
+                governor_op_id,
             }))
         }
         DdlOwned::AlterTable(alter_table) => {
@@ -1673,6 +1687,7 @@ fn ddl_ir_node_to_op_or_result(
                             initiator_id: current_user,
                             schema_version,
                         },
+                        governor_op_id,
                     }))
                 }
                 AlterTableOp::RenameTable { new_table_name } => {
@@ -1690,6 +1705,7 @@ fn ddl_ir_node_to_op_or_result(
                             owner_id: table.owner,
                             schema_version,
                         },
+                        governor_op_id,
                     }))
                 }
             }
@@ -2097,6 +2113,7 @@ pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: NodeOwned,
     override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
 
@@ -2152,7 +2169,14 @@ pub(crate) fn reenterable_schema_change_request(
             }
             NodeOwned::Ddl(ddl) => {
                 wait_applied_globally = ddl.wait_applied_globally();
-                ddl_ir_node_to_op_or_result(ddl, current_user, schema_version, node, storage)?
+                ddl_ir_node_to_op_or_result(
+                    ddl,
+                    current_user,
+                    schema_version,
+                    node,
+                    storage,
+                    governor_op_id,
+                )?
             }
             n => unreachable!("function must be called only for ddl or acl nodes, not {n:?}"),
         };
@@ -2171,11 +2195,15 @@ pub(crate) fn reenterable_schema_change_request(
             cas::CasResult::RetriableError(_) => continue,
         };
 
-        if let Op::DdlPrepare {
-            ddl,
-            schema_version,
-        } = op
-        {
+        if let Op::DdlPrepare { ddl, .. } = op {
+            if governor_op_id.is_some() {
+                // It means we are running a governor operation
+                // (`sql_dispatch` was called from the governor)
+                // Returns early and continues to process DDL
+                // in the next governor's step
+                return Ok(ConsumerResult { row_count: 1 });
+            }
+            // this is not a governor operation, so do all stuff here...
             let commit_index = loop {
                 let res = wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()));
 
@@ -2298,6 +2326,7 @@ pub unsafe extern "C" fn proc_sql_execute(
 fn do_dml_on_global_tbl(
     mut query: Query<RouterRuntime>,
     override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<ConsumerResult> {
     let current_user = effective_user_id();
 
@@ -2394,6 +2423,23 @@ fn do_dml_on_global_tbl(
             }
             DmlKind::Replace => unreachable!("SQL does not support replace"),
         };
+        ops.push(op);
+    }
+
+    // If we have DML in governor operation (running from governor),
+    // we need to add final update operation to change status.
+    if let Some(governor_op_id) = governor_op_id {
+        let mut update_ops = UpdateOps::new();
+        update_ops.assign(
+            column_name!(governor_queue::GovernorOperationDef, status),
+            governor_queue::GovernorOpStatus::Done,
+        )?;
+        let op = Dml::update(
+            governor_queue::GovernorQueue::TABLE_ID,
+            &[governor_op_id],
+            update_ops,
+            ADMIN_ID,
+        )?;
         ops.push(op);
     }
 

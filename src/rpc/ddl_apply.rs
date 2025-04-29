@@ -1,8 +1,10 @@
+use crate::catalog::governor_queue::GovernorOpFormat;
 use crate::op::Ddl;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::schema::ddl_create_function_on_master;
 use crate::storage::schema::ddl_create_index_on_master;
 use crate::storage::schema::ddl_create_space_on_master;
+use crate::storage::schema::ddl_create_tt_proc_on_master;
 use crate::storage::schema::ddl_drop_function_on_master;
 use crate::storage::schema::ddl_drop_index_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
@@ -61,19 +63,28 @@ crate::define_rpc_request! {
         let lock = LOCK.with(Rc::clone);
         let _guard = lock.lock();
 
-        let pending_schema_version = storage.properties.pending_schema_version()?
-            .ok_or_else(|| TraftError::other("pending schema version not found"))?;
-        // Already applied.
-        if local_schema_version()? >= pending_schema_version {
-            return Ok(Response::Ok);
-        }
-
         if crate::tarantool::eval("return box.info.ro")? {
             let e = BoxError::new(
                 TarantoolErrorCode::Readonly,
                 "cannot apply schema change on a read only instance"
             );
             return Err(e.into());
+        }
+
+        let Some(pending_schema_version) = storage.properties.pending_schema_version()? else {
+            let pending_catalog_version = storage.properties.pending_catalog_version()?;
+            if let Some(next_op) = storage.governor_queue.next_pending_operation(pending_catalog_version)? {
+                if next_op.op_format == GovernorOpFormat::ProcName {
+                    ddl_create_tt_proc_on_master(&next_op.op)?;
+                    return Ok(Response::Ok);
+                }
+            }
+            return Err(TraftError::other("pending schema version not found"));
+        };
+
+        // Already applied.
+        if local_schema_version()? >= pending_schema_version {
+            return Ok(Response::Ok);
         }
 
         let ddl = storage.properties.pending_schema_change()?

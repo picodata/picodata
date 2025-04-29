@@ -2593,7 +2593,7 @@ def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
 
 
 @pytest.fixture(scope="class")
-def compat_cluster(binary_path_fixt, class_tmp_dir, cluster_names) -> Generator[Cluster, None, None]:
+def compat_cluster(binary_path_fixt, class_tmp_dir) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
     cluster = Cluster(
         binary_path=binary_path_fixt,
@@ -3113,3 +3113,10 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
         issue.save()
 
     issue.discussions.create({"body": f"[AUTOMATIC COMMENT] Failed once again: {job_url}"})
+
+
+@pytest.fixture
+def compat_instance(compat_cluster: Cluster) -> Instance:
+    instance = compat_cluster.add_instance(wait_online=False)
+    os.makedirs(instance.instance_dir)
+    return instance

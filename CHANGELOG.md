@@ -10,6 +10,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.0] - Unreleased
 
+### Features
+
+- Introduce automatic system catalog schema upgrade on new releases
+  (automatically executing DDL/DML and creating internal functions).
+
 ### ACL
 - The maximum number of users and roles that can be created has been increased from 32 to 128.
 

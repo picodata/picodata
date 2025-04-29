@@ -32,6 +32,7 @@ use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
+use crate::sql;
 use crate::storage;
 use crate::storage::Catalog;
 use crate::storage::SystemTable;
@@ -57,6 +58,7 @@ use plan::stage::*;
 
 pub(crate) mod conf_change;
 pub(crate) mod plan;
+mod queue;
 
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
@@ -175,6 +177,25 @@ impl Loop {
             .cluster_version()
             .expect("storage should never fail");
 
+        let next_schema_version = storage
+            .properties
+            .next_schema_version()
+            .expect("getting of next schema version should never fail");
+
+        let governor_operations: Vec<_> = storage
+            .governor_queue
+            .all_operations()
+            .expect("getting of governor operations should never fail");
+
+        let global_catalog_version = storage
+            .properties
+            .system_catalog_version()
+            .expect("getting of system_catalog_version should never fail");
+        let pending_catalog_version = storage
+            .properties
+            .pending_catalog_version()
+            .expect("getting of pending_catalog_version should never fail");
+
         let plan = action_plan(
             term,
             applied,
@@ -195,6 +216,10 @@ impl Loop {
             plugin_op.as_ref(),
             rpc_timeout,
             global_cluster_version,
+            next_schema_version,
+            &governor_operations,
+            global_catalog_version,
+            pending_catalog_version,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -1012,6 +1037,135 @@ impl Loop {
 
                 governor_substep! {
                     "updating current vshard config"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::CreateGovernorQueue(CreateGovernorQueue { cas }) => {
+                set_status(governor_status, "create _pico_governor_queue table");
+                governor_substep! {
+                    "creating _pico_governor_queue table"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::InsertUpgradeOperation(InsertUpgradeOperation { cas }) => {
+                set_status(governor_status, "insert upgrade operation");
+                governor_substep! {
+                    "inserting upgrade operation"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::RunSqlOperationStep(RunSqlOperationStep {
+                operation_id,
+                query,
+                cas_on_success,
+            }) => {
+                set_status(governor_status, "run sql operation step");
+                governor_substep! {
+                    "running sql operation step" [
+                        "operation_id" => %operation_id,
+                        "query" => %query,
+                    ]
+                    async {
+                        match sql::sql_dispatch(query, vec![], None, Some(operation_id)) {
+                            Ok(tuple) => {
+                                // check if we have no-op (row_count = 0)
+                                // mark governor operation as successful in such case
+                                #[derive(serde::Deserialize)]
+                                struct RowCount {
+                                    row_count: usize,
+                                }
+                                if let Ok(Some(res)) = tuple.field::<RowCount>(0) {
+                                    if res.row_count == 0 {
+                                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                                        cas::compare_and_swap_local(&cas_on_success, deadline)?.no_retries()?;
+                                    }
+                                }
+                                // we will change governor operation status for DDL with row_count > 0
+                                // in raft main loop on DdlCommit handling
+                            }
+                            Err(e) => {
+                                let cas = queue::make_change_status_cas(operation_id, applied, true, Some(e.to_string()))?;
+                                let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                                cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Plan::RunProcNameOperationStep(RunProcNameOperationStep {
+                operation_id,
+                proc_name,
+                targets,
+                rpc,
+                cas_on_success,
+            }) => {
+                set_status(governor_status, "run proc_name operation step");
+                let mut error_message = None;
+
+                governor_substep! {
+                    "creating procedure" [
+                        "operation_id" => %operation_id,
+                        "proc_name" => %proc_name,
+                    ]
+                    async {
+                        let mut fs = vec![];
+                        for instance_name in targets {
+                            tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                            fs.push(async move {
+                                match resp.await {
+                                    Ok(_) => Ok(()),
+                                    Err(e) => {
+                                        tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
+                                            "instance_name" => %instance_name
+                                        );
+                                        Err(e)
+                                    }
+                                }
+                            });
+                        }
+                        if let Err(e) = try_join_all(fs).await {
+                            error_message = Some(e.to_string());
+                        }
+                    }
+                }
+
+                let is_success = error_message.is_none();
+                governor_substep! {
+                    "updating operation status" [
+                        "operation_id" => %operation_id,
+                        "proc_name" => %proc_name,
+                        "success" => %is_success,
+                    ]
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        let cas = match error_message {
+                            Some(_) => queue::make_change_status_cas(operation_id, applied, true, error_message)?,
+                            None => cas_on_success,
+                        };
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::FinishCatalogUpgrade(FinishCatalogUpgrade { cas }) => {
+                set_status(governor_status, "finish system catalog upgrade");
+                governor_substep! {
+                    "finishing system catalog upgrade"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;

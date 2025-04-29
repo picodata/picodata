@@ -1,39 +1,14 @@
 import pytest
-import os
 
-from typing import Generator
 from conftest import (
-    BASE_HOST,
     Cluster,
     Compatibility,
     Instance,
-    PortDistributor,
     ProcessDead,
     Retriable,
     log_crawler,
     copy_dir,
 )
-
-
-@pytest.fixture
-def compat_cluster(binary_path_fixt, class_tmp_dir) -> Generator[Cluster, None, None]:
-    """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
-    cluster = Cluster(
-        binary_path=binary_path_fixt,
-        id="demo",  # should be in sync with snapshot generation script
-        data_dir=class_tmp_dir,
-        base_host=BASE_HOST,  # should be in sync with snapshot generation script
-        port_distributor=PortDistributor(3301, 3303),  # should be in sync with snapshot generation script
-    )
-    yield cluster
-    cluster.kill()
-
-
-@pytest.fixture
-def compat_instance(compat_cluster: Cluster) -> Instance:
-    instance = compat_cluster.add_instance(wait_online=False)
-    os.makedirs(instance.instance_dir)
-    return instance
 
 
 @pytest.mark.xdist_group(name="compat")

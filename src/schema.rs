@@ -162,6 +162,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
         };
     }
 
+    use crate::catalog::governor_queue::GovernorQueue;
     use crate::storage::*;
     push_definitions!(
         result,
@@ -180,7 +181,8 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
         ServiceRouteTable,
         PluginMigrations,
         PluginConfig,
-        DbConfig
+        DbConfig,
+        GovernorQueue
     );
 
     // TODO: there's also "_raft_log" & "_raft_state" spaces, but we don't treat
@@ -2346,53 +2348,65 @@ impl CreateTableParams {
     }
 
     /// Chooses an id for the new space if it's not set yet and sets `self.id`.
-    pub fn choose_id_if_not_specified(&mut self) -> traft::Result<()> {
+    pub fn choose_id_if_not_specified(
+        &mut self,
+        name: &str,
+        governor_op_id: Option<u64>,
+    ) -> traft::Result<()> {
+        if self.id.is_some() {
+            return Ok(());
+        }
+        if governor_op_id.is_some() {
+            if let Some((table_def, _)) = system_table_definitions()
+                .iter()
+                .find(|(td, _)| td.name == name)
+            {
+                self.id = Some(table_def.id);
+                return Ok(());
+            }
+        }
+
         let sys_space = Space::from(SystemSpace::Space);
+        let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
+        let id_range_max = SPACE_ID_TEMPORARY_MIN;
 
-        let id = if let Some(id) = self.id {
-            id
-        } else {
-            let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
-            let id_range_max = SPACE_ID_TEMPORARY_MIN;
+        let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+        let tuple = iter.next().expect("there's always at least system spaces");
+        let mut max_id: SpaceId = tuple
+            .field(0)
+            .expect("space metadata should decode fine")
+            .expect("space id should always be present");
 
-            let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
-            let tuple = iter.next().expect("there's always at least system spaces");
-            let mut max_id: SpaceId = tuple
-                .field(0)
-                .expect("space metadata should decode fine")
-                .expect("space id should always be present");
-
-            let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
-                let iter = sys_space.select(IteratorType::GE, &[start])?;
-                let mut next_id = start;
-                for tuple in iter {
-                    let id: SpaceId = tuple
-                        .field(0)
-                        .expect("space metadata should decode fine")
-                        .expect("space id should always be present");
-                    if id != next_id {
-                        // Found a hole in the id range.
-                        return Ok(next_id);
-                    }
-                    next_id += 1;
+        let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
+            let iter = sys_space.select(IteratorType::GE, &[start])?;
+            let mut next_id = start;
+            for tuple in iter {
+                let id: SpaceId = tuple
+                    .field(0)
+                    .expect("space metadata should decode fine")
+                    .expect("space id should always be present");
+                if id != next_id {
+                    // Found a hole in the id range.
+                    return Ok(next_id);
                 }
-                Ok(next_id)
-            };
-
-            if max_id < id_range_min {
-                max_id = id_range_min;
+                next_id += 1;
             }
-
-            let mut id = find_next_unused_id(max_id)?;
-            if id >= id_range_max {
-                id = find_next_unused_id(id_range_min)?;
-                if id >= id_range_max {
-                    #[rustfmt::skip]
-                    return Err(BoxError::new(TarantoolErrorCode::CreateSpace, "space id limit is reached").into());
-                }
-            }
-            id
+            Ok(next_id)
         };
+
+        if max_id < id_range_min {
+            max_id = id_range_min;
+        }
+
+        let mut id = find_next_unused_id(max_id)?;
+        if id >= id_range_max {
+            id = find_next_unused_id(id_range_min)?;
+            if id >= id_range_max {
+                #[rustfmt::skip]
+                    return Err(BoxError::new(TarantoolErrorCode::CreateSpace, "space id limit is reached").into());
+            }
+        }
+
         self.id = Some(id);
         Ok(())
     }

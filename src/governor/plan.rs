@@ -1,5 +1,7 @@
 use super::conf_change::raft_conf_change;
+use super::queue::handle_governor_queue;
 use crate::cas;
+use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
 use crate::has_states;
 use crate::instance::state::State;
@@ -61,6 +63,10 @@ pub(super) fn action_plan<'i>(
     plugin_op: Option<&'i PluginOp>,
     sync_timeout: std::time::Duration,
     global_cluster_version: String,
+    next_schema_version: u64,
+    governor_operations: &'i [GovernorOperationDef],
+    global_catalog_version: Option<String>,
+    pending_catalog_version: Option<String>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -986,21 +992,53 @@ pub(super) fn action_plan<'i>(
     // If all instances have new version, update the cluster version
     if new_candidate_counter == retained_instances {
         if let Some(new_version) = new_cluster_version_candidate {
-            let mut ops = UpdateOps::new();
-            ops.assign("value", new_version)?;
+            tlog!(
+                Info,
+                "update cluster version from {} to {}",
+                global_cluster_version,
+                new_version
+            );
 
-            let dml = Dml::replace(
+            let mut ops = vec![];
+            ops.push(Dml::replace(
                 storage::Properties::TABLE_ID,
                 &(PropertyName::ClusterVersion, new_version),
                 ADMIN_ID,
-            )?;
+            )?);
+            if global_catalog_version.unwrap_or_default() != storage::LATEST_SYSTEM_CATALOG_VERSION
+            {
+                ops.push(Dml::replace(
+                    storage::Properties::TABLE_ID,
+                    &(
+                        PropertyName::PendingCatalogVersion,
+                        storage::LATEST_SYSTEM_CATALOG_VERSION,
+                    ),
+                    ADMIN_ID,
+                )?);
+            }
 
-            let ranges = vec![cas::Range::for_dml(&dml)?];
-            let predicate = cas::Predicate::new(applied, ranges);
-            let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+            let op = Op::single_dml_or_batch(ops);
+            let predicate = cas::Predicate::new(applied, []);
+            let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
             return Ok(UpdateClusterVersion { cas }.into());
         }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // run operations from `_pico_governor_queue` table
+    if let Some(plan) = handle_governor_queue(
+        tables,
+        governor_operations,
+        next_schema_version,
+        &global_cluster_version,
+        pending_catalog_version,
+        applied,
+        replicasets,
+        instances,
+        sync_timeout,
+    )? {
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1295,6 +1333,46 @@ pub mod stage {
             /// Ranges for both the `success_dml` and the rollback_op which may
             /// occur if enabling the services fails.
             pub ranges: Vec<cas::Range>,
+        }
+
+        pub struct CreateGovernorQueue {
+            /// Global DDL operation for creating `_pico_governor_queue` table.
+            pub cas: cas::Request,
+        }
+
+        pub struct InsertUpgradeOperation {
+            /// DML operation for inserting upgrade operation
+            /// into `_pico_governor_queue` table
+            pub cas: cas::Request,
+        }
+
+        pub struct RunSqlOperationStep<'i> {
+            /// ID of the governor operation to run.
+            /// This is the ID of the operation in the `_pico_governor_queue` table.
+            pub operation_id: u64,
+            /// This is the SQL query to run.
+            pub query: &'i str,
+            /// DML operation to update operation status on success.
+            pub cas_on_success: cas::Request,
+        }
+
+        pub struct RunProcNameOperationStep<'i> {
+            /// ID of the governor operation to run.
+            /// This is the ID of the operation in the `_pico_governor_queue` table.
+            pub operation_id: u64,
+            /// This is the procedure name for creation.
+            pub proc_name: &'i str,
+            /// These are masters of all the replicasets in the cluster.
+            pub targets: Vec<&'i InstanceName>,
+            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
+            pub rpc: rpc::ddl_apply::Request,
+            /// DML operation to update operation status on success.
+            pub cas_on_success: cas::Request,
+        }
+
+        pub struct FinishCatalogUpgrade {
+            // DML operations to update state in `_pico_property`
+            pub cas: cas::Request,
         }
     }
 }
