@@ -60,16 +60,7 @@ def replicaset_name(instance: Instance):
 
 
 def count_instances_by_uuid(instance, uuid_str: str) -> int:
-    return instance.eval(
-        """
-            local cnt = 0
-            for _, v in box.space._pico_instance:pairs() do
-                if v.uuid == ... then cnt = cnt + 1 end
-            end
-            return cnt
-        """,
-        uuid_str,
-    )
+    return instance.sql('SELECT COUNT(*) FROM _pico_instance WHERE "uuid" = ?', uuid_str)[0][0]
 
 
 def test_request_follower(cluster2: Cluster):

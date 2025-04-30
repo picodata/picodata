@@ -254,6 +254,10 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
     }
 }
 
+/// Creates or finds an instance by UUID.
+/// Returns:
+/// - `(Instance, true)` - if an instance with the specified UUID already exists
+/// - `(Instance, false)` - if a new instance is created
 pub fn build_instance(
     requested_instance_name: Option<&InstanceName>,
     requested_replicaset_name: Option<&ReplicasetName>,
@@ -304,7 +308,7 @@ pub fn build_instance(
             )));
         }
 
-        if has_states!(instance, * -> not Offline) || has_states!(instance, not Offline -> *) {
+        if !has_states!(instance, Offline -> Offline) {
             return Err(Error::other(format!(
                 "instance with UUID {} is not in Offline state",
                 uuid

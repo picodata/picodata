@@ -1007,44 +1007,40 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         uuid: instance_uuid,
     };
 
-    const INITIAL_DELAY: Duration = Duration::from_millis(100);
-    const MAX_DELAY: Duration = Duration::from_secs(60);
+    const INITIAL_TIMEOUT: Duration = Duration::from_secs(1);
+    const MAX_TIMEOUT: Duration = Duration::from_secs(60);
 
-    let mut current_delay = INITIAL_DELAY;
+    let mut current_timeout = INITIAL_TIMEOUT;
 
-    // Arch memo.
-    // - There must be no timeouts. Retrying may lead to flooding the
-    //   topology with phantom instances. No worry, specifying a
-    //   particular `instance_name` for every instance protects from that
-    //   flood.
-    // - It's fine to retry "connection refused" errors.
     let resp: rpc::join::Response = loop {
-        match fiber::block_on(rpc::network_call(
+        let f = rpc::network_call(
             &instance_address,
             proc_name!(rpc::join::proc_raft_join),
             &req,
-        )) {
+        )
+        .timeout(current_timeout);
+        let res = fiber::block_on(f);
+        match res {
             Ok(resp) => {
                 break resp;
             }
-            Err(TntError::ConnectionClosed(e)) => {
+            Err(timeout::Error::Expired) => {
                 tlog!(
                     Warning,
-                    "join request failed: {e}, retrying in {:?}...",
-                    current_delay
+                    "join request timed out after {:?}, retrying...",
+                    current_timeout
                 );
-                fiber::sleep(current_delay);
-                current_delay = std::cmp::min(current_delay * 2, MAX_DELAY);
+                current_timeout = std::cmp::min(current_timeout * 2, MAX_TIMEOUT);
                 continue;
             }
-            Err(TntError::IO(e)) => {
+            Err(timeout::Error::Failed(e @ (TntError::ConnectionClosed(_) | TntError::IO(_)))) => {
                 tlog!(
                     Warning,
                     "join request failed: {e}, retrying in {:?}...",
-                    current_delay
+                    current_timeout
                 );
-                fiber::sleep(current_delay);
-                current_delay = std::cmp::min(current_delay * 2, MAX_DELAY);
+                fiber::sleep(current_timeout);
+                current_timeout = std::cmp::min(current_timeout * 2, MAX_TIMEOUT);
                 continue;
             }
             Err(e) => {
