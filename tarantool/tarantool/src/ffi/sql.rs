@@ -314,7 +314,7 @@ impl PortC {
         self.size
     }
 
-    pub fn add_tuple(&mut self, tuple: &mut Tuple) {
+    pub fn add_tuple(&mut self, tuple: &Tuple) {
         unsafe {
             port_c_add_tuple(
                 self as *mut PortC as *mut Port,

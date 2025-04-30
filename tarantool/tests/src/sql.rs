@@ -398,20 +398,20 @@ pub fn port_c() {
     // Let's check that the data in the port can outlive
     // the original tuples after dropping them.
     {
-        let mut tuple1 = Tuple::new(&("A",)).unwrap();
-        port_c.add_tuple(&mut tuple1);
+        let tuple1 = Tuple::new(&("A",)).unwrap();
+        port_c.add_tuple(&tuple1);
         assert_eq!(port_c.size(), 1);
         let mp1 = b"\x91\xa1B";
         unsafe { port_c.add_mp(mp1.as_slice()) };
         assert_eq!(port_c.size(), 2);
-        let mut tuple2 = Tuple::new(&("C", "D")).unwrap();
-        port_c.add_tuple(&mut tuple2);
+        let tuple2 = Tuple::new(&("C", "D")).unwrap();
+        port_c.add_tuple(&tuple2);
         assert_eq!(port_c.size(), 3);
         let mp2 = b"\x91\xa1E";
         unsafe { port_c.add_mp(mp2.as_slice()) };
         assert_eq!(port_c.size(), 4);
     }
-    let mut tuple3 = Tuple::new(&("F",)).unwrap();
+    let tuple3 = Tuple::new(&("F",)).unwrap();
     // The tuple has two references and it should not surprise you.
     // The first one is a long-live reference produces by the box_tuple_ref.
     // The second is temporary produced by tuple_bless when the tuple is added
@@ -420,7 +420,7 @@ pub fn port_c() {
     assert_eq!(tuple_refs(&tuple3), 2);
     let _ = Tuple::new(&("G",)).unwrap();
     assert_eq!(tuple_refs(&tuple3), 1);
-    port_c.add_tuple(&mut tuple3);
+    port_c.add_tuple(&tuple3);
     assert_eq!(tuple_refs(&tuple3), 2);
 
     let expected: Vec<Vec<String>> = vec![

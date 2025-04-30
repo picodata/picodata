@@ -89,8 +89,8 @@ pub fn return_port() {
                 return -1;
             }
         };
-        let mut tuple = Tuple::new(&(a, b)).expect("tuple creation failed");
-        ctx.mut_port_c().add_tuple(&mut tuple);
+        let tuple = Tuple::new(&(a, b)).expect("tuple creation failed");
+        ctx.mut_port_c().add_tuple(&tuple);
         ctx.mut_port_c().add_mp(b"\x91\xa5hello");
         ctx.mut_port_c().add_mp(b"\xa6sailor");
         0
