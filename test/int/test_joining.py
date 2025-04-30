@@ -601,3 +601,32 @@ def test_proc_raft_join_is_idempotent(cluster: Cluster):
         assert result["instance"]["uuid"] == instance_uuid
 
     assert count_instances_by_uuid(leader, instance_uuid) == 1
+
+
+def test_proc_raft_join_fails_for_alive_instance(cluster: Cluster):
+    """Calling .proc_raft_join for an alive instance should return an error."""
+
+    cluster.deploy(instance_count=1)
+    leader = cluster.instances[0]
+
+    instance = cluster.add_instance()
+    instance.assert_raft_status("Follower", leader_id=leader.raft_id)
+
+    instance_uuid = instance.uuid()
+
+    cluster.wait_has_states(instance, "Online", "Online")
+
+    assert count_instances_by_uuid(leader, instance_uuid) == 1
+
+    with pytest.raises(TarantoolError) as exc:
+        raft_join(
+            instance=leader,
+            cluster_name=cluster.id,
+            instance_name=str(instance.name),
+            uuid=instance_uuid,
+            timeout_seconds=1,
+        )
+
+    assert "is not in Offline state" in str(exc.value)
+
+    assert count_instances_by_uuid(leader, instance_uuid) == 1
