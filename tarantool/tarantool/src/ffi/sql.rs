@@ -213,12 +213,18 @@ impl Drop for Obuf {
 }
 
 #[repr(C)]
+pub struct SqlValue {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
 pub struct PortVTable {
     pub dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
     pub dump_msgpack_16: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
     pub dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut LuaState, is_flat: bool),
     pub dump_plain: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
-    pub get_vdbemem: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_void,
+    pub get_msgpack: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
+    pub get_vdbemem: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *mut SqlValue,
     pub destroy: unsafe extern "C" fn(port: *mut Port),
 }
 
@@ -229,10 +235,16 @@ pub struct Port {
     _pad: [u8; 68],
 }
 
+impl Drop for Port {
+    fn drop(&mut self) {
+        unsafe { port_destroy(self as *mut Port) }
+    }
+}
+
 impl Port {
     /// # Safety
-    /// The caller must be sure that the port was initialized with `port_c_create`.
-    pub unsafe fn mut_port_c(&mut self) -> &mut PortC {
+    /// The caller must be sure that the port was initialized with `new_port_c`.
+    pub unsafe fn as_mut_port_c(&mut self) -> &mut PortC {
         unsafe { NonNull::new_unchecked(self as *mut Port as *mut PortC).as_mut() }
     }
 
@@ -246,12 +258,20 @@ impl Port {
 }
 
 impl Port {
-    pub fn zeroed() -> Self {
+    pub unsafe fn zeroed() -> Self {
         unsafe {
             Self {
                 vtab: null(),
                 _pad: std::mem::zeroed(),
             }
+        }
+    }
+
+    pub fn new_port_c() -> Self {
+        unsafe {
+            let mut port = Self::zeroed();
+            port_c_create(&mut port as *mut Port);
+            port
         }
     }
 }
@@ -287,22 +307,6 @@ pub struct PortC {
     last: *const PortCEntry,
     first_entry: PortCEntry,
     size: i32,
-}
-
-impl Drop for PortC {
-    fn drop(&mut self) {
-        unsafe { port_c_destroy(self as *mut PortC as *mut Port) }
-    }
-}
-
-impl Default for PortC {
-    fn default() -> Self {
-        unsafe {
-            let mut port = std::mem::zeroed::<PortC>();
-            port_c_create(&mut port as *mut PortC as *mut Port);
-            port
-        }
-    }
 }
 
 impl PortC {

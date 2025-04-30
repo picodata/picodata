@@ -1218,7 +1218,7 @@ impl FunctionCtx {
             let mut ctx = NonNull::new_unchecked(self.inner);
             NonNull::new_unchecked(ctx.as_mut().port)
                 .as_mut()
-                .mut_port_c()
+                .as_mut_port_c()
         }
     }
 }

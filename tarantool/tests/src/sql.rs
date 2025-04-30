@@ -3,11 +3,11 @@
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
-use std::os::raw::{c_char, c_void};
+use std::os::raw::c_char;
 use std::ptr::NonNull;
 use tarantool::error::{Error, TarantoolError};
 use tarantool::ffi::sql::{
-    obuf_append, port_c_destroy, Obuf, ObufWrapper, Port, PortC, PortVTable, IPROTO_DATA,
+    obuf_append, port_c_destroy, Obuf, ObufWrapper, Port, PortC, PortVTable, SqlValue, IPROTO_DATA,
 };
 use tarantool::index::IndexType;
 use tarantool::msgpack::write_array_len;
@@ -110,7 +110,8 @@ pub fn prepared_no_params() {
     assert_eq!((3, "three".to_string()), result[2]);
     assert_eq!((4, "four".to_string()), result[3]);
 
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     stmt.execute_into_port(&(), 100, &mut port_c).unwrap();
     let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
@@ -121,7 +122,8 @@ pub fn prepared_no_params() {
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
 
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     sql_execute_into_port(sql, &(), 100, &mut port_c).unwrap();
     let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
@@ -156,7 +158,8 @@ pub fn prepared_large_query() {
         i += 4;
     }
 
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     stmt.execute_into_port(&(), 0, &mut port_c).unwrap();
     let decoded_port: Vec<(u64, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
@@ -177,8 +180,9 @@ pub fn prepared_invalid_params() {
         Error::Tarantool(TarantoolError { .. })
     ));
 
-    let mut port = PortC::default();
-    let result = stmt.execute_into_port(&("not uint value",), 0, &mut port);
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
+    let result = stmt.execute_into_port(&("not uint value",), 0, &mut port_c);
     assert!(result.is_err());
     assert!(matches!(
         result.err().unwrap(),
@@ -196,12 +200,13 @@ pub fn prepared_invalid_params() {
         Error::Tarantool(TarantoolError { .. })
     ));
 
-    let mut port = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     let result = sql_execute_into_port(
         "SELECT * FROM SQL_TEST WHERE ID = ?",
         &("not uint value"),
         0,
-        &mut port,
+        &mut port_c,
     );
     assert!(result.is_err());
     assert!(matches!(
@@ -229,9 +234,10 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!((103, "three".to_string()), result[0]);
     assert_eq!((104, "four".to_string()), result[1]);
 
-    let mut port = PortC::default();
-    stmt.execute_into_port(&(102,), 0, &mut port).unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
+    stmt.execute_into_port(&(102,), 0, &mut port_c).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let mut stream = stmt.execute_raw(&(103,), 0).unwrap();
@@ -239,9 +245,10 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!(1, result.len());
     assert_eq!((104, "four".to_string()), result[0]);
 
-    let mut port = PortC::default();
-    stmt.execute_into_port(&(103,), 0, &mut port).unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
+    stmt.execute_into_port(&(103,), 0, &mut port_c).unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let stmt2 =
@@ -252,11 +259,12 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!(1, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
 
-    let mut port = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     stmt2
-        .execute_into_port(&(102, "three"), 0, &mut port)
+        .execute_into_port(&(102, "three"), 0, &mut port_c)
         .unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let mut stream = tarantool::sql::prepare_and_execute_raw(
@@ -269,15 +277,16 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!(1, result.len());
     assert_eq!((101, "one".to_string()), result[0]);
 
-    let mut port = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     sql_execute_into_port(
         "SELECT * FROM SQL_TEST WHERE ID = ? AND VALUE = ?",
         &(101, "one"),
         0,
-        &mut port,
+        &mut port_c,
     )
     .unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     unprepare(stmt).unwrap();
@@ -313,9 +322,11 @@ pub fn prepared_with_named_params() {
     assert_eq!((3, "three".to_string()), result[0]);
     assert_eq!((4, "four".to_string()), result[1]);
 
-    let mut port = PortC::default();
-    stmt.execute_into_port(&[bind_id(2)], 0, &mut port).unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
+    stmt.execute_into_port(&[bind_id(2)], 0, &mut port_c)
+        .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let mut stream = stmt.execute_raw(&[bind_id(3)], 0).unwrap();
@@ -323,9 +334,11 @@ pub fn prepared_with_named_params() {
     assert_eq!(1, result.len());
     assert_eq!((4, "four".to_string()), result[0]);
 
-    let mut port = PortC::default();
-    stmt.execute_into_port(&[bind_id(3)], 0, &mut port).unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
+    stmt.execute_into_port(&[bind_id(3)], 0, &mut port_c)
+        .unwrap();
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let stmt2 = tarantool::sql::prepare(
@@ -339,11 +352,12 @@ pub fn prepared_with_named_params() {
     assert_eq!(1, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
 
-    let mut port = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     stmt2
-        .execute_into_port(&(bind_id(2), bind_name("three")), 0, &mut port)
+        .execute_into_port(&(bind_id(2), bind_name("three")), 0, &mut port_c)
         .unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     let mut stream = tarantool::sql::prepare_and_execute_raw(
@@ -356,15 +370,16 @@ pub fn prepared_with_named_params() {
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
 
-    let mut port = PortC::default();
+    let mut port = Port::new_port_c();
+    let mut port_c = unsafe { port.as_mut_port_c() };
     sql_execute_into_port(
         "SELECT * FROM SQL_TEST WHERE ID = :ID AND VALUE = :NAME",
         &(bind_id(1), bind_name("one")),
         0,
-        &mut port,
+        &mut port_c,
     )
     .unwrap();
-    let decoded_port: Vec<(u8, String)> = decode_port(&port);
+    let decoded_port: Vec<(u8, String)> = decode_port(&port_c);
     assert_eq!(decoded_port, result);
 
     unprepare(stmt).unwrap();
@@ -373,7 +388,8 @@ pub fn prepared_with_named_params() {
 
 pub fn port_c() {
     let tuple_refs = |tuple: &Tuple| unsafe { NonNull::new(tuple.as_ptr()).unwrap().as_ref() }.refs;
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let port_c = unsafe { port.as_mut_port_c() };
 
     // Check that we can iterate over an empty port.
     let mut iter = port_c.iter();
@@ -431,7 +447,7 @@ pub fn port_c() {
 
     // Check port destruction and the amount of references
     // in the tuples.
-    drop(port_c);
+    drop(port);
     assert_eq!(tuple_refs(&tuple3), 1);
 }
 
@@ -490,17 +506,17 @@ pub fn port_c_vtab() {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn get_vdbemem(_port: *mut Port, _size: *mut u32) -> *const c_void {
+    unsafe extern "C" fn get_msgpack(_port: *mut Port, _size: *mut u32) -> *const c_char {
         unimplemented!();
     }
 
     #[no_mangle]
-    unsafe extern "C" fn destroy(_port: *mut Port) {
+    unsafe extern "C" fn get_vdbemem(_port: *mut Port, _size: *mut u32) -> *mut SqlValue {
         unimplemented!();
     }
 
     #[no_mangle]
-    unsafe extern "C" fn manual_destroy(port: *mut Port) {
+    unsafe extern "C" fn destroy(port: *mut Port) {
         port_c_destroy(port);
     }
 
@@ -509,13 +525,15 @@ pub fn port_c_vtab() {
         dump_msgpack_16,
         dump_lua,
         dump_plain,
+        get_msgpack,
         get_vdbemem,
         destroy,
     };
     let mut out = ObufWrapper::new(100);
 
     // Check an empty port.
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let port_c = unsafe { port.as_mut_port_c() };
     port_c.vtab = &vtab as *const PortVTable;
     unsafe { dump_msgpack(port_c.as_mut(), out.obuf()) };
     let mut result = [0u8; 1];
@@ -538,10 +556,11 @@ pub fn port_c_vtab() {
     assert_eq!(len, expected.len());
     assert_eq!(&result[..], expected);
     out.reset();
-    drop(port_c);
+    drop(port);
 
     // Check a port with multiple msgpacks.
-    let mut port_c = PortC::default();
+    let mut port = Port::new_port_c();
+    let port_c = unsafe { port.as_mut_port_c() };
     port_c.vtab = &vtab as *const PortVTable;
     let header_mp = b"\xd96HEADER";
     unsafe { port_c.add_mp(header_mp) };
@@ -560,17 +579,11 @@ pub fn port_c_vtab() {
     assert_eq!(&result[..], expected);
 
     // Check a manual drop of the port.
-    let vtab = PortVTable {
-        dump_msgpack,
-        dump_msgpack_16,
-        dump_lua,
-        dump_plain,
-        get_vdbemem,
-        destroy: manual_destroy,
-    };
-    let mut port = Port::zeroed();
+    let mut port = unsafe { Port::zeroed() };
     port.vtab = &vtab as *const PortVTable;
-    let port_c = unsafe { port.mut_port_c() };
+    let port_c = unsafe { port.as_mut_port_c() };
     unsafe { port_c.add_mp(b"\xd94DATA") };
     unsafe { ((*port.vtab).destroy)(port.as_mut()) };
+    // Avoid double free.
+    std::mem::forget(port);
 }
