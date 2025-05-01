@@ -18,6 +18,7 @@ use crate::ir::node::{
 use crate::ir::operator::{Bool, JoinKind};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
 /// Buckets are used to determine which nodes to send the query to.
@@ -308,7 +309,7 @@ where
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
         let mut tree = PostOrderWithFilter::with_capacity(
-            |node| ir_plan.exec_plan_subtree_iter(node),
+            |node| ir_plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             REL_CAPACITY,
             Box::new(filter),
         );

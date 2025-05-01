@@ -8,7 +8,10 @@ use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::rc::Rc;
 use std::vec;
+
+#[cfg(not(feature = "mock"))]
 use tarantool::msgpack;
+
 use tarantool::tuple::TupleBuilder;
 
 use crate::errors::{Entity, SbroadError};

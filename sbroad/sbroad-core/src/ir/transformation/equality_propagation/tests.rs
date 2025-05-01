@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::collection;
+use crate::ir::node::NodeId;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
-use crate::{backend::sql::ir::PatternWithParams, ir::node::NodeId};
 use pretty_assertions::assert_eq;
 
 use super::{EqClass, EqClassChain, EqClassConst, EqClassExpr, EqClassRef};
@@ -31,7 +31,7 @@ fn equality_propagation1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."c") = (?)) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."c") = ("t"."a"))) or (("t"."d") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."c") = ($1)) and (("t"."a") = ($2))) and (("t"."b") = ($3))) and (("t"."c") = ("t"."a"))) or (("t"."d") = ($4))"#
     );
 }
 
@@ -44,7 +44,7 @@ fn equality_propagation2() {
     assert_eq!(actual_pattern_params.params, vec![Value::Null, Value::Null]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a") = (?)) and (("t"."b") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a") = ($1)) and (("t"."b") = ($2))"#
     );
 }
 
@@ -60,7 +60,7 @@ fn equality_propagation3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (("t"."a") = (?))) and (("t"."b") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and (("t"."a") = ($2))) and (("t"."b") = ($3))"#
     );
 }
 
@@ -81,7 +81,7 @@ fn equality_propagation4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."b") = (?)) and (("t"."a") = (?))) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."b") = ("t"."a"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."b") = ($1)) and (("t"."a") = ($2))) and (("t"."a") = ($3))) and (("t"."b") = ($4))) and (("t"."b") = ("t"."a"))"#
     );
 }
 
@@ -102,7 +102,7 @@ fn equality_propagation5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((((("t"."d") = (?)) and (("t"."c") = (?))) and (("t"."a") = (?))) and (("t"."b") = (?))) and (("t"."b") = ("t"."c"))) and (("t"."c") = ("t"."d"))) and (("t"."d") = ("t"."a"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((((("t"."d") = ($1)) and (("t"."c") = ($2))) and (("t"."a") = ($3))) and (("t"."b") = ($4))) and (("t"."b") = ("t"."c"))) and (("t"."c") = ("t"."d"))) and (("t"."d") = ("t"."a"))"#
     );
 }
 

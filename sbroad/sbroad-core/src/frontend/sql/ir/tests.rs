@@ -5,7 +5,7 @@ use crate::frontend::sql::ParsingPairsMap;
 use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
-use crate::ir::transformation::helpers::{sql_to_ir, sql_to_optimized_ir};
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
 use crate::ir::{Plan, Positions};

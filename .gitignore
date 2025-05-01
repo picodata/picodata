@@ -27,6 +27,7 @@ tmp/
 *.rustfmt
 tags
 test/manual/sql/*.json
+*.pending-snap
 **/libtestplug.so
 **/libtestplug.dylib
 **/libplug_wrong_version.so

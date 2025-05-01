@@ -24,9 +24,11 @@ fn check_sql_with_snapshot(
     plan.set_dnf().unwrap();
     plan.derive_equalities().unwrap();
     plan.merge_tuples().unwrap();
-    let ex_plan = ExecutionPlan::from(plan);
-
+    let mut ex_plan = ExecutionPlan::from(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
+
+    ex_plan.get_mut_ir_plan().stash_constants(snapshot).unwrap();
+
     let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();

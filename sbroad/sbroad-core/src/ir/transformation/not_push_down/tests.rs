@@ -12,7 +12,7 @@ fn push_down_not(plan: &mut Plan) {
 fn not_true() {
     let input = r#"SELECT * FROM (values (1)) where not true"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (?)"#.to_string(),
+        r#"SELECT * FROM (VALUES ($1)) WHERE ($2)"#.to_string(),
         vec![Value::Unsigned(1), Value::from(false)],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
@@ -24,7 +24,7 @@ fn not_true() {
 fn not_double() {
     let input = r#"SELECT * FROM (values (1)) where not not true"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (?)"#.to_string(),
+        r#"SELECT * FROM (VALUES ($1)) WHERE ($2)"#.to_string(),
         vec![Value::Unsigned(1), Value::from(true)],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
@@ -36,7 +36,7 @@ fn not_double() {
 fn not_null() {
     let input = r#"SELECT * FROM (values (1)) where not null"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (not ?)"#.to_string(),
+        r#"SELECT * FROM (VALUES ($1)) WHERE (not $2)"#.to_string(),
         vec![Value::Unsigned(1), Value::Null],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
@@ -48,7 +48,7 @@ fn not_null() {
 fn not_and() {
     let input = r#"SELECT * FROM (values (1)) where not (true and false)"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (?) or (?)"#.to_string(),
+        r#"SELECT * FROM (VALUES ($1)) WHERE ($2) or ($3)"#.to_string(),
         vec![Value::Unsigned(1), Value::from(false), Value::from(true)],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
@@ -60,7 +60,7 @@ fn not_and() {
 fn not_or() {
     let input = r#"SELECT * FROM (values (1)) where not (false or true)"#;
     let expected = PatternWithParams::new(
-        r#"SELECT * FROM (VALUES (?)) WHERE (?) and (?)"#.to_string(),
+        r#"SELECT * FROM (VALUES ($1)) WHERE ($2) and ($3)"#.to_string(),
         vec![Value::Unsigned(1), Value::from(true), Value::from(false)],
     );
     let actual = check_transformation(input, vec![], &push_down_not);
@@ -99,6 +99,6 @@ fn not_nothing_to_push_down() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") <> (?)) and (("t"."b") <> (?))) or (("t"."a") <> (?))) and (("t"."c") <> (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") <> ($1)) and (("t"."b") <> ($2))) or (("t"."a") <> ($3))) and (("t"."c") <> ($4))"#
     );
 }

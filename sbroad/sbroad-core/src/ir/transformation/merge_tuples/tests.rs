@@ -1,4 +1,3 @@
-use crate::backend::sql::ir::PatternWithParams;
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -24,7 +23,7 @@ fn merge_tuples1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = (?, ?)) and ((("t"."c") < (?)) and ((?) < ("t"."a")))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = ($1, $2)) and ((("t"."c") < ($3)) and (($4) < ("t"."a")))"#
     );
 }
 
@@ -48,7 +47,7 @@ fn merge_tuples2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = (?, ?)) and (?)) or ((("t"."c") >= (?)) and ((?) and ((?) <= ("t"."a"))))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = ($1, $2)) and ($3)) or ((("t"."c") >= ($4)) and (($5) and (($6) <= ("t"."a"))))"#
     );
 }
 
@@ -60,7 +59,7 @@ fn merge_tuples3() {
     assert_eq!(actual_pattern_params.params, vec![Value::Boolean(true)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ?"#
+        @r#"SELECT "t"."a" FROM "t" WHERE $1"#
     );
 }
 
@@ -75,7 +74,7 @@ fn merge_tuples4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = (?, ?, ?)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = ($1, $2, $3)"#
     );
 }
 
@@ -90,7 +89,7 @@ fn merge_tuples5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > (?, ?)) and ((?) < ("t"."c"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > ($1, $2)) and (($3) < ("t"."c"))"#
     );
 }
 
@@ -105,7 +104,7 @@ fn merge_tuples6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."b") <> (?)) and (("t"."a") <> (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."b") <> ($1)) and (("t"."a") <> ($2))"#
     );
 }
 

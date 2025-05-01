@@ -1,4 +1,3 @@
-use crate::backend::sql::ir::PatternWithParams;
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -19,7 +18,7 @@ fn bool_in1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) or (("t"."a") = (?))) or (("t"."a") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) or (("t"."a") = ($2))) or (("t"."a") = ($3))"#
     );
 }
 
@@ -34,7 +33,7 @@ fn bool_in3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) or (("t"."a") = (?))) and (("t"."b") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) or (("t"."a") = ($2))) and (("t"."b") = ($3))"#
     );
 }
 
@@ -55,7 +54,7 @@ fn bool_in4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((CAST (((("t"."a") = (?)) or (("t"."a") = (?))) as int)) - (?)) = (?)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((CAST (((("t"."a") = ($1)) or (("t"."a") = ($2))) as int)) - ($3)) = ($4)"#
     );
 }
 
@@ -71,6 +70,6 @@ fn bool_in5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (((("t"."a") = (?)) or (("t"."a") = (?))) as text)) < (?)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (((("t"."a") = ($1)) or (("t"."a") = ($2))) as text)) < ($3)"#
     );
 }

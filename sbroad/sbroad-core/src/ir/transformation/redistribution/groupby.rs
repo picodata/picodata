@@ -680,6 +680,7 @@ impl Plan {
         if let Some(groupby_info) = groupby_info.as_mut() {
             self.add_grouping_exprs(groupby_info, &mut output_cols)?;
         };
+
         self.add_local_aggregates(aggrs, &mut output_cols)?;
 
         Ok(output_cols)

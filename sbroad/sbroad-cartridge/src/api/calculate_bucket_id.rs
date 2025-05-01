@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use sbroad::errors::{Entity, SbroadError};
-use serde::{de::Deserializer, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::msgpack;
 use tarantool::tuple::{Decode, RawBytes, Tuple};

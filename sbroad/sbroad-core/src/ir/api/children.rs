@@ -238,7 +238,6 @@ pub struct MutChildrenIter<'c> {
 impl<'c> Iterator for MutChildrenIter<'c> {
     type Item = &'c mut NodeId;
 
-    #[must_use]
     fn next(&mut self) -> Option<Self::Item> {
         let inner = std::mem::take(&mut self.inner);
         if let Some(inner) = inner {
@@ -263,7 +262,6 @@ impl<'r> IntoIterator for MutChildren<'r> {
 
     type IntoIter = MutChildrenIter<'r>;
 
-    #[must_use]
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
     }

@@ -546,7 +546,6 @@ impl AbstractSyntaxTree {
         let mut group_id: Option<usize> = None;
         let mut having_id: Option<usize> = None;
         let mut named_windows_id: Option<usize> = None;
-        let mut order_by_id: Option<usize> = None;
 
         for child_id in children {
             let child = self.nodes.get_node(*child_id)?;
@@ -572,7 +571,7 @@ impl AbstractSyntaxTree {
         // Original nodes from grammar:
         // Projection -> Scan -> Join1 -> ... -> JoinK -> Selection -> GroupBy -> Having -> OrderBy.
         // We need to change the order of the chain to:
-        // OrderBy -> Projection -> NamedWindows -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
+        // Projection -> NamedWindows -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
         let mut chain = Vec::with_capacity(children.len() - 1);
 
         chain.push(proj_id);

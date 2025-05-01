@@ -242,7 +242,7 @@ trait PlanTreeIterator<'plan>: TreeIterator<'plan> {
 
 /// A snapshot describes the version of the plan
 /// subtree to iterate over.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Snapshot {
     Latest,
     Oldest,

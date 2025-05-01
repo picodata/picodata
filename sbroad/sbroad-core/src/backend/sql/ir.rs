@@ -240,6 +240,7 @@ impl ExecutionPlan {
         };
         let mut guard = Vec::with_capacity(capacity);
         let mut params: Vec<Value> = Vec::new();
+        let mut params_idx: AHashSet<usize> = AHashSet::new();
 
         let mut sql = String::new();
         let delim = " ";
@@ -524,11 +525,14 @@ impl ExecutionPlan {
                         }
                     }
                 }
-                SyntaxData::Parameter(id) => {
-                    sql.push('?');
+                SyntaxData::Parameter(id, index) => {
+                    sql.push_str(&format_smolstr!("${index}"));
                     let value = ir_plan.get_expression_node(*id)?;
                     if let Expression::Constant(Constant { value, .. }) = value {
-                        params.push(value.clone());
+                        if !params_idx.contains(index) {
+                            params.push(value.clone());
+                            params_idx.insert(*index);
+                        }
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::Expression,

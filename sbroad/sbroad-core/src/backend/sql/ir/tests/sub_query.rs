@@ -15,8 +15,8 @@ fn sub_query1_latest() {
             "{} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (?)) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (?)"#
+            r#"WHERE ("hash_testing"."identification_number") = ($1)) as "t1""#,
+            r#"WHERE ("t1"."product_code") = ($2)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -36,8 +36,8 @@ fn sub_query1_oldest() {
             "{} {} {} {}",
             r#"SELECT "T1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (?)) as "T1""#,
-            r#"WHERE ("T1"."product_code") = (?)"#
+            r#"WHERE ("hash_testing"."identification_number") = ($1)) as "T1""#,
+            r#"WHERE ("T1"."product_code") = ($2)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -61,11 +61,11 @@ fn sub_query2_latest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (?)"#,
+            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?)) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = ($2)) as "t1""#,
+            r#"WHERE ("t1"."product_code") = ($3)"#,
         ),
         vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
     );
@@ -89,11 +89,11 @@ fn sub_query2_oldest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (?)"#,
+            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?)) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = ($2)) as "t1""#,
+            r#"WHERE ("t1"."product_code") = ($3)"#,
         ),
         vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
     );
@@ -109,7 +109,7 @@ fn sub_query_exists() {
         format!(
             "{} {}",
             r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
-            r#"WHERE exists (SELECT ? as "col_1" FROM "hash_testing")"#
+            r#"WHERE exists (SELECT $1 as "col_1" FROM "hash_testing")"#
         ),
         vec![Value::from(0_u64)],
     );

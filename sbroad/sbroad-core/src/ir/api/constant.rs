@@ -1,9 +1,13 @@
+use std::collections::HashSet;
+
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Constant, Node64, NodeId, Parameter};
+use crate::ir::node::{Constant, Node, Node64, NodeId, Parameter};
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::DerivedType;
-use crate::ir::{ArenaType, Nodes, Plan};
+use crate::ir::{Nodes, Plan};
 
 impl Expression<'_> {
     /// Gets value from const node
@@ -59,22 +63,30 @@ impl Plan {
     /// # Panics
     #[must_use]
     /// # Panics
-    pub fn get_const_list(&self) -> Vec<NodeId> {
-        self.nodes
-            .arena64
-            .iter()
-            .enumerate()
-            .filter_map(|(id, node)| {
-                if let Node64::Constant(_) = node {
-                    Some(NodeId {
-                        offset: u32::try_from(id).unwrap(),
-                        arena_type: ArenaType::Arena64,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn get_const_list(&self, snapshot: Snapshot) -> Vec<NodeId> {
+        let filter = |node_id: NodeId| -> bool {
+            if let Ok(Node::Expression(Expression::Constant(..))) = self.get_node(node_id) {
+                return true;
+            }
+            false
+        };
+        let mut tree = PostOrderWithFilter::with_capacity(
+            |node| self.exec_plan_subtree_iter(node, snapshot),
+            REL_CAPACITY,
+            Box::new(filter),
+        );
+        let top_id = self.get_top().expect("Top node should be specified!");
+
+        let mut set = HashSet::new();
+        let mut vec = Vec::new();
+        for LevelNode(_, node_id) in tree.iter(top_id) {
+            if !set.contains(&node_id) {
+                vec.push(node_id);
+                set.insert(node_id);
+            }
+        }
+
+        vec
     }
 
     /// Replace parameters with constants from the parameters map.
@@ -92,19 +104,18 @@ impl Plan {
     ///
     /// # Errors
     /// - The plan is corrupted (collected constants point to invalid arena positions).
-    pub fn stash_constants(&mut self) -> Result<(), SbroadError> {
-        let constants = self.get_const_list();
-        for const_id in constants {
+    pub fn stash_constants(&mut self, snapshot: Snapshot) -> Result<(), SbroadError> {
+        let constants = self.get_const_list(snapshot);
+        for (num, const_id) in constants.iter().enumerate() {
             let const_node = self.nodes.replace(
-                const_id,
+                *const_id,
                 Node64::Parameter(Parameter {
                     param_type: DerivedType::unknown(),
-                    // TODO: assign unique indexes
-                    index: 0,
+                    index: num + 1,
                 }),
             )?;
             if let Node64::Constant(constant) = const_node {
-                self.constants.insert(const_id, constant);
+                self.constants.insert(*const_id, constant);
             } else {
                 panic!("{const_node:?} is not a constant");
             }

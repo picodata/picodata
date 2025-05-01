@@ -10,7 +10,7 @@ fn selection_column_from_values() {
     "#;
 
     let expected = PatternWithParams::new(
-        r#"SELECT "COLUMN_1" FROM (VALUES (?))"#.to_string(),
+        r#"SELECT "COLUMN_1" FROM (VALUES ($1))"#.to_string(),
         vec![Value::Unsigned(1)],
     );
     check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);
@@ -27,10 +27,10 @@ fn selection1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE (("hash_testing"."product_code") < (?))"#,
+            r#"WHERE (("hash_testing"."product_code") < ($1))"#,
             r#"and (("hash_testing"."identification_number") in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?)))"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = ($2)))"#,
         ),
         vec![Value::from("a"), Value::from("b")],
     );
@@ -49,8 +49,8 @@ fn selection1_oldest() {
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
             r#"WHERE (("hash_testing"."identification_number") in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (?)))"#,
-            r#"and (("hash_testing"."product_code") < (?))"#,
+            r#"WHERE ("hash_testing_hist"."product_code") = ($1)))"#,
+            r#"and (("hash_testing"."product_code") < ($2))"#,
         ),
         vec![Value::from("b"), Value::from("a")],
     );
@@ -68,17 +68,12 @@ fn selection2_latest() {
     let expected = PatternWithParams::new(
         f_sql(
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
-WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (?, ?))
+WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = ($1, $2))
 and ("hash_testing"."product_units"))
-or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (?, ?))
+or ((("hash_testing"."product_units", "hash_testing"."identification_number") = ($1, $2))
 and (("hash_testing"."product_units") is null))"#,
         ),
-        vec![
-            Value::Boolean(true),
-            Value::Unsigned(1),
-            Value::Boolean(true),
-            Value::Unsigned(1),
-        ],
+        vec![Value::Boolean(true), Value::Unsigned(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -93,7 +88,7 @@ fn selection2_oldest() {
     let expected = PatternWithParams::new(
         [
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ((("hash_testing"."identification_number") in (?)) and (("hash_testing"."product_units") = (?)))"#,
+            r#"WHERE ((("hash_testing"."identification_number") in ($1)) and (("hash_testing"."product_units") = ($2)))"#,
             r#"and (("hash_testing"."product_units") or (("hash_testing"."product_units") is null))"#,
         ].join(" "),
         vec![Value::Unsigned(1), Value::Boolean(true)],

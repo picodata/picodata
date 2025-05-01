@@ -6,7 +6,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
     GroupBy, Having, Intersect, Join, Like, Limit, Motion, NamedWindows, Node, NodeId, OrderBy,
-    Over, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
+    Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
     ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
     Values, ValuesRow, Window,
 };
@@ -109,7 +109,7 @@ pub enum SyntaxData {
     /// plan node id
     PlanId(NodeId),
     /// parameter (a wrapper over a plan constants)
-    Parameter(NodeId),
+    Parameter(NodeId, usize),
     /// virtual table (the key is a motion node id
     /// pointing to the execution plan's virtual table)
     VTable(NodeId),
@@ -469,9 +469,9 @@ impl SyntaxNode {
         }
     }
 
-    fn new_parameter(id: NodeId) -> Self {
+    fn new_parameter(id: NodeId, param_idx: usize) -> Self {
         SyntaxNode {
-            data: SyntaxData::Parameter(id),
+            data: SyntaxData::Parameter(id, param_idx),
             left: None,
             right: Vec::new(),
         }
@@ -567,7 +567,7 @@ impl SyntaxNodes {
     fn push_sn_plan(&mut self, node: SyntaxNode) -> usize {
         let id = self.next_id();
         match node.data {
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(_) => self.stack.push(id),
+            SyntaxData::PlanId(_) | SyntaxData::Parameter(..) => self.stack.push(id),
             _ => {
                 unreachable!("Expected a plan node wrapper.");
             }
@@ -580,7 +580,7 @@ impl SyntaxNodes {
         let id = self.next_id();
         assert!(!matches!(
             node.data,
-            SyntaxData::PlanId(_) | SyntaxData::Parameter(_)
+            SyntaxData::PlanId(_) | SyntaxData::Parameter(..)
         ));
         self.arena.push(node);
         id
@@ -725,7 +725,7 @@ impl<'p> SyntaxPlan<'p> {
     fn check_plan_node(&self, sn_id: usize, plan_id: NodeId) {
         let sn = self.nodes.get_sn(sn_id);
         let SyntaxNode {
-            data: SyntaxData::PlanId(id) | SyntaxData::Parameter(id),
+            data: SyntaxData::PlanId(id) | SyntaxData::Parameter(id, ..),
             ..
         } = sn
         else {
@@ -919,8 +919,12 @@ impl<'p> SyntaxPlan<'p> {
             | Node::Block(..) => {
                 panic!("Node {node:?} is not supported in the syntax plan")
             }
-            Node::Invalid(..) | Node::Expression(Expression::Parameter(..)) => {
-                let sn = SyntaxNode::new_parameter(id);
+            Node::Invalid(..) => {
+                let sn = SyntaxNode::new_parameter(id, 0);
+                self.nodes.push_sn_plan(sn);
+            }
+            Node::Expression(Expression::Parameter(Parameter { index, .. })) => {
+                let sn = SyntaxNode::new_parameter(id, *index);
                 self.nodes.push_sn_plan(sn);
             }
             Node::Relational(ref rel) => match rel {
@@ -956,7 +960,7 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::Case { .. } => self.add_case(id),
                 Expression::Concat { .. } => self.add_concat(id),
                 Expression::Constant { .. } => {
-                    let sn = SyntaxNode::new_parameter(id);
+                    let sn = SyntaxNode::new_parameter(id, 1);
                     self.nodes.push_sn_plan(sn);
                 }
                 Expression::Like { .. } => self.add_like(id),
@@ -2364,7 +2368,7 @@ impl<'p> SyntaxPlan<'p> {
         snapshot: Snapshot,
     ) -> Result<Self, SbroadError> {
         let mut sp = SyntaxPlan::empty(plan);
-        sp.snapshot = snapshot.clone();
+        sp.snapshot = snapshot;
         let ir_plan = plan.get_ir_plan();
 
         // Wrap plan's nodes and preserve their ids.

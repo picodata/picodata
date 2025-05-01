@@ -18,7 +18,7 @@ fn inner_join1_latest() {
             r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
             r#"INNER JOIN (SELECT "history"."id" FROM "history") as "history""#,
             r#"ON ("hash_testing"."identification_number") = ("history"."id")"#,
-            r#"WHERE ("hash_testing"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing"."product_code") = ($1)"#,
         ),
         vec![Value::from("a")],
     );
@@ -41,7 +41,7 @@ fn inner_join1_oldest() {
             r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
             r#"INNER JOIN (SELECT "history"."id" FROM "history") as "history""#,
             r#"ON ("hash_testing"."identification_number") = ("history"."id")"#,
-            r#"WHERE ("hash_testing"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing"."product_code") = ($1)"#,
         ),
         vec![Value::from("a")],
     );
@@ -64,9 +64,9 @@ fn inner_join2_latest() {
             r#""hash_testing"."product_units","#,
             r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "history"."id" FROM "history" WHERE ("history"."id") = (?)) as "t""#,
+            r#"(SELECT "history"."id" FROM "history" WHERE ("history"."id") = ($1)) as "t""#,
             r#"ON ("hash_testing"."identification_number") = ("t"."id")"#,
-            r#"WHERE ("hash_testing"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing"."product_code") = ($2)"#,
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -89,9 +89,9 @@ fn inner_join2_oldest() {
             r#""hash_testing"."product_units","#,
             r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
             r#"INNER JOIN"#,
-            r#"(SELECT "history"."id" FROM "history" WHERE ("history"."id") = (?)) as "t""#,
+            r#"(SELECT "history"."id" FROM "history" WHERE ("history"."id") = ($1)) as "t""#,
             r#"ON ("hash_testing"."identification_number") = ("t"."id")"#,
-            r#"WHERE ("hash_testing"."product_code") = (?)"#,
+            r#"WHERE ("hash_testing"."product_code") = ($2)"#,
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );

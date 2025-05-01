@@ -1,4 +1,3 @@
-use crate::backend::sql::ir::PatternWithParams;
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -21,12 +20,11 @@ fn dnf1() {
             Value::from(2_u64),
             Value::from(4_u64),
             Value::from(3_u64),
-            Value::from(4_u64),
         ]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") = (?)) and (("t"."b") = (?))) and (("t"."c") = (?))) or ((("t"."a") = (?)) and (("t"."c") = (?)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") = ($1)) and (("t"."b") = ($2))) and (("t"."c") = ($3))) or ((("t"."a") = ($4)) and (("t"."c") = ($3)))"#
     );
 }
 
@@ -42,16 +40,12 @@ fn dnf2() {
             Value::from(3_u64),
             Value::from(1_u64),
             Value::from(4_u64),
-            Value::from(1_u64),
-            Value::from(3_u64),
-            Value::from(2_u64),
-            Value::from(4_u64),
             Value::from(2_u64),
         ]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."a") = (?)) and (("t"."a") = (?))) or ((("t"."c") = (?)) and (("t"."a") = (?)))) or ((("t"."a") = (?)) and (("t"."b") = (?)))) or ((("t"."c") = (?)) and (("t"."b") = (?)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."a") = ($1)) and (("t"."a") = ($2))) or ((("t"."c") = ($3)) and (("t"."a") = ($2)))) or ((("t"."a") = ($1)) and (("t"."b") = ($4)))) or ((("t"."c") = ($3)) and (("t"."b") = ($4)))"#
     );
 }
 
@@ -63,16 +57,11 @@ fn dnf3() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![
-            Value::from(1_u64),
-            Value::Null,
-            Value::from(2_u64),
-            Value::Null,
-        ]
+        vec![Value::from(1_u64), Value::Null, Value::from(2_u64),]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (?)) or ((("t"."b") = (?)) and (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and ($2)) or ((("t"."b") = ($3)) and ($2))"#
     );
 }
 
@@ -84,16 +73,11 @@ fn dnf4() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![
-            Value::from(1_u64),
-            Value::Boolean(true),
-            Value::from(2_u64),
-            Value::Boolean(true),
-        ]
+        vec![Value::from(1_u64), Value::Boolean(true), Value::from(2_u64),]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (?)) or ((("t"."b") = (?)) and (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and ($2)) or ((("t"."b") = ($3)) and ($2))"#
     );
 }
 
@@ -109,12 +93,11 @@ fn dnf5() {
             Value::from(1_u64),
             Value::Boolean(false),
             Value::from(2_u64),
-            Value::Boolean(false),
         ]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (?)) or ((("t"."b") = (?)) and (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and ($2)) or ((("t"."b") = ($3)) and ($2))"#
     );
 }
 
@@ -130,6 +113,6 @@ fn dnf6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (?)) and (("t"."c") = (?))) or (("t"."b") = (?))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and (("t"."c") = ($2))) or (("t"."b") = ($3))"#
     );
 }

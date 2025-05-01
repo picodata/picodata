@@ -251,3 +251,39 @@ INSERT INTO tc (JSON) VALUES(1);
 SELECT * FROM tc
 -- EXPECTED:
 1
+
+-- TEST: test-cte-caching-1
+-- SQL:
+with cte as (select 1) select 1 = (select * from cte), (select * from cte);
+-- EXPECTED:
+true, 1
+
+-- TEST: test-cte-caching-2
+-- SQL:
+with cte as (select 1) select 1 = (select * from cte), (select * from cte);
+-- EXPECTED:
+true, 1
+
+-- TEST: test-between-caching-1
+-- SQL:
+select (select 1) between 1 and 2
+-- EXPECTED:
+true
+
+-- TEST: test-between-caching-2
+-- SQL:
+select (select 1) between 1 and 2
+-- EXPECTED:
+true
+
+-- TEST: test-cte-union-caching-1
+-- SQL:
+with cte(escape) as (select '#') select escape from cte union all select escape from cte
+-- EXPECTED:
+'#', '#'
+
+-- TEST: test-cte-union-caching-2
+-- SQL:
+with cte(escape) as (select '#') select escape from cte union all select escape from cte
+-- EXPECTED:
+'#', '#'

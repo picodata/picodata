@@ -1933,22 +1933,24 @@ impl Router for RouterRuntimeMock {
         _return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
         let mut result = ProducerResult::new();
-        let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest)?;
+        let new_plan = plan.take_subtree(top_id)?;
+        let top_id = new_plan.get_ir_plan().get_top().unwrap();
+        let sp = SyntaxPlan::new(&new_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
 
         match buckets {
             Buckets::All => {
-                let (sql, _) = plan.to_sql(&nodes, TEMPLATE, None)?;
+                let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
                 result.extend(exec_on_all(String::from(sql).as_str()))?;
             }
             Buckets::Any => {
-                let (sql, _) = plan.to_sql(&nodes, TEMPLATE, None)?;
+                let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
                 result.extend(exec_locally(String::from(sql).as_str()))?;
             }
             Buckets::Filtered(list) => {
                 for bucket in list {
-                    let (sql, _) = plan.to_sql(&nodes, TEMPLATE, None)?;
+                    let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
                     let temp_result = exec_on_some(*bucket, String::from(sql).as_str());
                     result.extend(temp_result)?;
                 }

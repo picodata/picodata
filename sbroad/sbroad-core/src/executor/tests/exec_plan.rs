@@ -68,7 +68,7 @@ fn exec_plan_subtree_test() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE ("hash_testing"."identification_number") > (?)"#.to_string(),
+            r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE ("hash_testing"."identification_number") > ($1)"#.to_string(),
             vec![Value::from(1_u64)]
         ));
 
@@ -223,12 +223,12 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."id") * ("T1"."sys_op") as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", ?) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."id") * ("T1"."sys_op") as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", $1) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Unsigned(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") + ("COL_1") as "col_1", (("COL_1") * (?)) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", ?) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") + ("COL_1") as "col_1", (("COL_1") * ($1)) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", $2) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -300,7 +300,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") ON ?"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") ON $1"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -331,7 +331,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "hti" ON ?"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "hti" ON $1"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -473,9 +473,9 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."sys_op") * (?) as "gr_expr_2","#,
-                r#"count (("T1"."sys_op") * (?)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY "T1"."sys_op", ("T1"."sys_op") * (?)"#,
+                r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."sys_op") * ($1) as "gr_expr_2","#,
+                r#"count (("T1"."sys_op") * ($2)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY "T1"."sys_op", ("T1"."sys_op") * ($3)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
         )
@@ -491,7 +491,7 @@ fn exec_plan_subtree_having() {
                 r#"SELECT ("COL_1") + ("COL_1") as "col_1","#,
                 r#"(sum ("COL_3")) + (count (DISTINCT "COL_2")) as "col_2" FROM"#,
                 r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
-                r#"GROUP BY "COL_1" HAVING (sum (DISTINCT "COL_2")) > (?)"#
+                r#"GROUP BY "COL_1" HAVING (sum (DISTINCT "COL_2")) > ($1)"#
             ),
             vec![Value::Unsigned(1u64)]
         )
@@ -536,9 +536,9 @@ fn exec_plan_subtree_having_without_groupby() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT ("T1"."sys_op") * (?) as "gr_expr_1","#,
-                r#"count (("T1"."sys_op") * (?)) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY ("T1"."sys_op") * (?)"#,
+                r#"SELECT ("T1"."sys_op") * ($1) as "gr_expr_1","#,
+                r#"count (("T1"."sys_op") * ($2)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY ("T1"."sys_op") * ($3)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
         )
@@ -553,7 +553,7 @@ fn exec_plan_subtree_having_without_groupby() {
                 "{} {} {}",
                 r#"SELECT (sum ("COL_2")) + (count (DISTINCT "COL_1")) as "col_1""#,
                 r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
-                r#"HAVING (sum (DISTINCT "COL_1")) > (?)"#,
+                r#"HAVING (sum (DISTINCT "COL_1")) > ($1)"#,
             ),
             vec![Value::Unsigned(1u64)]
         )
@@ -573,7 +573,7 @@ fn exec_plan_subquery_as_expression_under_projection() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT (VALUES (?)) as "col_1" FROM "test_space""#.to_string(),
+            r#"SELECT (VALUES ($1)) as "col_1" FROM "test_space""#.to_string(),
             vec![Value::Unsigned(1u64)]
         )
     );
@@ -592,7 +592,7 @@ fn exec_plan_subquery_as_expression_under_projection_several() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT (VALUES (?)) as "col_1", (VALUES (?)) as "col_2" FROM "test_space""#
+            r#"SELECT (VALUES ($1)) as "col_1", (VALUES ($2)) as "col_2" FROM "test_space""#
                 .to_string(),
             vec![Value::Unsigned(1u64), Value::Unsigned(2u64)]
         )
@@ -612,7 +612,7 @@ fn exec_plan_subquery_as_expression_under_selection() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" WHERE (VALUES (?))"#.to_string(),
+            r#"SELECT "test_space"."id" FROM "test_space" WHERE (VALUES ($1))"#.to_string(),
             vec![Value::Boolean(true)]
         )
     );
@@ -651,7 +651,7 @@ fn exec_plan_subquery_as_expression_under_order_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY ("COL_1") + (VALUES (?))"#.to_string(),
+            r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY ("COL_1") + (VALUES ($1))"#.to_string(),
             vec![Value::Unsigned(1)]
         )
     );
@@ -670,7 +670,7 @@ fn exec_plan_subquery_as_expression_under_projection_nested() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT (VALUES ((VALUES (?)))) as "col_1" FROM "test_space""#.to_string(),
+            r#"SELECT (VALUES ((VALUES ($1)))) as "col_1" FROM "test_space""#.to_string(),
             vec![Value::Unsigned(1)]
         )
     );
@@ -699,8 +699,8 @@ fn exec_plan_subquery_as_expression_under_group_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT ("test_space"."id") + (VALUES (?)) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY ("test_space"."id") + (VALUES (?))"#.to_string(),
-            vec![Value::Unsigned(1u64), Value::Unsigned(1u64)]
+            r#"SELECT ("test_space"."id") + (VALUES ($1)) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY ("test_space"."id") + (VALUES ($1))"#.to_string(),
+            vec![Value::Unsigned(1u64)]
         )
     );
 
@@ -1312,7 +1312,7 @@ fn exec_plan_order_by_with_join() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "t"."a" FROM "t") as "f" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "s" ON ?"#.to_string(),
+            r#"SELECT * FROM (SELECT "t"."a" FROM "t") as "f" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "s" ON $1"#.to_string(),
             vec![Value::Boolean(true)]
         )
     );
@@ -1339,7 +1339,7 @@ fn check_subtree_hashes_are_equal(
         query
             .get_mut_exec_plan()
             .get_mut_ir_plan()
-            .stash_constants()
+            .stash_constants(Snapshot::Oldest)
             .unwrap();
         let ir = query.get_exec_plan().get_ir_plan();
         let top = ir.get_top().unwrap();
@@ -1408,7 +1408,7 @@ fn check_parentheses() {
     let top_id = plan.get_top().unwrap();
 
     let expected = PatternWithParams::new(
-        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = (((?) + (?)) + (?))"#.to_string(),
+        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = ((($1) + ($2)) + ($3))"#.to_string(),
         vec![Value::from(1_u64), Value::from(3_u64), Value::from(2_u64)],
     );
 

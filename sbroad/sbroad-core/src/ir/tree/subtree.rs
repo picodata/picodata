@@ -167,6 +167,7 @@ pub struct ExecPlanSubtreeIterator<'plan> {
     current: NodeId,
     child: RefCell<usize>,
     plan: &'plan Plan,
+    snapshot_type: Snapshot,
 }
 
 impl<'nodes> TreeIterator<'nodes> for ExecPlanSubtreeIterator<'nodes> {
@@ -206,17 +207,23 @@ impl Iterator for ExecPlanSubtreeIterator<'_> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        subtree_next(self, &Snapshot::Oldest)
+        let snapshot = self.snapshot_type;
+        subtree_next(self, &snapshot)
     }
 }
 
 impl<'plan> Plan {
     #[must_use]
-    pub fn exec_plan_subtree_iter(&'plan self, current: NodeId) -> ExecPlanSubtreeIterator<'plan> {
+    pub fn exec_plan_subtree_iter(
+        &'plan self,
+        current: NodeId,
+        snapshot: Snapshot,
+    ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
             current,
             child: RefCell::new(0),
             plan: self,
+            snapshot_type: snapshot,
         }
     }
 }

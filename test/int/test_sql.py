@@ -165,6 +165,9 @@ def test_select_with_scan(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
     ddl = i1.sql(
         """
         create table tmp (value INT primary key)

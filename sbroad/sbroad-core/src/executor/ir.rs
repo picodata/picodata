@@ -21,6 +21,7 @@ use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::traversal::{LevelNode, PostOrder};
+use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
 
 /// Query type (used to parse the returned results).
@@ -375,8 +376,10 @@ impl ExecutionPlan {
         // Get the subtree nodes indexes.
         let plan = self.get_ir_plan();
         let top = plan.get_top()?;
-        let mut subtree =
-            PostOrder::with_capacity(|node| plan.exec_plan_subtree_iter(node), plan.nodes.len());
+        let mut subtree = PostOrder::with_capacity(
+            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
+            plan.nodes.len(),
+        );
         subtree.populate_nodes(top_id);
         let nodes = subtree.take_nodes();
 
@@ -425,7 +428,7 @@ impl ExecutionPlan {
                 cte_ids.reserve(all_cte_nodes_capacity);
             }
             let mut cte_subtree = PostOrder::with_capacity(
-                |node| plan.exec_plan_subtree_iter(node),
+                |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                 single_cte_capacity,
             );
             for LevelNode(_, id) in cte_subtree.iter(cte_id) {
@@ -449,7 +452,7 @@ impl ExecutionPlan {
         let mut sq_ids: AHashSet<NodeId> = AHashSet::new();
         for sq_id in sqs {
             let mut sq_subtree = PostOrder::with_capacity(
-                |node| plan.exec_plan_subtree_iter(node),
+                |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                 plan.nodes.len(),
             );
             for LevelNode(_, id) in sq_subtree.iter(sq_id) {
@@ -892,7 +895,7 @@ impl ExecutionPlan {
             }
         }
 
-        new_plan.stash_constants()?;
+        new_plan.stash_constants(Snapshot::Oldest)?;
         new_plan.options = self.get_ir_plan().options.clone();
         new_plan.tier.clone_from(&self.get_ir_plan().tier);
 
