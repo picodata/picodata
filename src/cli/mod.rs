@@ -3,6 +3,7 @@ pub mod args;
 pub mod connect;
 pub mod console;
 pub mod default_config;
+pub mod demo;
 pub mod expel;
 pub mod plugin;
 pub mod run;

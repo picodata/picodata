@@ -25,6 +25,8 @@ pub enum Picodata {
     Config(Config),
     #[clap(subcommand)]
     Plugin(Plugin),
+    #[clap(subcommand)]
+    Demo(Demo),
 }
 
 pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
@@ -750,4 +752,15 @@ pub struct ServiceConfigUpdate {
     /// If no matching service were found, error message
     /// is printed to a user.
     pub service_names: Option<Vec<String>>,
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Demo
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, clap::Subcommand)]
+#[clap(about = "Interactive demonstration")]
+pub enum Demo {
+    #[clap(about = "Start a cluster and connect to it using `psql`")]
+    Simple,
 }

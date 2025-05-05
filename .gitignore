@@ -23,6 +23,9 @@ __pycache__/
 !test/compat/**/*.run
 !test/compat/**/*.index
 
+# interactive demo data
+.pico/
+
 tmp/
 *.rustfmt
 tags

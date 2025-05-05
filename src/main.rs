@@ -15,5 +15,6 @@ fn main() -> ! {
         Picodata::Admin(args) => cli::admin::main(args),
         Picodata::Config(cli::args::Config::Default(args)) => cli::default_config::main(args),
         Picodata::Plugin(args) => cli::plugin::main(args),
+        Picodata::Demo(args) => cli::demo::main(args),
     }
 }
