@@ -6631,6 +6631,9 @@ def test_scalar_function_instance_uuid(cluster: Cluster):
     i1_uuid = i1.uuid()
     i2_uuid = i2.uuid()
 
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
     ddl = i1.sql(
         """
         CREATE TABLE warehouse (
