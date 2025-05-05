@@ -1,14 +1,18 @@
-# Picodata – Professional Data Management System for High Loads
+# Picodata –  Distributed, PostgreSQL-compatible in-memory database
 
-This repository contains the source code of Picodata, an in-memory
-database with plugins in Rust.
+This repository contains the source code of Picodata, a distibuted
+in-memory database with plugins in Rust.
 
 ## What is Picodata
 
-Picodata is a software for building professional data management
-systems. It provides an in-memory database together with a development
-platform and a runtime for custom plugins written in Rust. Learn more
+Picodata is a PostgreSQL-compatible distributed DBMS with plugins
+in Rust. It is based on shared-nothing architecture and partitions the
+entire data set across independent processes each running on an own CPU core.
+Picodata is SQL and wire- compatible with PostgreSQL. Learn more
 about our software at the [picodata.io] web site.
+ and partitions
+the entire dataset across , It provides an in-memory database together with a development
+platform and a runtime for custom plugins written in Rust.
 
 [picodata.io]: https://picodata.io/picodata/
 
