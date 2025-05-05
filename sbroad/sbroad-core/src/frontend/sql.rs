@@ -2853,7 +2853,6 @@ fn parse_window_func<M: Metadata>(
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
     let mut inner = pair.into_inner();
-    let mut type_analyzer = type_system::new_analyzer();
 
     // Parse function name
     let func_name_pair = inner.next().expect("Function name expected under Over");
@@ -2891,9 +2890,8 @@ fn parse_window_func<M: Metadata>(
             }
             Rule::WindowFunctionArgsInner => {
                 for arg_pair in args_inner.into_inner() {
-                    let expr_plan_node_id = parse_scalar_expr(
+                    let expr_plan_node_id = parse_expr_no_type_check(
                         Pairs::single(arg_pair),
-                        &mut type_analyzer,
                         referred_relation_ids,
                         worker,
                         plan,
@@ -2912,9 +2910,8 @@ fn parse_window_func<M: Metadata>(
     // Parse filter
     let filter_pair = inner.next().expect("Filter expected under Over");
     let filter = if let Some(filter_inner) = filter_pair.into_inner().next() {
-        let expr = parse_scalar_expr(
+        let expr = parse_expr_no_type_check(
             Pairs::single(filter_inner),
-            &mut type_analyzer,
             referred_relation_ids,
             worker,
             plan,
@@ -2960,9 +2957,8 @@ fn parse_window_func<M: Metadata>(
 
                         let mut partition_exprs = Vec::new();
                         for part_expr in body_part.into_inner() {
-                            let part_expr_plan_node_id = parse_scalar_expr(
+                            let part_expr_plan_node_id = parse_expr_no_type_check(
                                 Pairs::single(part_expr),
-                                &mut type_analyzer,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -2979,9 +2975,8 @@ fn parse_window_func<M: Metadata>(
                             let expr_pair = order_item_inner
                                 .next()
                                 .expect("Expected expression in ORDER BY");
-                            let expr_id = parse_scalar_expr(
+                            let expr_id = parse_expr_no_type_check(
                                 Pairs::single(expr_pair.clone()),
-                                &mut type_analyzer,
                                 referred_relation_ids,
                                 worker,
                                 plan,
@@ -3030,7 +3025,6 @@ fn parse_window_func<M: Metadata>(
                                 );
                                 let bound_type = parse_frame_bound(
                                     bound_inner,
-                                    &mut type_analyzer,
                                     referred_relation_ids,
                                     worker,
                                     plan,
@@ -3047,14 +3041,12 @@ fn parse_window_func<M: Metadata>(
                                 );
                                 let first_type = parse_frame_bound(
                                     first_bound,
-                                    &mut type_analyzer,
                                     referred_relation_ids,
                                     worker,
                                     plan,
                                 )?;
                                 let second_type = parse_frame_bound(
                                     second_bound,
-                                    &mut type_analyzer,
                                     referred_relation_ids,
                                     worker,
                                     plan,
@@ -3094,7 +3086,6 @@ fn parse_window_func<M: Metadata>(
 
 fn parse_frame_bound<M: Metadata>(
     bound: Pair<Rule>,
-    type_analyzer: &mut TypeAnalyzer,
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -3109,9 +3100,8 @@ fn parse_frame_bound<M: Metadata>(
                 .into_inner()
                 .next()
                 .expect("Expr node expected under Offset window bound");
-            let offset_expr_id = parse_scalar_expr(
+            let offset_expr_id = parse_expr_no_type_check(
                 Pairs::single(offset_expr),
-                type_analyzer,
                 referred_relation_ids,
                 worker,
                 plan,
