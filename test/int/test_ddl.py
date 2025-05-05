@@ -2328,3 +2328,67 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     # actually, same situation with r1_slave, but it will slow down test
     assert check_for_local_table_existence(r2_slave, new_table_name)
     assert not check_for_local_table_existence(r2_slave, table_name)
+
+
+def test_drop_table_pause_rebalancing(cluster: Cluster):
+    r1_leader = cluster.add_instance(replicaset_name="r1")
+    _ = cluster.add_instance(replicaset_name="r2")
+
+    for instance in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 1500)
+
+    ddl = r1_leader.sql(
+        """
+        CREATE TABLE sharded_table (id INT PRIMARY KEY)
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # r1_leader is a raft leader, so injection in right place
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    r1_leader.call("pico._inject_error", error_injection, True)
+    lc = log_crawler(r1_leader, injection_log)
+
+    with pytest.raises(TimeoutError):
+        # Shouldn't wait too long, because governor blocked
+        r1_leader.sql("DROP TABLE sharded_table", timeout=3)
+
+    lc.wait_matched(timeout=15)
+
+    # Check that rebalancing is blocked
+    for instance in cluster.instances:
+        rebalancing_is_in_progress = instance.call("vshard.storage.rebalancing_is_in_progress")
+        assert not rebalancing_is_in_progress
+
+        is_rebalancer_fiber_on_this_instance = instance.eval("return vshard.storage.internal.rebalancer_fiber ~= nil")
+        if is_rebalancer_fiber_on_this_instance:
+            rebalancing_is_active = instance.eval("return vshard.storage.internal.is_rebalancer_active")
+            assert not rebalancing_is_active
+
+        active_buckets_count = instance.call(
+            "box.execute", """SELECT count(*) FROM "_bucket" WHERE "status" = 'active'"""
+        )["rows"][0][0]
+        assert active_buckets_count == 1500
+
+        sending_buckets_count = instance.call(
+            "box.execute", """SELECT count(*) FROM "_bucket" WHERE "status" = 'sending'"""
+        )["rows"][0][0]
+        assert sending_buckets_count == 0
+
+    lc = log_crawler(r1_leader, "UNBLOCKING")
+    r1_leader.call("pico._inject_error", error_injection, False)
+    lc.wait_matched(timeout=15)
+
+    # Wait until the schema change is finalized
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, r1_leader)
+
+    # Ensure that table deleted
+    result = r1_leader.sql("SELECT * FROM _pico_table WHERE name = 'sharded_table'")
+    assert result == []
+
+    # Check that rebalancing is unlocked
+    for instance in cluster.instances:
+        rebalancing_is_active = instance.eval("return vshard.storage.internal.is_rebalancer_active")
+        assert rebalancing_is_active

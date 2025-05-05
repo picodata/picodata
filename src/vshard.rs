@@ -10,6 +10,7 @@ use crate::sql::router;
 use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
+use crate::traft::error::Error as TraftError;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::ConnectionType;
@@ -24,6 +25,62 @@ use tarantool::space::SpaceId;
 use tarantool::tlua;
 
 use tarantool::tuple::Tuple;
+
+fn is_vshard_not_initialized() -> crate::traft::Result<bool> {
+    crate::tarantool::eval("return vshard == nil").map_err(TraftError::from)
+}
+
+fn is_rebalancing_in_progress() -> crate::traft::Result<bool> {
+    crate::tarantool::eval("return vshard.storage.rebalancing_is_in_progress()")
+        .map_err(TraftError::from)
+}
+
+fn enable_vshard_rebalancer() -> crate::traft::Result<()> {
+    crate::tarantool::exec("vshard.storage.rebalancer_enable()").map_err(TraftError::from)
+}
+
+fn disable_vshard_rebalancer() -> crate::traft::Result<()> {
+    crate::tarantool::exec("vshard.storage.rebalancer_disable()").map_err(TraftError::from)
+}
+
+fn is_rebalancer_here() -> crate::traft::Result<bool> {
+    crate::tarantool::eval("return vshard.storage.internal.rebalancer_fiber ~= nil")
+        .map_err(TraftError::from)
+}
+
+/// Enable the rebalancer if it's active on this instance.
+pub(crate) fn enable_rebalancer() -> crate::traft::Result<()> {
+    if is_vshard_not_initialized()? {
+        return Ok(());
+    }
+
+    // There’s no need to verify the rebalancer fiber’s
+    // presence — rebalancer_enable() is a no-op if the fiber isn’t active here.
+    enable_vshard_rebalancer()?;
+
+    Ok(())
+}
+
+/// Disable the rebalancer if it's active on this instance.
+///
+/// Return error if rebalancing is in progress or instance is not a replicaset leader.
+pub(crate) fn disable_rebalancer() -> crate::traft::Result<()> {
+    if is_vshard_not_initialized()? {
+        return Ok(());
+    }
+
+    // Here we must check if the rebalancing fiber exists — the 'rebalancing in progress'
+    // flag is only relevant for instances with an active rebalancer.
+    if is_rebalancer_here()? {
+        if is_rebalancing_in_progress()? {
+            return Err(TraftError::other("Rebalancing is in progress"));
+        }
+
+        disable_vshard_rebalancer()?;
+    }
+
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdlMapCallRwRes {

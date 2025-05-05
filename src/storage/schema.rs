@@ -95,6 +95,7 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
 
         Ddl::DropTable { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
+            crate::vshard::enable_rebalancer()?;
         }
         Ddl::RenameTable {
             table_id,

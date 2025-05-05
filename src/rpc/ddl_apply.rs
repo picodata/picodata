@@ -167,7 +167,10 @@ pub fn apply_schema_change(
         }
 
         Ddl::DropTable { id, .. } => {
+            // That means function called from governor.
             if !is_commit {
+                crate::vshard::disable_rebalancer().map_err(Error::Other)?;
+
                 // Space is only dropped on commit.
                 return Ok(());
             }
@@ -176,6 +179,8 @@ pub fn apply_schema_change(
             if let Some(e) = abort_reason {
                 return Err(Error::Aborted(e.into()));
             }
+
+            crate::vshard::enable_rebalancer().map_err(Error::Other)?;
         }
 
         Ddl::RenameTable {
