@@ -268,6 +268,7 @@ fn parse_call_proc<M: Metadata>(
                 parse_scalar_expr(
                     Pairs::single(literal_pair),
                     type_analyzer,
+                    DerivedType::unknown(),
                     &[],
                     worker,
                     plan,
@@ -419,6 +420,7 @@ fn parse_alter_system<M: Metadata>(
                 let expr_plan_node_id = parse_scalar_expr(
                     Pairs::single(expr_pair),
                     type_analyzer,
+                    DerivedType::unknown(),
                     &[],
                     worker,
                     plan,
@@ -4243,6 +4245,7 @@ where
 fn parse_scalar_expr<M>(
     expression_pairs: Pairs<Rule>,
     type_analyzer: &mut TypeAnalyzer,
+    desired_type: DerivedType,
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -4260,7 +4263,15 @@ where
         plan,
         safe_for_volatile_function,
     )?;
-    type_system::analyze_scalar_expr(type_analyzer, expr_id, plan, &worker.subquery_replaces)?;
+
+    type_system::analyze_scalar_expr(
+        type_analyzer,
+        expr_id,
+        desired_type,
+        plan,
+        &worker.subquery_replaces,
+    )?;
+
     Ok(expr_id)
 }
 
@@ -4814,6 +4825,7 @@ impl AbstractSyntaxTree {
                 type_system::analyze_scalar_expr(
                     type_analyzer,
                     *window_id,
+                    DerivedType::unknown(),
                     plan,
                     &worker.subquery_replaces,
                 )?;
@@ -4835,6 +4847,7 @@ impl AbstractSyntaxTree {
                     let expr_plan_node_id = parse_scalar_expr(
                         Pairs::single(expr_pair),
                         type_analyzer,
+                        DerivedType::unknown(),
                         &[plan_rel_child_id],
                         worker,
                         plan,
@@ -4991,6 +5004,7 @@ impl AbstractSyntaxTree {
                     let expr_plan_node_id = parse_scalar_expr(
                         Pairs::single(expr_pair),
                         type_analyzer,
+                        DerivedType::unknown(),
                         &[],
                         worker,
                         plan,
@@ -5058,6 +5072,7 @@ impl AbstractSyntaxTree {
             let expr_plan_node_id = parse_scalar_expr(
                 Pairs::single(expr_pair),
                 type_analyzer,
+                DerivedType::unknown(),
                 &[referred_rel_id],
                 worker,
                 plan,
@@ -5239,6 +5254,7 @@ impl AbstractSyntaxTree {
                         let part_expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(part_expr_pair),
                             type_analyzer,
+                            DerivedType::unknown(),
                             &[proj_child_id],
                             worker,
                             plan,
@@ -5303,6 +5319,7 @@ impl AbstractSyntaxTree {
                                 let offset_expr_plan_node_id = parse_scalar_expr(
                                     Pairs::single(offset_expr_pair),
                                     type_analyzer,
+                                    DerivedType::new(Type::Integer),
                                     &[proj_child_id],
                                     worker,
                                     plan,
@@ -5529,6 +5546,7 @@ impl AbstractSyntaxTree {
                         let expr_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
+                            DerivedType::unknown(),
                             &[first_relational_child_plan_id],
                             &mut worker,
                             &mut plan,
@@ -5588,6 +5606,7 @@ impl AbstractSyntaxTree {
                         parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
+                            DerivedType::new(Type::Boolean),
                             &[plan_left_id, plan_right_id],
                             &mut worker,
                             &mut plan,
@@ -5615,6 +5634,7 @@ impl AbstractSyntaxTree {
                     let expr_plan_node_id = parse_scalar_expr(
                         Pairs::single(expr_pair),
                         &mut type_analyzer,
+                        DerivedType::new(Type::Boolean),
                         &[plan_rel_child_id],
                         &mut worker,
                         &mut plan,
@@ -5773,6 +5793,7 @@ impl AbstractSyntaxTree {
                         let expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
+                            DerivedType::unknown(),
                             &[rel_child_id],
                             &mut worker,
                             &mut plan,
@@ -5887,6 +5908,7 @@ impl AbstractSyntaxTree {
                             let expr_plan_node_id = parse_scalar_expr(
                                 Pairs::single(expr_pair),
                                 &mut type_analyzer,
+                                DerivedType::new(Type::Boolean),
                                 &[plan_scan_id],
                                 &mut worker,
                                 &mut plan,

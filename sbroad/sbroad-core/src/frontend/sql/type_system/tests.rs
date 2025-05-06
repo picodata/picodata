@@ -458,8 +458,6 @@ fn windows() {
     assert_ok("SELECT max(a + a) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
     assert_ok("SELECT max(a + a) filter (where a = a) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
     assert_ok("SELECT max(a + a) filter (where a = $1) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
-    // TODO: pass bool as desired type for filter expressions
-    //assert_ok("SELECT max(a + a) filter (where $1) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
 
     assert_ok(
         "WITH t AS (SELECT 'a' as a) \
@@ -544,4 +542,29 @@ fn cast() {
         '11111111-1111-1111-1111-111111111111'::uuid \
         ) = ($1, $2, $3, $4, $5, $6)",
     );
+}
+
+#[test]
+fn clause_based_parameter_type_inference() {
+    // WHERE
+    assert_ok("SELECT * FROM (SELECT 1) WHERE $1");
+    assert_ok("SELECT * FROM (SELECT 1) HAVING $1");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE $1 HAVING $2");
+    assert_ok(
+        "SELECT max(a + a) FILTER (WHERE $1) over (PARTITION BY 1 ORDER BY 1) from (SELECT 1 as a);"
+    );
+    assert_ok("UPDATE t2 SET e = 3 WHERE $1");
+    assert_ok("DELETE FROM t2 WHERE $1");
+
+    // WINDOW
+    assert_ok(
+        "SELECT sum(x) OVER win from (select 1 as x) WINDOW win as (ROWS BETWEEN $1 PRECEDING AND $2 FOLLOWING)"
+    );
+
+    assert_ok(
+        "SELECT sum(x) OVER (ROWS BETWEEN $1 PRECEDING AND $2 FOLLOWING) FROM (SELECT 1 as x)",
+    );
+
+    // JOIN
+    assert_ok("WITH t AS (SELECT 1) SELECT * FROM t join t on $1")
 }

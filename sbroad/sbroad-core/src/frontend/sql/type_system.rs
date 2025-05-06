@@ -575,11 +575,13 @@ pub fn new_analyzer(param_types: Vec<Type>) -> TypeAnalyzer {
 pub fn analyze_scalar_expr(
     type_analyzer: &mut TypeAnalyzer,
     expr_id: NodeId,
+    desired_type: DerivedType,
     plan: &Plan,
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
+    let desired_type = desired_type.get().map(Type::from);
     let type_expr = to_type_expr(expr_id, plan, subquery_map)?;
-    type_analyzer.analyze(&type_expr, None)?;
+    type_analyzer.analyze(&type_expr, desired_type)?;
     Ok(())
 }
 

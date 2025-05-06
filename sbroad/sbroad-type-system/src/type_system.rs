@@ -426,10 +426,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 frame,
             } => {
                 let desired_types = vec![Type::Unknown; order_by.len()];
-                let order_by_report = self.analyze_many(order_by, &desired_types)?;
+                let mut report = self.analyze_many(order_by, &desired_types)?;
 
                 let desired_types = vec![Type::Unknown; partition_by.len()];
-                let mut partition_by_report = self.analyze_many(partition_by, &desired_types)?;
+                let partition_by_report = self.analyze_many(partition_by, &desired_types)?;
+                report.extend(partition_by_report);
 
                 if let Some(frame) = frame {
                     if frame.bound_offsets.len() > 2 {
@@ -442,18 +443,18 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                     for offset in &frame.bound_offsets {
                         // TODO: ensure no variables, otherwise return
                         // "argument of ROWS must not contain variables" error
-                        let report = self.analyze(offset, Some(Type::Integer))?;
-                        if report.get_type(&offset.id) != Type::Integer {
+                        let offset_report = self.analyze(offset, Some(Type::Integer))?;
+                        if offset_report.get_type(&offset.id) != Type::Integer {
                             return Err(Error::IncorrectFrameArgumentType(
                                 frame.kind,
-                                report.get_type(&offset.id),
+                                offset_report.get_type(&offset.id),
                             ));
                         }
+                        report.extend(offset_report);
                     }
                 }
 
-                partition_by_report.extend(order_by_report);
-                Ok(partition_by_report)
+                Ok(report)
             }
             ExprKind::Coalesce(ref args) => {
                 let (ty, mut report) =
