@@ -14,12 +14,5 @@ override_dh_auto_build:
 
 override_dh_auto_test: ;
 
-# override_dh_fixperms:
-# 	dh_fixperms
-# 	find $(build_dir)/ -type f -exec chmod 644 {} \;
-# 	find $(build_dir)/ -type d -exec chmod 755 {} \;
-# 	chmod +x $(build_dir)/$(PKG_PREFIX)/*.sh
-# 	chown root:root -R $(build_dir)
-
 %:
 	dh $@

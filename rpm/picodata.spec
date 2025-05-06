@@ -12,6 +12,7 @@ Version: 1.0.2.0
 Release: 1%{?dist}
 Epoch: 1
 
+Vendor: Picodata
 Summary: In-memory database and Rust application server
 License: BSD
 Group: Databases
@@ -52,12 +53,24 @@ BuildRequires: libzstd-devel
 BuildRequires: perl-FindBin
 %endif
 
+%if 0%{?rhel} >= 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33 || "%{?mandriva_os}" == "linux"
+Recommends:  postgresql
+%endif
+
 %description
 Picodata is a high performance in-memory NoSQL database and Rust
 application server. Picodata supports replication, online backup and
 stored procedures in Rust.
 
 This package provides the repository binary and tools
+%if "%{?_build_vendor}" == "alt"
+%if "%{?dist}" == ".p9"
+Recommends:  postgresql12
+%endif
+%if "%{?dist}" == ".p10"
+Recommends:  postgresql17
+%endif
+%endif
 
 %prep
 %setup -q -n %{name}-%{version}
