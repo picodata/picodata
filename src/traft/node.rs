@@ -2226,6 +2226,28 @@ impl NodeImpl {
             .expect("status shouldn't ever be borrowed across yields");
     }
 
+    #[inline]
+    fn main_loop_status_persisting(
+        &self,
+        have_hard_state: bool,
+        have_entries: bool,
+        have_snapshot: bool,
+    ) {
+        match (have_hard_state, have_entries, have_snapshot) {
+            (true, true, _) => self.main_loop_status("persisting hard state and entries"),
+            (true, _, true) => self.main_loop_status("persisting hard state and snapshot"),
+            (true, false, false) => self.main_loop_status("persisting hard state"),
+            (false, true, _) => self.main_loop_status("persisting entries"),
+            (false, _, true) => self.main_loop_status("persisting snapshot"),
+            (..) => {
+                // Raft-rs never gives us both entries and snapshot in the same `Ready` record.
+                crate::warn_or_panic!(
+                    "impossible case: {have_hard_state} {have_entries} {have_snapshot}"
+                )
+            }
+        }
+    }
+
     /// Processes a so-called "ready state" of the [`raft::RawNode`].
     ///
     /// This includes:
@@ -2315,15 +2337,18 @@ impl NodeImpl {
         let hard_state = ready.hs();
         let entries_to_persist = ready.entries();
 
-        if hard_state.is_some() || !entries_to_persist.is_empty() || snapshot_data.is_some() {
+        let have_hard_state = hard_state.is_some();
+        let have_entries = !entries_to_persist.is_empty();
+        let have_snapshot = snapshot_data.is_some();
+        if have_hard_state || have_entries || have_snapshot {
+            self.main_loop_status_persisting(have_hard_state, have_entries, have_snapshot);
+
             let mut new_term = None;
             let mut new_applied = None;
             let mut received_snapshot = false;
             let mut changed_parameters = Vec::new();
 
             if let Err(e) = transaction(|| -> Result<(), Error> {
-                self.main_loop_status("persisting hard state, entries and/or snapshot");
-
                 // Raft HardState changed, and we need to persist it.
                 if let Some(hard_state) = hard_state {
                     tlog!(Debug, "hard state: {hard_state:?}");
