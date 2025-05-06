@@ -7,6 +7,7 @@ use tarantool::error::{Error, TarantoolError};
 use tarantool::ffi::sql::IPROTO_DATA;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, Space};
+use tarantool::sql::unprepare;
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
     let space = Space::builder(name)
@@ -67,6 +68,7 @@ pub fn prepared_source_query() {
     let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST".to_string()).unwrap();
     assert_eq!(stmt.source(), "SELECT * FROM SQL_TEST");
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
 
@@ -95,6 +97,7 @@ pub fn prepared_no_params() {
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
 
@@ -124,6 +127,7 @@ pub fn prepared_large_query() {
         i += 4;
     }
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
 
@@ -150,6 +154,7 @@ pub fn prepared_invalid_params() {
         Error::Tarantool(TarantoolError { .. })
     ));
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
 
@@ -192,6 +197,7 @@ pub fn prepared_with_unnamed_params() {
     assert_eq!(1, result.len());
     assert_eq!((101, "one".to_string()), result[0]);
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
 
@@ -250,5 +256,6 @@ pub fn prepared_with_named_params() {
     assert_eq!(1, result.len());
     assert_eq!((1, "one".to_string()), result[0]);
 
+    unprepare(stmt).unwrap();
     drop_sql_test_space(sp).unwrap();
 }
