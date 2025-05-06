@@ -535,7 +535,7 @@ pub fn port_c_vtab() {
     let mut port = Port::new_port_c();
     let port_c = unsafe { port.as_mut_port_c() };
     port_c.vtab = &vtab as *const PortVTable;
-    unsafe { dump_msgpack(port_c.as_mut(), out.obuf()) };
+    unsafe { dump_msgpack(port_c.as_mut_ptr(), out.obuf()) };
     let mut result = [0u8; 1];
     let len = out
         .read(&mut result)
@@ -547,7 +547,7 @@ pub fn port_c_vtab() {
     // Check a port with a single msgpack.
     let header_mp = b"\xd96HEADER";
     unsafe { port_c.add_mp(header_mp) };
-    unsafe { ((*port_c.vtab).dump_msgpack)(port_c.as_mut(), out.obuf()) };
+    unsafe { ((*port_c.vtab).dump_msgpack)(port_c.as_mut_ptr(), out.obuf()) };
     let expected = b"\xd96HEADER\x90";
     let mut result = [0u8; 9];
     let len = out
@@ -569,7 +569,7 @@ pub fn port_c_vtab() {
     let mp2 = b"\xd95DATA2";
     unsafe { port_c.add_mp(mp2) };
     // Check that the C wrapper over the virtual `dump_msgpack` method works.
-    unsafe { dump_msgpack(port_c.as_mut(), out.obuf()) };
+    unsafe { dump_msgpack(port_c.as_mut_ptr(), out.obuf()) };
     let expected = b"\xd96HEADER\x92\xd95DATA1\xd95DATA2";
     let mut result = [0u8; 23];
     let len = out

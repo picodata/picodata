@@ -69,7 +69,7 @@ where
             query.len() as i32,
             param_ptr,
             vdbe_max_steps,
-            port.as_mut(),
+            port.as_mut_ptr(),
         )
     };
     if execute_result < 0 {
@@ -188,7 +188,12 @@ impl Statement {
         }
         let param_ptr = param_data.as_ptr() as *const u8;
         let execute_result = unsafe {
-            ffi::sql::stmt_execute_into_port(self.id(), param_ptr, vdbe_max_steps, port.as_mut())
+            ffi::sql::stmt_execute_into_port(
+                self.id(),
+                param_ptr,
+                vdbe_max_steps,
+                port.as_mut_ptr(),
+            )
         };
 
         if execute_result < 0 {

@@ -242,7 +242,10 @@ impl Drop for Port {
 }
 
 impl Port {
+    /// Interpret `Port` as a mutable raw pointer to `PortC`.
+    ///
     /// # Safety
+    ///
     /// The caller must be sure that the port was initialized with `new_port_c`.
     pub unsafe fn as_mut_port_c(&mut self) -> &mut PortC {
         unsafe { NonNull::new_unchecked(self as *mut Port as *mut PortC).as_mut() }
@@ -323,7 +326,10 @@ impl PortC {
         }
     }
 
+    /// Add a msgpack-encoded data to the C port.
+    ///
     /// # Safety
+    ///
     /// The caller must ensure that the `mp` slice is valid msgpack data.
     pub unsafe fn add_mp(&mut self, mp: &[u8]) {
         let Range { start, end } = mp.as_ptr_range();
@@ -340,11 +346,14 @@ impl PortC {
         PortCIterator::new(self)
     }
 
-    pub fn as_ptr(&self) -> *const Port {
-        self as *const PortC as *const Port
-    }
-
-    pub fn as_mut(&mut self) -> *mut Port {
+    /// Interpret `PortC` as a mutable raw pointer to `Port`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `PortC`:
+    /// - occupies the same amount of memory as the `Port` does;
+    /// - is properly initialized with `port_c_create`.
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut Port {
         self as *mut PortC as *mut Port
     }
 
@@ -369,12 +378,6 @@ impl PortC {
 pub struct PortCIterator<'port> {
     port: &'port PortC,
     entry: *const PortCEntry,
-}
-
-impl<'port> From<&'port PortC> for PortCIterator<'port> {
-    fn from(port: &'port PortC) -> Self {
-        Self::new(port)
-    }
 }
 
 impl<'port> PortCIterator<'port> {
