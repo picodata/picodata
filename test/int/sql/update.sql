@@ -103,7 +103,7 @@ rule parsing error
 -- SQL:
  update "testing_space" set "product_units" = 'hello'
 -- ERROR:
-Transaction error occurred
+column "product_units" is of type int, but expression is of type text
 
 -- TEST: test_invalid-8
 -- SQL:

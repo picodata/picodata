@@ -93,17 +93,14 @@ with the `YY.MINOR.MICRO` scheme.
 
   In addition, parameter types can be inferred from the column types
   when inserting values. For instance, in `INSERT INTO t (int_col) VALUES ($1)`
-  query, parameter type will be inferred to the type of the column (int).
+  or `UPDATE t SET int_col = $1` query, parameter type will be inferred to
+  the type of the column (int).
 
   Note that there are 2 methods to fix inference errors:
    1) Explicitly provide parameter type on protocol level.
    2) Explicitly provide parameter type by using CAST.
 
   Limitations:
-
-   - `UPDATE t SET a = $1`
-   Parameter type could be inferred from the column type, but this
-   is not implemented yet.
 
    - `SELECT $1`
    Works in PostgreSQL, fails in sbroad, because there is no context

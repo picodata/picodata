@@ -5755,9 +5755,8 @@ impl AbstractSyntaxTree {
                             update_list.children.len(),
                             RepeatableState,
                         );
-                    // Map of { column_name -> (column_role, column_position) }.
-                    let mut col_name_to_position_map: HashMap<&str, (&ColumnRole, usize)> =
-                        HashMap::new();
+                    // Map of { column_name -> (column, column_position) }.
+                    let mut columns: HashMap<&str, (&Column, usize)> = HashMap::new();
 
                     let relation = plan
                         .relations
@@ -5770,7 +5769,7 @@ impl AbstractSyntaxTree {
                         })?
                         .clone();
                     relation.columns.iter().enumerate().for_each(|(i, c)| {
-                        col_name_to_position_map.insert(c.name.as_str(), (c.get_role(), i));
+                        columns.insert(c.name.as_str(), (c, i));
                     });
 
                     let mut pk_positions: HashSet<usize> =
@@ -5789,16 +5788,33 @@ impl AbstractSyntaxTree {
                             .get(1)
                             .expect("Expression expected as second child of UpdateItem");
 
+                        let col_name = parse_normalized_identifier(self, *ast_column_id)?;
+                        let (col, pos) = columns.get(col_name.as_str()).ok_or_else(|| {
+                            SbroadError::NotFound(Entity::Column, col_name.clone())
+                        })?;
+
+                        let col_type = col.r#type.get().expect("column type must be known");
                         let expr_pair = pairs_map.remove_pair(*expr_ast_id);
                         let expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
-                            DerivedType::unknown(),
+                            DerivedType::new(col_type),
                             &[rel_child_id],
                             &mut worker,
                             &mut plan,
                             true,
                         )?;
+
+                        let expr_type = type_analyzer.get_report().get_type(&expr_plan_node_id);
+                        if !can_assign(expr_type.into(), col_type) {
+                            return Err(SbroadError::Other(format_smolstr!(
+                                "column {} is of type {}, but expression is of type {}",
+                                to_user(col_name),
+                                // Try to keep type formatting sync with other errors.
+                                sbroad_type_system::expr::Type::from(col_type),
+                                expr_type,
+                            )));
+                        }
 
                         if plan.contains_aggregates(expr_plan_node_id, true)? {
                             return Err(SbroadError::Invalid(
@@ -5809,9 +5825,9 @@ impl AbstractSyntaxTree {
                                 ),
                             ));
                         }
-                        let col_name = parse_normalized_identifier(self, *ast_column_id)?;
-                        match col_name_to_position_map.get(col_name.as_str()) {
-                            Some((&ColumnRole::User, pos)) => {
+
+                        match col.get_role() {
+                            ColumnRole::User => {
                                 if pk_positions.contains(pos) {
                                     return Err(SbroadError::Invalid(
                                         Entity::Query,
@@ -5832,7 +5848,7 @@ impl AbstractSyntaxTree {
                                 }
                                 update_defs.insert(*pos, expr_plan_node_id);
                             }
-                            Some((&ColumnRole::Sharding, _)) => {
+                            ColumnRole::Sharding => {
                                 return Err(SbroadError::FailedTo(
                                     Action::Update,
                                     Some(Entity::Column),
@@ -5840,12 +5856,6 @@ impl AbstractSyntaxTree {
                                         "system column {} cannot be updated",
                                         to_user(col_name)
                                     ),
-                                ))
-                            }
-                            None => {
-                                return Err(SbroadError::NotFound(
-                                    Entity::Column,
-                                    (*col_name).to_smolstr(),
                                 ))
                             }
                         }

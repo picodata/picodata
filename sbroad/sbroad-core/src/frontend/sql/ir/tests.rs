@@ -3322,6 +3322,50 @@ fn front_sql_update6() {
 }
 
 #[test]
+fn front_sql_update7() {
+    let input = r#"update t3 set b = $1"#;
+
+    let plan = sql_to_optimized_ir(input, vec![Value::from(1)]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    update "t3"
+    "b" = "col_0"
+        motion [policy: local]
+            projection (1::integer -> "col_0", "t3"."a"::string -> "col_1")
+                scan "t3"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_sql_update8() {
+    let input = r#"update t3 set b = $1 + $2"#;
+
+    let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(1)]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    update "t3"
+    "b" = "col_0"
+        motion [policy: local]
+            projection (ROW(1::integer) + ROW(1::integer) -> "col_0", "t3"."a"::string -> "col_1")
+                scan "t3"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_sql_update9() {
+    let input = r#"update t3 set b = a"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
+
+    insta::assert_snapshot!(err.to_string(), @r#"column "b" is of type int, but expression is of type text"#);
+}
+
+#[test]
 fn front_sql_not_true() {
     let input = r#"SELECT "a" FROM "t" WHERE not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);

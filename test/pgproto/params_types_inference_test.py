@@ -318,15 +318,25 @@ def test_params_inference_in_update_and_delete(postgres: Postgres):
 
     conn.run("INSERT INTO t (i) VALUES (0), (2)")
 
-    # Cannot infer types from table columns in UPDATE
-    # https://git.picodata.io/core/picodata/-/work_items/1643
-    with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$1"):
-        conn.run("UPDATE t SET f = :p2 WHERE i = :p1", p1=2, p2=1.5)
+    # Infer types from table columns
+    uuid = UUID("b1ddbc99-9c0b-4ef8-bb6d-6bb9bd380a13")
+    conn.run("UPDATE t SET t = :p2, u = :p3 WHERE i = :p1", p1=2, p2="x", p3=uuid)
+    rows = conn.run("SELECT t, u FROM t WHERE i = :p1", p1=2)
+    assert rows == [["x", uuid]]
 
     # Infer parameter types from neighbor expressions.
     conn.run("UPDATE t SET f = :p2 + COALESCE(f, 0.0) WHERE i = :p1 OR i = 0", p1=2, p2=1.5)
     rows = conn.run("SELECT f FROM t")
     assert rows == [[1.5], [1.5]]
+
+    # Infer int parameter type from WHERE expression, then assign it to float column.
+    conn.run("UPDATE t SET f = :p WHERE i = :p", p=2)
+    rows = conn.run("SELECT f FROM t WHERE i = :p", p=2)
+    assert rows == [[2.0]]
+
+    # Infer uuid parameter type from WHERE expression, then try to assign it to float column.
+    with pytest.raises(DatabaseError, match='column "f" is of type double, but expression is of type uuid'):
+        conn.run("UPDATE t SET f = :p WHERE u = :p", p="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 
     conn.run("DELETE FROM t WHERE i = :p", p=0)
     rows = conn.run("SELECT i FROM t")
