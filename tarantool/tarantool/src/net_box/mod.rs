@@ -443,7 +443,7 @@ mod tests {
                 .to_string();
             assert_eq!(
                 err,
-                "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid"
+                "server responded with error: System: Invalid credentials"
             );
         }
 
