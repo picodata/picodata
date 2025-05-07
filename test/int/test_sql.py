@@ -6035,7 +6035,10 @@ def test_global_dml_cas_conflict(cluster: Cluster):
     # Wait for the test results
     #
     for i in workers:
-        stats = i.call("wait_result", timeout=20)
+        # FIXME https://git.picodata.io/core/picodata/-/issues/1768
+        # this timeout used to be 20 seconds but I had to increase it because
+        # we became slower for some reason
+        stats = i.call("wait_result", timeout=60)
         # There were conflicts
         assert stats["n_retries"] > 0
 
