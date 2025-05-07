@@ -140,10 +140,15 @@ select "id" from "testing_space"
 where false
 -- EXPECTED:
 
-
 -- TEST: test_union_with_window_func
 -- SQL:
 select row_number() over () from t union select 1;
+-- EXPECTED:
+1
+
+-- TEST: test_union_with_named_window
+-- SQL:
+select count() over win from t WINDOW win as () union select 1
 -- EXPECTED:
 1
 
@@ -157,6 +162,23 @@ motion [policy: full]
             motion [policy: full]
                 projection ("t"."a"::integer -> "a", "t"."bucket_id"::unsigned -> "bucket_id", "t"."b"::integer -> "b")
                     scan "t"
+        projection (1::unsigned -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: test_explain_union_with_named_window
+-- SQL:
+explain select count() over win from t WINDOW win as () union select 1
+-- EXPECTED:
+motion [policy: full]
+    union
+        projection (count() over win -> "col_1")
+            windows: win as ()
+                motion [policy: full]
+                    projection ("t"."a"::integer -> "a", "t"."bucket_id"::unsigned -> "bucket_id", "t"."b"::integer -> "b")
+                        scan "t"
         projection (1::unsigned -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
