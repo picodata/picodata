@@ -2222,43 +2222,36 @@ impl NodeImpl {
 
         let v_snapshot = snapshot.data.schema_version;
 
-        loop {
-            let v_local = local_schema_version().expect("storage souldn't fail");
-            let v_global = self
-                .storage
-                .properties
-                .global_schema_version()
-                .expect("storage shouldn't fail");
+        let v_local = local_schema_version().expect("storage souldn't fail");
+        let v_global = self
+            .storage
+            .properties
+            .global_schema_version()
+            .expect("storage shouldn't fail");
 
-            #[rustfmt::skip]
-            debug_assert!(v_global <= v_local, "global schema version is only ever increased after local");
+        #[rustfmt::skip]
+        debug_assert!(v_global <= v_local, "global schema version is only ever increased after local");
 
-            #[rustfmt::skip]
-            debug_assert!(v_global <= v_snapshot, "global schema version updates are distributed via raft");
+        #[rustfmt::skip]
+        debug_assert!(v_global <= v_snapshot, "global schema version updates are distributed via raft");
 
-            if v_local > v_snapshot {
-                tlog!(
-                    Warning,
-                    "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
-                    v_local,
-                    snapshot.data.schema_version,
-                );
-                return Ok(None);
-            }
+        if v_local > v_snapshot {
+            tlog!(
+                Warning,
+                "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
+                v_local,
+                snapshot.data.schema_version,
+            );
+            return Ok(None);
+        }
 
-            if !self.is_readonly() {
-                // Replicaset leader applies the schema changes directly.
-                break;
-            }
-
-            if v_local == v_snapshot {
-                // Replicaset follower has synced schema with the leader,
-                // now global space dumps should be handled.
-                // NOTE: we would block here indefinitely in case
-                // `proc_replication` RPC fails, see doc-comments in the
-                // `rpc::replication` modules.
-                break;
-            }
+        // Replicaset master applies the schema changes directly.
+        if self.is_readonly() && v_local != v_snapshot {
+            // Replicaset follower must sync schema with the master,
+            // before global space dumps could be handled.
+            // NOTE: we would block here indefinitely in case
+            // `proc_replication` RPC fails, see doc-comments in the
+            // `rpc::replication` modules.
 
             tlog!(Debug, "v_local: {v_local}, v_snapshot: {v_snapshot}");
             self.main_loop_status("awaiting replication");
