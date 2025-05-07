@@ -2208,6 +2208,8 @@ impl NodeImpl {
                 }
             };
 
+            crate::error_injection!(exit "EXIT_BEFORE_APPLYING_RAFT_SNAPSHOT");
+
             let persisted_messages = std::mem::take(persisted_messages);
             let pending_raft_snapshot =
                 RaftSnapshot::new(new_snapshot.metadata().clone(), data, self.status.get());
