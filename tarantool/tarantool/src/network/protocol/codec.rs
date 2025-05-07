@@ -11,6 +11,8 @@ use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::SyncIndex;
 
+const MP_STR_MAX_HEADER_SIZE: usize = 5;
+
 /// Keys of the HEADER and BODY maps in the iproto packets.
 ///
 /// See `enum iproto_key` in \<tarantool>/src/box/iproto_constants.h for source
@@ -105,7 +107,9 @@ pub fn encode_header(
     helper.encode(stream)
 }
 
-pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
+/// Prepares (hashes) password with salt according to CHAP-SHA1 algorithm.
+#[inline]
+pub fn chap_sha1_prepare(password: impl AsRef<[u8]>, salt: &[u8]) -> Vec<u8> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
     // step_1 = sha1(password);
@@ -116,7 +120,7 @@ pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     use sha1::{Digest as Sha1Digest, Sha1};
 
     let mut hasher = Sha1::new();
-    hasher.update(password.as_bytes());
+    hasher.update(password);
     let mut step_1_and_scramble = hasher.finalize();
 
     let mut hasher = Sha1::new();
@@ -133,29 +137,51 @@ pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
-    let scramble_bytes = &step_1_and_scramble.as_slice();
+    let scramble_bytes = step_1_and_scramble.to_vec();
     debug_assert_eq!(scramble_bytes.len(), 20);
-
-    // 5 is the maximum possible MP_STR header size
-    let mut res = Vec::with_capacity(scramble_bytes.len() + 5);
-    rmp::encode::write_str_len(&mut res, scramble_bytes.len() as _).expect("Can't fail for a Vec");
-    res.write_all(scramble_bytes).expect("Can't fail for a Vec");
-    return res;
+    scramble_bytes
 }
 
+/// Prepares (hashes) password with salt according to CHAP-SHA1 algorithm and encodes into MessagePack.
+// TODO(kbezuglyi): password should be `impl AsRef<[u8]>`, not `&str`.
+#[inline]
+pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
+    let hashed_data = chap_sha1_prepare(password, salt);
+    let hashed_len = hashed_data.len();
+
+    let mut res = Vec::with_capacity(hashed_len + MP_STR_MAX_HEADER_SIZE);
+    rmp::encode::write_str_len(&mut res, hashed_len as _).expect("Can't fail for a Vec");
+    res.write_all(&hashed_data).expect("Can't fail for a Vec");
+    res
+}
+
+/// Prepares password according to LDAP.
+#[cfg(feature = "picodata")]
+#[inline]
+pub fn ldap_prepare(password: impl AsRef<[u8]>) -> Vec<u8> {
+    password.as_ref().to_vec()
+}
+
+/// Prepares password according to LDAP and encodes into MessagePack.
+/// WARNING: data is sent without any encryption, it is recommended
+/// to use SSH tunnel/SSL/else to make communication secure.
+// TODO(kbezuglyi): password should be `impl AsRef<[u8]>`, not `&str`.
 #[cfg(feature = "picodata")]
 #[inline]
 pub fn ldap_auth_data(password: &str) -> Vec<u8> {
-    // 5 is the maximum possible MP_STR header size
-    let mut res = Vec::with_capacity(password.len() + 5);
-    // Hopefully you're using an ssh tunnel or something ¯\_(ツ)_/¯
-    rmp::encode::write_str(&mut res, password).expect("Can't fail for a Vec");
-    return res;
+    let hashed_data = ldap_prepare(password);
+    let hashed_len = hashed_data.len();
+
+    let mut res = Vec::with_capacity(hashed_len + MP_STR_MAX_HEADER_SIZE);
+    rmp::encode::write_str_len(&mut res, hashed_len as _).expect("Can't fail for a Vec");
+    res.write_all(&hashed_data).expect("Can't fail for a Vec");
+    res
 }
 
+/// Prepares (hashes) password with salt according to MD5.
 #[cfg(feature = "picodata")]
 #[inline]
-pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
+pub fn md5_prepare(user: &str, password: impl AsRef<[u8]>, salt: [u8; 4]) -> Vec<u8> {
     // recv_from_db(salt)
     // recv_from_user(name, password)
     //   shadow_pass = md5(name + password), do not add "md5" prefix
@@ -165,7 +191,6 @@ pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
 
     use md5::{Digest as Md5Digest, Md5};
 
-    let mut res = Vec::new();
     let mut md5 = Md5::new();
 
     md5.update(password);
@@ -176,8 +201,21 @@ pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
     md5.update(salt);
     let client_pass = format!("md5{:x}", md5.finalize());
 
-    rmp::encode::write_str(&mut res, &client_pass).expect("Can't fail for a Vec");
-    return res;
+    client_pass.into_bytes()
+}
+
+/// Prepares (hashes) password with salt according to MD5 and encodes into MessagePack.
+// TODO(kbezuglyi): password should be `impl AsRef<[u8]>`, not `&str`.
+#[cfg(feature = "picodata")]
+#[inline]
+pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
+    let hashed_data = md5_prepare(user, password, salt);
+    let hashed_len = hashed_data.len();
+
+    let mut res = Vec::with_capacity(hashed_len + MP_STR_MAX_HEADER_SIZE);
+    rmp::encode::write_str_len(&mut res, hashed_len as _).expect("Can't fail for a Vec");
+    res.write_all(&hashed_data).expect("Can't fail for a Vec");
+    res
 }
 
 pub fn encode_auth(
