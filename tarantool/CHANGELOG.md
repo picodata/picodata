@@ -87,6 +87,8 @@
 
 - Use `extern "C-unwind"` instead of `extern "C"` for lua ffi functions, which
   seems to help with lua_error!() in release builds on recent versions of rust.
+- Split a single `index::Part` type into `Part<String>`, `Part<u32>` and `Part<NumOrStr>`,
+  depending on the accepted/returned types by the tarantool API
 
 ### Added (picodata)
 

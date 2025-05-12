@@ -27,7 +27,6 @@ use crate::ffi::sql::PortC;
 use crate::ffi::tarantool as ffi;
 use crate::index;
 use crate::tlua;
-use crate::util::NumOrStr;
 
 /// Tuple
 pub struct Tuple {
@@ -938,12 +937,7 @@ impl<'a> KeyDefPart<'a> {
         }
     }
 
-    pub fn try_from_index_part(p: &'a index::Part) -> Option<Self> {
-        let field_no = match p.field {
-            NumOrStr::Num(field_no) => field_no,
-            NumOrStr::Str(_) => return None,
-        };
-
+    pub fn from_index_part(p: &'a index::Part<u32>) -> Self {
         let collation = p.collation.as_deref().map(|s| {
             CString::new(s)
                 .expect("it's your fault if you put '\0' in collation")
@@ -954,13 +948,13 @@ impl<'a> KeyDefPart<'a> {
                 .expect("it's your fault if you put '\0' in collation")
                 .into()
         });
-        Some(Self {
-            field_no,
+        Self {
+            field_no: p.field,
             field_type: p.r#type.map(From::from).unwrap_or(FieldType::Any),
             is_nullable: p.is_nullable.unwrap_or(false),
             collation,
             path,
-        })
+        }
     }
 }
 
@@ -1114,12 +1108,10 @@ impl Drop for KeyDef {
     }
 }
 
-impl std::convert::TryFrom<&index::Metadata<'_>> for KeyDef {
-    type Error = index::FieldMustBeNumber;
-
+impl From<&index::Metadata<'_>> for KeyDef {
     #[inline(always)]
-    fn try_from(meta: &index::Metadata<'_>) -> std::result::Result<Self, Self::Error> {
-        meta.try_to_key_def()
+    fn from(meta: &index::Metadata<'_>) -> Self {
+        meta.to_key_def()
     }
 }
 
@@ -2016,7 +2008,7 @@ mod test {
             .part("id")
             .part("s")
             .part(
-                index::Part::field("nested")
+                index::Part::<String>::field("nested")
                     .field_type(index::FieldType::Unsigned)
                     .path("[2].blabla"),
             )

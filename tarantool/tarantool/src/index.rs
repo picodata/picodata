@@ -378,12 +378,18 @@ crate::define_str_enum! {
 #[deprecated = "Use `index::Part` instead"]
 pub type IndexPart = Part;
 
-/// Index part.
+/// Index part
+///
+/// The `T` generic decides what is used to identify the field. It can be either a [`u32`] for
+/// field index or [`String`] for field name, or [`NumOrStr`] for either.
+///
+/// Field names are used in picodata metadata, indices are used in tarantool's metadata, while
+/// tarantool's index creation API can accept either.
 #[derive(
     Clone, Default, Debug, Serialize, Deserialize, tlua::Push, tlua::LuaRead, PartialEq, Eq,
 )]
-pub struct Part {
-    pub field: NumOrStr,
+pub struct Part<T = NumOrStr> {
+    pub field: T,
     #[serde(default)]
     pub r#type: Option<FieldType>,
     #[serde(default)]
@@ -406,9 +412,9 @@ macro_rules! define_setters {
     }
 }
 
-impl Part {
+impl<T> Part<T> {
     #[inline(always)]
-    pub fn field(field: impl Into<NumOrStr>) -> Self {
+    pub fn field(field: impl Into<T>) -> Self {
         Self {
             field: field.into(),
             r#type: None,
@@ -426,8 +432,36 @@ impl Part {
     }
 
     #[inline(always)]
-    pub fn new(fi: impl Into<NumOrStr>, ft: FieldType) -> Self {
+    pub fn new(fi: impl Into<T>, ft: FieldType) -> Self {
         Self::field(fi).field_type(ft)
+    }
+}
+
+impl From<&str> for Part<String> {
+    #[inline(always)]
+    fn from(f: &str) -> Self {
+        Self::field(f.to_string())
+    }
+}
+
+impl From<String> for Part<String> {
+    #[inline(always)]
+    fn from(f: String) -> Self {
+        Self::field(f)
+    }
+}
+
+impl From<(String, FieldType)> for Part<String> {
+    #[inline(always)]
+    fn from((f, t): (String, FieldType)) -> Self {
+        Self::field(f).field_type(t)
+    }
+}
+
+impl From<(&str, FieldType)> for Part<String> {
+    #[inline(always)]
+    fn from((f, t): (&str, FieldType)) -> Self {
+        Self::field(f.to_string()).field_type(t)
     }
 }
 
@@ -445,20 +479,6 @@ impl From<String> for Part {
     }
 }
 
-impl From<u32> for Part {
-    #[inline(always)]
-    fn from(f: u32) -> Self {
-        Self::field(f)
-    }
-}
-
-impl From<(u32, FieldType)> for Part {
-    #[inline(always)]
-    fn from((f, t): (u32, FieldType)) -> Self {
-        Self::field(f).field_type(t)
-    }
-}
-
 impl From<(String, FieldType)> for Part {
     #[inline(always)]
     fn from((f, t): (String, FieldType)) -> Self {
@@ -470,6 +490,46 @@ impl From<(&str, FieldType)> for Part {
     #[inline(always)]
     fn from((f, t): (&str, FieldType)) -> Self {
         Self::field(f.to_string()).field_type(t)
+    }
+}
+
+impl From<u32> for Part {
+    #[inline(always)]
+    fn from(value: u32) -> Self {
+        Self::field(value)
+    }
+}
+
+impl From<(u32, FieldType)> for Part {
+    #[inline(always)]
+    fn from((f, t): (u32, FieldType)) -> Self {
+        Self::field(f).field_type(t)
+    }
+}
+
+impl From<Part<String>> for Part {
+    #[inline(always)]
+    fn from(value: Part<String>) -> Self {
+        Part {
+            field: value.field.into(),
+            r#type: value.r#type,
+            collation: value.collation,
+            is_nullable: value.is_nullable,
+            path: value.path,
+        }
+    }
+}
+
+impl From<Part<u32>> for Part {
+    #[inline(always)]
+    fn from(value: Part<u32>) -> Self {
+        Part {
+            field: value.field.into(),
+            r#type: value.r#type,
+            collation: value.collation,
+            is_nullable: value.is_nullable,
+            path: value.path,
+        }
     }
 }
 
@@ -936,41 +996,21 @@ pub struct Metadata<'a> {
     pub name: Cow<'a, str>,
     pub r#type: IndexType,
     pub opts: BTreeMap<Cow<'a, str>, Value<'a>>,
-    pub parts: Vec<Part>,
+    pub parts: Vec<Part<u32>>,
 }
 impl Encode for Metadata<'_> {}
 
-#[derive(thiserror::Error, Debug)]
-#[error("field number expected, got string '{0}'")]
-pub struct FieldMustBeNumber(pub String);
-
 impl Metadata<'_> {
     /// Construct a [`KeyDef`] instance from index parts.
-    ///
-    /// # Panicking
-    /// Will panic if any of the parts have field name instead of field number.
-    /// Normally this doesn't happen, because `Metadata` returned from
-    /// `_index` always has field number, but if you got this metadata from
-    /// somewhere else, use [`Self::try_to_key_def`] instead, to check for this
-    /// error.
     #[inline(always)]
     pub fn to_key_def(&self) -> KeyDef {
         // TODO: we could optimize by caching these things and only recreating
         // then once box_schema_version changes.
-        self.try_to_key_def().unwrap()
-    }
-
-    /// Construct a [`KeyDef`] instance from index parts. Returns error in case
-    /// any of the parts had field name instead of field number.
-    #[inline]
-    pub fn try_to_key_def(&self) -> Result<KeyDef, FieldMustBeNumber> {
         let mut kd_parts = Vec::with_capacity(self.parts.len());
         for p in &self.parts {
-            let kd_p = KeyDefPart::try_from_index_part(p)
-                .ok_or_else(|| FieldMustBeNumber(p.field.clone().into()))?;
-            kd_parts.push(kd_p);
+            kd_parts.push(KeyDefPart::from_index_part(p));
         }
-        Ok(KeyDef::new(&kd_parts).unwrap())
+        KeyDef::new(&kd_parts).unwrap()
     }
 
     /// Construct a [`KeyDef`] instance from index parts for comparing keys only.
@@ -1064,7 +1104,7 @@ mod tests {
                 r#type: IndexType::Hash,
                 opts: BTreeMap::from([("unique".into(), Value::from(true)),]),
                 parts: vec![Part {
-                    field: 0.into(),
+                    field: 0,
                     r#type: Some(FieldType::Unsigned),
                     ..Default::default()
                 }],
@@ -1096,19 +1136,19 @@ mod tests {
                 opts: BTreeMap::from([("unique".into(), Value::from(false)),]),
                 parts: vec![
                     Part {
-                        field: 1.into(),
+                        field: 1,
                         r#type: Some(FieldType::String),
                         ..Default::default()
                     },
                     Part {
-                        field: 2.into(),
+                        field: 2,
                         r#type: Some(FieldType::Unsigned),
                         is_nullable: Some(true),
                         path: Some(".key".into()),
                         ..Default::default()
                     },
                     Part {
-                        field: 2.into(),
+                        field: 2,
                         r#type: Some(FieldType::String),
                         path: Some(".value[1]".into()),
                         ..Default::default()
