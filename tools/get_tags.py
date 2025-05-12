@@ -28,7 +28,9 @@ def get_fetch_dirs():
 
 def run(cmd: str, cwd_in_project_dir: pathlib.Path):
     logging.info(f"Running: '{cmd}' in '{cwd_in_project_dir}'")
-    return subprocess.run(cmd, shell=True, executable="/bin/bash", text=True, cwd=PROJECT_DIR / cwd_in_project_dir)
+    completed = subprocess.run(cmd, shell=True, executable="/bin/bash", text=True, cwd=PROJECT_DIR / cwd_in_project_dir)
+    logging.info(f"Exitcode: {completed.returncode}")
+    return completed
 
 
 def deepen(path: pathlib.Path):
@@ -52,6 +54,8 @@ def ensure_describe(path: pathlib.Path):
         logging.info("Describe failed, fetching more")
 
         deepen(path)
+
+    raise Exception(f"cant fetch tag on {path}")
 
 
 if __name__ == "__main__":
