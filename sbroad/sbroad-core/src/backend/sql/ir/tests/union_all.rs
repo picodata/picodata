@@ -16,10 +16,10 @@ fn union_all1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = ($2)"#
+            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($2 AS string))"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -40,10 +40,10 @@ fn union_all1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = ($2)"#
+            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($2 AS string))"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );

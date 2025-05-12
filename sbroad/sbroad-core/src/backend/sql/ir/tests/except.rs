@@ -16,10 +16,10 @@ fn except1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE ("test_space"."sysFrom") = ($1)"#,
+            r#"WHERE ("test_space"."sysFrom") = (CAST($1 AS unsigned))"#,
             r#"EXCEPT"#,
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE ("test_space"."FIRST_NAME") = ($2)"#
+            r#"WHERE ("test_space"."FIRST_NAME") = (CAST($2 AS string))"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -40,10 +40,10 @@ fn except1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE ("test_space"."sysFrom") = ($1)"#,
+            r#"WHERE ("test_space"."sysFrom") = (CAST($1 AS unsigned))"#,
             r#"EXCEPT"#,
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE ("test_space"."FIRST_NAME") = ($2)"#
+            r#"WHERE ("test_space"."FIRST_NAME") = (CAST($2 AS string))"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );

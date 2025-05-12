@@ -58,7 +58,7 @@ fn bucket2_test() {
             format!(
                 "{} {}",
                 r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1""#,
-                r#"WHERE (("t1"."a") = ($1)) and (("t1"."b") = ($2))"#,
+                r#"WHERE (("t1"."a") = (CAST($1 AS string))) and (("t1"."b") = (CAST($2 AS unsigned)))"#,
             ),
             vec![param1, param2],
         ))),
@@ -83,7 +83,8 @@ fn bucket3_test() {
     expected.rows.push(vec![
         Value::String("Execute query on all buckets".to_string()),
         Value::String(String::from(PatternWithParams::new(
-            r#"SELECT "t1"."a", "t1"."b", TRIM ($1) as "col_1" FROM "t1""#.to_string(),
+            r#"SELECT "t1"."a", "t1"."b", TRIM (CAST($1 AS string)) as "col_1" FROM "t1""#
+                .to_string(),
             vec![Value::from("111".to_string())],
         ))),
     ]);

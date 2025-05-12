@@ -31,7 +31,7 @@ fn equality_propagation1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."c") = ($1)) and (("t"."a") = ($2))) and (("t"."b") = ($3))) and (("t"."c") = ("t"."a"))) or (("t"."d") = ($4))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."c") = (CAST($1 AS unsigned))) and (("t"."a") = (CAST($2 AS unsigned)))) and (("t"."b") = (CAST($3 AS unsigned)))) and (("t"."c") = ("t"."a"))) or (("t"."d") = (CAST($4 AS unsigned)))"#
     );
 }
 
@@ -60,7 +60,7 @@ fn equality_propagation3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and (("t"."a") = ($2))) and (("t"."b") = ($3))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = ($1)) and (("t"."a") = (CAST($2 AS unsigned)))) and (("t"."b") = ($3))"#
     );
 }
 
@@ -81,7 +81,7 @@ fn equality_propagation4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."b") = ($1)) and (("t"."a") = ($2))) and (("t"."a") = ($3))) and (("t"."b") = ($4))) and (("t"."b") = ("t"."a"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((("t"."b") = (CAST($1 AS unsigned))) and (("t"."a") = ($2))) and (("t"."a") = (CAST($3 AS unsigned)))) and (("t"."b") = ($4))) and (("t"."b") = ("t"."a"))"#
     );
 }
 
@@ -102,7 +102,7 @@ fn equality_propagation5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((((((("t"."d") = ($1)) and (("t"."c") = ($2))) and (("t"."a") = ($3))) and (("t"."b") = ($4))) and (("t"."b") = ("t"."c"))) and (("t"."c") = ("t"."d"))) and (("t"."d") = ("t"."a"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((((((("t"."d") = (CAST($1 AS unsigned))) and (("t"."c") = (CAST($2 AS unsigned)))) and (("t"."a") = (CAST($3 AS unsigned)))) and (("t"."b") = (CAST($4 AS unsigned)))) and (("t"."b") = ("t"."c"))) and (("t"."c") = ("t"."d"))) and (("t"."d") = ("t"."a"))"#
     );
 }
 

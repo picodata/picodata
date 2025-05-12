@@ -14,7 +14,7 @@ fn projection1_latest() {
             r#"SELECT "hash_testing"."identification_number","#,
             r#""hash_testing"."product_code""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
         ),
         vec![Value::from(1_u64)],
     );
@@ -33,7 +33,7 @@ fn projection1_oldest() {
             r#"SELECT "hash_testing"."identification_number","#,
             r#""hash_testing"."product_code""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#,
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
         ),
         vec![Value::from(1_u64)],
     );
@@ -52,7 +52,7 @@ fn projection2_latest() {
             r#""hash_testing"."product_code","#,
             r#""hash_testing"."product_units", "hash_testing"."sys_op""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#
         ),
         vec![Value::from(1_u64)],
     );
@@ -71,7 +71,7 @@ fn projection2_oldest() {
             r#""hash_testing"."product_code","#,
             r#""hash_testing"."product_units", "hash_testing"."sys_op""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = ($1)"#
+            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#
         ),
         vec![Value::from(1_u64)],
     );
@@ -84,8 +84,8 @@ fn select_without_scan() {
     let expected = PatternWithParams::new(
         format!(
             "{} {} {}",
-            r#"SELECT $1 as "foo","#,
-            r#"(VALUES ($2)) as "col_1","#,
+            r#"SELECT CAST($1 AS unsigned) as "foo","#,
+            r#"(VALUES (CAST($2 AS unsigned))) as "col_1","#,
             r#"(SELECT "global_t"."a" FROM "global_t") as "col_2""#,
         ),
         vec![Value::from(1_u64), Value::from(1_u64)],

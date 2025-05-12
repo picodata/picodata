@@ -3,8 +3,8 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Reference, ScalarFunction,
-    ScanRelation,
+    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Reference,
+    ScalarFunction, ScanRelation,
 };
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -526,7 +526,22 @@ impl ExecutionPlan {
                     }
                 }
                 SyntaxData::Parameter(id, index) => {
-                    sql.push_str(&format_smolstr!("${index}"));
+                    let param_type = match ir_plan.get_node(*id) {
+                        Ok(Node::Expression(Expression::Parameter(Parameter {
+                            param_type,
+                            ..
+                        }))) => *param_type,
+                        Ok(Node::Expression(Expression::Constant(Constant { value }))) => {
+                            value.get_type()
+                        }
+                        node => panic!("parameter node points to {:?}", node),
+                    };
+
+                    match param_type.get() {
+                        Some(ty) => sql.push_str(&format_smolstr!("CAST(${index} AS {ty})")),
+                        None => sql.push_str(&format_smolstr!("${index}")),
+                    }
+
                     let value = ir_plan.get_expression_node(*id)?;
                     if let Expression::Constant(Constant { value, .. }) = value {
                         if !params_idx.contains(index) {

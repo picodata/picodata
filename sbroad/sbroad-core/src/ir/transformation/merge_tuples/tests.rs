@@ -23,7 +23,7 @@ fn merge_tuples1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = ($1, $2)) and ((("t"."c") < ($3)) and (($4) < ("t"."a")))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ((("t"."c") < (CAST($3 AS unsigned))) and ((CAST($4 AS unsigned)) < ("t"."a")))"#
     );
 }
 
@@ -47,7 +47,7 @@ fn merge_tuples2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = ($1, $2)) and ($3)) or ((("t"."c") >= ($4)) and (($5) and (($6) <= ("t"."a"))))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ($3)) or ((("t"."c") >= (CAST($4 AS unsigned))) and ((CAST($5 AS boolean)) and ((CAST($6 AS unsigned)) <= ("t"."a"))))"#
     );
 }
 
@@ -59,7 +59,7 @@ fn merge_tuples3() {
     assert_eq!(actual_pattern_params.params, vec![Value::Boolean(true)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE $1"#
+        @r#"SELECT "t"."a" FROM "t" WHERE CAST($1 AS boolean)"#
     );
 }
 
@@ -74,7 +74,7 @@ fn merge_tuples4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = ($1, $2, $3)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = (CAST($1 AS unsigned), CAST($2 AS unsigned), CAST($3 AS unsigned))"#
     );
 }
 
@@ -89,7 +89,7 @@ fn merge_tuples5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > ($1, $2)) and (($3) < ("t"."c"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ((CAST($3 AS unsigned)) < ("t"."c"))"#
     );
 }
 
@@ -104,7 +104,7 @@ fn merge_tuples6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."b") <> ($1)) and (("t"."a") <> ($2))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."b") <> (CAST($1 AS unsigned))) and (("t"."a") <> (CAST($2 AS unsigned)))"#
     );
 }
 

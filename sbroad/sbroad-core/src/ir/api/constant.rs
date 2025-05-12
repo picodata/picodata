@@ -107,10 +107,15 @@ impl Plan {
     pub fn stash_constants(&mut self, snapshot: Snapshot) -> Result<(), SbroadError> {
         let constants = self.get_const_list(snapshot);
         for (num, const_id) in constants.iter().enumerate() {
+            let param_type = self.calculate_expression_type(*const_id)?;
+            let param_type = param_type
+                .map(DerivedType::new)
+                // NULL literal has an unknown type
+                .unwrap_or(DerivedType::unknown());
             let const_node = self.nodes.replace(
                 *const_id,
                 Node64::Parameter(Parameter {
-                    param_type: DerivedType::unknown(),
+                    param_type,
                     index: num + 1,
                 }),
             )?;
