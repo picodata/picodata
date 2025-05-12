@@ -1694,42 +1694,19 @@ impl NodeImpl {
                 engine,
                 owner,
             } => {
-                use ::tarantool::util::NumOrStr::*;
-
                 let mut last_pk_part_index = 0;
                 for pk_part in &mut primary_key {
-                    let (index, field) = match &pk_part.field {
-                        Num(index) => {
-                            let index = *index;
-                            if index as usize >= format.len() {
-                                // Ddl prepare operations should be verified before being proposed,
-                                // so this shouldn't ever happen. But ignoring this is safe anyway,
-                                // because proc_apply_schema_change will catch the error and ddl will be aborted.
-                                tlog!(
-                                    Warning,
-                                    "invalid primary key part: field index {index} is out of bound"
-                                );
-                                continue;
-                            }
-                            let field = &format[index as usize];
-                            // We store all index parts as field names.
-                            pk_part.field = Str(field.name.clone());
-                            (index, field)
-                        }
-                        Str(name) => {
-                            let field_index = format.iter().zip(0..).find(|(f, _)| f.name == *name);
-                            let Some((field, index)) = field_index else {
-                                // Ddl prepare operations should be verified before being proposed,
-                                // so this shouldn't ever happen. But ignoring this is safe anyway,
-                                // because proc_apply_schema_change will catch the error and ddl will be aborted.
-                                tlog!(
-                                    Warning,
-                                    "invalid primary key part: field '{name}' not found"
-                                );
-                                continue;
-                            };
-                            (index, field)
-                        }
+                    let name = &pk_part.field;
+                    let field_index = format.iter().zip(0..).find(|(f, _)| f.name == *name);
+                    let Some((field, index)) = field_index else {
+                        // Ddl prepare operations should be verified before being proposed,
+                        // so this shouldn't ever happen. But ignoring this is safe anyway,
+                        // because proc_apply_schema_change will catch the error and ddl will be aborted.
+                        tlog!(
+                            Warning,
+                            "invalid primary key part: field '{name}' not found"
+                        );
+                        continue;
                     };
                     let Some(field_type) =
                         crate::schema::try_space_field_type_to_index_field_type(field.field_type)

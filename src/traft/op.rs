@@ -737,7 +737,7 @@ pub enum Ddl {
         id: SpaceId,
         name: String,
         format: Vec<Field>,
-        primary_key: Vec<Part>,
+        primary_key: Vec<Part<String>>,
         distribution: Distribution,
         engine: SpaceEngineType,
         owner: UserId,
@@ -756,7 +756,7 @@ pub enum Ddl {
         name: String,
         ty: IndexType,
         opts: Vec<IndexOption>,
-        by_fields: Vec<Part>,
+        by_fields: Vec<Part<String>>,
         initiator: UserId,
     },
     DropIndex {

@@ -70,7 +70,6 @@ mod prod_imports {
 
         let pk_name = pk_name(plan_id, motion_id);
         fields.push(Field::unsigned(pk_name.clone()));
-        let fields_len = fields.len() as u32;
         // Vinyl engine does not support temporary spaces.
         let space_type = match engine {
             SpaceEngine::Memtx => SpaceType::Temporary,
@@ -87,7 +86,7 @@ mod prod_imports {
         let pk = IndexOptions {
             r#type: Some(IndexType::Tree),
             unique: Some(true),
-            parts: Some(vec![Part::new(fields_len, FieldType::Unsigned)]),
+            parts: Some(vec![Part::new(pk_name.to_string(), FieldType::Unsigned)]),
             if_not_exists: Some(false),
             ..Default::default()
         };

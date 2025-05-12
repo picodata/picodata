@@ -162,7 +162,7 @@ pub fn ddl_create_index_on_master(
         .get(space_id, index_id)?
         .ok_or_else(|| Error::other(format!("index with id {index_id} not found")))?;
     let mut opts = IndexOptions {
-        parts: Some(pico_index_def.parts),
+        parts: Some(pico_index_def.parts.into_iter().map(|i| i.into()).collect()),
         r#type: Some(pico_index_def.ty),
         id: Some(pico_index_def.id),
         ..Default::default()

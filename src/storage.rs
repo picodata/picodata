@@ -12,7 +12,6 @@ use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
 use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
-use tarantool::util::NumOrStr;
 
 use crate::config::{self, AlterSystemParameters, UsizeObserver};
 use crate::failure_domain::FailureDomain;
@@ -288,9 +287,7 @@ impl Catalog {
             } => {
                 let index = space.primary_key();
                 let metadata = index.meta()?;
-                let key_def = metadata
-                    .try_to_key_def()
-                    .map_err(|e| ::tarantool::error::Error::other(e.to_string()))?;
+                let key_def = metadata.to_key_def();
                 let key = key_def.extract_key(&Tuple::from(&tuple.to_tuple_buffer()?))?;
                 match space.get(&key)? {
                     Some(_) => Ok(None),
@@ -3592,33 +3589,26 @@ mod tests {
     }
 
     #[track_caller]
-    fn get_field_index(part: &Part, space_fields: &[tarantool::space::Field]) -> usize {
-        match &part.field {
-            NumOrStr::Num(index) => {
-                return *index as _;
-            }
-            NumOrStr::Str(name) => {
-                let found = space_fields
-                    .iter()
-                    .zip(0..)
-                    .find(|(field, _)| &field.name == name);
+    fn get_field_index(part: &Part<String>, space_fields: &[tarantool::space::Field]) -> usize {
+        let name = &part.field;
 
-                let Some((_, index)) = found else {
-                    panic!(
-                        "index part `{name}` doesn't correspond to any field in {space_fields:?}"
-                    );
-                };
+        let found = space_fields
+            .iter()
+            .zip(0..)
+            .find(|(field, _)| &field.name == name);
 
-                return index;
-            }
-        }
+        let Some((_, index)) = found else {
+            panic!("index part `{name}` doesn't correspond to any field in {space_fields:?}");
+        };
+
+        return index;
     }
 
     #[track_caller]
     fn check_index_parts_match(
         index_def: &IndexDef,
-        picodata_index_parts: &[Part],
-        tarantool_index_parts: &[Part],
+        picodata_index_parts: &[Part<String>],
+        tarantool_index_parts: &[Part<u32>],
         space_fields: &[tarantool::space::Field],
     ) {
         assert_eq!(
@@ -3643,7 +3633,7 @@ mod tests {
             assert_eq!(pd_part.path, tt_part.path, "{index_def:?}");
 
             let pd_field_index = get_field_index(pd_part, space_fields);
-            let tt_field_index = get_field_index(tt_part, space_fields);
+            let tt_field_index = tt_part.field as usize;
             assert_eq!(pd_field_index, tt_field_index, "{index_def:?}");
         }
     }

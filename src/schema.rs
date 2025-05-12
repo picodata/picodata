@@ -44,7 +44,7 @@ use tarantool::tlua;
 use tarantool::tlua::LuaRead;
 use tarantool::transaction::{transaction, TransactionError};
 use tarantool::tuple::Encode;
-use tarantool::util::{NumOrStr, Value};
+use tarantool::util::Value;
 
 /// The initial local schema version. Immediately after the cluster is booted
 /// it has this schema version.
@@ -365,7 +365,7 @@ pub struct IndexDef {
     #[serde(rename = "type")]
     pub ty: IndexType,
     pub opts: Vec<IndexOption>,
-    pub parts: Vec<Part>,
+    pub parts: Vec<Part<String>>,
     pub operable: bool,
     pub schema_version: u64,
 }
@@ -417,11 +417,9 @@ impl IndexDef {
         // We must convert any field names to field indexes in the index parts,
         // because it is very important for tarantool, and we are very
         // understanding and supportive of it.
-        let mut parts = self.parts.clone();
-        for part in &mut parts {
-            let NumOrStr::Str(field_name) = &part.field else {
-                continue;
-            };
+        let mut parts = Vec::with_capacity(self.parts.len());
+        for part in &self.parts {
+            let field_name = &part.field;
 
             let mut index = 0;
             for field in &table_def.format {
@@ -432,7 +430,14 @@ impl IndexDef {
             }
             // No need to check the field was found,
             // tarantool will tell us if the field index is out of range
-            part.field = NumOrStr::Num(index as _);
+
+            parts.push(Part {
+                field: index,
+                r#type: part.r#type,
+                collation: part.collation.clone(),
+                is_nullable: part.is_nullable,
+                path: part.path.clone(),
+            });
         }
 
         let index_meta = IndexMetadata {
@@ -1907,7 +1912,7 @@ impl CreateIndexParams {
         Ok(id + 1)
     }
 
-    pub fn parts(&self, storage: &Catalog) -> traft::Result<Vec<Part>> {
+    pub fn parts(&self, storage: &Catalog) -> traft::Result<Vec<Part<String>>> {
         let table = self.table(storage)?;
         let mut parts = Vec::with_capacity(self.columns.len());
 
@@ -1925,7 +1930,7 @@ impl CreateIndexParams {
                     ctype: column.field_type.to_string(),
                 })?;
             let part = Part {
-                field: NumOrStr::Str(column_name.into()),
+                field: column_name.into(),
                 r#type: Some(index_field_type),
                 collation: None,
                 is_nullable: Some(column.is_nullable),
@@ -2017,7 +2022,7 @@ impl CreateIndexParams {
             }
         }
 
-        let check_multipart = |parts: &[Part]| -> Result<(), CreateIndexError> {
+        let check_multipart = |parts: &[Part<String>]| -> Result<(), CreateIndexError> {
             if parts.len() > 1 {
                 return Err(CreateIndexError::IncompatibleIndexMultipleColumns {
                     ty: self.ty.to_string(),
@@ -2025,7 +2030,7 @@ impl CreateIndexParams {
             }
             Ok(())
         };
-        let check_part_nullability = |part: &Part| -> Result<(), CreateIndexError> {
+        let check_part_nullability = |part: &Part<String>| -> Result<(), CreateIndexError> {
             if part.is_nullable == Some(true) {
                 return Err(CreateIndexError::IncompatipleNullableColumn {
                     ty: self.ty.to_string(),
@@ -2033,7 +2038,7 @@ impl CreateIndexParams {
             }
             Ok(())
         };
-        let check_part_type = |part: &Part,
+        let check_part_type = |part: &Part<String>,
                                eq: bool,
                                types: &[Option<IndexFieldType>]|
          -> Result<(), CreateIndexError> {
