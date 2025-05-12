@@ -160,7 +160,6 @@ alter_system ::= 'ALTER' 'SYSTEM'
                         | 'SET' param_name ('=' | 'TO') ('DEFAULT' | param_value)
                     )
                     ('FOR' ('ALL' 'TIERS' | 'TIER' tier))?
-                  ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_procedure ::= 'ALTER' 'PROCEDURE' procedure ('(' type (',' type)* ')')?
                      'RENAME' 'TO' procedure
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
