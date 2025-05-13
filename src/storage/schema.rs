@@ -141,6 +141,7 @@ pub fn ddl_abort_on_master(storage: &Catalog, ddl: &Ddl, version: u64) -> traft:
         Ddl::ChangeFormat {
             table_id,
             ref old_format,
+            // we don't need to care about column renames here because tarantool operates on column indices under the hood, yay
             ..
         } => {
             ddl_change_format_on_master(table_id, old_format)?;

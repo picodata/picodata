@@ -1,7 +1,8 @@
 use crate::plugin::PluginIdentifier;
 use crate::schema::{
-    Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
-    UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
+    Distribution, IndexDef, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams,
+    RoutineSecurity, UserDef, ADMIN_ID, GUEST_ID, PICO_SERVICE_ID, PUBLIC_ID, ROLE_REPLICATION_ID,
+    SUPER_ID,
 };
 use crate::storage::{self, Catalog};
 use crate::storage::{space_by_name, RoutineId};
@@ -14,6 +15,8 @@ use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use sbroad::ir::operator::ConflictStrategy;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
+use std::collections::BTreeMap;
 use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::index::IndexType;
 use tarantool::session::UserId;
@@ -797,9 +800,157 @@ pub enum Ddl {
         table_id: SpaceId,
         new_format: Vec<Field>,
         old_format: Vec<Field>,
+        column_renames: RenameMapping,
         initiator_id: UserId,
         schema_version: u64,
     },
+}
+
+/// Builds [`RenameMapping`] by adding renames one-by-one
+#[derive(Debug, Default)]
+pub struct RenameMappingBuilder {
+    // this is a "new -> old" (sic!) mapping
+    map: BTreeMap<SmolStr, SmolStr>,
+}
+
+impl RenameMappingBuilder {
+    pub fn new() -> Self {
+        Self {
+            map: BTreeMap::new(),
+        }
+    }
+
+    /// Add a rename from `old` to `new`
+    ///
+    /// NOTE: this function does not check for bijectivity of the constructed mapping, which will
+    ///   lead to incorrect results if not satisfied.
+    ///
+    /// This function will correctly handle chained renames.
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use smol_str::SmolStr;
+    /// use picodata::traft::op::RenameMappingBuilder;
+    /// let mut builder = RenameMappingBuilder::new();
+    /// builder.add_rename("older", "intermediate");
+    /// builder.add_rename("intermediate", "new");
+    /// let mapping = builder.build();
+    ///
+    /// assert_eq!(mapping.into_map(), BTreeMap::from([("older".into(), "new".into())]));
+    /// ```
+    pub fn add_rename(&mut self, old: impl Into<SmolStr>, new: impl Into<SmolStr>) {
+        let old = old.into();
+        let new = new.into();
+
+        // check if there was already a rename "older -> old"
+        if let Some(older) = self.map.remove(&old) {
+            // short-circuit the rename to be "older -> new" directly if this is a case
+            self.map.insert(new, older);
+        } else {
+            self.map.insert(new, old);
+        }
+    }
+
+    pub fn build(self) -> RenameMapping {
+        RenameMapping {
+            // reverse the mapping, as `RenameMapping` is "old to new"
+            // this is fine to do as long as user only supplies us with a bijective mapping
+            map: self.map.into_iter().map(|(old, new)| (new, old)).collect(),
+        }
+    }
+}
+
+/// Represents a batch rename operation
+///
+/// Stores a bijectional mapping from old names to new names
+///
+/// Created with [`RenameMappingBuilder`]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct RenameMapping {
+    map: BTreeMap<SmolStr, SmolStr>,
+}
+
+impl RenameMapping {
+    /// Extract the underlying map from old to new names
+    pub fn into_map(self) -> BTreeMap<SmolStr, SmolStr> {
+        self.map
+    }
+
+    /// Reverse the mapping from (old -> new) to (new -> old), which can be used to execute a rename in inverse.
+    ///
+    /// NOTE: this will not work correctly if the stored `map` is not bijective
+    pub fn reversed(&self) -> Self {
+        let map = self
+            .map
+            .iter()
+            .map(|(old, new)| (new.clone(), old.clone()))
+            .collect();
+        Self { map }
+    }
+
+    /// Apply a rename to a string. Returns whether `name` was present in the mapping
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use picodata::traft::op::RenameMappingBuilder;
+    /// let mut builder = RenameMappingBuilder::new();
+    /// builder.add_rename("old_name", "new_name");
+    /// let mapping = builder.build();
+    ///
+    /// // gets renamed
+    /// let mut existing_name = "old_name".to_string();
+    /// assert_eq!(mapping.transform_name(&mut existing_name), true);
+    /// assert_eq!(existing_name.as_str(), "new_name");
+    ///
+    /// // stays the same
+    /// let mut nonexisting_name = "weird_name".to_string();
+    /// assert_eq!(mapping.transform_name(&mut nonexisting_name), false);
+    /// assert_eq!(nonexisting_name.as_str(), "weird_name");
+    /// ```
+    pub fn transform_name(&self, name: &mut String) -> bool {
+        if let Some(new_name) = self.map.get(name.as_str()) {
+            *name = new_name.to_string();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Apply a rename to a [`Distribution`] by renaming the table columns
+    // NOTE: the name mentions columns specifically because distribution also mentions `tier` by name
+    // and tiers can also be renamed (theoretically)
+    pub fn transform_distribution_columns(&self, distribution: &mut Distribution) -> bool {
+        let mut result = false;
+
+        match distribution {
+            Distribution::Global => {}
+            Distribution::ShardedImplicitly { sharding_key, .. } => {
+                for part in sharding_key {
+                    result |= self.transform_name(part);
+                }
+            }
+            Distribution::ShardedByField { field, .. } => {
+                result |= self.transform_name(field);
+            }
+        }
+
+        result
+    }
+
+    /// Apply a rename to an [`IndexDef`] by renaming the table columns
+    pub fn transform_index_columns(&self, index_def: &mut IndexDef) -> bool {
+        let mut result = false;
+
+        for part in &mut index_def.parts {
+            if part.path.is_some() {
+                unimplemented!("renaming `part` of `IndexDef` is not implemented")
+            }
+            result |= self.transform_name(&mut part.field);
+        }
+
+        result
+    }
 }
 
 /// Builder for [`Op::DdlPrepare`] operations.

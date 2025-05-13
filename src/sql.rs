@@ -17,7 +17,7 @@ use crate::storage::{space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
-use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
+use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op, RenameMappingBuilder};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id, AnyWithTypeName};
 use crate::version::Version;
@@ -48,6 +48,7 @@ use sbroad::ir::node::{
     RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
+use std::collections::BTreeMap;
 use tarantool::decimal::Decimal;
 
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
@@ -1612,6 +1613,11 @@ fn ddl_ir_node_to_op_or_result(
                 AlterTableOp::AlterColumn(columns) => {
                     let current_table_format = table.format.clone();
                     let mut new_table_format = current_table_format.clone(); // inevitable clone
+                    let mut column_renames = RenameMappingBuilder::new();
+                    let mut column_name_set = BTreeMap::new();
+                    for (i, f) in (0..).zip(&new_table_format) {
+                        column_name_set.insert(SmolStr::new(&f.name), i);
+                    }
 
                     for op in columns.iter() {
                         match op {
@@ -1628,13 +1634,13 @@ fn ddl_ir_node_to_op_or_result(
                                 }
 
                                 // do not add this column with the same name
-                                for table_field in &new_table_format {
-                                    if table_field.name == column.name {
-                                        return Err(error::AlreadyExists::Column(
-                                            column.name.clone(),
-                                        )
-                                        .into());
-                                    }
+                                if column_name_set
+                                    .insert(column.name.clone(), new_table_format.len())
+                                    .is_some()
+                                {
+                                    return Err(
+                                        error::AlreadyExists::Column(column.name.clone()).into()
+                                    );
                                 }
 
                                 // append this new column
@@ -1645,6 +1651,16 @@ fn ddl_ir_node_to_op_or_result(
                                 };
                                 new_table_format.push(field);
                             }
+                            AlterColumn::Rename { from, to } => {
+                                let Some(index) = column_name_set.remove(from.as_str()) else {
+                                    return Err(error::DoesNotExist::Column(from.clone()).into());
+                                };
+                                if column_name_set.insert(to.clone(), index).is_some() {
+                                    return Err(error::AlreadyExists::Column(to.clone()).into());
+                                }
+                                column_renames.add_rename(from.clone(), to.clone());
+                                new_table_format[index].name = to.to_string();
+                            }
                         }
                     }
 
@@ -1654,6 +1670,7 @@ fn ddl_ir_node_to_op_or_result(
                             table_id: table.id,
                             old_format: current_table_format,
                             new_format: new_table_format,
+                            column_renames: column_renames.build(),
                             initiator_id: current_user,
                             schema_version,
                         },

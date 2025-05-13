@@ -894,6 +894,10 @@ pub enum AlterColumn {
         column: ColumnDef,
         if_not_exists: bool,
     },
+    Rename {
+        from: SmolStr,
+        to: SmolStr,
+    },
 }
 
 impl From<CreateTable> for NodeAligned {

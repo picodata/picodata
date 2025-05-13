@@ -1329,13 +1329,31 @@ impl NodeImpl {
                     Ddl::ChangeFormat {
                         table_id,
                         ref old_format,
+                        ref column_renames,
                         ..
                     } => {
                         ddl_meta_space_update_operable(&self.storage, table_id, true)
                             .expect("storage shouldn't fail");
+                        let reversed_renames = column_renames.reversed();
+
+                        // rollback column renames in indices metadata
+                        for mut index in self
+                            .storage
+                            .indexes
+                            .by_space_id(table_id)
+                            .expect("storage shouldn't fail")
+                        {
+                            if reversed_renames.transform_index_columns(&mut index) {
+                                self.storage
+                                    .indexes
+                                    .put(&index)
+                                    .expect("storage shouldn't fail");
+                            }
+                        }
+
                         self.storage
                             .tables
-                            .update_format(table_id, old_format)
+                            .update_format(table_id, old_format, &reversed_renames)
                             .expect("storage shouldn't fail");
                     }
                     Ddl::CreateProcedure { id, .. } => {
@@ -1889,12 +1907,29 @@ impl NodeImpl {
             Ddl::ChangeFormat {
                 table_id,
                 new_format,
+                column_renames,
                 ..
             } => {
                 self.storage
                     .tables
-                    .update_format(table_id, &new_format)
+                    .update_format(table_id, &new_format, &column_renames)
                     .expect("storage shouldn't fail");
+
+                // apply column renames in indices metadata
+                for mut index in self
+                    .storage
+                    .indexes
+                    .by_space_id(table_id)
+                    .expect("storage shouldn't fail")
+                {
+                    if column_renames.transform_index_columns(&mut index) {
+                        self.storage
+                            .indexes
+                            .put(&index)
+                            .expect("storage shouldn't fail");
+                    }
+                }
+
                 self.storage
                     .tables
                     .update_operable(table_id, false)

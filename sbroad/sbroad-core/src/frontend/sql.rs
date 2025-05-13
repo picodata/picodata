@@ -788,27 +788,10 @@ fn parse_create_table(
                         let def_child_node = ast.nodes.get_node(*def_child_id)?;
                         match def_child_node.rule {
                             Rule::ColumnDefIsNull => {
-                                match (
-                                    def_child_node.children.first(),
-                                    def_child_node.children.get(1),
-                                ) {
-                                    (None, None) => {
-                                        let name = name.clone();
-                                        explicit_null_columns.insert(name);
-                                        is_nullable = true;
-                                    }
-                                    (Some(child_id), None) => {
-                                        let not_flag_node = ast.nodes.get_node(*child_id)?;
-                                        if let Rule::NotFlag = not_flag_node.rule {
-                                            is_nullable = false;
-                                        } else {
-                                            panic!(
-                                                "Expected NotFlag rule, got: {:?}.",
-                                                not_flag_node.rule
-                                            );
-                                        }
-                                    }
-                                    _ => panic!("Unexpected rule met under ColumnDefIsNull."),
+                                is_nullable = parse_column_null_or_not_null(ast, def_child_node)?;
+                                if is_nullable {
+                                    let name = name.clone();
+                                    explicit_null_columns.insert(name);
                                 }
                             }
                             Rule::PrimaryKeyMark => {
@@ -1012,6 +995,29 @@ fn parse_create_table(
     })
 }
 
+/// Parses a `ColumnDefIsNull`, which corresponds to either `NULL` or `NOT NULL` in SQL.
+///
+/// Returns `true` for `NULL`, `false` for `NOT NULL`.
+fn parse_column_null_or_not_null(
+    ast: &AbstractSyntaxTree,
+    node: &ParseNode,
+) -> Result<bool, SbroadError> {
+    debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
+
+    match (node.children.first(), node.children.get(1)) {
+        (None, None) => Ok(true), // NULL explicitly specified
+        (Some(child_id), None) => {
+            let not_flag_node = ast.nodes.get_node(*child_id)?;
+            if let Rule::NotFlag = not_flag_node.rule {
+                Ok(false) // NOT NULL specified
+            } else {
+                panic!("Expected NotFlag rule, got: {:?}.", not_flag_node.rule);
+            }
+        }
+        _ => panic!("Unexpected rule met under ColumnDefIsNull."),
+    }
+}
+
 fn parse_alter_table(
     ast: &AbstractSyntaxTree,
     node: &ParseNode,
@@ -1058,25 +1064,7 @@ fn parse_alter_table(
 
                                         let is_nullable = if let Some(id) = node.children.get(2) {
                                             let node = ast.nodes.get_node(*id)?;
-                                            debug_assert_eq!(node.rule, Rule::ColumnDefIsNull);
-                                            match (node.children.first(), node.children.get(1)) {
-                                                (None, None) => true, // NULL explicitly specified
-                                                (Some(child_id), None) => {
-                                                    let not_flag_node =
-                                                        ast.nodes.get_node(*child_id)?;
-                                                    if let Rule::NotFlag = not_flag_node.rule {
-                                                        false // NOT NULL specified
-                                                    } else {
-                                                        panic!(
-                                                            "Expected NotFlag rule, got: {:?}.",
-                                                            not_flag_node.rule
-                                                        );
-                                                    }
-                                                }
-                                                _ => panic!(
-                                                    "Unexpected rule met under ColumnDefIsNull."
-                                                ),
-                                            }
+                                            parse_column_null_or_not_null(ast, node)?
                                         } else {
                                             true // column is nullable by default unless otherwise specified
                                         };
@@ -1094,15 +1082,36 @@ fn parse_alter_table(
                                 }
                             }
                         }
-                        Rule::AlterTableColumnDrop
-                        | Rule::AlterTableColumnAlter
-                        | Rule::AlterTableColumnRename => {
+                        Rule::AlterTableColumnRename => {
+                            for id in &node.children {
+                                let node = ast.nodes.get_node(*id)?;
+                                match node.rule {
+                                    Rule::AlterTableColumnRenameParam => {
+                                        let from = parse_identifier(ast, node.child_n(0))?;
+                                        let to = parse_identifier(ast, node.child_n(1))?;
+
+                                        column_ops.push(AlterColumn::Rename { from, to });
+                                    }
+                                    rule => unreachable!("pest should not allow rule: {rule:?}"),
+                                }
+                            }
+                        }
+
+                        Rule::AlterTableColumnDrop | Rule::AlterTableColumnAlter => {
                             return Err(SbroadError::Unsupported(
                                 Entity::Ddl,
-                                Some(
-                                    "ADD COLUMN is the only supported action in ALTER TABLE"
-                                        .to_smolstr(),
-                                ),
+                                Some(format_smolstr!(
+                                    "`ALTER TABLE _ {}` is not yet supported",
+                                    match node.rule {
+                                        Rule::AlterTableColumnDrop => {
+                                            "DROP COLUMN"
+                                        }
+                                        Rule::AlterTableColumnAlter => {
+                                            "ALTER COLUMN"
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                )),
                             ))
                         }
                         rule => unreachable!("pest should not allow rule: {rule:?}"),
@@ -3673,7 +3682,7 @@ where
                                             let mut arg_pairs_to_parse = Vec::new();
                                             let mut volatile = false;
 
-                                            // Exposed by picodata scalar function name should be 
+                                            // Exposed by picodata scalar function name should be
                                             // transformed to real name of representing it stored procedure.
                                             if let Some(name) = get_real_function_name(&function_name) {
                                                 if !safe_for_volatile_function {

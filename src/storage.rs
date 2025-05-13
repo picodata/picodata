@@ -38,8 +38,8 @@ use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::{Error, IdOfInstance};
-use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
+use crate::traft::op::{Ddl, RenameMapping};
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::util::Uppercase;
@@ -567,9 +567,12 @@ impl Tables {
         &self,
         id: SpaceId,
         format: &[tarantool::space::Field],
+        column_renames: &RenameMapping,
     ) -> tarantool::Result<()> {
         // We can't use UpdateOps as we use custom encoding
         let mut table_def = self.get(id)?.expect("should exist");
+        // apply renames to the distribution
+        column_renames.transform_distribution_columns(&mut table_def.distribution);
         table_def.format = format.to_vec();
         self.put(&table_def)?;
         Ok(())

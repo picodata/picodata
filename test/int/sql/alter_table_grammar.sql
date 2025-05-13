@@ -13,20 +13,17 @@ ALTER TABLE t ALTER COLUMN d DROP NOT NULL;
 ALTER TABLE t ALTER d SET NOT NULL;
 ALTER TABLE t ALTER d DROP NOT NULL;
 -- ERROR:
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
 
 -- TEST: rename
 -- SQL:
 ALTER TABLE t RENAME COLUMN c TO x;
 ALTER TABLE t RENAME x TO c;
--- ERROR:
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
 
 
 -- TEST: add (err)
@@ -56,12 +53,12 @@ ALTER TABLE t DROP IF EXISTS g;
 ALTER TABLE t DROP COLUMN h;
 ALTER TABLE t DROP j;
 -- ERROR:
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
 
 
 -- TEST: multiple
@@ -101,10 +98,10 @@ ALTER TABLE t ALTER COLUMN i SET NOT NULL OPTION (timeout = 0);
 ALTER TABLE t ALTER COLUMN i TYPE DECIMAL OPTION (timeout = 0);
 -- ERROR:
 timeout
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
-sbroad: unsupported DDL: ADD COLUMN is the only supported action in ALTER TABLE
+sbroad: unsupported DDL: `ALTER TABLE _ DROP COLUMN` is not yet supported
+timeout
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
+sbroad: unsupported DDL: `ALTER TABLE _ ALTER COLUMN` is not yet supported
 
 
 -- TEST: rename table

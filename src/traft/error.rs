@@ -53,6 +53,8 @@ pub enum AlreadyExists {
 pub enum DoesNotExist {
     #[error("table {0} does not exist")]
     Table(SmolStr),
+    #[error("column {0} does not exist")]
+    Column(SmolStr),
     #[error("index {0} does not exist")]
     Index(SmolStr),
     #[error("procedure {0} does not exist")]

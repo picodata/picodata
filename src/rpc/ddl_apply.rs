@@ -223,6 +223,7 @@ pub fn apply_schema_change(
         Ddl::ChangeFormat {
             table_id,
             ref new_format,
+            // we don't need to care about column renames here because tarantool operates on column indices under the hood, yay
             ..
         } => {
             if let Err(e) = ddl_change_format_on_master(table_id, new_format) {
