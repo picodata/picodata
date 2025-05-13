@@ -207,21 +207,16 @@ macro_rules! define_rpc_request {
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
             let start = tarantool::time::Instant::now_fiber();
+            let proc_name = $crate::proc_name!($proc);
 
             let result: ::std::result::Result<_, $crate::traft::error::Error> = { $($proc_body)* };
-
-            let duration = tarantool::time::Instant::now_fiber().duration_since(start).as_millis();
-            $crate::metrics::observe_rpc_request_duration(duration as f64);
-
-            match &result {
-                Ok(_) => {
-                    $crate::metrics::record_rpc_request($crate::proc_name!($proc));
-                },
-                Err(_) => {
-                    $crate::metrics::record_rpc_request_error($crate::proc_name!($proc));
-                },
+            if result.is_err() {
+                $crate::metrics::record_rpc_request_errors_total(proc_name);
             }
 
+            let duration = tarantool::time::Instant::now_fiber().duration_since(start).as_millis();
+            $crate::metrics::observe_rpc_request_duration(proc_name, duration as f64);
+            $crate::metrics::record_rpc_request_total(proc_name);
             result
         }
 

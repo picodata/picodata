@@ -15,6 +15,7 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
+use crate::metrics;
 use crate::plugin::manager::PluginManager;
 use crate::plugin::migration;
 use crate::plugin::PluginAsyncEvent;
@@ -2294,6 +2295,10 @@ impl NodeImpl {
                     s.raft_state = ss.raft_state.into();
                 })
                 .expect("status shouldn't ever be borrowed across yields");
+
+            let leader: Option<u64> = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
+            metrics::record_raft_leader_id(leader);
+            metrics::record_raft_state(ss.raft_state);
         }
 
         // These messages are only available on leader. Send them out ASAP.

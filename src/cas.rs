@@ -123,7 +123,17 @@ pub fn check_acl_limits(storage: &Catalog, acl: &Acl) -> traft::Result<()> {
 /// It can also return general picodata errors in cases of faulty network or storage.
 #[inline(always)]
 pub fn compare_and_swap_and_wait(request: &Request, deadline: Instant) -> traft::Result<CasResult> {
-    compare_and_swap(request, true, false, deadline)
+    let start = Instant::now_fiber();
+    let result = compare_and_swap(request, true, false, deadline);
+    if result.is_err() {
+        metrics::record_cas_errors_total(&request.op);
+    }
+
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_cas_ops_duration(duration as f64);
+    metrics::record_cas_ops_total(&request.op);
+
+    result
 }
 
 /// Performs a clusterwide compare and swap operation.
@@ -139,7 +149,17 @@ pub fn compare_and_swap_and_wait(request: &Request, deadline: Instant) -> traft:
 /// It can also return general picodata errors in cases of faulty storage.
 #[inline(always)]
 pub fn compare_and_swap_local(request: &Request, deadline: Instant) -> traft::Result<CasResult> {
-    compare_and_swap(request, true, true, deadline)
+    let start = Instant::now_fiber();
+    let result = compare_and_swap(request, true, true, deadline);
+    if result.is_err() {
+        metrics::record_cas_errors_total(&request.op);
+    }
+
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_cas_ops_duration(duration as f64);
+    metrics::record_cas_ops_total(&request.op);
+
+    result
 }
 
 /// Performs a clusterwide compare and swap operation.
@@ -156,9 +176,6 @@ pub fn compare_and_swap(
     force_local: bool,
     deadline: Instant,
 ) -> traft::Result<CasResult> {
-    let start = Instant::now_fiber();
-    let operations = get_op_type_and_table(&request.op);
-
     let node = node::global()?;
 
     if let Op::BatchDml { ops } = &request.op {
@@ -168,7 +185,6 @@ pub fn compare_and_swap(
     }
 
     let Some(leader_id) = node.status().leader_id else {
-        metrics::record_global_table_errors(operations);
         return Err(TraftError::LeaderUnknown);
     };
 
@@ -180,7 +196,6 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_local(request);
     } else if force_local {
-        metrics::record_global_table_errors(operations);
         return Err(TraftError::NotALeader);
     } else {
         let future = async {
@@ -196,8 +211,6 @@ pub fn compare_and_swap(
 
     let response = crate::unwrap_ok_or!(res,
         Err(e) => {
-            metrics::record_global_table_errors(operations);
-
             if e.is_retriable() {
                 return Ok(CasResult::RetriableError(e));
             } else {
@@ -211,8 +224,6 @@ pub fn compare_and_swap(
 
         let actual_term = raft::Storage::term(&node.raft_storage, response.index)?;
         if response.term != actual_term {
-            metrics::record_global_table_errors(operations);
-
             // Leader has changed and the entry got rolled back, ok to retry.
             return Ok(CasResult::RetriableError(TraftError::TermMismatch {
                 requested: response.term,
@@ -221,44 +232,7 @@ pub fn compare_and_swap(
         }
     }
 
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_global_table_write_latency(duration as f64);
-    metrics::record_global_table_ops_total(operations);
-
     return Ok(CasResult::Ok((response.index, response.term)));
-}
-
-fn get_op_type_and_table(ops: &Op) -> Vec<(&str, String)> {
-    let mut operations = vec![];
-
-    match ops {
-        Op::Dml(dml) => {
-            let op_type = match dml {
-                Dml::Insert { .. } => "insert",
-                Dml::Replace { .. } => "replace",
-                Dml::Update { .. } => "update",
-                Dml::Delete { .. } => "delete",
-            };
-            operations.push((op_type, format!("{}", dml.space())));
-        }
-        Op::BatchDml { ops } => {
-            for dml in ops.iter() {
-                let op_type = match dml {
-                    Dml::Insert { .. } => "insert",
-                    Dml::Replace { .. } => "replace",
-                    Dml::Update { .. } => "update",
-                    Dml::Delete { .. } => "delete",
-                };
-                operations.push((op_type, format!("{}", dml.space())));
-            }
-        }
-        Op::Acl(_) => {
-            operations.push(("acl", "system".into()));
-        }
-        _ => operations.push(("other", "global".into())),
-    };
-
-    operations
 }
 
 #[must_use = "You must decide if you're retrying the error or returning it to user"]

@@ -1079,7 +1079,7 @@ pub mod stage {
             pub old_master_name: &'i InstanceName,
 
             /// Request to call [`proc_get_vclock`] on the new master. This
-            /// vclock is going to be peristed as `promotion_vclock` (if it's
+            /// vclock is going to be persisted as `promotion_vclock` (if it's
             /// not already equal) of the given replicaset.
             ///
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
@@ -1144,9 +1144,9 @@ pub mod stage {
         pub struct Downgrade<'i> {
             /// This instance is being downgraded. The name is only used for logging.
             pub instance_name: &'i InstanceName,
-            /// The state which is going to be set as target's new current state. Is only used for loggin.
+            /// The state which is going to be set as target's new current state. Is only used for logging.
             pub new_current_state: &'i str,
-            /// The name of the tier to which this instance belongs. Is only used for loggin.
+            /// The name of the tier to which this instance belongs. Is only used for logging.
             pub tier: &'i str,
             /// Global DML which updates `current_state` to `Offline` in `_pico_instance` for a given instance.
             pub cas: cas::Request,
@@ -1213,11 +1213,11 @@ pub mod stage {
         }
 
         pub struct ToOnline<'i> {
-            /// This instance's is becomming online. Name is only used for logging.
+            /// This instance's is becoming online. Name is only used for logging.
             pub instance_name: &'i InstanceName,
             /// This is going to be the new current state of the instance. Only used for logging.
             pub new_current_state: &'i str,
-            /// The name of the tier to which this instance belongs. Is only used for loggin.
+            /// The name of the tier to which this instance belongs. Is only used for logging.
             pub tier: &'i str,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.

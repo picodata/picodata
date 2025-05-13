@@ -110,6 +110,24 @@ with the `YY.MINOR.MICRO` scheme.
    Parameter type could be inferred from the left select statement,
    like PostgreSQL does, but this is not implemented yet.
 
+### Observability
+- Added picodata metrics in prometheus format to the `/metrics` endpoint. Metrics allow to monitor SQL, RPC, CAS, Raft, instance and governor states. List of metrics:
+  - pico_governor_changes_total
+  - pico_sql_query_total
+  - pico_sql_query_errors_total
+  - pico_sql_query_duration
+  - pico_rpc_request_total
+  - pico_rpc_request_errors_total
+  - pico_rpc_request_duration
+  - pico_cas_records_total
+  - pico_cas_errors_total
+  - pico_cas_ops_duration
+  - pico_instance_state
+  - pico_raft_applied_index
+  - pico_raft_commit_index
+  - pico_raft_term
+  - pico_raft_state
+  - pico_raft_leader_id
 
 ### Fixes
 - Display correct value for "can_vote" property in webUI   

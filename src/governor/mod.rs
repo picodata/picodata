@@ -1078,13 +1078,13 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
         return;
     }
 
-    crate::metrics::record_governor_change();
-
     let counter = status.get().step_counter;
     tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");
     status
         .send_modify(|s| s.governor_loop_status = msg)
         .expect("status shouldn't ever be borrowed across yields");
+
+    metrics::record_governor_change();
 }
 
 pub struct Loop {

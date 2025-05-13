@@ -1,6 +1,8 @@
 from conftest import (
     Cluster,
     Instance,
+    TarantoolError,
+    ErrorCode,
 )
 from urllib.request import urlopen
 import pytest
@@ -351,13 +353,30 @@ def test_metrics_ok(instance: Instance) -> None:
     assert response.ok
 
 
+# Verifies that all picodata metrics are present
+# and accessible on /metrics endpoint
 @pytest.mark.webui
-def test_picodata_metrics(instance: Instance) -> None:
+def test_picodata_metrics(cluster: Cluster) -> None:
+    instance = cluster.add_instance(name="i1", init_replication_factor=2, enable_http=True)
+    i2 = cluster.add_instance(name="i2", enable_http=True)
+
+    instance.wait_online()
+    instance.sql("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT) DISTRIBUTED GLOBALLY")
+    instance.sql("INSERT INTO test VALUES (1, 'one')")
+
+    with pytest.raises(TarantoolError) as e:
+        i2.sql("INSERT INTO test VALUES (1, 'one')")
+        assert e.value.args[:2] == (ErrorCode.SbroadError, "sbroad: Lua error (IR dispatch)")
+
+    i2.sql("INSERT INTO test VALUES (2, 'two')")
+    with pytest.raises(TarantoolError) as e:
+        instance.sql("INSERT INTO test VALUES (2, 'two')")
+        assert e.value.args[:2] == (ErrorCode.SbroadError, "sbroad: Lua error (IR dispatch)")
+
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
     url = f"http://{http_listen}/metrics"
     response = requests.get(url)
     assert response.ok, f"Metrics endpoint {url} did not return OK: {response.status_code}"
-
     metrics_output = response.text
     expected_metrics = [
         "pico_governor_changes_total",
@@ -365,12 +384,17 @@ def test_picodata_metrics(instance: Instance) -> None:
         "pico_sql_query_errors_total",
         "pico_sql_query_duration",
         "pico_rpc_request_total",
-        # "pico_rpc_request_errors_total", # Only used with certain label
+        "pico_rpc_request_errors_total",
         "pico_rpc_request_duration",
-        "pico_global_tables_records_total",
-        # "pico_global_tables_errors_total", # Only used with certain labels
-        "pico_global_tables_write_duration",
+        "pico_cas_records_total",
+        "pico_cas_errors_total",
+        "pico_cas_ops_duration",
         "pico_instance_state",
+        "pico_raft_applied_index",
+        "pico_raft_commit_index",
+        "pico_raft_term",
+        "pico_raft_state",
+        "pico_raft_leader_id",
     ]
 
     for metric in expected_metrics:

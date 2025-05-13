@@ -620,16 +620,14 @@ pub fn sql_dispatch(
     let inst = node.storage.instances.get(&raft_id)?;
     let replicaset_name = inst.replicaset_name.clone().to_smolstr();
 
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_sql_query_duration(duration as f64);
-    metrics::record_sql_query_total(tier.as_str(), replicaset_name.as_str());
-    match result {
-        Ok(tuple) => Ok(tuple),
-        Err(e) => {
-            metrics::record_sql_query_error(tier.as_str(), replicaset_name.as_str());
-            Err(e)
-        }
+    if result.is_err() {
+        metrics::record_sql_query_errors_total(tier.as_str(), replicaset_name.as_str());
     }
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_sql_query_duration(tier.as_str(), replicaset_name.as_str(), duration as f64);
+    metrics::record_sql_query_total(tier.as_str(), replicaset_name.as_str());
+
+    result
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {

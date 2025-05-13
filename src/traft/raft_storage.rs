@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
 use crate::instance::InstanceName;
+use crate::metrics;
 use crate::tlog;
 use crate::traft;
 use crate::traft::RaftEntryId;
@@ -366,6 +367,7 @@ impl RaftSpaceAccess {
     #[inline(always)]
     fn persist_term(&self, term: RaftTerm) -> tarantool::Result<()> {
         self.space_raft_state.replace(&("term", term))?;
+        metrics::record_raft_term(term);
         Ok(())
     }
 
@@ -378,12 +380,14 @@ impl RaftSpaceAccess {
     #[inline(always)]
     pub fn persist_commit(&self, commit: RaftId) -> tarantool::Result<()> {
         self.space_raft_state.replace(&("commit", commit))?;
+        metrics::record_raft_commit_index(commit);
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_applied(&self, applied: RaftId) -> tarantool::Result<()> {
         self.space_raft_state.replace(&("applied", applied))?;
+        metrics::record_raft_applied_index(applied);
         Ok(())
     }
 
