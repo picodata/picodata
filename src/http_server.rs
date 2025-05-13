@@ -388,7 +388,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
                     rf: item.replication_factor,
                     bucket_count: item.bucket_count,
                     instance_count: 0,
-                    can_vote: true,
+                    can_vote: item.can_vote,
                     name: item.name.clone(),
                     services: storage
                         .services

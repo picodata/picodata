@@ -81,6 +81,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 
 ### Fixes
+- Display correct value for "can_vote" property in webUI   
 
 - Disallow DDL creation operations in a heterogeneous cluster. A cluster is considered 
   heterogeneous if any instance differs from another by major or minor version.

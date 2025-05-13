@@ -247,6 +247,104 @@ def test_webui_with_plugin(cluster: Cluster):
 
 
 @pytest.mark.webui
+def test_webui_can_vote_flag(cluster: Cluster):
+    cluster_cfg = """
+    cluster:
+        name: test
+        tier:
+            red:
+                replication_factor: 1
+            blue:
+                replication_factor: 1
+                can_vote: false
+    """
+    cluster.set_config_file(yaml=cluster_cfg)
+
+    i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+    i2 = cluster.add_instance(wait_online=True, tier="blue")
+
+    http_listen = i1.env["PICODATA_HTTP_LISTEN"]
+    instance_version = i1.eval("return pico.PICODATA_VERSION")
+
+    with urlopen(f"http://{http_listen}/") as response:
+        assert response.headers.get("content-type") == "text/html"
+
+    instance_template = {
+        "failureDomain": {},
+        "isLeader": True,
+        "currentState": "Online",
+        "targetState": "Online",
+        "version": instance_version,
+    }
+    instance_1 = {
+        **instance_template,
+        "name": "red_1_1",
+        "binaryAddress": i1.iproto_listen,
+        "httpAddress": http_listen,
+    }
+    instance_2 = {
+        **instance_template,
+        "name": "blue_1_1",
+        "binaryAddress": i2.iproto_listen,
+        "httpAddress": "",
+    }
+
+    replicaset_template = {
+        "state": "Online",
+        "version": instance_version,
+        "instanceCount": 1,
+        "capacityUsage": 50,
+        "memory": {
+            "usable": 67108864,
+            "used": 33554432,
+        },
+        "uuid": i1.replicaset_uuid(),
+        "name": "r1",
+    }
+    r1 = {
+        **replicaset_template,
+        "uuid": i1.replicaset_uuid(),
+        "name": "red_1",
+        "instances": [instance_1],
+    }
+    r2 = {
+        **replicaset_template,
+        "uuid": i2.replicaset_uuid(),
+        "name": "blue_1",
+        "instances": [instance_2],
+    }
+
+    tier_template = {
+        "replicasetCount": 1,
+        "rf": 1,
+        "bucketCount": 3000,
+        "instanceCount": 1,
+    }
+
+    tier_red = {
+        **tier_template,
+        "name": "red",
+        "services": [],
+        "replicasets": [r1],
+        "can_vote": True,
+    }
+    tier_blue = {
+        **tier_template,
+        "can_vote": False,
+        "name": "blue",
+        "services": [],
+        "replicasets": [r2],
+    }
+
+    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+        assert response.headers.get("content-type") == "application/json"
+        assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
+            tier_blue,
+            tier_red,
+        ]
+
+
+@pytest.mark.webui
 def test_metrics_ok(instance: Instance) -> None:
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
     response = requests.get(f"http://{http_listen}/metrics")
