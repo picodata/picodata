@@ -38,6 +38,7 @@ BuildRequires: lib64openssl-devel
 BuildRequires: lib64readline-devel
 BuildRequires: lib64stdc++-static-devel
 BuildRequires: lib64gomp-static-devel
+BuildRequires: lib64crypt-devel
 %else
 BuildRequires: readline-devel
 BuildRequires: openssl-devel
