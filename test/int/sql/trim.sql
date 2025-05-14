@@ -48,30 +48,30 @@ SELECT trim(both 'ab' from 'aabb') from "t"
 
 -- TEST: test_trim-1.8
 -- SQL:
-SELECT trim(  'a' from trim(  '  aabb  ')) from "t"
+SELECT trim(  'a' from trim(  '  aabb  '  )  ) from "t"
 -- EXPECTED:
 'bb'
 
 -- TEST: test_trim-1.9
 -- SQL:
-SELECT trim(  trim(  ' aabb ') from trim(  '  aabb  ')) from "t"
+SELECT trim(  trim(  ' aabb ') from trim(  '  aabb  '  )  ) from "t"
 -- EXPECTED:
 ''
 
 -- TEST: test_trim-1.10
 -- SQL:
-SELECT trim(  leading 'a' from trim(  'aabb  ')) from "t"
+SELECT trim(  leading 'a' from trim(  'aabb  '  )  ) from "t"
 -- EXPECTED:
 'bb'
 
 -- TEST: test_trim-1.11
 -- SQL:
-SELECT trim(  trailing 'b' from trim(  'aabb')) from "t"
+SELECT trim(  trailing 'b' from trim(  'aabb'  )) from "t"
 -- EXPECTED:
 'aa'
 
 -- TEST: test_trim-1.12
 -- SQL:
-SELECT trim(  both 'ab' from 'aabb') from "t"
+SELECT trim(  both 'ab' from 'aabb'  ) from "t"
 -- EXPECTED:
 ''

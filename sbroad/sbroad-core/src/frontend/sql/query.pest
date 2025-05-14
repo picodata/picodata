@@ -449,7 +449,7 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
             CurrentDate = { ^"current_date" }
             LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             Trim = ${
-                ^"trim" ~ WO ~ "(" ~ WO ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ ")"
+                ^"trim" ~ WO ~ "(" ~ WO ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"
             }
                 TrimOption = _{ ((TrimKind ~ W)? ~ TrimPattern) | TrimKind }
                 TrimKind = { (TrimKindLeading | TrimKindTrailing | TrimKindBoth) }
