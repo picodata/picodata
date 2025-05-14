@@ -239,7 +239,7 @@ INSERT INTO s VALUES (1, '{
     }
 }');
 -- ERROR:
-INSERT column at position 2 is of type map, but expression is of type text
+as a value of type map, consider using explicit type casts
 
 -- TEST: test-json-is-not-keyword-1
 -- SQL:
@@ -305,6 +305,7 @@ sbroad: table 'no_such_table' not found
 SELECT "t1".* FROM t AS t1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
+
 -- TEST: test-json-is-not-keyword-3
 -- SQL:
 DROP TABLE tc;

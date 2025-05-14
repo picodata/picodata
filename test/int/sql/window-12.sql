@@ -34,7 +34,7 @@ sbroad: could not resolve operator overload for +(unsigned, bool)
 
 -- TEST: window12-2.2
 -- SQL:
-SELECT count(x) OVER (PARTITION BY 'hello' - 3) FROM t6;
+SELECT count(x) OVER (PARTITION BY 'hello'::text - 3) FROM t6;
 -- ERROR:
 sbroad: could not resolve operator overload for -(text, unsigned)
 
@@ -58,9 +58,9 @@ sbroad: could not resolve operator overload for >(int, datetime)
 
 -- TEST: window12-2.6
 -- SQL:
-SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + '1' PRECEDING AND 1 FOLLOWING) from t6
+SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6
 -- ERROR:
-sbroad: could not resolve operator overload for +(unsigned, text)
+sbroad: could not resolve operator overload for +(unsigned, bool)
 
 -- TEST: window12-3.1
 -- SQL:

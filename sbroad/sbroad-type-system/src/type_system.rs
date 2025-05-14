@@ -143,6 +143,11 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         self.params.extend(other.params);
     }
 
+    /// Get the type an expression needs to be casted to, if any.
+    pub fn get_cast(&self, id: &Id) -> Option<Type> {
+        self.casts.get(id).cloned()
+    }
+
     /// Report expression type.
     fn report(&mut self, id: &Id, ty: Type) {
         self.types.insert(id.clone(), ty);
@@ -343,15 +348,28 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 // Literals are similar to references, except literals can be coerced to desired.
                 let mut report = TypeReport::new();
 
-                if *ty == Type::Numeric && desired_type == Type::Double {
-                    // Floating pointer literals have `numeric` type by default. However, in a
-                    // context with `double` values it should be coerced to `double`. Note that
-                    // this can only be done for literals, as expressions like `1.5`
-                    // do not have a fixed type.
-                    // Example: `insert into t (double_col) values (1.5)`
-                    report.cast(&expr.id, Type::Double);
-                    report.report(&expr.id, Type::Double);
-                    return Ok(report);
+                match (*ty, desired_type) {
+                    (Type::Numeric, Type::Double) => {
+                        // Floating pointer literals have `numeric` type by default. However, in a
+                        // context with `double` values it should be coerced to `double`. Note that
+                        // this can only be done for literals, as expressions like `1.5`
+                        // do not have a fixed type.
+                        // Example: `insert into t (double_col) values (1.5)`
+                        report.cast(&expr.id, Type::Double);
+                        report.report(&expr.id, Type::Double);
+                        return Ok(report);
+                    }
+                    (Type::Text, desired) if desired != Type::Text => {
+                        // String literals can be coerced to any type, if context demands it.
+                        // This can be used in arithmetic expressions (`1 + '1'`), but this is much
+                        // more useful for non-trivial types such as `datetime` or `uuid`, as it
+                        // allows to avoid explicit type casts.
+                        // Example: `insert into t (date) values ('Fri, 07 Jul 2023 12:34:56')`
+                        report.cast(&expr.id, desired);
+                        report.report(&expr.id, desired);
+                        return Ok(report);
+                    }
+                    _ => (),
                 }
 
                 // Coerce literal type to desired if possible.

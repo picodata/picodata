@@ -3401,7 +3401,7 @@ fn front_sql_not_cast() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not ('true'::string::bool)
+        selection not ROW(true::boolean)
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3532,7 +3532,7 @@ fn front_sql_not_complex_query() {
         "#;
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(true)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (not ((not ROW('true'::string::bool)) and ((ROW(1::unsigned) + ROW(1::integer)) <> ROW(1::unsigned))) -> "col_1")
+    projection (not ((not ROW(true::boolean)) and ((ROW(1::unsigned) + ROW(1::integer)) <> ROW(1::unsigned))) -> "col_1")
         selection not exists ROW($0)
             join on ROW("ts"."nid"::boolean) or (ROW(false::boolean) <> ROW((not (not ROW(true::boolean)))::bool))
                 scan "ts"
@@ -4127,6 +4127,7 @@ mod limit;
 mod params;
 mod single;
 mod subtree_cloner;
+mod text_literal_parsing;
 mod trim;
 mod union;
 mod update;

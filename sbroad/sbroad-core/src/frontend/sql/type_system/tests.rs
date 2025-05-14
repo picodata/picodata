@@ -59,6 +59,10 @@ fn comparison() {
     assert_ok("select LOCALTIMESTAMP = LOCALTIMESTAMP");
     assert_ok("select LOCALTIMESTAMP in (LOCALTIMESTAMP, LOCALTIMESTAMP)");
 
+    assert_ok("select (1, 2) = (1, '2')");
+    assert_ok("select 1 in (1, '2')");
+    assert_ok("select LOCALTIMESTAMP = '2023-07-07T12:34:56Z'");
+
     assert_fails_with_error(
         "select 1 in (1, false)",
         "IN types unsigned, unsigned and bool cannot be matched",
@@ -78,11 +82,6 @@ fn comparison() {
 #[test]
 fn arithmetic_errors() {
     assert_fails_with_error(
-        "select 1 + 'kek'",
-        "could not resolve operator overload for +(unsigned, text)",
-    );
-
-    assert_fails_with_error(
         "select 1 + false",
         "could not resolve operator overload for +(unsigned, bool)",
     );
@@ -101,15 +100,15 @@ fn arithmetic_errors() {
         "select (1.5 + 1::double) + LOCALTIMESTAMP from t;",
         "could not resolve operator overload for +(double, datetime)",
     );
+
+    assert_fails_with_error(
+        "select 1 + 'kek'",
+        "failed to parse 'kek' as a value of type unsigned, consider using explicit type casts",
+    );
 }
 
 #[test]
 fn comparison_errors() {
-    assert_fails_with_error(
-        "select (1, 2) = (1, '2')",
-        "could not resolve operator overload for =(unsigned, text)",
-    );
-
     assert_fails_with_error(
         "select (select LOCALTIMESTAMP, 2) = (select 1, 2)",
         "could not resolve operator overload for =(datetime, unsigned)",
@@ -331,7 +330,7 @@ fn case() {
           END AS status
         FROM users;
         "#,
-        "CASE/THEN types text, unsigned and text cannot be matched",
+        "failed to parse 'valid' as a value of type unsigned, consider using explicit type casts",
     );
 
     assert_fails_with_error(
@@ -360,7 +359,7 @@ fn case() {
           END AS food_type;
         FROM params
         "#,
-        "CASE/WHEN types unsigned, text, text and text cannot be matched",
+        "failed to parse 'apple' as a value of type unsigned, consider using explicit type casts",
     );
 }
 
@@ -393,8 +392,13 @@ fn coalesce() {
     assert_ok("SELECT COALESCE(1.5, -2, $1) + COALESCE(1, 2, $2)");
 
     assert_fails_with_error(
+        "SELECT COALESCE(1.5, false, $1)",
+        "COALESCE types numeric, bool and unknown cannot be matched",
+    );
+
+    assert_fails_with_error(
         "SELECT COALESCE(1.5, 'kek', $1)",
-        "COALESCE types numeric, text and unknown cannot be matched",
+        "failed to parse 'kek' as a value of type numeric, consider using explicit type casts",
     );
 }
 
@@ -412,6 +416,7 @@ fn values() {
     assert_ok("VALUES (1, 2), ((select 2), 3)");
     assert_ok("SELECT * FROM (SELECT 1 AS a) WHERE (a, a) in (VALUES (1, 2), (1, 2))");
     assert_ok("SELECT * FROM (SELECT 1 AS a) WHERE EXISTS (VALUES (1, 2), (1, 2))");
+    assert_ok("SELECT * FROM (SELECT 1 AS a) WHERE (a, a) in (VALUES (1, 2), (1, '2'))");
 
     assert_fails_with_error(
         "VALUES ('kek' + false)",
@@ -429,18 +434,13 @@ fn values() {
     );
 
     assert_fails_with_error(
-        "SELECT * FROM (SELECT 1 AS a) WHERE (a, a) in (VALUES (1, 2), (1, '2'))",
-        "VALUES types unsigned and text cannot be matched",
-    );
-
-    assert_fails_with_error(
         "SELECT * FROM (SELECT 1 AS a) WHERE (a, a) in (VALUES (1, 2), (1, 2, 3))",
         "VALUES lists must all be the same length",
     );
 
     assert_fails_with_error(
-        "SELECT * FROM (SELECT 1 AS a) WHERE EXISTS (VALUES (1, 2), (1, '2'), (1, 2))",
-        "VALUES types unsigned, text and unsigned cannot be matched",
+        "SELECT * FROM (SELECT 1 AS a) WHERE EXISTS (VALUES (1, 2), (1, false), (1, 2))",
+        "VALUES types unsigned, bool and unsigned cannot be matched",
     );
 }
 
@@ -464,14 +464,8 @@ fn windows() {
     );
 
     assert_fails_with_error(
-        "SELECT count(*) over (PARTITION BY a + 'kek') from (select 1 as a);",
-        "could not resolve operator overload for +(unsigned, text)",
-    );
-
-    assert_fails_with_error(
-        "WITH t AS (SELECT 'a' as a) \
-        SELECT count(*) over(ROWS BETWEEN '1' PRECEDING AND CURRENT ROW) from t;",
-        "argument of ROWS must have integer type, got text",
+        "SELECT count(*) over (PARTITION BY a + false) from (select 1 as a);",
+        "could not resolve operator overload for +(unsigned, bool)",
     );
 
     assert_fails_with_error(
@@ -560,6 +554,12 @@ fn clause_based_parameter_type_inference() {
         "SELECT sum(x) OVER (ROWS BETWEEN $1 PRECEDING AND $2 FOLLOWING) FROM (SELECT 1 as x)",
     );
 
+    // coerce string literal
+    assert_ok(
+        "WITH t AS (SELECT 'a' as a)
+        SELECT count() over(ROWS BETWEEN '1' PRECEDING AND CURRENT ROW) from t;",
+    );
+
     // JOIN
     assert_ok("WITH t AS (SELECT 1) SELECT * FROM t join t on $1")
 }
@@ -591,4 +591,52 @@ fn parameter_and_text_type_defaulting() {
     assert_ok("VALUES ($1, $2), ($3, $4)");
     assert_ok("VALUES ($1, 'kek'), ($2, 'lol')");
     assert_ok("VALUES ($1, 'kek'), ('lol', $2)");
+}
+
+#[test]
+fn text_literal_coercion() {
+    assert_ok("SELECT '1' + 1");
+    assert_ok("SELECT '2' + '2'");
+    assert_ok("SELECT COALESCE('1', '2') + 1");
+    assert_ok("SELECT COALESCE('1', $1) + 1");
+    assert_ok("SELECT COALESCE('1', $1) + 1");
+    assert_ok("SELECT COALESCE('1' || '2')::int * 2;");
+    assert_ok("SELECT 1.5 + max('1')");
+    assert_ok("SELECT 1.5 + max('1.5')");
+    assert_ok("SELECT 1.5 + COALESCE(max('1.5'), $1)");
+    assert_ok("SELECT coalesce('1' || '2', 'kek')::int * 2;");
+    assert_ok("SELECT coalesce('f', false);");
+
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 'false'");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 'true'");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 't' AND 'f'");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 't' AND 'f' HAVING 't' OR 'f'");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE NOT 'f'");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE CASE WHEN 'f' THEN '1' WHEN 't' THEN '2' END = 1");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 'kek' = NULL");
+    assert_ok("SELECT * FROM (SELECT 1) WHERE 'kek' = $1");
+
+    assert_ok("UPDATE t2 SET e = '3'");
+    assert_ok("UPDATE t2 SET e = '3' WHERE 'f'");
+    assert_ok("DELETE FROM t2 WHERE 1.5 = '1.5'");
+    assert_ok("DELETE FROM t2 WHERE LOCALTIMESTAMP = '2023-07-07T12:34:56Z'");
+    assert_ok("DELETE FROM t2 WHERE LOCALTIMESTAMP = '2023-07-07T12:34:56.123456Z'");
+
+    assert_fails_with_error(
+        "SELECT 1::int + '1.5'",
+        "failed to parse '1.5' as a value of type int, consider using explicit type casts",
+    );
+    assert_fails_with_error(
+        "SELECT COALESCE('kek', 1.5)",
+        "failed to parse 'kek' as a value of type numeric, consider using explicit type casts",
+    );
+    assert_fails_with_error(
+        "SELECT * FROM (SELECT 1) WHERE 'maybe'",
+        "failed to parse 'maybe' as a value of type bool, consider using explicit type casts",
+    );
+    assert_fails_with_error(
+        "WITH t AS (SELECT 'a' as a)
+        SELECT count() over(ROWS BETWEEN 'start' PRECEDING AND CURRENT ROW) from t;",
+        "failed to parse 'start' as a value of type int, consider using explicit type casts",
+    );
 }

@@ -18,7 +18,7 @@ use itertools::Itertools;
 use pest::iterators::{Pair, Pairs};
 use pest::pratt_parser::PrattParser;
 use pest::Parser;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, StrExt, ToSmolStr};
 use std::collections::VecDeque;
 use std::{
     collections::{HashMap, HashSet},
@@ -4260,7 +4260,7 @@ where
         safe_for_volatile_function,
     )?;
 
-    type_system::analyze_scalar_expr(
+    type_system::analyze_and_coerce_scalar_expr(
         type_analyzer,
         expr_id,
         desired_type,
@@ -4307,8 +4307,8 @@ where
     type_system::analyze_values_rows(
         type_analyzer,
         &values_rows_ids,
-        plan,
         desired_types,
+        plan,
         &worker.subquery_replaces,
     )?;
 
@@ -4818,13 +4818,6 @@ impl AbstractSyntaxTree {
                     panic!("Expected Window node, got {:?}", window);
                 };
                 let name = name.as_ref().expect("Window name must be set").clone();
-                type_system::analyze_scalar_expr(
-                    type_analyzer,
-                    *window_id,
-                    DerivedType::unknown(),
-                    plan,
-                    &worker.subquery_replaces,
-                )?;
                 named_windows.insert(name, *window_id);
             }
         }
@@ -6550,6 +6543,77 @@ impl Plan {
 
         Ok(())
     }
+}
+
+/// Parse boolean values in text format.
+/// It supports the same formats as PostgreSQL (grep `parse_bool_with_len`).
+pub fn try_parse_bool(s: &str) -> Option<bool> {
+    match s.to_lowercase_smolstr().as_str() {
+        "t" | "true" | "yes" | "on" | "1" => Some(true),
+        "f" | "false" | "no" | "off" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+/// Parse datetime values in text format.
+///
+/// It tries to support the same formats as in PostgreSQL.
+/// PostgreSQL can parse arbitrary datetime formats, as demonstrated in the following functions:
+/// * [timestamptz_in](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/backend/utils/adt/timestamp.c#L416)
+/// * [ParseDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1598)
+/// * [DecodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1780)
+///
+/// Since supporting all these formats is impractical, we will focus on parsing some
+/// known formats that enable interaction with PostgreSQL drivers.
+pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
+    use time::format_description::well_known::{Iso8601, Rfc2822, Rfc3339};
+    use time::macros::format_description;
+
+    fn try_from_well_known_formats(s: &str) -> Option<time::OffsetDateTime> {
+        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Iso8601::PARSING) {
+            return Some(datetime);
+        }
+        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc2822) {
+            return Some(datetime);
+        }
+        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc3339) {
+            return Some(datetime);
+        }
+
+        None
+    }
+
+    fn try_from_custom_formats(s: &str) -> Option<time::OffsetDateTime> {
+        // Formats used for encoding timestamptz values.
+        let formats = [
+                format_description!("[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
+                ),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
+                ),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
+            )];
+
+        for fmt in formats {
+            if let Ok(datetime) = time::OffsetDateTime::parse(s, &fmt) {
+                return Some(datetime);
+            }
+        }
+
+        None
+    }
+    if let Some(datetime) = try_from_well_known_formats(s) {
+        return Some(datetime.into());
+    }
+
+    if let Some(datetime) = try_from_custom_formats(s) {
+        return Some(datetime.into());
+    }
+
+    None
 }
 
 pub mod ast;

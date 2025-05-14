@@ -323,14 +323,14 @@ mod tests {
 
         let exprs = [
             (
-                binary("+", lit(Type::Double), lit(Type::Text)),
+                binary("+", lit(Type::Double), lit(Type::Uuid)),
                 None,
-                "could not resolve operator overload for +(double, text)",
+                "could not resolve operator overload for +(double, uuid)",
             ),
             (
-                binary("+", lit(Type::Text), lit(Type::Text)),
+                binary("+", lit(Type::Boolean), lit(Type::Text)),
                 None,
-                "could not resolve operator overload for +(text, text)",
+                "could not resolve operator overload for +(bool, text)",
             ),
             (
                 binary("-~>", lit(Type::Numeric), lit(Type::Boolean)),
@@ -343,14 +343,14 @@ mod tests {
                 "operator -~> does not exist",
             ),
             (
-                coalesce(vec![lit(Text), lit(Integer), param("$1")]),
+                coalesce(vec![lit(Datetime), lit(Integer), param("$1")]),
                 None,
-                "COALESCE types text, int and unknown cannot be matched",
+                "COALESCE types datetime, int and unknown cannot be matched",
             ),
             (
-                coalesce(vec![lit(Text), lit(Integer), param("$1")]),
-                Some(Text),
-                "COALESCE types text, int and unknown cannot be matched",
+                coalesce(vec![lit(Datetime), lit(Integer), param("$1")]),
+                Some(Datetime),
+                "COALESCE types datetime, int and unknown cannot be matched",
             ),
             (
                 coalesce(vec![lit(Boolean), lit(Integer), param("$1")]),
@@ -633,14 +633,14 @@ mod tests {
         assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // ensure that int as an inferred parameter type cannot be matched with text
-        let expr = binary("=", param("$1"), lit(Text));
+        let expr = binary("=", param("$1"), lit(Boolean));
         let err = analyzer.analyze(&expr, None).unwrap_err();
         assert_eq!(
             err,
             Error::CouldNotResolveOverload {
                 kind: FunctionKind::Operator,
                 name: "=".into(),
-                argtypes: vec![Some(Integer), Some(Text)],
+                argtypes: vec![Some(Integer), Some(Boolean)],
             }
         );
 

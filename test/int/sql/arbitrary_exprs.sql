@@ -37,7 +37,7 @@ could not resolve operator overload for and(int, bool)
 -- SQL:
 SELECT
     CASE "id"
-        WHEN 1 THEN 'first'
+        WHEN 1 THEN 'first'::text
         ELSE 42
     END "case_result"
 FROM "arithmetic_space"

@@ -1775,9 +1775,9 @@ def test_substring(instance: Instance):
 
     # invalid types of parameters
     with pytest.raises(
-        TarantoolError, match=r"could not resolve function overload for substring\(text, text, unsigned\)"
+        TarantoolError, match=r"could not resolve function overload for substring\(text, bool, unsigned\)"
     ):
-        instance.sql(r"""SELECT SUBSTRING ('abc' FROM '1' FOR 1)""")
+        instance.sql(r"""SELECT SUBSTRING ('abc' FROM false FOR 1)""")
 
     # substring expression examples
     data = instance.sql("SELECT SUBSTRING('1234567890' FROM 3)")
@@ -1791,14 +1791,14 @@ def test_substring(instance: Instance):
 
     # check for caching similar queries #1
     with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
-        instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
+        instance.sql(r"""SELECT SUBSTRING('12' for ?)""", "12")
 
-    data = instance.sql("SELECT SUBSTRING('12' for 12)")
+    data = instance.sql("SELECT SUBSTRING('12' for ?)", 12)
     assert data[0] == ["12"]
 
     # check for caching similar queries #2
     with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
-        instance.sql(r"""SELECT SUBSTRING('12' for '12')""")
+        instance.sql(r"""SELECT SUBSTRING('12' for ?)""", "12")
 
     # overflow cases
     data = instance.sql("SELECT SUBSTRING('string' FROM 2 FOR 2147483646)")
@@ -2047,7 +2047,7 @@ def test_coalesce(instance: Instance):
 
     # Type mismatch: all values must have the same type.
     with pytest.raises(TarantoolError, match="COALESCE types unsigned and text cannot be matched"):
-        instance.sql("select coalesce(bar, 'none') from foo;")
+        instance.sql("select coalesce(bar, 'none'::text) from foo;")
 
     # 0 / 0 is not evaluated.
     data = instance.sql("select coalesce(bar, 0, 0 / 0) from foo;")
@@ -2220,8 +2220,8 @@ def test_except_parsing_panic_gl_1339(cluster: Cluster):
     ):
         i1.sql("select 1 except select 1, 2")
 
-    with pytest.raises(TarantoolError, match=r"could not resolve operator overload for \+\(unsigned, text\)"):
-        i1.sql("select 1 + 'kek' except select 1")
+    with pytest.raises(TarantoolError, match=r"could not resolve operator overload for \+\(unsigned, bool\)"):
+        i1.sql("select 1 + false except select 1")
 
     ddl = i1.sql("create table lol(a int primary key, b int, c int);")
     assert ddl["row_count"] == 1
@@ -5260,25 +5260,19 @@ def test_cte(cluster: Cluster):
         TarantoolError,
         match="COALESCE types text and unsigned cannot be matched",
     ):
-        i1.sql(""" with cte as (select coalesce('kek',1487)) select * from cte; """)
+        i1.sql(""" with cte as (select coalesce('kek'::text,1487)) select * from cte; """)
 
     with pytest.raises(
         TarantoolError,
-        match="CASE/THEN types unsigned and text cannot be matched",
+        match="CASE/THEN types unsigned and bool cannot be matched",
     ):
-        i1.sql("with cte as (select case when true then 1 else '-1' end) select * from cte;")
-
-    with pytest.raises(
-        TarantoolError,
-        match=r"could not resolve operator overload for \+\(unsigned, text\)",
-    ):
-        i1.sql(""" with cte as (select 1 + 'lol') select * from cte; """)
+        i1.sql("with cte as (select case when true then 1 else false end) select * from cte;")
 
     with pytest.raises(
         TarantoolError,
         match=r"could not resolve operator overload for \+\(unsigned, bool\)",
     ):
-        i1.sql(""" with cte as (select 1 + ?) select * from cte; """, False)
+        i1.sql(""" with cte as (select 1 + true) select * from cte; """)
 
 
 def test_unique_index_name_for_sharded_table(cluster: Cluster):

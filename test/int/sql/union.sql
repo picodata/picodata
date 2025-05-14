@@ -127,7 +127,7 @@ select "product_units" from "testing_space"
 select "a"
 from "arithmetic_space"
 union
-select "name" from "testing_space"
+select 'kek' || "name" from "testing_space"
 -- ERROR:
 invalid value
 

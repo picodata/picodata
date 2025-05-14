@@ -26,6 +26,7 @@ use crate::ir::relation::DerivedType;
 use crate::ir::value::double::Double;
 
 use super::relation::Type;
+use crate::frontend::sql::{try_parse_bool, try_parse_datetime};
 
 #[derive(
     Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Encode, Decode,
@@ -913,11 +914,17 @@ impl Value {
             Type::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
+                Value::String(ref s) => try_parse_bool(s)
+                    .ok_or_else(|| cast_error(&self, column_type))
+                    .map(Value::Boolean),
                 _ => Err(cast_error(&self, column_type)),
             },
             Type::Datetime => match self {
                 Value::Null => Ok(Value::Null),
                 Value::Datetime(_) => Ok(self),
+                Value::String(ref s) => try_parse_datetime(s)
+                    .ok_or_else(|| cast_error(&self, column_type))
+                    .map(Value::Datetime),
                 _ => Err(cast_error(&self, column_type)),
             },
             Type::Decimal => match self {
@@ -928,6 +935,9 @@ impl Value {
                 )),
                 Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v))),
                 Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v))),
+                Value::String(ref v) => Ok(Value::Decimal(
+                    Decimal::from_str(v).map_err(|_| cast_error(&self, column_type))?,
+                )),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -936,6 +946,7 @@ impl Value {
                 Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
                 Value::Unsigned(v) => Ok(Value::Double(Double::from(v))),
+                Value::String(v) => Ok(Value::Double(Double::from_str(&v)?)),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -952,6 +963,10 @@ impl Value {
                 Value::Unsigned(v) => Ok(Value::Integer(
                     i64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
                 )),
+                Value::String(ref v) => v
+                    .parse::<i64>()
+                    .map(Value::Integer)
+                    .map_err(|_| cast_error(&self, column_type)),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -978,6 +993,10 @@ impl Value {
                 )),
                 Value::Double(ref v) => v
                     .to_string()
+                    .parse::<u64>()
+                    .map(Value::Unsigned)
+                    .map_err(|_| cast_error(&self, column_type)),
+                Value::String(ref v) => v
                     .parse::<u64>()
                     .map(Value::Unsigned)
                     .map_err(|_| cast_error(&self, column_type)),

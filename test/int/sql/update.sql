@@ -101,11 +101,17 @@ rule parsing error
 
 -- TEST: test_invalid-7
 -- SQL:
- update "testing_space" set "product_units" = 'hello'
+ update "testing_space" set "product_units" = 'hello'::text
 -- ERROR:
 column "product_units" is of type int, but expression is of type text
 
 -- TEST: test_invalid-8
+-- SQL:
+ update "testing_space" set "product_units" = 'hello'
+-- ERROR:
+failed to parse 'hello' as a value of type int, consider using explicit type casts
+
+-- TEST: test_invalid-9
 -- SQL:
 update "testing_space" set "testing_space"."product_units" = 1
 -- ERROR:

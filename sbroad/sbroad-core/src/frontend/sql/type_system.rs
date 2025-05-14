@@ -1,14 +1,17 @@
 use crate::errors::SbroadError;
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::expression::cast::Type as CastType;
-use crate::ir::node::expression::Expression;
+use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Frame, FrameType, Like,
-    NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim, UnaryExpr, ValuesRow, Window,
+    Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Frame,
+    FrameType, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim, UnaryExpr,
+    ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::relation::{DerivedType, Type as SbroadType};
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
+use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::AHashMap;
 use sbroad_type_system::error::Error as TypeSystemError;
@@ -17,7 +20,8 @@ use sbroad_type_system::expr::{
     UnaryOperator, WindowFrame as GenericWindowFrame,
 };
 use sbroad_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer};
-use sbroad_type_system::TypeSystem;
+use sbroad_type_system::{TypeReport as GenericTypeReport, TypeSystem};
+use smol_str::format_smolstr;
 use std::sync::LazyLock;
 
 #[cfg(test)]
@@ -27,6 +31,7 @@ pub type TypeExpr = GenericExpr<NodeId>;
 pub type TypeExprKind = GenericExprKind<NodeId>;
 pub type WindowFrame = GenericWindowFrame<NodeId>;
 pub type TypeAnalyzer = GenericTypeAnalyzer<'static, NodeId>;
+pub type TypeReport = GenericTypeReport<NodeId>;
 
 impl From<SbroadType> for Type {
     fn from(value: SbroadType) -> Self {
@@ -566,12 +571,108 @@ pub fn new_analyzer(param_types: &[DerivedType]) -> TypeAnalyzer {
     TypeAnalyzer::new(&TYPE_SYSTEM).with_parameters(param_types)
 }
 
+/// Analyze expression types and apply type coercions.
+pub fn analyze_and_coerce_scalar_expr(
+    type_analyzer: &mut TypeAnalyzer,
+    expr_id: NodeId,
+    desired_type: DerivedType,
+    plan: &mut Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<(), SbroadError> {
+    analyze_scalar_expr(type_analyzer, expr_id, desired_type, plan, subquery_map)?;
+    coerce_scalar_expr(type_analyzer.get_report(), expr_id, plan)
+}
+
+/// Coerce expression types in accordance with the type report.
+fn coerce_scalar_expr(
+    report: &TypeReport,
+    expr_id: NodeId,
+    plan: &mut Plan,
+) -> Result<(), SbroadError> {
+    // At the moment we only coerce string literals.
+    fn collect_strings_to_be_coerced(
+        expr_id: NodeId,
+        plan: &Plan,
+        report: &TypeReport,
+    ) -> Vec<NodeId> {
+        // Explicit casts can be the only way to fix coercion errors,
+        // so we shouldn't coerce casted values.
+        let mut casted_strings = Vec::new();
+        let string_to_be_coerced_filter = |id| {
+            let Ok(expr) = plan.get_expression_node(id) else {
+                return false;
+            };
+
+            match expr {
+                Expression::Cast(Cast { child, .. }) if report.get_cast(child).is_some() => {
+                    if let Expression::Constant(Constant {
+                        value: Value::String(_),
+                    }) = plan.get_expression_node(*child).unwrap()
+                    {
+                        // Collect explicitly casted values.
+                        casted_strings.push(*child)
+                    }
+                    false
+                }
+                Expression::Constant(Constant {
+                    value: Value::String(_),
+                }) => report.get_cast(&id).is_some(),
+                _ => false,
+            }
+        };
+
+        let mut post_order = PostOrderWithFilter::with_capacity(
+            |node| plan.subtree_iter(node, false),
+            0,
+            Box::new(string_to_be_coerced_filter),
+        );
+
+        post_order.populate_nodes(expr_id);
+        let strings = post_order.take_nodes();
+        drop(post_order);
+
+        // Filter strings literals that require coercion and aren't casted explicitly.
+        strings
+            .into_iter()
+            .map(|LevelNode(_, id)| id)
+            .filter(|id| !casted_strings.contains(id))
+            .collect()
+    }
+
+    let cannot_parse_error = |str_value: &Value, ty| {
+        SbroadError::Other(format_smolstr!(
+            "failed to parse \'{}\' as a value of type {}, consider using explicit type casts",
+            match str_value {
+                Value::String(ref s) => s,
+                _ => unreachable!(),
+            },
+            ty
+        ))
+    };
+
+    let strings = collect_strings_to_be_coerced(expr_id, plan, report);
+    for id in strings {
+        if let MutExpression::Constant(Constant { value }) = plan.get_mut_expression_node(id)? {
+            let report_type = report.get_cast(&id).expect("Some according to filter");
+            let new_type = DerivedType::from(report_type)
+                .get()
+                .expect("type must be known");
+            *value = value
+                .clone()
+                .cast(new_type)
+                .map_err(|_| cannot_parse_error(value, report_type))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Perform type analysis for a scalar expressions.
 /// A scalar expressions is represented as a singe value.
 /// Examples are: literal, reference, subquery and etc.
 /// Rows are not scalar expressions and when they are used as a standalone value analysis fails
 /// with "row value misused" error.
-pub fn analyze_scalar_expr(
+fn analyze_scalar_expr(
     type_analyzer: &mut TypeAnalyzer,
     expr_id: NodeId,
     desired_type: DerivedType,
@@ -627,8 +728,8 @@ fn analyze_homogeneous_rows(
 pub fn analyze_values_rows(
     type_analyzer: &mut TypeAnalyzer,
     rows: &[NodeId],
-    plan: &Plan,
     desired_types: &[SbroadType],
+    plan: &mut Plan,
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
     let mut type_rows = Vec::with_capacity(rows.len());
@@ -642,5 +743,32 @@ pub fn analyze_values_rows(
     }
 
     analyze_homogeneous_rows(type_analyzer, "VALUES", &type_rows, desired_types)?;
+
+    let report = type_analyzer.get_report();
+    let mut new_list = Vec::new();
+    for row_id in rows {
+        let data = if let Relational::ValuesRow(ValuesRow { data, .. }) =
+            plan.get_relation_node(*row_id)?
+        {
+            *data
+        } else {
+            unreachable!();
+        };
+
+        if let Expression::Row(Row { list, .. }) = plan.get_expression_node(data)? {
+            // Here we clone again...
+            new_list.clone_from(list);
+        }
+
+        for child in &new_list {
+            coerce_scalar_expr(report, *child, plan)?;
+        }
+
+        if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(data)? {
+            // Here we clone again...
+            new_list.clone_into(list);
+        }
+    }
+
     Ok(())
 }

@@ -116,6 +116,16 @@ with the `YY.MINOR.MICRO` scheme.
   "could not infer data type of parameter $1" error.
   Now the parameter type will be defaulted to text, making the query valid.
 
+- SQL now can coerce string literals to more suitable type according to
+  the context where they are used. For instance, string literal will be
+  automatically coerced to a datetime value when it's being inserted in a
+  column of type datetime. If a string doesn't represent a valid value of
+  the inferred type, the result will be a parsing error.
+
+  Query examples:
+   - `SELECT 1 + '1'` is the same as `SELECT 1 + 1`
+   - `INSERT INTO t (datetime_col) VALUES ('2023-07-07T12:34:56Z')` is the
+     same as `INSERT INTO t (datetime_col) VALUES ('2023-07-07T12:34:56Z'::datetime)` 
 
 ### Observability
 - Added picodata metrics in prometheus format to the `/metrics` endpoint. Metrics allow to monitor SQL, RPC, CAS, Raft, instance and governor states. List of metrics:

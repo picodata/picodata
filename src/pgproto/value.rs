@@ -3,16 +3,16 @@ use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, BytesMut};
 use pgwire::{api::results::DataRowEncoder, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
-use sbroad::ir::value::Value as SbroadValue;
-use smol_str::{format_smolstr, StrExt, ToSmolStr};
+use sbroad::{
+    frontend::sql::{try_parse_bool, try_parse_datetime},
+    ir::value::Value as SbroadValue,
+};
+use smol_str::{format_smolstr, ToSmolStr};
 use std::{
     fmt::Debug,
     str::{self, FromStr},
 };
-use time::{
-    format_description::well_known::{Iso8601, Rfc2822, Rfc3339},
-    macros::format_description,
-};
+use time::macros::format_description;
 
 /// This type is used to send Format over the wire.
 pub type RawFormat = i16;
@@ -24,18 +24,13 @@ pub type FieldFormat = pgwire::api::results::FieldFormat;
 pub struct Bool(bool);
 
 impl FromStr for Bool {
-    type Err = &'static str;
+    type Err = Box<DynError>;
 
     #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase_smolstr();
-        // bool has many representations in text format.
-        // NOTE: see `parse_bool_with_len` in pg
-        match s.as_str() {
-            "t" | "true" | "yes" | "on" | "1" => Ok(Bool(true)),
-            "f" | "false" | "no" | "off" | "0" => Ok(Bool(false)),
-            _ => Err("invalid character found in bool"),
-        }
+        try_parse_bool(s)
+            .map(Self)
+            .ok_or_else(|| DecodingError::bad_lit_of_type(s, "bool").into())
     }
 }
 
@@ -211,62 +206,10 @@ pub struct Timestamptz(tarantool::datetime::Datetime);
 impl FromStr for Timestamptz {
     type Err = Box<DynError>;
 
-    /// PostgreSQL can parse arbitrary datetime formats, as demonstrated in the following functions:
-    /// * [timestamptz_in](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/backend/utils/adt/timestamp.c#L416)
-    /// * [ParseDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1598)
-    /// * [DecodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1780)
-    ///
-    /// Since supporting all these formats is impractical, we will focus on parsing some
-    /// known formats that enable interaction with PostgreSQL drivers.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fn try_from_well_known_formats(s: &str) -> Option<time::OffsetDateTime> {
-            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Iso8601::PARSING) {
-                return Some(datetime);
-            }
-            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc2822) {
-                return Some(datetime);
-            }
-            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc3339) {
-                return Some(datetime);
-            }
-
-            None
-        }
-
-        fn try_from_custom_formats(s: &str) -> Option<time::OffsetDateTime> {
-            // Formats used for encoding timestamptz values.
-            let formats = [
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"
-                ),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
-                ),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
-                ),
-                format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
-            )];
-
-            for fmt in formats {
-                if let Ok(datetime) = time::OffsetDateTime::parse(s, &fmt) {
-                    return Some(datetime);
-                }
-            }
-
-            None
-        }
-
-        if let Some(datetime) = try_from_well_known_formats(s) {
-            return Ok(Self(datetime.into()));
-        }
-
-        if let Some(datetime) = try_from_custom_formats(s) {
-            return Ok(Self(datetime.into()));
-        }
-
-        Err(DecodingError::bad_lit_of_type(s, "datetime").into())
+        try_parse_datetime(s)
+            .map(Self)
+            .ok_or_else(|| DecodingError::bad_lit_of_type(s, "datetime").into())
     }
 }
 
