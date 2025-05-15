@@ -357,10 +357,11 @@ Deallocate = ${ ^"deallocate" ~ (WithPrepare | WithoutPrepare) }
     WithPrepare = _{ W ~ ^"prepare" ~ W ~ (^"all" | Identifier) }
     WithoutPrepare = _{ W ~ (^"all" | Identifier) }
 
-TCL = _{ Begin | Commit | Rollback }
+TCL = _{ Begin | Commit | Rollback | End }
     Begin = { ^"begin" }
     Commit = { ^"commit" }
     Rollback = { ^"rollback" }
+    End = { ^"end" }
 
 EmptyQuery = { WHITESPACE* }
 

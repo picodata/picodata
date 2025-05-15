@@ -6129,7 +6129,8 @@ impl AbstractSyntaxTree {
                     let plan_id = plan.nodes.push(begin.into());
                     map.add(id, plan_id);
                 }
-                Rule::Commit => {
+                // END is a Postgres extension that has the same semantics as COMMIT
+                Rule::Commit | Rule::End => {
                     let commit = Tcl::Commit;
                     let plan_id = plan.nodes.push(commit.into());
                     map.add(id, plan_id);

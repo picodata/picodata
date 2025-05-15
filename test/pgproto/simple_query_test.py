@@ -359,6 +359,7 @@ def test_tcl(postgres: Postgres):
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
 
+    # ROLLBACK does nothing, the table is still created and is populated
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
     assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
@@ -375,7 +376,26 @@ def test_tcl(postgres: Postgres):
 
     cur = conn.execute("COMMIT;", prepare=False)
     assert cur.pgresult is not None
-    cur.pgresult.status == ExecStatus.COMMAND_OK
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("SELECT * FROM test_table;")
+    rows = cur.fetchall()
+    assert sorted(rows, key=lambda x: x[0]) == [(1, "Alice"), (2, "Bob")]
+
+    cur = conn.execute("DROP TABLE test_table;")
+
+    # now test the same, but using END instead of COMMIT
+    cur = conn.execute("BEGIN;", prepare=False)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+
+    cur = conn.execute("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);")
+
+    cur = conn.execute("INSERT INTO test_table (id, name) VALUES (1,'Alice'), (2,'Bob');")
+
+    cur = conn.execute("END;", prepare=False)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
 
     cur = conn.execute("SELECT * FROM test_table;")
     rows = cur.fetchall()
