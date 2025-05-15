@@ -287,3 +287,21 @@ with cte(escape) as (select '#') select escape from cte union all select escape 
 with cte(escape) as (select '#') select escape from cte union all select escape from cte
 -- EXPECTED:
 '#', '#'
+
+-- TEST: test-qualified-references-1
+-- SQL:
+SELECT "t".* FROM (SELECT 1) AS "t"
+-- EXPECTED:
+1
+
+-- TEST: test-qualified-references-2
+-- SQL:
+SELECT "no_such_table".* FROM (SELECT 1)
+-- ERROR:
+sbroad: table 'no_such_table' not found
+
+-- TEST: test-qualified-references-3
+-- SQL:
+SELECT "t1".* FROM t AS t1;
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3

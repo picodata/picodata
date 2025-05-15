@@ -1027,9 +1027,16 @@ impl ColumnPositionMap {
             }
         }
 
-        // Note: sorting of usizes doesn't take much time.
-        res.sort_unstable();
-        Ok(res)
+        if res.is_empty() {
+            Err(SbroadError::NotFound(
+                Entity::Table,
+                format_smolstr!("'{target_scan_name}'"),
+            ))
+        } else {
+            // Note: sorting of usizes doesn't take much time.
+            res.sort_unstable();
+            Ok(res)
+        }
     }
 }
 
