@@ -1655,7 +1655,7 @@ impl FullExplain {
 
                     Some(ExplainNode::Insert(
                         relation.to_smolstr(),
-                        conflict_strategy.clone(),
+                        *conflict_strategy,
                     ))
                 }
                 Relational::Update { .. } => {

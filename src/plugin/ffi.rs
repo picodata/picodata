@@ -21,6 +21,7 @@ use picodata_plugin::transport::rpc::client::FfiSafeRpcRequestArguments;
 use picodata_plugin::transport::rpc::server::FfiRpcHandler;
 use picodata_plugin::util::FfiSafeBytes;
 use picodata_plugin::util::FfiSafeStr;
+use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::value::double::Double;
 use sbroad::ir::value::{Tuple, Value};
 use std::time::Duration;
@@ -120,6 +121,7 @@ impl From<types::Dml> for Dml {
                 table,
                 tuple: unsafe { TupleBuffer::from_vec_unchecked(tuple.to_vec()) },
                 initiator,
+                conflict_strategy: ConflictStrategy::DoFail,
             },
             DmlInner::Replace {
                 table,

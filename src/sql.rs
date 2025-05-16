@@ -2072,7 +2072,7 @@ fn do_dml_on_global_tbl(
     let raft_index = raft_node.get_index();
 
     // Materialize reading subtree and extract some needed data from Plan
-    let (table_id, dml_kind, vtable) = {
+    let (table_id, dml_kind, vtable, on_conflict) = {
         let ir = query.get_exec_plan().get_ir_plan();
         let top = ir.get_top()?;
         let table = ir.dml_node_table(top)?;
@@ -2082,17 +2082,14 @@ fn do_dml_on_global_tbl(
             .id();
 
         let node = ir.get_relation_node(top)?;
-        if matches!(
-            node,
-            Relational::Insert(Insert {
-                conflict_strategy: ConflictStrategy::DoReplace | ConflictStrategy::DoNothing,
-                ..
-            })
-        ) {
-            Err(Error::other("insert on conflict is not supported yet"))?;
-        }
+        let mut on_conflict = Some(ConflictStrategy::DoFail);
         let dml_kind: DmlKind = match node {
-            Relational::Insert { .. } => DmlKind::Insert,
+            Relational::Insert(Insert {
+                conflict_strategy, ..
+            }) => {
+                on_conflict = Some(*conflict_strategy);
+                DmlKind::Insert
+            }
             Relational::Update { .. } => DmlKind::Update,
             Relational::Delete { .. } => DmlKind::Delete,
             _ => unreachable!(),
@@ -2112,7 +2109,7 @@ fn do_dml_on_global_tbl(
             .remove(&motion_id)
             .expect("subtree must be materialized");
 
-        (table_id, dml_kind, vtable)
+        (table_id, dml_kind, vtable, on_conflict)
     };
 
     // CAS will return error on empty batch
@@ -2139,7 +2136,11 @@ fn do_dml_on_global_tbl(
             // many tuples for one table.
             DmlKind::Insert => {
                 let tuple = build_insert_args(tuple, &builder, None)?;
-                Dml::insert(table_id, &tuple, current_user)?
+                if let Some(ref on_conflict) = on_conflict {
+                    Dml::insert_with_on_conflict(table_id, &tuple, current_user, *on_conflict)?
+                } else {
+                    Dml::insert(table_id, &tuple, current_user)?
+                }
             }
             DmlKind::Delete => {
                 let tuple = build_delete_args(tuple, &builder)?;

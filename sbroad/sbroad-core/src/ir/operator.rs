@@ -210,7 +210,7 @@ impl Display for JoinKind {
 }
 
 /// Strategy applied on INSERT execution.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, Default)]
 pub enum ConflictStrategy {
     /// Swallow the error, do not insert the conflicting tuple
     DoNothing,

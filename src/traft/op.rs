@@ -12,6 +12,7 @@ use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
+use sbroad::ir::operator::ConflictStrategy;
 use serde::{Deserialize, Serialize};
 use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::index::IndexType;
@@ -480,6 +481,8 @@ pub enum Dml {
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
         initiator: UserId,
+        #[serde(default)]
+        conflict_strategy: ConflictStrategy,
     },
     Replace {
         table: SpaceId,
@@ -552,6 +555,23 @@ impl Dml {
             table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
             initiator,
+            conflict_strategy: ConflictStrategy::DoFail,
+        };
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn insert_with_on_conflict(
+        space: impl Into<SpaceId>,
+        tuple: &impl ToTupleBuffer,
+        initiator: UserId,
+        on_conflict: ConflictStrategy,
+    ) -> tarantool::Result<Self> {
+        let res = Self::Insert {
+            table: space.into(),
+            tuple: tuple.to_tuple_buffer()?,
+            initiator,
+            conflict_strategy: on_conflict,
         };
         Ok(res)
     }
@@ -566,6 +586,7 @@ impl Dml {
             table: space.into(),
             tuple: TupleBuffer::try_from_vec(tuple)?,
             initiator,
+            conflict_strategy: ConflictStrategy::DoFail,
         };
         Ok(res)
     }
@@ -640,6 +661,7 @@ impl Dml {
                     table,
                     tuple,
                     initiator,
+                    conflict_strategy: ConflictStrategy::DoFail,
                 })
             }
             DmlKind::Replace => {

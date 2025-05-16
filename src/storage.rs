@@ -1,3 +1,4 @@
+use sbroad::ir::operator::ConflictStrategy;
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::index::FieldType as IndexFieldType;
@@ -270,8 +271,25 @@ impl Catalog {
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
         let space = space_by_id_unchecked(dml.space());
+        use ConflictStrategy::*;
         match dml {
-            Dml::Insert { tuple, .. } => space.insert(tuple).map(Some),
+            Dml::Insert {
+                tuple,
+                conflict_strategy: DoFail,
+                ..
+            } => space.insert(tuple).map(Some),
+            Dml::Insert {
+                tuple,
+                conflict_strategy: DoReplace,
+                ..
+            } => space.replace(tuple).map(Some),
+            Dml::Insert {
+                tuple: _,
+                conflict_strategy: DoNothing,
+                ..
+            } => {
+                unreachable!("`INSERT INTO ... ON CONFLICT DO NOTHING` is not supported for globally distributed tables yet")
+            }
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
             Dml::Delete { key, .. } => space.delete(key).map(|_| None),

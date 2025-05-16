@@ -1140,6 +1140,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
+    use sbroad::ir::operator::ConflictStrategy;
     use storage::Tables;
     use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;
@@ -1286,6 +1287,7 @@ mod tests {
                 table,
                 tuple: tuple.clone(),
                 initiator: ADMIN_ID,
+                conflict_strategy: ConflictStrategy::DoFail,
             },
             Dml::Replace {
                 table,

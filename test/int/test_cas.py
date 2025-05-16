@@ -179,7 +179,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args[:2] == (
         "ER_SLAB_ALLOC_MAX",
-        "tuple size 1048593 exceeds the allowed limit",  # noqa: E501
+        "tuple size 1048600 exceeds the allowed limit",  # noqa: E501
     )
 
 
