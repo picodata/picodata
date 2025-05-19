@@ -289,7 +289,7 @@ fn main_impl(args: args::Status) -> Result<(), Box<dyn std::error::Error>> {
         // All meta-information must be separated
         // by a space at the beginning of the line.
         let table = table.to_string();
-        let mut splitted = table.split("\n").map(String::from).collect::<Vec<_>>();
+        let mut splitted = table.split('\n').map(String::from).collect::<Vec<_>>();
 
         for (index, line) in splitted.iter_mut().enumerate() {
             // Table header is the first line in table output.
