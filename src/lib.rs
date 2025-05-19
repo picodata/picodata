@@ -342,8 +342,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
         ))
     })?;
 
-    use prometheus::default_registry;
-    metrics::register_metrics(default_registry());
+    metrics::register_metrics(prometheus::default_registry());
 
     lua.exec_with(
         r#"
