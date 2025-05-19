@@ -1002,17 +1002,17 @@ def test_picodata_status_basic(cluster: Cluster):
  CLUSTER NAME: cluster-0-0
  TIER/DOMAIN: router/MSK
 
- name         state    uuid                                   uri            
-{i1.name}    Online   {i1_uuid}   {i1_address} 
+ name         state    uuid                                   uri
+{i1.name}    Online   {i1_uuid}   {i1_address}
 
  TIER/DOMAIN: router/SPB
- name         state    uuid                                   uri            
-{i2.name}    Online   {i2_uuid}   {i2_address} 
-{i3.name}    Online   {i3_uuid}   {i3_address} 
+ name         state    uuid                                   uri
+{i2.name}    Online   {i2_uuid}   {i2_address}
+{i3.name}    Online   {i3_uuid}   {i3_address}
 
  TIER/DOMAIN: storage/SPB
- name         state    uuid                                   uri            
-{i4.name}   Online   {i4_uuid}   {i4_address} 
+ name         state    uuid                                   uri
+{i4.name}   Online   {i4_uuid}   {i4_address}
 
 """
 
@@ -1037,17 +1037,17 @@ def test_picodata_status_basic(cluster: Cluster):
  CLUSTER NAME: cluster-0-0
  TIER/DOMAIN: router/MSK
 
- name         state    uuid                                   uri            
-{i1.name}    Online   {i1_uuid}   {i1_address} 
+ name         state    uuid                                   uri
+{i1.name}    Online   {i1_uuid}   {i1_address}
 
  TIER/DOMAIN: router/SPB
- name         state    uuid                                   uri            
-{i3.name}    Online   {i3_uuid}   {i3_address} 
-{i2.name}    Offline   {i2_uuid}   {i2_address} 
+ name         state    uuid                                   uri
+{i3.name}    Online   {i3_uuid}   {i3_address}
+{i2.name}    Offline   {i2_uuid}   {i2_address}
 
  TIER/DOMAIN: storage/SPB
- name         state    uuid                                   uri            
-{i4.name}   Online   {i4_uuid}   {i4_address} 
+ name         state    uuid                                   uri
+{i4.name}   Online   {i4_uuid}   {i4_address}
 
 """
 
@@ -1063,7 +1063,6 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
     instance = cluster.add_instance(name=short_name)
 
     info = instance.instance_info()
-    cluster_uuid = info["cluster_uuid"]
     cluster_name = info["cluster_name"]
     i1_address = f"{instance.host}:{instance.port}"
     i1_uuid = instance.uuid()
@@ -1083,11 +1082,10 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
 
     output = f"""\
  CLUSTER NAME: {cluster_name}
- CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: default
 
- name   state    uuid                                   uri            
-{instance.name}       Online   {i1_uuid}   {i1_address} 
+ name   state    uuid                                   uri
+{instance.name}       Online   {i1_uuid}   {i1_address}
 
 """
 
