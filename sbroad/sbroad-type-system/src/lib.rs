@@ -697,7 +697,11 @@ mod tests {
         let err = analyzer.analyze(&expr, None).unwrap_err();
         assert_eq!(
             err,
-            Error::InconsistentParameterTypesDeduced(0, Integer, Double)
+            Error::InconsistentParameterTypesDeduced {
+                idx: 0,
+                preferred: Integer,
+                another: Double
+            }
         );
     }
 

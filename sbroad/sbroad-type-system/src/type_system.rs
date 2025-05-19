@@ -237,9 +237,25 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             if old_type == Type::Unknown {
                 self.parameters[*idx as usize] = *new_type;
             } else if old_type != *new_type {
-                return Err(Error::InconsistentParameterTypesDeduced(
-                    *idx, old_type, *new_type,
-                ));
+                // Preferred type is the type we will suggest to use as the base type to resolve
+                // ambiguity. For instance, `$1::int = $1::numeric` is ambiguous, but can be
+                // resolved as `$1::int = $1::int::numeric` or `$1::numeric::int = $1::numeric`
+                //
+                // We select the preferred type based on ability to coerce it to another type to
+                // ensure valid casting sequences. We should probably use `can_cast`, but we
+                // don't have it. `can_coerce` can lead to incorrect suggestion, but we don't
+                // worry much about it, as the suggestion still remains helpful and can give
+                // insights about fixing the issue.
+                let (preferred, another) = match self.can_coerce(old_type, *new_type) {
+                    true => (old_type, *new_type),
+                    _else => (*new_type, old_type),
+                };
+
+                return Err(Error::InconsistentParameterTypesDeduced {
+                    idx: *idx,
+                    preferred,
+                    another,
+                });
             }
         }
 

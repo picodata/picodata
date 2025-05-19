@@ -50,14 +50,20 @@ def test_params_specified_via_cast(postgres: Postgres):
     assert rows == [[-2, "string", True, 3.141592]]
 
     # Test an ambiguous parameter type error.
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and unsigned deduced for parameter \$1"):
+    with pytest.raises(
+        DatabaseError,
+        match=r"picodata error: sbroad: inconsistent types unsigned and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::int and \$1::unsigned",
+    ):
         conn.run(
             """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::unsigned; """,
             p1=-1,
         )
 
     # Test an even more ambiguous parameter type error.
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and unsigned deduced for parameter \$1"):
+    with pytest.raises(
+        DatabaseError,
+        match=r"picodata error: sbroad: inconsistent types unsigned and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::int and \$1::unsigned",
+    ):
         conn.run(
             """ SELECT "id" FROM "tall" \
                 WHERE "id" = :p1::integer + :p1::unsigned + :p1::decimal; """,
@@ -215,12 +221,12 @@ def test_params_inference_in_values(postgres: Postgres):
     assert cols_oids(conn) == [type_oid("numeric")]
 
     # Ensure inferred types are consistent.
-    rows = conn.run("WITH t(a) AS (VALUES (:p + 1), (:p + 1.5)) SELECT $1 FROM t LIMIT 1", p=1)
+    rows = conn.run("WITH t(a) AS (VALUES (:p + 1), (:p + 1.5)) SELECT :p FROM t LIMIT 1", p=1)
     assert rows == [[Decimal(1.0)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
     # Ensure inferred types are consistent.
-    rows = conn.run("WITH t(a) AS (VALUES (:p + 1.5), (:p + 1)) SELECT $1 FROM t LIMIT 1", p=1)
+    rows = conn.run("WITH t(a) AS (VALUES (:p + 1.5), (:p + 1)) SELECT :p FROM t LIMIT 1", p=1)
     assert rows == [[Decimal(1.0)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
@@ -265,8 +271,11 @@ def test_params_inference_in_insert(postgres: Postgres):
     rows = conn.run("SELECT * FROM t WHERE i > 90")
     assert sorted(rows) == [[91, 92.0, "93"], [92, 93.0, "94"]]
 
-    # Ensure inferred types are consistent.
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and text deduced for parameter \$3"):
+    # $1 and $3 are inferred form the type of the 1st column, and then parameter $3
+    # of type text is being inserted in he 3rd column of incompatible type
+    with pytest.raises(
+        DatabaseError, match=r"INSERT column at position 3 is of type text, but expression is of type int"
+    ):
         conn.run(
             "INSERT INTO t VALUES (:p1, :p2, :p3), (:p3, :p2, :p1)",
             p1="1",
@@ -340,10 +349,16 @@ def test_params_inference_errors(postgres: Postgres):
     with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$1"):
         conn.run("SELECT :p = NULL", p=1)
 
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and double deduced for parameter \$1"):
+    with pytest.raises(
+        DatabaseError,
+        match=r"picodata error: sbroad: inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
+    ):
         conn.run("SELECT :p::int + :p::double", p=1)
 
-    with pytest.raises(DatabaseError, match=r"inconsistent types unsigned and text deduced for parameter \$1"):
+    with pytest.raises(
+        DatabaseError,
+        match=r"picodata error: sbroad: inconsistent types text and unsigned deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::text::unsigned and \$1::text",
+    ):
         conn.run("SELECT * FROM (SELECT 1) WHERE :p = 1 AND :p = '1.5'", p=1)
 
     with pytest.raises(DatabaseError, match=r"row value misused"):
@@ -393,11 +408,11 @@ def test_params_inference_in_complex_queries(postgres: Postgres):
     assert cols_oids(conn) == [type_oid("numeric")]
 
     # TODO: remove unsigned type to fix that
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and unsigned deduced for parameter \$1"):
+    with pytest.raises(DatabaseError, match=r"inconsistent types unsigned and int deduced for parameter \$1"):
         conn.run("WITH t(a) AS (SELECT max(:p) + (1 + :p)) SELECT :p", p=1)
 
     # TODO: remove unsigned type to fix that
-    with pytest.raises(DatabaseError, match=r"inconsistent types int and unsigned deduced for parameter \$1"):
+    with pytest.raises(DatabaseError, match=r"inconsistent types unsigned and int deduced for parameter \$1"):
         conn.run("WITH t(a) AS (SELECT max(:p) + (1 + :p)) SELECT :p", p=1)
 
     # Ensure types are consistent.

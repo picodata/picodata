@@ -46,8 +46,17 @@ pub enum Error {
     #[error("could not determine data type of parameter ${}", .0 + 1)]
     CouldNotDetermineParameterType(u16),
 
-    #[error("inconsistent types {} and {} deduced for parameter ${}", .1, .2, .0 + 1)]
-    InconsistentParameterTypesDeduced(u16, Type, Type),
+    #[error(
+        "inconsistent types {preferred} and {another} deduced for parameter ${idx}, \
+        consider using transitive type casts through a common type, \
+        e.g. ${idx}::{preferred}::{another} and ${idx}::{preferred}",
+        idx = idx + 1,
+    )]
+    InconsistentParameterTypesDeduced {
+        idx: u16,
+        preferred: Type,
+        another: Type,
+    },
 
     #[error("unequal number of entries in row expression: {0} and {1}")]
     UnequalNumberOfEntriesInRowExpression(usize, usize),
