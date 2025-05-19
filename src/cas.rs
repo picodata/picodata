@@ -15,7 +15,7 @@ use crate::traft::node;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
-use crate::traft::{RaftIndex, RaftTerm};
+use crate::traft::{RaftIndex, RaftTerm, ResRowCount};
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
@@ -29,8 +29,7 @@ use tarantool::space::{Space, SpaceId};
 use tarantool::time::Instant;
 use tarantool::tlua;
 use tarantool::transaction;
-use tarantool::tuple::Decode;
-use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
+use tarantool::tuple::{Decode, KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 /// These configs are defined once at cluster bootstrap
 /// and they cannot be modified afterwards
@@ -194,14 +193,14 @@ pub fn compare_and_swap(
     if i_am_leader {
         // cas has to be called locally in cases when listen ports are closed,
         // for example on shutdown
-        res = proc_cas_local(request);
+        res = proc_cas_v2_local(request);
     } else if force_local {
         return Err(TraftError::NotALeader);
     } else {
         let future = async {
             let timeout = deadline.duration_since(fiber::clock());
             node.pool
-                .call(&leader_id, proc_name!(proc_cas), request, timeout)?
+                .call(&leader_id, proc_name!(proc_cas_v2), request, timeout)?
                 .timeout(timeout)
                 .await
                 .map_err(Into::into)
@@ -232,12 +231,16 @@ pub fn compare_and_swap(
         }
     }
 
-    return Ok(CasResult::Ok((response.index, response.term)));
+    return Ok(CasResult::Ok((
+        response.index,
+        response.term,
+        response.res_row_count,
+    )));
 }
 
 #[must_use = "You must decide if you're retrying the error or returning it to user"]
 pub enum CasResult {
-    Ok((RaftIndex, RaftTerm)),
+    Ok((RaftIndex, RaftTerm, ResRowCount)),
     RetriableError(TraftError),
 }
 
@@ -258,7 +261,7 @@ impl CasResult {
     /// Converts the result into `std::result::Result` for your convenience if
     /// you want to return the retriable error to the user.
     #[inline(always)]
-    pub fn no_retries(self) -> traft::Result<(RaftIndex, RaftTerm)> {
+    pub fn no_retries(self) -> traft::Result<(RaftIndex, RaftTerm, ResRowCount)> {
         match self {
             Self::Ok(v) => Ok(v),
             Self::RetriableError(e) => Err(e),
@@ -266,7 +269,44 @@ impl CasResult {
     }
 }
 
-fn proc_cas_local(req: &Request) -> Result<Response> {
+crate::define_rpc_request! {
+    /// Performs a clusterwide compare and swap operation.
+    /// Should be called only on the raft leader.
+    ///
+    /// The leader checks the predicate and if no conflicting
+    /// entries were found appends the `op` to the raft log and returns its
+    /// index and term.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving instance is not yet initialized
+    /// 2. Storage failure
+    /// 3. Cluster name mismatch
+    /// 4. Request has an incorrect term - leader changed
+    /// 5. Receiving instance is not a raft-leader
+    /// 6. [Compare and swap error](Error)
+    #[deprecated(note = "Use `proc_cas_v2` instead")]
+    fn proc_cas(req: RequestDeprecated) -> Result<ResponseDeprecated> {
+        let res = proc_cas_v2_local(&Request{
+            cluster_name: req.0.cluster_name,
+            predicate: req.0.predicate,
+            op: req.0.op,
+            as_user: req.0.as_user,
+        })?;
+        Ok(ResponseDeprecated{
+            index: res.index,
+            term: res.term,
+        })
+    }
+
+    pub struct RequestDeprecated(pub Request);
+
+    pub struct ResponseDeprecated {
+        pub index: RaftIndex,
+        pub term: RaftTerm,
+    }
+}
+
+fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let storage = &node.storage;
@@ -422,6 +462,8 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         check_predicate(entry.index, &op, &ranges, storage)?;
     }
 
+    let mut res_row_count = 0;
+
     // Performs preliminary checks on an operation so that it will not fail when applied.
     match &req.op {
         Op::Dml(dml) => {
@@ -439,16 +481,21 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
             transaction::begin()?;
             let res = storage.do_dml(dml);
             transaction::rollback().expect("can't fail");
-            // Return the error if it happened. Ignore the tuple if there was one.
-            _ = res?;
+            // Return the error if it happened.
+            // Increment res_row_count if there was tuple.
+            if res?.is_some() {
+                res_row_count += 1;
+            }
         }
         Op::BatchDml { ops, .. } => {
             let mut res = Ok(None);
             transaction::begin()?;
             for op in ops {
                 res = storage.do_dml(op);
-                if res.is_err() {
-                    break;
+                match res {
+                    Ok(Some(_)) => res_row_count += 1,
+                    Err(_) => break,
+                    _ => {}
                 }
             }
             transaction::rollback().expect("can't fail");
@@ -472,7 +519,11 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     assert_eq!(term, requested_term);
     drop(node_impl); // unlock the mutex
 
-    Ok(Response { index, term })
+    Ok(Response {
+        index,
+        term,
+        res_row_count,
+    })
 }
 
 crate::define_rpc_request! {
@@ -481,7 +532,7 @@ crate::define_rpc_request! {
     ///
     /// The leader checks the predicate and if no conflicting
     /// entries were found appends the `op` to the raft log and returns its
-    /// index and term.
+    /// index, term and the number of INSERT operations applied in accordance with the corresponding ON REPLACE strategy (see `do_dml` in storage::Catalog).
     ///
     /// Returns errors in the following cases:
     /// 1. Raft node on a receiving instance is not yet initialized
@@ -491,8 +542,8 @@ crate::define_rpc_request! {
     /// 5. Receiving instance is not a raft-leader
     /// 6. [Compare and swap error](Error)
     // TODO Result<Either<Response, Error>>
-    fn proc_cas(req: Request) -> Result<Response> {
-        proc_cas_local(&req)
+    fn proc_cas_v2(req: Request) -> Result<Response> {
+        proc_cas_v2_local(&req)
     }
 
     pub struct Request {
@@ -505,6 +556,7 @@ crate::define_rpc_request! {
     pub struct Response {
         pub index: RaftIndex,
         pub term: RaftTerm,
+        pub res_row_count: ResRowCount,
     }
 }
 

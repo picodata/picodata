@@ -70,7 +70,7 @@ def test_log_rollback(cluster3: Cluster):
         nonlocal key
         while True:
             try:
-                index = cluster3.cas(
+                index, _ = cluster3.cas(
                     "insert",
                     "_pico_property",
                     (f"check{key}", value),

@@ -50,7 +50,7 @@ def test_unapplied_entries_arent_compacted(instance: Instance):
     i1.call("pico._inject_error", "BLOCK_AFTER_RAFT_PERSISTS_COMMIT_INDEX", True)
 
     # Propose a raft log entry and wait for it to be committed, but not applied.
-    index = i1.cas("insert", "_pico_property", ["dont", "compact", "me"])
+    index, _ = i1.cas("insert", "_pico_property", ["dont", "compact", "me"])
     raft_wait_commit_index(i1, index)
 
     assert i1.call("box.space._pico_property:get", "dont") is None

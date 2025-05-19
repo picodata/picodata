@@ -107,7 +107,7 @@ def test_restart_both(cluster2: Cluster):
     i2.wait_online()
     assert i1.current_state() == dict(variant="Online", incarnation=2)
 
-    index = cluster2.cas("insert", "_pico_property", ("check", True))
+    index, _ = cluster2.cas("insert", "_pico_property", ("check", True))
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
     assert i1.eval("return box.space._pico_property:get('check')")[1] is True
@@ -122,12 +122,12 @@ def test_exit_after_persist_before_commit(cluster2: Cluster):
 
     # Reduce the maximum interval between heartbeats, so that we don't have to
     # wait for eternity
-    index = i1.cas("replace", "_pico_property", ["max_heartbeat_period", 0.5])
+    index, _ = i1.cas("replace", "_pico_property", ["max_heartbeat_period", 0.5])
     i1.raft_wait_index(index)
 
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_ENTRIES", True)
 
-    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+    index, _ = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
 
     # The injected error forces the instance to exit right after persisting the
     # raft log entries, but before committing them to raft.
@@ -147,7 +147,7 @@ def test_exit_after_commit_before_apply(cluster2: Cluster):
 
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_HARD_STATE", True)
 
-    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+    index, _ = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
 
     # The injected error forces the instance to exit right after persisting the
     # hard state, but before applying the entries to the local storage.
@@ -167,7 +167,7 @@ def test_exit_after_apply(cluster2: Cluster):
 
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES", True)
 
-    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+    index, _ = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
 
     # The injected error forces the instance to exit right after applying the
     # committed entry, but before letting raft-rs know about it.

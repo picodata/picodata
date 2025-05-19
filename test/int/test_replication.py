@@ -160,7 +160,7 @@ def test_master_auto_switchover(cluster: Cluster):
     assert i5.eval("return box.info.ro")
 
     # Manually change master back to i5
-    index = cluster.cas(
+    index, _ = cluster.cas(
         "update",
         "_pico_replicaset",
         key=["r99"],
@@ -210,7 +210,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     i1.promote_or_fail()
 
     # Initiate master switchover.
-    index = cluster.cas(
+    index, _ = cluster.cas(
         "update",
         "_pico_replicaset",
         key=["r99"],

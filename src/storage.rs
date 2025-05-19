@@ -10,8 +10,7 @@ use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
-use tarantool::tuple::DecodeOwned;
-use tarantool::tuple::KeyDef;
+use tarantool::tuple::{DecodeOwned, KeyDef};
 use tarantool::tuple::{RawBytes, Tuple};
 use tarantool::util::NumOrStr;
 
@@ -265,9 +264,9 @@ impl Catalog {
 
     /// Perform the `dml` operation on the local storage.
     /// When possible, return the new tuple produced by the operation:
-    ///   * `Some(tuple)` in case of insert and replace;
+    ///   * `Some(tuple)` in case of insert (except for on conflict do nothing) and replace;
     ///   * `Some(tuple)` or `None` depending on update's result (it may be NOP);
-    ///   * `None` in case of delete (because the tuple is gone).
+    ///   * `None` in case of delete (because the tuple is gone) and 'insert on conflict do nothing'.
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
         let space = space_by_id_unchecked(dml.space());
@@ -979,7 +978,7 @@ impl PropertyName {
         // TODO: some of these properties are only supposed to be updated by
         // picodata. Maybe for these properties we should check the effective
         // user id and if it's not admin we deny the change. We'll have to set
-        // effective user id to the one who requested the dml in proc_cas.
+        // effective user id to the one who requested the dml in proc_cas_v2.
 
         let map_err = |e: TntError| -> Error {
             // Make the msgpack decoding error message a little bit more human readable.

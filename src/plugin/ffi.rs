@@ -233,7 +233,7 @@ extern "C" fn pico_ffi_cas(
         cas::compare_and_swap(&request, true, false, deadline)
     })();
     match res {
-        Ok(cas::CasResult::Ok((index, term))) => ROk(RSome(Tuple2(index, term))),
+        Ok(cas::CasResult::Ok((index, term, _))) => ROk(RSome(Tuple2(index, term))),
         Ok(cas::CasResult::RetriableError(e)) => error_into_tt_error(e),
         // FIXME: this is wrong, just return an error instead
         Err(e) if e.error_code() == TarantoolErrorCode::Timeout as u32 => ROk(RNone),

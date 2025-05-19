@@ -904,7 +904,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
             distribution="global",
         ),
     )
-    index = i1.cas("insert", table_name, [9])
+    index, _ = i1.cas("insert", table_name, [9])
     for i in cluster.instances:
         i.raft_wait_index(index)
 
@@ -1415,7 +1415,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
         assert i.call("box.space._space.index.name:get", space_name) is not None
 
     for row in ([1, 10], [2, 20], [3, 30]):
-        index = cluster.cas("insert", space_name, row)
+        index, _ = cluster.cas("insert", space_name, row)
         cluster.raft_wait_index(index, 3)
 
     #
@@ -1443,7 +1443,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(i1.raft_get_index())
     for row in ([1, "one"], [2, "two"], [3, "three"]):  # type: ignore
-        index = cluster.cas("insert", space_name, row)
+        index, _ = cluster.cas("insert", space_name, row)
         cluster.raft_wait_index(index, 3)
 
     # Compact raft log to trigger snapshot generation.

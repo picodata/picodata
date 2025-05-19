@@ -1513,7 +1513,7 @@ def test_on_leader_change(cluster: Cluster):
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i1)
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": False}, i2, i3)
 
-    index = cluster.cas(
+    index, _ = cluster.cas(
         "update",
         "_pico_replicaset",
         key=["r1"],
@@ -1548,7 +1548,7 @@ def test_error_on_leader_change(cluster: Cluster):
 
     plugin_ref.inject_error("testservice_1", "on_leader_change", True, i1)
 
-    index = cluster.cas(
+    index, _ = cluster.cas(
         "update",
         "_pico_replicaset",
         key=["r1"],

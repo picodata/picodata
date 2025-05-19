@@ -2516,7 +2516,7 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
         let res = cas::compare_and_swap_and_wait(&req, deadline)?;
         match res {
             cas::CasResult::RetriableError(_) => continue,
-            cas::CasResult::Ok((index, _)) => return Ok(index),
+            cas::CasResult::Ok((index, _, _)) => return Ok(index),
         }
     }
 }

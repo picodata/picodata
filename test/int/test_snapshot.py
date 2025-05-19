@@ -11,7 +11,7 @@ _3_SEC = 3
 def test_bootstrap_from_snapshot(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
-    ret = i1.cas("insert", "_pico_property", ["animal", "horse"])
+    ret, _ = i1.cas("insert", "_pico_property", ["animal", "horse"])
     i1.raft_wait_index(ret, _3_SEC)
     assert i1.raft_read_index(_3_SEC) == ret
 
@@ -72,7 +72,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     """
     i1, i2, i3 = cluster.deploy(instance_count=3)
     i1.assert_raft_status("Leader")
-    ret = i1.cas("insert", "_pico_property", ["animal", "tiger"])
+    ret, _ = i1.cas("insert", "_pico_property", ["animal", "tiger"])
 
     i3.raft_wait_index(ret, _3_SEC)
     assert i3.call("box.space._pico_property:get", "animal") == ["animal", "tiger"]
@@ -80,7 +80,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i3.terminate()
 
     i1.cas("delete", "_pico_property", key=["animal"])
-    ret = i1.cas("insert", "_pico_property", ["tree", "birch"])
+    ret, _ = i1.cas("insert", "_pico_property", ["tree", "birch"])
 
     for i in [i1, i2]:
         i.raft_wait_index(ret, _3_SEC)
@@ -237,7 +237,7 @@ def test_large_snapshot(cluster: Cluster):
     for i in [i1, i2, i3]:
         wait_data_prepared(i)
 
-    index = cluster.cas("insert", "_pico_property", ["big", "data"])
+    index, _ = cluster.cas("insert", "_pico_property", ["big", "data"])
     cluster.raft_wait_index(index)
 
     i1.raft_compact_log()
@@ -253,7 +253,7 @@ def test_large_snapshot(cluster: Cluster):
     i4.start()
 
     # In the middle of snapshot application propose a new entry
-    index = cluster.cas("insert", "_pico_property", ["pokemon", "snap"])
+    index, _ = cluster.cas("insert", "_pico_property", ["pokemon", "snap"])
     for i in [i1, i2, i3]:
         i.raft_wait_index(index)
 
@@ -332,14 +332,14 @@ def test_large_snapshot(cluster: Cluster):
 def test_repeated_snapshot_after_repeated_compaction(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
-    index = i1.cas("insert", "_pico_property", ["googoo", "gaga"])
+    index, _ = i1.cas("insert", "_pico_property", ["googoo", "gaga"])
     i1.raft_wait_index(index)
 
     # Compact raft log to trigger creation of snapshot
     i1.raft_compact_log()
     i2 = cluster.add_instance(wait_online=True)
 
-    index = cluster.cas("insert", "_pico_property", ["booboo", "baba"])
+    index, _ = cluster.cas("insert", "_pico_property", ["booboo", "baba"])
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
 
@@ -364,7 +364,7 @@ def test_snapshot_after_conf_change(cluster: Cluster):
 
     i3.terminate()
 
-    index = i1.cas("insert", "_pico_property", ["yoyo", "yaya"])
+    index, _ = i1.cas("insert", "_pico_property", ["yoyo", "yaya"])
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
 

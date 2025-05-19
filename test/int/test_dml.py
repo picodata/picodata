@@ -28,9 +28,11 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     )
 
     # Some dml
-    index = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
+    index, res_row_count = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
-    index = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
+    index, res_row_count = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
     i2.raft_wait_index(index, 3)
     i3.raft_wait_index(index, 3)
@@ -53,11 +55,13 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     i5.terminate()
 
     # More DML
-    index = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
+    index, res_row_count = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
-    index = i1.cas("delete", "candy", key=[1])
+    index, _ = i1.cas("delete", "candy", key=[1])
     i1.raft_wait_index(index, 3)
-    index = i1.cas("insert", "candy", [3, "ice cream", 0.3])
+    index, res_row_count = i1.cas("insert", "candy", [3, "ice cream", 0.3])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
     i2.raft_wait_index(index, 3)
     i3.raft_wait_index(index, 3)
@@ -117,9 +121,11 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     )
 
     # Some dml
-    index = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
+    index, res_row_count = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
-    index = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
+    index, res_row_count = i1.cas("insert", "candy", [2, "milk chocolate", 6.9])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
     i2.raft_wait_index(index, 3)
     i3.raft_wait_index(index, 3)
@@ -142,11 +148,13 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     i5.terminate()
 
     # More DML
-    index = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
+    index, res_row_count = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
-    index = i1.cas("delete", "candy", key=[1])
+    index, res_row_count = i1.cas("delete", "candy", key=[1])
     i1.raft_wait_index(index, 3)
-    index = i1.cas("insert", "candy", [3, "ice cream", 0.3])
+    index, res_row_count = i1.cas("insert", "candy", [3, "ice cream", 0.3])
+    assert res_row_count == 1
     i1.raft_wait_index(index, 3)
     i2.raft_wait_index(index, 3)
     i3.raft_wait_index(index, 3)

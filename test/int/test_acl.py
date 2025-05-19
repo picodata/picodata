@@ -15,7 +15,7 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
     read_index = cluster.instances[0].raft_read_index()
 
     # Successful insert
-    ret = cluster.cas(
+    ret, _ = cluster.cas(
         "replace",
         "_pico_property",
         [PASSWORD_MIN_LENGTH_KEY, min_password_len],

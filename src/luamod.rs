@@ -1188,7 +1188,7 @@ pub(crate) fn setup() {
                 let req = crate::cas::Request::new(op, predicate, su.original_user_id)?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
                 let res = cas::compare_and_swap(&req, false, false, deadline)?;
-                let (index, _) = res.no_retries()?;
+                let (index, _, _) = res.no_retries()?;
                 Ok(index)
             },
         ),
@@ -1205,7 +1205,7 @@ pub(crate) fn setup() {
         tlua::function2(
             |arg: op::BatchDmlInLua,
              predicate: Option<cas::PredicateInLua>|
-             -> traft::Result<RaftIndex> {
+             -> traft::Result<[u64; 3]> {
                 // su is needed here because for cas execution we need to consult with system spaces like `_raft_state`
                 // and the user executing cas request may not (even shouldnt) have access to these spaces
                 let su = session::su(ADMIN_ID)?;
@@ -1225,8 +1225,9 @@ pub(crate) fn setup() {
                 )?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
                 let res = cas::compare_and_swap(&req, false, false, deadline)?;
-                let (index, _) = res.no_retries()?;
-                Ok(index)
+                let (index, term, res_row_count) = res.no_retries()?;
+
+                Ok([index, term, res_row_count])
             },
         ),
     );

@@ -597,13 +597,13 @@ impl NodeImpl {
     /// application.
     ///
     /// Returns an error if current instance is not a raft leader, because
-    /// followers should propose raft log entries via [`proc_cas`].
+    /// followers should propose raft log entries via [`proc_cas_v2`].
     ///
     /// NOTE: the proposed entry may still be dropped, and the entry at that
     /// index may be some other one. It's the callers responsibility to verify
     /// which entry got committed.
     ///
-    /// [`proc_cas`]: crate::cas::proc_cas
+    /// [`proc_cas_v2`]: crate::cas::proc_cas_v2
     #[inline]
     pub fn propose_async<T>(&mut self, op: T) -> Result<RaftEntryId, Error>
     where

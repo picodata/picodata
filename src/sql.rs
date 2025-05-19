@@ -18,7 +18,7 @@ use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
-use crate::traft::{self, node};
+use crate::traft::{self, node, DEPRECATED_RES_ROW_CNT};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::version::Version;
 use crate::{cas, has_states, plugin, tlog};
@@ -2014,7 +2014,7 @@ pub(crate) fn reenterable_schema_change_request(
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
         let res = cas::compare_and_swap_and_wait(&req, deadline)?;
         let index = match res {
-            cas::CasResult::Ok((index, _)) => index,
+            cas::CasResult::Ok((index, _, _)) => index,
             cas::CasResult::RetriableError(_) => continue,
         };
 
@@ -2203,11 +2203,15 @@ fn do_dml_on_global_tbl(
         let predicate = Predicate::new(raft_index, []);
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
         let res = crate::cas::compare_and_swap_and_wait(&cas_req, deadline)?;
-        res.no_retries()?;
 
-        Ok(ConsumerResult {
-            row_count: ops_count as u64,
-        })
+        let (_, _, count) = res.no_retries()?;
+        if on_conflict == Some(ConflictStrategy::DoReplace) {
+            Ok(ConsumerResult { row_count: count })
+        } else {
+            Ok(ConsumerResult {
+                row_count: ops_count as u64,
+            })
+        }
     })?
 }
 

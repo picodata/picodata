@@ -1177,7 +1177,7 @@ class Instance:
         term: int | None = None,
         ranges: List[CasRange] | None = None,
         user: int | None = None,
-    ) -> int:
+    ) -> tuple[int, int]:
         """
         Performs a clusterwide compare and swap operation.
 
@@ -1235,8 +1235,9 @@ class Instance:
         # to ADMIN_USER_ID on the rust side
         as_user = user if user is not None else 1
         dml["initiator"] = as_user
+        res = self.call(".proc_cas_v2", self.cluster_name, predicate, dml, as_user)
 
-        return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)["index"]
+        return (res["index"], res["res_row_count"])
 
     def pico_property(self, key: str):
         tup = self.call("box.space._pico_property:get", key)
@@ -2020,7 +2021,7 @@ class Cluster:
         instance: Instance | None = None,
         user: str | None = None,
         password: str | None = None,
-    ) -> int:
+    ) -> tuple[int, int, int]:
         instance = self.leader(instance)
 
         predicate_ranges = []
@@ -2101,7 +2102,7 @@ class Cluster:
         # If specified find leader via this instance
         peer: Instance | None = None,
         user: str | None = None,
-    ) -> int:
+    ) -> tuple[int, int]:
         """
         Performs a clusterwide compare and swap operation.
 

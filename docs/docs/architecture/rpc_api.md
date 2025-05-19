@@ -180,8 +180,12 @@ fn proc_before_online(term, applied, timeout)
 
 ### .proc_cas {: #proc_cas }
 
+Процедура устарела, и будет удалена в следующем мажорном обновлении. Вместо нее следует использовать [`proc_cas_v2`](#proc_cas_v2).
+
+### .proc_cas_v2 {: #proc_cas_v2 }
+
 ```rust
-fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
+fn proc_cas_v2(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm, ResRowCount)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в

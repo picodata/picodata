@@ -188,8 +188,9 @@ def test_cas_predicate(instance: Instance):
     read_index = instance.raft_read_index(_3_SEC)
 
     # Successful insert
-    ret = instance.cas("insert", "_pico_property", ["fruit", "apple"], index=read_index)
+    ret, res_row_cnt = instance.cas("insert", "_pico_property", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
+    assert res_row_cnt == 1
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
     assert instance.pico_property("fruit") == "apple"
@@ -261,13 +262,14 @@ def test_cas_predicate(instance: Instance):
     )
 
     # Stale index, yet successful insert of another key
-    ret = instance.cas(
+    ret, res_row_cnt = instance.cas(
         "insert",
         "_pico_property",
         ["flower", "tulip"],
         index=read_index,
     )
     assert ret == read_index + 2
+    assert res_row_cnt == 1
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
     assert instance.pico_property("flower") == "tulip"
@@ -300,7 +302,7 @@ def test_cas_batch(cluster: Cluster):
     i1 = cluster.instances[0]
     read_index = i1.raft_read_index(_3_SEC)
 
-    ret1 = cluster.batch_cas(
+    index1, _, res_row_count1 = cluster.batch_cas(
         [
             dict(
                 table="some_space",
@@ -324,15 +326,16 @@ def test_cas_batch(cluster: Cluster):
             ),
         ]
     )
-    assert ret1 == read_index + 1
-    cluster.raft_wait_index(ret1, _3_SEC)
-    assert cluster.instances[0].raft_read_index(_3_SEC) == ret1
+    assert index1 == read_index + 1
+    assert res_row_count1 == 4
+    cluster.raft_wait_index(index1, _3_SEC)
+    assert cluster.instances[0].raft_read_index(_3_SEC) == index1
     assert value("some_space", "car") == "bike"
     assert value("some_space", "tree") == "pine"
     assert value("some_space", "stone") == "diamond"
     assert value("_pico_property", "raft_entry_max_size") == 50
 
-    ret = cluster.batch_cas(
+    index, _, res_row_count = cluster.batch_cas(
         [
             dict(
                 table="some_space",
@@ -357,9 +360,10 @@ def test_cas_batch(cluster: Cluster):
             ),
         ]
     )
-    assert ret > read_index + 1
-    cluster.raft_wait_index(ret, _3_SEC)
-    assert cluster.instances[0].raft_read_index(_3_SEC) == ret
+    assert index > read_index + 1
+    assert res_row_count == 1
+    cluster.raft_wait_index(index, _3_SEC)
+    assert cluster.instances[0].raft_read_index(_3_SEC) == index
     assert cluster.instances[0].eval('return box.execute([[select * from "some_space"]]).rows') == []
     assert value("_pico_property", "raft_entry_max_size") == 150
 
@@ -382,13 +386,13 @@ def test_cas_batch(cluster: Cluster):
                     tuple=["sport", "run"],
                 ),
             ],
-            index=ret1,
+            index=index1,
             ranges=[CasRange(table="some_space", eq="car")],
         )
-    assert err.value.args[:2] == (f"ConflictFound: found a conflicting entry at index {ret1 + 1}",)
+    assert err.value.args[:2] == (f"ConflictFound: found a conflicting entry at index {index1 + 1}",)
 
 
-# Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead
+# Previous tests use stored procedure `.proc_cas_v2`, this one uses `pico.cas` lua api instead
 def test_cas_lua_api(cluster: Cluster):
     def value(k: str):
         return cluster.instances[0].eval(
@@ -419,8 +423,9 @@ def test_cas_lua_api(cluster: Cluster):
     read_index = cluster.instances[0].raft_read_index(_3_SEC)
 
     # Successful insert
-    ret = cluster.cas("insert", "some_space", ["fruit", "apple"], index=read_index)
+    ret, res_row_cnt = cluster.cas("insert", "some_space", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
+    assert res_row_cnt == 1
     cluster.raft_wait_index(ret, _3_SEC)
     assert cluster.instances[0].raft_read_index(_3_SEC) == ret
     assert value("fruit") == "apple"

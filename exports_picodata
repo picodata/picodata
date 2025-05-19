@@ -15,6 +15,7 @@ pico_internal_initialize_dummy
 proc_apply_schema_change
 proc_before_online
 proc_cas
+proc_cas_v2
 proc_disable_service
 proc_discover
 proc_enable_all_plugins

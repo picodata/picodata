@@ -49,7 +49,7 @@ def test_access_global_table(cluster: Cluster):
     # Alice can write it
     _ = cluster.cas("insert", "friends_of_peppa", ["Rebecca", "Rabbit"], user="alice")
     _ = cluster.cas("insert", "friends_of_peppa", ["Zoe", "Zebra"], user="alice")
-    ret = cluster.cas("insert", "friends_of_peppa", ["Suzy", "Sheep"], user="alice")
+    ret, _ = cluster.cas("insert", "friends_of_peppa", ["Suzy", "Sheep"], user="alice")
     i1.raft_wait_index(ret, _3_SEC)
 
     # Alice can read it
