@@ -523,46 +523,6 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         }
     }
 
-    /// Analyze rows and ensure they have homogeneous types and equal lengths.
-    pub fn analyze_homogeneous_rows(
-        &mut self,
-        ctx: &'static str,
-        rows: &[Vec<Expr<Id>>],
-        desired_types: &[Type],
-    ) -> Result<TypeReport<Id>, Error> {
-        let ncolumns = rows.first().map(|r| r.len()).unwrap_or(0);
-        for row in rows {
-            if row.len() != ncolumns {
-                return Err(Error::ListsMustAllBeTheSameLentgh(ctx));
-            }
-        }
-
-        if !desired_types.is_empty() && desired_types.len() != ncolumns {
-            return Err(Error::DesiredTypesCannotBeMatchedWithExprs(
-                desired_types.len(),
-                ncolumns,
-            ));
-        }
-
-        // TODO: Avoid temporary allocation by creating a columns iterator that yields ith
-        // values from every row. `std::iter::from_fn` seems to be handy for that.
-        let mut columns = vec![Vec::with_capacity(rows.len()); ncolumns];
-        for row in rows {
-            for (idx, value) in row.iter().enumerate() {
-                columns[idx].push(value);
-            }
-        }
-
-        let mut report = TypeReport::new();
-        for (idx, column) in columns.iter().enumerate() {
-            let desired_type = desired_types.get(idx).cloned();
-            let (_, r) = self.analyze_homogeneous_exprs(ctx, column, desired_type)?;
-            report.extend(r);
-        }
-
-        Ok(report)
-    }
-
     /// Resolve operator overload.
     fn analyze_operator_args(
         &mut self,
@@ -1062,16 +1022,16 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         Ok(())
     }
 
-    /// Infer rows and parameter types.
-    pub fn analyze_homogeneous_rows(
+    /// Analyze expressions and coerce them to a common type.
+    pub fn analyze_homogeneous_exprs(
         &mut self,
         ctx: &'static str,
-        rows: &[Vec<Expr<Id>>],
-        desired_types: &[Type],
+        args: &[impl Borrow<Expr<Id>>],
+        desired_type: Option<Type>,
     ) -> Result<(), Error> {
-        let report = self
+        let (_, report) = self
             .core
-            .analyze_homogeneous_rows(ctx, rows, desired_types)?;
+            .analyze_homogeneous_exprs(ctx, args, desired_type)?;
         self.core.update_parameters(&report)?;
         self.report.extend(report);
         Ok(())

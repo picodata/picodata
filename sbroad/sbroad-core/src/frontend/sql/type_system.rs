@@ -11,6 +11,7 @@ use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::relation::{DerivedType, Type as SbroadType};
 use crate::ir::Plan;
 use ahash::AHashMap;
+use sbroad_type_system::error::Error as TypeSystemError;
 use sbroad_type_system::expr::{
     ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind, Type,
     UnaryOperator, WindowFrame as GenericWindowFrame,
@@ -582,6 +583,44 @@ pub fn analyze_scalar_expr(
     Ok(())
 }
 
+fn analyze_homogeneous_rows(
+    type_analyzer: &mut TypeAnalyzer,
+    ctx: &'static str,
+    rows: &[Vec<TypeExpr>],
+    desired_types: &[DerivedType],
+) -> Result<(), SbroadError> {
+    let ncolumns = rows.first().map(|r| r.len()).unwrap_or(0);
+    for row in rows {
+        if row.len() != ncolumns {
+            return Err(TypeSystemError::ListsMustAllBeTheSameLentgh(ctx).into());
+        }
+    }
+
+    if !desired_types.is_empty() && desired_types.len() != ncolumns {
+        return Err(TypeSystemError::DesiredTypesCannotBeMatchedWithExprs(
+            desired_types.len(),
+            ncolumns,
+        )
+        .into());
+    }
+
+    // TODO: Avoid temporary allocation by creating a columns iterator that yields ith
+    // values from every row. `std::iter::from_fn` seems to be handy for that.
+    let mut columns = vec![Vec::with_capacity(rows.len()); ncolumns];
+    for row in rows {
+        for (idx, value) in row.iter().enumerate() {
+            columns[idx].push(value);
+        }
+    }
+
+    for (idx, column) in columns.iter().enumerate() {
+        let desired_type = desired_types.get(idx).cloned().map(Into::into);
+        type_analyzer.analyze_homogeneous_exprs(ctx, column, desired_type)?;
+    }
+
+    Ok(())
+}
+
 /// Perform type analysis for values rows expressions.
 /// Rows are expected to have homogeneous types and the same length.
 pub fn analyze_values_rows(
@@ -601,7 +640,6 @@ pub fn analyze_values_rows(
         }
     }
 
-    let desired_types: Vec<_> = desired_types.iter().map(|t| Type::from(*t)).collect();
-    type_analyzer.analyze_homogeneous_rows("VALUES", &type_rows, &desired_types)?;
+    analyze_homogeneous_rows(type_analyzer, "VALUES", &type_rows, desired_types)?;
     Ok(())
 }

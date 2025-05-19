@@ -230,6 +230,17 @@ def test_params_inference_in_values(postgres: Postgres):
     assert rows == [[Decimal(1.0)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
+    # Infer types in a crossing scheme.
+    rows = conn.run("WITH t AS (VALUES (:p1, 1.5), (1, :p2)) SELECT :p1, :p2", p1=1, p2=2)
+    assert rows == [[1.0, Decimal(2.0)]]
+    assert cols_oids(conn) == [type_oid("int8"), type_oid("numeric")]
+
+    # Infer types in a crossing scheme.
+    # Type is inferred to int in 1st column, and then coerced to numeric in the 2nd column.
+    rows = conn.run("WITH t AS (VALUES (:p, 1.5), (1, :p)) SELECT :p", p=1)
+    assert rows == [[1.0]]
+    assert cols_oids(conn) == [type_oid("int8")]
+
 
 def test_params_inference_in_insert(postgres: Postgres):
     user = "Парам Парамыч"
