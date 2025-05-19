@@ -365,6 +365,13 @@ def test_params_inference_errors(postgres: Postgres):
     ):
         conn.run("SELECT * FROM (SELECT 1) WHERE :p = 1 AND :p = '1.5'", p=1)
 
+    # Example of a suggestion with unsupported casts.
+    with pytest.raises(
+        DatabaseError,
+        match=r"picodata error: sbroad: inconsistent types unsigned and bool deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::bool and \$1::unsigned",
+    ):
+        conn.run("with q(x) as (select 1) select :p from q where :p and :p > 0", p=1)
+
     with pytest.raises(DatabaseError, match=r"row value misused"):
         conn.run("SELECT (:p,:p)", p=1)
 
