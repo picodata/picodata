@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.1.2] - Unreleased
+
+### Fixes
+
+- Fixed a bug where _pico_service_route was incorrectly loaded into the topology cache.
+
 ## [25.1.1] - 2025-02-21
 
 ### Configuration
