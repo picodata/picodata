@@ -377,9 +377,9 @@ impl TopologyCacheMutable {
                 .or_insert_with(HashMap::default)
                 .entry(item.plugin_version)
                 .or_insert_with(HashMap::default)
-                .entry(item.instance_name.into())
+                .entry(item.service_name)
                 .or_insert_with(HashMap::default)
-                .insert(item.service_name, item.poison);
+                .insert(item.instance_name.into(), item.poison);
         }
 
         Ok(Self {
@@ -759,5 +759,31 @@ where
         *cell = new;
     } else {
         cell.set(new).expect("was empty");
+    }
+}
+
+mod tests {
+    use super::*;
+    use crate::plugin::PluginIdentifier;
+
+    #[::tarantool::test]
+    fn test_check_route_to_instance() {
+        let storage = Catalog::for_tests();
+        let plugin = PluginIdentifier::new("plugin".to_string(), "version".to_string());
+        let service = String::from("service");
+        let instance = String::from("instance");
+        let routing_item = ServiceRouteItem::new_healthy(instance.into(), &plugin, service);
+        let _ = storage.service_route_table.put(&routing_item);
+
+        let topology_cache = TopologyCache::load(&storage, 1).unwrap();
+        let topology_ref = topology_cache.get();
+
+        let actual_res = topology_ref.check_service_route(
+            &plugin.name,
+            &plugin.version,
+            &routing_item.service_name,
+            &routing_item.instance_name,
+        );
+        assert!(matches!(actual_res, ServiceRouteCheck::Ok));
     }
 }

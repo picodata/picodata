@@ -151,6 +151,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug where a timeout during `ALTER PLUGIN MIGRATE` command would make it
   impossible to run migrations on the current instance.
 
+- Fixed a bug where _pico_service_route was incorrectly loaded into the topology cache.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added
