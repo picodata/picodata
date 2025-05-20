@@ -220,6 +220,8 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `ALTER TABLE t ADD COLUMN` operation.
 - SQL supports `ALTER TABLE old_table_name RENAME TO new_table_name` operation.
 - SQL supports volatile scalar functions: `instance_uuid`.
+- SQL supports `CURRENT_TIMESTAMP` scalar function now.
+- \[breaking\] `LOCALTIMESTAMP` now returns time with correct timezone, instead of always marking it as UTC.
 
 ### Configuration
 

@@ -126,7 +126,7 @@ impl ReferredMap {
                 },
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
-                | Expression::LocalTimestamp { .. }
+                | Expression::Timestamp { .. }
                 | Expression::Parameter { .. } => Referred::None,
                 Expression::Reference(Reference {
                     targets, parent, ..

@@ -109,7 +109,7 @@ impl Nodes {
                 Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
                 Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
                 Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
-                Node32::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
+                Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
@@ -251,9 +251,7 @@ impl Nodes {
                     Node32::Parameter(param) => {
                         MutNode::Expression(MutExpression::Parameter(param))
                     }
-                    Node32::LocalTimestamp(lt) => {
-                        MutNode::Expression(MutExpression::LocalTimestamp(lt))
-                    }
+                    Node32::Timestamp(lt) => MutNode::Expression(MutExpression::Timestamp(lt)),
                 }),
             ArenaType::Arena64 => self
                 .arena64
@@ -442,10 +440,10 @@ impl Nodes {
     pub fn iter32(&self) -> Iter<'_, Node32> {
         self.arena32.iter()
     }
-
     pub fn iter32_mut(&mut self) -> IterMut<'_, Node32> {
         self.arena32.iter_mut()
     }
+
     pub fn iter64(&self) -> Iter<'_, Node64> {
         self.arena64.iter()
     }
@@ -1726,7 +1724,7 @@ impl Plan {
             MutExpression::Constant { .. }
             | MutExpression::Reference { .. }
             | MutExpression::CountAsterisk { .. }
-            | MutExpression::LocalTimestamp { .. }
+            | MutExpression::Timestamp { .. }
             | MutExpression::Parameter { .. } => {}
         }
         Err(SbroadError::FailedTo(
@@ -1915,7 +1913,7 @@ impl Plan {
             (top, child),
             (
                 Expression::ScalarFunction(_)
-                    | Expression::LocalTimestamp(_)
+                    | Expression::Timestamp(_)
                     | Expression::Row(_)
                     | Expression::Alias(_)
                     | Expression::Trim(_)
@@ -1927,7 +1925,7 @@ impl Plan {
                 _,
                 Expression::ScalarFunction(_)
                     | Expression::Trim(_)
-                    | Expression::LocalTimestamp(_)
+                    | Expression::Timestamp(_)
                     | Expression::CountAsterisk(_)
                     | Expression::Row(_)
                     | Expression::Reference(_)

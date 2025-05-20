@@ -345,12 +345,12 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
             //       Please, try to keep the list in alphabetical order.
             Keyword = {  ^"all" | ^"and" | ^"asc" | ^"as"
                         | ^"begin" | ^"between" | ^"by"
-                        | ^"case" | ^"cast"
+                        | ^"case" | ^"cast" | ^"current_date" | ^"current_time" | ^"current_timestamp"
                         | ^"desc" | ^"distinct"
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"filter" | ^"from" | ^"group"
                         | ^"having" | ^"inner" | ^"into" | ^"in" | ^"is"
-                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null"
+                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"localtime" | ^"not" | ^"null"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"over" | ^"primary"
                         | ^"select" | ^"set" | ^"similar" | ^"substring"
                         | ^"table" | ^"then" | ^"to" | ^"true"
@@ -403,7 +403,8 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
         CastPostfix = { "::" ~ ColumnDefType }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
-        AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | LocalTimestamp | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
+        AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
+                    | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
                 False    = { ^"false" }
@@ -454,6 +455,9 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                     SubstringFrom = ${ (Expr ~ W ~ ^"from" ~ W ~ Expr) | (Expr ~ (WO ~ "," ~ WO ~ Expr)) }
                     SubstringSimilar = ${ Expr }
             CurrentDate = { ^"current_date" }
+            CurrentTime = { ^"current_time" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            CurrentTimestamp = { ^"current_timestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            LocalTime = { ^"localtime" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             Trim = ${
                 ^"trim" ~ WO ~ "(" ~ WO ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"

@@ -167,7 +167,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         Expression::Constant { .. }
                         | Expression::Reference { .. }
                         | Expression::CountAsterisk { .. }
-                        | Expression::LocalTimestamp { .. }
+                        | Expression::Timestamp { .. }
                         | Expression::Parameter { .. } => None,
                     }
                 }

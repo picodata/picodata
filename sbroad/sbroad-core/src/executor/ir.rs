@@ -852,7 +852,7 @@ impl ExecutionPlan {
                     }
                     ExprOwned::Constant { .. }
                     | ExprOwned::CountAsterisk { .. }
-                    | ExprOwned::LocalTimestamp(_)
+                    | ExprOwned::Timestamp(_)
                     | ExprOwned::Parameter { .. } => {}
                     ExprOwned::Case(Case {
                         search_expr,

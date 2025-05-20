@@ -395,7 +395,7 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Function("trim".into(), args);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::LocalTimestamp(_) => {
+        Expression::Timestamp(_) => {
             let kind = TypeExprKind::Literal(Type::Datetime);
             Ok(TypeExpr::new(node_id, kind))
         }

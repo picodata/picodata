@@ -398,7 +398,7 @@ impl Plan {
                 | MutExpression::Like(_)
                 | MutExpression::Reference(_)
                 | MutExpression::CountAsterisk(_)
-                | MutExpression::LocalTimestamp(_)
+                | MutExpression::Timestamp(_)
                 | MutExpression::Parameter(_) => {}
             }
         }

@@ -287,9 +287,7 @@ impl<'plan> Comparator<'plan> {
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
-                    Expression::Alias(_)
-                    | Expression::LocalTimestamp(_)
-                    | Expression::Parameter(_) => {}
+                    Expression::Alias(_) | Expression::Timestamp(_) | Expression::Parameter(_) => {}
                     Expression::Window(Window {
                         name: l_name,
                         partition: l_partition,
@@ -854,8 +852,8 @@ impl<'plan> Comparator<'plan> {
             Expression::CountAsterisk(_) => {
                 "CountAsterisk".hash(state);
             }
-            Expression::LocalTimestamp(_) => {
-                "LocalTimestamp".hash(state);
+            Expression::Timestamp(_) => {
+                "Timestamp".hash(state);
             }
             Expression::Parameter(_) => {
                 "Parameter".hash(state);

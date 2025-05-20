@@ -2,6 +2,8 @@ import psycopg
 import pg8000.native  # type: ignore
 import pytest
 import datetime
+import time
+import re
 from conftest import Postgres
 
 
@@ -215,14 +217,34 @@ def test_invalid_dates(postgres: Postgres):
         )
 
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
 def test_localtimestamp(postgres: Postgres):
     conn = setup_psycopg_test_env(postgres)
     cur = conn.cursor()
 
     # Test simple SELECT
-    cur.execute("SELECT localtimestamp;")
+    cur.execute("SELECT LOCALTIMESTAMP;")
     result = cur.fetchall()
     assert len(result) == 1
+
+    # Test that localtimestamp implements the same thing as current_timestamp
+    cur.execute("""SELECT 
+            localtimestamp(1), current_timestamp(1),
+            localtimestamp(2), current_timestamp(2),
+            localtimestamp(3), current_timestamp(3),
+            localtimestamp(4), current_timestamp(4),
+            localtimestamp(5), current_timestamp(5),
+            localtimestamp(6), current_timestamp(6),
+            localtimestamp(7), current_timestamp(7);
+        """)
+    result = cur.fetchall()
+    for localtimestamp, current_timestamp in chunks(result[0], 2):
+        assert localtimestamp == current_timestamp
 
     # Test that extremely large precision is maxxed at 6
     cur.execute(
@@ -250,7 +272,15 @@ def test_localtimestamp(postgres: Postgres):
     )
     result = cur.fetchall()
     timestamp_str = result[0][0]
-    assert datetime.datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
+    parsed_time = datetime.datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S%z")
+    assert parsed_time
+    # check that the local time is returned in the same timezone as local timezone as determined by python
+    # note that this might break due to different TZ configuration for pytest & picodata or due to some DST weirdness
+    tzinfo = parsed_time.tzinfo
+    assert tzinfo
+    tzoffset = tzinfo.utcoffset(parsed_time)
+    assert tzoffset
+    assert tzoffset.total_seconds() == -time.mktime(time.gmtime(0))
 
     # Test localtimestamp in a WHERE clause not NULL
     cur.execute("SELECT localtimestamp from (VALUES (1)) WHERE localtimestamp IS NOT NULL;")
@@ -263,7 +293,7 @@ def test_localtimestamp(postgres: Postgres):
     assert len(result) == 0
 
     # Test localtimestamp in a subquery
-    cur.execute("SELECT * FROM (SELECT localtimestamp AS current_time) AS subquery;")
+    cur.execute("SELECT * FROM (SELECT localtimestamp AS time) AS subquery;")
     result = cur.fetchall()
     assert len(result) == 1
 
@@ -271,6 +301,67 @@ def test_localtimestamp(postgres: Postgres):
     cur.execute("INSERT INTO T (ID) VALUES (localtimestamp);")
 
     # Test localtimestamp in a projection
-    cur.execute("SELECT localtimestamp AS current_time FROM T;")
+    cur.execute("SELECT localtimestamp AS time FROM T;")
     result = cur.fetchall()
     assert len(result) == 1
+
+
+def test_current_date(postgres: Postgres):
+    conn = setup_psycopg_test_env(postgres)
+    cur = conn.cursor()
+
+    # Test simple SELECT
+    cur.execute("SELECT CURRENT_DATE;")
+    result = cur.fetchall()
+    assert len(result) == 1
+
+    # Test that current_date implements the same thing as current_timestamp, down to the date
+    cur.execute("""SELECT
+            TO_CHAR(current_date, '%d %b %Y %z'), TO_CHAR(current_timestamp, '%d %b %Y %z');
+        """)
+    result = cur.fetchall()[0]
+    assert result[0] == result[1]
+
+    cur.execute("""SELECT current_date::text;""")
+    result = cur.fetchall()
+    timestamp_str = result[0][0]
+    parsed_time = datetime.datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S%z")
+    assert parsed_time
+    # check that the local time is returned in the same timezone as local timezone as determined by python
+    # note that this might break due to different TZ configuration for pytest & picodata or due to some DST weirdness
+    tzinfo = parsed_time.tzinfo
+    assert tzinfo
+    tzoffset = tzinfo.utcoffset(parsed_time)
+    assert tzoffset
+    assert tzoffset.total_seconds() == -time.mktime(time.gmtime(0))
+    # check that the time portion is zeroed
+    assert parsed_time.hour == 0
+    assert parsed_time.minute == 0
+    assert parsed_time.second == 0
+
+
+def test_unimplemented_time_functions(postgres: Postgres):
+    conn = setup_psycopg_test_env(postgres)
+    cur = conn.cursor()
+
+    # those functions are parsed but raise an error when executing
+    with pytest.raises(
+        psycopg.errors.InternalError,
+        match=re.escape("sbroad: SQL function `CURRENT_TIME` not implemented"),
+    ):
+        cur.execute("""SELECT current_time;""")
+    with pytest.raises(
+        psycopg.errors.InternalError,
+        match=re.escape("sbroad: SQL function `CURRENT_TIME` not implemented"),
+    ):
+        cur.execute("""SELECT current_time(7);""")
+    with pytest.raises(
+        psycopg.errors.InternalError,
+        match=re.escape("sbroad: SQL function `LOCALTIME` not implemented"),
+    ):
+        cur.execute("""SELECT localtime;""")
+    with pytest.raises(
+        psycopg.errors.InternalError,
+        match=re.escape("sbroad: SQL function `LOCALTIME` not implemented"),
+    ):
+        cur.execute("""SELECT localtime(7);""")

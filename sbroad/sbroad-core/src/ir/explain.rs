@@ -16,7 +16,7 @@ use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, Insert, Join,
     Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte, ScanRelation,
-    ScanSubQuery, Selection, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
+    ScanSubQuery, Selection, Timestamp, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
 };
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
 use crate::ir::transformation::redistribution::{
@@ -447,11 +447,13 @@ impl ColExpr {
                     let alias_expr = ColExpr::Unary(op.clone(), Box::new(child_expr));
                     stack.push((alias_expr, id));
                 }
-                Expression::LocalTimestamp(_) => {
-                    let expr = ColExpr::Column(
-                        "LocalTimestamp".to_string(),
-                        current_node.calculate_type(plan)?,
-                    );
+                Expression::Timestamp(timestamp) => {
+                    let name = match timestamp {
+                        Timestamp::Date => "Date",
+                        Timestamp::DateTime(_) => "DateTime",
+                    };
+                    let expr =
+                        ColExpr::Column(name.to_string(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
                 Expression::Parameter(_) => (),

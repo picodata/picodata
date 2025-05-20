@@ -267,7 +267,7 @@ fn subtree_next<'plan>(
                 }
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
-                | Expression::LocalTimestamp { .. }
+                | Expression::Timestamp { .. }
                 | Expression::Parameter { .. } => None,
                 Expression::Reference { .. } => {
                     let step = *iter.get_child().borrow();

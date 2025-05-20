@@ -4,17 +4,17 @@ use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, Constant, LocalTimestamp, MutNode, Node32, Node96, NodeId, Parameter, Reference,
-    ScalarFunction, ValuesRow,
+    Alias, Constant, MutNode, Node96, NodeId, Parameter, Reference, ScalarFunction, Timestamp,
+    ValuesRow,
 };
+use crate::ir::node::{Node32, TimeParameters};
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan};
-use chrono::Local;
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
-use time::{OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+use time::{OffsetDateTime, Time};
 
 use ahash::AHashSet;
 
@@ -234,35 +234,27 @@ impl Plan {
         Ok(())
     }
 
-    pub fn update_local_timestamps(&mut self) -> Result<(), SbroadError> {
-        let offset_in_sec = Local::now().offset().local_minus_utc();
-        let utc_offset_result =
-            UtcOffset::from_whole_seconds(offset_in_sec).unwrap_or(UtcOffset::UTC);
+    /// Replaces the timestamp functions with corresponding constants
+    pub fn update_timestamps(&mut self) -> Result<(), SbroadError> {
+        // we use `time` crate to represent time, but it has trouble determining UTC offset on linux
+        // because it relies on libc and libc API is unsound in presence of more than one thread (fun™ :/)
+        // so we utilize `chrono` to get the actual local time and then convert it to `time::OffsetDateTime`
+        // (chrono reimplements the part of libc that parses the timezone database, so it doesn't have the issue)
 
-        let datetime = OffsetDateTime::now_utc().to_offset(utc_offset_result);
-        let local_datetime = PrimitiveDateTime::new(datetime.date(), datetime.time()).assume_utc();
+        let time = chrono::offset::Local::now().fixed_offset();
+        let local_datetime =
+            OffsetDateTime::from_unix_timestamp_nanos(time.timestamp_nanos_opt().unwrap() as i128)
+                .unwrap()
+                .to_offset(
+                    time::UtcOffset::from_whole_seconds(time.offset().local_minus_utc()).unwrap(),
+                );
 
-        let mut local_timestamps = Vec::new();
-
-        for (id, node) in self.nodes.arena32.iter().enumerate() {
-            if let Node32::LocalTimestamp(_) = node {
-                let node_id = NodeId {
-                    offset: u32::try_from(id).unwrap(),
-                    arena_type: ArenaType::Arena32,
-                };
-
-                if let Node::Expression(Expression::LocalTimestamp(LocalTimestamp { precision })) =
-                    self.get_node(node_id)?
-                {
-                    local_timestamps.push((node_id, *precision));
-                }
+        for node in self.nodes.arena32.iter_mut() {
+            if let Node32::Timestamp(timestamp) = node {
+                *node = Node32::Constant(Constant {
+                    value: Self::create_datetime_value(local_datetime, timestamp)?,
+                });
             }
-        }
-
-        for (node_id, precision) in local_timestamps {
-            let value = Self::create_datetime_value(local_datetime, precision);
-            self.nodes
-                .replace32(node_id, Node32::Constant(Constant { value }))?;
         }
 
         Ok(())
@@ -502,38 +494,99 @@ impl Plan {
         Ok(())
     }
 
-    fn create_datetime_value(local_datetime: OffsetDateTime, precision: usize) -> Value {
-        // Format according to precision
-        if precision == 0 {
-            // For precision 0, create new time with 0 nanoseconds
-            let truncated_time = Time::from_hms(
-                local_datetime.hour(),
-                local_datetime.minute(),
-                local_datetime.second(),
-            )
-            .unwrap();
-            Value::Datetime(Datetime::from_inner(
-                local_datetime.replace_time(truncated_time),
-            ))
-        } else {
-            // Calculate scaling
-            // Convert nanoseconds to the desired precision
-            // 9 - numbers in nanoseconds
-            let scale = 10_u64.pow((9 - precision) as u32) as i64;
-            let nanos = local_datetime.nanosecond() as i64;
-            let rounded_nanos = (nanos / scale) * scale;
+    fn create_datetime_value(
+        local_datetime: OffsetDateTime,
+        spec: &Timestamp,
+    ) -> Result<Value, SbroadError> {
+        match *spec {
+            // for the lack of a better type, return datetime with the time component set to midnight
+            Timestamp::Date => Ok(Value::Datetime(Datetime::from_inner(
+                local_datetime.replace_time(Time::MIDNIGHT),
+            ))),
+            Timestamp::DateTime(TimeParameters {
+                precision,
+                // currently picodata lacks a timestamp type that doesn't include a timezone, so this is ignored
+                // https://git.picodata.io/core/picodata/-/issues/1797
+                include_timezone: _,
+            }) => {
+                let time = local_datetime.time();
 
-            let adjusted_time = Time::from_hms_nano(
-                local_datetime.hour(),
-                local_datetime.minute(),
-                local_datetime.second(),
-                rounded_nanos as u32,
-            )
-            .unwrap();
+                let time = if precision == 0 {
+                    // truncate the nanoseconds
+                    Time::from_hms(time.hour(), time.minute(), time.second()).unwrap()
+                } else {
+                    // Calculate scaling
+                    // Convert nanoseconds to the desired precision
+                    // 9 - numbers in nanoseconds
+                    let scale = 10_u64.pow((9 - precision) as u32) as i64;
+                    let nanos = time.nanosecond() as i64;
+                    let rounded_nanos = (nanos / scale) * scale;
 
-            Value::Datetime(Datetime::from_inner(
-                local_datetime.replace_time(adjusted_time),
-            ))
+                    Time::from_hms_nano(
+                        time.hour(),
+                        time.minute(),
+                        time.second(),
+                        rounded_nanos as u32,
+                    )
+                    .unwrap()
+                };
+
+                Ok(Value::Datetime(Datetime::from_inner(
+                    local_datetime.replace_time(time),
+                )))
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ir::node::{TimeParameters, Timestamp};
+    use crate::ir::value::Value;
+    use time::macros::datetime;
+
+    #[test]
+    fn datetime_rounding() {
+        let original_ts = datetime!(2024-04-03 15:26:14.998133 -3);
+
+        let make_datetime = |precision| {
+            super::Plan::create_datetime_value(
+                original_ts,
+                &Timestamp::DateTime(TimeParameters {
+                    precision,
+                    include_timezone: true,
+                }),
+            )
+            .unwrap()
+        };
+
+        assert_eq!(
+            make_datetime(6),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.998133 -3).into())
+        );
+        assert_eq!(
+            make_datetime(5),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.99813 -3).into())
+        );
+        assert_eq!(
+            make_datetime(4),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.9981 -3).into())
+        );
+        assert_eq!(
+            make_datetime(3),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.998 -3).into())
+        );
+        assert_eq!(
+            make_datetime(2),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.99 -3).into())
+        );
+        assert_eq!(
+            make_datetime(1),
+            Value::Datetime(datetime!(2024-04-03 15:26:14.9 -3).into())
+        );
+        assert_eq!(
+            make_datetime(0),
+            Value::Datetime(datetime!(2024-04-03 15:26:14 -3).into())
+        );
     }
 }

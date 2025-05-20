@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, Like,
-    LocalTimestamp, NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim,
+    NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Timestamp, Trim,
     UnaryExpr, Window,
 };
 
@@ -28,7 +28,7 @@ pub enum ExprOwned {
     Unary(UnaryExpr),
     CountAsterisk(CountAsterisk),
     Case(Case),
-    LocalTimestamp(LocalTimestamp),
+    Timestamp(Timestamp),
     Over(Over),
     Window(Window),
     Parameter(Parameter),
@@ -53,7 +53,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::ScalarFunction(stable_func) => stable_func.into(),
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
-            ExprOwned::LocalTimestamp(lt) => lt.into(),
+            ExprOwned::Timestamp(lt) => lt.into(),
             ExprOwned::Parameter(param) => param.into(),
         }
     }
@@ -87,7 +87,7 @@ pub enum Expression<'a> {
     Unary(&'a UnaryExpr),
     CountAsterisk(&'a CountAsterisk),
     Case(&'a Case),
-    LocalTimestamp(&'a LocalTimestamp),
+    Timestamp(&'a Timestamp),
     Over(&'a Over),
     Window(&'a Window),
     Parameter(&'a Parameter),
@@ -110,7 +110,7 @@ pub enum MutExpression<'a> {
     Unary(&'a mut UnaryExpr),
     CountAsterisk(&'a mut CountAsterisk),
     Case(&'a mut Case),
-    LocalTimestamp(&'a mut LocalTimestamp),
+    Timestamp(&'a mut Timestamp),
     Over(&'a mut Over),
     Window(&'a mut Window),
     Parameter(&'a mut Parameter),
@@ -194,7 +194,7 @@ impl Expression<'_> {
             Expression::ScalarFunction(sfunc) => ExprOwned::ScalarFunction((*sfunc).clone()),
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
-            Expression::LocalTimestamp(lt) => ExprOwned::LocalTimestamp((*lt).clone()),
+            Expression::Timestamp(lt) => ExprOwned::Timestamp((*lt).clone()),
             Expression::Parameter(param) => ExprOwned::Parameter((*param).clone()),
         }
     }

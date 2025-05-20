@@ -6,7 +6,8 @@ use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
     Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, UnaryExpr, Update, ValuesRow,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, TimeParameters, UnaryExpr,
+    Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -17,9 +18,7 @@ use std::hash::BuildHasher;
 
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{
-    ArithmeticExpr, Like, Limit, LocalTimestamp, NamedWindows, Over, Parameter, Window,
-};
+use super::node::{ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, Timestamp, Window};
 
 /// Helper macros to build a hash map or set
 /// from the list of arguments.
@@ -282,9 +281,17 @@ impl Plan {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Right child")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *right)?;
                 }
-                Expression::LocalTimestamp(LocalTimestamp { precision }) => {
-                    writeln!(buf, "LocalTimestamp [precision = {precision}]")?;
-                }
+                Expression::Timestamp(timestamp) => match *timestamp {
+                    Timestamp::Date => {
+                        writeln!(buf, "Date")?;
+                    }
+                    Timestamp::DateTime(TimeParameters {
+                        precision,
+                        include_timezone,
+                    }) => {
+                        writeln!(buf, "DateTime [precision = {precision}, include_timezone = {include_timezone}]")?;
+                    }
+                },
                 Expression::Parameter(Parameter { param_type, index }) => {
                     writeln!(buf, "Parameter [type = {param_type}, index = {index}]")?;
                 }

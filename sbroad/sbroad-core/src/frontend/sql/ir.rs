@@ -207,7 +207,7 @@ impl SubtreeCloner {
                 *window = self.get_new_id(*window)?;
             }
             ExprOwned::Constant(Constant { value: _ })
-            | ExprOwned::LocalTimestamp(_)
+            | ExprOwned::Timestamp(_)
             | ExprOwned::Parameter(_)
             | ExprOwned::Reference(Reference {
                 parent: _,

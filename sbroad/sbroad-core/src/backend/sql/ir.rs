@@ -453,7 +453,7 @@ impl ExecutionPlan {
                                 | Expression::Row { .. }
                                 | Expression::Trim { .. }
                                 | Expression::Unary { .. }
-                                | Expression::LocalTimestamp { .. }
+                                | Expression::Timestamp { .. }
                                 | Expression::Parameter { .. } => {}
                                 Expression::Constant(Constant { value, .. }) => {
                                     write!(sql, "{value}").map_err(|e| {

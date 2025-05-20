@@ -14,7 +14,6 @@ use itertools::Itertools;
 use pest::Parser;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
-use time::{format_description, OffsetDateTime, Time};
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
@@ -3591,20 +3590,21 @@ fn front_sql_current_date() {
     SELECT current_date FROM (values ('2010/10/10'))
     where to_date('2010/10/10', '%Y/%d/%m') < current_Date"#;
 
-    let today = OffsetDateTime::now_utc().replace_time(Time::MIDNIGHT);
-    let format = format_description::parse("[year]-[month]-[day]").unwrap();
+    let today = chrono::offset::Local::now();
+    let today = today.format("%Y-%m-%d 0:00:00.0 %::z");
+
+    // functions getting current date/time all get transformed to concrete values during the optimization
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = format!(
-        r#"projection ({today} 0:00:00.0 +00:00:00::datetime -> "col_1")
-    selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < {today} 0:00:00.0 +00:00:00::datetime
+        r#"projection ({today}::datetime -> "col_1")
+    selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < {today}::datetime
         scan
             values
                 value row (data=ROW('2010/10/10'::string))
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
-"#,
-        today = today.format(&format).unwrap()
+"#
     );
 
     assert_eq!(expected_explain, plan.as_explain().unwrap());

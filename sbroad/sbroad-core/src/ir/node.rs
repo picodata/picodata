@@ -386,13 +386,25 @@ impl From<CountAsterisk> for NodeAligned {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct LocalTimestamp {
+pub struct TimeParameters {
+    /// Number of digits to round the seconds to
     pub precision: usize,
+    /// Whether to produce a timestamp with timezone (`CURRENT_*` family of SQL functions) or without it (`LOCAL*` family of SQL functions)
+    pub include_timezone: bool,
 }
 
-impl From<LocalTimestamp> for NodeAligned {
-    fn from(value: LocalTimestamp) -> Self {
-        Self::Node32(Node32::LocalTimestamp(value))
+/// Node representing SQL functions for retrieving time
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Timestamp {
+    /// `CURRENT_DATE`
+    Date,
+    /// `CURRENT_TIMESTAMP` or `LOCALTIMESTAMP`
+    DateTime(TimeParameters),
+}
+
+impl From<Timestamp> for NodeAligned {
+    fn from(value: Timestamp) -> Self {
+        Self::Node32(Node32::Timestamp(value))
     }
 }
 
@@ -1210,7 +1222,7 @@ pub enum Node32 {
     // begin the section to allow in-place swapping with Constant using the replace32()
     Parameter(Parameter),
     Constant(Constant),
-    LocalTimestamp(LocalTimestamp),
+    Timestamp(Timestamp),
     // end the section to allow in-place swapping with Constant using the replace32()
 }
 
@@ -1247,7 +1259,7 @@ impl Node32 {
             Node32::DropSchema => NodeOwned::Ddl(DdlOwned::DropSchema),
             Node32::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
             Node32::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
-            Node32::LocalTimestamp(lt) => NodeOwned::Expression(ExprOwned::LocalTimestamp(lt)),
+            Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),
         }
     }
 }

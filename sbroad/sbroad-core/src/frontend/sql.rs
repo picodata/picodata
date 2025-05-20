@@ -8,8 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    LocalTimestamp, NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, Row,
-    ScalarFunction, TruncateTable, Values, ValuesRow, Window,
+    NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
+    TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::relation::{DerivedType, Type};
 use ahash::{AHashMap, AHashSet};
@@ -24,9 +24,7 @@ use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
 };
-use tarantool::datetime::Datetime;
 use tarantool::index::{IndexType, RtreeIndexDistanceType};
-use time::{OffsetDateTime, Time};
 
 use crate::errors::Entity::AST;
 use crate::errors::{Action, Entity, SbroadError};
@@ -75,6 +73,7 @@ use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
 use crate::warn;
 use sbroad_type_system::error::Error as TypeSystemError;
 use tarantool::auth::AuthMethod;
+use tarantool::datetime::Datetime;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
 use type_system::{get_parameter_derived_types, TypeAnalyzer};
@@ -2148,9 +2147,6 @@ where
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
     column_positions_cache: HashMap<NodeId, ColumnPositionMap>,
-    /// Time at the start of the plan building stage with timezone.
-    /// It is used to replace CURRENT_DATE to actual value.
-    current_time: OffsetDateTime,
     /// Map of named window definitions where key is the window name and value is the corresponding node ID.
     /// Used to store and look up window definitions that can be referenced by name in window functions.
     named_windows_map: HashMap<SmolStr, NodeId>,
@@ -2182,7 +2178,6 @@ where
             met_tnt_param: false,
             met_pg_param: false,
             column_positions_cache: HashMap::with_capacity(COLUMN_POSITIONS_CACHE_CAPACITY),
-            current_time: OffsetDateTime::now_utc(),
             named_windows_map: HashMap::new(),
             windows: Vec::new(),
             referenced_named_window_ids: Vec::new(),
@@ -3959,17 +3954,46 @@ where
                     }
                 }
                 Rule::CurrentDate => {
-                    let date = worker.current_time.replace_time(Time::MIDNIGHT);
-                    let val = Value::Datetime(Datetime::from_inner(date));
-                    let plan_id = plan.add_const(val);
+                    let plan_id = plan.nodes.push(Timestamp::Date.into());
                     ParseExpression::PlanId { plan_id }
                 }
-                Rule::LocalTimestamp => {
-                    // Get precision from parsing (max value 6)
+                rule @ (Rule::CurrentTime |
+                Rule::CurrentTimestamp |
+                Rule::LocalTime |
+                Rule::LocalTimestamp) => {
                     let precision = primary.into_inner().next()
                         .map(|p| p.as_str().parse::<usize>().unwrap_or(usize::MAX).min(6))
                         .unwrap_or(6); // Default for Postgres is 6
-                    let plan_id = plan.nodes.push(LocalTimestamp{precision}.into());
+
+                    let timestamp = match rule {
+                        Rule::CurrentTime => {
+                            return Err(SbroadError::NotImplemented(
+                                Entity::SQLFunction,
+                                "`CURRENT_TIME`".to_smolstr())
+                            );
+                        }
+                        Rule::CurrentTimestamp => {
+                            Timestamp::DateTime(TimeParameters {
+                                precision,
+                                include_timezone: true,
+                            })
+                        }
+                        Rule::LocalTime => {
+                            return Err(SbroadError::NotImplemented(
+                                Entity::SQLFunction,
+                                "`LOCALTIME`".to_smolstr())
+                            );
+                        }
+                        Rule::LocalTimestamp => {
+                            Timestamp::DateTime(TimeParameters {
+                                precision,
+                                include_timezone: false,
+                            })
+                        }
+                        _ => unreachable!()
+                    };
+
+                    let plan_id = plan.nodes.push(timestamp.into());
                     ParseExpression::PlanId { plan_id }
                 }
                 Rule::CountAsterisk => {

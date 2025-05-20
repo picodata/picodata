@@ -1,7 +1,5 @@
-import pytest
 import pg8000.native as pg  # type: ignore
 from conftest import Postgres
-from pg8000.exceptions import DatabaseError  # type: ignore
 
 
 def test_pgbench_queries(postgres: Postgres):
@@ -50,7 +48,7 @@ def test_pgbench_queries(postgres: Postgres):
             bid int,
             aid int,
             delta int,
-            mtime int,
+            mtime datetime,
             filler varchar(22),
             PRIMARY KEY(tid, bid, aid, delta)
         );
@@ -64,17 +62,13 @@ def test_pgbench_queries(postgres: Postgres):
     conn.run("SELECT abalance FROM pgbench_accounts WHERE aid = :aid;", aid=3)
     conn.run("UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;", delta=4, tid=5)
     conn.run("UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;", delta=6, bid=7)
-
-    # CURRENT_TIMESTAMP is currently not supported
-    # https://git.picodata.io/core/picodata/-/issues/1517
-    with pytest.raises(DatabaseError, match=r"Reference CURRENT_TIMESTAMP met under Values that is unsupported"):
-        conn.run(
-            "INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) \
-                VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);",
-            tid=8,
-            bid=9,
-            aid=10,
-            delta=11,
-        )
+    conn.run(
+        "INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) \
+            VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);",
+        tid=8,
+        bid=9,
+        aid=10,
+        delta=11,
+    )
 
     conn.run("END;")

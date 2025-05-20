@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "3.2.0"
+version = "4.0.0"
 dependencies = [
  "darling",
  "proc-macro-error",
@@ -1558,7 +1558,7 @@ dependencies = [
 
 [[package]]
 name = "tlua"
-version = "5.0.0"
+version = "6.0.0"
 dependencies = [
  "libc",
  "serde",
@@ -1568,7 +1568,7 @@ dependencies = [
 
 [[package]]
 name = "tlua-derive"
-version = "0.2.1"
+version = "1.0.0"
 dependencies = [
  "proc-macro2 1.0.93",
  "quote 1.0.38",
