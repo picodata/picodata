@@ -1,6 +1,6 @@
 [package]
 name = "picodata-plugin-proc-macro"
-version = "25.1.1"
+version = "25.1.2"
 edition = "2021"
 license-file = "./../LICENSE"
 description = "Procedural macros for picodata-plugin crate"

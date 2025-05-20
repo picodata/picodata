@@ -8,11 +8,18 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.1.2] - Unreleased
+## [25.1.2] - 2025-05-20
 
 ### Fixes
 
+- vshard is bumped to 0.1.30. This fixes a bug lead to out of lua memory
+
+- remove requirement for a delimiter in console when in lua mode
+
+- `picodata status` output is tuned for better readability
+
 - Fixed a bug where _pico_service_route was incorrectly loaded into the topology cache.
+
 
 ## [25.1.1] - 2025-02-21
 
