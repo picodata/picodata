@@ -6,7 +6,7 @@ use super::{
 use crate::{
     pgproto::{
         client::ClientId,
-        error::{PgError, PgErrorCode, PgResult},
+        error::{PedanticError, PgError, PgErrorCode, PgResult},
         value::{FieldFormat, PgValue},
     },
     sql::{dispatch, router::RouterRuntime},
@@ -23,6 +23,7 @@ use sbroad::{
     },
 };
 use serde::{Deserialize, Serialize};
+use smol_str::format_smolstr;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, HashMap},
@@ -134,10 +135,11 @@ impl<S> PgStorage<S> {
         match self.map.entry(key) {
             Entry::Occupied(entry) => {
                 let Key(id, name) = entry.key();
-                Err(PgError::WithExplicitCode(
+                let err = PedanticError::new(
                     self.context.dublicate_key_error_code,
-                    format!("{kind} \'{name}\' for client {id} already exists"),
-                ))
+                    format!("{kind} '{name}' for client {id} already exists"),
+                );
+                Err(err.into())
             }
             Entry::Vacant(entry) => {
                 entry.insert(value);
@@ -240,7 +242,7 @@ pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
     pub fn new(key: Key, plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
-        let param_oids = collect_param_oids(&plan, &specified_param_oids)?;
+        let param_oids = collect_param_oids(&plan, &specified_param_oids);
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
         let inner = StatementInner {
             key,
@@ -311,57 +313,56 @@ impl Drop for StatementHolder {
     }
 }
 
-pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> PgResult<postgres_types::Type> {
+pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> postgres_types::Type {
     match ty {
-        SbroadType::Boolean => Ok(PgType::BOOL),
-        SbroadType::Decimal => Ok(PgType::NUMERIC),
-        SbroadType::Double => Ok(PgType::FLOAT8),
-        SbroadType::Integer | SbroadType::Unsigned => Ok(PgType::INT8),
-        SbroadType::String => Ok(PgType::TEXT),
-        SbroadType::Uuid => Ok(PgType::UUID),
-        SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(PgType::JSON),
-        SbroadType::Datetime => Ok(PgType::TIMESTAMPTZ),
+        SbroadType::Boolean => PgType::BOOL,
+        SbroadType::Decimal => PgType::NUMERIC,
+        SbroadType::Double => PgType::FLOAT8,
+        SbroadType::Integer | SbroadType::Unsigned => PgType::INT8,
+        SbroadType::String => PgType::TEXT,
+        SbroadType::Uuid => PgType::UUID,
+        SbroadType::Map | SbroadType::Array | SbroadType::Any => PgType::JSON,
+        SbroadType::Datetime => PgType::TIMESTAMPTZ,
     }
 }
 
-pub(super) fn pg_type_to_sbroad(ty: &PgType) -> PgResult<SbroadType> {
+pub(super) fn pg_type_to_sbroad(ty: &PgType) -> Option<SbroadType> {
     match ty {
-        &PgType::BOOL => Ok(SbroadType::Boolean),
-        &PgType::NUMERIC => Ok(SbroadType::Decimal),
-        &PgType::FLOAT8 => Ok(SbroadType::Double),
-        &PgType::INT8 | &PgType::INT4 | &PgType::INT2 => Ok(SbroadType::Integer),
-        &PgType::TEXT | &PgType::VARCHAR => Ok(SbroadType::String),
-        &PgType::UUID => Ok(SbroadType::Uuid),
-        &PgType::TIMESTAMPTZ => Ok(SbroadType::Datetime),
-        unsupported_type => Err(PgError::FeatureNotSupported(unsupported_type.to_string())),
+        &PgType::BOOL => Some(SbroadType::Boolean),
+        &PgType::NUMERIC => Some(SbroadType::Decimal),
+        &PgType::FLOAT8 => Some(SbroadType::Double),
+        &PgType::INT8 | &PgType::INT4 | &PgType::INT2 => Some(SbroadType::Integer),
+        &PgType::TEXT | &PgType::VARCHAR => Some(SbroadType::String),
+        &PgType::UUID => Some(SbroadType::Uuid),
+        &PgType::TIMESTAMPTZ => Some(SbroadType::Datetime),
+        _unsupported_type => None,
     }
 }
 
 pub(super) fn param_oid_to_derived_type(oid: Oid) -> PgResult<DerivedType> {
     // 0 oid does not match any type, but it can be used to leave parameter type unspecified
     // (https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY)
-    //
-    // TODO: not sure if oid of an unknown type can be used for parameters
     if oid == 0 || oid == PgType::UNKNOWN.oid() {
         return Ok(DerivedType::unknown());
     }
 
     let pg_type = PgType::from_oid(oid)
-        .ok_or_else(|| PgError::FeatureNotSupported(format!("parameter oid {oid}")))?;
+        .ok_or_else(|| PgError::FeatureNotSupported(format_smolstr!("parameter oid {oid}")))?;
 
-    pg_type_to_sbroad(&pg_type)
-        .map_err(|_| PgError::FeatureNotSupported(format!("{pg_type} parameters")))
-        .map(DerivedType::new)
+    let sbroad_type = pg_type_to_sbroad(&pg_type)
+        .ok_or_else(|| PgError::FeatureNotSupported(format_smolstr!("{pg_type} parameters")))?;
+
+    Ok(DerivedType::new(sbroad_type))
 }
 
 // The only reason we need `client_params_oids` is to translate integer type from sbroad back
 // into original type from PostgreSQL (int2 vs int4 vs int8).
-pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> PgResult<Vec<Oid>> {
+pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> Vec<Oid> {
     let inferred_types = plan.collect_parameter_types();
-    let mut oids = inferred_types
+    let mut oids: Vec<_> = inferred_types
         .iter()
-        .map(|ty| sbroad_type_to_pg(ty).map(|pg| pg.oid()))
-        .collect::<PgResult<Vec<_>>>()?;
+        .map(|ty| sbroad_type_to_pg(ty).oid())
+        .collect();
 
     // Sbroad does not support PgType::INT2 and PgType::INT4 types, so we map them to
     // Sborad::Integer (8-byte integer), which is then mapped back to PgType::INT8, potentially
@@ -373,15 +374,16 @@ pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> PgResult<V
         }
     }
 
-    Ok(oids)
+    oids
 }
 
 /// Get rows from dql-like(dql or explain) query execution result.
 fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<Value>>> {
-    #[derive(Deserialize, Default, Debug)]
+    #[derive(Deserialize)]
     struct DqlResult {
         rows: Vec<Vec<Value>>,
     }
+
     if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
         return Ok(res.rows);
     }
@@ -402,6 +404,7 @@ fn get_row_count_from_tuple(tuple: &Tuple) -> PgResult<usize> {
     struct RowCount {
         row_count: usize,
     }
+
     let res: RowCount = tuple.field(0)?.ok_or(PgError::InternalError(
         "couldn't get row count from the result tuple".into(),
     ))?;
@@ -672,7 +675,7 @@ mod test {
             (SbroadType::Array, PgType::JSON),
             (SbroadType::Map, PgType::JSON),
         ] {
-            assert!(sbroad_type_to_pg(&sbroad).unwrap() == expected_pg)
+            assert!(sbroad_type_to_pg(&sbroad) == expected_pg)
         }
     }
 

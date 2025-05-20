@@ -168,7 +168,10 @@ def test_invalid_dates(postgres: Postgres):
 
     # Test invalid date with 13th month
     dt_invalid_month = "2023-13-01 12:00:00+00"
-    with pytest.raises(pg8000.exceptions.DatabaseError, match="failed to parse datetime value"):
+    with pytest.raises(
+        pg8000.native.DatabaseError,
+        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+    ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
             p=dt_invalid_month,
@@ -177,7 +180,10 @@ def test_invalid_dates(postgres: Postgres):
 
     # Test invalid date with 32nd day
     dt_invalid_day = "2023-01-32 12:00:00+00"
-    with pytest.raises(pg8000.exceptions.DatabaseError, match="failed to parse datetime value"):
+    with pytest.raises(
+        pg8000.native.DatabaseError,
+        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+    ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
             p=dt_invalid_day,
@@ -186,7 +192,10 @@ def test_invalid_dates(postgres: Postgres):
 
     # Test invalid date with time 24:00:00
     dt_invalid_time = "2023-01-01 24:00:00+00"
-    with pytest.raises(pg8000.exceptions.DatabaseError, match="failed to parse datetime value"):
+    with pytest.raises(
+        pg8000.native.DatabaseError,
+        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+    ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
             p=dt_invalid_time,
@@ -195,7 +204,10 @@ def test_invalid_dates(postgres: Postgres):
 
     # Test invalid date format
     dt_invalid_format = "07-07-2023 12:00:00+00"
-    with pytest.raises(pg8000.exceptions.DatabaseError, match="failed to parse datetime value"):
+    with pytest.raises(
+        pg8000.native.DatabaseError,
+        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+    ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
             p=dt_invalid_format,

@@ -1,6 +1,5 @@
 use crate::pgproto::backend::result::ExecuteResult;
 use crate::pgproto::backend::Backend;
-use crate::pgproto::error::PgError;
 use crate::pgproto::{error::PgResult, messages, stream::PgStream};
 use pgwire::messages::simplequery::Query;
 use std::io::{Read, Write};
@@ -35,9 +34,7 @@ pub fn process_query_message(
             stream.write_message(messages::empty_query_response())?;
         }
         ExecuteResult::SuspendedDql { .. } => {
-            return Err(PgError::InternalError(
-                "portal cannot be suspended in simple query".into(),
-            ))
+            unreachable!("portal cannot be suspended in simple query")
         }
     }
 

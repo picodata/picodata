@@ -165,7 +165,7 @@ fn parse_list_of_tables_query(query: &str) -> Option<String> {
     let dialect = PostgreSqlDialect {};
     let ast = Parser::parse_sql(&dialect, query).ok()?;
     let mut visitor = ListOfTablesQueryParser::default();
-    ast.visit(&mut visitor);
+    let _ = ast.visit(&mut visitor);
 
     if !visitor.found_select_from_pg_class {
         return None;

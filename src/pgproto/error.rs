@@ -10,12 +10,15 @@ pub enum PgErrorCode {
     FeatureNotSupported,
     InternalError,
     InvalidAuthorizationSpecification,
+    InvalidBinaryRepresentation,
     InvalidPassword,
+    InvalidTextRepresentation,
     IoError,
     ProtocolViolation,
 }
 
 impl PgErrorCode {
+    #[inline(always)]
     pub fn as_str(&self) -> &'static str {
         match self {
             PgErrorCode::DuplicateCursor => "42P03",
@@ -23,42 +26,56 @@ impl PgErrorCode {
             PgErrorCode::FeatureNotSupported => "0A000",
             PgErrorCode::InternalError => "XX000",
             PgErrorCode::InvalidAuthorizationSpecification => "28000",
+            PgErrorCode::InvalidBinaryRepresentation => "22P03",
             PgErrorCode::InvalidPassword => "28P01",
+            PgErrorCode::InvalidTextRepresentation => "22P02",
             PgErrorCode::IoError => "58030",
             PgErrorCode::ProtocolViolation => "08P01",
         }
     }
 }
 
+pub type DynError = dyn std::error::Error + Send + Sync;
+
 // Use case: server could not encode a value into client's format.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
 #[error("{0}")]
-pub struct EncodingError(Box<dyn std::error::Error + Send + Sync>);
+pub struct EncodingError(Box<DynError>);
+impl IntoBoxError for EncodingError {}
 
 impl EncodingError {
     #[inline(always)]
-    pub fn new(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+    pub fn new(e: impl Into<Box<DynError>>) -> Self {
         Self(e.into())
     }
 }
-
-impl IntoBoxError for EncodingError {}
 
 // Use case: server could not decode a value received from client.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
 #[error("{0}")]
-pub struct DecodingError(Box<dyn std::error::Error + Send + Sync>);
+pub struct DecodingError(Box<DynError>);
+impl IntoBoxError for DecodingError {}
 
 impl DecodingError {
     #[inline(always)]
-    pub fn new(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+    pub fn new(e: impl Into<Box<DynError>>) -> Self {
         Self(e.into())
     }
 }
 
-impl IntoBoxError for DecodingError {}
+/// A well-formed error which includes postgres protocol error code.
+#[derive(Error, Debug)]
+#[error("{1}")]
+pub struct PedanticError(PgErrorCode, Box<DynError>);
+impl IntoBoxError for PedanticError {}
+
+impl PedanticError {
+    pub fn new(code: PgErrorCode, e: impl Into<Box<DynError>>) -> Self {
+        Self(code, e.into())
+    }
+}
 
 pub type PgResult<T> = Result<T, PgError>;
 
@@ -78,15 +95,17 @@ pub enum PgError {
     #[error("this server requires the client to use ssl")]
     SslRequired,
 
+    // TODO: rename to AuthError
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
 
+    // TODO: merge with InvalidPassword (AuthError)
     // Error message format is compatible with Postgres.
     #[error("authentication failed for user '{0}': LDAP: {1}")]
     LdapAuthError(String, String),
 
-    #[error("{1}")]
-    WithExplicitCode(PgErrorCode, String),
+    #[error(transparent)]
+    WithExplicitCode(#[from] PedanticError),
 
     // Server could not encode a value into client's format.
     // We don't care about any details as long as it's logged.
@@ -107,18 +126,19 @@ pub enum PgError {
     #[error("picodata error: {0}")]
     PicodataError(#[from] crate::traft::error::Error),
 
+    // TODO: replace with WithExplicitCode
     // Generic IO error (TLS/SSL errors also go here).
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 
     // TODO: exterminate this error.
-    #[error("{0}")]
-    Other(Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(Box<DynError>),
 }
 
 impl PgError {
     /// NOTE: new uses of this helper or [`PgError::Other`] are highly discouraged.
-    pub fn other<E: Into<Box<dyn std::error::Error>>>(e: E) -> Self {
+    pub fn other<E: Into<Box<DynError>>>(e: E) -> Self {
         Self::Other(e.into())
     }
 }
@@ -156,8 +176,8 @@ impl PgError {
             FeatureNotSupported(_) => PgErrorCode::FeatureNotSupported,
             SslRequired => PgErrorCode::InvalidAuthorizationSpecification,
             InvalidPassword(_) => PgErrorCode::InvalidPassword,
-            IoError(_) => PgErrorCode::InvalidPassword,
-            WithExplicitCode(code, _) => *code,
+            IoError(_) => PgErrorCode::IoError,
+            WithExplicitCode(PedanticError(code, _)) => *code,
             // TODO: make the code depending on the error kind
             _otherwise => PgErrorCode::InternalError,
         }

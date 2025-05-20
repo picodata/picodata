@@ -1,5 +1,5 @@
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use pgwire::{api::results::DataRowEncoder, error::PgWireResult, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::Value as SbroadValue;
@@ -18,19 +18,55 @@ use time::{
 pub type RawFormat = i16;
 pub type FieldFormat = pgwire::api::results::FieldFormat;
 
-fn bool_from_str(s: &str) -> PgResult<bool> {
-    let s = s.to_lowercase_smolstr();
-    // bool has many representations in text format.
-    // NOTE: see `parse_bool_with_len` in pg
-    match s.as_str() {
-        "t" | "true" | "yes" | "on" | "1" => Ok(true),
-        "f" | "false" | "no" | "off" | "0" => Ok(false),
-        _ => Err(DecodingError::new(format!("cannot decode \'{s}\' as bool")))?,
+type SqlError = Box<dyn Error + Sync + Send>;
+type SqlResult<T> = Result<T, Box<dyn Error + Sync + Send>>;
+
+/// Bool wrapper for smooth encoding & decoding.
+#[derive(Debug, Copy, Clone, serde::Deserialize)]
+#[repr(transparent)]
+pub struct Bool(bool);
+
+impl FromStr for Bool {
+    type Err = &'static str;
+
+    #[inline(always)]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase_smolstr();
+        // bool has many representations in text format.
+        // NOTE: see `parse_bool_with_len` in pg
+        match s.as_str() {
+            "t" | "true" | "yes" | "on" | "1" => Ok(Bool(true)),
+            "f" | "false" | "no" | "off" | "0" => Ok(Bool(false)),
+            _ => Err("invalid character found in bool"),
+        }
     }
 }
 
-type SqlError = Box<dyn Error + Sync + Send>;
-type SqlResult<T> = Result<T, Box<dyn Error + Sync + Send>>;
+impl<'a> FromSql<'a> for Bool {
+    #[inline(always)]
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
+        bool::from_sql(ty, raw).map(Bool)
+    }
+
+    postgres_types::accepts!(BOOL);
+}
+
+impl ToSqlText for Bool {
+    #[inline(always)]
+    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        self.0.to_sql_text(&Type::TEXT, out)
+    }
+}
+
+impl ToSql for Bool {
+    #[inline(always)]
+    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        self.0.to_sql(ty, out)
+    }
+
+    postgres_types::accepts!(BOOL);
+    postgres_types::to_sql_checked!();
+}
 
 /// UUID wrapper for smooth encoding & decoding.
 #[derive(Debug, Copy, Clone, serde::Deserialize)]
@@ -47,6 +83,7 @@ impl FromStr for Uuid {
 }
 
 impl<'a> FromSql<'a> for Uuid {
+    #[inline(always)]
     fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
         let uuid = uuid::Uuid::from_sql(ty, raw)?;
         Ok(Uuid(uuid.into()))
@@ -56,12 +93,14 @@ impl<'a> FromSql<'a> for Uuid {
 }
 
 impl ToSqlText for Uuid {
+    #[inline(always)]
     fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         self.0.to_string().to_sql_text(&Type::TEXT, out)
     }
 }
 
 impl ToSql for Uuid {
+    #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         self.0.into_inner().to_sql(ty, out)
     }
@@ -78,6 +117,7 @@ pub struct Decimal(tarantool::decimal::Decimal);
 impl FromStr for Decimal {
     type Err = SqlError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let decimal = tarantool::decimal::Decimal::from_str(s)
             .map_err(|_| format!("failed to parse `{s}` as decimal"))?;
@@ -87,6 +127,7 @@ impl FromStr for Decimal {
 }
 
 impl<'a> FromSql<'a> for Decimal {
+    #[inline(always)]
     fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
         let decimal = rust_decimal::Decimal::from_sql(ty, raw)?;
         Self::from_str(&decimal.to_smolstr())
@@ -96,12 +137,14 @@ impl<'a> FromSql<'a> for Decimal {
 }
 
 impl ToSqlText for Decimal {
+    #[inline(always)]
     fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         self.0.to_string().to_sql_text(&Type::TEXT, out)
     }
 }
 
 impl ToSql for Decimal {
+    #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         let string = self.0.to_string();
         let decimal = rust_decimal::Decimal::from_str_exact(&string)?;
@@ -112,7 +155,7 @@ impl ToSql for Decimal {
     postgres_types::to_sql_checked!();
 }
 
-/// Json wrapper for smooth encoding.
+/// JSON wrapper for smooth encoding & decoding.
 #[derive(Debug, Clone)]
 pub struct Json(rmpv::Value);
 
@@ -129,12 +172,14 @@ impl std::fmt::Display for Json {
 impl FromStr for Json {
     type Err = serde_json::Error;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_str(s).map(Self)
     }
 }
 
 impl<'a> FromSql<'a> for Json {
+    #[inline(always)]
     fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
         let json = postgres_types::Json::<rmpv::Value>::from_sql(ty, raw)?;
         Ok(Self(json.0))
@@ -144,6 +189,7 @@ impl<'a> FromSql<'a> for Json {
 }
 
 impl ToSqlText for Json {
+    #[inline(always)]
     fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         // Note: json text representation is the same as binary
         self.to_sql(&Type::JSON, out)
@@ -151,6 +197,7 @@ impl ToSqlText for Json {
 }
 
 impl ToSql for Json {
+    #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         postgres_types::Json(&self.0).to_sql(ty, out)
     }
@@ -167,7 +214,6 @@ pub struct Timestamptz(tarantool::datetime::Datetime);
 impl FromStr for Timestamptz {
     type Err = SqlError;
 
-    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // PostgreSQL can parse arbitrary datetime formats, as demonstrated in the following functions:
         // * [timestamptz_in](https://github.com/postgres/postgres/blob/0b1fe1413ea84a381489ed1d1f718cb710229ab3/src/backend/utils/adt/timestamp.c#L416)
@@ -227,6 +273,7 @@ impl FromStr for Timestamptz {
 }
 
 impl<'a> FromSql<'a> for Timestamptz {
+    #[inline(always)]
     fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
         let datetime = time::OffsetDateTime::from_sql(ty, raw)?;
         Ok(Self(datetime.into()))
@@ -259,6 +306,7 @@ impl ToSqlText for Timestamptz {
 }
 
 impl ToSql for Timestamptz {
+    #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
         self.0.into_inner().to_sql(ty, out)
     }
@@ -271,7 +319,7 @@ impl ToSql for Timestamptz {
 pub enum PgValue {
     Float(f64),
     Integer(i64),
-    Boolean(bool),
+    Boolean(Bool),
     Text(String),
     Timestamptz(Timestamptz),
     Json(Json),
@@ -286,7 +334,7 @@ impl TryFrom<PgValue> for SbroadValue {
     fn try_from(value: PgValue) -> Result<Self, Self::Error> {
         match value {
             PgValue::Float(v) => Ok(SbroadValue::from(v)),
-            PgValue::Boolean(v) => Ok(SbroadValue::from(v)),
+            PgValue::Boolean(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Integer(v) => Ok(SbroadValue::from(v)),
             PgValue::Text(v) => Ok(SbroadValue::from(v)),
             PgValue::Numeric(v) => Ok(SbroadValue::from(v.0)),
@@ -311,7 +359,7 @@ impl PgValue {
         use rmpv::Value;
         match (&value, ty.clone()) {
             (Value::Nil, _) => Ok(PgValue::Null),
-            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(*v)),
+            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(Bool(*v))),
             (Value::F32(v), Type::FLOAT8) => Ok(PgValue::Float(*v as _)),
             (Value::F64(v), Type::FLOAT8) => Ok(PgValue::Float(*v)),
             (Value::Integer(v), Type::INT8) => {
@@ -382,6 +430,7 @@ impl PgValue {
     }
 
     pub fn encode(&self, format: FieldFormat, encoder: &mut DataRowEncoder) -> PgWireResult<()> {
+        // TODO: rewrite this once rust supports generic closures
         pub fn do_encode<T: ToSql + ToSqlText>(
             encoder: &mut DataRowEncoder,
             value: &T,
@@ -407,30 +456,33 @@ impl PgValue {
         }
     }
 
-    fn decode_text(bytes: &Bytes, ty: Type) -> PgResult<Self> {
-        fn do_parse<T: FromStr>(s: &str) -> PgResult<T>
+    fn decode_text(bytes: &[u8], ty: Type) -> Result<Self, DecodingError> {
+        // TODO: rewrite this once rust supports generic closures
+        fn do_parse<T: FromStr>(ty: Type, s: &str) -> Result<T, DecodingError>
         where
             T::Err: Into<SqlError>,
         {
-            Ok(T::from_str(s).map_err(DecodingError::new)?)
+            // We deliberately ignore type's own parsing error; std types tend to have
+            // not very helpful errors like `invalid digit found in string`.
+            T::from_str(s).map_err(|_| DecodingError::new(format!("'{s}' is not a valid {ty}")))
         }
 
         let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::new)?;
         Ok(match ty {
-            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(&s)?),
-            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(&s)?),
+            Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(ty, &s)?),
+            Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(ty, &s)?),
             Type::TEXT | Type::VARCHAR => PgValue::Text(s),
-            Type::BOOL => PgValue::Boolean(bool_from_str(&s)?),
-            Type::NUMERIC => PgValue::Numeric(do_parse(&s)?),
-            Type::UUID => PgValue::Uuid(do_parse(&s)?),
-            Type::JSON | Type::JSONB => PgValue::Json(do_parse(&s)?),
-            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(&s)?),
-            _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
+            Type::BOOL => PgValue::Boolean(do_parse(ty, &s)?),
+            Type::NUMERIC => PgValue::Numeric(do_parse(ty, &s)?),
+            Type::UUID => PgValue::Uuid(do_parse(ty, &s)?),
+            Type::JSON | Type::JSONB => PgValue::Json(do_parse(ty, &s)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(ty, &s)?),
+            _ => return Err(DecodingError::new(format!("unsupported type {ty}"))),
         })
     }
 
-    fn decode_binary(bytes: &Bytes, ty: Type) -> PgResult<Self> {
-        fn do_decode<'a, T: FromSql<'a>>(ty: Type, raw: &'a [u8]) -> PgResult<T> {
+    fn decode_binary(bytes: &[u8], ty: Type) -> Result<Self, DecodingError> {
+        fn do_decode<'a, T: FromSql<'a>>(ty: Type, raw: &'a [u8]) -> Result<T, DecodingError> {
             Ok(T::from_sql(&ty, raw).map_err(DecodingError::new)?)
         }
 
@@ -446,13 +498,17 @@ impl PgValue {
             Type::UUID => PgValue::Uuid(do_decode(ty, bytes)?),
             Type::JSON | Type::JSONB => PgValue::Json(do_decode(ty, bytes)?),
             Type::TIMESTAMPTZ => PgValue::Timestamptz(do_decode(ty, bytes)?),
-            _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
+            _ => return Err(DecodingError::new(format!("unsupported type {ty}"))),
         })
     }
 
-    pub fn decode(bytes: Option<&Bytes>, oid: Oid, format: FieldFormat) -> PgResult<Self> {
+    pub fn decode(
+        bytes: Option<&[u8]>,
+        oid: Oid,
+        format: FieldFormat,
+    ) -> Result<Self, DecodingError> {
         let ty = Type::from_oid(oid)
-            .ok_or_else(|| PgError::FeatureNotSupported(format!("unknown oid: {oid}")))?;
+            .ok_or_else(|| DecodingError::new(format!("unknown type oid {oid}")))?;
 
         let Some(bytes) = bytes else {
             return Ok(PgValue::Null);

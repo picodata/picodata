@@ -5,7 +5,7 @@ use self::{
 };
 use super::{
     client::{ClientId, ClientParams},
-    error::{PgError, PgResult},
+    error::{PedanticError, PgError, PgErrorCode, PgResult},
     value::PgValue,
 };
 use crate::{
@@ -30,10 +30,7 @@ use sbroad::{
     ir::{value::Value, Plan as IrPlan},
     utils::MutexLike,
 };
-use std::{
-    iter::zip,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
 
@@ -44,7 +41,26 @@ pub mod describe;
 pub mod result;
 pub mod storage;
 
-fn decode_parameter_values(
+fn decode_parameter(
+    bytes: Option<&[u8]>,
+    oid: Oid,
+    format: FieldFormat,
+    index: usize,
+) -> PgResult<Value> {
+    PgValue::decode(bytes, oid, format)
+        .map_err(|e| {
+            PedanticError::new(
+                match format {
+                    FieldFormat::Binary => PgErrorCode::InvalidBinaryRepresentation,
+                    FieldFormat::Text => PgErrorCode::InvalidTextRepresentation,
+                },
+                format!("failed to bind parameter ${index}: {e}"),
+            )
+        })?
+        .try_into()
+}
+
+fn decode_parameters(
     params: Vec<Option<Bytes>>,
     param_oids: &[Oid],
     formats: &[FieldFormat],
@@ -58,12 +74,14 @@ fn decode_parameter_values(
         )));
     }
 
-    zip(zip(params, param_oids), formats)
-        .map(|((bytes, oid), format)| {
-            let value = PgValue::decode(bytes.as_ref(), *oid, *format)?;
-            value.try_into()
+    let iter = params.into_iter().enumerate().zip(param_oids).zip(formats);
+    let res: PgResult<Vec<_>> = iter
+        .map(|(((param_idx, bytes), oid), format)| {
+            decode_parameter(bytes.as_deref(), *oid, *format, param_idx + 1)
         })
-        .collect()
+        .collect();
+
+    res
 }
 
 /// Map any encoding format to per-column or per-parameter format just like pg does it in
@@ -171,7 +189,7 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
     let param_types: Vec<_> = param_oids
         .iter()
         .map(|oid| param_oid_to_derived_type(*oid))
-        .collect::<PgResult<_>>()?;
+        .collect::<Result<_, _>>()?;
     let cache_key = query_id(query, &param_types);
 
     let runtime = RouterRuntime::new().map_err(Error::from)?;
@@ -404,7 +422,7 @@ impl Backend {
         let describe = describe_statement(self.client_id, &statement)?;
         let params_format = prepare_encoding_format(params_format, params.len())?;
         let result_format = prepare_encoding_format(result_format, describe.ncolumns())?;
-        let params = decode_parameter_values(params, &describe.param_oids, &params_format)?;
+        let params = decode_parameters(params, &describe.param_oids, &params_format)?;
         let default_options = self.params.execution_options();
 
         bind(
