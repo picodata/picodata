@@ -4040,6 +4040,30 @@ fn front_sql_whitespaces_are_not_ignored() {
     }
 }
 
+#[test]
+fn front_sql_check_in_statement() {
+    let correct_statements = [
+        r#"select 1 in (1)"#,
+        r#"select * from t where a in (1)"#,
+        r#"select * from t where a in (select a from t)"#,
+    ];
+
+    let metadata = &RouterConfigurationMock::new();
+    for input in correct_statements {
+        let _ = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
+    }
+
+    let invalid_statements = [r#"select 1 in 1"#, r#"select * from t where a in 1"#];
+
+    for input in invalid_statements {
+        let err = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap_err();
+        assert_eq!(
+            "invalid expression: In expression must have query or a list of values as right child",
+            err.to_string()
+        );
+    }
+}
+
 mod multi_queries {
     use super::*;
     use std::iter;

@@ -368,11 +368,12 @@ TCL = _{ Begin | Commit | Rollback | End }
 EmptyQuery = { WHITESPACE* }
 
 //  `select (true)between(false)and(true)` query is valid!!! :(
-Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
+//  `In` here is special case, to handle priority and distinguish Row from ExpressionInParentheses
+Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row | ExprAtomValue)))* }
     // TODO: Should add smth like &(")" ~ WO next to W
     //       to support queries like `select (true)and(false)`
     ExprInfixOpo = _{ (W ~ ExprInfixOpSep ~ W) | (WO ~ ExprInfixOpNoSep ~ WO) }
-    ExprInfixOpSep = _{ Like | Similar | Escape | Between | And | Or | In }
+    ExprInfixOpSep = _{ Like | Similar | Escape | Between | And | Or }
         In    = { (NotFlag ~ W)? ~ ^"in" }
         Like = { ^"like" | ^"ilike" }
         Similar = { ^"similar" }

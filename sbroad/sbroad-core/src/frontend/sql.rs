@@ -4076,6 +4076,12 @@ where
                 Rule::Gt => ParseExpressionInfixOperator::InfixBool(Bool::Gt),
                 Rule::GtEq => ParseExpressionInfixOperator::InfixBool(Bool::GtEq),
                 Rule::In => {
+                    if !matches!(rhs, ParseExpression::Row{..}|ParseExpression::SubQueryPlanId{..}) {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some(format_smolstr!("In expression must have query or a list of values as right child"))
+                        ));
+                    }
                     let mut op_inner = op.into_inner();
                     is_not = op_inner.next().is_some_and(|i| matches!(i.as_rule(), Rule::NotFlag));
                     ParseExpressionInfixOperator::InfixBool(Bool::In)
