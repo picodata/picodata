@@ -38,6 +38,15 @@ pub enum ReplError {
     Other(String),
 }
 
+impl ReplError {
+    pub fn other<E>(error: E) -> Self
+    where
+        E: Into<Box<dyn Error>>,
+    {
+        Self::Other(error.into().to_string())
+    }
+}
+
 impl From<UnixClientError> for ReplError {
     fn from(error: UnixClientError) -> Self {
         if let UnixClientError::Io(e) = error {

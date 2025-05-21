@@ -1,9 +1,6 @@
-use crate::address::IprotoAddress;
 use crate::cli::args;
 use crate::cli::console::{Command, Console, ReplError, SpecialCommand};
-use crate::config::DEFAULT_USERNAME;
-use crate::traft::error::Error;
-use crate::util::prompt_password;
+use crate::cli::util::Credentials;
 
 use std::fmt::{Debug, Display};
 use std::time::Duration;
@@ -11,28 +8,7 @@ use std::time::Duration;
 use comfy_table::{ContentArrangement, Table};
 use nix::unistd::isatty;
 use serde::{Deserialize, Serialize};
-use tarantool::auth::AuthMethod;
-use tarantool::network::{AsClient, Client, Config};
-
-fn get_password_from_file(path: &str) -> Result<String, Error> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        Error::other(format!(
-            r#"can't read password from password file by "{path}", reason: {e}"#
-        ))
-    })?;
-
-    let password = content
-        .lines()
-        .next()
-        .ok_or_else(|| Error::other("Empty password file"))?
-        .trim();
-
-    if password.is_empty() {
-        return Ok(String::new());
-    }
-
-    Ok(password.into())
-}
+use tarantool::network::AsClient;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ColumnDesc {
@@ -141,95 +117,19 @@ impl Display for ResultSet {
     }
 }
 
-/// Determines the username and password from the provided arguments and uses
-/// these credentials to establish a connection to a remote instance at given `address`.
-///
-/// The user for the connection is determined in the following way:
-/// - if `address.user` is not `None`, it is used, else
-/// - if `user` is not `None`, it is used, else
-/// - [`DEFAULT_USERNAME`] is used.
-///
-/// The password for the connection is determined in the following way:
-/// - if resulting user is `DEFAULT_USERNAME`, the password is empty (!?!??), else
-/// - if `password_file` is not `None`, it is used to read the password from, else
-/// - prompts the user for the password on the tty.
-///
-/// On success returns the connection object and the chosen username.
-pub fn determine_credentials_and_connect(
-    address: &IprotoAddress,
-    user: Option<&str>,
-    password_file: Option<&str>,
-    auth_method: AuthMethod,
-    timeout: Duration,
-) -> Result<(Client, String), Error> {
-    let user = if let Some(user) = &address.user {
-        user
-    } else if let Some(user) = user {
-        user
-    } else {
-        DEFAULT_USERNAME
-    };
-
-    let password = if user == DEFAULT_USERNAME {
-        String::new()
-    } else if let Some(path) = password_file {
-        get_password_from_file(path)?
-    } else {
-        let prompt = format!("Enter password for {user}: ");
-        prompt_password(&prompt)
-            .map_err(|err| Error::other(format!("Failed to prompt for a password: {err}")))?
-    };
-
-    let mut config = Config::default();
-    config.creds = Some((user.into(), password));
-    config.auth_method = auth_method;
-    config.connect_timeout = Some(timeout);
-
-    let port = match address.port.parse::<u16>() {
-        Ok(port) => port,
-        Err(err) => {
-            return Err(Error::other(ReplError::Other(format!(
-                "Error while parsing instance port '{}': {err}",
-                address.port
-            ))))
-        }
-    };
-
-    let client =
-        ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
-
-    Ok((client, user.into()))
-}
-
 fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
-    let (client, user) = determine_credentials_and_connect(
-        &args.address,
-        Some(&args.user),
-        args.password_file.as_deref(),
-        args.auth_method,
-        Duration::from_secs(args.timeout),
-    )
-    .map_err(|err| {
-        ReplError::Other(format!(
-            "Connection Error (address {}). Try to reconnect: {}",
-            args.address, err
-        ))
-    })?;
-
-    // Check if connection is valid. We need to do it because connect is lazy
-    // and we want to check whether authentication have succeeded or not
-    if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
-        return Err(ReplError::Other(format!(
-            "Connection Error (address {}). Try to reconnect: {}",
-            args.address, err
-        )));
-    }
+    // setup credentials and options for the connection
+    let credentials = Credentials::try_from(&args).map_err(ReplError::other)?;
+    let timeout = Some(Duration::from_secs(args.timeout));
+    let client = credentials
+        .connect(&args.address, timeout)
+        .map_err(ReplError::other)?;
 
     let mut console = Console::new()?;
-
+    let username = args.address.user.unwrap_or(args.user);
     console.greet(&format!(
         "Connected to interactive console by address \"{}:{}\" under \"{}\" user",
-        args.address.host, args.address.port, user
+        args.address.host, args.address.port, username,
     ));
 
     const HELP_MESSAGE: &'static str = "

@@ -33,6 +33,21 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed an issue where `cluster.shredding` option does not get applied on instance restart.
 - `EXPLAIN` queries now support `OPTION` (e.g. `EXPLAIN SELECT 1 OPTION (SQL_VDBE_OPCODE_MAX = 6)`)
 
+### CLI
+
+- `picodata status` and `picodata plugin configure` now support execution with
+  custom user, determining authentication method automatically on it's own.
+  WARNING: If you do not specify an authentication method, it will be found
+  out by brute force, which may lead to the user being blocked if the number of
+  authorization attempts exceeds the limits.
+  See <https://git.picodata.io/core/picodata/issues/1734>.
+
+- `picodata plugin configure` now prints a message on success for better UX.
+  See <https://git.picodata.io/core/picodata/-/issues/1904>.
+
+- `picodata expel` now uses CHAP-SHA1 as a default authentication method, because
+  in most cases, this command will be executed as a `pico_service` internal user.
+
 ## [25.3.1] - 2025-07-25
 
 ### Features
@@ -42,6 +57,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### CLI
 - `picodata plugin configure` now prints a message on success.
+- `picodata status` and `picodata plugin configure` now support execution as a custom user.
+  Before, only `pico_service` user could be used to perform these subcommands.
 
 ### ACL
 - The maximum number of users and roles that can be created has been increased from 32 to 128.

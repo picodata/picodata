@@ -207,10 +207,11 @@ def test_expel_timeout(cluster: Cluster):
     cli.expect_exact("Enter password for pico_service:")
     cli.sendline("wrong_password")
 
+    common_error_part = "CRITICAL: Connection Error (address 10001:3301). Try to reconnect"
     if sys.platform == "darwin":
-        cli.expect_exact("CRITICAL: failed to connect to address '10001:3301': No route to host (os error 65)")
+        cli.expect_exact(f"{common_error_part}: No route to host (os error 65)")
     else:
-        cli.expect_exact("CRITICAL: connect timeout")
+        cli.expect_exact(f"{common_error_part}: connect timeout")
 
     cli.expect_exact(pexpect.EOF)
 

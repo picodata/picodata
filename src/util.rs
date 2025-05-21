@@ -5,13 +5,11 @@ use crate::traft::error::Error;
 
 use std::any::{Any, TypeId};
 use std::cell::Cell;
-use std::io::{BufRead as _, BufReader, Write as _};
 use std::mem::replace;
 use std::panic::Location;
 use std::path::Path;
 use std::time::Duration;
 
-use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::ir::value::Value;
 use smol_str::{format_smolstr, ToSmolStr};
@@ -357,51 +355,6 @@ where
             write!(f, "{} -> {}", self.from, self.to)
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Prompts a password from a terminal.
-///
-/// This function bypasses stdin redirection (like `cat script.lua |
-/// picodata connect`) and always prompts a password from a TTY.
-pub fn prompt_password(prompt: &str) -> std::io::Result<String> {
-    // See also: https://man7.org/linux/man-pages/man3/termios.3.html
-    let mut tty = std::fs::File::options()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")?;
-
-    let tcattr_old = tcgetattr(&tty)?;
-
-    // Disable echo while prompting a password
-    let mut tcattr_new = tcattr_old.clone();
-    tcattr_new.local_flags.set(LocalFlags::ECHO, false);
-    tcattr_new.local_flags.set(LocalFlags::ECHONL, true);
-    tcsetattr(&tty, TCSADRAIN, &tcattr_new)?;
-
-    let do_prompt_password = |tty: &mut std::fs::File| {
-        // Print the prompt
-        tty.write_all(prompt.as_bytes())?;
-        tty.flush()?;
-
-        // Read the password
-        let mut password = String::new();
-        BufReader::new(tty).read_line(&mut password)?;
-
-        if !password.ends_with('\n') {
-            // Preliminary EOF, a user didn't hit enter
-            return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
-        }
-
-        let crlf = |c| matches!(c, '\r' | '\n');
-        Ok(password.trim_end_matches(crlf).to_owned())
-    };
-
-    // Try reading the password, then restore old terminal settings.
-    let result = do_prompt_password(&mut tty);
-    let _ = tcsetattr(&tty, TCSADRAIN, &tcattr_old);
-
-    result
 }
 
 ////////////////////////////////////////////////////////////////////////////////
