@@ -357,3 +357,9 @@ DELETE FROM int8 where uuid = 'kek';
 SELECT * FROM int8;
 -- EXPECTED:
 9, 5, 'lol'
+
+-- TEST: test-check-compare-order
+-- SQL:
+SELECT * FROM t ORDER BY a desc;
+-- EXPECTED:
+1, 1, 2, 1, 3, 2, 4, 3

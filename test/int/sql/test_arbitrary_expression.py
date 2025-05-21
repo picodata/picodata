@@ -5,5 +5,5 @@ from framework.sqltester import (
 
 
 @sql_test_file("arbitrary_exprs.sql")
-class TestSubstring(ClusterSingleInstance):
+class TestArbitraryExprs(ClusterSingleInstance):
     pass

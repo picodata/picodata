@@ -4,6 +4,6 @@ from framework.sqltester import (
 )
 
 
-@sql_test_file("operators.sql")
-class TestOperators(ClusterSingleInstance):
+@sql_test_file("groupby.sql")
+class TestOrderBy(ClusterSingleInstance):
     pass

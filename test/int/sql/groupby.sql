@@ -400,7 +400,7 @@ group by cs
 -- SQL:
 SELECT "d", count(sum("e")) from "arithmetic_space" group by "d"
 -- ERROR:
-aggregate function inside aggregate function
+invalid query
 
 -- TEST: test_groupby_arith_expression
 -- SQL:

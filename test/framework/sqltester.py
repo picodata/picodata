@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Type
 from typing import Any
 import pytest
+from functools import cmp_to_key
 from decimal import Decimal
 import re
 from conftest import Cluster, TarantoolError
@@ -15,11 +16,23 @@ def init_cluster(cluster: Cluster, instance_count: int) -> Cluster:
     return cluster
 
 
+def compare_lists(a: list, b: list):
+    for x, y in zip(a, b):
+        if x is None:
+            return -1
+        elif y is None:
+            return 1
+        elif x != y:
+            return (x > y) - (x < y)
+    return 0
+
+
 def do_execsql(cluster: Cluster, query: str, expected: list):
     instance = cluster.leader()
     result = instance.sql(query)
-    data = [col for row in result for col in row]
-    assert data == expected
+    result_len = len(result[0]) if len(result) > 0 else 0
+    new_expected = map(list, zip(*(iter(expected),) * result_len))
+    assert sorted(result, key=cmp_to_key(compare_lists)) == sorted(new_expected, key=cmp_to_key(compare_lists))
 
 
 def do_catchsql(cluster: Cluster, sql: str, expected: str | list):

@@ -5,10 +5,10 @@ from framework.sqltester import (
 
 
 @sql_test_file("target_queries.sql")
-class TestSubstring(ClusterSingleInstance):
+class TestTargetQueries1(ClusterSingleInstance):
     pass
 
 
 @sql_test_file("random_queries.sql")
-class TestGroupby(ClusterSingleInstance):
+class TestTargetQueries2(ClusterSingleInstance):
     pass
