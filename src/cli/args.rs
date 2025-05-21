@@ -426,17 +426,22 @@ pub struct Expel {
     pub peer_address: IprotoAddress,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
-    /// Path to a plain-text file with the `admin` password.
-    /// If this option isn't provided, the password is prompted from the terminal.
-    pub password_file: Option<String>,
+    /// Path to a plain-text file with a password for the
+    /// specified user (or system user "pico_service" if no
+    /// user was specified). If password doesn't match, error
+    /// message is printed to a user. If the password isn't
+    /// provided, it will be prompted from the terminal.
+    pub password_file: Option<PathBuf>,
 
     #[clap(
         short = 'a',
         long = "auth-type",
         value_name = "METHOD",
-        default_value = AuthMethod::Md5.as_str(),
+        default_value = AuthMethod::ChapSha1.as_str(),
     )]
     /// The preferred authentication method.
+    /// Defaults to "CHAP-SHA1" because in most
+    /// cases "pico_service" user will be used.
     pub auth_method: AuthMethod,
 
     #[clap(short = 'f', long = "force")]
@@ -539,6 +544,8 @@ pub struct Connect {
         default_value = AuthMethod::Md5.as_str(),
     )]
     /// The preferred authentication method.
+    /// Defaults to "MD5" because in most
+    /// cases non-internal user will be used.
     pub auth_method: AuthMethod,
 
     #[clap(value_name = "ADDRESS")]
@@ -549,13 +556,13 @@ pub struct Connect {
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
     /// Path to a plain-text file with a password.
     /// If this option isn't provided, the password is prompted from the terminal.
-    pub password_file: Option<String>,
+    pub password_file: Option<PathBuf>,
 
     #[clap(
         short = 't',
         long = "timeout",
         value_name = "TIMEOUT",
-        default_value = "5",
+        default_value = "20",
         env = "PICODATA_CONNECT_TIMEOUT"
     )]
     /// Connection timeout in seconds.
@@ -613,11 +620,25 @@ impl Admin {
 pub struct Status {
     #[clap(
         long = "peer",
-        value_name = "HOST:PORT",
+        value_name = "[USER@]HOST:PORT",
         env = "PICODATA_PEER",
         default_value = "127.0.0.1:3301"
     )]
-    /// Address of any picodata instance of the given cluster.
+    /// Address of a picodata instance in the cluster.
+    ///
+    /// The address should be in the format `[USER@]HOST:PORT` where:
+    ///
+    /// - `USER` is optional (defaults to "pico_service" if omitted)
+    ///
+    /// - `HOST` is the hostname or IP address
+    ///
+    /// - `PORT` is the network port
+    ///
+    /// Consider the following examples:
+    ///
+    /// - `picodata status --peer admin@127.0.0.1:3301`
+    ///
+    /// - `picodata status --peer localhost:3301`
     pub peer_address: IprotoAddress,
 
     #[clap(
@@ -626,19 +647,17 @@ pub struct Status {
         env = "PICODATA_SERVICE_PASSWORD_FILE"
     )]
     /// Path to a plain-text file with a password for the
-    /// system user "pico_service". This password is used
-    /// for the internal communication among instances of
-    /// picodata, so it is the same on all instances.
-    /// If passwords don't match, error message
-    /// is printed to a user. If the password isn't provided,
-    /// it will be prompted from the terminal.
+    /// specified user (or system user "pico_service" if no
+    /// user was specified). If password doesn't match, error
+    /// message is printed to a user. If the password isn't
+    /// provided, it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
 
     #[clap(
         short = 't',
         long = "timeout",
         value_name = "TIMEOUT",
-        default_value = "5",
+        default_value = "20",
         env = "PICODATA_CONNECT_TIMEOUT"
     )]
     /// Connection timeout in seconds.
@@ -700,8 +719,27 @@ impl Plugin {
 #[derive(Debug, Parser)]
 #[clap(about = "Update plugin's service configuration")]
 pub struct ServiceConfigUpdate {
-    #[clap(env = "PICODATA_PEER", value_name = "[USER@]HOST:PORT")]
-    /// Address of any Picodata instance.
+    #[clap(
+        long = "peer",
+        value_name = "[USER@]HOST:PORT",
+        env = "PICODATA_PEER",
+        default_value = "127.0.0.1:3301"
+    )]
+    /// Address of a picodata instance in the cluster.
+    ///
+    /// The address should be in the format `[USER@]HOST:PORT` where:
+    ///
+    /// - `USER` is optional (defaults to "pico_service" if omitted)
+    ///
+    /// - `HOST` is the hostname or IP address
+    ///
+    /// - `PORT` is the network port
+    ///
+    /// Consider the following examples:
+    ///
+    /// - `picodata status --peer admin@127.0.0.1:3301`
+    ///
+    /// - `picodata status --peer localhost:3301`
     pub peer_address: IprotoAddress,
 
     #[clap(value_name = "PLUGIN_NAME")]
@@ -728,19 +766,17 @@ pub struct ServiceConfigUpdate {
         env = "PICODATA_SERVICE_PASSWORD_FILE"
     )]
     /// Path to a plain-text file with a password for the
-    /// system user "pico_service". This password is used
-    /// for the internal communication among instances of
-    /// picodata, so it is the same on all instances.
-    /// If passwords don't match, error message
-    /// is printed to a user. If the password isn't provided,
-    /// it will be prompted from the terminal.
+    /// specified user (or system user "pico_service" if no
+    /// user was specified). If password doesn't match, error
+    /// message is printed to a user. If the password isn't
+    /// provided, it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
 
     #[clap(
         long = "timeout",
         value_name = "TIMEOUT",
         env = "PICODATA_CONNECT_TIMEOUT",
-        default_value = "10"
+        default_value = "20"
     )]
     /// Client connection timeout in seconds.
     pub timeout: u64,

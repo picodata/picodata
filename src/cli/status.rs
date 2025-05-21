@@ -1,9 +1,9 @@
 use crate::cli;
 use crate::cli::args;
-use crate::cli::util::{determine_credentials_and_connect, RowSet};
+use crate::cli::util::{Credentials, RowSet};
 use crate::info::{proc_instance_info, InstanceInfo};
-use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::proc_sql_dispatch;
+use crate::traft;
 
 use std::cmp::max;
 use std::collections::BTreeMap;
@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use comfy_table::{ContentArrangement, Table};
 use rmpv::Value;
-use tarantool::auth::AuthMethod;
 use tarantool::network::AsClient;
 
 pub fn main(args: args::Status) -> ! {
@@ -78,14 +77,12 @@ fn set_width_for_columns(table: &mut Table, name_length: usize, state_length: us
 }
 
 fn main_impl(args: args::Status) -> cli::Result<()> {
-    let password_file = args.password_file.as_ref().and_then(|path| path.to_str());
-    let (client, _) = determine_credentials_and_connect(
-        &args.peer_address,
-        Some(PICO_SERVICE_USER_NAME),
-        password_file,
-        AuthMethod::ChapSha1,
-        Duration::from_secs(args.timeout),
-    )?;
+    // setup credentials and options for the connection
+    let credentials = Credentials::try_from(&args)?;
+    let timeout = Some(Duration::from_secs(args.timeout));
+    let client = credentials
+        .connect(&args.peer_address, timeout)
+        .map_err(traft::error::Error::other)?;
 
     let instance_info =
         ::tarantool::fiber::block_on(client.call(crate::proc_name!(proc_instance_info), &()))?

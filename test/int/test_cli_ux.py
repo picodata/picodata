@@ -6,14 +6,15 @@ import subprocess
 from conftest import (
     CLI_TIMEOUT,
     Cluster,
+    Instance,
     log_crawler,
     assert_starts_with,
 )
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
+from pathlib import Path
 from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
-from time import sleep
 
 
 def test_connect_ux(cluster: Cluster):
@@ -165,30 +166,76 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("(admin) lua> help")
 
 
+def assert_config_change(
+    general_config: Path,
+    instance: Instance,
+    username: str,
+    service_names: str,
+    expected: list[object],
+    err: bool = False,
+):
+    inst_addr = f"{username}@{instance.iproto_listen}"
+    proc = subprocess.Popen(
+        [
+            instance.binary_path,
+            "plugin",
+            "configure",
+            "--peer",
+            inst_addr,
+            _PLUGIN,
+            _PLUGIN_VERSION_1,
+            str(general_config),
+            "--service-password-file",
+            str(instance.service_password_file),
+            "--service-names",
+            service_names,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    stdout, stderr = proc.communicate()
+    if err:
+        assert proc.returncode != 0
+        assert f"AccessDenied: Read access to space '_pico_plugin_config' is denied for user '{username}'" in stderr
+    else:
+        assert f"new configuration for plugin '{_PLUGIN}' successfully applied" in stdout
+        assert instance.sql("SELECT * FROM _pico_plugin_config") == expected
+
+
 def test_plugin_ux(cluster: Cluster):
-    service_password = "T3stP4ssword"
-    cluster.set_service_password(service_password)
-    assert cluster.service_password_file
+    # setup cluster
+    inst = cluster.add_instance(wait_online=False)
 
-    i1 = cluster.add_instance(wait_online=False)
-    i1.start()
-    i1.wait_online()
+    general_password = "T0psecret"
+    general_config = Path(inst.instance_dir) / "config.yml"
 
-    plugin_ref = PluginReflection.default(i1)
-    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref.install(True).enable(False)
+    inst.env["PICODATA_ADMIN_PASSWORD"] = general_password
+    inst.set_service_password(general_password)
+    assert inst.service_password_file
 
-    new_config = f"{i1.instance_dir}/new_conf.yaml"
+    inst.start_and_wait()
 
-    # test list of services with multiple elements
-
-    with open(new_config, "w") as f:
-        # testservice_1.bar = 101 -> 42
-        # testservice_1.foo = true -> true, shouldn't be even altered initially
-        # testservice_1.baz = ["one", "two", "three"] -> ["cool", "nice"], multiple elements
-        # testservice_2.foo = 0 -> 13, check more than a one service
-        f.write(
-            """\
+    # test as `pico_service` system user on
+    # list of services with multiple elements:
+    # testservice_1.bar = 101 -> 42
+    # testservice_1.foo = true -> true, shouldn't be even altered initially
+    # testservice_1.baz = ["one", "two", "three"] -> ["cool", "nice"], multiple elements
+    # testservice_2.foo = 0 -> 13, check more than a one service
+    expected = [
+        ["testplug", "0.1.0", "testservice_1", "bar", 42],
+        [
+            "testplug",
+            "0.1.0",
+            "testservice_1",
+            "baz",
+            ["cool", "nice"],
+        ],
+        ["testplug", "0.1.0", "testservice_1", "foo", True],
+        ["testplug", "0.1.0", "testservice_2", "foo", 13],
+    ]
+    general_config.write_text("""\
 testservice_1:
     bar: 42
     foo: true
@@ -199,81 +246,60 @@ testservice_2:
 
 unknown_service:
     unknown_field: "unknown_value"
-"""
-        )
+""")
 
-    subprocess.run(
-        [
-            i1.binary_path,
-            "plugin",
-            "configure",
-            i1.iproto_listen,
-            _PLUGIN,
-            _PLUGIN_VERSION_1,
-            new_config,
-            "--service-password-file",
-            cluster.service_password_file,
-            "--service-names",
-            "testservice_1,testservice_2",
-        ],
-        encoding="utf-8",
-    )
-    sleep(2)  # wait to finish updating configs, not the subprocess
+    plugin_ref = PluginReflection.default(inst)
+    inst.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    plugin_ref.install(True).enable(False)
+    assert_config_change(general_config, inst, "pico_service", "testservice_1,testservice_2", expected)
 
-    assert i1.sql("SELECT * FROM _pico_plugin_config;") == [
-        ["testplug", "0.1.0", "testservice_1", "bar", 42],  # <- `101`
-        [
-            "testplug",
-            "0.1.0",
-            "testservice_1",
-            "baz",
-            ["cool", "nice"],
-        ],  # <- ["one", "two", "three"]
-        ["testplug", "0.1.0", "testservice_1", "foo", True],
-        ["testplug", "0.1.0", "testservice_2", "foo", 13],  # <- `0`
-    ]
-
-    # test list of services with a single element
-
-    with open(new_config, "w") as f:
-        # testservice_1.baz = ["one", "two", "three"] -> ["sindragosa"], single element
-        f.write(
-            """\
-testservice_1:
-    baz: ["sindragosa"]
-"""
-        )
-
-    subprocess.run(
-        [
-            i1.binary_path,
-            "plugin",
-            "configure",
-            i1.iproto_listen,
-            _PLUGIN,
-            _PLUGIN_VERSION_1,
-            new_config,
-            "--service-password-file",
-            cluster.service_password_file,
-            "--service-names",
-            "testservice_1",
-        ],
-        encoding="utf-8",
-    )
-    sleep(2)  # wait to finish updating configs, not the subprocess
-
-    assert i1.sql("SELECT * FROM _pico_plugin_config;") == [
+    # test as `admin` priviliged user on
+    # list of services with a single element:
+    # testservice_1.baz = ["cool", "baz"] -> ["sindragosa"]
+    expected = [
         ["testplug", "0.1.0", "testservice_1", "bar", 42],
-        [
-            "testplug",
-            "0.1.0",
-            "testservice_1",
-            "baz",
-            ["sindragosa"],
-        ],  # <- ["one", "two", "three"]
+        ["testplug", "0.1.0", "testservice_1", "baz", ["sindragosa"]],
         ["testplug", "0.1.0", "testservice_1", "foo", True],
         ["testplug", "0.1.0", "testservice_2", "foo", 13],
     ]
+    general_config.write_text("""\
+testservice_1:
+    baz: ["sindragosa"]
+""")
+    assert_config_change(general_config, inst, "admin", "testservice_1", expected)
+
+    # test as `somebody` un-/priviliged user on
+    # list of services with multiple elements
+    # testservice_1.bar = 42 -> 101
+    # testservice_1.baz = ["sindragosa"] -> ["one", "two", "three"]
+    # testservice_2.foo = 13 -> 0
+    username = "somebody"
+
+    expected = [
+        ["testplug", "0.1.0", "testservice_1", "bar", 101],
+        ["testplug", "0.1.0", "testservice_1", "baz", ["one", "two", "three"]],
+        ["testplug", "0.1.0", "testservice_1", "foo", True],
+        ["testplug", "0.1.0", "testservice_2", "foo", 0],
+    ]
+    general_config.write_text("""\
+testservice_1:
+    bar: 101
+    foo: true
+    baz: ["one", "two", "three"]
+
+testservice_2:
+    foo: 0
+""")
+
+    res = inst.sql(f"CREATE USER {username} WITH PASSWORD '{general_password}' USING MD5", sudo=True)
+    assert isinstance(res, dict)
+    assert res["row_count"] == 1
+    assert_config_change(general_config, inst, username, "testservice_1,testservice_2", expected, err=True)
+
+    res = inst.sql(f"GRANT WRITE ON TABLE _pico_plugin_config TO {username}", sudo=True)
+    assert isinstance(res, dict)
+    assert res["row_count"] == 1
+    assert_config_change(general_config, inst, username, "testservice_1,testservice_2", expected, err=True)
 
 
 def test_lua_completion(cluster: Cluster):
@@ -1053,6 +1079,90 @@ def test_picodata_status_basic(cluster: Cluster):
 """
 
     assert strip(data.decode()) == strip(output)
+
+
+def assert_status_info(inst: Instance, cluster: Cluster, username: str, password_file: str, err: bool = False):
+    info = inst.instance_info()
+
+    cluster_name = info["cluster_name"]
+    cluster_uuid = info["cluster_uuid"]
+    inst_name = inst.name
+    inst_uuid = inst.uuid()
+    base_addr = inst.iproto_listen
+
+    inst_addr = f"{username}@{base_addr}"
+    if err:
+        proc = subprocess.Popen(
+            [
+                cluster.binary_path,
+                "status",
+                "--peer",
+                inst_addr,
+                "--service-password-file",
+                password_file,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        _, stderr = proc.communicate()
+        assert proc.returncode != 0
+        assert f"AccessDenied: Read access to space '_raft_state' is denied for user '{username}'" in stderr
+    else:
+        data = subprocess.check_output(
+            [
+                cluster.binary_path,
+                "status",
+                "--peer",
+                inst_addr,
+                "--service-password-file",
+                password_file,
+            ],
+        )
+        output = f"""\
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
+ TIER/DOMAIN: default
+
+ name         state    uuid                                   uri            
+{inst_name}   Online   {inst_uuid}   {base_addr} 
+"""
+        assert strip(data.decode()) == strip(output)
+
+
+def test_picodata_status_custom_user(cluster: Cluster):
+    # setup cluster
+    general_password = "T0psecret"
+    inst = cluster.add_instance(wait_online=False)
+
+    inst.env["PICODATA_ADMIN_PASSWORD"] = general_password
+    inst.set_service_password(general_password)
+    assert inst.service_password_file
+
+    password_file = f"{inst.instance_dir}/password.txt"
+    with open(password_file, "w") as f:
+        f.write(general_password)
+
+    inst.start_and_wait()
+
+    # test as `pico_service` system user
+    assert_status_info(inst, cluster, "pico_service", password_file)
+
+    # test as `admin` priviliged user
+    assert_status_info(inst, cluster, "admin", password_file)
+
+    # test as `somebody` un-/priviliged user
+    username = "somebody"
+
+    res = inst.sql(f"CREATE USER {username} WITH PASSWORD '{general_password}' USING MD5", sudo=True)
+    assert isinstance(res, dict)
+    assert res["row_count"] == 1
+    assert_status_info(inst, cluster, username, password_file, err=True)
+
+    res = inst.sql(f"GRANT READ TABLE TO {username}", sudo=True)
+    assert isinstance(res, dict)
+    assert res["row_count"] == 1
+    assert_status_info(inst, cluster, username, password_file, err=False)
 
 
 def test_picodata_status_short_instance_name(cluster: Cluster):

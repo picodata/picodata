@@ -426,7 +426,7 @@ def test_connect_with_empty_password_path(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact('can\'t read password from password file by "", reason: No such file or directory (os error 2)')
+    cli.expect_exact("""ERROR: bad password file at '""': No such file or directory (os error 2)""")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -447,10 +447,7 @@ def test_connect_with_wrong_password_path(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(
-        'can\'t read password from password file by "/not/existing/path", '
-        "reason: No such file or directory (os error 2)"
-    )
+    cli.expect_exact("""ERROR: bad password file at '"/not/existing/path"': No such file or directory (os error 2)""")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -550,19 +547,19 @@ def test_connect_with_incorrect_url(cluster: Cluster):
 
     # GL685
     cli = connect_to("unix:/tmp/sock")
-    cli.expect_exact("Error while parsing instance port '/tmp/sock': invalid digit found in string")
+    cli.expect_exact("ERROR: parsing port '/tmp/sock' failed: invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("trash:not_a_port")
-    cli.expect_exact("Error while parsing instance port 'not_a_port': invalid digit found in string")
+    cli.expect_exact("ERROR: parsing port 'not_a_port' failed: invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:999999999")
-    cli.expect_exact("Error while parsing instance port '999999999': number too large to fit in target type")
+    cli.expect_exact("ERROR: parsing port '999999999' failed: number too large to fit in target type")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:-1")
-    cli.expect_exact("Error while parsing instance port '-1': invalid digit found in string")
+    cli.expect_exact("ERROR: parsing port '-1' failed: invalid digit found in string")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -597,21 +594,21 @@ def test_connect_timeout(cluster: Cluster):
     TIMEOUT = 1
 
     cli = connect_to("100:1234", timeout=TIMEOUT)
-    cli.expect_exact("Connection Error (address 100:1234). Try to reconnect")
+    cli.expect_exact("ERROR: connection failure for address '100:1234': connect timeout")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1:1234", timeout=TIMEOUT)
-    cli.expect_exact("Connection Error (address 192.168.0.1:1234). Try to reconnect")
+    cli.expect_exact("ERROR: connection failure for address '192.168.0.1:1234': connect timeout")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002:1234", timeout=TIMEOUT)
-    cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
+    cli.expect_exact("ERROR: connection failure for address '1000010002:1234': connect timeout")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("1000010002:1234", timeout=TIMEOUT)
-    cli.expect_exact("Connection Error (address 1000010002:1234). Try to reconnect")
+    cli.expect_exact("ERROR: connection failure for address '1000010002:1234': connect timeout")
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("192.168.0.1:1234", timeout=0)
-    cli.expect_exact("Connection Error (address 192.168.0.1:1234). Try to reconnect")
+    cli.expect_exact("ERROR: connection failure for address '192.168.0.1:1234': connect timeout")
     cli.expect_exact(pexpect.EOF)

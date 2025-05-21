@@ -1,14 +1,13 @@
 use crate::cli;
 use crate::cli::args::{Plugin, ServiceConfigUpdate};
-use crate::cli::util::{determine_credentials_and_connect, RowSet};
-use crate::schema::{PluginConfigRecord, PICO_SERVICE_USER_NAME};
+use crate::cli::util::{Credentials, RowSet};
+use crate::schema::PluginConfigRecord;
 use crate::sql::proc_sql_dispatch;
 
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::time::Duration;
 
-use tarantool::auth::AuthMethod;
 use tarantool::fiber;
 use tarantool::network::{AsClient, Client};
 use tarantool::tuple::Decode;
@@ -95,56 +94,43 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
             type ConfigRepr = HashMap<String, HashMap<String, serde_yaml::Value>>;
 
             let ServiceConfigUpdate {
-                mut peer_address,
+                peer_address,
                 plugin_name,
                 plugin_version,
                 config_file,
                 service_names,
-                password_file,
                 timeout,
-            } = cfg;
+                ..
+            } = &cfg;
 
             // validate config first for better ux
             let config_string = read_to_string(config_file)?;
             let config_values: ConfigRepr = serde_yaml::from_str(&config_string)?;
 
-            println!("username is ignored because internal service user is used");
-            if let Some(username) = peer_address.user {
-                println!("user {username} is ignored, internal service user is used");
-                peer_address.user = None;
-            }
-            let password = password_file.as_ref().and_then(|path| path.to_str());
-            let timeout = Duration::from_secs(timeout);
-
             // setup credentials and options for the connection
-            let (client, username) = determine_credentials_and_connect(
-                &peer_address,
-                Some(PICO_SERVICE_USER_NAME),
-                password,
-                AuthMethod::ChapSha1,
-                timeout,
-            )?;
-            if username != PICO_SERVICE_USER_NAME {
-                unreachable!("internal authorization failure");
-            }
+            let credentials = Credentials::try_from(&cfg)?;
+            let timeout = Some(Duration::from_secs(*timeout));
+            let client = credentials
+                .connect(peer_address, timeout)
+                .map_err(crate::traft::error::Error::other)?;
 
             // setup buffers and current parameters to update them
             let query_prefix = format!(r#"ALTER PLUGIN "{plugin_name}" {plugin_version} SET"#);
             let mut updated_parameters = Vec::new();
             let mut update_queries = Vec::new();
             let current_parameters =
-                fetch_current_parameters(&client, &plugin_name, &plugin_version)?;
+                fetch_current_parameters(&client, plugin_name, plugin_version)?;
 
             // user specified (with a flag) a list of services to update from a config file
             if let Some(service_names) = service_names {
                 for service_name in service_names {
-                    let service_parameters = config_values.get(&service_name).ok_or_else(|| {
+                    let service_parameters = config_values.get(service_name).ok_or_else(|| {
                         format!("service {service_name} from `--service-names` parameter not found in a new config")
                     })?;
 
                     let (parameters, queries) = create_update_queries(
                         &query_prefix,
-                        &service_name,
+                        service_name,
                         &current_parameters,
                         service_parameters,
                     )?;

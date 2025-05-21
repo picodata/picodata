@@ -1,9 +1,8 @@
 use crate::cli::args;
-use crate::cli::util::determine_credentials_and_connect;
+use crate::cli::util::Credentials;
 use crate::error_code::ErrorCode;
 use crate::rpc::expel::redirect::proc_expel_redirect;
 use crate::rpc::expel::Request as ExpelRequest;
-use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
 use crate::traft::error::Error;
 
@@ -34,13 +33,13 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
 
     let timeout = Duration::from_secs(args.timeout);
     let deadline = fiber::clock().saturating_add(timeout);
-    let (client, _) = determine_credentials_and_connect(
-        &args.peer_address,
-        Some(PICO_SERVICE_USER_NAME),
-        args.password_file.as_deref(),
-        args.auth_method,
-        timeout,
-    )?;
+
+    // setup credentials and options for the connection
+    let credentials = Credentials::try_from(&args)?;
+    let timeout = Some(Duration::from_secs(args.timeout));
+    let client = credentials
+        .connect(&args.peer_address, timeout)
+        .map_err(Error::other)?;
 
     let timeout = deadline.duration_since(fiber::clock());
     let force = args.force;

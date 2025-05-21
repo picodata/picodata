@@ -1,17 +1,22 @@
 use crate::address::IprotoAddress;
-use crate::cli::console::ReplError;
+use crate::cli;
+use crate::cli::args;
 use crate::config::DEFAULT_USERNAME;
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft;
 use crate::traft::error::Error;
-use crate::util::prompt_password;
 
 use std::fmt::Display;
+use std::fs;
+use std::io::{BufRead as _, BufReader, Write as _};
+use std::path::Path;
 use std::time::Duration;
 
 use comfy_table::{ContentArrangement, Table};
+use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use serde::{Deserialize, Serialize};
 use tarantool::auth::AuthMethod;
-use tarantool::network::{Client, Config};
+use tarantool::network::{AsClient, Client, Config};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ColumnDesc {
@@ -120,82 +125,264 @@ impl Display for ResultSet {
     }
 }
 
-fn get_password_from_file(path: &str) -> traft::Result<String> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        Error::other(format!(
-            r#"can't read password from password file by "{path}", reason: {e}"#
-        ))
-    })?;
+//////////////////////////////////////////////////////////////////////
+// Credentials
+//////////////////////////////////////////////////////////////////////
 
-    let password = content
-        .lines()
-        .next()
-        .ok_or_else(|| Error::other("Empty password file"))?
-        .trim();
-
-    if password.is_empty() {
-        return Ok(String::new());
-    }
-
-    Ok(password.into())
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Credentials {
+    pub username: String,
+    // TODO: <https://git.picodata.io/core/picodata/-/issues/1263>.
+    pub password: String,
+    pub method: Option<AuthMethod>,
 }
 
-/// Determines the username and password from the provided arguments and uses
-/// these credentials to establish a connection to a remote instance at given `address`.
-///
-/// The user for the connection is determined in the following way:
-/// - if `address.user` is not `None`, it is used, else
-/// - if `user` is not `None`, it is used, else
-/// - [`DEFAULT_USERNAME`] is used.
-///
-/// The password for the connection is determined in the following way:
-/// - if resulting user is `DEFAULT_USERNAME`, the password is empty (!?!??), else
-/// - if `password_file` is not `None`, it is used to read the password from, else
-/// - prompts the user for the password on the tty.
-///
-/// On success returns the connection object and the chosen username.
-pub fn determine_credentials_and_connect(
-    address: &IprotoAddress,
-    user: Option<&str>,
-    password_file: Option<&str>,
-    auth_method: AuthMethod,
-    timeout: Duration,
-) -> traft::Result<(Client, String)> {
-    let user = if let Some(user) = &address.user {
-        user
-    } else if let Some(user) = user {
-        user
-    } else {
-        DEFAULT_USERNAME
-    };
-
-    let password = if user == DEFAULT_USERNAME {
-        String::new()
-    } else if let Some(path) = password_file {
-        get_password_from_file(path)?
-    } else {
-        let prompt = format!("Enter password for {user}: ");
-        prompt_password(&prompt)
-            .map_err(|err| Error::other(format!("Failed to prompt for a password: {err}")))?
-    };
-
-    let mut config = Config::default();
-    config.creds = Some((user.into(), password));
-    config.auth_method = auth_method;
-    config.connect_timeout = Some(timeout);
-
-    let port = match address.port.parse::<u16>() {
-        Ok(port) => port,
-        Err(err) => {
-            return Err(Error::other(ReplError::Other(format!(
-                "Error while parsing instance port '{}': {err}",
-                address.port
-            ))))
+impl Credentials {
+    pub fn new(username: String, password: String, method: Option<AuthMethod>) -> Self {
+        Self {
+            username,
+            password,
+            method,
         }
+    }
+
+    pub fn connect(
+        &self,
+        address: &IprotoAddress,
+        timeout: Option<Duration>,
+    ) -> cli::Result<Client> {
+        let host = address.host.as_str();
+        let port = address
+            .port
+            .parse::<u16>()
+            .map_err(|e| format!("ERROR: parsing port '{}' failed: {e}", address.port))?;
+
+        let mut config = Config::default();
+
+        // NOTE: Cloning here is inevitable because connection config requires
+        // an owned string. This might be fixed at some point in future.
+        let authority = (self.username.clone(), self.password.clone());
+        config.creds = Some(authority);
+
+        config.connect_timeout = timeout;
+
+        if let Some(method) = self.method {
+            config.auth_method = method;
+        } else {
+            let connection_client = try_determine_auth_method(host, port, config)?;
+            return Ok(connection_client);
+        }
+
+        let connection_error = |e| {
+            Error::other(format!(
+                "ERROR: connection failure for address '{host}:{port}': {e}",
+            ))
+        };
+
+        let potential_client =
+            ::tarantool::fiber::block_on(Client::connect_with_config(host, port, config))
+                .map_err(connection_error)?;
+
+        // Check if the connection is valid. We need to do it because connect
+        // is lazy and we want to check whether authentication have succeeded
+        // or not.
+        ::tarantool::fiber::block_on(potential_client.ping()).map_err(connection_error)?;
+
+        Ok(potential_client)
+    }
+}
+
+impl TryFrom<&args::Expel> for Credentials {
+    type Error = traft::error::Error;
+
+    fn try_from(value: &args::Expel) -> Result<Self, Self::Error> {
+        let username = value
+            .peer_address
+            .user
+            .clone()
+            .unwrap_or_else(|| PICO_SERVICE_USER_NAME.to_owned());
+
+        let password = match value.password_file.clone() {
+            Some(path) => read_password_from_file(&path)?,
+            None => {
+                let prompt_message = format!("Enter password for {username}: ");
+                prompt_password(&prompt_message)
+                    .map_err(|e| Error::other(format!("Failed to prompt for a password: {e}")))?
+            }
+        };
+
+        let method = Some(value.auth_method);
+
+        Ok(Credentials::new(username, password, method))
+    }
+}
+
+impl TryFrom<&args::Connect> for Credentials {
+    type Error = traft::error::Error;
+
+    fn try_from(value: &args::Connect) -> Result<Self, Self::Error> {
+        let username = value
+            .address
+            .user
+            .clone()
+            .unwrap_or_else(|| value.user.clone());
+
+        let password = if username == DEFAULT_USERNAME {
+            String::new()
+        } else {
+            match value.password_file.clone() {
+                Some(path) => read_password_from_file(&path)?,
+                None => {
+                    let prompt_message = format!("Enter password for {username}: ");
+                    prompt_password(&prompt_message).map_err(|e| {
+                        Error::other(format!("Failed to prompt for a password: {e}"))
+                    })?
+                }
+            }
+        };
+
+        let method = Some(value.auth_method);
+
+        Ok(Credentials::new(username, password, method))
+    }
+}
+
+impl TryFrom<&args::Status> for Credentials {
+    type Error = traft::error::Error;
+
+    fn try_from(value: &args::Status) -> Result<Self, Self::Error> {
+        let username = value
+            .peer_address
+            .user
+            .clone()
+            .unwrap_or_else(|| PICO_SERVICE_USER_NAME.to_owned());
+
+        let password = match value.password_file.clone() {
+            Some(path) => read_password_from_file(&path)?,
+            None => {
+                let prompt_message = format!("Enter password for {username}: ");
+                prompt_password(&prompt_message)
+                    .map_err(|e| Error::other(format!("Failed to prompt for a password: {e}")))?
+            }
+        };
+
+        let method = if username == PICO_SERVICE_USER_NAME {
+            Some(AuthMethod::ChapSha1)
+        } else {
+            None
+        };
+
+        Ok(Credentials::new(username, password, method))
+    }
+}
+
+impl TryFrom<&args::ServiceConfigUpdate> for Credentials {
+    type Error = traft::error::Error;
+
+    fn try_from(value: &args::ServiceConfigUpdate) -> Result<Self, Self::Error> {
+        let username = value
+            .peer_address
+            .user
+            .clone()
+            .unwrap_or_else(|| PICO_SERVICE_USER_NAME.to_owned());
+
+        let password = match value.password_file.clone() {
+            Some(path) => read_password_from_file(&path)?,
+            None => String::new(),
+        };
+
+        Ok(Credentials::new(username, password, None))
+    }
+}
+
+fn try_determine_auth_method(url: &str, port: u16, config: Config) -> cli::Result<Client> {
+    for auth_method in AuthMethod::VARIANTS {
+        // NOTE: This cloning is needed because authentication requires owned data.
+        let mut config = config.clone();
+        config.auth_method = *auth_method;
+
+        let connection_client =
+            ::tarantool::fiber::block_on(Client::connect_with_config(url, port, config))?;
+
+        // Even if we get a "successful" client after connection request, it does not mean it
+        // is valid (i.e., in our case, it does not mean that appropriate auth method was used).
+        // We have to make a testing request from a client to determine whether it is valid or not.
+        let connection_validity = ::tarantool::fiber::block_on(connection_client.ping());
+
+        if connection_validity.is_ok() {
+            return Ok(connection_client);
+        }
+    }
+
+    let username = config.creds.expect("credentials should be set").0;
+    let error = crate::auth::Error::UserNotFoundOrInvalidCreds(username);
+    Err(Box::new(error))
+}
+
+fn read_password_from_file(path: &Path) -> traft::Result<String> {
+    let read_error = |error| {
+        let error_message = format!("ERROR: bad password file at '{path:?}': {error}");
+        traft::error::Error::other(error_message)
     };
 
-    let client =
-        ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
+    let content = fs::read_to_string(path).map_err(read_error)?;
+    let line = content
+        .lines()
+        .next()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "empty file"))
+        .map_err(read_error)?;
 
-    Ok((client, user.into()))
+    // NOTE: Calling `to_owned` is fine here since passwords are typically
+    // short strings, this function is called infrequently, and the clarity of
+    // returning an owned string outweighs the minor allocation cost.
+    let password = line.trim().to_owned();
+    Ok(password)
+}
+
+/// # Description
+///
+/// Prompts a password from a terminal.
+///
+/// # Internals
+///
+/// This function bypasses `stdin` redirection (like `cat script.lua |
+/// picodata connect`) and always prompts a password from a TTY.
+pub fn prompt_password(prompt: &str) -> std::io::Result<String> {
+    // See also: <https://man7.org/linux/man-pages/man3/termios.3.html>.
+    let mut tty = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")?;
+
+    let tcattr_old = tcgetattr(&tty)?;
+
+    // Disable echo while prompting a password
+    let mut tcattr_new = tcattr_old.clone();
+    tcattr_new.local_flags.set(LocalFlags::ECHO, false);
+    tcattr_new.local_flags.set(LocalFlags::ECHONL, true);
+    tcsetattr(&tty, TCSADRAIN, &tcattr_new)?;
+
+    let do_prompt_password = |tty: &mut std::fs::File| {
+        // Print the prompt
+        tty.write_all(prompt.as_bytes())?;
+        tty.flush()?;
+
+        // Read the password
+        let mut password = String::new();
+        BufReader::new(tty).read_line(&mut password)?;
+
+        if !password.ends_with('\n') {
+            // Preliminary EOF, a user didn't hit enter
+            return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+        }
+
+        let crlf = |c| matches!(c, '\r' | '\n');
+        Ok(password.trim_end_matches(crlf).to_owned())
+    };
+
+    // Try reading the password, then restore old terminal settings.
+    let result = do_prompt_password(&mut tty);
+    let _ = tcsetattr(&tty, TCSADRAIN, &tcattr_old);
+
+    result
 }

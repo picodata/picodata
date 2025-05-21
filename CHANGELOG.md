@@ -11,7 +11,16 @@ with the `YY.MINOR.MICRO` scheme.
 ## [25.3.3] - TBA
 
 ### CLI
-- `picodata plugin configure` now prints a message on success.
+
+- `picodata status` and `picodata plugin configure` now support execution with
+  custom user, determining authentication method automatically on it's own.
+  WARNING: If you do not specify an authentication method, it will be found
+  out by brute force, which may lead to the user being blocked if the number of
+  authorization attempts exceeds the limits.
+  See <https://git.picodata.io/core/picodata/issues/1734>.
+
+- `picodata plugin configure` now prints a message on success for better UX.
+  See <https://git.picodata.io/core/picodata/-/issues/1904>.
 
 ### Features
 - Pgproto now reports more verbose TLS error messages
