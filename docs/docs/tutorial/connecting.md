@@ -209,10 +209,14 @@ cat file.sql | picodata admin ./admin.sock
 * По умолчанию подключение по протоколу PostgreSQL использует режим
   [autocommit]. Команды [BEGIN], [COMMIT], [ROLLBACK], применяемые для
  управления интерактивными транзакциями, реализованы только как
- заглушки.
+ заглушки
+* Количество одновременно исполняемых запросов ограничено системными
+  параметрами [pg_portal_max] и [pg_statement_max]
 
 [Системные каталоги PostgreSQL]: https://www.postgresql.org/docs/current/catalogs.html
 [autocommit]: https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html
 [BEGIN]: https://www.postgresql.org/docs/current/sql-begin.html
 [COMMIT]: https://www.postgresql.org/docs/current/sql-commit.html
 [ROLLBACK]: https://www.postgresql.org/docs/current/sql-rollback.html
+[pg_portal_max]: ../reference/db_config.md#pg_portal_max
+[pg_statement_max]: ../reference/db_config.md#pg_statement_max
