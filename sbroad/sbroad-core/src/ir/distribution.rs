@@ -483,97 +483,9 @@ impl Plan {
     /// - reference has invalid targets
     #[allow(clippy::too_many_lines)]
     pub fn set_distribution(&mut self, row_id: NodeId) -> Result<(), SbroadError> {
-        let row_children = self.get_row_list(row_id)?;
+        let dist = self.get_dist_from_node(row_id)?;
+        self.set_dist(row_id, dist)?;
 
-        let mut parent_node = None;
-        for id in row_children {
-            let child_id = self.get_child_under_alias(*id)?;
-            if let Expression::Reference(Reference { parent, .. }) =
-                self.get_expression_node(child_id)?
-            {
-                parent_node = *parent;
-                break;
-            }
-        }
-
-        let Some(parent_id) = parent_node else {
-            // We haven't met any Reference in the output.
-            self.set_dist(row_id, Distribution::Any)?;
-            return Ok(());
-        };
-        let parent = self.get_relation_node(parent_id)?;
-
-        let children = parent.children();
-        if children.is_empty() {
-            // Working with a leaf node (ScanRelation).
-            let tbl_name = self.get_scan_relation(parent_id)?;
-            let tbl = self.get_relation_or_error(tbl_name)?;
-            if tbl.is_global() {
-                self.set_dist(row_id, Distribution::Global)?;
-                return Ok(());
-            }
-            let mut table_map: HashMap<usize, usize, RandomState> =
-                HashMap::with_capacity_and_hasher(row_children.len(), RandomState::new());
-            for (pos, id) in row_children.iter().enumerate() {
-                let child_id = self.get_child_under_alias(*id)?;
-                if let Expression::Reference(Reference {
-                    targets, position, ..
-                }) = self.get_expression_node(child_id)?
-                {
-                    if targets.is_some() {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some("References to the children targets in the leaf (relation scan) node are not supported".to_smolstr()),
-                        ));
-                    }
-                    table_map.insert(*position, pos);
-                }
-            }
-            let sk = tbl.get_sk()?;
-            let mut new_key: Key = Key::new(Vec::with_capacity(sk.len()));
-            let all_found = sk.iter().all(|pos| {
-                table_map.get(pos).is_some_and(|v| {
-                    new_key.positions.push(*v);
-                    true
-                })
-            });
-            if all_found {
-                let keys: HashSet<Key, RepeatableState> = collection! { new_key };
-                self.set_dist(row_id, Distribution::Segment { keys: keys.into() })?;
-            }
-        } else {
-            // Working with all other nodes.
-            let ref_info = ReferenceInfo::new(row_id, self, &children)?;
-
-            match ref_info.referred_children {
-                ReferredNodes::None => {
-                    // Row contains reference that doesn't point to any relational node.
-                    panic!("Row reference doesn't point to relational node.");
-                }
-                ReferredNodes::Single(child_id) => {
-                    let suggested_dist =
-                        self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?;
-                    self.set_dist(row_id, suggested_dist)?;
-                }
-                ReferredNodes::Pair(n1, n2) => {
-                    // Union, join
-                    self.set_two_children_node_dist(
-                        &ref_info.child_column_to_parent_col,
-                        n1,
-                        n2,
-                        parent_id,
-                        row_id,
-                    )?;
-                }
-                ReferredNodes::Multiple(_) => {
-                    // Reference points to more than two relational children nodes,
-                    // that is impossible.
-                    panic!(
-                        "Row contains multiple references to the same node (and it is not VALUES)"
-                    );
-                }
-            }
-        }
         Ok(())
     }
 
@@ -633,68 +545,158 @@ impl Plan {
 
     // Private methods
 
+    fn get_dist_from_node(&self, node_id: NodeId) -> Result<Distribution, SbroadError> {
+        let children_list: &[NodeId] = match self.get_expression_node(node_id) {
+            Ok(Expression::Row(Row { list, .. })) => list,
+            _ => std::array::from_ref(&node_id),
+        };
+
+        let mut parent_node = None;
+        for id in children_list {
+            let child_id = self.get_child_under_alias(*id)?;
+            let child_id = self.get_child_under_cast(child_id)?;
+            if let Expression::Reference(Reference { parent, .. }) =
+                self.get_expression_node(child_id)?
+            {
+                parent_node = *parent;
+                break;
+            }
+        }
+
+        let Some(parent_id) = parent_node else {
+            // We haven't met any Reference in the output.
+            return Ok(Distribution::Any);
+        };
+
+        let parent = self.get_relation_node(parent_id)?;
+
+        let children = parent.children();
+        if children.is_empty() {
+            // Working with a leaf node (ScanRelation).
+            let tbl_name = self.get_scan_relation(parent_id)?;
+            let tbl = self.get_relation_or_error(tbl_name)?;
+            if tbl.is_global() {
+                return Ok(Distribution::Global);
+            }
+            let mut table_map: HashMap<usize, usize, RandomState> =
+                HashMap::with_capacity_and_hasher(children_list.len(), RandomState::new());
+            for (pos, id) in children_list.iter().enumerate() {
+                let child_id = self.get_child_under_alias(*id)?;
+                let child_id = self.get_child_under_cast(child_id)?;
+                if let Expression::Reference(Reference {
+                    targets, position, ..
+                }) = self.get_expression_node(child_id)?
+                {
+                    if targets.is_some() {
+                        return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some("References to the children targets in the leaf (relation scan) node are not supported".to_smolstr()),
+                        ));
+                    }
+                    table_map.insert(*position, pos);
+                }
+            }
+            let sk = tbl.get_sk()?;
+            let mut new_key: Key = Key::new(Vec::with_capacity(sk.len()));
+            let all_found = sk.iter().all(|pos| {
+                table_map.get(pos).is_some_and(|v| {
+                    new_key.positions.push(*v);
+                    true
+                })
+            });
+
+            assert!(
+                all_found,
+                "Broken reference in scan relation({}).",
+                parent_id
+            );
+
+            let keys: HashSet<Key, RepeatableState> = collection! { new_key };
+            return Ok(Distribution::Segment { keys: keys.into() });
+        }
+
+        // Working with all other nodes.
+        let ref_info = ReferenceInfo::new(node_id, self, &children)?;
+
+        let dist = match ref_info.referred_children {
+            ReferredNodes::None => {
+                // Row contains reference that doesn't point to any relational node.
+                panic!("Row reference doesn't point to relational node.");
+            }
+            ReferredNodes::Single(child_id) => {
+                self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?
+            }
+            ReferredNodes::Pair(n1, n2) => {
+                // Union, join
+                self.get_two_children_node_dist(
+                    &ref_info.child_column_to_parent_col,
+                    n1,
+                    n2,
+                    parent_id,
+                )?
+            }
+            ReferredNodes::Multiple(_) => {
+                // Reference points to more than two relational children nodes,
+                // that is impossible.
+                panic!("Row contains multiple references to the same node (and it is not VALUES)");
+            }
+        };
+
+        Ok(dist)
+    }
+
     fn dist_from_child(
         &self,
         child_rel_node: NodeId,
         child_pos_map: &AHashMap<ChildColumnReference, Vec<ParentColumnPosition>>,
     ) -> Result<Distribution, SbroadError> {
-        let rel_node = self.get_relation_node(child_rel_node)?;
-        let output_expr = self.get_expression_node(rel_node.output())?;
-        if let Expression::Row(Row {
-            distribution: child_dist,
-            ..
-        }) = output_expr
-        {
-            match child_dist {
-                None => panic!("Unable to calculate distribution from child: it's uninitialized."),
-                Some(Distribution::Single) => Ok(Distribution::Single),
-                Some(Distribution::Any) => Ok(Distribution::Any),
-                Some(Distribution::Global) => Ok(Distribution::Global),
-                Some(Distribution::Segment { keys }) => {
-                    let mut new_keys: HashSet<Key, RepeatableState> =
-                        HashSet::with_hasher(RepeatableState);
-                    for key in keys.iter() {
-                        let all_found = key
+        let child_dist = self.get_rel_distribution(child_rel_node)?;
+        match child_dist {
+            Distribution::Single => Ok(Distribution::Single),
+            Distribution::Any => Ok(Distribution::Any),
+            Distribution::Global => Ok(Distribution::Global),
+            Distribution::Segment { keys } => {
+                let mut new_keys: HashSet<Key, RepeatableState> =
+                    HashSet::with_hasher(RepeatableState);
+                for key in keys.iter() {
+                    let all_found = key
+                        .positions
+                        .iter()
+                        .all(|pos| child_pos_map.contains_key(&(child_rel_node, *pos).into()));
+
+                    if all_found {
+                        let product = key
                             .positions
                             .iter()
-                            .all(|pos| child_pos_map.contains_key(&(child_rel_node, *pos).into()));
+                            .map(|pos| {
+                                child_pos_map
+                                    .get(&(child_rel_node, *pos).into())
+                                    .unwrap()
+                                    .iter()
+                                    .copied()
+                            })
+                            .multi_cartesian_product();
 
-                        if all_found {
-                            let product = key
-                                .positions
-                                .iter()
-                                .map(|pos| {
-                                    child_pos_map
-                                        .get(&(child_rel_node, *pos).into())
-                                        .unwrap()
-                                        .iter()
-                                        .copied()
-                                })
-                                .multi_cartesian_product();
-
-                            for positions in product {
-                                new_keys.insert(Key::new(positions));
-                            }
+                        for positions in product {
+                            new_keys.insert(Key::new(positions));
                         }
                     }
-
-                    // Parent's operator output does not contain some
-                    // sharding columns. For example:
-                    // ```sql
-                    // select b from t
-                    // ```
-                    //
-                    // Where `t` is sharded by `a`.
-                    if new_keys.is_empty() {
-                        return Ok(Distribution::Any);
-                    }
-                    Ok(Distribution::Segment {
-                        keys: new_keys.into(),
-                    })
                 }
+
+                // Parent's operator output does not contain some
+                // sharding columns. For example:
+                // ```sql
+                // select b from t
+                // ```
+                //
+                // Where `t` is sharded by `a`.
+                if new_keys.is_empty() {
+                    return Ok(Distribution::Any);
+                }
+                Ok(Distribution::Segment {
+                    keys: new_keys.into(),
+                })
             }
-        } else {
-            panic!("Expected Row node.")
         }
     }
 
@@ -717,14 +719,13 @@ impl Plan {
         panic!("The node is not a Row.");
     }
 
-    fn set_two_children_node_dist(
-        &mut self,
+    fn get_two_children_node_dist(
+        &self,
         child_pos_map: &AHashMap<ChildColumnReference, Vec<ParentColumnPosition>>,
         left_id: NodeId,
         right_id: NodeId,
         parent_id: NodeId,
-        row_id: NodeId,
-    ) -> Result<(), SbroadError> {
+    ) -> Result<Distribution, SbroadError> {
         let left_dist = self.dist_from_child(left_id, child_pos_map)?;
         let right_dist = self.dist_from_child(right_id, child_pos_map)?;
 
@@ -739,18 +740,43 @@ impl Plan {
                 panic!("Expected Except, Union(All) or Join node");
             }
         };
-        self.set_dist(row_id, new_dist)?;
 
-        Ok(())
+        Ok(new_dist)
     }
 
-    /// Gets current row distribution.
+    /// Gets current distribution.
+    /// If node_id is row, distribution is taken from it
+    /// otherwise calculated
+    /// # Errors
+    /// Returns `SbroadError` when the function is called on the expression
+    /// that doesn't exist or not calculated yet if the expression is Row
+    pub fn get_distribution(&self, node_id: NodeId) -> Result<Distribution, SbroadError> {
+        match self.get_expression_node(node_id)? {
+            Expression::Row(Row { distribution, .. }) => {
+                if let Some(dist) = distribution {
+                    Ok(dist.clone())
+                } else {
+                    Err(SbroadError::Invalid(
+                        Entity::Distribution,
+                        Some("distribution is uninitialized".into()),
+                    ))
+                }
+            }
+            _ => {
+                let dist = self.get_dist_from_node(node_id)?;
+                Ok(dist)
+            }
+        }
+    }
+
+    /// Gets distribution of the relational node.
     ///
     /// # Errors
-    /// Returns `SbroadError` when the function is called on expression
-    /// other than `Row` or a node doesn't know its distribution yet.
-    pub fn distribution(&self, id: NodeId) -> Result<&Distribution, SbroadError> {
-        if let Expression::Row(Row { distribution, .. }) = self.get_expression_node(id)? {
+    /// - Node is not realtional
+    /// - Node is not of a row type.
+    pub fn get_rel_distribution(&self, rel_id: NodeId) -> Result<&Distribution, SbroadError> {
+        let output_id = self.get_relation_node(rel_id)?.output();
+        if let Expression::Row(Row { distribution, .. }) = self.get_expression_node(output_id)? {
             let Some(dist) = distribution else {
                 return Err(SbroadError::Invalid(
                     Entity::Distribution,
@@ -760,23 +786,6 @@ impl Plan {
             return Ok(dist);
         }
         Err(SbroadError::Invalid(Entity::Expression, None))
-    }
-
-    /// Gets distribution of the output row.
-    ///
-    /// # Errors
-    /// - Node is not of a row type.
-    pub fn get_distribution(&self, row_id: NodeId) -> Result<&Distribution, SbroadError> {
-        self.distribution(row_id)
-    }
-
-    /// Gets distribution of the relational node.
-    ///
-    /// # Errors
-    /// - Node is not realtional
-    /// - Node is not of a row type.
-    pub fn get_rel_distribution(&self, rel_id: NodeId) -> Result<&Distribution, SbroadError> {
-        self.get_distribution(self.get_relation_node(rel_id)?.output())
     }
 }
 

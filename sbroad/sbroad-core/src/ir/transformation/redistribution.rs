@@ -819,9 +819,7 @@ impl Plan {
         };
 
         // Collect the distribution of the child.
-        let child_dist = self
-            .get_distribution(self.get_relational_output(first_child_id)?)?
-            .to_owned();
+        let child_dist = self.get_rel_distribution(first_child_id)?.to_owned();
         match (&window_dist, &child_dist) {
             (
                 Distribution::Segment {
@@ -1689,8 +1687,8 @@ impl Plan {
                 })?,
             )
         };
-        let outer_dist = self.get_distribution(self.get_relational_output(outer_id)?)?;
-        let inner_dist = self.get_distribution(self.get_relational_output(inner_id)?)?;
+        let outer_dist = self.get_rel_distribution(outer_id)?;
+        let inner_dist = self.get_rel_distribution(inner_id)?;
 
         if !matches!(
             (outer_dist, inner_dist),
@@ -1812,7 +1810,7 @@ impl Plan {
                     // So the child must always have distribution of `old_shard_key`.
 
                     let child_output_id = self.get_relation_node(child_id)?.output();
-                    let child_dist = self.get_distribution(child_output_id)?;
+                    let child_dist = self.get_rel_distribution(child_id)?;
                     // Len of the new tuple, 1 is subtracted because new tuple does not
                     // contain bucket_id.
                     let projection_len = self.get_row_list(child_output_id)?.len();
@@ -1855,8 +1853,7 @@ impl Plan {
                     // Check child below projection has update table distribution.
                     // projection child
                     let pr_child = self.get_relational_child(child_id, 0)?;
-                    let pr_child_output_id = self.get_relational_output(pr_child)?;
-                    let pr_child_dist = self.get_distribution(pr_child_output_id)?;
+                    let pr_child_dist = self.get_rel_distribution(pr_child)?;
 
                     match pr_child_dist {
                         Distribution::Segment { keys, .. } => {
@@ -1980,8 +1977,7 @@ impl Plan {
         let child_id = self.dml_child_id(rel_id)?;
 
         let motion_key = self.insert_motion_key(rel_id)?;
-        let child_output_id = self.get_relation_node(child_id)?.output();
-        let child_dist = self.get_distribution(child_output_id)?;
+        let child_dist = self.get_rel_distribution(child_id)?;
 
         // Check that we can make a local segment motion.
         if let Distribution::Segment { keys } = child_dist {
@@ -2019,8 +2015,7 @@ impl Plan {
         // the plan (as Tarantool has a very weird behavior with anonymous column names).
         let contains_values = self.subtree_contains_values(cte_id)?;
 
-        let child_output_id = self.get_relation_node(child_id)?.output();
-        let child_dist = self.get_distribution(child_output_id)?;
+        let child_dist = self.get_rel_distribution(child_id)?;
         match child_dist {
             Distribution::Global | Distribution::Single if !contains_values => {
                 // The data is already on the router node, no need to build a virtual table.
@@ -2259,8 +2254,8 @@ impl Plan {
             }
         }
 
-        let left_dist = self.get_distribution(left_output_id)?;
-        let right_dist = self.get_distribution(right_output_id)?;
+        let left_dist = self.get_rel_distribution(left_id)?;
+        let right_dist = self.get_rel_distribution(right_id)?;
         match (left_dist, right_dist) {
             (Distribution::Single, Distribution::Single) => {
                 // todo: do not use a motion here
@@ -2425,8 +2420,7 @@ impl Plan {
                 RelOwned::NamedWindows(NamedWindows { output, child, .. }) => {
                     // Named windows are not used in the plan, so they don't produce any motions.
                     // The actual window functions are used in the projection nodes.
-                    let child_output = self.get_relational_output(child)?;
-                    let child_dist = self.get_distribution(child_output)?;
+                    let child_dist = self.get_rel_distribution(child)?;
                     self.set_dist(output, child_dist.clone())?;
                 }
                 RelOwned::Motion { .. } => {
@@ -2436,18 +2430,17 @@ impl Plan {
                 }
                 RelOwned::Limit(Limit { output, limit, .. }) => {
                     let rel_child_id = self.get_relational_child(id, 0)?;
-                    let child_dist =
-                        self.get_distribution(self.get_relational_output(rel_child_id)?)?;
+                    let child_dist = self.get_rel_distribution(rel_child_id)?.clone();
 
                     match child_dist {
                         Distribution::Single | Distribution::Global => {
                             // All rows on a single node, no motion needed.
-                            self.set_dist(output, child_dist.clone())?;
+                            self.set_dist(output, child_dist)?;
                         }
                         Distribution::Any | Distribution::Segment { .. } => {
                             // Rows are distributed, so motion needed with full policy to
                             // bring them on a single node.
-                            let child_dist = child_dist.clone();
+
                             // We don't need more than limit rows, so we can add a limit for the
                             // queries sent during the map stage.
                             let limit_id = self.add_limit(id, limit)?;
@@ -2522,8 +2515,7 @@ impl Plan {
                     }
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
 
-                    let child_dist =
-                        self.get_distribution(self.get_relational_output(rel_child_id)?)?;
+                    let child_dist = self.get_rel_distribution(rel_child_id)?;
                     if !matches!(child_dist, Distribution::Single | Distribution::Global) {
                         // We must execute OrderBy on a single node containing all the rows
                         // that child relational node outputs.
@@ -2543,9 +2535,8 @@ impl Plan {
                     self.create_motion_nodes(strategy)?;
                     self.fix_additional_subqueries(id, &fixed_subquery_ids)?;
 
-                    let child_dist = self.get_distribution(
-                        self.get_relational_output(self.get_relational_child(id, 0)?)?,
-                    )?;
+                    let child_dist =
+                        self.get_rel_distribution(self.get_relational_child(id, 0)?)?;
                     if matches!(child_dist, Distribution::Single | Distribution::Global) {
                         // The data is already on the current node, let's just set the
                         // distribution.
@@ -2676,8 +2667,7 @@ impl Plan {
                     // So, for global child let's preserve global distribution for CTE.
                     // Otherwise force a single distribution.
                     let child_id = self.get_relational_child(id, 0)?;
-                    let child_dist =
-                        self.get_distribution(self.get_relational_output(child_id)?)?;
+                    let child_dist = self.get_rel_distribution(child_id)?;
                     if matches!(child_dist, Distribution::Global) {
                         self.set_dist(output, Distribution::Global)?;
                     } else {

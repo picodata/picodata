@@ -62,6 +62,7 @@ pub mod value;
 
 pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
+pub const DEFAULT_MAX_NUMBER_OF_CASTS: usize = 10;
 
 /// Plan nodes storage.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -1502,6 +1503,28 @@ impl Plan {
         }
 
         Ok(child_id)
+    }
+
+    pub fn get_child_under_cast(&self, child_id: NodeId) -> Result<NodeId, SbroadError> {
+        let mut id = child_id;
+        let mut node = self.get_expression_node(child_id)?;
+        let mut attempt = 0;
+        while let Expression::Cast(Cast { child, .. }) = node {
+            if attempt > DEFAULT_MAX_NUMBER_OF_CASTS {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some(format_smolstr!(
+                        "Too many cast, cannot uncover node({})",
+                        child_id
+                    )),
+                ));
+            }
+            id = *child;
+            node = self.get_expression_node(*child)?;
+            attempt += 1;
+        }
+
+        Ok(id)
     }
 
     /// Gets mut list of `Row` children ids

@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::{
     errors::{Entity, SbroadError},
-    ir::{aggregates::AggregateKind, distribution::Distribution},
+    ir::aggregates::AggregateKind,
 };
 
 use super::{
@@ -118,24 +118,6 @@ pub enum MutExpression<'a> {
 
 #[allow(dead_code)]
 impl Expression<'_> {
-    /// Gets current row distribution.
-    ///
-    /// # Errors
-    /// Returns `SbroadError` when the function is called on expression
-    /// other than `Row` or a node doesn't know its distribution yet.
-    pub fn distribution(&self) -> Result<&Distribution, SbroadError> {
-        if let Expression::Row(Row { distribution, .. }) = self {
-            let Some(dist) = distribution else {
-                return Err(SbroadError::Invalid(
-                    Entity::Distribution,
-                    Some("distribution is uninitialized".into()),
-                ));
-            };
-            return Ok(dist);
-        }
-        Err(SbroadError::Invalid(Entity::Expression, None))
-    }
-
     /// Clone the row children list.
     ///
     /// # Errors
