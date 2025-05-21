@@ -538,6 +538,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             {
                 tests.append(&mut tests![
                     proc::return_port,
+                    proc::dump_port_to_lua,
                     sql::prepared_source_query,
                     sql::prepared_invalid_query,
                     sql::prepared_no_params,

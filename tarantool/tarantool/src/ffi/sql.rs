@@ -7,7 +7,7 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::{null, NonNull};
-use tlua::LuaState;
+use tlua::ffi::lua_State;
 
 use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::tuple::Tuple;
@@ -221,11 +221,53 @@ pub struct SqlValue {
 pub struct PortVTable {
     pub dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
     pub dump_msgpack_16: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
-    pub dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut LuaState, is_flat: bool),
+    pub dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut lua_State, is_flat: bool),
     pub dump_plain: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
     pub get_msgpack: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
     pub get_vdbemem: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *mut SqlValue,
     pub destroy: unsafe extern "C" fn(port: *mut Port),
+}
+
+impl PortVTable {
+    pub const fn new(
+        dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
+        dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut lua_State, is_flat: bool),
+    ) -> Self {
+        Self {
+            dump_msgpack,
+            dump_msgpack_16,
+            dump_lua,
+            dump_plain,
+            get_msgpack,
+            get_vdbemem,
+            destroy,
+        }
+    }
+}
+
+#[no_mangle]
+unsafe extern "C" fn dump_msgpack_16(_port: *mut Port, _out: *mut Obuf) {
+    unimplemented!();
+}
+
+#[no_mangle]
+unsafe extern "C" fn dump_plain(_port: *mut Port, _size: *mut u32) -> *const c_char {
+    unimplemented!();
+}
+
+#[no_mangle]
+unsafe extern "C" fn get_msgpack(_port: *mut Port, _size: *mut u32) -> *const c_char {
+    unimplemented!();
+}
+
+#[no_mangle]
+unsafe extern "C" fn get_vdbemem(_port: *mut Port, _size: *mut u32) -> *mut SqlValue {
+    unimplemented!();
+}
+
+#[no_mangle]
+unsafe extern "C" fn destroy(port: *mut Port) {
+    port_c_destroy(port);
 }
 
 #[repr(C)]

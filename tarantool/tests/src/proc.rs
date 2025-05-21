@@ -1,14 +1,11 @@
 use crate::common::lib_name;
+use ::tarantool::proc::ReturnMsgpack;
+use ::tarantool::tlua::{
+    self, AsTable, Call, CallError, LuaFunction, LuaRead, LuaState, LuaThread, PushGuard, PushInto,
+};
+use ::tarantool::tuple::{RawByteBuf, RawBytes, Tuple, TupleBuffer};
 use rmpv::Value;
 use std::ffi::OsStr;
-use tarantool::{
-    proc::ReturnMsgpack,
-    tlua::{
-        self, AsTable, Call, CallError, LuaFunction, LuaRead, LuaState, LuaThread, PushGuard,
-        PushInto,
-    },
-    tuple::{RawByteBuf, RawBytes, Tuple, TupleBuffer},
-};
 
 fn call_proc<A, R>(name: &str, args: A) -> Result<R, CallError<A::Err>>
 where
@@ -103,6 +100,73 @@ pub fn return_port() {
     );
     assert_eq!(data.1, ["hello"]);
     assert_eq!(data.2, "sailor");
+}
+
+#[cfg(feature = "picodata")]
+pub fn dump_port_to_lua() {
+    use core::ffi::c_char;
+    use std::ptr::NonNull;
+    use tarantool::ffi::sql::{Obuf, Port, PortVTable};
+    use tarantool::ffi::tarantool::luaT_pushtuple;
+    use tarantool::tlua::ffi::{self, lua_State};
+    use tarantool::tuple::{FunctionArgs, FunctionCtx};
+
+    const VTAB_LUA: PortVTable = PortVTable::new(dump_msgpack_with_panic, dump_lua_with_header);
+
+    #[no_mangle]
+    unsafe extern "C" fn dump_msgpack_with_panic(_port: *mut Port, _out: *mut Obuf) {
+        unimplemented!();
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn dump_lua_with_header(port: *mut Port, l: *mut lua_State, _is_flat: bool) {
+        // Create the map with two keys.
+        ffi::lua_createtable(l, 0, 2);
+        // Push the "header" key and value ("greeting").
+        ffi::lua_pushstring(l, b"greeting\0".as_ptr() as *const c_char);
+        ffi::lua_setfield(l, -2, b"header\0".as_ptr() as *const c_char);
+        // Push the "data" key and value (array of tuples from the port).
+        let port_c = unsafe {
+            let port: &mut Port = NonNull::new_unchecked(port).as_mut();
+            port.as_mut_port_c()
+        };
+        // Create the array of tuples.
+        ffi::lua_createtable(l, port_c.size(), 0);
+        for (idx, mp_bytes) in port_c.iter().enumerate() {
+            let tuple = Tuple::try_from_slice(mp_bytes).unwrap();
+            luaT_pushtuple(l, tuple.as_ptr());
+            ffi::lua_rawseti(l, -2, idx as i32 + 1);
+        }
+        ffi::lua_setfield(l, -2, b"data\0".as_ptr() as *const c_char);
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn proc_dump_lua(mut ctx: FunctionCtx, _args: FunctionArgs) -> i32 {
+        ctx.mut_port_c().vtab = &VTAB_LUA;
+        // Pay attention that we use msgpack wrapped with array.
+        // It is required to build the tuple "in place" from the port msgpack
+        // in the dump_lua callback.
+        ctx.mut_port_c().add_mp(b"\x91\xa5hello");
+        ctx.mut_port_c().add_mp(b"\x91\xa5world");
+        0
+    }
+
+    #[derive(tlua::LuaRead)]
+    struct Data {
+        header: String,
+        data: Vec<Tuple>,
+    }
+
+    let data: (Data,) = call_proc("proc_dump_lua", ()).unwrap();
+    assert_eq!(data.0.header, "greeting");
+    assert_eq!(
+        data.0.data[0].decode::<(String,)>().unwrap(),
+        ("hello".into(),)
+    );
+    assert_eq!(
+        data.0.data[1].decode::<(String,)>().unwrap(),
+        ("world".into(),)
+    );
 }
 
 pub fn with_error() {

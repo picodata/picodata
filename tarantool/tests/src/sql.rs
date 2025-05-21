@@ -3,17 +3,14 @@
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
-use std::os::raw::c_char;
 use std::ptr::NonNull;
 use tarantool::error::{Error, TarantoolError};
-use tarantool::ffi::sql::{
-    obuf_append, port_c_destroy, Obuf, ObufWrapper, Port, PortC, PortVTable, SqlValue, IPROTO_DATA,
-};
+use tarantool::ffi::lua::lua_State;
+use tarantool::ffi::sql::{obuf_append, Obuf, ObufWrapper, Port, PortC, PortVTable, IPROTO_DATA};
 use tarantool::index::IndexType;
 use tarantool::msgpack::write_array_len;
 use tarantool::space::{Field, Space};
 use tarantool::sql::{sql_execute_into_port, unprepare};
-use tarantool::tlua::LuaState;
 use tarantool::tuple::Tuple;
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
@@ -453,7 +450,7 @@ pub fn port_c() {
 
 pub fn port_c_vtab() {
     #[no_mangle]
-    unsafe extern "C" fn dump_msgpack(port: *mut Port, out: *mut Obuf) {
+    unsafe extern "C" fn dump_msgpack_with_header(port: *mut Port, out: *mut Obuf) {
         // When we write data from the port to the out buffer we treat
         // the first msgpack as a header. All the other ones are treated
         // as an array of data. So, the algorithm:
@@ -491,51 +488,18 @@ pub fn port_c_vtab() {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn dump_msgpack_16(_port: *mut Port, _out: *mut Obuf) {
+    unsafe extern "C" fn dump_lua_with_panic(_port: *mut Port, _l: *mut lua_State, _is_flat: bool) {
         unimplemented!();
     }
 
-    #[no_mangle]
-    unsafe extern "C" fn dump_lua(_port: *mut Port, _l: *mut LuaState, _is_flat: bool) {
-        unimplemented!();
-    }
-
-    #[no_mangle]
-    unsafe extern "C" fn dump_plain(_port: *mut Port, _size: *mut u32) -> *const c_char {
-        unimplemented!();
-    }
-
-    #[no_mangle]
-    unsafe extern "C" fn get_msgpack(_port: *mut Port, _size: *mut u32) -> *const c_char {
-        unimplemented!();
-    }
-
-    #[no_mangle]
-    unsafe extern "C" fn get_vdbemem(_port: *mut Port, _size: *mut u32) -> *mut SqlValue {
-        unimplemented!();
-    }
-
-    #[no_mangle]
-    unsafe extern "C" fn destroy(port: *mut Port) {
-        port_c_destroy(port);
-    }
-
-    let vtab = PortVTable {
-        dump_msgpack,
-        dump_msgpack_16,
-        dump_lua,
-        dump_plain,
-        get_msgpack,
-        get_vdbemem,
-        destroy,
-    };
+    let vtab = PortVTable::new(dump_msgpack_with_header, dump_lua_with_panic);
     let mut out = ObufWrapper::new(100);
 
     // Check an empty port.
     let mut port = Port::new_port_c();
     let port_c = unsafe { port.as_mut_port_c() };
     port_c.vtab = &vtab as *const PortVTable;
-    unsafe { dump_msgpack(port_c.as_mut_ptr(), out.obuf()) };
+    unsafe { dump_msgpack_with_header(port_c.as_mut_ptr(), out.obuf()) };
     let mut result = [0u8; 1];
     let len = out
         .read(&mut result)
@@ -569,7 +533,7 @@ pub fn port_c_vtab() {
     let mp2 = b"\xd95DATA2";
     unsafe { port_c.add_mp(mp2) };
     // Check that the C wrapper over the virtual `dump_msgpack` method works.
-    unsafe { dump_msgpack(port_c.as_mut_ptr(), out.obuf()) };
+    unsafe { dump_msgpack_with_header(port_c.as_mut_ptr(), out.obuf()) };
     let expected = b"\xd96HEADER\x92\xd95DATA1\xd95DATA2";
     let mut result = [0u8; 23];
     let len = out
