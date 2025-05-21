@@ -1,13 +1,19 @@
-use crate::pgproto::error::{PgError, PgResult};
-use crate::pgproto::messages;
-use crate::pgproto::stream::{FeMessage, PgStream};
-use crate::pgproto::tls::TlsAcceptor;
-use crate::tlog;
+use crate::{
+    pgproto::{
+        error::{PgError, PgResult},
+        messages,
+        stream::{FeMessage, PgStream},
+        tls::TlsAcceptor,
+    },
+    tlog,
+};
 use pgwire::messages::startup::Startup;
-use sbroad::ir::value::Value as SbroadValue;
-use sbroad::ir::{OptionKind, OptionParamValue, OptionSpec};
-use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use sbroad::ir::{value::Value as SbroadValue, OptionKind, OptionParamValue, OptionSpec};
+use smol_str::format_smolstr;
+use std::{
+    collections::BTreeMap,
+    io::{self, Read, Write},
+};
 
 #[derive(Clone, Debug)]
 pub struct ClientParams {
@@ -22,9 +28,9 @@ pub struct ClientParams {
 impl ClientParams {
     fn new(mut parameters: BTreeMap<String, String>) -> PgResult<Self> {
         let Some(username) = parameters.remove("user") else {
-            return Err(PgError::ProtocolViolation(
-                "parameter 'user' is missing".into(),
-            ));
+            return Err(PgError::ProtocolViolation(format_smolstr!(
+                "parameter 'user' is missing"
+            )));
         };
 
         let (mut sql_motion_row_max, mut sql_vdbe_opcode_max) = (None, None);
@@ -100,7 +106,7 @@ fn parse_startup(startup: Startup) -> PgResult<ClientParams> {
 fn handle_ssl_request<S: Read + Write>(
     mut stream: PgStream<S>,
     tls_acceptor: Option<&TlsAcceptor>,
-) -> PgResult<PgStream<S>> {
+) -> io::Result<PgStream<S>> {
     let Some(acceptor) = tls_acceptor else {
         stream.write_message(messages::ssl_refuse())?;
         return Ok(stream);
@@ -134,7 +140,7 @@ pub fn handshake<S: Read + Write>(
             FeMessage::SslRequest(_) => {
                 if client_attempted_ssl {
                     // ssl handshake was already attempted
-                    return Err(PgError::ProtocolViolation(format!(
+                    return Err(PgError::ProtocolViolation(format_smolstr!(
                         "expected Startup, got {message:?}"
                     )));
                 } else {
@@ -144,7 +150,7 @@ pub fn handshake<S: Read + Write>(
                 }
             }
             _ => {
-                return Err(PgError::ProtocolViolation(format!(
+                return Err(PgError::ProtocolViolation(format_smolstr!(
                     "expected Startup or SslRequest, got {message:?}"
                 )))
             }

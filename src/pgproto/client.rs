@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{storage::Catalog, tlog};
 use pgwire::messages::startup::*;
+use smol_str::format_smolstr;
 use std::io;
 
 mod auth;
@@ -75,11 +76,19 @@ enum MessageLoopState {
 }
 
 impl PgError {
-    /// Check wether we should break the message handling loop.
+    /// Check whether we should break the message handling loop.
     fn check_fatality(self) -> PgResult<()> {
         match self {
-            // TODO: consider the error type.
-            PgError::PgWireError(_) => Err(self),
+            // From a standpoint of pgproto/stream.rs, certain severe protocol
+            // violations (e.g. during the initial handshake) are represented as
+            // IO errors as well. Previously, we'd propagate PgWriteError in
+            // such cases, but that wasn't very useful.
+            Self::IoError(_) => Err(self),
+
+            // These are fatal, but cannot occur in the main message handling loop.
+            // We list them here just in case somebody uses this function inappropriately.
+            Self::SslRequired | Self::AuthError(_) => Err(self),
+
             _otherwise => Ok(()),
         }
     }
@@ -179,16 +188,24 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(Info, "terminating the session");
                 self.loop_state = MessageLoopState::Terminated;
             }
-            message => return Err(PgError::FeatureNotSupported(format!("{message:?}"))),
+            message => return Err(PgError::FeatureNotSupported(format_smolstr!("{message:?}"))),
         };
         Ok(())
     }
 
     fn process_error(&mut self, error: PgError) -> PgResult<()> {
         tlog!(Debug, "processing error: {error:?}");
+
+        // First and foremost, try sending the error to client.
+        // True IO errors and stream-level protocol violations are treated the same;
+        // Even so, we should give it a last try before terminating the connection.
         self.stream
             .write_message(messages::error_response(error.info()))?;
+
+        // Now terminate the connection if it's a fatal error.
         error.check_fatality()?;
+
+        // Otherwise, perform a pipeline synchronization.
         if let MessageLoopState::RunningExtendedQuery = self.loop_state {
             loop {
                 if let FeMessage::Sync(_) = self.stream.read_message()? {
@@ -198,6 +215,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 }
             }
         };
+
         Ok(())
     }
 
@@ -218,8 +236,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
             }
 
             match self.process_message() {
-                Ok(_) => continue,
                 Err(error) => self.process_error(error)?,
+                Ok(_) => continue,
             };
         }
         Ok(())

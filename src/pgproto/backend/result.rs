@@ -1,4 +1,4 @@
-use crate::pgproto::{backend::describe::CommandTag, error::PgResult, value::PgValue};
+use crate::pgproto::{backend::describe::CommandTag, error::EncodingError, value::PgValue};
 use pgwire::{
     api::results::{DataRowEncoder, FieldInfo},
     messages::data::{DataRow, RowDescription},
@@ -19,7 +19,7 @@ impl Rows {
         }
     }
 
-    pub fn encode_next(&mut self) -> PgResult<Option<DataRow>> {
+    pub fn encode_next(&mut self) -> Result<Option<DataRow>, EncodingError> {
         let Some(values) = self.rows.next() else {
             return Ok(None);
         };
@@ -30,7 +30,7 @@ impl Rows {
             value.encode(format, &mut encoder)?;
         }
 
-        Ok(Some(encoder.finish()?))
+        Ok(Some(encoder.finish().map_err(EncodingError::new)?))
     }
 
     pub fn describe(&self) -> RowDescription {

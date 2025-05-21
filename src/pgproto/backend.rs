@@ -5,7 +5,7 @@ use self::{
 };
 use super::{
     client::{ClientId, ClientParams},
-    error::{PedanticError, PgError, PgErrorCode, PgResult},
+    error::{PgError, PgResult},
     value::PgValue,
 };
 use crate::{
@@ -16,20 +16,16 @@ use crate::{
 use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
-use sbroad::{errors::SbroadError, ir::OptionSpec};
-use sbroad::{
-    executor::engine::query_id,
-    ir::{value::Value as SbroadValue, OptionKind},
-};
 use sbroad::{
     executor::{
-        engine::{QueryCache, Router, TableVersionMap},
+        engine::{query_id, QueryCache, Router, TableVersionMap},
         lru::Cache,
     },
     frontend::Ast,
-    ir::{value::Value, Plan as IrPlan},
+    ir::{value::Value as SbroadValue, OptionKind, OptionSpec, Plan as IrPlan},
     utils::MutexLike,
 };
+use smol_str::format_smolstr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
@@ -41,32 +37,13 @@ pub mod describe;
 pub mod result;
 pub mod storage;
 
-fn decode_parameter(
-    bytes: Option<&[u8]>,
-    oid: Oid,
-    format: FieldFormat,
-    index: usize,
-) -> PgResult<Value> {
-    PgValue::decode(bytes, oid, format)
-        .map_err(|e| {
-            PedanticError::new(
-                match format {
-                    FieldFormat::Binary => PgErrorCode::InvalidBinaryRepresentation,
-                    FieldFormat::Text => PgErrorCode::InvalidTextRepresentation,
-                },
-                format!("failed to bind parameter ${index}: {e}"),
-            )
-        })?
-        .try_into()
-}
-
 fn decode_parameters(
     params: Vec<Option<Bytes>>,
     param_oids: &[Oid],
     formats: &[FieldFormat],
-) -> PgResult<Vec<Value>> {
+) -> PgResult<Vec<SbroadValue>> {
     if params.len() != param_oids.len() {
-        return Err(PgError::ProtocolViolation(format!(
+        return Err(PgError::ProtocolViolation(format_smolstr!(
             "got {} parameters, {} oids and {} formats",
             params.len(),
             param_oids.len(),
@@ -77,7 +54,9 @@ fn decode_parameters(
     let iter = params.into_iter().enumerate().zip(param_oids).zip(formats);
     let res: PgResult<Vec<_>> = iter
         .map(|(((param_idx, bytes), oid), format)| {
-            decode_parameter(bytes.as_deref(), *oid, *format, param_idx + 1)
+            PgValue::decode(bytes.as_deref(), *oid, *format)
+                .map_err(|e| e.cannot_bind_param(param_idx + 1))?
+                .try_into()
         })
         .collect();
 
@@ -98,7 +77,7 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
         // no format specified, use the default for each column
         Ok(vec![FieldFormat::Text; n])
     } else {
-        Err(PgError::ProtocolViolation(format!(
+        Err(PgError::ProtocolViolation(format_smolstr!(
             "got {} format codes for {} items",
             formats.len(),
             n
@@ -140,7 +119,7 @@ pub fn bind(
     id: ClientId,
     stmt_name: String,
     portal_name: String,
-    params: Vec<Value>,
+    params: Vec<SbroadValue>,
     result_format: Vec<FieldFormat>,
     default_options: Vec<OptionSpec>,
 ) -> PgResult<()> {
@@ -220,8 +199,7 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
             plan.version_map = table_version_map;
         }
         Ok(plan)
-    })
-    .map_err(PgError::other)??;
+    })??;
 
     if !plan.is_empty() && !plan.is_tcl()? && !plan.is_ddl()? && !plan.is_acl()? {
         cache.put(cache_key, plan.clone())?;
@@ -330,7 +308,12 @@ impl Backend {
 
         let result = do_simple_query();
 
-        if let Err(PgError::PicodataError(Error::Sbroad(SbroadError::ParsingError(..)))) = result {
+        let parsing_failed = match &result {
+            Err(e) => e.is_sbroad_parsing_error(),
+            Ok(_) => false,
+        };
+
+        if parsing_failed {
             // In case of parsing error, we can try to parse and adjust some well known queries
             // from PostgreSQL that our SQL doesn't support. Recognizing these common queries
             // allows us to offer useful features like tab-completion.

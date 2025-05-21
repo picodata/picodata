@@ -377,39 +377,41 @@ pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> Vec<Oid> {
     oids
 }
 
-/// Get rows from dql-like(dql or explain) query execution result.
-fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<Value>>> {
+/// Get rows from DQL or EXPLAIN query execution result tuple.
+/// **Panics** if the tuple does not match the expected format.
+fn get_rows_from_tuple(tuple: &Tuple) -> Vec<Vec<Value>> {
     #[derive(Deserialize)]
     struct DqlResult {
         rows: Vec<Vec<Value>>,
     }
 
+    // Try parsing a regular DQL result.
     if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
-        return Ok(res.rows);
+        return res.rows;
     }
 
-    // Try to parse explain result.
+    // Try parsing an EXPLAIN result.
     if let Ok(Some(res)) = tuple.field::<Vec<Value>>(0) {
-        return Ok(res.into_iter().map(|row| vec![row]).collect());
+        let rows = res.into_iter().map(|row| vec![row]).collect();
+        return rows;
     }
 
-    Err(PgError::InternalError(
-        "couldn't get rows from the result tuple".into(),
-    ))
+    panic!("query result: invalid representation of rows");
 }
 
-/// Get row_count from result tuple.
-fn get_row_count_from_tuple(tuple: &Tuple) -> PgResult<usize> {
+/// Get row count from query execution result tuple.
+/// **Panics** if the tuple does not match the expected format.
+fn get_row_count_from_tuple(tuple: &Tuple) -> usize {
     #[derive(Deserialize)]
     struct RowCount {
         row_count: usize,
     }
 
-    let res: RowCount = tuple.field(0)?.ok_or(PgError::InternalError(
-        "couldn't get row count from the result tuple".into(),
-    ))?;
+    if let Ok(Some(res)) = tuple.field::<RowCount>(0) {
+        return res.row_count;
+    }
 
-    Ok(res.row_count)
+    panic!("query result: no row count found");
 }
 
 fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<Vec<PgValue>> {
@@ -486,12 +488,12 @@ impl PortalInner {
                 PortalState::ResultReady(ExecuteResult::Tcl { tag })
             }
             QueryType::Dml => {
-                let row_count = get_row_count_from_tuple(&tuple)?;
+                let row_count = get_row_count_from_tuple(&tuple);
                 let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
             }
             QueryType::Dql | QueryType::Explain => {
-                let mp_rows = get_rows_from_tuple(&tuple)?;
+                let mp_rows = get_rows_from_tuple(&tuple);
                 let metadata = self.describe.metadata();
                 let pg_rows = mp_rows
                     .into_iter()

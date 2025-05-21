@@ -1,4 +1,3 @@
-from pg8000 import DatabaseError  # type: ignore
 import pytest
 import pg8000.dbapi as pg  # type: ignore
 from conftest import Postgres, Cluster, log_crawler
@@ -159,7 +158,7 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
 
     # invalid creds
     with pytest.raises(
-        DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Invalid credentials"
+        pg.DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Invalid credentials"
     ):
         pg.Connection(
             ldap_server.user,
@@ -169,7 +168,7 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
         )
 
     # nonexistent user should give the same error as invalid password
-    with pytest.raises(DatabaseError, match="authentication failed for user 'missing_user'"):
+    with pytest.raises(pg.DatabaseError, match="authentication failed for user 'missing_user'"):
         pg.Connection(
             "missing_user",
             password="invalid",
@@ -203,7 +202,7 @@ def test_auth_ldap_server_down(cluster: Cluster, port_distributor: PortDistribut
     )
 
     with pytest.raises(
-        DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Can't contact LDAP server"
+        pg.DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Can't contact LDAP server"
     ):
         pg.Connection(
             ldap_server.user,

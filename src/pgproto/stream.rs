@@ -1,7 +1,4 @@
-use super::{
-    error::{PgError, PgResult},
-    tls::{TlsAcceptor, TlsStream},
-};
+use super::tls::{TlsAcceptor, TlsStream};
 use crate::tlog;
 use bytes::{BufMut, BytesMut};
 use pgwire::messages::startup::SslRequest;
@@ -88,20 +85,22 @@ impl<S> PgStream<S> {
 impl<S: io::Read + io::Write> PgStream<S> {
     /// Try decoding an incoming message considering the connection's state.
     /// Return `None` if the packet is not complete for parsing.
-    fn try_decode_message(&mut self) -> PgResult<Option<FeMessage>> {
+    fn try_decode_message(&mut self) -> io::Result<Option<FeMessage>> {
         use messages::{startup::Startup, Message};
 
         if self.startup_processed {
-            return FeMessage::decode(&mut self.ibuf).map_err(|e| e.into());
+            return FeMessage::decode(&mut self.ibuf).map_err(io::Error::other);
         }
 
         // Try to decode SslRequest first, as it fits the Startup format with an invalid version.
-        if let Some(ssl_request) = SslRequest::decode(&mut self.ibuf)? {
+        let res = SslRequest::decode(&mut self.ibuf).map_err(io::Error::other)?;
+        if let Some(ssl_request) = res {
             return Ok(Some(FeMessage::SslRequest(ssl_request)));
         }
 
         // This is done once at connection startup.
-        let startup = Startup::decode(&mut self.ibuf)?.map(|x| {
+        let res = Startup::decode(&mut self.ibuf).map_err(io::Error::other)?;
+        let startup = res.map(|x| {
             tlog!(Debug, "received StartupPacket from client");
             self.startup_processed = true;
             FeMessage::Startup(x)
@@ -111,7 +110,7 @@ impl<S: io::Read + io::Write> PgStream<S> {
     }
 
     /// Receive a new message from client.
-    pub fn read_message(&mut self) -> PgResult<FeMessage> {
+    pub fn read_message(&mut self) -> io::Result<FeMessage> {
         loop {
             if !self.ibuf.is_empty() {
                 if let Some(message) = self.try_decode_message()? {
@@ -123,7 +122,7 @@ impl<S: io::Read + io::Write> PgStream<S> {
             tlog!(Debug, "received {cnt} bytes from client");
 
             if cnt == 0 {
-                return Err(io::Error::from(UnexpectedEof).into());
+                return Err(io::Error::from(UnexpectedEof));
             }
         }
     }
@@ -132,30 +131,28 @@ impl<S: io::Read + io::Write> PgStream<S> {
 /// Write part of the stream.
 impl<S: io::Read + io::Write> PgStream<S> {
     /// Flush all buffered messages to an underlying byte stream.
-    pub fn flush(&mut self) -> PgResult<&mut Self> {
+    pub fn flush(&mut self) -> io::Result<&mut Self> {
         self.socket.write_all(&self.obuf)?;
         self.obuf.clear();
         Ok(self)
     }
 
     /// Put the message into the output buffer, but don't flush just yet.
-    pub fn write_message_noflush(&mut self, message: BeMessage) -> PgResult<&mut Self> {
-        message.encode(&mut self.obuf)?;
+    pub fn write_message_noflush(&mut self, message: BeMessage) -> io::Result<&mut Self> {
+        message.encode(&mut self.obuf).map_err(io::Error::other)?;
         Ok(self)
     }
 
     /// Put the message into the output buffer and immediately flush everything.
-    pub fn write_message(&mut self, message: BeMessage) -> PgResult<&mut Self> {
+    pub fn write_message(&mut self, message: BeMessage) -> io::Result<&mut Self> {
         self.write_message_noflush(message)?.flush()
     }
 }
 
 impl<S: io::Read + io::Write> PgStream<S> {
-    pub fn into_secure(self, acceptor: &TlsAcceptor) -> PgResult<PgStream<S>> {
+    pub fn into_secure(self, acceptor: &TlsAcceptor) -> io::Result<PgStream<S>> {
         let PgSocket::Plain(socket) = self.socket else {
-            return Err(PgError::ProtocolViolation(
-                "BUG: cannot upgrade TLS stream".into(),
-            ));
+            panic!("BUG: cannot upgrade TLS stream");
         };
 
         let secure_socket = acceptor.accept(socket).map_err(io::Error::other)?;

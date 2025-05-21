@@ -7,6 +7,7 @@ use crate::pgproto::{
     stream::PgStream,
 };
 use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
+use smol_str::format_smolstr;
 use std::io::{Read, Write};
 
 pub fn process_parse_message(
@@ -125,8 +126,8 @@ pub fn process_describe_message(
             stream.write_message_noflush(rows_desc)?;
             Ok(())
         }
-        _ => Err(PgError::ProtocolViolation(format!(
-            "unknown describe type \'{}\'",
+        _ => Err(PgError::ProtocolViolation(format_smolstr!(
+            "unknown describe type '{}'",
             describe.target_type
         ))),
     }
@@ -142,8 +143,8 @@ pub fn process_close_message(
         b'S' => backend.close_statement(name),
         b'P' => backend.close_portal(name),
         _ => {
-            return Err(PgError::ProtocolViolation(format!(
-                "unknown close type \'{}\'",
+            return Err(PgError::ProtocolViolation(format_smolstr!(
+                "unknown close type '{}'",
                 close.target_type
             )));
         }
