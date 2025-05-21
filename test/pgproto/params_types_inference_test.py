@@ -199,10 +199,6 @@ def test_params_inference_in_select(postgres: Postgres):
     assert rows == [["a", "a"]]
     assert cols_oids(conn) == [type_oid("text"), type_oid("text")]
 
-    # `$1` is on the left, cannot infer parameter type, type analysis fails with an error.
-    with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$1"):
-        conn.prepare("SELECT :p, :p || ''")
-
 
 def test_params_inference_in_values(postgres: Postgres):
     user = "Парам Парамыч"
@@ -357,19 +353,6 @@ def test_params_inference_errors(postgres: Postgres):
     conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.run("CREATE TABLE t (i INT PRIMARY KEY, f DOUBLE, t TEXT, u UUID, d datetime);")
 
-    # Cannot be resolved without default parameter types.
-    # (numeric vs text vs bool vs something else?)
-    with pytest.raises(DatabaseError, match=r"could not resolve function overload for max\(unknown\)"):
-        conn.run("SELECT max(:p1) FROM t", p1=1)
-
-    # Cannot be resolved without default parameter types.
-    with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$2"):
-        conn.run("SELECT :p1 = :p2", p1="1", p2="2")
-
-    # Cannot be resolved without default parameter types.
-    with pytest.raises(DatabaseError, match=r"could not determine data type of parameter \$1"):
-        conn.run("SELECT :p = NULL", p=1)
-
     with pytest.raises(
         DatabaseError,
         match=r"picodata error: sbroad: inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
@@ -480,6 +463,43 @@ def test_params_inference_with_client_provided_types(postgres: Postgres):
     # Specify unsuitable type and catch an error.
     with pytest.raises(DatabaseError, match=r"could not resolve operator overload for ||(uuid, text)"):
         rows = conn.run("SELECT :p || 'text'", p=1, types={"p": type_oid("uuid")})
+
+
+def test_parameter_types_defaulting(postgres: Postgres):
+    user = "Парам Парамыч"
+    password = "P@ssw0rd"
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+
+    # Test the most iconic case.
+    rows = conn.run("SELECT :p", p="p")
+    assert rows == [["p"]]
+    assert cols_oids(conn) == [type_oid("text")]
+
+    # Default parameter type in the 1st column, then use this type in the next expression
+    rows = conn.run("SELECT :p, :p || ''", p="p")
+    assert rows == [["p", "p"]]
+    assert cols_oids(conn) == [type_oid("text"), type_oid("text")]
+
+    # Test defaulting in CASE
+    rows = conn.run("SELECT CASE WHEN true THEN :p1 WHEN false THEN :p2 END", p1="p1", p2="p2")
+    assert rows == [["p1"]]
+    assert cols_oids(conn) == [type_oid("text")]
+
+    # Test defaulting in VALUES (can't run query because sbroad infers unknown type)
+    rows = conn.prepare("VALUES (:p1, :p2)")
+
+    # Test defaulting in COALESCE
+    rows = conn.run("SELECT COALESCE (:p1, :p2)", p1="p1", p2="p2")
+    assert rows == [["p1"]]
+    assert cols_oids(conn) == [type_oid("text")]
+
+    # Test defaulting in CTE (can't run query because sbroad infers unknown type)
+    rows = conn.prepare("WITH t(a) AS (SELECT :p) SELECT a FROM t")
+
+    # Test defaulting in a subquery (can't run query because sbroad infers unknown type)
+    rows = conn.prepare("SELECT (SELECT :p)")
 
 
 def test_caching_depends_on_parameter_types(postgres: Postgres):

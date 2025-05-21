@@ -12,8 +12,7 @@ pub enum Type {
     Uuid,
     Array,
     Map,
-    // Type of NULL literal.
-    Unknown,
+    Any,
 }
 
 impl Type {
@@ -29,7 +28,7 @@ impl Type {
             Type::Uuid => "uuid",
             Type::Array => "array",
             Type::Map => "map",
-            Type::Unknown => "unknown",
+            Type::Any => "any",
         }
     }
 }

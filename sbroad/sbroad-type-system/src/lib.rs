@@ -606,31 +606,31 @@ mod tests {
         // infer parameter type
         let expr = binary("+", lit(Integer), param("$1"));
         analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // analyze the same expression, type shouldn't change
         analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // infer the same type from another expression
         let expr = binary("+", param("$1"), lit(Integer));
         analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // ensure that we can use integer parameter in expressions with compatible types
         let expr = binary("+", param("$1"), lit(Numeric));
         analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // one more type with cache
         let expr = binary("+", param("$1"), lit(Numeric));
         analyzer.analyze(&expr, None).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // ensure new desired type do not change parameter type
         let expr = binary("+", param("$1"), lit(Numeric));
         analyzer.analyze(&expr, Some(Numeric)).unwrap();
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // ensure that int as an inferred parameter type cannot be matched with text
         let expr = binary("=", param("$1"), lit(Text));
@@ -640,7 +640,7 @@ mod tests {
             Error::CouldNotResolveOverload {
                 kind: FunctionKind::Operator,
                 name: "=".into(),
-                argtypes: vec![Integer, Text],
+                argtypes: vec![Some(Integer), Some(Text)],
             }
         );
 
@@ -648,26 +648,35 @@ mod tests {
         let expr = binary("+", param("$1"), param("$1"));
         analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_report().get_type(&expr.id), Integer);
-        assert_eq!(analyzer.get_parameter_types(), &[Integer]);
+        assert_eq!(analyzer.get_parameter_types(), &[Some(Integer)]);
 
         // infer parameter type for $2 from $1
         let expr = binary("+", param("$1"), param("$2"));
         analyzer.analyze(&expr, None).unwrap();
         assert_eq!(analyzer.get_report().get_type(&expr.id), Integer);
-        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Integer), Some(Integer)]
+        );
 
         // ensure that parameter can be coerced to desired type without changing its type
         let expr = param("$1");
         analyzer.analyze(&expr, Some(Double)).unwrap();
         assert_eq!(analyzer.get_report().get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Integer), Some(Integer)]
+        );
 
         // ensure that parameter type coercion works in homogeneous expressions
         let expr = coalesce(vec![param("$1"), lit(Double), param("$2")]);
         analyzer.analyze(&expr, None).unwrap();
         let report = analyzer.get_report();
         assert_eq!(report.get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Integer), Some(Integer)]
+        );
         if let ExprKind::Coalesce(children) = expr.kind {
             for child in &children {
                 assert_eq!(report.get_type(&child.id), Double)
@@ -684,7 +693,10 @@ mod tests {
         analyzer.analyze(&expr, None).unwrap();
         let report = analyzer.get_report();
         assert_eq!(report.get_type(&expr.id), Double);
-        assert_eq!(analyzer.get_parameter_types(), &[Integer, Integer]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Integer), Some(Integer)]
+        );
         if let ExprKind::Coalesce(children) = expr.kind {
             for child in &children {
                 assert_eq!(report.get_type(&child.id), Double)
@@ -719,7 +731,10 @@ mod tests {
         let report = analyzer.get_report();
         assert_eq!(report.get_type(&lid), Unsigned);
         assert_eq!(report.get_type(&rid), Unsigned);
-        assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Unsigned), Some(Unsigned)]
+        );
 
         // Cache {
         //   (expr.id, None): Report {
@@ -737,7 +752,10 @@ mod tests {
         let report = analyzer.get_report();
         assert_eq!(report.get_type(&lid), Double);
         assert_eq!(report.get_type(&rid), Double);
-        assert_eq!(analyzer.get_parameter_types(), &[Unsigned, Unsigned]);
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            &[Some(Unsigned), Some(Unsigned)]
+        );
 
         // inferred params: [Unsigned, Unsigned]
         //

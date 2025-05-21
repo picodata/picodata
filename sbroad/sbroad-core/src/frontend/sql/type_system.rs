@@ -38,20 +38,10 @@ impl From<SbroadType> for Type {
             SbroadType::String => Type::Text,
             SbroadType::Boolean => Type::Boolean,
             SbroadType::Datetime => Type::Datetime,
-            SbroadType::Any => Type::Unknown,
+            SbroadType::Any => Type::Any,
             SbroadType::Uuid => Type::Uuid,
             SbroadType::Array => Type::Array,
             SbroadType::Map => Type::Map,
-        }
-    }
-}
-
-impl From<DerivedType> for Type {
-    fn from(value: DerivedType) -> Self {
-        if let Some(ty) = value.get() {
-            Type::from(*ty)
-        } else {
-            Type::Unknown
         }
     }
 }
@@ -69,7 +59,7 @@ impl From<Type> for DerivedType {
             Type::Uuid => DerivedType::new(SbroadType::Uuid),
             Type::Array => DerivedType::new(SbroadType::Array),
             Type::Map => DerivedType::new(SbroadType::Map),
-            Type::Unknown => DerivedType::unknown(),
+            Type::Any => DerivedType::new(SbroadType::Any),
         }
     }
 }
@@ -78,7 +68,10 @@ pub fn get_parameter_derived_types(analyzer: &TypeAnalyzer) -> Vec<DerivedType> 
     analyzer
         .get_parameter_types()
         .iter()
-        .map(|t| (*t).into())
+        .map(|t| match t {
+            Some(t) => (*t).into(),
+            None => DerivedType::unknown(),
+        })
         .collect()
 }
 
@@ -93,7 +86,7 @@ impl From<CastType> for Type {
             CastType::Boolean => Type::Boolean,
             CastType::Datetime => Type::Datetime,
             // TODO: forbid casting to any
-            CastType::Any => Type::Unknown,
+            CastType::Any => Type::Any,
             CastType::Uuid => Type::Uuid,
             CastType::Map => Type::Map,
         }
@@ -259,7 +252,9 @@ pub fn to_type_expr(
                         if let Some(ty) = column.calculate_type(plan)?.get() {
                             types.push(Type::from(*ty));
                         } else {
-                            types.push(Type::Unknown);
+                            // Strictly speaking, NULL should have unknown type, but the type
+                            // system defaults it to text, so we map it to text.
+                            types.push(Type::Text);
                         }
                     }
                     let kind = TypeExprKind::Subquery(types);
@@ -563,7 +558,11 @@ fn default_type_system() -> TypeSystem {
     TypeSystem::new(functions)
 }
 
-pub fn new_analyzer(param_types: Vec<Type>) -> TypeAnalyzer {
+pub fn new_analyzer(param_types: &[DerivedType]) -> TypeAnalyzer {
+    let param_types = param_types
+        .iter()
+        .map(|t| t.get().map(|t| t.into()))
+        .collect();
     TypeAnalyzer::new(&TYPE_SYSTEM).with_parameters(param_types)
 }
 
@@ -589,7 +588,7 @@ fn analyze_homogeneous_rows(
     type_analyzer: &mut TypeAnalyzer,
     ctx: &'static str,
     rows: &[Vec<TypeExpr>],
-    desired_types: &[DerivedType],
+    desired_types: &[SbroadType],
 ) -> Result<(), SbroadError> {
     let ncolumns = rows.first().map(|r| r.len()).unwrap_or(0);
     for row in rows {
@@ -629,7 +628,7 @@ pub fn analyze_values_rows(
     type_analyzer: &mut TypeAnalyzer,
     rows: &[NodeId],
     plan: &Plan,
-    desired_types: &[DerivedType],
+    desired_types: &[SbroadType],
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
     let mut type_rows = Vec::with_capacity(rows.len());

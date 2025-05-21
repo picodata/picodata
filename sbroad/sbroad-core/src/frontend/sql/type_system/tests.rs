@@ -198,11 +198,6 @@ fn functions_errors() {
         "select trim(both 'kek' from  $1 + $2)",
         "could not resolve function overload for trim(text, int)",
     );
-
-    assert_fails_with_error(
-        "with t as (select 1 as a) select max($1) from t;",
-        "could not resolve function overload for max(unknown)",
-    );
 }
 
 #[test]
@@ -567,4 +562,33 @@ fn clause_based_parameter_type_inference() {
 
     // JOIN
     assert_ok("WITH t AS (SELECT 1) SELECT * FROM t join t on $1")
+}
+
+#[test]
+fn parameter_and_text_type_defaulting() {
+    assert_ok("SELECT $1");
+    assert_ok("SELECT $1, $2");
+    assert_ok("SELECT $1, $1");
+
+    assert_ok("SELECT $1 FROM (SELECT $2)");
+    assert_ok("SELECT $1 FROM (SELECT $1)");
+
+    assert_ok("SELECT $1 FROM (SELECT $1) WHERE $1 = $1");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE $3 = $4");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE $3 = 'kek'");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE $3 in ($4, $5)");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE $3 in ($4, 'kek')");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE 'kek' in ($4, $5)");
+    assert_ok("SELECT $1 FROM (SELECT $2) WHERE $3 = NULL");
+
+    assert_ok("SELECT CASE WHEN true THEN $1 WHEN false THEN $2 END");
+    assert_ok("SELECT CASE WHEN true THEN $1 WHEN false THEN 'lol' END");
+    assert_ok("SELECT max($1);");
+    assert_ok("SELECT COALESCE($1, $2)");
+    assert_ok("SELECT COALESCE($1, 'lol')");
+
+    assert_ok("VALUES ($1, $2)");
+    assert_ok("VALUES ($1, $2), ($3, $4)");
+    assert_ok("VALUES ($1, 'kek'), ($2, 'lol')");
+    assert_ok("VALUES ($1, 'kek'), ('lol', $2)");
 }

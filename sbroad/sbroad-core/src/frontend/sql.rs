@@ -1537,7 +1537,7 @@ fn parse_insert<M: Metadata>(
             }
         }
 
-        let mut desired_types = Vec::with_capacity(selected_col_names.len());
+        let mut column_types = Vec::with_capacity(selected_col_names.len());
         for name in &selected_col_names {
             let column = rel
                 .columns
@@ -1550,7 +1550,8 @@ fn parse_insert<M: Metadata>(
                         &relation
                     ))
                 })?;
-            desired_types.push(column.r#type);
+            let col_type = column.r#type.get().expect("column type must be known");
+            column_types.push(col_type);
         }
 
         let ast_rel_child_id = node
@@ -1560,7 +1561,7 @@ fn parse_insert<M: Metadata>(
         let plan_rel_child_id = parse_insert_source(
             *ast_rel_child_id,
             ast,
-            &desired_types,
+            &column_types,
             map,
             type_analyzer,
             pairs_map,
@@ -1577,17 +1578,18 @@ fn parse_insert<M: Metadata>(
         )
     } else {
         // insert into t ...
-        let mut desired_types = Vec::with_capacity(rel.columns.len());
+        let mut column_types = Vec::with_capacity(rel.columns.len());
         for column in &rel.columns {
             if column.name != "bucket_id" {
-                desired_types.push(column.r#type);
+                let col_type = column.r#type.get().expect("column type must be known");
+                column_types.push(col_type);
             }
         }
 
         let plan_child_id = parse_insert_source(
             *ast_child_id,
             ast,
-            &desired_types,
+            &column_types,
             map,
             type_analyzer,
             pairs_map,
@@ -1604,7 +1606,7 @@ fn parse_insert<M: Metadata>(
 fn parse_insert_source<M: Metadata>(
     node_id: usize,
     ast: &AbstractSyntaxTree,
-    column_types: &[DerivedType],
+    column_types: &[Type],
     map: &Translation,
     type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
@@ -1656,7 +1658,7 @@ fn parse_insert_source<M: Metadata>(
                     };
 
                     for (idx, expr_id) in list.iter().enumerate() {
-                        let coltype = column_types[idx].get().expect("column type must be known");
+                        let coltype = column_types[idx];
                         let exprtype = report.get_type(expr_id);
                         if !can_assign(exprtype.into(), coltype) {
                             return Err(SbroadError::Other(format_smolstr!(
@@ -4267,7 +4269,7 @@ where
 fn parse_values_rows<M>(
     rows: &[usize],
     type_analyzer: &mut TypeAnalyzer,
-    desired_types: &[DerivedType],
+    desired_types: &[Type],
     pairs_map: &mut ParsingPairsMap,
     col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
@@ -5394,7 +5396,6 @@ impl AbstractSyntaxTree {
     {
         let mut plan = Plan::default();
 
-        let param_types = param_types.iter().map(|t| (*t).into()).collect();
         let mut type_analyzer = type_system::new_analyzer(param_types);
 
         let Some(top) = self.top else {

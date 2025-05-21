@@ -4,21 +4,25 @@ use crate::{
 };
 use thiserror::Error;
 
-// [Unsigned, Text, Boolean] -> "unsigned, text, bool"
-fn format_types(types: &[Type]) -> String {
-    let types: Vec<_> = types.iter().map(|t| t.as_str()).collect();
+fn format_type(t: Option<Type>) -> &'static str {
+    t.map(|t| t.as_str()).unwrap_or("unknown")
+}
+
+// [Some(Unsigned), Some(Text), Some(Boolean), None] -> "unsigned, text, bool, unknown"
+fn format_types(types: &[Option<Type>]) -> String {
+    let types: Vec<_> = types.iter().map(|t| format_type(*t)).collect();
     types.join(", ")
 }
 
-// [Unsigned, Text, Boolean] -> "unsigned, text and bool"
-fn format_types_with_and(types: &[Type]) -> String {
+// [Some(Unsigned), Some(Text), Some(Boolean), None] -> "unsigned, text, bool and unknown"
+fn format_types_with_and(types: &[Option<Type>]) -> String {
     match types.len() {
         0 => String::new(),
-        1 => types[0].as_str().to_string(),
+        1 => format_type(types[0]).to_string(),
         _ => {
             let (last, all_but_last) = types.split_last().unwrap();
             let all_but_last_fmt = format_types(all_but_last);
-            format!("{} and {}", all_but_last_fmt, last.as_str())
+            format!("{} and {}", all_but_last_fmt, format_type(*last))
         }
     }
 }
@@ -34,11 +38,14 @@ pub enum Error {
     CouldNotResolveOverload {
         kind: FunctionKind,
         name: String,
-        argtypes: Vec<Type>,
+        argtypes: Vec<Option<Type>>,
     },
 
     #[error("{} types {} cannot be matched", context, format_types_with_and(types))]
-    TypesCannotBeMatched { context: String, types: Vec<Type> },
+    TypesCannotBeMatched {
+        context: String,
+        types: Vec<Option<Type>>,
+    },
 
     #[error("{} {} does not exist", kind, name)]
     FunctionDoesNotExist { kind: FunctionKind, name: String },
@@ -90,7 +97,7 @@ impl Error {
     pub fn could_not_resolve_overload(
         kind: FunctionKind,
         name: impl Into<String>,
-        argtypes: impl Into<Vec<Type>>,
+        argtypes: impl Into<Vec<Option<Type>>>,
     ) -> Self {
         Self::CouldNotResolveOverload {
             kind,

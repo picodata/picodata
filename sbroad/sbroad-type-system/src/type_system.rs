@@ -199,7 +199,7 @@ impl TypeSystem {
     }
 }
 
-type TypeAnalyzerCache<Id> = StableHashMap<(Id, Option<Type>), TypeReport<Id>>;
+type TypeAnalyzerCache<Id> = StableHashMap<(Id, Type), TypeReport<Id>>;
 
 /// Implementation of the core logic of type analysis.
 pub struct TypeAnalyzerCore<'a, Id: Hash + Eq + Clone> {
@@ -210,7 +210,7 @@ pub struct TypeAnalyzerCore<'a, Id: Hash + Eq + Clone> {
     /// Vector of parameter types.
     /// Initially contains user-provided parameter types (if any).
     /// Grows dynamically during analysis as new parameter types are inferred.
-    parameters: Vec<Type>,
+    parameters: Vec<Option<Type>>,
 }
 
 impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
@@ -222,47 +222,61 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         }
     }
 
-    pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
+    pub fn with_parameters(mut self, parameters: Vec<Option<Type>>) -> Self {
         self.parameters = parameters;
         self
     }
 
+    pub fn get_parameter_type(&self, idx: u16) -> Option<Type> {
+        self.parameters.get(idx as usize).cloned().flatten()
+    }
+
+    /// Persist parameter types in accordance with report. If report contains incompatible types
+    /// with already persisted ones, an error is reported.
+    ///
+    /// WARING: this function **must not** be called during type analysis, because this can lead
+    /// to persisting types for an overload that hasn't been chosen, resulting in inconsistencies
+    /// between the final report and parameter types.
     pub fn update_parameters(&mut self, report: &TypeReport<Id>) -> Result<(), Error> {
         let max_idx = report.params.iter().map(|x| x.0 + 1).max().unwrap_or(0) as usize;
         let new_len = std::cmp::max(self.parameters.len(), max_idx);
-        self.parameters.resize(new_len, Type::Unknown);
+        self.parameters.resize(new_len, None);
 
         for (idx, new_type) in &report.params {
             let old_type = self.parameters[*idx as usize];
-            if old_type == Type::Unknown {
-                self.parameters[*idx as usize] = *new_type;
-            } else if old_type != *new_type {
-                // Preferred type is the type we will suggest to use as the base type to resolve
-                // ambiguity. For instance, `$1::int = $1::numeric` is ambiguous, but can be
-                // resolved as `$1::int = $1::int::numeric` or `$1::numeric::int = $1::numeric`
-                //
-                // We select the preferred type based on ability to coerce it to another type to
-                // ensure valid casting sequences. We should probably use `can_cast`, but we
-                // don't have it. `can_coerce` can lead to incorrect suggestion, but we don't
-                // worry much about it, as the suggestion still remains helpful and can give
-                // insights about fixing the issue.
-                let (preferred, another) = match self.can_coerce(old_type, *new_type) {
-                    true => (old_type, *new_type),
-                    _else => (*new_type, old_type),
-                };
+            match old_type {
+                None => {
+                    self.parameters[*idx as usize] = Some(*new_type);
+                }
+                Some(old_type) if old_type != *new_type => {
+                    // Preferred type is the type we will suggest to use as the base type to resolve
+                    // ambiguity. For instance, `$1::int = $1::numeric` is ambiguous, but can be
+                    // resolved as `$1::int = $1::int::numeric` or `$1::numeric::int = $1::numeric`
+                    //
+                    // We select the preferred type based on ability to coerce it to another type to
+                    // ensure valid casting sequences. We should probably use `can_cast`, but we
+                    // don't have it. `can_coerce` can lead to incorrect suggestion, but we don't
+                    // worry much about it, as the suggestion still remains helpful and can give
+                    // insights about fixing the issue.
+                    let (preferred, another) = match self.can_coerce(old_type, *new_type) {
+                        true => (old_type, *new_type),
+                        _else => (*new_type, old_type),
+                    };
 
-                return Err(Error::InconsistentParameterTypesDeduced {
-                    idx: *idx,
-                    preferred,
-                    another,
-                });
+                    return Err(Error::InconsistentParameterTypesDeduced {
+                        idx: *idx,
+                        preferred,
+                        another,
+                    });
+                }
+                _ => (),
             }
         }
 
         Ok(())
     }
 
-    pub fn get_parameter_types(&self) -> &[Type] {
+    pub fn get_parameter_types(&self) -> &[Option<Type>] {
         &self.parameters
     }
 
@@ -273,7 +287,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     pub fn analyze(
         &mut self,
         expr: &Expr<Id>,
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<TypeReport<Id>, Error> {
         if let Some(report) = self.try_get_cached(expr, desired_type) {
             return Ok(report.clone());
@@ -286,11 +300,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Ok(report)
     }
 
-    fn try_get_cached(
-        &self,
-        expr: &Expr<Id>,
-        desired_type: Option<Type>,
-    ) -> Option<TypeReport<Id>> {
+    fn try_get_cached(&self, expr: &Expr<Id>, desired_type: Type) -> Option<TypeReport<Id>> {
         let report = self.cache.borrow().get(&(expr.id.clone(), desired_type))?;
         for (idx, report_type) in &report.params {
             // Reports include parameters' types used for inference,
@@ -298,10 +308,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             // So we need to verify that our inferred types match those in the report.
             //
             // `ensure_no_caching_issues` is a test for this check.
-            if let Some(current_type) = self.parameters.get(*idx as usize) {
-                if *current_type != Type::Unknown && *report_type != *current_type {
+            match self.get_parameter_type(*idx) {
+                Some(param_type) if param_type != *report_type => {
                     return None;
                 }
+                _ => (),
             }
         }
         Some(report.clone())
@@ -310,14 +321,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     fn analyze_expr(
         &mut self,
         expr: &Expr<Id>,
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<TypeReport<Id>, Error> {
         match &expr.kind {
             ExprKind::Null => {
-                // TODO: should we explicitly cast null to desired?
-                let ty = desired_type.unwrap_or(Type::Unknown);
                 let mut report = TypeReport::new();
-                report.report(&expr.id, ty);
+                report.report(&expr.id, desired_type);
                 Ok(report)
             }
             ExprKind::Reference(ty) => {
@@ -329,7 +338,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 // Literals are similar to references, except literals can be coerced to desired.
                 let mut report = TypeReport::new();
 
-                if *ty == Type::Numeric && desired_type == Some(Type::Double) {
+                if *ty == Type::Numeric && desired_type == Type::Double {
                     // Floating pointer literals have `numeric` type by default. However, in a
                     // context with `double` values it should be coerced to `double`. Note that
                     // this can only be done for literals, as expressions like `1.5`
@@ -341,12 +350,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 }
 
                 // Coerce literal type to desired if possible.
-                if let Some(desired_type) = desired_type {
-                    if *ty != desired_type && self.can_coerce(*ty, desired_type) {
-                        report.cast(&expr.id, desired_type);
-                        report.report(&expr.id, desired_type);
-                        return Ok(report);
-                    }
+                if *ty != desired_type && self.can_coerce(*ty, desired_type) {
+                    report.cast(&expr.id, desired_type);
+                    report.report(&expr.id, desired_type);
+                    return Ok(report);
                 }
 
                 report.report(&expr.id, *ty);
@@ -354,39 +361,25 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             ExprKind::Parameter(idx) => {
                 let mut report = TypeReport::new();
-                let param_type = match self.parameters.get(*idx as usize).cloned() {
-                    Some(Type::Unknown) => None,
-                    t => t,
-                };
-
-                match (param_type, desired_type) {
-                    (Some(param_type), Some(desired_type)) => {
-                        report.report_param(*idx, param_type);
-                        // Coerce parameter type to desired if possible.
-                        if param_type != desired_type && self.can_coerce(param_type, desired_type) {
-                            report.cast(&expr.id, desired_type);
-                            report.report(&expr.id, desired_type);
-                            Ok(report)
-                        } else {
-                            report.report(&expr.id, param_type);
-                            Ok(report)
-                        }
-                    }
-                    (None, Some(desired_type)) => {
-                        report.report_param(*idx, desired_type);
+                if let Some(param_type) = self.get_parameter_type(*idx) {
+                    report.report_param(*idx, param_type);
+                    // Coerce parameter type to desired if possible.
+                    if param_type != desired_type && self.can_coerce(param_type, desired_type) {
+                        report.cast(&expr.id, desired_type);
                         report.report(&expr.id, desired_type);
                         Ok(report)
-                    }
-                    (Some(param_type), None) => {
-                        report.report_param(*idx, param_type);
+                    } else {
                         report.report(&expr.id, param_type);
                         Ok(report)
                     }
-                    (None, None) => Err(Error::CouldNotDetermineParameterType(*idx)),
+                } else {
+                    report.report_param(*idx, desired_type);
+                    report.report(&expr.id, desired_type);
+                    Ok(report)
                 }
             }
             ExprKind::Cast(inner, to) => {
-                let mut report = self.analyze(inner, Some(*to))?;
+                let mut report = self.analyze(inner, *to)?;
                 // TODO: check if we can cast expression
                 report.report(&expr.id, *to);
                 Ok(report)
@@ -408,12 +401,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 over,
             } => {
                 let (ty, mut report) = self.analyze_window_args(name, args, desired_type)?;
-                let over_report = self.analyze(over, None)?;
+                let over_report = self.analyze(over, Type::Text)?;
                 report.extend(over_report);
 
                 if let Some(filter) = filter {
                     // TODO: ensure filter expression has boolean type
-                    let filter_report = self.analyze(filter, Some(Type::Boolean))?;
+                    let filter_report = self.analyze(filter, Type::Boolean)?;
                     report.extend(filter_report);
                 }
 
@@ -425,10 +418,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 partition_by,
                 frame,
             } => {
-                let desired_types = vec![Type::Unknown; order_by.len()];
+                let desired_types = vec![Type::Text; order_by.len()];
                 let mut report = self.analyze_many(order_by, &desired_types)?;
 
-                let desired_types = vec![Type::Unknown; partition_by.len()];
+                let desired_types = vec![Type::Text; partition_by.len()];
                 let partition_by_report = self.analyze_many(partition_by, &desired_types)?;
                 report.extend(partition_by_report);
 
@@ -443,7 +436,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                     for offset in &frame.bound_offsets {
                         // TODO: ensure no variables, otherwise return
                         // "argument of ROWS must not contain variables" error
-                        let offset_report = self.analyze(offset, Some(Type::Integer))?;
+                        let offset_report = self.analyze(offset, Type::Integer)?;
                         if offset_report.get_type(&offset.id) != Type::Integer {
                             return Err(Error::IncorrectFrameArgumentType(
                                 frame.kind,
@@ -472,7 +465,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 result_exprs,
             } => {
                 let (_, when_report) =
-                    self.analyze_homogeneous_exprs("CASE/WHEN", when_exprs, Some(Type::Boolean))?;
+                    self.analyze_homogeneous_exprs("CASE/WHEN", when_exprs, Type::Boolean)?;
                 let (result_ty, mut result_report) =
                     self.analyze_homogeneous_exprs("CASE/THEN", result_exprs, desired_type)?;
                 result_report.extend(when_report);
@@ -482,7 +475,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             ExprKind::Unary(op, child) => {
                 let mut report = match op {
                     UnaryOperator::Not => {
-                        let report = self.analyze(child, Some(Type::Boolean))?;
+                        let report = self.analyze(child, Type::Boolean)?;
                         if report.get_type(&child.id) != Type::Boolean {
                             return Err(Error::UnexpectedNotArgumentType(
                                 report.get_type(&child.id),
@@ -490,7 +483,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                         }
                         report
                     }
-                    UnaryOperator::IsNull => self.analyze(child, None)?,
+                    UnaryOperator::IsNull => self.analyze(child, Type::Text)?,
                     UnaryOperator::Exists => {
                         if let ExprKind::Subquery(_) = child.kind {
                             // TODO: analyze subquery
@@ -529,7 +522,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         &mut self,
         name: &str,
         args: &[Expr<Id>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<(Type, TypeReport<Id>), Error> {
         let kind = FunctionKind::Operator;
         self.analyze_function_args_impl(name, args, kind, desired_type)?
@@ -541,7 +534,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         &mut self,
         name: &str,
         args: &[Expr<Id>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<(Type, TypeReport<Id>), Error> {
         if let Some(result) =
             self.analyze_function_args_impl(name, args, FunctionKind::Scalar, desired_type)?
@@ -568,7 +561,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         &mut self,
         name: &str,
         args: &[Expr<Id>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<(Type, TypeReport<Id>), Error> {
         // TODO: introduce context and ensure that window is not misused
         let kind = FunctionKind::Window;
@@ -587,7 +580,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         name: &str,
         args: &[Expr<Id>],
         kind: FunctionKind,
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<Option<(Type, TypeReport<Id>)>, Error> {
         // First, select overloads with the given name.
         let Some(overloads) = self.type_system.functions.get(name) else {
@@ -625,12 +618,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // taking into account the costs and the desired type.
 
         // Start with overloads returning desired type.
-        if desired_type.is_some() {
-            let mut best_matches = select_best_overloads(&resolved_overloads, desired_type);
-            if best_matches.len() == 1 {
-                let (func, report) = best_matches.pop().unwrap();
-                return Ok(Some((func.return_type, report)));
-            }
+        let mut best_matches = select_best_overloads(&resolved_overloads, Some(desired_type));
+        if best_matches.len() == 1 {
+            let (func, report) = best_matches.pop().unwrap();
+            return Ok(Some((func.return_type, report)));
         }
 
         // If the previous step didn't succeed, ignore desired type.
@@ -664,15 +655,36 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Error::could_not_resolve_overload(kind, name, argtypes)
     }
 
-    fn analyze_exprs_types_no_error(&mut self, exprs: &[impl Borrow<Expr<Id>>]) -> Vec<Type> {
+    fn analyze_exprs_types_no_error(
+        &mut self,
+        exprs: &[impl Borrow<Expr<Id>>],
+    ) -> Vec<Option<Type>> {
         exprs
             .iter()
             .map(|e| e.borrow())
-            .map(|e| {
-                if let Ok(report) = self.analyze(e, None) {
-                    report.get_type(&e.id)
-                } else {
-                    Type::Unknown
+            .map(|e| match &e.kind {
+                // Type system does not support unknown type. This means that no expression can
+                // have unknown type, which seems like a nice property. There are some context
+                // where the type cannot be inferred, like `SELECT NULL`, and this is handled by
+                // defaulting rules. In short, every unknown type with no context for type
+                // inference is defaulted to text.
+                //
+                // However, this can make errors worse, because unknown type in the error message
+                // can give a hint that the problem is about parameter or null, but they will be
+                // defaulted to text. Also this would be a noticeable difference with error
+                // messages from PostgreSQL. Thus, we want to have unknown type in error messages.
+                //
+                // To do so, we explicitly check if the analyzed expression can have unknown type
+                // and report this, avoiding calling to `Self::analyze` that would default it to
+                // text.
+                ExprKind::Null => None,
+                ExprKind::Parameter(i) => self.get_parameter_type(*i),
+                _else => {
+                    if let Ok(report) = self.analyze(e, Type::Text) {
+                        Some(report.get_type(&e.id))
+                    } else {
+                        None
+                    }
                 }
             })
             .collect()
@@ -691,7 +703,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             let mut exprs = vec![left];
             exprs.append(&mut right_row.iter().collect::<Vec<_>>());
-            let (_, report) = self.analyze_homogeneous_exprs("IN", &exprs, None)?;
+            let (_, report) = self.analyze_homogeneous_exprs("IN", &exprs, Type::Text)?;
             return Ok(report);
         }
 
@@ -712,7 +724,8 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
 
                 let mut report = TypeReport::new();
                 for (l, r) in zip(left_row, right_row) {
-                    let (_, r) = self.analyze_homogeneous_operator_args(op_fmt, &[l, r], None)?;
+                    let (_, r) =
+                        self.analyze_homogeneous_operator_args(op_fmt, &[l, r], Type::Text)?;
                     report.extend(r);
                 }
 
@@ -742,7 +755,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                         return Err(Error::could_not_resolve_overload(
                             FunctionKind::Operator,
                             op_fmt,
-                            [row_type, *sq_type],
+                            [Some(row_type), Some(*sq_type)],
                         ));
                     }
                 }
@@ -764,7 +777,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                         return Err(Error::could_not_resolve_overload(
                             FunctionKind::Operator,
                             op_fmt,
-                            [*l, *r],
+                            [Some(*l), Some(*r)],
                         ));
                     }
                 }
@@ -774,7 +787,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             _ => {
                 // Examples: `1 + 2 = 2 * 2`, `1 + 2 = (select 3)`
                 let (_, report) =
-                    self.analyze_homogeneous_operator_args(op_fmt, &[left, right], None)?;
+                    self.analyze_homogeneous_operator_args(op_fmt, &[left, right], Type::Text)?;
                 report
             }
         };
@@ -790,7 +803,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         &mut self,
         context: &'static str,
         args: &[impl Borrow<Expr<Id>>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<(Type, TypeReport<Id>), Error> {
         self.analyze_homogeneous_exprs_impl(args, desired_type)?
             .ok_or_else(|| self.types_cannot_be_matched_error(context, args))
@@ -806,7 +819,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         &mut self,
         context: &str,
         args: &[impl Borrow<Expr<Id>>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<(Type, TypeReport<Id>), Error> {
         let kind = FunctionKind::Operator;
         self.analyze_homogeneous_exprs_impl(args, desired_type)?
@@ -823,36 +836,18 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     fn analyze_homogeneous_exprs_impl(
         &mut self,
         args: &[impl Borrow<Expr<Id>>],
-        desired_type: Option<Type>,
+        desired_type: Type,
     ) -> Result<Option<(Type, TypeReport<Id>)>, Error> {
         // First, find candidates for a common type.
         let mut types = HashSet::new();
-        if let Some(desired_type) = desired_type {
-            types.insert(desired_type);
-        }
+        types.insert(desired_type);
 
-        let mut error = None;
         for arg in args {
-            if desired_type.is_some() {
-                let report = self.analyze(arg.borrow(), desired_type)?;
-                types.insert(report.get_type(&arg.borrow().id));
-            }
+            let report = self.analyze(arg.borrow(), desired_type)?;
+            types.insert(report.get_type(&arg.borrow().id));
 
-            // Desired type is None, so analysis may fail.
-            // Consider parameter expressions.
-            match self.analyze(arg.borrow(), None) {
-                Ok(report) => {
-                    types.insert(report.get_type(&arg.borrow().id));
-                }
-                Err(err) => error = Some(err),
-            }
-        }
-
-        // Re-throw last error if there are no candidates.
-        // TODO: consider adding default desired type (text), so the error will be thrown from the
-        // first analysis in the loop above.
-        if types.is_empty() {
-            return Err(error.unwrap());
+            let report = self.analyze(arg.borrow(), Type::Text)?;
+            types.insert(report.get_type(&arg.borrow().id));
         }
 
         // Then, analyze expressions with candidate types as desired.
@@ -890,11 +885,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             return Ok(Some(candidates.pop().unwrap()));
         }
 
-        if let Some(desired_type) = desired_type {
-            for candidate in &candidates {
-                if candidate.0 == desired_type {
-                    return Ok(Some(candidate.clone()));
-                }
+        for candidate in &candidates {
+            if candidate.0 == desired_type {
+                // TODO: ensure that there is only one such candidate
+                return Ok(Some(candidate.clone()));
             }
         }
 
@@ -907,6 +901,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         for (ty, report) in &candidates {
             let mut other_types = candidates.iter().map(|(t, _)| t);
             if other_types.all(|other| self.can_coerce(*ty, *other)) {
+                // TODO: ensure that there is only one such candidate
                 return Ok(Some((*ty, report.clone())));
             }
         }
@@ -933,7 +928,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     ) -> Result<TypeReport<Id>, Error> {
         let mut united_report = TypeReport::new();
         for (expr, desired_type) in zip(exprs, desired_types) {
-            let report = self.analyze(expr.borrow(), Some(*desired_type))?;
+            let report = self.analyze(expr.borrow(), *desired_type)?;
             united_report.extend(report);
         }
         Ok(united_report)
@@ -998,12 +993,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         }
     }
 
-    pub fn with_parameters(mut self, parameters: Vec<Type>) -> Self {
+    pub fn with_parameters(mut self, parameters: Vec<Option<Type>>) -> Self {
         self.core = self.core.with_parameters(parameters);
         self
     }
 
-    pub fn get_parameter_types(&self) -> &[Type] {
+    pub fn get_parameter_types(&self) -> &[Option<Type>] {
         self.core.get_parameter_types()
     }
 
@@ -1017,7 +1012,8 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
     /// different. This is the caller responsibility to ensure that the expression has a
     /// suitable type.
     pub fn analyze(&mut self, expr: &Expr<Id>, desired_type: Option<Type>) -> Result<(), Error> {
-        let report = self.core.analyze(expr, desired_type)?;
+        let desired = desired_type.unwrap_or(Type::Text);
+        let report = self.core.analyze(expr, desired)?;
         self.core.update_parameters(&report)?;
         self.report.extend(report);
         Ok(())
@@ -1030,9 +1026,8 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         args: &[impl Borrow<Expr<Id>>],
         desired_type: Option<Type>,
     ) -> Result<(), Error> {
-        let (_, report) = self
-            .core
-            .analyze_homogeneous_exprs(ctx, args, desired_type)?;
+        let desired = desired_type.unwrap_or(Type::Text);
+        let (_, report) = self.core.analyze_homogeneous_exprs(ctx, args, desired)?;
         self.core.update_parameters(&report)?;
         self.report.extend(report);
         Ok(())

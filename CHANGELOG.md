@@ -110,6 +110,13 @@ with the `YY.MINOR.MICRO` scheme.
    Parameter type could be inferred from the left select statement,
    like PostgreSQL does, but this is not implemented yet.
 
+- SQL type system supports parameter type defaulting to text, allowing
+  to handle parameterized queries with context for parameter types
+  inference. For instance, `SELECT $1` used to result in
+  "could not infer data type of parameter $1" error.
+  Now the parameter type will be defaulted to text, making the query valid.
+
+
 ### Observability
 - Added picodata metrics in prometheus format to the `/metrics` endpoint. Metrics allow to monitor SQL, RPC, CAS, Raft, instance and governor states. List of metrics:
   - pico_governor_changes_total
