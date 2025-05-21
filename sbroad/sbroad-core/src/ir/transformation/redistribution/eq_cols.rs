@@ -387,27 +387,27 @@ impl EqualityCols {
     ) -> Result<Option<EqualityCols>, SbroadError> {
         let left_expr = plan.get_expression_node(op.left)?;
         let right_expr = plan.get_expression_node(op.right)?;
-        let res = match (left_expr, right_expr) {
-            (
-                Expression::Row(Row {
-                    list: list_left, ..
-                }),
-                Expression::Row(Row {
-                    list: list_right, ..
-                }),
-            ) => match op.op {
-                Bool::Eq | Bool::In => EqualityCols::eq_cols_for_eq(
-                    list_left, list_right, node_id, inner_id, outer_id, plan, refers_to,
-                )?,
-                _ => {
-                    if let Some(Referred::Both) = refers_to.get(node_id) {
-                        None
-                    } else {
-                        Some(EqualityCols::default())
-                    }
+        let list_left: &[NodeId] = match left_expr {
+            Expression::Row(Row { list, .. }) => list,
+            Expression::Reference(..) => std::array::from_ref(&op.left),
+            _ => return Ok(None),
+        };
+        let list_right: &[NodeId] = match right_expr {
+            Expression::Row(Row { list, .. }) => list,
+            Expression::Reference(..) => std::array::from_ref(&op.right),
+            _ => return Ok(None),
+        };
+        let res = match op.op {
+            Bool::Eq | Bool::In => EqualityCols::eq_cols_for_eq(
+                list_left, list_right, node_id, inner_id, outer_id, plan, refers_to,
+            )?,
+            _ => {
+                if let Some(Referred::Both) = refers_to.get(node_id) {
+                    None
+                } else {
+                    Some(EqualityCols::default())
                 }
-            },
-            _ => None,
+            }
         };
         Ok(res)
     }
@@ -535,7 +535,10 @@ impl EqualityCols {
             let left_expr = plan.get_expression_node(bool_op.left)?;
             let right_expr = plan.get_expression_node(bool_op.right)?;
             let new_eq_cols = match (left_expr, right_expr) {
-                (Expression::Row(_), Expression::Row(_)) => EqualityCols::eq_cols_for_rows(
+                (
+                    Expression::Reference(_) | Expression::Row(_),
+                    Expression::Reference(_) | Expression::Row(_),
+                ) => EqualityCols::eq_cols_for_rows(
                     &bool_op, node_id, &refers_to, inner_id, outer_id, plan,
                 )?,
                 (_, _) => {

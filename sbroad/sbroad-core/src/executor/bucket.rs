@@ -111,13 +111,18 @@ where
             let pairs = vec![(*left, *right), (*right, *left)];
             for (left_id, right_id) in pairs {
                 let left_expr = ir_plan.get_expression_node(left_id)?;
-                if !matches!(left_expr, Expression::Row(_)) {
+                if !matches!(left_expr, Expression::Row(_) | Expression::Reference(_)) {
                     continue;
                 }
 
                 let right_expr = ir_plan.get_expression_node(right_id)?;
                 let right_columns = if let Expression::Row(Row { list, .. }) = right_expr {
                     list.clone()
+                } else if let Expression::Constant(_) = right_expr {
+                    vec![right_id]
+                } else if let Expression::Reference(_) = right_expr {
+                    // Can be by motion node
+                    vec![right_id]
                 } else {
                     continue;
                 };
@@ -131,7 +136,13 @@ where
                     // it means that the corresponding virtual table contains
                     // tuple with the same distribution as the left side (because this motion
                     // was specially added in order to fulfill `Eq` of `In` conditions).
-                    if let Some(motion_id) = ir_plan.get_motion_from_row(right_id)? {
+                    let motion_id = match right_expr {
+                        Expression::Row(_) => ir_plan.get_motion_from_row(right_id)?,
+                        Expression::Reference(_) => ir_plan.get_motion_from_ref(right_id)?,
+                        _ => None,
+                    };
+
+                    if let Some(motion_id) = motion_id {
                         let virtual_table = self.exec_plan.get_motion_vtable(motion_id)?;
                         let bucket_ids: HashSet<u64, RepeatableState> =
                             virtual_table.get_bucket_index().keys().copied().collect();

@@ -353,8 +353,19 @@ impl ReferenceInfo {
         let mut ref_nodes = ReferredNodes::new();
         let mut ref_map: AHashMap<ChildColumnReference, Vec<ParentColumnPosition>> =
             AHashMap::new();
-        for (parent_column_pos, id) in ir.get_row_list(row_id)?.iter().enumerate() {
+        let child: &[NodeId] = match ir.get_expression_node(row_id) {
+            Ok(Expression::Row(Row { list, .. })) => list,
+            Ok(Expression::Reference(..)) => std::array::from_ref(&row_id),
+            _ => {
+                return Err(SbroadError::Invalid(
+                    Entity::Node,
+                    Some("node is not Row or Refence type".into()),
+                ))
+            }
+        };
+        for (parent_column_pos, id) in child.iter().enumerate() {
             let child_id = ir.get_child_under_alias(*id)?;
+            let child_id = ir.get_child_under_cast(child_id)?;
             if let Expression::Reference(Reference {
                 targets, position, ..
             }) = ir.get_expression_node(child_id)?

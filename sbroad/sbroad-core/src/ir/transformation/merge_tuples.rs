@@ -107,8 +107,16 @@ impl Chain {
 
                 // If boolean expression contains a reference to an additional
                 //  sub-query, it should be added to the "other" list.
-                let left_sq = plan.get_sub_query_from_row_node(left_id)?;
-                let right_sq = plan.get_sub_query_from_row_node(right_id)?;
+                let left_sq = if plan.is_row(left_id)? {
+                    plan.get_sub_query_from_row_node(left_id)?
+                } else {
+                    None
+                };
+                let right_sq = if plan.is_row(right_id)? {
+                    plan.get_sub_query_from_row_node(right_id)?
+                } else {
+                    None
+                };
                 for sq_id in [left_sq, right_sq].iter().flatten() {
                     if plan.is_additional_child(*sq_id)? {
                         self.other.push(expr_id);

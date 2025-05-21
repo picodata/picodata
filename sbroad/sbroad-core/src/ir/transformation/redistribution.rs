@@ -17,7 +17,7 @@ use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
 use crate::ir::node::{
     BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId, OrderBy,
-    Projection, Reference, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    Projection, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
     UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
@@ -312,28 +312,45 @@ impl Plan {
         post_tree.take_nodes()
     }
 
-    /// Get boolean expressions with both row children in the sub-tree.
+    /// Get boolean expressions with at least one row or ref children in the sub-tree.
     /// It's a helper function for resolving subquery conflicts.
-    /// E.g. boolean `In` operator will have both row children where
+    /// E.g. boolean `In` operator will have at least one row or ref children where
     /// right `Row` is a transformed subquery.
     ///
     /// # Errors
     /// - some of the expression nodes are invalid
-    pub(crate) fn get_bool_nodes_with_row_children(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
+    pub(crate) fn get_bool_nodes_for_resolve_subquery_conflicts(
+        &self,
+        top: NodeId,
+    ) -> Vec<LevelNode<NodeId>> {
         let filter = |node_id: NodeId| -> bool {
             // Append only booleans with row children.
             if let Ok(Node::Expression(Expression::Bool(BoolExpr { left, right, .. }))) =
                 self.get_node(node_id)
             {
-                let left_is_row = matches!(
-                    self.get_node(*left),
-                    Ok(Node::Expression(Expression::Row(_)))
-                );
-                let right_is_row = matches!(
-                    self.get_node(*right),
-                    Ok(Node::Expression(Expression::Row(_)))
-                );
-                if left_is_row && right_is_row {
+                let left_is_row = {
+                    let node_id = self.get_child_under_cast(*left);
+                    let node = node_id.and_then(|id| self.get_node(id));
+
+                    matches!(
+                        node,
+                        Ok(Node::Expression(Expression::Row(_)))
+                            | Ok(Node::Expression(Expression::Reference(_)))
+                    )
+                };
+
+                let right_is_row = {
+                    let node_id = self.get_child_under_cast(*right);
+                    let node = node_id.and_then(|id| self.get_node(id));
+
+                    matches!(
+                        node,
+                        Ok(Node::Expression(Expression::Row(_)))
+                            | Ok(Node::Expression(Expression::Reference(_)))
+                    )
+                };
+
+                if left_is_row || right_is_row {
                     return true;
                 }
             }
@@ -348,7 +365,7 @@ impl Plan {
         post_tree.take_nodes()
     }
 
-    /// Get unary expressions with both row children in the sub-tree.
+    /// Get unary expressions with row children in the sub-tree.
     /// It's a helper function for resolving subquery conflicts.
     /// E.g. unary `Exists` operator will have `Row` child that
     /// is a transformed subquery.
@@ -432,6 +449,11 @@ impl Plan {
         self.get_motion_among_rel_nodes(&rel_nodes)
     }
 
+    pub fn get_motion_from_ref(&self, node_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
+        let rel_nodes = self.get_relational_nodes_from_reference(node_id)?;
+        self.get_motion_among_rel_nodes(&rel_nodes)
+    }
+
     /// Extract motion node id from row node
     ///
     /// # Errors
@@ -492,7 +514,13 @@ impl Plan {
         // position in row that refers to shard column -> child id
         let mut memo: AHashMap<usize, NodeId> = AHashMap::new();
         let mut search_row = |row_id: NodeId| -> Result<bool, SbroadError> {
-            let refs = self.get_row_list(row_id)?;
+            let refs: &[NodeId] = match self.get_expression_node(row_id)? {
+                Expression::Row(Row { list, .. }) => list,
+                Expression::Reference(..) => std::array::from_ref(&row_id),
+                _ => {
+                    return Ok(false);
+                }
+            };
             for (pos_in_row, ref_id) in refs.iter().enumerate() {
                 let ref node @ Expression::Reference(Reference {
                     targets,
@@ -922,11 +950,15 @@ impl Plan {
             }
         }
 
-        let bool_nodes = self.get_bool_nodes_with_row_children(expr_id);
+        let bool_nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
         for LevelNode(_, bool_node) in &bool_nodes {
             let bool_op = BoolOp::from_expr(self, *bool_node)?;
-            self.set_distribution(bool_op.left)?;
-            self.set_distribution(bool_op.right)?;
+            if self.is_row(bool_op.left)? {
+                self.set_distribution(bool_op.left)?;
+            }
+            if self.is_row(bool_op.right)? {
+                self.set_distribution(bool_op.right)?;
+            }
         }
 
         for LevelNode(_, bool_node) in &bool_nodes {
@@ -994,6 +1026,7 @@ impl Plan {
                     format_smolstr!("{pos} in row map {row_map:?}"),
                 )
             })?;
+            let column_id = self.get_child_under_cast(column_id)?;
             if let Expression::Reference(Reference { targets, .. }) =
                 self.get_expression_node(column_id)?
             {
@@ -1032,7 +1065,16 @@ impl Plan {
     /// # Errors
     /// - If the node is not a row node.
     fn build_row_map(&self, row_id: NodeId) -> Result<HashMap<usize, NodeId>, SbroadError> {
-        let columns = self.get_row_list(row_id)?;
+        let columns: &[NodeId] = match self.get_expression_node(row_id)? {
+            Expression::Row(Row { list, .. }) => list,
+            Expression::Reference(..) => std::array::from_ref(&row_id),
+            _ => {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some("node is not a row or reference.".into()),
+                ));
+            }
+        };
         let mut map: HashMap<usize, NodeId> = HashMap::new();
         for (pos, col) in columns.iter().enumerate() {
             map.insert(pos, *col);
@@ -1273,12 +1315,16 @@ impl Plan {
     }
 
     fn set_rows_distributions_in_expr(&mut self, expr_id: NodeId) -> Result<(), SbroadError> {
-        let nodes = self.get_bool_nodes_with_row_children(expr_id);
+        let nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
         for level_node in &nodes {
             let node = level_node.1;
             let bool_op = BoolOp::from_expr(self, node)?;
-            self.set_distribution(bool_op.left)?;
-            self.set_distribution(bool_op.right)?;
+            if self.is_row(bool_op.left)? {
+                self.set_distribution(bool_op.left)?;
+            }
+            if self.is_row(bool_op.right)? {
+                self.set_distribution(bool_op.right)?;
+            }
         }
         Ok(())
     }
@@ -1386,14 +1432,14 @@ impl Plan {
             // We don't influence the inner child here, so the inner map is empty
             // for the current node id.
             // `get_sq_node_strategies_for_bool_op` will be triggered only in case `node_id` is a
-            // boolean operator with both `Row` children.
+            // boolean operator with at least one `Row` child.
             // Note, that we don't have to call `get_sq_node_strategy_for_unary_op` here, because
             // the only strategy it can return is `Motion::Full` for its child and all subqueries
             // are covered with `Motion::Full` by default.
 
             let left_expr = self.get_expression_node(*left)?;
             let right_expr = self.get_expression_node(*right)?;
-            if left_expr.is_row() && right_expr.is_row() {
+            if left_expr.is_row() || right_expr.is_row() {
                 let sq_strategies = self.get_sq_node_strategies_for_bool_op(rel_id, node_id)?;
                 let sq_strategies_len = sq_strategies.len();
                 for (id, policy) in sq_strategies {
@@ -1406,19 +1452,22 @@ impl Plan {
 
             // Ok, we don't have any sub-queries.
             // Lets try to improve the motion policy for the inner join child.
-            let left_expr = self.get_expression_node(bool_op.left)?;
-            let right_expr = self.get_expression_node(bool_op.right)?;
+            let left_id = self.get_child_under_cast(bool_op.left)?;
+            let right_id = self.get_child_under_cast(bool_op.right)?;
+            let left_expr = self.get_expression_node(left_id)?;
+            let right_expr = self.get_expression_node(right_id)?;
             new_inner_policy = match (&left_expr, &right_expr) {
                 (Expression::Arithmetic(_), _) | (_, Expression::Arithmetic(_)) => {
                     MotionPolicy::Full
                 }
-                (Expression::Row { .. }, Expression::Row { .. }) => match bool_op.op {
+                (
+                    Expression::Reference(_) | Expression::Row(_),
+                    Expression::Reference(_) | Expression::Row(_),
+                ) => match bool_op.op {
                     Bool::Between => {
                         unreachable!("Between in redistribution")
                     }
-                    Bool::Eq | Bool::In => {
-                        self.join_policy_for_eq(rel_id, bool_op.left, bool_op.right)?
-                    }
+                    Bool::Eq | Bool::In => self.join_policy_for_eq(rel_id, left_id, right_id)?,
                     Bool::Gt
                     | Bool::GtEq
                     | Bool::Lt
@@ -1458,6 +1507,8 @@ impl Plan {
                     .get(&bool_op.left)
                     .cloned()
                     .unwrap_or(MotionPolicy::Full),
+                // we cannot make better with constant from left or right
+                (Expression::Constant(_), _) | (_, Expression::Constant(_)) => MotionPolicy::Full,
                 _ => {
                     return Err(SbroadError::Invalid(
                         Entity::Expression,
@@ -2239,10 +2290,10 @@ impl Plan {
         let mut map = Strategy::new(rel_id);
         let left_id = self.get_relational_child(rel_id, 0)?;
         let right_id = self.get_relational_child(rel_id, 1)?;
-        let left_output_id = self.get_relation_node(left_id)?.output();
-        let right_output_id = self.get_relation_node(right_id)?.output();
 
         {
+            let left_output_id = self.get_relation_node(left_id)?.output();
+            let right_output_id = self.get_relation_node(right_id)?.output();
             let left_output_row = self.get_row_list(left_output_id)?;
             let right_output_row = self.get_row_list(right_output_id)?;
             if left_output_row.len() != right_output_row.len() {

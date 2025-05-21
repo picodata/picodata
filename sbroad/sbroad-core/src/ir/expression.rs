@@ -1653,29 +1653,59 @@ impl Plan {
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
         for LevelNode(_, id) in nodes {
-            let reference = self.get_expression_node(id)?;
-            if let Expression::Reference(Reference {
-                targets, parent, ..
-            }) = reference
-            {
-                let referred_rel_id = parent.ok_or_else(|| {
-                    SbroadError::NotFound(
-                        Entity::Node,
-                        format_smolstr!("that is Reference ({id}) parent"),
-                    )
-                })?;
-                let rel = self.get_relation_node(referred_rel_id)?;
-                let children = rel.children();
-                if let Some(positions) = targets {
-                    for pos in positions {
-                        if let Some(child) = children.get(*pos) {
-                            rel_nodes.insert(*child);
-                        }
+            self.get_relational_nodes_from_references_into(id, &mut rel_nodes)?;
+        }
+        Ok(rel_nodes)
+    }
+
+    pub fn get_relational_nodes_from_reference(
+        &self,
+        ref_id: NodeId,
+    ) -> Result<HashSet<NodeId, RandomState>, SbroadError> {
+        if let Expression::Reference(..) = self.get_expression_node(ref_id)? {
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Expression,
+                Some("Node is not a reference".into()),
+            ));
+        }
+
+        // We don't expect much relational references in a row (5 is a reasonable number).
+        let mut rel_nodes: HashSet<NodeId, RandomState> =
+            HashSet::with_capacity_and_hasher(5, RandomState::new());
+
+        self.get_relational_nodes_from_references_into(ref_id, &mut rel_nodes)?;
+
+        Ok(rel_nodes)
+    }
+
+    fn get_relational_nodes_from_references_into(
+        &self,
+        ref_id: NodeId,
+        rel_nodes: &mut HashSet<NodeId, RandomState>,
+    ) -> Result<(), SbroadError> {
+        let reference = self.get_expression_node(ref_id)?;
+        if let Expression::Reference(Reference {
+            targets, parent, ..
+        }) = reference
+        {
+            let referred_rel_id = parent.ok_or_else(|| {
+                SbroadError::NotFound(
+                    Entity::Node,
+                    format_smolstr!("that is Reference ({ref_id}) parent"),
+                )
+            })?;
+            let rel = self.get_relation_node(referred_rel_id)?;
+            let children = rel.children();
+            if let Some(positions) = targets {
+                for pos in positions {
+                    if let Some(child) = children.get(*pos) {
+                        rel_nodes.insert(*child);
                     }
                 }
             }
         }
-        Ok(rel_nodes)
+        Ok(())
     }
 
     /// Check that the node is a boolean equality and its children are both rows.
@@ -1753,6 +1783,18 @@ impl Plan {
             _ => {}
         }
         Ok(false)
+    }
+
+    /// The node is a row
+    ///
+    /// # Errors
+    /// - If node is not an expression.
+    pub fn is_row(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
+        let expr = self.get_expression_node(expr_id)?;
+        match expr {
+            Expression::Row(..) => Ok(true),
+            _ => Ok(false),
+        }
     }
 
     /// Replace parent from one to another for all references in the expression subtree of the provided node.
