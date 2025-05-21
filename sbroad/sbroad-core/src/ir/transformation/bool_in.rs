@@ -63,22 +63,10 @@ impl Plan {
         if let Some((first_id, other)) = right_columns.split_first() {
             let new_left_id = left_id;
 
-            let first_expr = self.get_expression_node(*first_id)?;
-            let mut new_top_id = if first_expr.is_row() {
-                self.add_cond(new_left_id, Bool::Eq, *first_id)?
-            } else {
-                let new_row_id = self.nodes.add_row(vec![*first_id], None);
-                self.add_cond(new_left_id, Bool::Eq, new_row_id)?
-            };
+            let mut new_top_id = self.add_cond(new_left_id, Bool::Eq, *first_id)?;
 
             for right_id in other {
-                let right_expr = self.get_expression_node(*right_id)?;
-                let new_right_id = if right_expr.is_row() {
-                    self.add_cond(new_left_id, Bool::Eq, *right_id)?
-                } else {
-                    let new_row_id = self.nodes.add_row(vec![*right_id], None);
-                    self.add_cond(new_left_id, Bool::Eq, new_row_id)?
-                };
+                let new_right_id = self.add_cond(new_left_id, Bool::Eq, *right_id)?;
                 new_top_id = self.concat_or(new_top_id, new_right_id)?;
             }
 

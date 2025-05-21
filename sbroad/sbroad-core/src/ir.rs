@@ -1209,8 +1209,7 @@ impl Plan {
         let escape_id = if let Some(id) = escape_id {
             id
         } else {
-            let s_id = self.add_const(Value::String('\\'.into()));
-            self.nodes.add_row(vec![s_id], None)
+            self.add_const(Value::String('\\'.into()))
         };
         let node = Like {
             left,
@@ -1908,6 +1907,7 @@ impl Plan {
                     | Expression::Row(_)
                     | Expression::Reference(_)
                     | Expression::Constant(_)
+                    | Expression::Cast(_)
                     | Expression::Parameter(_)
                     | Expression::Case(_)
                     | Expression::Over(_)

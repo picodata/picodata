@@ -2137,11 +2137,9 @@ where
     // on the left will be the first, while the right pair will be the second.
     parameters_positions: Vec<Pair<'worker, Rule>>,
     metadata: &'worker M,
-    /// Map of { reference plan_id -> (it's column name, whether it's covered with row)}
+    /// Map of { reference plan_id -> it's column name}
     /// We have to save column name in order to use it later for alias creation.
-    /// We use information about row coverage later when handling Row expression and need to know
-    /// whether we should uncover our reference.
-    pub reference_to_name_map: HashMap<NodeId, (SmolStr, bool)>,
+    pub reference_to_name_map: HashMap<NodeId, SmolStr>,
     /// Flag indicating whether parameter in Tarantool (? mark) style was met.
     met_tnt_param: bool,
     /// Flag indicating whether parameter in Postgres ($<index>) style was met.
@@ -2651,14 +2649,12 @@ impl ParseExpression {
                 is_ilike,
             } => {
                 let mut plan_left_id = left.populate_plan(plan, worker)?;
-                let mut left_covered_with_row = plan.row(plan_left_id)?;
 
                 let mut plan_right_id = right.populate_plan(plan, worker)?;
-                let mut right_covered_with_row = plan.row(plan_right_id)?;
 
-                let escape_covered_with_row = if let Some(escape) = escape {
+                let plan_escape_id = if let Some(escape) = escape {
                     let plan_escape_id = escape.populate_plan(plan, worker)?;
-                    Some(plan.row(plan_escape_id)?)
+                    Some(plan_escape_id)
                 } else {
                     None
                 };
@@ -2666,16 +2662,10 @@ impl ParseExpression {
                     let lower_func = worker.metadata.function("lower")?;
                     plan_left_id =
                         plan.add_stable_function(lower_func, vec![plan_left_id], None)?;
-                    left_covered_with_row = plan.row(plan_left_id)?;
                     plan_right_id =
                         plan.add_stable_function(lower_func, vec![plan_right_id], None)?;
-                    right_covered_with_row = plan.row(plan_right_id)?;
                 }
-                plan.add_like(
-                    left_covered_with_row,
-                    right_covered_with_row,
-                    escape_covered_with_row,
-                )?
+                plan.add_like(plan_left_id, plan_right_id, plan_escape_id)?
             }
             ParseExpression::Similar {
                 left,
@@ -2683,22 +2673,16 @@ impl ParseExpression {
                 escape,
             } => {
                 let plan_left_id = left.populate_plan(plan, worker)?;
-                let left_covered_with_row = plan.row(plan_left_id)?;
 
                 let plan_right_id = right.populate_plan(plan, worker)?;
-                let right_covered_with_row = plan.row(plan_right_id)?;
 
-                let escape_covered_with_row = if let Some(escape) = escape {
+                let plan_escape_id = if let Some(escape) = escape {
                     let plan_escape_id = escape.populate_plan(plan, worker)?;
-                    Some(plan.row(plan_escape_id)?)
+                    Some(plan_escape_id)
                 } else {
                     None
                 };
-                plan.add_like(
-                    left_covered_with_row,
-                    right_covered_with_row,
-                    escape_covered_with_row,
-                )?
+                plan.add_like(plan_left_id, plan_right_id, plan_escape_id)?
             }
             ParseExpression::FinalBetween {
                 is_not,
@@ -2707,18 +2691,13 @@ impl ParseExpression {
                 right,
             } => {
                 let plan_left_id = left.populate_plan(plan, worker)?;
-                let left_covered_with_row = plan.row(plan_left_id)?;
 
                 let plan_center_id = center.populate_plan(plan, worker)?;
-                let center_covered_with_row = plan.row(plan_center_id)?;
 
                 let plan_right_id = right.populate_plan(plan, worker)?;
-                let right_covered_with_row = plan.row(plan_right_id)?;
 
-                let greater_eq_id =
-                    plan.add_cond(left_covered_with_row, Bool::GtEq, center_covered_with_row)?;
-                let less_eq_id =
-                    plan.add_cond(left_covered_with_row, Bool::LtEq, right_covered_with_row)?;
+                let greater_eq_id = plan.add_cond(plan_left_id, Bool::GtEq, plan_center_id)?;
+                let less_eq_id = plan.add_cond(plan_left_id, Bool::LtEq, plan_right_id)?;
                 let and_id = plan.add_cond(greater_eq_id, Bool::And, less_eq_id)?;
                 let between_id = if *is_not {
                     plan.add_unary(Unary::Not, and_id)?
@@ -2726,9 +2705,7 @@ impl ParseExpression {
                     and_id
                 };
 
-                worker
-                    .betweens
-                    .push(Between::new(left_covered_with_row, less_eq_id));
+                worker.betweens.push(Between::new(plan_left_id, less_eq_id));
 
                 between_id
             }
@@ -2739,7 +2716,6 @@ impl ParseExpression {
                 right,
             } => {
                 let left_plan_id = left.populate_plan(plan, worker)?;
-                let left_row_id = plan.row(left_plan_id)?;
 
                 let right_plan_id = match op {
                     ParseExpressionInfixOperator::InfixBool(op) => match op {
@@ -2793,7 +2769,7 @@ impl ParseExpression {
                         ..
                     }) = right_expr
                     {
-                        plan.add_cond(left_row_id, Bool::And, *left)?
+                        plan.add_cond(left_plan_id, Bool::And, *left)?
                     } else {
                         panic!("Expected to see AND operator as right child.");
                     };
@@ -2810,17 +2786,15 @@ impl ParseExpression {
                     }
                 }
 
-                let right_row_id = plan.row(right_plan_id)?;
-
                 let op_plan_id = match op {
                     ParseExpressionInfixOperator::Concat => {
-                        plan.add_concat(left_row_id, right_row_id)
+                        plan.add_concat(left_plan_id, right_plan_id)
                     }
                     ParseExpressionInfixOperator::InfixArithmetic(arith) => {
-                        plan.add_arithmetic_to_plan(left_row_id, arith.clone(), right_row_id)?
+                        plan.add_arithmetic_to_plan(left_plan_id, arith.clone(), right_plan_id)?
                     }
                     ParseExpressionInfixOperator::InfixBool(bool) => {
-                        plan.add_cond(left_row_id, *bool, right_row_id)?
+                        plan.add_cond(left_plan_id, *bool, right_plan_id)?
                     }
                     ParseExpressionInfixOperator::Escape => {
                         unreachable!("escape op is not added to AST")
@@ -2834,8 +2808,7 @@ impl ParseExpression {
             }
             ParseExpression::Prefix { op, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
-                let child_covered_with_row = plan.row(child_plan_id)?;
-                plan.add_unary(op.clone(), child_covered_with_row)?
+                plan.add_unary(op.clone(), child_plan_id)?
             }
             ParseExpression::Function {
                 name,
@@ -2872,29 +2845,7 @@ impl ParseExpression {
                 for child in children {
                     let plan_child_id = child.populate_plan(plan, worker)?;
 
-                    // When handling references, we always cover them with rows
-                    // (for the unification of the transformation process in case they are met in
-                    // the selection of join condition).
-                    // But references may also occur under the Row node (like
-                    // `select (ref_1, ref_2) ...`). In such case we don't want out References to
-                    // be covered with rows. E.g. in `set_distribution` we presume that
-                    // references are not covered with additional rows.
-                    let reference = worker.reference_to_name_map.get(&plan_child_id);
-                    let uncovered_plan_child_id = if let Some((_, is_row)) = reference {
-                        if *is_row {
-                            let plan_inner_expr = plan.get_expression_node(plan_child_id)?;
-                            *plan_inner_expr.get_row_list()?.first().ok_or_else(|| {
-                                SbroadError::UnexpectedNumberOfValues(
-                                    "There must be a Reference under Row.".into(),
-                                )
-                            })?
-                        } else {
-                            plan_child_id
-                        }
-                    } else {
-                        plan_child_id
-                    };
-                    plan_children_ids.push(uncovered_plan_child_id);
+                    plan_children_ids.push(plan_child_id);
                 }
                 plan.nodes.add_row(plan_children_ids, None)
             }
@@ -2916,12 +2867,11 @@ impl ParseExpression {
                 value,
             } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
-                let child_covered_with_row = plan.row(child_plan_id)?;
                 let op_id = match value {
-                    None => plan.add_unary(Unary::IsNull, child_covered_with_row)?,
+                    None => plan.add_unary(Unary::IsNull, child_plan_id)?,
                     Some(b) => {
                         let right_operand = plan.add_const(Value::Boolean(*b));
-                        plan.add_bool(child_covered_with_row, Bool::Eq, right_operand)?
+                        plan.add_bool(child_plan_id, Bool::Eq, right_operand)?
                     }
                 };
                 if *is_not {
@@ -3804,7 +3754,7 @@ where
                     let left_child_col_position = worker.columns_map_get_positions(*plan_left_id, &col_name, scan_name.as_deref());
 
                     let plan_right_id = referred_relation_ids.get(1);
-                    let (ref_id, is_row) = if let Some(plan_right_id) = plan_right_id {
+                    let ref_id = if let Some(plan_right_id) = plan_right_id {
                         // Referencing Join node.
                         worker.build_columns_map(plan, *plan_right_id)?;
                         let right_child_col_position = worker.columns_map_get_positions(*plan_right_id, &col_name, scan_name.as_deref());
@@ -3821,17 +3771,17 @@ where
                             ));
                         } else if present_in_left {
                             let col_with_scan = ColumnWithScan::new(&col_name, scan_name.as_deref());
-                            plan.add_row_from_left_branch(
+                            plan.add_ref_from_left_branch(
                                 *plan_left_id,
                                 *plan_right_id,
-                                &[col_with_scan],
+                                col_with_scan,
                             )?
                         } else if present_in_right {
                             let col_with_scan = ColumnWithScan::new(&col_name, scan_name.as_deref());
-                            plan.add_row_from_right_branch(
+                            plan.add_ref_from_right_branch(
                                 *plan_left_id,
                                 *plan_right_id,
-                                &[col_with_scan],
+                                col_with_scan,
                             )?
                         } else {
                             return Err(SbroadError::NotFound(
@@ -3839,7 +3789,7 @@ where
                                 format_smolstr!("'{col_name}' in the join children",),
                             ));
                         };
-                        (ref_id, true)
+                        ref_id
                     } else {
                         // Referencing single node.
                         let col_position = match left_child_col_position {
@@ -3856,10 +3806,9 @@ where
                         let col_type = plan
                             .get_expression_node(*child_alias_id)?
                             .calculate_type(plan)?;
-                        let ref_id = plan.nodes.add_ref(None, Some(vec![0]), col_position, col_type, None);
-                        (ref_id, false)
+                        plan.nodes.add_ref(None, Some(vec![0]), col_position, col_type, None)
                     };
-                    worker.reference_to_name_map.insert(ref_id, (col_name, is_row));
+                    worker.reference_to_name_map.insert(ref_id, col_name);
                     ParseExpression::PlanId { plan_id: ref_id }
                 }
                 Rule::SubQuery => {
@@ -4857,7 +4806,7 @@ impl AbstractSyntaxTree {
                             if let Node::Expression(Expression::Reference(_)) =
                                 plan.get_node(expr_plan_node_id)?
                             {
-                                let (col_name, _) = worker
+                                let col_name = worker
                                     .reference_to_name_map
                                     .get(&expr_plan_node_id)
                                     .expect("reference must be in a map");
@@ -5012,7 +4961,7 @@ impl AbstractSyntaxTree {
                         if let Node::Expression(Expression::Reference(_)) =
                             plan.get_node(expr_plan_node_id)?
                         {
-                            let (col_name, _) = worker
+                            let col_name = worker
                                 .reference_to_name_map
                                 .get(&expr_plan_node_id)
                                 .expect("reference must be in a map");
@@ -6502,27 +6451,6 @@ impl Ast for AbstractSyntaxTree {
 }
 
 impl Plan {
-    /// Wrap references, constants, functions, concatenations and casts in the plan into rows.
-    /// Leave other nodes (e.g. rows) unchanged.
-    ///
-    /// Used for unification of expression nodes transformations (e.g. dnf).
-    fn row(&mut self, expr_id: NodeId) -> Result<NodeId, SbroadError> {
-        let row_id = if let Node::Expression(
-            Expression::Reference(_)
-            | Expression::Constant(_)
-            | Expression::Cast(_)
-            | Expression::Case(_)
-            | Expression::Concat(_)
-            | Expression::ScalarFunction(_),
-        ) = self.get_node(expr_id)?
-        {
-            self.nodes.add_row(vec![expr_id], None)
-        } else {
-            expr_id
-        };
-        Ok(row_id)
-    }
-
     /// Set inferred parameter types in all parameters nodes.
     fn set_types_in_parameter_nodes(&mut self, params: &[DerivedType]) -> Result<(), SbroadError> {
         for node in self.nodes.iter64_mut() {

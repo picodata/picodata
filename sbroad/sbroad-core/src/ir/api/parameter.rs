@@ -3,10 +3,9 @@ use crate::frontend::sql::is_negative_number;
 use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
-use crate::ir::node::ArithmeticExpr;
 use crate::ir::node::{
-    Alias, BoolExpr, Concat, Constant, Having, Join, Like, LocalTimestamp, MutNode, Node64, Node96,
-    NodeId, Parameter, Reference, Row, ScalarFunction, Selection, ValuesRow,
+    Alias, Constant, LocalTimestamp, MutNode, Node64, Node96, NodeId, Parameter, Reference,
+    ScalarFunction, ValuesRow,
 };
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
@@ -35,126 +34,18 @@ fn count_max_parameter_index(
     Ok(params_count)
 }
 
-/// Build a map of parameters that should be covered with a row.
-#[allow(clippy::too_many_lines)]
-fn build_should_cover_with_row_map(
-    plan: &Plan,
-    nodes: &[LevelNode<NodeId>],
-    param_node_ids: &AHashSet<NodeId>,
-) -> Result<AHashSet<NodeId>, SbroadError> {
-    let mut row_ids = AHashSet::new();
-    for LevelNode(_, id) in nodes {
-        let node = plan.get_node(*id)?;
-        match node {
-            // Note: Parameter may not be met at the top of relational operators' expression
-            //       trees such as OrderBy and GroupBy, because it won't influence ordering and
-            //       grouping correspondingly. These cases are handled during parsing stage.
-            Node::Relational(rel) => match rel {
-                Relational::Having(Having {
-                    filter: ref param_id,
-                    ..
-                })
-                | Relational::Selection(Selection {
-                    filter: ref param_id,
-                    ..
-                })
-                | Relational::Join(Join {
-                    condition: ref param_id,
-                    ..
-                }) => {
-                    if param_node_ids.contains(param_id) {
-                        row_ids.insert(*param_id);
-                    }
-                }
-                _ => {}
-            },
-            Node::Expression(expr) => match expr {
-                Expression::Bool(BoolExpr {
-                    ref left,
-                    ref right,
-                    ..
-                })
-                | Expression::Arithmetic(ArithmeticExpr {
-                    ref left,
-                    ref right,
-                    ..
-                })
-                | Expression::Concat(Concat {
-                    ref left,
-                    ref right,
-                }) => {
-                    for param_id in &[*left, *right] {
-                        if param_node_ids.contains(param_id) {
-                            row_ids.insert(*param_id);
-                        }
-                    }
-                }
-                Expression::Like(Like {
-                    escape,
-                    left,
-                    right,
-                }) => {
-                    for param_id in &[*left, *right] {
-                        if param_node_ids.contains(param_id) {
-                            row_ids.insert(*param_id);
-                        }
-                    }
-                    if param_node_ids.contains(escape) {
-                        row_ids.insert(*escape);
-                    }
-                }
-                Expression::Trim(_)
-                | Expression::Row(_)
-                | Expression::ScalarFunction(_)
-                | Expression::Case(_)
-                | Expression::Window(_)
-                | Expression::Over(_)
-                | Expression::Alias(_)
-                | Expression::Cast(_)
-                | Expression::Unary(_)
-                | Expression::Reference(_)
-                | Expression::Constant(_)
-                | Expression::CountAsterisk(_)
-                | Expression::LocalTimestamp(_)
-                | Expression::Parameter(_) => {}
-            },
-            Node::Block(_) => {}
-            Node::Invalid(..)
-            | Node::Ddl(..)
-            | Node::Acl(..)
-            | Node::Tcl(..)
-            | Node::Plugin(_)
-            | Node::Deallocate(..) => {}
-        }
-    }
-    Ok(row_ids)
-}
-
 /// Replace parameters in the plan.
 fn bind_params(
     plan: &mut Plan,
     param_node_ids: &AHashSet<NodeId>,
     values: &[Value],
-    shoud_cover_with_row: &AHashSet<NodeId>,
 ) -> Result<(), SbroadError> {
     for param_id in param_node_ids {
         let node = plan.get_expression_node(*param_id)?;
-        if shoud_cover_with_row.contains(param_id) {
-            if let Expression::Parameter(Parameter { index, .. }) = node {
-                let value = values[(index - 1) as usize].clone();
-                let const_id = plan.add_const(value);
-                let list = vec![const_id];
-                let distribution = None;
-                let row_node = Node64::Row(Row { list, distribution });
-                plan.nodes.replace(*param_id, row_node)?;
-            }
-        } else {
-            let node = plan.get_expression_node(*param_id)?;
-            if let Expression::Parameter(Parameter { index, .. }) = node {
-                let value = values[(index - 1) as usize].clone();
-                let constant = Constant { value };
-                plan.nodes.replace(*param_id, Node64::Constant(constant))?;
-            }
+        if let Expression::Parameter(Parameter { index, .. }) = node {
+            let value = values[(index - 1) as usize].clone();
+            let constant = Constant { value };
+            plan.nodes.replace(*param_id, Node64::Constant(constant))?;
         }
     }
 
@@ -335,8 +226,7 @@ impl Plan {
             self.bind_option_params(&values);
         }
 
-        let should_cover_with_row = build_should_cover_with_row_map(self, &nodes, &param_node_ids)?;
-        bind_params(self, &param_node_ids, &values, &should_cover_with_row)?;
+        bind_params(self, &param_node_ids, &values)?;
 
         self.update_value_rows(&nodes)?;
         self.recalculate_ref_types()?;

@@ -135,15 +135,14 @@ impl EqClassRef {
         Err(SbroadError::Invalid(Entity::Expression, None))
     }
 
-    fn to_single_col_row(&self, plan: &mut Plan) -> NodeId {
-        let id = plan.nodes.add_ref(
+    fn to_ref(&self, plan: &mut Plan) -> NodeId {
+        plan.nodes.add_ref(
             self.parent,
             self.targets.clone(),
             self.position,
             self.col_type,
             self.asterisk_source.clone(),
-        );
-        plan.nodes.add_row(vec![id], None)
+        )
     }
 }
 
@@ -173,8 +172,7 @@ impl EqClassConst {
     }
 
     fn to_const(&self, plan: &mut Plan) -> NodeId {
-        let const_id = plan.add_const(self.value.clone());
-        plan.nodes.add_row(vec![const_id], None)
+        plan.add_const(self.value.clone())
     }
 }
 
@@ -189,7 +187,7 @@ impl EqClassExpr {
     fn to_plan(&self, plan: &mut Plan) -> NodeId {
         match self {
             EqClassExpr::EqClassConst(ec_const) => ec_const.to_const(plan),
-            EqClassExpr::EqClassRef(ec_ref) => ec_ref.to_single_col_row(plan),
+            EqClassExpr::EqClassRef(ec_ref) => ec_ref.to_ref(plan),
         }
     }
 
@@ -435,14 +433,10 @@ impl Chain {
                     .collect::<Vec<(NodeId, NodeId)>>()
                     .split_first()
                 {
-                    let left_row_id = plan.nodes.add_row(vec![first.0], None);
-                    let right_row_id = plan.nodes.add_row(vec![first.1], None);
-                    let mut op_top_id = plan.add_cond(left_row_id, *op, right_row_id)?;
+                    let mut op_top_id = plan.add_cond(first.0, *op, first.1)?;
 
                     for (l_id, r_id) in other_pairs {
-                        let left_row_id = plan.nodes.add_row(vec![*l_id], None);
-                        let right_row_id = plan.nodes.add_row(vec![*r_id], None);
-                        let cond_id = plan.add_cond(left_row_id, *op, right_row_id)?;
+                        let cond_id = plan.add_cond(*l_id, *op, *r_id)?;
                         op_top_id = plan.add_cond(op_top_id, Bool::And, cond_id)?;
                     }
                     match grouped_top_id {

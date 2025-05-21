@@ -1205,11 +1205,6 @@ impl<'source> NewColumnsSource<'source> {
 }
 
 impl Plan {
-    /// Add `Row` to plan.
-    pub fn add_row(&mut self, list: Vec<NodeId>, distribution: Option<Distribution>) -> NodeId {
-        self.nodes.add_row(list, distribution)
-    }
-
     /// Returns a list of columns from the children relational nodes outputs.
     ///
     /// `need_aliases` indicates whether we'd like to copy aliases (their names) from the child
@@ -1498,60 +1493,74 @@ impl Plan {
         Ok((row_id, new_refs))
     }
 
-    /// Project columns from the join's left branch.
+    /// Project column from the join's left branch.
     ///
-    /// New columns don't have aliases. If column names are empty,
-    /// copy all the columns from the left child.
+    /// The new column doesn't have an alias.
     /// # Errors
     /// Returns `SbroadError`:
     /// - children are inconsistent relational nodes
     /// - column names don't exist
-    pub fn add_row_from_left_branch(
+    pub fn add_ref_from_left_branch(
         &mut self,
         left: NodeId,
         right: NodeId,
-        col_names: &[ColumnWithScan],
+        col_name: ColumnWithScan,
     ) -> Result<NodeId, SbroadError> {
         let list = self.new_columns(
             &NewColumnsSource::Join {
                 outer_child: left,
                 inner_child: right,
                 targets: JoinTargets::Left {
-                    columns_spec: Some(ColumnsRetrievalSpec::Names(col_names.to_vec())),
+                    columns_spec: Some(ColumnsRetrievalSpec::Names(vec![col_name])),
                 },
             },
             false,
             true,
         )?;
-        Ok(self.nodes.add_row(list, None))
+
+        assert_eq!(
+            list.len(),
+            1,
+            "join left side, more columns than 1 ({})",
+            list.len()
+        );
+
+        Ok(list[0])
     }
 
-    /// Project columns from the join's right branch.
+    /// Project column from the join's right branch.
     ///
-    /// New columns don't have aliases. If column names are empty,
-    /// copy all the columns from the right child.
+    /// The new column doesn't have an alias.
     /// # Errors
     /// Returns `SbroadError`:
     /// - children are inconsistent relational nodes
     /// - column names don't exist
-    pub fn add_row_from_right_branch(
+    pub fn add_ref_from_right_branch(
         &mut self,
         left: NodeId,
         right: NodeId,
-        col_names: &[ColumnWithScan],
+        col_name: ColumnWithScan,
     ) -> Result<NodeId, SbroadError> {
         let list = self.new_columns(
             &NewColumnsSource::Join {
                 outer_child: left,
                 inner_child: right,
                 targets: JoinTargets::Right {
-                    columns_spec: Some(ColumnsRetrievalSpec::Names(col_names.to_vec())),
+                    columns_spec: Some(ColumnsRetrievalSpec::Names(vec![col_name])),
                 },
             },
             false,
             true,
         )?;
-        Ok(self.nodes.add_row(list, None))
+
+        assert_eq!(
+            list.len(),
+            1,
+            "join right side, more columns than 1 ({})",
+            list.len()
+        );
+
+        Ok(list[0])
     }
 
     /// A relational node pointed by the reference.

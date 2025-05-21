@@ -90,16 +90,12 @@ impl Plan {
             if let Some((first, other)) = pairs.split_first() {
                 let left_col_id = first.0;
                 let right_col_id = first.1;
-                let left_row_id = self.add_row(vec![left_col_id], None);
-                let right_row_id = self.add_row(vec![right_col_id], None);
-                let mut new_top_id = self.add_cond(left_row_id, op, right_row_id)?;
+                let mut new_top_id = self.add_cond(left_col_id, op, right_col_id)?;
 
                 for (left_col_id, right_col_id) in other {
                     let left_col_id = *left_col_id;
                     let right_col_id = *right_col_id;
-                    let left_row_id = self.nodes.add_row(vec![left_col_id], None);
-                    let right_row_id = self.nodes.add_row(vec![right_col_id], None);
-                    let cond_id = self.add_cond(left_row_id, op, right_row_id)?;
+                    let cond_id = self.add_cond(left_col_id, op, right_col_id)?;
                     new_top_id = self.concat_and(new_top_id, cond_id)?;
                 }
 

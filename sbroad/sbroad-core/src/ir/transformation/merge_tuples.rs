@@ -219,12 +219,21 @@ impl Chain {
 
 fn add_rows_and_cond(
     plan: &mut Plan,
-    left: impl Into<Vec<NodeId>>,
-    right: impl Into<Vec<NodeId>>,
+    left: Vec<NodeId>,
+    right: Vec<NodeId>,
     op: &Bool,
 ) -> Result<NodeId, SbroadError> {
-    let left_row_id = plan.nodes.add_row(left.into(), None);
-    let right_row_id = plan.nodes.add_row(right.into(), None);
+    let left_row_id = if left.len() == 1 {
+        left[0]
+    } else {
+        plan.nodes.add_row(left, None)
+    };
+
+    let right_row_id = if right.len() == 1 {
+        right[0]
+    } else {
+        plan.nodes.add_row(right, None)
+    };
     plan.add_cond(left_row_id, *op, right_row_id)
 }
 
