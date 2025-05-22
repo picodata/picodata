@@ -437,7 +437,7 @@ def test_pg_params(cluster: Cluster):
     """,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
     assert data["rows"] == [[3], [6], [5]]
 
     data = i1.sql(
@@ -447,7 +447,7 @@ def test_pg_params(cluster: Cluster):
         2,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
     assert data["rows"] == [[1], [3], [6]]
 
     data = i1.sql(
@@ -457,7 +457,7 @@ def test_pg_params(cluster: Cluster):
         1,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "col_1", "type": "any"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
     assert data["rows"] == [[1]]
 
     # Test complex PARTITION BY with expressions
@@ -475,7 +475,7 @@ def test_pg_params(cluster: Cluster):
         2,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "running_sum", "type": "any"}]
+    assert data["metadata"] == [{"name": "running_sum", "type": "decimal"}]
     assert data["rows"] == [[1], [3], [5]]
 
     # Test ORDER BY with complex expressions and FILTER
@@ -489,7 +489,7 @@ def test_pg_params(cluster: Cluster):
         2,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "filtered_count", "type": "any"}]
+    assert data["metadata"] == [{"name": "filtered_count", "type": "unsigned"}]
     assert data["rows"] == [[2], [1], [0]]
 
     # Test nested window functions with complex FILTER and ORDER BY
@@ -504,7 +504,7 @@ def test_pg_params(cluster: Cluster):
         1,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "nested_sum", "type": "any"}]
+    assert data["metadata"] == [{"name": "nested_sum", "type": "decimal"}]
     assert data["rows"] == [[6], [6], [8]]
 
     # Test PARTITION BY with multiple expressions and FILTER
@@ -522,8 +522,64 @@ def test_pg_params(cluster: Cluster):
         """,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "complex_avg", "type": "any"}]
+    assert data["metadata"] == [{"name": "complex_avg", "type": "decimal"}]
     assert data["rows"] == [[None], [2], [3]]
+
+
+def test_window_functions(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    # Create test table
+    i1.sql("""
+        CREATE TABLE t7 (x INTEGER PRIMARY KEY, y DECIMAL)
+        using memtx
+        distributed by (x)
+        option (timeout = 3)
+    """)
+
+    # Insert test data
+    i1.sql("""INSERT INTO t7 VALUES (1, 1.5), (2, 2.5)""")
+
+    # Test integer + max(integer) -> integer
+    data = i1.sql("""SELECT 1 + max(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert sorted(data["rows"]) == [[2], [3]]
+
+    # Test integer + max(decimal) -> decimal
+    data = i1.sql("""SELECT 1 + max(y) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
+    assert sorted(data["rows"]) == [[2.5], [3.5]]
+
+    # Test integer + avg(integer) -> decimal
+    data = i1.sql("""SELECT 1 + avg(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
+    assert sorted(data["rows"]) == [[2], [2]]
+
+    # Test row_number() -> integer
+    data = i1.sql("""SELECT 2 + row_number() OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert sorted(data["rows"]) == [[3], [4]]
+
+    # Test count() -> unsigned
+    data = i1.sql("""SELECT count(*) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
+    assert sorted(data["rows"]) == [[1], [2]]
+
+    # Test min(decimal) -> decimal
+    data = i1.sql("""SELECT min(y) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
+    assert sorted(data["rows"]) == [[1.5], [1.5]]
+
+    # Test sum(integer) -> decimal
+    data = i1.sql("""SELECT sum(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
+    assert sorted(data["rows"]) == [[1], [3]]
+
+    # Test total(integer) -> double
+    data = i1.sql("""SELECT total(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
+    assert data["metadata"] == [{"name": "col_1", "type": "double"}]
+    assert sorted(data["rows"]) == [[1.0], [3.0]]
 
 
 def test_read_from_global_tables(cluster: Cluster):

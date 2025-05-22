@@ -3128,7 +3128,7 @@ fn parse_window_func<M: Metadata>(
 
     // Parse function name
     let func_name_pair = inner.next().expect("Function name expected under Over");
-    let func_name = func_name_pair.as_str().to_smolstr();
+    let func_name = func_name_pair.as_str().to_lowercase().to_smolstr();
 
     // Parse function arguments
     let args_pair = inner.next().expect("Function args expected under Over");
@@ -3148,12 +3148,11 @@ fn parse_window_func<M: Metadata>(
     if let Some(args_inner) = args_pair.into_inner().next() {
         match args_inner.as_rule() {
             Rule::CountAsterisk => {
-                let normalized_name = func_name.to_lowercase();
-                if "count" != normalized_name.as_str() {
+                if "count" != func_name.as_str() {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
                         Some(format_smolstr!(
-                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {normalized_name}",
+                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {func_name}",
                         ))
                     ));
                 }
@@ -3181,17 +3180,7 @@ fn parse_window_func<M: Metadata>(
     }
 
     // Create ScalarFunction node
-    let stable_func = ScalarFunction {
-        name: func_name,
-        children: func_args,
-        feature: None,
-        func_type: DerivedType::new(Type::Any),
-        is_system: true,
-        is_window: true,
-        volatility_type: VolatilityType::Stable,
-    };
-    let stable_func_id = plan.nodes.push(stable_func.into());
-
+    let stable_func_id = plan.add_builtin_window_function(func_name, func_args)?;
     // Parse filter
     let filter_pair = inner.next().expect("Filter expected under Over");
     let filter = if let Some(filter_inner) = filter_pair.into_inner().next() {

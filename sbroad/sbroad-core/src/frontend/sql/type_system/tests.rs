@@ -451,9 +451,9 @@ fn values() {
 
 #[test]
 fn windows() {
-    assert_ok("SELECT count() over () from (select 1);");
-    assert_ok("SELECT count() over (PARTITION BY 1) from (select 1);");
-    assert_ok("SELECT count() over (PARTITION BY 1 ORDER BY 1) from (select 1);");
+    assert_ok("SELECT count(*) over () from (select 1);");
+    assert_ok("SELECT count(*) over (PARTITION BY 1) from (select 1);");
+    assert_ok("SELECT count(*) over (PARTITION BY 1 ORDER BY 1) from (select 1);");
     assert_ok("SELECT max(a) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
     assert_ok("SELECT max(a + a) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
     assert_ok("SELECT max(a + a) filter (where a = a) over (PARTITION BY 1 ORDER BY 1) from (select 1 as a);");
@@ -461,27 +461,27 @@ fn windows() {
 
     assert_ok(
         "WITH t AS (SELECT 'a' as a) \
-        SELECT count() over(ROWS BETWEEN 1 + 1 PRECEDING AND CURRENT ROW) from t;",
+        SELECT count(*) over(ROWS BETWEEN 1 + 1 PRECEDING AND CURRENT ROW) from t;",
     );
     assert_ok(
         "WITH t AS (SELECT 'a' as a) \
-        SELECT count() over(ROWS BETWEEN 1 + 1 PRECEDING AND 2 - 1 FOLLOWING) from t;",
+        SELECT count(*) over(ROWS BETWEEN 1 + 1 PRECEDING AND 2 - 1 FOLLOWING) from t;",
     );
 
     assert_fails_with_error(
-        "SELECT count() over (PARTITION BY a + 'kek') from (select 1 as a);",
+        "SELECT count(*) over (PARTITION BY a + 'kek') from (select 1 as a);",
         "could not resolve operator overload for +(unsigned, text)",
     );
 
     assert_fails_with_error(
         "WITH t AS (SELECT 'a' as a) \
-        SELECT count() over(ROWS BETWEEN '1' PRECEDING AND CURRENT ROW) from t;",
+        SELECT count(*) over(ROWS BETWEEN '1' PRECEDING AND CURRENT ROW) from t;",
         "argument of ROWS must have integer type, got text",
     );
 
     assert_fails_with_error(
         "WITH t AS (SELECT 'a' as a) \
-        SELECT count() over(ROWS BETWEEN 1 PRECEDING AND 1 + 0.5 FOLLOWING) from t;",
+        SELECT count(*) over(ROWS BETWEEN 1 PRECEDING AND 1 + 0.5 FOLLOWING) from t;",
         "argument of ROWS must have integer type, got numeric",
     );
 

@@ -148,7 +148,7 @@ select row_number() over () from t union select 1;
 
 -- TEST: test_union_with_named_window
 -- SQL:
-select count() over win from t WINDOW win as () union select 1
+select count(*) over win from t WINDOW win as () union select 1
 -- EXPECTED:
 1
 
@@ -170,11 +170,11 @@ buckets = [1-3000]
 
 -- TEST: test_explain_union_with_named_window
 -- SQL:
-explain select count() over win from t WINDOW win as () union select 1
+explain select count(*) over win from t WINDOW win as () union select 1
 -- EXPECTED:
 motion [policy: full]
     union
-        projection (count() over win -> "col_1")
+        projection (count(*::integer) over win -> "col_1")
             windows: win as ()
                 motion [policy: full]
                     projection ("t"."a"::integer -> "a", "t"."bucket_id"::unsigned -> "bucket_id", "t"."b"::integer -> "b")

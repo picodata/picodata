@@ -28,13 +28,13 @@ SELECT (sum(x) OVER (ORDER BY x))::int * (count(y) OVER (ORDER BY x))::int FROM 
 
 -- TEST: window12-2.1
 -- SQL:
-select count() over (partition by 1 + false) from t6;
+select count(x) over (partition by 1 + false) from t6;
 -- ERROR:
 sbroad: could not resolve operator overload for +(unsigned, bool)
 
 -- TEST: window12-2.2
 -- SQL:
- SELECT count() OVER (PARTITION BY 'hello' - 3) FROM t6;
+SELECT count(x) OVER (PARTITION BY 'hello' - 3) FROM t6;
 -- ERROR:
 sbroad: could not resolve operator overload for -(text, unsigned)
 
@@ -105,11 +105,11 @@ ORDER BY b, c;
 -- TEST: window12-3.4
 -- SQL:
 WITH t AS (
-    SELECT count() OVER win
+    SELECT count(*) OVER win
     FROM (SELECT 1)
     WINDOW win AS (PARTITION BY (SELECT 1))
 )
-SELECT count() OVER ()
+SELECT count(*) OVER ()
 FROM (SELECT 1)
 WINDOW win AS (ORDER BY 1);
 -- EXPECTED:

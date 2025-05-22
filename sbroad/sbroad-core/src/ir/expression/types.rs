@@ -4,7 +4,7 @@ use crate::{
     errors::{Entity, SbroadError},
     executor::vtable::calculate_unified_types,
     ir::{
-        node::Parameter,
+        node::{Over, Parameter},
         relation::{DerivedType, Type},
         Plan,
     },
@@ -61,10 +61,11 @@ impl Expression<'_> {
     /// Calculate the type of the expression.
     pub fn calculate_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
         let ty = match self {
-            Expression::Window(_) | Expression::Over(_) => {
-                // TODO: Fix this later.
+            Expression::Window(_) => {
+                // We don't use in operations with expressions
                 DerivedType::new(Type::Any)
             }
+            Expression::Over(Over { stable_func, .. }) => plan.get_node_type(*stable_func)?,
             Expression::Case(Case {
                 when_blocks,
                 else_expr,

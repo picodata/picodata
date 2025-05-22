@@ -81,7 +81,7 @@ FROM t2 ORDER BY a;
 -- TEST: window2-4.10.1
 -- SQL:
 SELECT a,
-    count() OVER (ORDER BY a DESC),
+    count(*) OVER (ORDER BY a DESC),
     group_concat(cast(a as text), '.') OVER (ORDER BY a DESC)
 FROM t2 ORDER BY a DESC;
 -- EXPECTED:

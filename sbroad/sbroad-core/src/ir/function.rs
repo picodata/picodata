@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use super::expression::{FunctionFeature, VolatilityType};
-use super::relation::DerivedType;
+use super::relation::{DerivedType, Type};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Function {
@@ -172,6 +172,42 @@ impl Plan {
             is_window: false,
         };
         let id = self.nodes.push(func_expr.into());
+        Ok(id)
+    }
+
+    /// Add builtin window function to plan
+    pub fn add_builtin_window_function(
+        &mut self,
+        func_name: SmolStr,
+        children: Vec<NodeId>,
+    ) -> Result<NodeId, SbroadError> {
+        let kind = AggregateKind::from_name(&func_name);
+        let func_type = match kind {
+            Some(kind) => kind.get_type(self, &children)?,
+            None => match func_name.as_str() {
+                "row_number" => DerivedType::new(Type::Integer),
+                _ => {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!(
+                            "window function {} does not exist",
+                            func_name
+                        )),
+                    ))
+                }
+            },
+        };
+
+        let builtin_func = ScalarFunction {
+            name: func_name,
+            children,
+            feature: None,
+            func_type,
+            is_system: true,
+            is_window: true,
+            volatility_type: VolatilityType::Stable,
+        };
+        let id = self.nodes.push(builtin_func.into());
         Ok(id)
     }
 }
