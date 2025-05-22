@@ -460,6 +460,26 @@ def test_select_from_system_tables(postgres: Postgres):
         cur.fetchall()
 
 
+def test_any(postgres: Postgres):
+    user = "admin"
+    password = "Passw0rd"
+
+    postgres.instance.sql(f"ALTER USER {user} WITH PASSWORD '{password}'", sudo=True)
+    conn = pg8000.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    conn.autocommit = True
+
+    # test that type system forbids to sum any with other types
+    with pytest.raises(pg8000.DatabaseError, match=r"could not resolve operator overload for \+\(any, unsigned\)"):
+        conn.run("SELECT key, value + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
+
+    # fix typing error with cast
+    conn.run("SELECT value::int + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
+
+    # ensure parameter of type any are not allowed
+    with pytest.raises(pg8000.DatabaseError, match="feature is not supported: cannot encode json: 1"):
+        conn.run("SELECT value = :p FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';", p=1)
+
+
 def test_gl_1125_f64_cannot_be_represented_as_int8(postgres: Postgres):
     """https://git.picodata.io/core/picodata/-/issues/1125"""
     user = "admin"
