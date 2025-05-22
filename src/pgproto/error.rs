@@ -41,7 +41,7 @@ pub type DynError = dyn std::error::Error + Send + Sync;
 // Use case: server could not encode a value into client's format.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
-#[error("{0}")]
+#[error("encoding error: {0}")]
 pub struct EncodingError(Box<DynError>);
 impl IntoBoxError for EncodingError {}
 
@@ -55,16 +55,11 @@ impl EncodingError {
 // Use case: server could not decode a value received from client.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
-#[error("{1}")]
+#[error("decoding error: {1}")]
 pub struct DecodingError(PgErrorCode, Box<DynError>);
 impl IntoBoxError for DecodingError {}
 
 impl DecodingError {
-    pub fn cannot_bind_param(self, index: usize) -> PedanticError {
-        let Self(code, error) = self;
-        PedanticError::new(code, format!("failed to bind parameter ${index}: {error}"))
-    }
-
     pub fn unknown_oid(oid: u32) -> Self {
         Self(
             PgErrorCode::FeatureNotSupported,
@@ -162,12 +157,12 @@ pub enum PgError {
 
     // Server could not encode a value into client's format.
     // We don't care about any details as long as it's logged.
-    #[error("encoding error: {0}")]
+    #[error(transparent)]
     EncodingError(#[from] EncodingError),
 
     // Server could not decode a value received from client.
     // We don't care about any details as long as it's logged.
-    #[error("decoding error: {0}")]
+    #[error(transparent)]
     DecodingError(#[from] DecodingError),
 
     // Generic IO error (TLS/SSL errors also go here).
@@ -177,6 +172,15 @@ pub enum PgError {
     // TODO: exterminate this error.
     #[error(transparent)]
     Other(Box<DynError>),
+}
+
+impl PgError {
+    /// Enrich [`PgError`] with parameter-related message prefix.
+    pub fn cannot_bind_param(self, index: usize) -> Self {
+        let code = self.code();
+        let message = format!("failed to bind parameter ${index}: {self}");
+        PedanticError::new(code, message).into()
+    }
 }
 
 impl PgError {

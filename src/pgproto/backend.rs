@@ -37,6 +37,11 @@ pub mod describe;
 pub mod result;
 pub mod storage;
 
+fn decode_parameter(bytes: Option<&[u8]>, oid: Oid, format: FieldFormat) -> PgResult<SbroadValue> {
+    let value = PgValue::decode(bytes, oid, format)?.try_into()?;
+    Ok(value)
+}
+
 fn decode_parameters(
     params: Vec<Option<Bytes>>,
     param_oids: &[Oid],
@@ -54,9 +59,8 @@ fn decode_parameters(
     let iter = params.into_iter().enumerate().zip(param_oids).zip(formats);
     let res: PgResult<Vec<_>> = iter
         .map(|(((param_idx, bytes), oid), format)| {
-            PgValue::decode(bytes.as_deref(), *oid, *format)
-                .map_err(|e| e.cannot_bind_param(param_idx + 1))?
-                .try_into()
+            decode_parameter(bytes.as_deref(), *oid, *format)
+                .map_err(|e| e.cannot_bind_param(param_idx + 1))
         })
         .collect();
 

@@ -338,12 +338,12 @@ impl TryFrom<PgValue> for SbroadValue {
             PgValue::Text(v) => Ok(SbroadValue::from(v)),
             PgValue::Numeric(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Uuid(v) => Ok(SbroadValue::from(v.0)),
-            PgValue::Timestamptz(datetime) => Ok(SbroadValue::Datetime(datetime.0)),
+            PgValue::Timestamptz(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Null => Ok(SbroadValue::Null),
-            PgValue::Json(v) => {
+            PgValue::Json(_) => {
                 // Anyhow, currently Sbroad cannot work with these types.
                 Err(PgError::FeatureNotSupported(format_smolstr!(
-                    "cannot encode json: {v}",
+                    "cannot represent json in sbroad",
                 )))
             }
         }

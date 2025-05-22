@@ -476,7 +476,7 @@ def test_any(postgres: Postgres):
     conn.run("SELECT value::int + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
 
     # ensure parameter of type any are not allowed
-    with pytest.raises(pg8000.DatabaseError, match="feature is not supported: cannot encode json: 1"):
+    with pytest.raises(pg8000.DatabaseError, match="feature is not supported: cannot represent json in sbroad"):
         conn.run("SELECT value = :p FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';", p=1)
 
 

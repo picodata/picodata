@@ -170,7 +170,7 @@ def test_invalid_dates(postgres: Postgres):
     dt_invalid_month = "2023-13-01 12:00:00+00"
     with pytest.raises(
         pg8000.native.DatabaseError,
-        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+        match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",
     ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
@@ -182,7 +182,7 @@ def test_invalid_dates(postgres: Postgres):
     dt_invalid_day = "2023-01-32 12:00:00+00"
     with pytest.raises(
         pg8000.native.DatabaseError,
-        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+        match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",
     ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
@@ -194,7 +194,7 @@ def test_invalid_dates(postgres: Postgres):
     dt_invalid_time = "2023-01-01 24:00:00+00"
     with pytest.raises(
         pg8000.native.DatabaseError,
-        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+        match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",
     ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
@@ -206,7 +206,7 @@ def test_invalid_dates(postgres: Postgres):
     dt_invalid_format = "07-07-2023 12:00:00+00"
     with pytest.raises(
         pg8000.native.DatabaseError,
-        match="failed to bind parameter \\$1: '.*' is not a valid.*",
+        match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",
     ):
         conn.run(
             """INSERT INTO T (ID) VALUES (:p);""",
