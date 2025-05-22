@@ -368,7 +368,8 @@ pub extern "C" fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) 
     0
 }
 
-/// Returns error with code [`ErrorCode::NoSuchService`] if there's no service with provided id.
+/// Returns error with code [`picodata_plugin::error_code::ErrorCode::NoSuchService`]
+/// if there's no service with provided id.
 ///
 /// Otherwise writes into `result` info about how many jobs (if any) didn't
 /// finish in the provided `timeout`.
