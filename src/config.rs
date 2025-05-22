@@ -36,6 +36,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
@@ -1787,13 +1788,70 @@ macro_rules! system_parameter_name {
 
 pub const SHREDDING_PARAM_NAME: &str = "shredding";
 
-/// Cached value of "pg_max_statements" option from "_pico_property".
-/// 0 means that the value must be read from the table.
-pub static MAX_PG_STATEMENTS: AtomicUsize = AtomicUsize::new(0);
+/// A synchronization primitive that can be used to broadcast value to any amount of observers. Usable as a static.
+pub struct UsizeObserverProvider {
+    shared: OnceLock<Arc<AtomicUsize>>,
+}
 
-/// Cached value of "pg_max_portals" option from "_pico_property".
-/// 0 means that the value must be read from the table.
-pub static MAX_PG_PORTALS: AtomicUsize = AtomicUsize::new(0);
+impl UsizeObserverProvider {
+    /// Creates a new uninitialized observer provider
+    pub const fn new() -> Self {
+        Self {
+            shared: OnceLock::new(),
+        }
+    }
+
+    fn get_or_init(&self) -> &Arc<AtomicUsize> {
+        self.shared.get_or_init(|| Arc::new(AtomicUsize::new(0)))
+    }
+
+    fn get_noinit(&self) -> &Arc<AtomicUsize> {
+        self.shared
+            .get()
+            .expect("Attempt to access an uninitialized UsizeObserverProvider")
+    }
+
+    /// Gets the current value stored in the provider. Panics if the provider is not initialized.
+    pub fn current_value(&self) -> usize {
+        self.get_noinit().load(Ordering::Relaxed)
+    }
+
+    /// Makes an observer that can be used to get the value stored in the provider. Panics if the provider is not initialized.
+    pub fn make_observer(&self) -> UsizeObserver {
+        UsizeObserver {
+            shared: self.get_noinit().clone(),
+        }
+    }
+
+    /// Initialized the observer (if needed) and updates the stored value.
+    pub fn update(&self, new_value: usize) {
+        self.get_or_init().store(new_value, Ordering::Relaxed)
+    }
+}
+
+impl Default for UsizeObserverProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A receiver counterpart to [`UsizeObserverProvider`]. Can be used to receive value stored in the provider.
+pub struct UsizeObserver {
+    shared: Arc<AtomicUsize>,
+}
+
+impl UsizeObserver {
+    /// Get the current value stored in the provider.
+    pub fn current_value(&self) -> usize {
+        self.shared.load(Ordering::Relaxed)
+    }
+}
+
+/// Dynamic value provider mirroring "pg_max_statements" option from "_pico_property".
+pub static PG_STATEMENT_MAX_PROVIDER: UsizeObserverProvider = UsizeObserverProvider::new();
+
+/// Dynamic value provider mirroring "pg_max_portals" option from "_pico_property".
+pub static PG_PORTAL_MAX_PROVIDER: UsizeObserverProvider = UsizeObserverProvider::new();
 
 pub fn validate_alter_system_parameter_value<'v>(
     name: &str,
@@ -1966,11 +2024,11 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
     } else if name == system_parameter_name!(pg_portal_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
-        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+        PG_PORTAL_MAX_PROVIDER.update(value);
     } else if name == system_parameter_name!(pg_statement_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
-        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+        PG_STATEMENT_MAX_PROVIDER.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
 

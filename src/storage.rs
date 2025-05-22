@@ -14,7 +14,7 @@ use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
 use tarantool::util::NumOrStr;
 
-use crate::config::{self, AlterSystemParameters};
+use crate::config::{self, AlterSystemParameters, UsizeObserver};
 use crate::failure_domain::FailureDomain;
 use crate::info::PICODATA_VERSION;
 use crate::instance::{self, Instance};
@@ -53,7 +53,6 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 pub mod schema;
@@ -3209,33 +3208,26 @@ impl DbConfig {
         )
     }
 
+    // NOTE: unlike the others, the four functions below do not access the underlying tarantool table
+    // instead they are relying on `config::apply_parameter` putting up-to-date values into the static variables
     #[inline]
-    pub fn pg_statement_max(&self) -> tarantool::Result<usize> {
-        let cached = config::MAX_PG_STATEMENTS.load(Ordering::Relaxed);
-        if cached != 0 {
-            return Ok(cached);
-        }
-
-        let res =
-            self.get_or_default(system_parameter_name!(pg_statement_max), Self::GLOBAL_SCOPE)?;
-
-        // Cache the value.
-        config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
-        Ok(res)
+    pub fn pg_statement_max(&self) -> usize {
+        config::PG_STATEMENT_MAX_PROVIDER.current_value()
     }
 
     #[inline]
-    pub fn pg_portal_max(&self) -> tarantool::Result<usize> {
-        let cached = config::MAX_PG_PORTALS.load(Ordering::Relaxed);
-        if cached != 0 {
-            return Ok(cached);
-        }
+    pub fn observe_pg_statement_max(&self) -> UsizeObserver {
+        config::PG_STATEMENT_MAX_PROVIDER.make_observer()
+    }
 
-        let res = self.get_or_default(system_parameter_name!(pg_portal_max), Self::GLOBAL_SCOPE)?;
+    #[inline]
+    pub fn pg_portal_max(&self) -> usize {
+        config::PG_PORTAL_MAX_PROVIDER.current_value()
+    }
 
-        // Cache the value.
-        config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
-        Ok(res)
+    #[inline]
+    pub fn observe_pg_portal_max(&self) -> UsizeObserver {
+        config::PG_PORTAL_MAX_PROVIDER.make_observer()
     }
 
     #[inline]

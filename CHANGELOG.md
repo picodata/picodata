@@ -194,6 +194,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a bug where _pico_service_route was incorrectly loaded into the topology cache.
 
+- Fixed a bug where setting `pg_statement_max` or `pg_portal_max` to `0` could cause queries to
+  fail with access error to a system table.
+
 ### RPC API
 
 - `.proc_before_online` is a successor to `.proc_enable_all_plugins` due to added

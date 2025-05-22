@@ -3,6 +3,7 @@ use super::{
     describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
     result::{ExecuteResult, Rows},
 };
+use crate::config::UsizeObserver;
 use crate::{
     pgproto::{
         client::ClientId,
@@ -56,39 +57,39 @@ impl std::fmt::Display for Key {
 struct StorageContext {
     value_kind: &'static str,
     capacity_parameter: &'static str,
-    get_capacity: fn() -> PgResult<usize>,
+    capacity: UsizeObserver,
     dublicate_key_error_code: PgErrorCode,
 }
 
 impl StorageContext {
     fn portals() -> StorageContext {
-        fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.db_config.pg_portal_max()?)
-        }
-
         Self {
             value_kind: "Portal",
             capacity_parameter: crate::system_parameter_name!(pg_portal_max),
-            get_capacity,
+            capacity: node::global()
+                .unwrap()
+                .storage
+                .db_config
+                .observe_pg_portal_max(),
             dublicate_key_error_code: PgErrorCode::DuplicateCursor,
         }
     }
 
     fn statements() -> StorageContext {
-        fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.db_config.pg_statement_max()?)
-        }
-
         Self {
             value_kind: "Statement",
             capacity_parameter: crate::system_parameter_name!(pg_statement_max),
-            get_capacity,
+            capacity: node::global()
+                .unwrap()
+                .storage
+                .db_config
+                .observe_pg_statement_max(),
             dublicate_key_error_code: PgErrorCode::DuplicatePreparedStatement,
         }
     }
 
-    fn get_capacity(&self) -> PgResult<usize> {
-        (self.get_capacity)()
+    fn get_capacity(&self) -> usize {
+        self.capacity.current_value()
     }
 }
 
@@ -114,7 +115,7 @@ impl<S> PgStorage<S> {
     }
 
     pub fn put(&mut self, key: Key, value: S) -> PgResult<()> {
-        let capacity = self.context.get_capacity()?;
+        let capacity = self.context.get_capacity();
         let kind = self.context.value_kind;
         if self.len() >= capacity {
             let parameter = self.context.capacity_parameter;
@@ -185,7 +186,7 @@ type StatementStorage = PgStorage<StatementHolder>;
 impl StatementStorage {
     fn new() -> Self {
         let context = StorageContext::statements();
-        let capacity = context.get_capacity().expect("storage capacity");
+        let capacity = context.get_capacity();
         tlog!(Info, "creating statement storage with capacity {capacity}");
         PgStorage::with_context(context)
     }
@@ -196,7 +197,7 @@ type PortalStorage = PgStorage<Portal>;
 impl PortalStorage {
     pub fn new() -> Self {
         let context = StorageContext::portals();
-        let capacity = context.get_capacity().expect("storage capacity");
+        let capacity = context.get_capacity();
         tlog!(Info, "creating portal storage with capacity {capacity}");
         PgStorage::with_context(context)
     }
