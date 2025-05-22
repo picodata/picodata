@@ -630,3 +630,24 @@ def test_proc_raft_join_fails_for_alive_instance(cluster: Cluster):
     assert "is not in Offline state" in str(exc.value)
 
     assert count_instances_by_uuid(leader, instance_uuid) == 1
+
+
+def test_retry_join_on_blocked_proc_raft_join(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    leader = cluster.instances[0]
+
+    leader.call("pico._inject_error", "BLOCK_PROC_RAFT_JOIN", True)
+
+    joining_instance = cluster.add_instance(wait_online=False)
+
+    retry_lc = log_crawler(joining_instance, "join request timed out after")
+    joining_instance.start()
+
+    retry_lc.wait_matched()
+
+    leader.call("pico._inject_error", "BLOCK_PROC_RAFT_JOIN", False)
+
+    joining_instance.wait_online()
+    joining_instance.assert_raft_status("Follower", leader_id=leader.raft_id)
+
+    assert count_instances_by_uuid(leader, joining_instance.uuid()) == 1
