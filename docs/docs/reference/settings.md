@@ -329,10 +329,7 @@ td.td3 ul {
             <td class="center"><span class="instance">auth-type</span></td>
             <td>Метод аутентификации</td>
             <td>md5</td>
-            <td>
-            [picodata connect --auth-type](cli.md#connect_auth_type)<br>
-            [picodata expel --auth-type](cli.md#expel_auth_type)
-            </td>
+            <td>[picodata expel --auth-type](cli.md#expel_auth_type)</td>
             <td></td>
             <td></td>
         </tr>
@@ -340,21 +337,10 @@ td.td3 ul {
             <td class="center"><span class="instance">password-file</span></td>
             <td>Путь к файлу с паролем указанного пользователя</td>
             <td>null</td>
-            <td>
-            [picodata connect --password-file](cli.md#connect_password_file)<br>
-            [picodata expel --password-file](cli.md#expel_password_file)
-            </td>
+            <td>[picodata expel --password-file](cli.md#expel_password_file)</td>
             <td></td>
             <td>PICODATA_PASSWORD_FILE</td>
-        </tr>
-        <tr>
-            <td class="center"><span class="instance">user</span></td>
-            <td>Имя пользователя</td>
-            <td>guest</td>
-            <td>[picodata connect --user](cli.md#connect_user)</td>
-            <td></td>
-            <td></td>
-        </tr>
+        </tr>        
         <tr>
             <td class="center"><span class="instance">service-password-file</span></td>
             <td>Путь к текстовому файлу с паролем для системного пользователя pico_service</td>
