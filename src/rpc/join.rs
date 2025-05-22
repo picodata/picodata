@@ -36,6 +36,8 @@ crate::define_rpc_request! {
     /// 4. Compare and swap request to commit new instance and its address failed
     /// with an error that cannot be retried.
     fn proc_raft_join(req: Request) -> Result<Response> {
+        crate::error_injection!(block "BLOCK_PROC_RAFT_JOIN");
+
         let res = handle_join_request_and_wait(req, TIMEOUT)?;
 
         tlog!(Info, "new instance joined the cluster: {:?}", res.instance);
