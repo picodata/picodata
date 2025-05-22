@@ -21,7 +21,7 @@ fn coalesce_in_selection() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW(coalesce(("test_space"."FIRST_NAME"::string, '(none)'::string))::any) = ROW('(none)'::string)
+        selection coalesce(("test_space"."FIRST_NAME"::string, '(none)'::string))::any = '(none)'::string
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

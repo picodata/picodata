@@ -45,7 +45,7 @@ fn shard_query() {
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
-                r#"WHERE ("test_space"."id") = (CAST($1 AS unsigned))"#
+                r#"WHERE "test_space"."id" = CAST($1 AS unsigned)"#
             ),
             vec![param1],
         ))),
@@ -85,11 +85,11 @@ fn shard_union_query() {
                 "{} {}{} {} {}{} {}",
                 r#"SELECT *"#,
                 r#"FROM ("#,
-                r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sys_op") = (CAST($1 AS unsigned))"#,
+                r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" = CAST($1 AS unsigned)"#,
                 r#"UNION ALL"#,
-                r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sys_op") > (CAST($2 AS unsigned))"#,
+                r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" > CAST($2 AS unsigned)"#,
                 r#") as "t3""#,
-                r#"WHERE ("t3"."id") = (CAST($3 AS unsigned))"#,
+                r#"WHERE "t3"."id" = CAST($3 AS unsigned)"#,
             ),
             vec![Value::from(1_u64), Value::from(1_u64), Value::from(1_u64)],
         ))),
@@ -129,7 +129,7 @@ fn map_reduce_query() {
                         "{} {} {}",
                         r#"SELECT "hash_testing"."product_code""#,
                         r#"FROM "hash_testing""#,
-                        r#"WHERE (("hash_testing"."identification_number") = (CAST($1 AS unsigned))) and (("hash_testing"."product_code") = (CAST($2 AS string)))"#,
+                        r#"WHERE ("hash_testing"."identification_number" = CAST($1 AS unsigned)) and ("hash_testing"."product_code" = CAST($2 AS string))"#,
                     ), vec![param1, param457],
                 )
             )
@@ -178,7 +178,7 @@ fn linker_test() {
                     "{} {} {}",
                     r#"SELECT "test_space"."FIRST_NAME""#,
                     r#"FROM "test_space""#,
-                    r#"WHERE ("test_space"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+                    r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
                 vec![],
             ))),
@@ -190,7 +190,7 @@ fn linker_test() {
                     "{} {} {}",
                     r#"SELECT "test_space"."FIRST_NAME""#,
                     r#"FROM "test_space""#,
-                    r#"WHERE ("test_space"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+                    r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
                 vec![],
             ))),
@@ -251,13 +251,13 @@ fn union_linker_test() {
                     r#"FROM ("#,
                     r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
                     r#"FROM "test_space""#,
-                    r#"WHERE ("test_space"."sys_op") < (CAST($1 AS unsigned))"#,
+                    r#"WHERE "test_space"."sys_op" < CAST($1 AS unsigned)"#,
                     r#"UNION ALL"#,
                     r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
                     r#"FROM "test_space_hist""#,
-                    r#"WHERE ("test_space_hist"."sys_op") > (CAST($2 AS unsigned))"#,
+                    r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS unsigned)"#,
                     r#") as "t1""#,
-                    r#"WHERE ("t1"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+                    r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
                 vec![Value::from(0_u64), Value::from(0_u64)],
             ))),
@@ -271,13 +271,13 @@ fn union_linker_test() {
                     r#"FROM ("#,
                     r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
                     r#"FROM "test_space""#,
-                    r#"WHERE ("test_space"."sys_op") < (CAST($1 AS unsigned))"#,
+                    r#"WHERE "test_space"."sys_op" < CAST($1 AS unsigned)"#,
                     r#"UNION ALL"#,
                     r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
                     r#"FROM "test_space_hist""#,
-                    r#"WHERE ("test_space_hist"."sys_op") > (CAST($2 AS unsigned))"#,
+                    r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS unsigned)"#,
                     r#") as "t1""#,
-                    r#"WHERE ("t1"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+                    r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
                 vec![Value::from(0_u64), Value::from(0_u64)],
             ))),
@@ -343,17 +343,17 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
                 r#"FROM ("#,
                 r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
                 r#"FROM "test_space""#,
-                r#"WHERE (("test_space"."sys_op") < (CAST($1 AS unsigned))) and (("test_space"."sysFrom") >= (CAST($2 AS unsigned)))"#,
+                r#"WHERE ("test_space"."sys_op" < CAST($1 AS unsigned)) and ("test_space"."sysFrom" >= CAST($2 AS unsigned))"#,
                 r#"UNION ALL"#,
                 r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
                 r#"FROM "test_space_hist""#,
-                r#"WHERE ("test_space_hist"."sysFrom") <= (CAST($3 AS unsigned))"#,
+                r#"WHERE "test_space_hist"."sysFrom" <= CAST($3 AS unsigned)"#,
                 r#") as "t3""#,
                 r#"INNER JOIN"#,
                 r#"(SELECT "COL_1" FROM "TMP_test_0136""#,
                 r#") as "t8""#,
-                r#"ON ("t3"."id") = ("t8"."COL_1")"#,
-                r#"WHERE (("t3"."id") = (CAST($4 AS unsigned))) and (("t8"."COL_1") = (CAST($5 AS unsigned)))"#
+                r#"ON "t3"."id" = "t8"."COL_1""#,
+                r#"WHERE ("t3"."id" = CAST($4 AS unsigned)) and ("t8"."COL_1" = CAST($5 AS unsigned))"#
             ),
             vec![
                 Value::from(0_u64),
@@ -415,7 +415,7 @@ fn join_linker2_test() {
                 r#"FROM "test_space" as "t1") as "t1""#,
                 r#"INNER JOIN"#,
                 r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
-                r#"as "t2" ON ("t1"."id") = (CAST($1 AS unsigned))"#
+                r#"as "t2" ON "t1"."id" = CAST($1 AS unsigned)"#
             ),
             vec![Value::from(1_u64)],
         ))),
@@ -442,10 +442,6 @@ fn join_linker3_test() {
     virtual_table.add_tuple(vec![Value::from(1_u64), Value::from(1_u64)]);
     virtual_table.add_tuple(vec![Value::from(2_u64), Value::from(2_u64)]);
     virtual_table.set_alias("t2");
-    if let MotionPolicy::Segment(key) = get_motion_policy(query.exec_plan.get_ir_plan(), motion_id)
-    {
-        virtual_table.reshard(key, &query.coordinator).unwrap();
-    }
 
     query
         .coordinator
@@ -459,11 +455,8 @@ fn join_linker3_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
-    let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-
     expected.rows.extend(vec![vec![
-        Value::String(format!("Execute query on a bucket [{bucket1}]")),
+        Value::String("Execute query on all buckets".to_string()),
         Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {} {}",
@@ -471,7 +464,7 @@ fn join_linker3_test() {
                 r#"(SELECT "test_space"."id" FROM "test_space") as "t1""#,
                 r#"INNER JOIN"#,
                 r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
-                r#"ON ("t2"."COL_1") = (CAST($1 AS unsigned))"#,
+                r#"ON "t2"."COL_1" = CAST($1 AS unsigned)"#,
             ),
             vec![Value::from(1_u64)],
         ))),
@@ -545,8 +538,8 @@ fn join_linker4_test() {
                     r#"FROM "test_space" as "T1") as "T1""#,
                     r#"INNER JOIN"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
-                    r#"ON (("T1"."id") = ("T2"."COL_1"))"#,
-                    r#"and (("T1"."FIRST_NAME") = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
+                    r#"ON ("T1"."id" = "T2"."COL_1")"#,
+                    r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
                 ),
                 vec![],
             ))),
@@ -561,8 +554,8 @@ fn join_linker4_test() {
                     r#"FROM "test_space" as "T1") as "T1""#,
                     r#"INNER JOIN"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
-                    r#"ON (("T1"."id") = ("T2"."COL_1"))"#,
-                    r#"and (("T1"."FIRST_NAME") = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
+                    r#"ON ("T1"."id" = "T2"."COL_1")"#,
+                    r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
                 ),
                 vec![],
             ))),
@@ -625,7 +618,7 @@ on q."f" = "t1"."b""#;
                 r#"SELECT * FROM"#,
                 r#"(SELECT "t1"."a", "t1"."b" FROM "t1") as "t1""#,
                 r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
-                r#"as "q" ON ("q"."COL_1") = ("t1"."b")"#,
+                r#"as "q" ON "q"."COL_1" = "t1"."b""#,
             ),
             vec![],
         ))),
@@ -715,9 +708,9 @@ fn anonymous_col_index_test() {
                     "{} {} {} {} {} {}",
                     r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
                     r#"FROM "test_space""#,
-                    r#"WHERE (("test_space"."id") in"#,
+                    r#"WHERE ("test_space"."id" in"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
-                    r#"or (("test_space"."id") in"#,
+                    r#"or ("test_space"."id" in"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
                 ),
                 vec![],
@@ -730,9 +723,9 @@ fn anonymous_col_index_test() {
                     "{} {} {} {} {} {}",
                     "SELECT",
                     r#""test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space""#,
-                    r#"WHERE (("test_space"."id") in"#,
+                    r#"WHERE ("test_space"."id" in"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
-                    r#"or (("test_space"."id") in"#,
+                    r#"or ("test_space"."id" in"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
                 ),
                 vec![],
@@ -764,7 +757,7 @@ fn sharding_column1_test() {
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
-                r#"FROM "test_space" WHERE ("test_space"."id") = (CAST($1 AS unsigned))"#,
+                r#"FROM "test_space" WHERE "test_space"."id" = CAST($1 AS unsigned)"#,
             ),
             vec![Value::from(1_u64)],
         ))),
@@ -794,7 +787,7 @@ fn sharding_column2_test() {
             format!(
                 "{} {}",
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op","#,
-                r#""test_space"."bucket_id" FROM "test_space" WHERE ("test_space"."id") = (CAST($1 AS unsigned))"#,
+                r#""test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS unsigned)"#,
             ),
             vec![Value::from(1_u64)],
         ))),

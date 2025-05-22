@@ -14,9 +14,9 @@ fn milti_join1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."identification_number"::integer -> "identification_number", "t1"."product_code"::string -> "product_code", "t2"."id"::unsigned -> "id", "t3"."id"::unsigned -> "id")
-        selection (ROW("t1"."identification_number"::integer) = ROW(5::unsigned)) and (ROW("t1"."product_code"::string) = ROW('123'::string))
-            left join on ROW("t1"."identification_number"::integer) = ROW("t3"."id"::unsigned)
-                join on ROW("t1"."identification_number"::integer) = ROW("t2"."id"::unsigned)
+        selection ("t1"."identification_number"::integer = 5::unsigned) and ("t1"."product_code"::string = '123'::string)
+            left join on "t1"."identification_number"::integer = "t3"."id"::unsigned
+                join on "t1"."identification_number"::integer = "t2"."id"::unsigned
                     scan "t1"
                         projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code")
                             scan "hash_testing"
@@ -44,7 +44,7 @@ fn milti_join2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
         left join on true::boolean
-            left join on ROW("t1"."a"::integer) = ROW("t2"."e"::unsigned)
+            left join on "t1"."a"::integer = "t2"."e"::unsigned
                 scan "t1"
                     projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b")
                         scan "t1_2" -> "t1"
@@ -71,9 +71,9 @@ fn milti_join3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::integer -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
-        join on ROW("t2"."f"::unsigned) = ROW(ROW("t4"."c"::string)::int)
-            join on ROW("t1"."a"::integer) = ROW("t3"."a"::integer)
-                left join on ROW("t1"."a"::integer) = ROW("t2"."e"::unsigned)
+        join on "t2"."f"::unsigned = "t4"."c"::string::int
+            join on "t1"."a"::integer = "t3"."a"::integer
+                left join on "t1"."a"::integer = "t2"."e"::unsigned
                     scan "t1"
                         projection ("t1"."a"::integer -> "a", "t1"."b"::integer -> "b")
                             scan "t1_2" -> "t1"
@@ -104,8 +104,8 @@ fn milti_join4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t1"."a"::string -> "a")
-        join on ROW("t1"."a"::string) = ROW("t3"."a"::string)
-            join on ROW("t1"."a"::string) = ROW("t2"."a"::string)
+        join on "t1"."a"::string = "t3"."a"::string
+            join on "t1"."a"::string = "t2"."a"::string
                 scan "t1"
                     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
                         scan "t1"

@@ -15,7 +15,7 @@ fn not_true() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(false)],);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE (CAST($2 AS boolean))"
+        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE CAST($2 AS boolean)"
     );
 }
 
@@ -27,7 +27,7 @@ fn not_double() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(true)],);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE (CAST($2 AS boolean))"
+        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE CAST($2 AS boolean)"
     );
 }
 
@@ -39,7 +39,7 @@ fn not_null() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::Null]);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE (not $2)",
+        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE not $2",
     );
 }
 
@@ -54,7 +54,7 @@ fn not_and() {
     );
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE (CAST($2 AS boolean)) or (CAST($3 AS boolean))"
+        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE CAST($2 AS boolean) or CAST($3 AS boolean)"
     );
 }
 
@@ -69,7 +69,7 @@ fn not_or() {
     );
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE (CAST($2 AS boolean)) and (CAST($3 AS boolean))",
+        @"SELECT * FROM (VALUES (CAST($1 AS unsigned))) WHERE CAST($2 AS boolean) and CAST($3 AS boolean)",
     );
 }
 
@@ -94,7 +94,7 @@ fn not_dnf() {
     // so parameters are parameterized twice.
     insta::assert_snapshot!(
         actual_after_dnf.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") = (CAST (CAST($1 AS unsigned) as unsigned))) and (("t"."a") = (CAST (CAST($2 AS unsigned) as unsigned)))) or ((("t"."b") = (CAST (CAST($3 AS unsigned) as unsigned))) and (("t"."a") = (CAST (CAST($2 AS unsigned) as unsigned))))) or (("t"."c") = (CAST (CAST($4 AS unsigned) as unsigned)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a" = CAST (CAST($1 AS unsigned) as unsigned)) and ("t"."a" = CAST (CAST($2 AS unsigned) as unsigned))) or (("t"."b" = CAST (CAST($3 AS unsigned) as unsigned)) and ("t"."a" = CAST (CAST($2 AS unsigned) as unsigned)))) or ("t"."c" = CAST (CAST($4 AS unsigned) as unsigned))"#
     );
 }
 
@@ -115,6 +115,6 @@ fn not_nothing_to_push_down() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."a") <> (CAST($1 AS unsigned))) and (("t"."b") <> (CAST($2 AS unsigned)))) or (("t"."a") <> (CAST($3 AS unsigned)))) and (("t"."c") <> (CAST($4 AS unsigned)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a" <> CAST($1 AS unsigned)) and ("t"."b" <> CAST($2 AS unsigned))) or ("t"."a" <> CAST($3 AS unsigned))) and ("t"."c" <> CAST($4 AS unsigned))"#
     );
 }

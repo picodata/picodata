@@ -39,7 +39,7 @@ fn test_query_explain_3() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t2"."e"::unsigned -> "e")
-        selection (ROW("t2"."e"::unsigned) = ROW(1::unsigned)) and (ROW("t2"."f"::unsigned) = ROW(13::unsigned))
+        selection ("t2"."e"::unsigned = 1::unsigned) and ("t2"."f"::unsigned = 13::unsigned)
             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -195,7 +195,7 @@ fn test_query_explain_11() {
             motion [policy: segment([ref("gr_expr_1")])]
                 projection ("a"::string -> "gr_expr_1", count(("b"::integer))::unsigned -> "count_1")
                     group by ("a"::string) output: ("e"::unsigned -> "e", "f"::unsigned -> "f", "a"::string -> "a", "b"::integer -> "b")
-                        join on ROW("e"::unsigned) = ROW("b"::integer)
+                        join on "e"::unsigned = "b"::integer
                             scan
                                 projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
                                     selection ROW("t2"."e"::unsigned, "t2"."f"::unsigned) = ROW(10::unsigned, 10::unsigned)
@@ -228,7 +228,7 @@ fn test_query_explain_12() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("a"::string -> "a")
-        join on ROW("e"::unsigned) = ROW("b"::integer)
+        join on "e"::unsigned = "b"::integer
             scan
                 projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
                     selection ROW("t2"."e"::unsigned, "t2"."f"::unsigned) = ROW(10::unsigned, 10::unsigned)

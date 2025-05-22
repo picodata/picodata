@@ -23,7 +23,7 @@ fn merge_tuples1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ((("t"."c") < (CAST($3 AS unsigned))) and ((CAST($4 AS unsigned)) < ("t"."a")))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and (("t"."c" < CAST($3 AS unsigned)) and (CAST($4 AS unsigned) < "t"."a"))"#
     );
 }
 
@@ -47,7 +47,7 @@ fn merge_tuples2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ($3)) or ((("t"."c") >= (CAST($4 AS unsigned))) and ((CAST($5 AS boolean)) and ((CAST($6 AS unsigned)) <= ("t"."a"))))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."b", "t"."a") = (CAST($1 AS unsigned), CAST($2 AS unsigned))) and $3) or (("t"."c" >= CAST($4 AS unsigned)) and (CAST($5 AS boolean) and (CAST($6 AS unsigned) <= "t"."a")))"#
     );
 }
 
@@ -89,7 +89,7 @@ fn merge_tuples5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > (CAST($1 AS unsigned), CAST($2 AS unsigned))) and ((CAST($3 AS unsigned)) < ("t"."c"))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a", "t"."b") > (CAST($1 AS unsigned), CAST($2 AS unsigned))) and (CAST($3 AS unsigned) < "t"."c")"#
     );
 }
 
@@ -104,7 +104,7 @@ fn merge_tuples6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."b") <> (CAST($1 AS unsigned))) and (("t"."a") <> (CAST($2 AS unsigned)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b" <> CAST($1 AS unsigned)) and ("t"."a" <> CAST($2 AS unsigned))"#
     );
 }
 

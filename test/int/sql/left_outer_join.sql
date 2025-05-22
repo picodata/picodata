@@ -109,7 +109,7 @@ left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B"
 -- EXPECTED:
 projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on ROW("T1"."A"::integer) = ROW("T2"."B"::integer)
+    left join on "T1"."A"::integer = "T2"."B"::integer
         scan "T1"
             projection ("arithmetic_space"."id"::integer -> "A")
                 scan "arithmetic_space"
@@ -141,7 +141,7 @@ left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B"
 -- EXPECTED:
 projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on ROW("T1"."A"::integer) = ROW("T2"."B"::integer)
+    left join on "T1"."A"::integer = "T2"."B"::integer
         scan "T1"
             projection ("arithmetic_space"."id"::integer -> "A")
                 scan "arithmetic_space"
@@ -173,7 +173,7 @@ left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B"
 -- EXPECTED:
 projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on ROW("T1"."A"::integer) < ROW("T2"."B"::integer)
+    left join on "T1"."A"::integer < "T2"."B"::integer
         scan "T1"
             projection ("arithmetic_space"."id"::integer -> "A")
                 scan "arithmetic_space"
@@ -234,7 +234,7 @@ left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space")
 -- EXPECTED:
 projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on ROW("T1"."A"::integer) in ROW($0)
+    left join on "T1"."A"::integer in ROW($0)
         scan "T1"
             projection ("arithmetic_space"."a"::integer -> "A")
                 scan "arithmetic_space"
@@ -245,7 +245,7 @@ projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
 subquery $0:
 motion [policy: full]
             scan
-                projection (ROW("arithmetic_space"."a"::integer) + ROW(1::unsigned) -> "col_1")
+                projection ("arithmetic_space"."a"::integer + 1::unsigned -> "col_1")
                     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -273,7 +273,7 @@ left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space")
 -- EXPECTED:
 projection ("t1"."A"::integer -> "A", "t2"."B"::integer -> "B")
-    left join on ROW("t1"."A"::integer) in ROW($0)
+    left join on "t1"."A"::integer in ROW($0)
         scan "t1"
             projection ("arithmetic_space"."id"::integer -> "A")
                 scan "arithmetic_space"

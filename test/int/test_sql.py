@@ -6327,7 +6327,7 @@ buckets = [1-3000]"""
     # Reading from a single bucket => single node
     lines = i1.sql("explain select a from t where a = 1")
     expected_explain = """projection ("t"."a"::integer -> "a")
-    selection ROW("t"."a"::integer) = ROW(1::unsigned)
+    selection "t"."a"::integer = 1::unsigned
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6337,7 +6337,7 @@ buckets = [1934]"""
 
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
     expected_explain = """projection ("t"."a"::integer -> "a")
-    selection (ROW("t"."a"::integer) = ROW(1::unsigned)) and (ROW("t"."a"::integer) = ROW(2::unsigned))
+    selection ("t"."a"::integer = 1::unsigned) and ("t"."a"::integer = 2::unsigned)
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6349,7 +6349,7 @@ buckets = []"""
     # plan by buckets of leaf subtrees
     lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
     expected_explain = """projection ("t"."a"::integer -> "a")
-    join on ROW("t"."a"::integer) = ROW("t2"."b"::integer)
+    join on "t"."a"::integer = "t2"."b"::integer
         scan "t"
             projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
                 scan "t"
@@ -6420,7 +6420,7 @@ buckets = [1-3000]"""
 "b" = "col_0"
     motion [policy: local]
         projection (1::unsigned -> "col_0", "t"."a"::integer -> "col_1")
-            selection ROW("t"."b"::integer) = ROW(3::unsigned)
+            selection "t"."b"::integer = 3::unsigned
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6438,7 +6438,7 @@ buckets = [1-3000]"""
 "d" = "col_1"
     motion [policy: segment([])]
         projection ("t2"."c"::integer -> "col_0", 1::unsigned -> "col_1", "t2"."d"::integer -> "col_2")
-            selection (ROW("t2"."d"::integer) = ROW(2::unsigned)) or (ROW("t2"."d"::integer) = ROW(2002::unsigned))
+            selection ("t2"."d"::integer = 2::unsigned) or ("t2"."d"::integer = 2002::unsigned)
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000

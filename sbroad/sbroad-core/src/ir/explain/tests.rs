@@ -33,7 +33,7 @@ fn simple_query_with_cond_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
-        selection (ROW("t"."identification_number"::integer) = ROW(1::unsigned)) and (ROW("t"."product_code"::string) = ROW('222'::string))
+        selection ("t"."identification_number"::integer = 1::unsigned) and ("t"."product_code"::string = '222'::string)
             scan "hash_testing" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -82,14 +82,14 @@ WHERE "id" = 1"#;
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("t"."id"::unsigned) = ROW(1::unsigned)
+        selection "t"."id"::unsigned = 1::unsigned
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
+                        selection ("test_space"."sys_op"::unsigned > 0::unsigned) and ("test_space"."sysFrom"::unsigned < 0::unsigned)
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                        selection "test_space_hist"."sys_op"::unsigned < 0::unsigned
                             scan "test_space_hist"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -120,26 +120,26 @@ WHERE "id" IN (SELECT "id"
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("t"."id"::unsigned) in ROW($0)
+        selection "t"."id"::unsigned in ROW($0)
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
+                        selection ("test_space"."sys_op"::unsigned > 0::unsigned) and ("test_space"."sysFrom"::unsigned < 0::unsigned)
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                        selection "test_space_hist"."sys_op"::unsigned < 0::unsigned
                             scan "test_space_hist"
     subquery $0:
     scan
                 projection ("t2"."id"::unsigned -> "id")
-                    selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
+                    selection "t2"."id"::unsigned = 4::unsigned
                         scan "t2"
                             union all
                                 projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
+                                    selection "test_space"."sys_op"::unsigned > 0::unsigned
                                         scan "test_space"
                                 projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                                    selection "test_space_hist"."sys_op"::unsigned < 0::unsigned
                                         scan "test_space_hist"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -201,32 +201,32 @@ fn motion_subquery_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t"."id"::unsigned -> "id", "t"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection (ROW("t"."id"::unsigned) in ROW($1)) or (ROW("t"."id"::unsigned) in ROW($0))
+        selection ("t"."id"::unsigned in ROW($1)) or ("t"."id"::unsigned in ROW($0))
             scan "t"
                 union all
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection (ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)) and (ROW("test_space"."sysFrom"::unsigned) < ROW(0::unsigned))
+                        selection ("test_space"."sys_op"::unsigned > 0::unsigned) and ("test_space"."sysFrom"::unsigned < 0::unsigned)
                             scan "test_space"
                     projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                        selection "test_space_hist"."sys_op"::unsigned < 0::unsigned
                             scan "test_space_hist"
     subquery $0:
     motion [policy: segment([ref("identification_number")])]
                 scan
                     projection ("hash_testing"."identification_number"::integer -> "identification_number")
-                        selection (ROW("hash_testing"."identification_number"::integer) = ROW(5::unsigned)) and (ROW("hash_testing"."product_code"::string) = ROW('123'::string))
+                        selection ("hash_testing"."identification_number"::integer = 5::unsigned) and ("hash_testing"."product_code"::string = '123'::string)
                             scan "hash_testing"
     subquery $1:
     scan
                 projection ("t2"."id"::unsigned -> "id")
-                    selection ROW("t2"."id"::unsigned) = ROW(4::unsigned)
+                    selection "t2"."id"::unsigned = 4::unsigned
                         scan "t2"
                             union all
                                 projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                                    selection ROW("test_space"."sys_op"::unsigned) > ROW(0::unsigned)
+                                    selection "test_space"."sys_op"::unsigned > 0::unsigned
                                         scan "test_space"
                                 projection ("test_space_hist"."id"::unsigned -> "id", "test_space_hist"."FIRST_NAME"::string -> "FIRST_NAME")
-                                    selection ROW("test_space_hist"."sys_op"::unsigned) < ROW(0::unsigned)
+                                    selection "test_space_hist"."sys_op"::unsigned < 0::unsigned
                                         scan "test_space_hist"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -248,11 +248,11 @@ WHERE "t2"."product_code" = '123'"#;
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("t2"."product_code"::string) = ROW('123'::string)
-            join on ROW("t1"."id"::unsigned) = ROW("t2"."identification_number"::integer)
+        selection "t2"."product_code"::string = '123'::string
+            join on "t1"."id"::unsigned = "t2"."identification_number"::integer
                 scan "t1"
                     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                        selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
+                        selection "test_space"."id"::unsigned = 3::unsigned
                             scan "test_space"
                 motion [policy: segment([ref("identification_number")])]
                     scan "t2"
@@ -277,10 +277,10 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-        join on ROW("t1"."id"::unsigned) = ROW($0)
+        join on "t1"."id"::unsigned = ROW($0)
             scan "t1"
                 projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-                    selection ROW("test_space"."id"::unsigned) = ROW(3::unsigned)
+                    selection "test_space"."id"::unsigned = 3::unsigned
                         scan "test_space"
             motion [policy: full]
                 scan "hash_testing"
@@ -308,7 +308,7 @@ fn unary_condition_plan() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection (ROW("test_space"."id"::unsigned) is null) and (not (ROW("test_space"."FIRST_NAME"::string) is null))
+        selection ("test_space"."id"::unsigned is null) and (not ("test_space"."FIRST_NAME"::string is null))
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -440,7 +440,7 @@ fn select_cast_plan2() {
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("test_space"."id"::unsigned::int) = ROW(1::unsigned)
+        selection "test_space"."id"::unsigned::int = 1::unsigned
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -478,7 +478,7 @@ fn select_cast_plan_nested_where() {
     let mut actual_explain = String::new();
     actual_explain.push_str(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection ROW(TRIM("test_space"."id"::unsigned::text)::string) = ROW('1'::string)
+    selection TRIM("test_space"."id"::unsigned::text)::string = '1'::string
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -501,7 +501,7 @@ fn select_cast_plan_nested_where2() {
     let mut actual_explain = String::new();
     actual_explain.push_str(
         r#"projection ("test_space"."id"::unsigned -> "id")
-    selection TRIM(42::unsigned::string) = ROW('1'::string)
+    selection TRIM(42::unsigned::string) = '1'::string
         scan "test_space"
 execution options:
     sql_vdbe_opcode_max = 45000

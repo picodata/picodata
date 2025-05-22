@@ -18,7 +18,7 @@ fn bool_in1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (CAST($1 AS unsigned))) or (("t"."a") = (CAST($2 AS unsigned)))) or (("t"."a") = (CAST($3 AS unsigned)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" = CAST($1 AS unsigned)) or ("t"."a" = CAST($2 AS unsigned))) or ("t"."a" = CAST($3 AS unsigned))"#
     );
 }
 
@@ -33,7 +33,7 @@ fn bool_in3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((("t"."a") = (CAST($1 AS unsigned))) or (("t"."a") = (CAST($2 AS unsigned)))) and (("t"."b") = (CAST($3 AS unsigned)))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" = CAST($1 AS unsigned)) or ("t"."a" = CAST($2 AS unsigned))) and ("t"."b" = CAST($3 AS unsigned))"#
     );
 }
 
@@ -54,7 +54,7 @@ fn bool_in4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ((CAST (((("t"."a") = (CAST($1 AS unsigned))) or (("t"."a") = (CAST($2 AS unsigned)))) as int)) - (CAST($3 AS unsigned))) = (CAST($4 AS unsigned))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (CAST ((("t"."a" = CAST($1 AS unsigned)) or ("t"."a" = CAST($2 AS unsigned))) as int) - CAST($3 AS unsigned)) = CAST($4 AS unsigned)"#
     );
 }
 
@@ -70,6 +70,6 @@ fn bool_in5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (((("t"."a") = (CAST($1 AS unsigned))) or (("t"."a") = (CAST($2 AS unsigned)))) as text)) < (CAST($3 AS string))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST ((("t"."a" = CAST($1 AS unsigned)) or ("t"."a" = CAST($2 AS unsigned))) as text)) < CAST($3 AS string)"#
     );
 }

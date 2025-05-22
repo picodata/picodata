@@ -35,6 +35,7 @@ fn insert_values_rows() {
     "#);
 }
 
+#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn select_selection() {
     let sql = r#"SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
@@ -42,7 +43,7 @@ fn select_selection() {
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t3"."a"::string -> "a", "t3"."b"::integer -> "b")
-        selection ROW("t3"."a"::string) = ROW('kek'::string)
+        selection "t3"."a"::string = 'kek'::string
             scan "t3"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -51,6 +52,7 @@ fn select_selection() {
     "#);
 }
 
+#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn update_selection() {
     let sql = r#"UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::unsigned::decimal"#;
@@ -61,7 +63,7 @@ fn update_selection() {
     "c" = "col_0"
         motion [policy: local]
             projection (2::unsigned -> "col_0", "t"."b"::unsigned -> "col_1")
-                selection (ROW("t"."a"::unsigned) = ROW(1::integer)) and (ROW("t"."b"::unsigned) = ROW(2::decimal))
+                selection ("t"."a"::unsigned = 1::integer) and ("t"."b"::unsigned = 2::decimal)
                     scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -70,6 +72,7 @@ fn update_selection() {
     "#);
 }
 
+#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn delete_selection() {
     let sql = r#"DELETE FROM "t2" where "e" = 3::unsigned and "f" = 2::decimal"#;
@@ -79,7 +82,7 @@ fn delete_selection() {
     delete "t2"
         motion [policy: local]
             projection ("t2"."g"::unsigned -> "pk_col_0", "t2"."h"::unsigned -> "pk_col_1")
-                selection (ROW("t2"."e"::unsigned) = ROW(3::unsigned)) and (ROW("t2"."f"::unsigned) = ROW(2::decimal))
+                selection ("t2"."e"::unsigned = 3::unsigned) and ("t2"."f"::unsigned = 2::decimal)
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000

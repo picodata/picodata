@@ -69,7 +69,7 @@ fn exec_plan_subtree_test() {
     assert_eq!(sql.params, vec![Value::from(1_u64)]);
     insta::assert_snapshot!(
         sql.pattern,
-        @r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE ("hash_testing"."identification_number") > (CAST($1 AS unsigned))"#,
+        @r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE "hash_testing"."identification_number" > CAST($1 AS unsigned)"#,
     );
 
     // Check main query
@@ -78,7 +78,7 @@ fn exec_plan_subtree_test() {
     assert_eq!(sql.params, vec![]);
     insta::assert_snapshot!(
         sql.pattern,
-        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE ("test_space"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
     )
 }
 
@@ -223,12 +223,12 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Segment for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."id") * ("T1"."sys_op") as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", CAST($1 AS string)) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", ("T1"."id") * ("T1"."sys_op"), "T1"."id""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", "T1"."id" * "T1"."sys_op" as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", CAST($1 AS string)) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", "T1"."id" * "T1"."sys_op", "T1"."id""#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Unsigned(2), Value::from("o")]);
-    insta::assert_snapshot!(sql.pattern, @r#"SELECT ("COL_1") + ("COL_1") as "col_1", (("COL_1") * (CAST($1 AS unsigned))) + (sum ("COL_4")) as "col_2", sum ("COL_5") as "col_3", (sum (DISTINCT "COL_2")) / (count (DISTINCT "COL_3")) as "col_4", group_concat ("COL_8", CAST($2 AS string)) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
+    insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS unsigned)) + sum ("COL_4") as "col_2", sum ("COL_5") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_8", CAST($2 AS string)) as "col_5", sum (CAST ("COL_5" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_9") as "col_7", min ("COL_7") as "col_8", max ("COL_10") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT ("T1"."id") + ("T1"."sysFrom") as "gr_expr_1", count ("T1"."sysFrom") as "count_1" FROM "test_space" as "T1" GROUP BY ("T1"."id") + ("T1"."sysFrom")"#.to_string(),
+            r#"SELECT "T1"."id" + "T1"."sysFrom" as "gr_expr_1", count ("T1"."sysFrom") as "count_1" FROM "test_space" as "T1" GROUP BY "T1"."id" + "T1"."sysFrom""#.to_string(),
             vec![]
         ));
 
@@ -356,7 +356,7 @@ fn exec_plan_motion_under_in_operator() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."id") in (SELECT "COL_1" FROM "TMP_test_0136")"#.to_string(),
+            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#.to_string(),
             vec![]
         ));
 }
@@ -473,9 +473,9 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT "T1"."sys_op" as "gr_expr_1", ("T1"."sys_op") * (CAST($1 AS unsigned)) as "gr_expr_2","#,
-                r#"count (("T1"."sys_op") * (CAST($2 AS unsigned))) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY "T1"."sys_op", ("T1"."sys_op") * (CAST($3 AS unsigned))"#,
+                r#"SELECT "T1"."sys_op" as "gr_expr_1", "T1"."sys_op" * CAST($1 AS unsigned) as "gr_expr_2","#,
+                r#"count ("T1"."sys_op" * CAST($2 AS unsigned)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY "T1"."sys_op", "T1"."sys_op" * CAST($3 AS unsigned)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
         )
@@ -488,10 +488,10 @@ fn exec_plan_subtree_having() {
         PatternWithParams::new(
             format!(
                 "{} {} {} {}",
-                r#"SELECT ("COL_1") + ("COL_1") as "col_1","#,
-                r#"(sum ("COL_3")) + (count (DISTINCT "COL_2")) as "col_2" FROM"#,
+                r#"SELECT "COL_1" + "COL_1" as "col_1","#,
+                r#"sum ("COL_3") + count (DISTINCT "COL_2") as "col_2" FROM"#,
                 r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
-                r#"GROUP BY "COL_1" HAVING (sum (DISTINCT "COL_2")) > (CAST($1 AS unsigned))"#
+                r#"GROUP BY "COL_1" HAVING sum (DISTINCT "COL_2") > CAST($1 AS unsigned)"#
             ),
             vec![Value::Unsigned(1u64)]
         )
@@ -536,9 +536,9 @@ fn exec_plan_subtree_having_without_groupby() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT ("T1"."sys_op") * (CAST($1 AS unsigned)) as "gr_expr_1","#,
-                r#"count (("T1"."sys_op") * (CAST($2 AS unsigned))) as "count_1" FROM "test_space" as "T1""#,
-                r#"GROUP BY ("T1"."sys_op") * (CAST($3 AS unsigned))"#,
+                r#"SELECT "T1"."sys_op" * CAST($1 AS unsigned) as "gr_expr_1","#,
+                r#"count ("T1"."sys_op" * CAST($2 AS unsigned)) as "count_1" FROM "test_space" as "T1""#,
+                r#"GROUP BY "T1"."sys_op" * CAST($3 AS unsigned)"#,
             ),
             vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
         )
@@ -551,9 +551,9 @@ fn exec_plan_subtree_having_without_groupby() {
         PatternWithParams::new(
             format!(
                 "{} {} {}",
-                r#"SELECT (sum ("COL_2")) + (count (DISTINCT "COL_1")) as "col_1""#,
+                r#"SELECT sum ("COL_2") + count (DISTINCT "COL_1") as "col_1""#,
                 r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
-                r#"HAVING (sum (DISTINCT "COL_1")) > (CAST($1 AS unsigned))"#,
+                r#"HAVING sum (DISTINCT "COL_1") > CAST($1 AS unsigned)"#,
             ),
             vec![Value::Unsigned(1u64)]
         )
@@ -652,7 +652,7 @@ fn exec_plan_subquery_as_expression_under_order_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY ("COL_1") + (VALUES (CAST($1 AS unsigned)))"#.to_string(),
+            r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "COL_1" + (VALUES (CAST($1 AS unsigned)))"#.to_string(),
             vec![Value::Unsigned(1)]
         )
     );
@@ -701,7 +701,7 @@ fn exec_plan_subquery_as_expression_under_group_by() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT ("test_space"."id") + (VALUES (CAST($1 AS unsigned))) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY ("test_space"."id") + (VALUES (CAST($1 AS unsigned)))"#.to_string(),
+            r#"SELECT "test_space"."id" + (VALUES (CAST($1 AS unsigned))) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY "test_space"."id" + (VALUES (CAST($1 AS unsigned)))"#.to_string(),
             vec![Value::Unsigned(1u64)]
         )
     );
@@ -841,7 +841,7 @@ fn global_union_all2() {
         },
         ReplicasetDispatchInfo {
             rs_id: 2,
-            pattern: r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE ("global_t"."b") in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
+            pattern: r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
             params: vec![],
             vtables_map: collection!(motion_id => Rc::new(virtual_table)),
         },
@@ -971,7 +971,7 @@ fn global_union_all3() {
         },
         ReplicasetDispatchInfo {
             rs_id: 1,
-            pattern: r#"SELECT "global_t"."a" FROM "global_t" WHERE ("global_t"."b") in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "COL_1" as "f" FROM (SELECT "COL_1" FROM "TMP_test_2136") GROUP BY "COL_1""#.to_string(),
+            pattern: r#"SELECT "global_t"."a" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "COL_1" as "f" FROM (SELECT "COL_1" FROM "TMP_test_2136") GROUP BY "COL_1""#.to_string(),
             params: vec![],
             vtables_map: collection!(groupby_motion_id => Rc::new(groupby_vtable2), sq_motion_id => Rc::new(sq_vtable)),
         },
@@ -1410,7 +1410,7 @@ fn check_parentheses() {
     let top_id = plan.get_top().unwrap();
 
     let expected = PatternWithParams::new(
-        r#"SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."sysFrom") = (((CAST($1 AS unsigned)) + (CAST($2 AS unsigned))) + (CAST($3 AS unsigned)))"#.to_string(),
+        r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sysFrom" = ((CAST($1 AS unsigned) + CAST($2 AS unsigned)) + CAST($3 AS unsigned))"#.to_string(),
         vec![Value::from(1_u64), Value::from(3_u64), Value::from(2_u64)],
     );
 

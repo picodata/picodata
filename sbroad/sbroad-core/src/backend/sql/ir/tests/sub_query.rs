@@ -15,8 +15,8 @@ fn sub_query1_latest() {
             "{} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (CAST($2 AS string))"#
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)) as "t1""#,
+            r#"WHERE "t1"."product_code" = CAST($2 AS string)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -36,8 +36,8 @@ fn sub_query1_oldest() {
             "{} {} {} {}",
             r#"SELECT "T1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))) as "T1""#,
-            r#"WHERE ("T1"."product_code") = (CAST($2 AS string))"#
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)) as "T1""#,
+            r#"WHERE "T1"."product_code" = CAST($2 AS string)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
     );
@@ -61,11 +61,11 @@ fn sub_query2_latest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($2 AS string))) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (CAST($3 AS string))"#,
+            r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
+            r#"WHERE "t1"."product_code" = CAST($3 AS string)"#,
         ),
         vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
     );
@@ -89,11 +89,11 @@ fn sub_query2_oldest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($2 AS string))) as "t1""#,
-            r#"WHERE ("t1"."product_code") = (CAST($3 AS string))"#,
+            r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
+            r#"WHERE "t1"."product_code" = CAST($3 AS string)"#,
         ),
         vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
     );

@@ -123,7 +123,7 @@ fn front_explain_select_sql3() {
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
         insta::assert_snapshot!(*actual_explain, @r#"
         projection ("q1"."a"::string -> "a")
-            join on ROW("q1"."a"::string) = ROW("q2"."a2"::string)
+            join on "q1"."a"::string = "q2"."a2"::string
                 scan "q1"
                     projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
                         scan "t3" -> "q1"
@@ -152,7 +152,7 @@ fn front_explain_select_sql4() {
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
         insta::assert_snapshot!(*actual_explain, @r#"
         projection ("q2"."a"::string -> "a")
-            join on ROW("q1"."a"::string) = ROW("q2"."a"::string)
+            join on "q1"."a"::string = "q2"."a"::string
                 scan "q1"
                     projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
                         scan "t3" -> "q1"

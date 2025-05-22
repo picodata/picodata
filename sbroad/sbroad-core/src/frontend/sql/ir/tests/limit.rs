@@ -116,9 +116,9 @@ fn join() {
         motion [policy: full]
             limit 128
                 projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::string -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
-                    join on ROW("t2"."f"::unsigned) = ROW("t4"."d"::integer)
-                        join on ROW("t1"."a"::string) = ROW("t3"."a"::string)
-                            left join on ROW("t1"."b"::integer) = ROW("t2"."e"::unsigned)
+                    join on "t2"."f"::unsigned = "t4"."d"::integer
+                        join on "t1"."a"::string = "t3"."a"::string
+                            left join on "t1"."b"::integer = "t2"."e"::unsigned
                                 scan "t1"
                                     projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
                                         scan "t1"

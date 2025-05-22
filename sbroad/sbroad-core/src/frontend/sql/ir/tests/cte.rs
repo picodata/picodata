@@ -168,7 +168,7 @@ fn join_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."FIRST_NAME"::string -> "FIRST_NAME")
-        join on ROW("t"."FIRST_NAME"::string) = ROW("cte"."a"::string)
+        join on "t"."FIRST_NAME"::string = "cte"."a"::string
             scan "t"
                 projection ("t"."id"::unsigned -> "id", "t"."sysFrom"::unsigned -> "sysFrom", "t"."FIRST_NAME"::string -> "FIRST_NAME", "t"."sys_op"::unsigned -> "sys_op")
                     scan "test_space" -> "t"
@@ -214,12 +214,12 @@ fn sq_cte() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ROW("test_space"."FIRST_NAME"::string) in ROW($1)
+        selection "test_space"."FIRST_NAME"::string in ROW($1)
             scan "test_space"
     subquery $0:
     motion [policy: full]
                             projection ("test_space"."FIRST_NAME"::string -> "a")
-                                selection ROW("test_space"."FIRST_NAME"::string) = ROW('hi'::string)
+                                selection "test_space"."FIRST_NAME"::string = 'hi'::string
                                     scan "test_space"
     subquery $1:
     scan
@@ -302,7 +302,7 @@ fn join_in_cte() {
     subquery $0:
     motion [policy: full]
                 projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-                    join on ROW("t1"."FIRST_NAME"::string) = ROW(ROW("t2"."id"::unsigned)::text)
+                    join on "t1"."FIRST_NAME"::string = "t2"."id"::unsigned::text
                         scan "t1"
                             projection ("t1"."id"::unsigned -> "id", "t1"."sysFrom"::unsigned -> "sysFrom", "t1"."FIRST_NAME"::string -> "FIRST_NAME", "t1"."sys_op"::unsigned -> "sys_op")
                                 scan "test_space" -> "t1"

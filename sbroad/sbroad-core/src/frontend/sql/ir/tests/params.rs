@@ -22,7 +22,7 @@ fn front_params1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) and (ROW("test_space"."sysFrom"::unsigned) > ROW(1::integer))
+        selection ("test_space"."sys_op"::unsigned = 0::integer) and ("test_space"."sysFrom"::unsigned > 1::integer)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -39,7 +39,7 @@ fn front_params2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection (ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown)) and (ROW("test_space"."FIRST_NAME"::string) = ROW('hello'::string))
+        selection ("test_space"."sys_op"::unsigned = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'hello'::string)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -57,7 +57,7 @@ fn front_params3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection (ROW("test_space"."sys_op"::unsigned) = ROW(NULL::unknown)) and (ROW("test_space"."FIRST_NAME"::string) = ROW('кириллица'::string))
+        selection ("test_space"."sys_op"::unsigned = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'кириллица'::string)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -78,7 +78,7 @@ fn front_params4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection ROW("test_space"."FIRST_NAME"::string) = ROW('''± !@#$%^&*()_+=-\/><";:,.`~'::string)
+        selection "test_space"."FIRST_NAME"::string = '''± !@#$%^&*()_+=-\/><";:,.`~'::string
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -101,13 +101,13 @@ fn front_params5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) or (ROW("test_space"."id"::unsigned) in ROW($0))
+        selection ("test_space"."sys_op"::unsigned = 0::integer) or ("test_space"."id"::unsigned in ROW($0))
             scan "test_space"
     subquery $0:
     motion [policy: segment([ref("sysFrom")])]
                 scan
                     projection ("test_space_hist"."sysFrom"::unsigned -> "sysFrom")
-                        selection ROW("test_space_hist"."sys_op"::unsigned) = ROW(1::integer)
+                        selection "test_space_hist"."sys_op"::unsigned = 1::integer
                             scan "test_space_hist"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -135,17 +135,17 @@ fn front_params6() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("test_space"."id"::unsigned -> "id")
-        selection (ROW("test_space"."sys_op"::unsigned) = ROW(0::integer)) or (not (ROW("test_space"."id"::unsigned) in ROW($0)))
+        selection ("test_space"."sys_op"::unsigned = 0::integer) or (not ("test_space"."id"::unsigned in ROW($0)))
             scan "test_space"
     subquery $0:
     motion [policy: full]
                 scan
                     union all
                         projection ("test_space"."id"::unsigned -> "id")
-                            selection ROW("test_space"."sys_op"::unsigned) = ROW(1::integer)
+                            selection "test_space"."sys_op"::unsigned = 1::integer
                                 scan "test_space"
                         projection ("test_space"."id"::unsigned -> "id")
-                            selection ROW("test_space"."sys_op"::unsigned) = ROW(2::integer)
+                            selection "test_space"."sys_op"::unsigned = 2::integer
                                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

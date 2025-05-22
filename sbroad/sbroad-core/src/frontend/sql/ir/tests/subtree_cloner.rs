@@ -28,7 +28,7 @@ fn test_clone_dag() {
     let const_id = plan.add_const(value.clone());
     let foo_id = plan.nodes.add_alias("foo", const_id).unwrap();
     let bar_id = plan.nodes.add_alias("bar", const_id).unwrap();
-    let row_id = plan.add_row(vec![foo_id, bar_id], None);
+    let row_id = plan.nodes.add_row(vec![foo_id, bar_id], None);
 
     let mut cloner = SubtreeCloner::new(0);
     let new_row_id = cloner.clone(&mut plan, row_id, 0).unwrap();
@@ -109,7 +109,7 @@ fn except_transform_with_dag_plan() {
         motion [policy: full]
             intersect
                 projection ("t2"."e"::unsigned -> "e")
-                    selection ROW("t2"."e"::unsigned) = ROW(1::unsigned)
+                    selection "t2"."e"::unsigned = 1::unsigned
                         scan "t2"
                 projection (1::unsigned -> "col_1")
                     scan

@@ -27,10 +27,10 @@ fn selection1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE (("hash_testing"."product_code") < (CAST($1 AS string)))"#,
-            r#"and (("hash_testing"."identification_number") in"#,
+            r#"WHERE ("hash_testing"."product_code" < CAST($1 AS string))"#,
+            r#"and ("hash_testing"."identification_number" in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($2 AS string))))"#,
+            r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)))"#,
         ),
         vec![Value::from("a"), Value::from("b")],
     );
@@ -47,10 +47,10 @@ fn selection1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE (("hash_testing"."identification_number") in"#,
+            r#"WHERE ("hash_testing"."identification_number" in"#,
             r#"(SELECT "hash_testing_hist"."identification_number" FROM "hash_testing_hist""#,
-            r#"WHERE ("hash_testing_hist"."product_code") = (CAST($1 AS string))))"#,
-            r#"and (("hash_testing"."product_code") < (CAST($2 AS string)))"#,
+            r#"WHERE "hash_testing_hist"."product_code" = CAST($1 AS string)))"#,
+            r#"and ("hash_testing"."product_code" < CAST($2 AS string))"#,
         ),
         vec![Value::from("b"), Value::from("a")],
     );
@@ -69,9 +69,9 @@ fn selection2_latest() {
         f_sql(
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
 WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS boolean), CAST($2 AS unsigned)))
-and ("hash_testing"."product_units"))
+and "hash_testing"."product_units")
 or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS boolean), CAST($2 AS unsigned)))
-and (("hash_testing"."product_units") is null))"#,
+and ("hash_testing"."product_units" is null))"#,
         ),
         vec![Value::Boolean(true), Value::Unsigned(1)],
     );
@@ -88,8 +88,8 @@ fn selection2_oldest() {
     let expected = PatternWithParams::new(
         [
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE ((("hash_testing"."identification_number") in (CAST($1 AS unsigned))) and (("hash_testing"."product_units") = (CAST($2 AS boolean))))"#,
-            r#"and (("hash_testing"."product_units") or (("hash_testing"."product_units") is null))"#,
+            r#"WHERE (("hash_testing"."identification_number" in (CAST($1 AS unsigned))) and ("hash_testing"."product_units" = CAST($2 AS boolean)))"#,
+            r#"and ("hash_testing"."product_units" or ("hash_testing"."product_units" is null))"#,
         ].join(" "),
         vec![Value::Unsigned(1), Value::Boolean(true)],
     );

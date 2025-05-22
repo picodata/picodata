@@ -59,8 +59,8 @@ fn like_explain1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string) -> "col_1")
-        selection ROW(ROW("t1"."a"::string) || ROW('a'::string)) LIKE ROW(ROW('a'::string) || ROW('a'::string)) ESCAPE ROW('\'::string)
+    projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "col_1")
+        selection ("t1"."a"::string || 'a'::string) LIKE ('a'::string || 'a'::string) ESCAPE '\'::string
             scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -74,8 +74,8 @@ fn like_explain2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"projection (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string) -> "col_1")
-    selection ROW(ROW("t1"."a"::string) || ROW('a'::string)) LIKE ROW(ROW('a'::string) || ROW('a'::string)) ESCAPE ROW('x'::string)
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "col_1")
+    selection ("t1"."a"::string || 'a'::string) LIKE ('a'::string || 'a'::string) ESCAPE 'x'::string
         scan "t1"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -93,8 +93,8 @@ fn like_explain3() {
     projection ("gr_expr_1"::boolean -> "col_1")
         group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
             motion [policy: segment([ref("gr_expr_1")])]
-                projection (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string) -> "gr_expr_1")
-                    group by (ROW("t1"."a"::string) LIKE ROW("t1"."a"::string) ESCAPE ROW('\'::string)) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
+                projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "gr_expr_1")
+                    group by ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -143,8 +143,8 @@ fn ilike_explain() {
     projection ("gr_expr_1"::boolean -> "col_1")
         group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
             motion [policy: segment([ref("gr_expr_1")])]
-                projection (ROW(lower(("t1"."a"::string))::string) LIKE ROW(lower(("t1"."a"::string))::string) ESCAPE ROW('x'::string) -> "gr_expr_1")
-                    group by (ROW(lower(("t1"."a"::string))::string) LIKE ROW(lower(("t1"."a"::string))::string) ESCAPE ROW('x'::string)) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
+                projection (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string -> "gr_expr_1")
+                    group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000

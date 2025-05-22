@@ -14,7 +14,7 @@ fn projection1_latest() {
             r#"SELECT "hash_testing"."identification_number","#,
             r#""hash_testing"."product_code""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
         ),
         vec![Value::from(1_u64)],
     );
@@ -33,7 +33,7 @@ fn projection1_oldest() {
             r#"SELECT "hash_testing"."identification_number","#,
             r#""hash_testing"."product_code""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
         ),
         vec![Value::from(1_u64)],
     );
@@ -52,7 +52,7 @@ fn projection2_latest() {
             r#""hash_testing"."product_code","#,
             r#""hash_testing"."product_units", "hash_testing"."sys_op""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#
         ),
         vec![Value::from(1_u64)],
     );
@@ -71,7 +71,7 @@ fn projection2_oldest() {
             r#""hash_testing"."product_code","#,
             r#""hash_testing"."product_units", "hash_testing"."sys_op""#,
             r#"FROM "hash_testing""#,
-            r#"WHERE ("hash_testing"."identification_number") = (CAST($1 AS unsigned))"#
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#
         ),
         vec![Value::from(1_u64)],
     );

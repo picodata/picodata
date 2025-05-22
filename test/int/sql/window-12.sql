@@ -127,7 +127,7 @@ WINDOW
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
 projection (avg("x"::integer) over win1 -> "col_1", sum("x"::integer) over win -> "col_2")
-    windows: win1 as (partition by (ROW("x"::integer) + ROW($0)) ), win as (order by ((ROW("y"::integer) + (ROW(2::unsigned) * ROW($2))) + ROW($1)) )
+    windows: win1 as (partition by ("x"::integer + ROW($0)) ), win as (order by (("y"::integer + (2::unsigned * ROW($2))) + ROW($1)) )
         motion [policy: full]
             projection ("t6"."x"::integer -> "x", "t6"."bucket_id"::unsigned -> "bucket_id", "t6"."y"::integer -> "y")
                 scan "t6"
@@ -165,7 +165,7 @@ WINDOW
     )::int);
 -- EXPECTED:
 projection (row_number() over win2 -> "col_1", sum("y"::integer) over win2 -> "col_2", max("x"::integer) over win3 -> "col_3")
-    windows: win2 as (partition by (ROW("x"::integer) + ROW($1)) ), win3 as (order by (ROW("x"::integer) + ROW(ROW($0)::int)) )
+    windows: win2 as (partition by ("x"::integer + ROW($1)) ), win3 as (order by ("x"::integer + ROW($0)::int) )
         motion [policy: full]
             projection ("t6"."x"::integer -> "x", "t6"."bucket_id"::unsigned -> "bucket_id", "t6"."y"::integer -> "y")
                 scan "t6"

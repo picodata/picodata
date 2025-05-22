@@ -400,7 +400,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact(
         'projection (\'Etch\'::string -> "col_0", 2010::unsigned -> "col_1", "characters"."id"::integer -> "col_2")'
     )
-    cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
+    cli.expect_exact('selection "characters"."id"::integer = 2::unsigned')
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")

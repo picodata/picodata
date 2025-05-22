@@ -3,7 +3,7 @@ use crate::ir::relation::{SpaceEngine, Table, Type};
 use crate::ir::tests::column_user_non_null;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
-use crate::ir::{Node, Plan};
+use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
 
@@ -37,25 +37,23 @@ fn proj_preserve_dist_key() {
     let scan_output = rel_node.output();
 
     plan.set_distribution(scan_output).unwrap();
-    let expr_node = plan.get_expression_node(scan_output).unwrap();
+
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(
-        &Distribution::Segment { keys: keys.into() },
-        expr_node.distribution().unwrap()
+        Distribution::Segment { keys: keys.into() },
+        plan.get_distribution(scan_output).unwrap()
     );
 
     let rel_node = plan.get_relation_node(proj_id).unwrap();
     let proj_output: NodeId = rel_node.output();
 
     plan.set_distribution(proj_output).unwrap();
-    let expr_node = plan.get_node(proj_output).unwrap();
-    if let Node::Expression(expr) = expr_node {
-        let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
-        assert_eq!(
-            &Distribution::Segment { keys: keys.into() },
-            expr.distribution().unwrap()
-        );
-    }
+
+    let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
+    assert_eq!(
+        Distribution::Segment { keys: keys.into() },
+        plan.get_distribution(proj_output).unwrap()
+    );
 }
 
 #[test]
@@ -89,7 +87,7 @@ fn projection_any_dist_for_expr() {
             .1
     };
     assert_eq!(
-        &Distribution::Any,
+        Distribution::Any,
         plan.get_distribution(plan.get_relational_output(local_proj_id).unwrap())
             .unwrap()
     );

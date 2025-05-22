@@ -44,16 +44,12 @@ fn scan_rel() {
     plan.top = Some(scan_node);
 
     plan.set_distribution(scan_output).unwrap();
-    let row = plan.get_node(scan_output).unwrap();
-    if let Node::Expression(expr) = row {
-        let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
-        assert_eq!(
-            expr.distribution().unwrap(),
-            &Distribution::Segment { keys: keys.into() }
-        );
-    } else {
-        panic!("Wrong output node type!");
-    }
+
+    let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
+    assert_eq!(
+        plan.get_distribution(scan_output).unwrap(),
+        Distribution::Segment { keys: keys.into() }
+    );
 }
 
 #[test]
@@ -425,13 +421,13 @@ fn join() {
     plan.add_rel(t2);
     let scan_t2 = plan.add_scan("t2", None).unwrap();
 
-    let a_row = plan
-        .add_row_from_left_branch(scan_t1, scan_t2, &[ColumnWithScan::new("a", None)])
+    let a_ref = plan
+        .add_ref_from_left_branch(scan_t1, scan_t2, ColumnWithScan::new("a", None))
         .unwrap();
-    let d_row = plan
-        .add_row_from_right_branch(scan_t1, scan_t2, &[ColumnWithScan::new("d", None)])
+    let d_ref = plan
+        .add_ref_from_right_branch(scan_t1, scan_t2, ColumnWithScan::new("d", None))
         .unwrap();
-    let condition = plan.nodes.add_bool(a_row, Bool::Eq, d_row).unwrap();
+    let condition = plan.nodes.add_bool(a_ref, Bool::Eq, d_ref).unwrap();
     let join = plan
         .add_join(scan_t1, scan_t2, condition, JoinKind::Inner)
         .unwrap();
@@ -474,13 +470,13 @@ fn join_duplicate_columns() {
     plan.add_rel(t2);
     let scan_t2 = plan.add_scan("t2", None).unwrap();
 
-    let a_row = plan
-        .add_row_from_left_branch(scan_t1, scan_t2, &[ColumnWithScan::new("a", None)])
+    let a_ref = plan
+        .add_ref_from_left_branch(scan_t1, scan_t2, ColumnWithScan::new("a", None))
         .unwrap();
-    let d_row = plan
-        .add_row_from_right_branch(scan_t1, scan_t2, &[ColumnWithScan::new("d", None)])
+    let d_ref = plan
+        .add_ref_from_right_branch(scan_t1, scan_t2, ColumnWithScan::new("d", None))
         .unwrap();
-    let condition = plan.nodes.add_bool(a_row, Bool::Eq, d_row).unwrap();
+    let condition = plan.nodes.add_bool(a_ref, Bool::Eq, d_ref).unwrap();
     let join = plan
         .add_join(scan_t1, scan_t2, condition, JoinKind::Inner)
         .unwrap();
