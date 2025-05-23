@@ -4,8 +4,8 @@ use crate::ir::value::Value;
 #[test]
 fn cast1_test() {
     broadcast_check(
-        r#"SELECT CAST('1' as any) FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS string) as any) as "col_1" FROM "t1""#,
+        r#"SELECT CAST('1' as string) FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS string) as string) as "col_1" FROM "t1""#,
         vec![Value::from("1")],
     );
 }

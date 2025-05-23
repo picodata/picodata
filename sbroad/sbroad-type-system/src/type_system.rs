@@ -289,6 +289,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         expr: &Expr<Id>,
         desired_type: Type,
     ) -> Result<TypeReport<Id>, Error> {
+        // Any as a desired type is prohibit, see the comment to `Type::Any` for more details.
+        if desired_type == Type::Any {
+            return Err(Error::UnexpectedExpressionOfTypeAny);
+        }
+
         if let Some(report) = self.try_get_cached(expr, desired_type) {
             return Ok(report.clone());
         }

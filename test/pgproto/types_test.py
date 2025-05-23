@@ -468,16 +468,48 @@ def test_any(postgres: Postgres):
     conn = pg8000.Connection(user, password=password, host=postgres.host, port=postgres.port)
     conn.autocommit = True
 
-    # test that type system forbids to sum any with other types
+    # ensure standalone any is allowed
+    conn.prepare("SELECT key, value FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
+
+    # ensure standalone any is allowed
+    conn.prepare("SELECT key, value FROM _pico_db_config WHERE value is not null")
+
+    # test that type system prohibits to sum any with other types
     with pytest.raises(pg8000.DatabaseError, match=r"could not resolve operator overload for \+\(any, unsigned\)"):
         conn.run("SELECT key, value + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
+
+    # comparison for any is not allowed
+    with pytest.raises(
+        pg8000.DatabaseError, match=r"unexpected expression of type any\, explicit cast to the actual type is required"
+    ):
+        conn.prepare("SELECT key FROM _pico_db_config WHERE value = value")
+
+    # fix comparison with explicit casts
+    conn.prepare("SELECT key FROM _pico_db_config WHERE value::text = value::text")
+
+    # ensure type system allows to assign an expression to a column of type any
+    conn.prepare("UPDATE _pico_db_config set value = 1 WHERE key = 'auth_login_attempt_max'")
+
+    # ensure type system allows to assign a parameter to a column of type any
+    conn.prepare("UPDATE _pico_db_config set value = :p WHERE key = 'auth_login_attempt_max'")
+
+    # ensure type system allows to assign a casted parameter to a column of type any
+    conn.prepare("UPDATE _pico_db_config set value = :p::int WHERE key = 'auth_login_attempt_max'")
 
     # fix typing error with cast
     conn.run("SELECT value::int + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
 
-    # ensure parameter of type any are not allowed
-    with pytest.raises(pg8000.DatabaseError, match="feature is not supported: cannot represent json in sbroad"):
+    # ensure parameters of type any are not allowed
+    with pytest.raises(
+        pg8000.DatabaseError, match=r"unexpected expression of type any\, explicit cast to the actual type is required"
+    ):
         conn.run("SELECT value = :p FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';", p=1)
+
+    # ensure parameters of type any are not allowed
+    with pytest.raises(
+        pg8000.DatabaseError, match=r"unexpected expression of type any\, explicit cast to the actual type is required"
+    ):
+        conn.prepare("SELECT key FROM _pico_db_config WHERE value = :p;")
 
 
 def test_gl_1125_f64_cannot_be_represented_as_int8(postgres: Postgres):

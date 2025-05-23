@@ -1680,6 +1680,11 @@ fn parse_insert_source<M: Metadata>(
 
 /// Check if an expression of type `src` can be assigned to a column of type `dst`.
 fn can_assign(src: DerivedType, dst: Type) -> bool {
+    if dst == Type::Any {
+        // Any type can be assigned to a column of type any.
+        return true;
+    }
+
     let Some(src) = *src.get() else {
         // TODO: We should probably check nullability here.
         return true;
@@ -5784,11 +5789,17 @@ impl AbstractSyntaxTree {
                         })?;
 
                         let col_type = col.r#type.get().expect("column type must be known");
+                        let derived_type = match col_type {
+                            // Desired type cannot be any, see comment to `Type::Any` in the
+                            // type system.
+                            Type::Any => DerivedType::unknown(),
+                            t => DerivedType::new(t),
+                        };
                         let expr_pair = pairs_map.remove_pair(*expr_ast_id);
                         let expr_plan_node_id = parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
-                            DerivedType::new(col_type),
+                            derived_type,
                             &[rel_child_id],
                             &mut worker,
                             &mut plan,

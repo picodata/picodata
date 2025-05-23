@@ -12,6 +12,20 @@ pub enum Type {
     Uuid,
     Array,
     Map,
+    // Any is a compound type that can be basically any other type.
+    // Because the actual type is unknown, overload resolution is likely to fail. Only the user may
+    // know the actual type, so the user is required to provide it via explicit cast to resolve
+    // the ambiguity. For instance, `any_col` is fine as no resolution is performed, but
+    // `any_col + 1` requires cast of the column, because there is not enough context.
+    //
+    // Internally, this restriction is implemented by prohibiting any to be a desired type.
+    // The intuition behind it is that we don't want any to spread in expression, potentially
+    // leading to parameters or coercions of type any. The only way type can be spread is via the
+    // desired type, so if any is desired, analysis fails.
+    //
+    // When assigning to any, the desired type should not be any, because any cannot be a desired
+    // type. The correct approach is to pass a default desired type, as any does not impose any
+    // restrictions.
     Any,
 }
 

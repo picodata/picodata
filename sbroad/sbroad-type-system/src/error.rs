@@ -89,6 +89,9 @@ pub enum Error {
     #[error("row value misused")]
     RowValueMisused,
 
+    #[error("unexpected expression of type any, explicit cast to the actual type is required")]
+    UnexpectedExpressionOfTypeAny,
+
     #[error("{0}")]
     Other(String),
 }
