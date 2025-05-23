@@ -509,6 +509,11 @@ test-mac-m1:
 .helm:
   stage: test
   needs: []
+  inherit:
+    variables:
+      - PUSH_DOCKER
+      - MULTIARCH
+      - PARENT_BRANCH
   rules:
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
@@ -628,6 +633,11 @@ pack-on-tag:
 
 .deploy-docker-tmpl:
   stage: docker
+  inherit:
+    variables:
+      - PUSH_DOCKER
+      - MULTIARCH
+      - PARENT_BRANCH
   variables:
     PUSH_DOCKER: ""
     MULTIARCH: "true"
