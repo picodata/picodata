@@ -42,7 +42,7 @@ def main():
     conn.execute("CREATE TABLE pgbench_branches (bid int PRIMARY KEY, bbalance int, filler varchar(88));")
     conn.execute("CREATE TABLE pgbench_tellers (tid int PRIMARY KEY, bid int, tbalance int, filler varchar(84));")
     conn.execute("CREATE TABLE pgbench_accounts (aid int PRIMARY KEY, bid int, abalance int, filler varchar(84));")
-    conn.execute("CREATE TABLE pgbench_history (tid int, bid int, aid int, delta int, mtime int, filler varchar(22), PRIMARY KEY(tid, bid, aid, delta));")
+    conn.execute("CREATE TABLE pgbench_history (tid int, bid int, aid int, delta int, mtime datetime, filler varchar(22), PRIMARY KEY(tid, bid, aid, delta));")
 
     # Set scale and table sizes
     scale = args.scale
