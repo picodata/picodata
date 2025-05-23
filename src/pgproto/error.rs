@@ -149,7 +149,7 @@ pub enum PgError {
 
     // This is picodata's main app error which incapsulates
     // everything else, including sbroad and tarantool errors.
-    #[error("picodata error: {0}")]
+    #[error(transparent)]
     PicodataError(Box<crate::traft::error::Error>),
 
     #[error(transparent)]
