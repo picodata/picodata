@@ -267,14 +267,6 @@ pub fn to_type_expr(
                 }
             }
 
-            if list.len() == 1 {
-                // Workaround for expressions like `1 + 2` that are
-                // translated into `ROW(1) + ROW(2)`.
-                // TODO: Remove this once
-                //       https://git.picodata.io/core/picodata/-/issues/1614 is closed.
-                return to_type_expr(list[0], plan, subquery_map);
-            }
-
             let exprs = to_type_expr_many(list, plan, subquery_map)?;
             let kind = TypeExprKind::Row(exprs);
             Ok(TypeExpr::new(node_id, kind))
