@@ -30,9 +30,16 @@ def compare_lists(a: list, b: list):
 def do_execsql(cluster: Cluster, query: str, expected: list):
     instance = cluster.leader()
     result = instance.sql(query)
+    data = [col for row in result for col in row]
+    assert data == expected
+
+
+def do_execsorted_sql(cluster: Cluster, query: str, expected: list):
+    instance = cluster.leader()
+    result = instance.sql(query)
     result_len = len(result[0]) if len(result) > 0 else 0
-    new_expected = map(list, zip(*(iter(expected),) * result_len))
-    assert sorted(result, key=cmp_to_key(compare_lists)) == sorted(new_expected, key=cmp_to_key(compare_lists))
+    new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
+    assert sorted(result, key=cmp_to_key(compare_lists)) == new_expected
 
 
 def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
@@ -110,6 +117,7 @@ def parse_file(cls: Type, file_name: str) -> list:
         r"-- TEST: (.*?)\n"  # Test name
         r"-- SQL:\n(.*?)\n"  # SQL query
         r"(?:-- EXPECTED:\n(.*?))?"  # Expected result (optional)
+        r"(?:-- EXPECTED\s*\(\s*SORTED\s*\)\s*:\n(.*?))?"  # Expected sorted result (optional)
         r"(?:-- ERROR:\n(.*?))?"  # Expected error (optional)
         r"(?=-- TEST:|\Z)"  # Next test or end of file
     )
@@ -123,16 +131,19 @@ def parse_file(cls: Type, file_name: str) -> list:
             continue
         query = query.strip()
         assert query, "SQL query must be provided"
-        explain_flag = False
         expected = None
-        if query.lower().startswith("explain"):
-            explain_flag = True
-            expected = _parse_line(match[2], "\n", "\n") if match[2] else None
-        else:
-            expected = _parse_line(match[2], None, ",") if match[2] else None
-        error = match[3].strip().split("\n") if match[3] else None
+        sorted_flag: bool = False
+        if match[2]:
+            if query.lower().startswith("explain"):
+                expected = _parse_line(match[2], "\n", "\n")
+            else:
+                expected = _parse_line(match[2], None, ",")
+        elif match[3]:
+            sorted_flag = True
+            expected = _parse_line(match[3], None, ",")
+        error = match[4].strip().split("\n") if match[4] else None
         assert not (expected and error), "Cannot provide both expected result and error"
-        params.append(pytest.param(query, expected, explain_flag, error, id=name))
+        params.append(pytest.param(query, expected, sorted_flag, error, id=name))
     return params
 
 
@@ -151,7 +162,7 @@ def pytest_generate_tests(metafunc):
         assert "query" in metafunc.fixturenames
         assert "expected" in metafunc.fixturenames
         assert "error" in metafunc.fixturenames
-        metafunc.parametrize(["query", "expected", "explain_flag", "error"], metafunc.cls.params)
+        metafunc.parametrize(["query", "expected", "sorted_flag", "error"], metafunc.cls.params)
 
 
 @pytest.fixture(scope="class")
@@ -167,8 +178,10 @@ def cluster_1(cluster: Cluster):
 class ClusterSingleInstance:
     params: list = []
 
-    def test_sql(self, cluster_1: Cluster, query: str, expected: list, explain_flag: bool, error: str):
-        if explain_flag:
+    def test_sql(self, cluster_1: Cluster, query: str, sorted_flag: bool, expected: list, error: str):
+        if sorted_flag:
+            do_execsorted_sql(cluster_1, query, expected)
+        elif query.lower().startswith("explain"):
             do_explain_sql(cluster_1, query, expected)
         elif expected:
             do_execsql(cluster_1, query, expected)
@@ -189,8 +202,10 @@ def cluster_2(cluster: Cluster):
 class ClusterTwoInstances:
     params: list = []
 
-    def test_sql(self, cluster_2: Cluster, query: str, expected: list, explain_flag: bool, error: str):
-        if explain_flag:
+    def test_sql(self, cluster_2: Cluster, query: str, expected: list, sorted_flag: bool, error: str):
+        if sorted_flag:
+            do_execsorted_sql(cluster_2, query, expected)
+        elif query.lower().startswith("explain") and not error:
             do_explain_sql(cluster_2, query, expected)
         elif expected:
             do_execsql(cluster_2, query, expected)

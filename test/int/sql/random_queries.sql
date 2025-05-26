@@ -359,12 +359,6 @@ SELECT * FROM int8;
 -- EXPECTED:
 9, 5, 'lol'
 
--- TEST: test-check-compare-order
--- SQL:
-SELECT * FROM t ORDER BY a desc;
--- EXPECTED:
-1, 1, 2, 1, 3, 2, 4, 3
-
 -- TEST: test-order-by-nulls-init-1
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -440,3 +434,46 @@ INSERT INTO t1 (a, b) VALUES(3, 1), (4, 2);
 SELECT * FROM t ORDER BY b + (SELECT b FROM t1 ORDER BY b NULLS LAST LIMIT 1) NULLS FIRST;
 -- EXPECTED:
 1, nil, 2, nil, 3, 1, 4, 2
+
+-- TEST: test-check-compare-order
+-- SQL:
+SELECT * FROM t UNION ALL SELECT * FROM t;
+-- EXPECTED(SORTED):
+1, None, 1, None,
+2, None, 2, None,
+3, 1, 3, 1,
+4, 2, 4, 2
+
+-- TEST: test-check-compare-order-2-init
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT NULL, b INT NULL, c INT PRIMARY KEY);
+INSERT INTO t1 VALUES(1, 1, 2);
+INSERT INTO t1 VALUES(2, 1, 3);
+INSERT INTO t1 VALUES(3, 2, 7);
+INSERT INTO t1 VALUES(5, 1, 4);
+INSERT INTO t1 VALUES(5, null, 78);
+INSERT INTO t1 VALUES(6, null, 45);
+INSERT INTO t1 VALUES(null, null, 90);
+INSERT INTO t1 VALUES(4, 3, 9);
+
+-- TEST: test-check-compare-order-2
+-- SQL:
+SELECT * FROM t1 UNION ALL SELECT * FROM t1;
+-- EXPECTED(SORTED):
+None, None, 90,
+None, None, 90,
+1, 1, 2,
+1, 1, 2,
+2, 1, 3,
+2, 1, 3,
+3, 2, 7,
+3, 2, 7,
+4, 3, 9,
+4, 3, 9,
+5, None, 78,
+5, None, 78,
+5, 1, 4,
+5, 1, 4,
+6, None, 45,
+6, None, 45,
