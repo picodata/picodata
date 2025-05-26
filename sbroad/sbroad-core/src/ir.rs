@@ -8,7 +8,7 @@ use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
 use node::{Invalid, NodeAligned, Parameter};
 use operator::{Arithmetic, Unary};
-use relation::{Table, Type};
+use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
+use types::UnrestrictedType;
 
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
@@ -32,7 +33,7 @@ use crate::ir::node::{
     Values,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
-use crate::ir::relation::{Column, DerivedType};
+use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{
     BreadthFirst, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
 };
@@ -57,6 +58,7 @@ pub mod operator;
 pub mod relation;
 pub mod transformation;
 pub mod tree;
+pub mod types;
 pub mod undo;
 pub mod value;
 
@@ -1483,7 +1485,10 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not expression type
-    pub fn calculate_expression_type(&self, node_id: NodeId) -> Result<Option<Type>, SbroadError> {
+    pub fn calculate_expression_type(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<UnrestrictedType>, SbroadError> {
         Ok(*self
             .get_expression_node(node_id)?
             .calculate_type(self)?
@@ -2017,7 +2022,7 @@ impl Plan {
     ///
     /// # Panics
     /// - If there are parameters with unknown types.
-    pub fn collect_parameter_types(&self) -> Vec<Type> {
+    pub fn collect_parameter_types(&self) -> Vec<UnrestrictedType> {
         if !self
             .is_dql_or_dml()
             .expect("top must be valid when collecting parameter types")
@@ -2035,7 +2040,7 @@ impl Plan {
             .max()
             .unwrap_or(0) as usize;
 
-        let mut parameter_types = vec![Type::Any; params_count];
+        let mut parameter_types = vec![UnrestrictedType::Any; params_count];
 
         for node in self.nodes.iter32() {
             if let Node32::Parameter(Parameter { param_type, index }) = node {

@@ -11,8 +11,8 @@ use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::{get_builtin_functions, Metadata};
 use sbroad::executor::lru::DEFAULT_CAPACITY;
 use sbroad::ir::function::Function;
-use sbroad::ir::relation::DerivedType;
-use sbroad::ir::relation::{Column, ColumnRole, SpaceEngine, Table, Type};
+use sbroad::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
+use sbroad::ir::types::{DerivedType, UnrestrictedType as Type};
 use sbroad::{debug, warn};
 
 pub const DEFAULT_WAITING_TIMEOUT: u64 = 360;

@@ -16,7 +16,7 @@ use crate::ir::tree::traversal::{LevelNode, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashSet;
 use std::mem::take;
 
@@ -1815,7 +1815,7 @@ impl<'p> SyntaxPlan<'p> {
         let Expression::Cast(Cast { child, to }) = expr else {
             panic!("Expected CAST node");
         };
-        let to_alias = SmolStr::from(to);
+        let to_alias = to.to_smolstr();
         let child_plan_id = *child;
 
         let child_sn_id = self.pop_expr_from_stack(child_plan_id, id);

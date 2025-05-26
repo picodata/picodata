@@ -15,7 +15,7 @@ fn sub_query1_latest() {
             "{} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)) as "t1""#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)) as "t1""#,
             r#"WHERE "t1"."product_code" = CAST($2 AS string)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
@@ -36,7 +36,7 @@ fn sub_query1_oldest() {
             "{} {} {} {}",
             r#"SELECT "T1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)) as "T1""#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)) as "T1""#,
             r#"WHERE "T1"."product_code" = CAST($2 AS string)"#
         ),
         vec![Value::from(1_u64), Value::from("a")],
@@ -61,7 +61,7 @@ fn sub_query2_latest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
@@ -89,7 +89,7 @@ fn sub_query2_oldest() {
             "{} {} {} {} {} {} {}",
             r#"SELECT "t1"."product_code" FROM"#,
             r#"(SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
@@ -109,7 +109,7 @@ fn sub_query_exists() {
         format!(
             "{} {}",
             r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
-            r#"WHERE exists (SELECT CAST($1 AS unsigned) as "col_1" FROM "hash_testing")"#
+            r#"WHERE exists (SELECT CAST($1 AS int) as "col_1" FROM "hash_testing")"#
         ),
         vec![Value::from(0_u64)],
     );

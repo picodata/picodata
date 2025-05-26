@@ -5,7 +5,7 @@
 
 use crate::errors::SbroadError;
 use crate::executor::engine::Metadata;
-use crate::ir::relation::DerivedType;
+use crate::ir::types::DerivedType;
 use crate::ir::Plan;
 
 pub trait Ast {

@@ -28,13 +28,13 @@ INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok
 EXPLAIN SELECT "id", "name" FROM "testing_space"
     WHERE "id" in (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "sysOp" < 0)
 -- EXPECTED:
-projection ("testing_space"."id"::integer -> "id", "testing_space"."name"::string -> "name")
-    selection "testing_space"."id"::integer in ROW($0)
+projection ("testing_space"."id"::int -> "id", "testing_space"."name"::string -> "name")
+    selection "testing_space"."id"::int in ROW($0)
         scan "testing_space"
 subquery $0:
 scan
-            projection ("space_simple_shard_key_hist"."id"::integer -> "id")
-                selection "space_simple_shard_key_hist"."sysOp"::integer < 0::unsigned
+            projection ("space_simple_shard_key_hist"."id"::int -> "id")
+                selection "space_simple_shard_key_hist"."sysOp"::int < 0::int
                     scan "space_simple_shard_key_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -53,20 +53,20 @@ INNER JOIN
     ON "t3"."id" = "t8"."tid"
 WHERE "t3"."name" = '123'
 -- EXPECTED:
-projection ("t3"."id"::integer -> "id", "t3"."name"::string -> "name", "t8"."tid"::integer -> "tid")
+projection ("t3"."id"::int -> "id", "t3"."name"::string -> "name", "t8"."tid"::int -> "tid")
     selection "t3"."name"::string = '123'::string
-        join on "t3"."id"::integer = "t8"."tid"::integer
+        join on "t3"."id"::int = "t8"."tid"::int
             scan "t3"
                 union all
-                    projection ("space_simple_shard_key"."id"::integer -> "id", "space_simple_shard_key"."name"::string -> "name")
-                        selection "space_simple_shard_key"."sysOp"::integer < 1::unsigned
+                    projection ("space_simple_shard_key"."id"::int -> "id", "space_simple_shard_key"."name"::string -> "name")
+                        selection "space_simple_shard_key"."sysOp"::int < 1::int
                             scan "space_simple_shard_key"
-                    projection ("space_simple_shard_key_hist"."id"::integer -> "id", "space_simple_shard_key_hist"."name"::string -> "name")
-                        selection "space_simple_shard_key_hist"."sysOp"::integer > 0::unsigned
+                    projection ("space_simple_shard_key_hist"."id"::int -> "id", "space_simple_shard_key_hist"."name"::string -> "name")
+                        selection "space_simple_shard_key_hist"."sysOp"::int > 0::int
                             scan "space_simple_shard_key_hist"
             scan "t8"
-                projection ("testing_space"."id"::integer -> "tid")
-                    selection "testing_space"."id"::integer <> 1::unsigned
+                projection ("testing_space"."id"::int -> "tid")
+                    selection "testing_space"."id"::int <> 1::int
                         scan "testing_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -83,15 +83,15 @@ EXPLAIN SELECT * FROM (
         ) as "t1"
         WHERE "id" = 1
 -- EXPECTED:
-projection ("t1"."id"::integer -> "id", "t1"."name"::string -> "name")
-    selection "t1"."id"::integer = 1::unsigned
+projection ("t1"."id"::int -> "id", "t1"."name"::string -> "name")
+    selection "t1"."id"::int = 1::int
         scan "t1"
             union all
-                projection ("space_simple_shard_key"."id"::integer -> "id", "space_simple_shard_key"."name"::string -> "name")
-                    selection "space_simple_shard_key"."sysOp"::integer < 0::unsigned
+                projection ("space_simple_shard_key"."id"::int -> "id", "space_simple_shard_key"."name"::string -> "name")
+                    selection "space_simple_shard_key"."sysOp"::int < 0::int
                         scan "space_simple_shard_key"
-                projection ("space_simple_shard_key_hist"."id"::integer -> "id", "space_simple_shard_key_hist"."name"::string -> "name")
-                    selection "space_simple_shard_key_hist"."sysOp"::integer > 0::unsigned
+                projection ("space_simple_shard_key_hist"."id"::int -> "id", "space_simple_shard_key_hist"."name"::string -> "name")
+                    selection "space_simple_shard_key_hist"."sysOp"::int > 0::int
                         scan "space_simple_shard_key_hist"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -102,8 +102,8 @@ buckets = [1934]
 -- SQL:
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" = "b" + "a"
 -- EXPECTED:
-projection ("arithmetic_space"."id"::integer -> "id")
-    selection ("arithmetic_space"."a"::integer + "arithmetic_space"."b"::integer) = ("arithmetic_space"."b"::integer + "arithmetic_space"."a"::integer)
+projection ("arithmetic_space"."id"::int -> "id")
+    selection ("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) = ("arithmetic_space"."b"::int + "arithmetic_space"."a"::int)
         scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -114,8 +114,8 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "id" from "arithmetic_space" where "a" + "b" > 0 and "b" * "a" = 5
 -- EXPECTED:
-projection ("arithmetic_space"."id"::integer -> "id")
-    selection (("arithmetic_space"."a"::integer + "arithmetic_space"."b"::integer) > 0::unsigned) and (("arithmetic_space"."b"::integer * "arithmetic_space"."a"::integer) = 5::unsigned)
+projection ("arithmetic_space"."id"::int -> "id")
+    selection (("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) > 0::int) and (("arithmetic_space"."b"::int * "arithmetic_space"."a"::int) = 5::int)
         scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -134,21 +134,21 @@ INNER JOIN
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
 WHERE "t3"."id" = 2
 -- EXPECTED:
-projection ("t3"."id"::integer -> "id", "t3"."a"::integer -> "a", "t8"."id1"::integer -> "id1")
-    selection "t3"."id"::integer = 2::unsigned
-        join on ("t3"."id"::integer + ("t3"."a"::integer * 2::unsigned)) = ("t8"."id1"::integer + 4::unsigned)
+projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id1")
+    selection "t3"."id"::int = 2::int
+        join on ("t3"."id"::int + ("t3"."a"::int * 2::int)) = ("t8"."id1"::int + 4::int)
             scan "t3"
                 union all
-                    projection ("arithmetic_space"."id"::integer -> "id", "arithmetic_space"."a"::integer -> "a")
-                        selection "arithmetic_space"."c"::integer < 0::unsigned
+                    projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
+                        selection "arithmetic_space"."c"::int < 0::int
                             scan "arithmetic_space"
-                    projection ("arithmetic_space"."id"::integer -> "id", "arithmetic_space"."a"::integer -> "a")
-                        selection "arithmetic_space"."c"::integer > 0::unsigned
+                    projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
+                        selection "arithmetic_space"."c"::int > 0::int
                             scan "arithmetic_space"
             motion [policy: full]
                 scan "t8"
-                    projection ("arithmetic_space2"."id"::integer -> "id1")
-                        selection "arithmetic_space2"."c"::integer < 0::unsigned
+                    projection ("arithmetic_space2"."id"::int -> "id1")
+                        selection "arithmetic_space2"."c"::int < 0::int
                             scan "arithmetic_space2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -167,21 +167,21 @@ INNER JOIN
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + 4
 WHERE "t3"."id" = 2
 -- EXPECTED:
-projection ("t3"."id"::integer -> "id", "t3"."a"::integer -> "a", "t8"."id1"::integer -> "id1")
-    selection "t3"."id"::integer = 2::unsigned
-        join on ("t3"."id"::integer + ("t3"."a"::integer * 2::unsigned)) = ("t8"."id1"::integer + 4::unsigned)
+projection ("t3"."id"::int -> "id", "t3"."a"::int -> "a", "t8"."id1"::int -> "id1")
+    selection "t3"."id"::int = 2::int
+        join on ("t3"."id"::int + ("t3"."a"::int * 2::int)) = ("t8"."id1"::int + 4::int)
             scan "t3"
                 union all
-                    projection ("arithmetic_space"."id"::integer -> "id", "arithmetic_space"."a"::integer -> "a")
-                        selection ("arithmetic_space"."c"::integer + "arithmetic_space"."a"::integer) < 0::unsigned
+                    projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
+                        selection ("arithmetic_space"."c"::int + "arithmetic_space"."a"::int) < 0::int
                             scan "arithmetic_space"
-                    projection ("arithmetic_space"."id"::integer -> "id", "arithmetic_space"."a"::integer -> "a")
-                        selection "arithmetic_space"."c"::integer > 0::unsigned
+                    projection ("arithmetic_space"."id"::int -> "id", "arithmetic_space"."a"::int -> "a")
+                        selection "arithmetic_space"."c"::int > 0::int
                             scan "arithmetic_space"
             motion [policy: full]
                 scan "t8"
-                    projection ("arithmetic_space2"."id"::integer -> "id1")
-                        selection "arithmetic_space2"."c"::integer < 0::unsigned
+                    projection ("arithmetic_space2"."id"::int -> "id1")
+                        selection "arithmetic_space2"."c"::int < 0::int
                             scan "arithmetic_space2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -192,7 +192,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "id" + 2 from "arithmetic_space"
 -- EXPECTED:
-projection ("arithmetic_space"."id"::integer + 2::unsigned -> "col_1")
+projection ("arithmetic_space"."id"::int + 2::int -> "col_1")
     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -203,7 +203,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" + "b" * "c" from "arithmetic_space"
 -- EXPECTED:
-projection ("arithmetic_space"."a"::integer + ("arithmetic_space"."b"::integer * "arithmetic_space"."c"::integer) -> "col_1")
+projection ("arithmetic_space"."a"::int + ("arithmetic_space"."b"::int * "arithmetic_space"."c"::int) -> "col_1")
     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -214,7 +214,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select ("a" + "b") * "c" from "arithmetic_space"
 -- EXPECTED:
-projection (("arithmetic_space"."a"::integer + "arithmetic_space"."b"::integer) * "arithmetic_space"."c"::integer -> "col_1")
+projection (("arithmetic_space"."a"::int + "arithmetic_space"."b"::int) * "arithmetic_space"."c"::int -> "col_1")
     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -225,7 +225,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" > "b" from "arithmetic_space"
 -- EXPECTED:
-projection ("arithmetic_space"."a"::integer > "arithmetic_space"."b"::integer -> "col_1")
+projection ("arithmetic_space"."a"::int > "arithmetic_space"."b"::int -> "col_1")
     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -236,7 +236,7 @@ buckets = [1-3000]
 -- SQL:
 EXPLAIN select "a" is null from "arithmetic_space"
 -- EXPECTED:
-projection ("arithmetic_space"."a"::integer is null -> "col_1")
+projection ("arithmetic_space"."a"::int is null -> "col_1")
     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -263,7 +263,7 @@ buckets = any
 -- SQL:
 EXPLAIN SELECT CASE WHEN TRUE THEN '1' ELSE TRIM('2') END;
 -- EXPECTED:
-projection (case when true::boolean then '1'::string else TRIM('2'::string) end -> "col_1")
+projection (case when true::bool then '1'::string else TRIM('2'::string) end -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000

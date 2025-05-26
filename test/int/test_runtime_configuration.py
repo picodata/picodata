@@ -336,14 +336,14 @@ def test_alter_system_memtx_checkpoint_count(cluster: Cluster):
     bad_value = True
     with pytest.raises(
         TarantoolError,
-        match=f"""invalid value for '{memtx_checkpoint_count}': expected integer, got boolean""",
+        match=f"""invalid value for '{memtx_checkpoint_count}': expected int, got boolean""",
     ):
         instance.sql(f"ALTER SYSTEM SET {memtx_checkpoint_count} = {bad_value}")
 
     str_value = "str"
     with pytest.raises(
         TarantoolError,
-        match=f"""invalid value for '{memtx_checkpoint_count}': expected integer, got string""",
+        match=f"""invalid value for '{memtx_checkpoint_count}': expected int, got string""",
     ):
         instance.sql(f"ALTER SYSTEM SET {memtx_checkpoint_count} = '{str_value}'")
 
@@ -358,7 +358,7 @@ def test_alter_system_memtx_checkpoint_interval(cluster: Cluster):
     bad_value = -1
     with pytest.raises(
         TarantoolError,
-        match=f"""invalid value for '{memtx_checkpoint_interval}': expected unsigned, got integer""",
+        match=f"""invalid value for '{memtx_checkpoint_interval}': expected unsigned, got int""",
     ):
         instance.sql(f"ALTER SYSTEM SET {memtx_checkpoint_interval} = {bad_value}")
 
@@ -387,7 +387,7 @@ def test_alter_system_sql_storage_cache_size_max(cluster: Cluster):
     bad_value = 1
     with pytest.raises(
         TarantoolError,
-        match=f"""invalid value for '{sql_storage_cache_size_max}': value must be greater than the current cache size 851""",
+        match=f"""invalid value for '{sql_storage_cache_size_max}': value must be greater than the current cache size 845""",
     ):
         instance.sql("SELECT 1")
         instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_size_max} = {bad_value}")

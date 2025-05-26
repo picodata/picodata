@@ -3,7 +3,8 @@ use crate::ir::tests::{column_integer_user_non_null, sharding_column};
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
 
-use crate::ir::relation::{Column, DerivedType, SpaceEngine, Table, Type};
+use crate::ir::relation::{Column, SpaceEngine, Table};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -68,7 +69,7 @@ fn rel_nodes_from_reference_in_proj() {
 
 #[test]
 fn derive_expr_type() {
-    fn column(name: SmolStr, ty: Type) -> Column {
+    fn column(name: SmolStr, ty: UnrestrictedType) -> Column {
         Column {
             name,
             r#type: DerivedType::new(ty),
@@ -81,12 +82,12 @@ fn derive_expr_type() {
     let t = Table::new_sharded(
         "t",
         vec![
-            column(SmolStr::from("a"), Type::Integer),
-            column(SmolStr::from("b"), Type::Integer),
-            column(SmolStr::from("c"), Type::Unsigned),
-            column(SmolStr::from("d"), Type::Decimal),
-            column(SmolStr::from("e"), Type::Decimal),
-            column(SmolStr::from("f"), Type::Double),
+            column(SmolStr::from("a"), UnrestrictedType::Integer),
+            column(SmolStr::from("b"), UnrestrictedType::Integer),
+            column(SmolStr::from("c"), UnrestrictedType::Integer),
+            column(SmolStr::from("d"), UnrestrictedType::Decimal),
+            column(SmolStr::from("e"), UnrestrictedType::Decimal),
+            column(SmolStr::from("f"), UnrestrictedType::Double),
             sharding_column(),
         ],
         &["a"],
@@ -110,7 +111,7 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_divide_id).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Integer
+        UnrestrictedType::Integer
     );
 
     // d*e
@@ -120,7 +121,7 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_multiply_id).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Decimal
+        UnrestrictedType::Decimal
     );
 
     // (b/c + d*e)
@@ -130,7 +131,7 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_addition_id).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Decimal
+        UnrestrictedType::Decimal
     );
 
     // (b/c + d*e) * f
@@ -140,7 +141,7 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_multiply_id2).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Double
+        UnrestrictedType::Double
     );
 
     // a + (b/c + d*e) * f
@@ -150,7 +151,7 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_addition_id2).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Double
+        UnrestrictedType::Double
     );
 
     // a + (b/c + d*e) * f - b
@@ -160,6 +161,6 @@ fn derive_expr_type() {
     let expr = plan.get_expression_node(arith_subract_id).unwrap();
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
-        Type::Double
+        UnrestrictedType::Double
     );
 }

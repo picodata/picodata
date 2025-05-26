@@ -60,8 +60,8 @@ use sbroad::ir::node::plugin::{
 };
 use sbroad::ir::node::Node;
 use sbroad::ir::operator::ConflictStrategy;
-use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use sbroad::ir::types::UnrestrictedType;
 use sbroad::ir::value::Value;
 use sbroad::ir::Plan as IrPlan;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -464,7 +464,7 @@ pub fn dispatch(
                     // We have already checked the amount of passed values, so we can
                     // safely assume that the parameter exists at the given position.
                     let param_def = &routine.params[pos];
-                    let param_type = Type::try_from(param_def.r#type)?;
+                    let param_type = UnrestrictedType::try_from(param_def.r#type)?;
                     // Check that the value has a correct type.
                     if let Some(ty) = value.get_type().get() {
                         if !ty.is_castable_to(&param_type) {

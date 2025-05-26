@@ -1,8 +1,12 @@
 use crate::{
-    config::SbroadType, pico_service::pico_service_password, schema::PICO_SERVICE_USER_NAME,
-    traft::error::Error,
+    pico_service::pico_service_password, schema::PICO_SERVICE_USER_NAME, traft::error::Error,
 };
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
+use sbroad::errors::Entity;
+use sbroad::errors::SbroadError;
+use sbroad::ir::value::{EncodedValue, Value};
+use smol_str::format_smolstr;
+use smol_str::ToSmolStr;
 use std::{
     any::{Any, TypeId},
     cell::Cell,
@@ -16,6 +20,8 @@ use tarantool::{
     network::Config,
     session::{self, UserId},
 };
+
+use crate::config::SbroadType;
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
@@ -863,6 +869,64 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
     }
 }
 
+// This is extended version of similiar function from sbroad.
+pub fn cast_and_encode<'a>(
+    value: &'a Value,
+    column_type: &SbroadType,
+) -> Result<EncodedValue<'a>, SbroadError> {
+    match (column_type, value) {
+        (SbroadType::Any, value) => return Ok(value.into()),
+        (SbroadType::Boolean, Value::Boolean(_)) => return Ok(value.into()),
+        (SbroadType::Datetime, Value::Datetime(_)) => return Ok(value.into()),
+        (SbroadType::Decimal, Value::Decimal(_)) => return Ok(value.into()),
+        (SbroadType::Double, Value::Double(_)) => return Ok(value.into()),
+        (SbroadType::Integer, Value::Integer(_)) => return Ok(value.into()),
+        (SbroadType::String, Value::String(_)) => return Ok(value.into()),
+        (SbroadType::Uuid, Value::Uuid(_)) => return Ok(value.into()),
+        (SbroadType::Unsigned, Value::Unsigned(_)) => return Ok(value.into()),
+        _ => (),
+    }
+
+    if matches!(value, Value::Null) {
+        return Err(SbroadError::Other(
+            "cannot cast NULL to a non-nullable type".to_smolstr(),
+        ));
+    }
+
+    if matches!(column_type, SbroadType::Unsigned) {
+        fn cast_error(value: &Value) -> SbroadError {
+            SbroadError::Invalid(
+                Entity::Value,
+                Some(format_smolstr!(
+                    "Failed to cast {value} to {}.",
+                    SbroadType::Unsigned
+                )),
+            )
+        }
+
+        let result = match value {
+            Value::Unsigned(_) => Ok(value.clone()),
+            Value::Integer(v) => Ok(Value::Unsigned(
+                u64::try_from(*v).map_err(|_| cast_error(value))?,
+            )),
+            Value::Decimal(v) => Ok(Value::Unsigned(
+                v.to_u64().ok_or_else(|| cast_error(value))?,
+            )),
+            Value::Double(ref v) => v
+                .to_string()
+                .parse::<u64>()
+                .map(Value::Unsigned)
+                .map_err(|_| cast_error(value)),
+            Value::Null => Ok(Value::Null),
+            _ => Err(cast_error(value)),
+        };
+
+        return result.map(Into::into);
+    }
+
+    value.clone().cast(column_type.into()).map(Into::into)
+}
+
 // TODO: this should be in sbroad
 pub fn check_msgpack_matches_type(
     msgpack: &[u8],
@@ -889,8 +953,7 @@ pub fn check_msgpack_matches_type(
         SbroadType::String => is_str(marker) || is_bin(marker),
         SbroadType::Uuid => is_ext(msgpack, tarantool::ffi::uuid::MP_UUID),
         SbroadType::Datetime => is_ext(msgpack, tarantool::ffi::datetime::MP_DATETIME),
-        SbroadType::Array => is_array(marker),
-        SbroadType::Map => is_map(marker),
+        SbroadType::Json => is_map(marker),
     };
 
     if !ok {
@@ -901,14 +964,6 @@ pub fn check_msgpack_matches_type(
     }
 
     return Ok(());
-
-    #[inline(always)]
-    fn is_array(marker: Marker) -> bool {
-        matches!(
-            marker,
-            Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
-        )
-    }
 
     #[inline(always)]
     fn is_map(marker: Marker) -> bool {

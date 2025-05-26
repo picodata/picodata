@@ -16,7 +16,7 @@ fn except1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE "test_space"."sysFrom" = CAST($1 AS unsigned)"#,
+            r#"WHERE "test_space"."sysFrom" = CAST($1 AS int)"#,
             r#"EXCEPT"#,
             r#"SELECT "test_space"."id" FROM "test_space""#,
             r#"WHERE "test_space"."FIRST_NAME" = CAST($2 AS string)"#
@@ -40,7 +40,7 @@ fn except1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "test_space"."id" FROM "test_space""#,
-            r#"WHERE "test_space"."sysFrom" = CAST($1 AS unsigned)"#,
+            r#"WHERE "test_space"."sysFrom" = CAST($1 AS int)"#,
             r#"EXCEPT"#,
             r#"SELECT "test_space"."id" FROM "test_space""#,
             r#"WHERE "test_space"."FIRST_NAME" = CAST($2 AS string)"#

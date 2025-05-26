@@ -73,7 +73,7 @@ fn front_explain_select_sql1() {
 
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
         insta::assert_snapshot!(*actual_explain, @r#"
-        projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+        projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
             scan "hash_testing" -> "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -97,9 +97,9 @@ fn front_explain_select_sql2() {
     if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
         insta::assert_snapshot!(*actual_explain, @r#"
         union all
-            projection ("t"."identification_number"::integer -> "c1", "t"."product_code"::string -> "product_code")
+            projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
                 scan "hash_testing" -> "t"
-            projection ("t2"."identification_number"::integer -> "identification_number", "t2"."product_code"::string -> "product_code")
+            projection ("t2"."identification_number"::int -> "identification_number", "t2"."product_code"::string -> "product_code")
                 scan "hash_testing_hist" -> "t2"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -125,10 +125,10 @@ fn front_explain_select_sql3() {
         projection ("q1"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a2"::string
                 scan "q1"
-                    projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
+                    projection ("q1"."a"::string -> "a", "q1"."b"::int -> "b")
                         scan "t3" -> "q1"
                 scan "q2"
-                    projection ("t3"."a"::string -> "a2", "t3"."b"::integer -> "b2")
+                    projection ("t3"."a"::string -> "a2", "t3"."b"::int -> "b2")
                         scan "t3"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -154,10 +154,10 @@ fn front_explain_select_sql4() {
         projection ("q2"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a"::string
                 scan "q1"
-                    projection ("q1"."a"::string -> "a", "q1"."b"::integer -> "b")
+                    projection ("q1"."a"::string -> "a", "q1"."b"::int -> "b")
                         scan "t3" -> "q1"
                 scan "q2"
-                    projection ("q2"."a"::string -> "a", "q2"."b"::integer -> "b")
+                    projection ("q2"."a"::string -> "a", "q2"."b"::int -> "b")
                         scan "t3" -> "q2"
         execution options:
             sql_vdbe_opcode_max = 45000

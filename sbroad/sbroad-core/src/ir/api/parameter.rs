@@ -7,8 +7,8 @@ use crate::ir::node::{
     Alias, Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp, ValuesRow,
 };
 use crate::ir::node::{Node32, TimeParameters};
-use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, OptionParamValue, Plan};
 use smol_str::{format_smolstr, SmolStr};
@@ -284,8 +284,8 @@ impl Plan {
                 if let Some(FunctionFeature::Substring(Substring::From)) = feature {
                     let is_second_parameter_number = matches!(
                         self.calculate_expression_type(children[1])?
-                            .unwrap_or(Type::Any),
-                        Type::Integer | Type::Unsigned
+                            .unwrap_or(UnrestrictedType::Any),
+                        UnrestrictedType::Integer
                     );
                     if is_second_parameter_number {
                         // Create a new owned SmolStr.
@@ -298,13 +298,13 @@ impl Plan {
                 {
                     let is_second_parameter_number = matches!(
                         self.calculate_expression_type(children[1])?
-                            .unwrap_or(Type::Any),
-                        Type::Integer | Type::Unsigned
+                            .unwrap_or(UnrestrictedType::Any),
+                        UnrestrictedType::Integer
                     );
                     let is_third_parameter_number = matches!(
                         self.calculate_expression_type(children[2])?
-                            .unwrap_or(Type::Any),
-                        Type::Integer | Type::Unsigned
+                            .unwrap_or(UnrestrictedType::Any),
+                        UnrestrictedType::Integer
                     );
                     if is_second_parameter_number && is_third_parameter_number {
                         // Create a new owned SmolStr.
@@ -350,31 +350,31 @@ impl Plan {
             {
                 let is_first_parameter_string = matches!(
                     self.calculate_expression_type(children[0])?
-                        .unwrap_or(Type::String),
-                    Type::String,
+                        .unwrap_or(UnrestrictedType::String),
+                    UnrestrictedType::String,
                 );
                 let is_second_parameter_number = matches!(
                     self.calculate_expression_type(children[1])?
-                        .unwrap_or(Type::Integer),
-                    Type::Integer | Type::Unsigned
+                        .unwrap_or(UnrestrictedType::Integer),
+                    UnrestrictedType::Integer
                 );
                 let is_second_parameter_string = matches!(
                     self.calculate_expression_type(children[1])?
-                        .unwrap_or(Type::String),
-                    Type::String,
+                        .unwrap_or(UnrestrictedType::String),
+                    UnrestrictedType::String,
                 );
 
                 match substr {
                     Substring::FromFor | Substring::Regular => {
                         let is_third_parameter_number = matches!(
                             self.calculate_expression_type(children[2])?
-                                .unwrap_or(Type::Integer),
-                            Type::Integer | Type::Unsigned
+                                .unwrap_or(UnrestrictedType::Integer),
+                            UnrestrictedType::Integer
                         );
                         let is_third_parameter_string = matches!(
                             self.calculate_expression_type(children[2])?
-                                .unwrap_or(Type::String),
-                            Type::String,
+                                .unwrap_or(UnrestrictedType::String),
+                            UnrestrictedType::String,
                         );
 
                         if !is_first_parameter_string
@@ -421,8 +421,8 @@ impl Plan {
                     Substring::For => {
                         let is_third_parameter_number = matches!(
                             self.calculate_expression_type(children[2])?
-                                .unwrap_or(Type::Integer),
-                            Type::Integer | Type::Unsigned
+                                .unwrap_or(UnrestrictedType::Integer),
+                            UnrestrictedType::Integer
                         );
 
                         if !is_first_parameter_string || !is_third_parameter_number {
@@ -456,8 +456,8 @@ impl Plan {
                     Substring::Similar => {
                         let is_third_parameter_string = matches!(
                             self.calculate_expression_type(children[2])?
-                                .unwrap_or(Type::String),
-                            Type::String,
+                                .unwrap_or(UnrestrictedType::String),
+                            UnrestrictedType::String,
                         );
 
                         if !is_first_parameter_string

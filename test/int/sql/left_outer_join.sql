@@ -108,13 +108,13 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B"
 -- EXPECTED:
-projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on "T1"."A"::integer = "T2"."B"::integer
+projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
+    left join on "T1"."A"::int = "T2"."B"::int
         scan "T1"
-            projection ("arithmetic_space"."id"::integer -> "A")
+            projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
         scan "T2"
-            projection ("arithmetic_space2"."id"::integer -> "B")
+            projection ("arithmetic_space2"."id"::int -> "B")
                 scan "arithmetic_space2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -140,14 +140,14 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B"
 -- EXPECTED:
-projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on "T1"."A"::integer = "T2"."B"::integer
+projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
+    left join on "T1"."A"::int = "T2"."B"::int
         scan "T1"
-            projection ("arithmetic_space"."id"::integer -> "A")
+            projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
         motion [policy: segment([ref("B")])]
             scan "T2"
-                projection ("arithmetic_space2"."a"::integer -> "B")
+                projection ("arithmetic_space2"."a"::int -> "B")
                     scan "arithmetic_space2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -172,14 +172,14 @@ explain select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B"
 -- EXPECTED:
-projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on "T1"."A"::integer < "T2"."B"::integer
+projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
+    left join on "T1"."A"::int < "T2"."B"::int
         scan "T1"
-            projection ("arithmetic_space"."id"::integer -> "A")
+            projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
         motion [policy: full]
             scan "T2"
-                projection ("arithmetic_space2"."a"::integer -> "B")
+                projection ("arithmetic_space2"."a"::int -> "B")
                     scan "arithmetic_space2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -233,19 +233,19 @@ explain select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space")
 -- EXPECTED:
-projection ("T1"."A"::integer -> "A", "T2"."B"::integer -> "B")
-    left join on "T1"."A"::integer in ROW($0)
+projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
+    left join on "T1"."A"::int in ROW($0)
         scan "T1"
-            projection ("arithmetic_space"."a"::integer -> "A")
+            projection ("arithmetic_space"."a"::int -> "A")
                 scan "arithmetic_space"
         motion [policy: full]
             scan "T2"
-                projection ("arithmetic_space2"."id"::integer -> "B")
+                projection ("arithmetic_space2"."id"::int -> "B")
                     scan "arithmetic_space2"
 subquery $0:
 motion [policy: full]
             scan
-                projection ("arithmetic_space"."a"::integer + 1::unsigned -> "col_1")
+                projection ("arithmetic_space"."a"::int + 1::int -> "col_1")
                     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -272,19 +272,19 @@ explain select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space")
 -- EXPECTED:
-projection ("t1"."A"::integer -> "A", "t2"."B"::integer -> "B")
-    left join on "t1"."A"::integer in ROW($0)
+projection ("t1"."A"::int -> "A", "t2"."B"::int -> "B")
+    left join on "t1"."A"::int in ROW($0)
         scan "t1"
-            projection ("arithmetic_space"."id"::integer -> "A")
+            projection ("arithmetic_space"."id"::int -> "A")
                 scan "arithmetic_space"
         motion [policy: full]
             scan "t2"
-                projection ("arithmetic_space2"."id"::integer -> "B")
+                projection ("arithmetic_space2"."id"::int -> "B")
                     scan "arithmetic_space2"
 subquery $0:
 motion [policy: segment([ref("c")])]
             scan
-                projection ("arithmetic_space"."c"::integer -> "c")
+                projection ("arithmetic_space"."c"::int -> "c")
                     scan "arithmetic_space"
 execution options:
     sql_vdbe_opcode_max = 45000

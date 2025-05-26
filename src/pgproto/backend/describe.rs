@@ -15,7 +15,7 @@ use sbroad::{
             acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
             relational::Relational, tcl::Tcl, Alias, GrantPrivilege, Node, RevokePrivilege,
         },
-        relation::{DerivedType, Type as SbroadType},
+        types::{DerivedType, UnrestrictedType as SbroadType},
         Plan,
     },
 };
@@ -305,7 +305,7 @@ impl MetadataColumn {
 fn pg_type_from_sbroad(sbroad: &DerivedType) -> Type {
     if let Some(sbroad) = sbroad.get() {
         match sbroad {
-            SbroadType::Integer | SbroadType::Unsigned => Type::INT8,
+            SbroadType::Integer => Type::INT8,
             SbroadType::Map | SbroadType::Array | SbroadType::Any => Type::JSON,
             SbroadType::String => Type::TEXT,
             SbroadType::Boolean => Type::BOOL,

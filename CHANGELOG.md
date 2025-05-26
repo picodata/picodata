@@ -26,6 +26,11 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports new volatile scalar functions `pico_raft_leader_id()` and `pico_raft_leader_uuid()`.
 - SQL scalar function `instance_uuid` is now marked as deprecated, consider using `pico_instance_uuid`.
 - SQL supports new stable scalar function `version()`, that returns version of the current instance.
+- Remove `Unsigned` type from casts and general type operations:
+  - The `Unsigned` type can no longer be used in casts (`CAST(x AS unsigned)`)
+  - `Unsigned` no longer appears in `EXPLAIN` output
+  - The type remains available only for column definitions in DDL (`CREATE TABLE`, `ALTER TABLE`)
+
 
 ### Pgproto
 

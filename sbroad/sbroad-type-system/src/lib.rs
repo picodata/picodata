@@ -136,7 +136,6 @@ mod tests {
 
     fn default_type_system() -> TypeSystem {
         let functions = vec![
-            Function::new_operator("+", [Type::Unsigned, Type::Unsigned], Type::Unsigned),
             Function::new_operator("+", [Type::Integer, Type::Integer], Type::Integer),
             Function::new_operator("+", [Type::Double, Type::Double], Type::Double),
             Function::new_operator("+", [Type::Numeric, Type::Numeric], Type::Numeric),
@@ -163,7 +162,6 @@ mod tests {
             Function::new_operator("+", [Type::Integer, Type::Integer], Type::Integer),
             Function::new_operator("=", [Type::Text, Type::Text], Type::Boolean),
             Function::new_operator("=", [Type::Integer, Type::Integer], Type::Boolean),
-            Function::new_operator("+", [Type::Unsigned, Type::Unsigned], Type::Unsigned),
             Function::new_operator("=", [Type::Numeric, Type::Numeric], Type::Boolean),
         ];
 
@@ -181,16 +179,8 @@ mod tests {
             (binary("+", lit(Integer), lit(Numeric)), None, Numeric),
             (binary("+", lit(Double), lit(Numeric)), None, Double),
             (binary("+", lit(Double), lit(Numeric)), Some(Double), Double),
-            (binary("+", param("$1"), param("$2")), None, Unsigned),
+            (binary("+", param("$1"), param("$2")), None, Integer),
             (binary("+", param("$1"), param("$2")), Some(Double), Double),
-            (binary("+", lit(Unsigned), lit(Unsigned)), None, Unsigned),
-            (binary("+", lit(Unsigned), lit(Integer)), None, Integer),
-            (binary("+", lit(Unsigned), lit(Double)), None, Double),
-            (
-                binary("+", lit(Unsigned), lit(Unsigned)),
-                Some(Numeric),
-                Numeric,
-            ),
             (
                 binary("+", lit(Double), lit(Numeric)),
                 Some(Numeric),
@@ -261,16 +251,6 @@ mod tests {
                 coalesce(vec![lit(Double), lit(Numeric), lit(Numeric), lit(Numeric)]),
                 None,
                 Double,
-            ),
-            (
-                coalesce(vec![lit(Unsigned), lit(Integer), lit(Double), lit(Numeric)]),
-                None,
-                Double,
-            ),
-            (
-                coalesce(vec![lit(Unsigned), lit(Integer), param("$1"), lit(Numeric)]),
-                None,
-                Numeric,
             ),
             (binary("=", lit(Text), param("$1")), None, Boolean),
             (binary("=", lit(Integer), param("$1")), None, Boolean),
@@ -363,9 +343,9 @@ mod tests {
                 "COALESCE types bool, numeric and unknown cannot be matched",
             ),
             (
-                coalesce(vec![lit(Unsigned), lit(Integer), lit(Double), lit(Boolean)]),
+                coalesce(vec![lit(Integer), lit(Double), lit(Boolean)]),
                 None,
-                "COALESCE types unsigned, int, double and bool cannot be matched",
+                "COALESCE types int, double and bool cannot be matched",
             ),
         ];
 
@@ -729,11 +709,11 @@ mod tests {
 
         analyzer.analyze(&expr, None).unwrap();
         let report = analyzer.get_report();
-        assert_eq!(report.get_type(&lid), Unsigned);
-        assert_eq!(report.get_type(&rid), Unsigned);
+        assert_eq!(report.get_type(&lid), Integer);
+        assert_eq!(report.get_type(&rid), Integer);
         assert_eq!(
             analyzer.get_parameter_types(),
-            &[Some(Unsigned), Some(Unsigned)]
+            &[Some(Integer), Some(Integer)]
         );
 
         // Cache {
@@ -754,7 +734,7 @@ mod tests {
         assert_eq!(report.get_type(&rid), Double);
         assert_eq!(
             analyzer.get_parameter_types(),
-            &[Some(Unsigned), Some(Unsigned)]
+            &[Some(Integer), Some(Integer)]
         );
 
         // inferred params: [Unsigned, Unsigned]

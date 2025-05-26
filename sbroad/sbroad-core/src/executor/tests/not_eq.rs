@@ -41,7 +41,7 @@ fn not_eq1_test() {
             format!(
                 "{} {}",
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-                r#"WHERE ("t"."identification_number" <> CAST($1 AS unsigned)) and ("t"."product_code" <> CAST($2 AS string))"#,
+                r#"WHERE ("t"."identification_number" <> CAST($1 AS int)) and ("t"."product_code" <> CAST($2 AS string))"#,
             ),
             vec![Value::from(1_u64), Value::from("2")],
         ))),

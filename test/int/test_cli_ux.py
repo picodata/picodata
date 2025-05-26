@@ -82,7 +82,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("sql> ")
 
     cli.sendline("EXPLAIN SELECT * FROM ids;")
-    cli.expect_exact('projection ("ids"."id"::integer -> "id")')
+    cli.expect_exact('projection ("ids"."id"::int -> "id")')
     cli.expect_exact('scan "ids"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
@@ -373,7 +373,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('insert "assets" on conflict: fail')
     cli.expect_exact('motion [policy: segment([ref("COLUMN_1")])]')
     cli.expect_exact("values")
-    cli.expect_exact("value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))")
+    cli.expect_exact("value row (data=ROW(1::int, 'Woody'::string, 2561::int))")
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
     cli.expect_exact("sql_motion_row_max = 5000")
@@ -384,7 +384,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('update "characters')
     cli.expect_exact('"year" = "col_0"')
     cli.expect_exact("motion [policy: local]")
-    cli.expect_exact('projection (2010::unsigned -> "col_0", "characters"."id"::integer -> "col_1")')
+    cli.expect_exact('projection (2010::int -> "col_0", "characters"."id"::int -> "col_1")')
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")
@@ -398,9 +398,9 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact('"year" = "col_1"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        'projection (\'Etch\'::string -> "col_0", 2010::unsigned -> "col_1", "characters"."id"::integer -> "col_2")'
+        'projection (\'Etch\'::string -> "col_0", 2010::int -> "col_1", "characters"."id"::int -> "col_2")'
     )
-    cli.expect_exact('selection "characters"."id"::integer = 2::unsigned')
+    cli.expect_exact('selection "characters"."id"::int = 2::int')
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_opcode_max = 45000")

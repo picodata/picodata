@@ -9,7 +9,7 @@ fn select() {
     limit 100
         motion [policy: full]
             limit 100
-                projection ("test_space"."id"::unsigned -> "id")
+                projection ("test_space"."id"::int -> "id")
                     scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -34,7 +34,7 @@ fn union_all() {
                 union all
                     projection ("hash_testing"."product_code"::string -> "product_code")
                         scan "hash_testing"
-                    projection ("t2"."e"::unsigned -> "e")
+                    projection ("t2"."e"::int -> "e")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -50,10 +50,10 @@ fn aggregate() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection (min(("min_1"::unsigned))::unsigned -> "col_1", min(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
+        projection (min(("min_1"::int))::int -> "col_1", min(distinct ("gr_expr_1"::int))::int -> "col_2")
             motion [policy: full]
-                projection ("t"."b"::unsigned -> "gr_expr_1", min(("t"."b"::unsigned))::unsigned -> "min_1")
-                    group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+                projection ("t"."b"::int -> "gr_expr_1", min(("t"."b"::int))::int -> "min_1")
+                    group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -69,11 +69,11 @@ fn group_by() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 555
-        projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
-            group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
+        projection (sum(("count_1"::int))::int -> "col_1", "gr_expr_1"::int -> "b")
+            group by ("gr_expr_1"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "count_1"::int -> "count_1")
                 motion [policy: full]
-                    projection ("t"."b"::unsigned -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
-                        group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+                    projection ("t"."b"::int -> "gr_expr_1", count((*::int))::int -> "count_1")
+                        group by ("t"."b"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
                             scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -88,12 +88,12 @@ fn single_limit() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection ("id"::unsigned -> "id")
+        projection ("id"::int -> "id")
             scan
                 limit 1
                     motion [policy: full]
                         limit 1
-                            projection ("test_space"."id"::unsigned -> "id")
+                            projection ("test_space"."id"::int -> "id")
                                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -113,24 +113,24 @@ fn join() {
     limit 128
         motion [policy: full]
             limit 128
-                projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t3"."a"::string -> "a", "t3"."b"::integer -> "b", "t4"."c"::string -> "c", "t4"."d"::integer -> "d")
-                    join on "t2"."f"::unsigned = "t4"."d"::integer
+                projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t3"."a"::string -> "a", "t3"."b"::int -> "b", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
+                    join on "t2"."f"::int = "t4"."d"::int
                         join on "t1"."a"::string = "t3"."a"::string
-                            left join on "t1"."b"::integer = "t2"."e"::unsigned
+                            left join on "t1"."b"::int = "t2"."e"::int
                                 scan "t1"
-                                    projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
+                                    projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                                         scan "t1"
                                 motion [policy: full]
                                     scan "t2"
-                                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                                             scan "t2"
                             motion [policy: full]
                                 scan "t3"
-                                    projection ("t3"."a"::string -> "a", "t3"."b"::integer -> "b")
+                                    projection ("t3"."a"::string -> "a", "t3"."b"::int -> "b")
                                         scan "t3"
                         motion [policy: full]
                             scan "t4"
-                                projection ("t4"."c"::string -> "c", "t4"."d"::integer -> "d")
+                                projection ("t4"."c"::string -> "c", "t4"."d"::int -> "d")
                                     scan "t4"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -144,7 +144,7 @@ fn limit_all() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
+    projection ("test_space"."id"::int -> "id")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -158,7 +158,7 @@ fn limit_null() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
+    projection ("test_space"."id"::int -> "id")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Type {
-    Unsigned,
     Integer,
     Double,
     Numeric,
@@ -32,7 +31,6 @@ pub enum Type {
 impl Type {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Type::Unsigned => "unsigned",
             Type::Integer => "int",
             Type::Double => "double",
             Type::Numeric => "numeric",

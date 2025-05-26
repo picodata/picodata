@@ -114,7 +114,7 @@ def test_explain(postgres: Postgres):
     assert 'insert "explain" on conflict: fail' in plan[0]
     assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
     assert "        values" in plan[2]
-    assert "            value row (data=ROW(0::unsigned))" in plan[3]
+    assert "            value row (data=ROW(0::int))" in plan[3]
     assert "execution options:" in plan[4]
 
     cur.execute(query)
@@ -123,7 +123,7 @@ def test_explain(postgres: Postgres):
     assert 'insert "explain" on conflict: fail' in plan[0]
     assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
     assert "        values" in plan[2]
-    assert "            value row (data=ROW(0::unsigned))" in plan[3]
+    assert "            value row (data=ROW(0::int))" in plan[3]
     assert "execution options:" in plan[4]
 
     query = """
@@ -131,14 +131,14 @@ def test_explain(postgres: Postgres):
     """
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'projection ("explain"."id"::integer -> "id")' in plan[0]
+    assert 'projection ("explain"."id"::int -> "id")' in plan[0]
     assert '    scan "explain"' in plan[1]
     assert "execution options:" in plan[2]
 
     cur.execute(query)
     cur.execute("explain " + query)
     plan = cur.fetchall()
-    assert 'projection ("explain"."id"::integer -> "id")' in plan[0]
+    assert 'projection ("explain"."id"::int -> "id")' in plan[0]
     assert '    scan "explain"' in plan[1]
     assert "execution options:" in plan[2]
 

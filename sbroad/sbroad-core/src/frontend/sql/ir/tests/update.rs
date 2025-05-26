@@ -10,7 +10,7 @@ fn update1() {
     update "test_space"
     "FIRST_NAME" = "col_0"
         motion [policy: local]
-            projection ('test'::string -> "col_0", "test_space"."id"::unsigned -> "col_1")
+            projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -27,7 +27,7 @@ fn update2() {
     update "test_space"
     "FIRST_NAME" = "col_0"
         motion [policy: local]
-            projection ('test'::string -> "col_0", "test_space"."id"::unsigned -> "col_1")
+            projection ('test'::string -> "col_0", "test_space"."id"::int -> "col_1")
                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

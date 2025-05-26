@@ -10,7 +10,7 @@ fn selection_column_from_values() {
     "#;
 
     let expected = PatternWithParams::new(
-        r#"SELECT "COLUMN_1" FROM (VALUES (CAST($1 AS unsigned)))"#.to_string(),
+        r#"SELECT "COLUMN_1" FROM (VALUES (CAST($1 AS int)))"#.to_string(),
         vec![Value::Unsigned(1)],
     );
     check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);
@@ -68,9 +68,9 @@ fn selection2_latest() {
     let expected = PatternWithParams::new(
         f_sql(
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing"
-WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS boolean), CAST($2 AS unsigned)))
+WHERE ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS bool), CAST($2 AS int)))
 and "hash_testing"."product_units")
-or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS boolean), CAST($2 AS unsigned)))
+or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS bool), CAST($2 AS int)))
 and ("hash_testing"."product_units" is null))"#,
         ),
         vec![Value::Boolean(true), Value::Unsigned(1)],
@@ -88,7 +88,7 @@ fn selection2_oldest() {
     let expected = PatternWithParams::new(
         [
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE (("hash_testing"."identification_number" in (CAST($1 AS unsigned))) and ("hash_testing"."product_units" = CAST($2 AS boolean)))"#,
+            r#"WHERE (("hash_testing"."identification_number" in (CAST($1 AS int))) and ("hash_testing"."product_units" = CAST($2 AS bool)))"#,
             r#"and ("hash_testing"."product_units" or ("hash_testing"."product_units" is null))"#,
         ].join(" "),
         vec![Value::Unsigned(1), Value::Boolean(true)],

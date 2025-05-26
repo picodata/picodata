@@ -31,10 +31,10 @@ fn front_number_param_in_cast() {
 
 #[test]
 fn front_param_in_cast() {
-    let pattern = r#"SELECT CAST(? AS INTEGER) FROM "test_space""#;
+    let pattern = r#"SELECT CAST(? AS int) FROM "test_space""#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (1::integer -> "col_1")
+    projection (1::int -> "col_1")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -49,8 +49,8 @@ fn front_params1() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
-        selection ("test_space"."sys_op"::unsigned = 0::integer) and ("test_space"."sysFrom"::unsigned > 1::integer)
+    projection ("test_space"."id"::int -> "id", "test_space"."FIRST_NAME"::string -> "FIRST_NAME")
+        selection ("test_space"."sys_op"::int = 0::int) and ("test_space"."sysFrom"::int > 1::int)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -66,8 +66,8 @@ fn front_params2() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::Null, Value::from("hello")]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
-        selection ("test_space"."sys_op"::unsigned = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'hello'::string)
+    projection ("test_space"."id"::int -> "id")
+        selection ("test_space"."sys_op"::int = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'hello'::string)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -84,8 +84,8 @@ fn front_params3() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::Null, Value::from("кириллица")]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
-        selection ("test_space"."sys_op"::unsigned = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'кириллица'::string)
+    projection ("test_space"."id"::int -> "id")
+        selection ("test_space"."sys_op"::int = NULL::unknown) and ("test_space"."FIRST_NAME"::string = 'кириллица'::string)
             scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -105,7 +105,7 @@ fn front_params4() {
     );
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
+    projection ("test_space"."id"::int -> "id")
         selection "test_space"."FIRST_NAME"::string = '''± !@#$%^&*()_+=-\/><";:,.`~'::string
             scan "test_space"
     execution options:
@@ -128,14 +128,14 @@ fn front_params5() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
-        selection ("test_space"."sys_op"::unsigned = 0::integer) or ("test_space"."id"::unsigned in ROW($0))
+    projection ("test_space"."id"::int -> "id")
+        selection ("test_space"."sys_op"::int = 0::int) or ("test_space"."id"::int in ROW($0))
             scan "test_space"
     subquery $0:
     motion [policy: segment([ref("sysFrom")])]
                 scan
-                    projection ("test_space_hist"."sysFrom"::unsigned -> "sysFrom")
-                        selection "test_space_hist"."sys_op"::unsigned = 1::integer
+                    projection ("test_space_hist"."sysFrom"::int -> "sysFrom")
+                        selection "test_space_hist"."sys_op"::int = 1::int
                             scan "test_space_hist"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -162,18 +162,18 @@ fn front_params6() {
     );
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::unsigned -> "id")
-        selection ("test_space"."sys_op"::unsigned = 0::integer) or (not ("test_space"."id"::unsigned in ROW($0)))
+    projection ("test_space"."id"::int -> "id")
+        selection ("test_space"."sys_op"::int = 0::int) or (not ("test_space"."id"::int in ROW($0)))
             scan "test_space"
     subquery $0:
     motion [policy: full]
                 scan
                     union all
-                        projection ("test_space"."id"::unsigned -> "id")
-                            selection "test_space"."sys_op"::unsigned = 1::integer
+                        projection ("test_space"."id"::int -> "id")
+                            selection "test_space"."sys_op"::int = 1::int
                                 scan "test_space"
-                        projection ("test_space"."id"::unsigned -> "id")
-                            selection "test_space"."sys_op"::unsigned = 2::integer
+                        projection ("test_space"."id"::int -> "id")
+                            selection "test_space"."sys_op"::int = 2::int
                                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

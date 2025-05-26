@@ -196,7 +196,6 @@ impl TypeSystem {
 
         use Type::*;
         match from {
-            Unsigned => matches!(to, Integer | Double | Numeric),
             Integer => matches!(to, Double | Numeric),
             Double => matches!(to, Numeric),
             _else => false,

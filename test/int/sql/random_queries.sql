@@ -124,25 +124,25 @@ false
 -- SQL:
 SELECT 1 + (2 < 3)
 -- ERROR:
-could not resolve operator overload for \+\(unsigned, bool\)
+could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: parentheses-under-arithmetic-with-not
 -- SQL:
 SELECT (NOT 1) + NULL
 -- ERROR:
-argument of NOT must be type boolean, not type unsigned
+argument of NOT must be type boolean, not type int 
 
 -- TEST: parentheses-under-arithmetic-with-between
 -- SQL:
 SELECT 1 + (1 BETWEEN 1 AND 1)
 -- ERROR:
-could not resolve operator overload for \+\(unsigned, bool\)
+could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: parentheses-under-concat
 -- SQL:
 SELECT (NOT 1) || '1'
 -- ERROR:
-argument of NOT must be type boolean, not type unsigned
+argument of NOT must be type boolean, not type int
 
 -- TEST: parentheses-under-divide
 -- SQL:
@@ -166,7 +166,7 @@ SELECT 2 * (3 + 5)
 -- SQL:
 SELECT 1 = (2 = FALSE)
 -- ERROR:
-could not resolve operator overload for =\(unsigned, bool\)
+could not resolve operator overload for =\(int, bool\)
 
 -- TEST: parentheses-under-like
 -- SQL:

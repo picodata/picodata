@@ -11,7 +11,7 @@ use crate::ir::node::{
     NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget,
     Row, ScalarFunction, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
-use crate::ir::relation::{DerivedType, Type};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use ahash::{AHashMap, AHashSet};
 use core::panic;
 use itertools::Itertools;
@@ -41,7 +41,6 @@ use crate::ir::acl::{GrantRevokeType, Privilege};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::ddl::{AlterSystemType, ColumnDef, SetParamScopeType, SetParamValue};
 use crate::ir::ddl::{Language, ParamDef};
-use crate::ir::expression::cast::Type as CastType;
 use crate::ir::expression::{
     ColumnPositionMap, ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, FunctionFeature,
     Position, TrimKind, VolatilityType,
@@ -63,11 +62,13 @@ use crate::ir::node::{
 use crate::ir::operator::{
     Arithmetic, Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
 };
-use crate::ir::relation::{Column, ColumnRole, TableKind, Type as RelationType};
+use crate::ir::relation::{Column, ColumnRole, TableKind};
 use crate::ir::transformation::redistribution::ColumnPosition;
 use crate::ir::tree::traversal::{
     LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
 };
+use crate::ir::types::CastType;
+use crate::ir::types::DomainType;
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
 use crate::warn;
@@ -256,16 +257,7 @@ fn parse_proc_params(
             .first()
             .expect("Expected specific type under ColumnDefType node");
         let type_node = ast.nodes.get_node(*type_node_inner_id)?;
-        let data_type = match type_node.rule {
-            Rule::TypeBool => RelationType::Boolean,
-            Rule::TypeDecimal => RelationType::Decimal,
-            Rule::TypeDouble => RelationType::Double,
-            Rule::TypeInt => RelationType::Integer,
-            Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => RelationType::String,
-            Rule::TypeUuid => RelationType::Uuid,
-            Rule::TypeUnsigned => RelationType::Unsigned,
-            _ => unreachable!("Unexpected node: {type_node:?}"),
-        };
+        let data_type = UnrestrictedType::try_from(type_node.rule)?;
         params.push(ParamDef { data_type });
     }
     Ok(params)
@@ -730,17 +722,39 @@ fn parse_drop_index(ast: &AbstractSyntaxTree, node: &ParseNode) -> Result<DropIn
     })
 }
 
-fn parse_column_def_type(node: &ParseNode) -> Result<RelationType, SbroadError> {
+fn parse_column_def_type(
+    node: &ParseNode,
+    ast: &AbstractSyntaxTree,
+) -> Result<DomainType, SbroadError> {
     let data_type = match node.rule {
-        Rule::TypeBool => RelationType::Boolean,
-        Rule::TypeDatetime => RelationType::Datetime,
-        Rule::TypeDecimal => RelationType::Decimal,
-        Rule::TypeDouble => RelationType::Double,
-        Rule::TypeInt => RelationType::Integer,
-        Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => RelationType::String,
-        Rule::TypeUnsigned => RelationType::Unsigned,
-        Rule::TypeJSON => RelationType::Map,
-        Rule::TypeUuid => RelationType::Uuid,
+        Rule::DomainType => {
+            let node_id = node.first_child();
+            let node = ast.nodes.get_node(node_id)?;
+            match node.rule {
+                Rule::TypeUnsigned => DomainType::Unsigned,
+                _ => {
+                    panic!("Met unexpected rule under DomainType: {:?}.", node.rule);
+                }
+            }
+        }
+
+        Rule::Type => {
+            let node_id = node.first_child();
+            let node = ast.nodes.get_node(node_id)?;
+            match node.rule {
+                Rule::TypeBool => DomainType::Boolean,
+                Rule::TypeDatetime => DomainType::Datetime,
+                Rule::TypeDecimal => DomainType::Decimal,
+                Rule::TypeDouble => DomainType::Double,
+                Rule::TypeInt => DomainType::Integer,
+                Rule::TypeJSON => DomainType::Json,
+                Rule::TypeString | Rule::TypeVarchar | Rule::TypeText => DomainType::String,
+                Rule::TypeUuid => DomainType::Uuid,
+                _ => {
+                    panic!("Met unexpected rule under Type: {:?}.", node.rule);
+                }
+            }
+        }
         _ => {
             panic!("Met unexpected rule under ColumnDef: {:?}.", node.rule);
         }
@@ -808,9 +822,9 @@ fn parse_create_table(
                     let ty_node_id = column_ty_node
                         .children
                         .first()
-                        .expect("ColumnDefType must have a type child");
+                        .expect("ColumnDef must have a type child");
                     let ty_node = ast.nodes.get_node(*ty_node_id)?;
-                    let data_type = parse_column_def_type(ty_node)?;
+                    let data_type = parse_column_def_type(ty_node, ast)?;
                     let mut is_nullable = true;
 
                     for def_child_id in column_def_children.iter().skip(2) {
@@ -1102,7 +1116,7 @@ fn parse_alter_table(
                                         debug_assert_eq!(data_type_node.rule, Rule::ColumnDefType);
                                         let data_type_node =
                                             ast.nodes.get_node(data_type_node.first_child())?;
-                                        let data_type = parse_column_def_type(data_type_node)?;
+                                        let data_type = parse_column_def_type(data_type_node, ast)?;
 
                                         let is_nullable = if let Some(id) = node.children.get(2) {
                                             let node = ast.nodes.get_node(*id)?;
@@ -1662,7 +1676,7 @@ fn parse_insert<M: Metadata>(
 fn parse_insert_source<M: Metadata>(
     node_id: usize,
     ast: &AbstractSyntaxTree,
-    column_types: &[Type],
+    column_types: &[UnrestrictedType],
     map: &Translation,
     type_analyzer: &mut TypeAnalyzer,
     pairs_map: &mut ParsingPairsMap,
@@ -1735,8 +1749,8 @@ fn parse_insert_source<M: Metadata>(
 }
 
 /// Check if an expression of type `src` can be assigned to a column of type `dst`.
-fn can_assign(src: DerivedType, dst: Type) -> bool {
-    if dst == Type::Any {
+fn can_assign(src: DerivedType, dst: UnrestrictedType) -> bool {
+    if dst == UnrestrictedType::Any {
         // Any type can be assigned to a column of type any.
         return true;
     }
@@ -1746,12 +1760,7 @@ fn can_assign(src: DerivedType, dst: Type) -> bool {
         return true;
     };
 
-    use Type::*;
-    match dst {
-        Unsigned => matches!(src, Integer | Unsigned),
-        Integer => matches!(src, Integer | Unsigned),
-        _ => dst == src,
-    }
+    src == dst
 }
 
 /// Get String value under node that is considered to be an identifier
@@ -2982,19 +2991,19 @@ fn cast_type_from_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
     let mut column_def_type_pairs = type_pair.into_inner();
     let column_def_type = column_def_type_pairs
         .next()
-        .expect("concrete type expected under ColumnDefType");
+        .expect("concrete type expected under Type");
     if column_def_type.as_rule() != Rule::TypeVarchar {
         return CastType::try_from(&column_def_type.as_rule());
     }
 
     let mut type_pairs_inner = column_def_type.into_inner();
     let type_cast = type_pairs_inner.next().map_or_else(
-        || Ok(CastType::Text),
+        || Ok(CastType::String),
         |varchar_length| {
             varchar_length
                 .as_str()
                 .parse::<usize>()
-                .map(CastType::Varchar)
+                .map(|_| CastType::String)
                 .map_err(|e| {
                     SbroadError::ParsingError(
                         Entity::Value,
@@ -4133,7 +4142,7 @@ where
             match op.as_rule() {
                 Rule::CastPostfix => {
                     let ty_pair = op.into_inner().next()
-                        .expect("Expected ColumnDefType under CastPostfix.");
+                        .expect("Expected Type under CastPostfix.");
                     let cast_type = cast_type_from_pair(ty_pair)?;
                     Ok(ParseExpression::Cast { child: Box::new(child), cast_type })
                 }
@@ -4275,7 +4284,7 @@ where
 fn parse_values_rows<M>(
     rows: &[usize],
     type_analyzer: &mut TypeAnalyzer,
-    desired_types: &[Type],
+    desired_types: &[UnrestrictedType],
     pairs_map: &mut ParsingPairsMap,
     col_idx: &mut usize,
     worker: &mut ExpressionsWorker<M>,
@@ -5097,7 +5106,7 @@ impl AbstractSyntaxTree {
                 )),
                 Node::Expression(expr) => {
                     if let Expression::Reference(Reference {col_type, ..}) = expr {
-                        if matches!(col_type.get(), Some(Type::Array)) {
+                        if matches!(col_type.get(), Some(UnrestrictedType::Array)) {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
                                 Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
@@ -5125,7 +5134,7 @@ impl AbstractSyntaxTree {
                             let alias_node = plan.get_expression_node(*alias_node_id)?;
                             if let Expression::Alias(Alias { child, .. }) = alias_node {
                                 if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
-                                    if matches!(col_type.get(), Some(Type::Array)) {
+                                    if matches!(col_type.get(), Some(UnrestrictedType::Array)) {
                                         return Err(SbroadError::Invalid(
                                             Entity::Expression,
                                             Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
@@ -5364,7 +5373,7 @@ impl AbstractSyntaxTree {
                                 let offset_expr_plan_node_id = parse_scalar_expr(
                                     Pairs::single(offset_expr_pair),
                                     type_analyzer,
-                                    DerivedType::new(Type::Integer),
+                                    DerivedType::new(UnrestrictedType::Integer),
                                     &[proj_child_id],
                                     worker,
                                     plan,
@@ -5651,7 +5660,7 @@ impl AbstractSyntaxTree {
                         parse_scalar_expr(
                             Pairs::single(expr_pair),
                             &mut type_analyzer,
-                            DerivedType::new(Type::Boolean),
+                            DerivedType::new(UnrestrictedType::Boolean),
                             &[plan_left_id, plan_right_id],
                             &mut worker,
                             &mut plan,
@@ -5679,7 +5688,7 @@ impl AbstractSyntaxTree {
                     let expr_plan_node_id = parse_scalar_expr(
                         Pairs::single(expr_pair),
                         &mut type_analyzer,
-                        DerivedType::new(Type::Boolean),
+                        DerivedType::new(UnrestrictedType::Boolean),
                         &[plan_rel_child_id],
                         &mut worker,
                         &mut plan,
@@ -5842,7 +5851,7 @@ impl AbstractSyntaxTree {
                         let derived_type = match col_type {
                             // Desired type cannot be any, see comment to `Type::Any` in the
                             // type system.
-                            Type::Any => DerivedType::unknown(),
+                            UnrestrictedType::Any => DerivedType::unknown(),
                             t => DerivedType::new(t),
                         };
                         let expr_pair = pairs_map.remove_pair(*expr_ast_id);
@@ -5969,7 +5978,7 @@ impl AbstractSyntaxTree {
                             let expr_plan_node_id = parse_scalar_expr(
                                 Pairs::single(expr_pair),
                                 &mut type_analyzer,
-                                DerivedType::new(Type::Boolean),
+                                DerivedType::new(UnrestrictedType::Boolean),
                                 &[plan_scan_id],
                                 &mut worker,
                                 &mut plan,

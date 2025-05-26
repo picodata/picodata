@@ -9,7 +9,7 @@ fn text_literal_is_parsed_to_bool() {
     let plan = sql_to_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (coalesce((false::boolean, false::boolean))::any -> "col_1")
+    projection (coalesce((false::bool, false::bool))::any -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -26,7 +26,7 @@ fn text_literal_is_left_as_text_due_to_exlicit_cast() {
     let plan = sql_to_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (coalesce(('f'::string::bool, false::boolean))::any -> "col_1")
+    projection (coalesce(('f'::string::bool, false::bool))::any -> "col_1")
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

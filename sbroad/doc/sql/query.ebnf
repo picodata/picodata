@@ -80,7 +80,7 @@ builtin     ::= 'LAST_VALUE' '(' expression ')'
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
-cast        ::= 'CAST' '(' expression 'AS' type ')' | expression '::' type
+cast        ::= 'CAST' '(' expression 'AS' unrestricted_type ')' | expression '::' unrestricted_type
 coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
@@ -136,7 +136,7 @@ revoke      ::= 'REVOKE' (
                     | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
                     | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
                     | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
-                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' type (',' type)* ')')?)
+                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' type)* ')')?)
                     | role
                 )
                 'FROM' (role | user)
@@ -148,7 +148,7 @@ grant       ::= 'GRANT' (
                     | (('CREATE' | 'ALTER' | 'DROP' | 'READ' | 'WRITE') 'TABLE')
                     | (('ALTER' | 'DROP' | 'READ' | 'WRITE') 'ON' 'TABLE' table)
                     | (('CREATE' | 'EXECUTE' | 'DROP') 'PROCEDURE')
-                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' type (',' type)* ')')?)
+                    | (('EXECUTE' | 'DROP') 'ON' 'PROCEDURE' procedure ('(' unrestricted_type (',' unrestricted_type)* ')')?)
                     | role
                 )
                 'TO' (role | user)
@@ -161,7 +161,7 @@ alter_system ::= 'ALTER' 'SYSTEM'
                         | 'SET' param_name ('=' | 'TO') ('DEFAULT' | param_value)
                     )
                     ('FOR' ('ALL' 'TIERS' | 'TIER' tier))?
-alter_procedure ::= 'ALTER' 'PROCEDURE' procedure ('(' type (',' type)* ')')?
+alter_procedure ::= 'ALTER' 'PROCEDURE' procedure ('(' unrestricted_type (',' unrestricted_type)* ')')?
                      'RENAME' 'TO' procedure
                      ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
@@ -194,7 +194,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                  ')')?
                  ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                  ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' type (',' type)* ')'
+create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' unrestricted_type (',' unrestricted_type)* ')'
                      ('LANGUAGE' 'SQL')? (
                          ('AS' '$$' (insert | update | delete) '$$')
                          | ('BEGIN' 'ATOMIC' (insert | update | delete) 'END')
@@ -204,7 +204,7 @@ create_procedure ::= 'CREATE' 'PROCEDURE' ('IF' 'NOT' 'EXISTS')? procedure '(' t
 create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role
 create_table   ::= 'CREATE' 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    '('
-                       column type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
+                       column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
                        (',' 'PRIMARY' 'KEY' '(' column (',' column)* ')')?
                    ')'
                    ('USING' ('MEMTX' | 'VINYL'))?
@@ -222,7 +222,7 @@ alter_user     ::= 'ALTER' 'USER' user
 drop_index     ::= 'DROP' 'INDEX' ('IF' 'EXISTS')? index
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
-drop_procedure ::= 'DROP' 'PROCEDURE' ('IF' 'EXISTS')? procedure ('(' type (',' type)* ')')?
+drop_procedure ::= 'DROP' 'PROCEDURE' ('IF' 'EXISTS')? procedure ('('  (',' unrestricted_type)* ')')?
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_table     ::= 'DROP' 'TABLE' ('IF' 'EXISTS')? table
@@ -235,11 +235,11 @@ alter_table    ::= 'ALTER' 'TABLE' table
                    (
                        ('RENAME' 'TO' table)
                        | (
-                            ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
+                            ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column column_def_type ('NOT' 'NULL')?)
                             (
                             ','
                                 (
-                                    ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column type ('NOT' 'NULL')?)
+                                    ('ADD' 'COLUMN'? ('IF' 'NOT' 'EXISTS')? column column_def_type ('NOT' 'NULL')?)
                                 )
                             )*
                        )
@@ -266,7 +266,24 @@ alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
                             (',' (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double))*')'
                           )?
                    )
-type        ::= 'BOOL'
+
+unrestricted_type ::= 'BOOL'
+                    | 'BOOLEAN'
+                    | 'DATETIME'
+                    | 'DECIMAL'
+                    | 'DOUBLE'
+                    | 'INT'
+                    | 'INTEGER'
+                    | 'JSON'
+                    | 'STRING'
+                    | 'TEXT'
+                    | 'UUID'
+                    | 'VARCHAR' '(' length ')'
+
+/* Technically, only unsigned qualifies as a domain type, but unrestricted_type was added to the diagram to make it more comprehensive. */
+domain_type   ::= 'UNSIGNED'
+
+                | 'BOOL'
                 | 'BOOLEAN'
                 | 'DATETIME'
                 | 'DECIMAL'
@@ -276,6 +293,5 @@ type        ::= 'BOOL'
                 | 'JSON'
                 | 'STRING'
                 | 'TEXT'
-                | 'UNSIGNED'
                 | 'UUID'
                 | 'VARCHAR' '(' length ')'

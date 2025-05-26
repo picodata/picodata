@@ -21,8 +21,9 @@ use crate::errors::SbroadError;
 use crate::executor::vtable::{VTableTuple, VirtualTable};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
-use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
+use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -73,7 +74,7 @@ impl TryInto<Column> for &MetadataColumn {
     type Error = SbroadError;
 
     fn try_into(self) -> Result<Column, Self::Error> {
-        let col_type = Type::new(&self.r#type)?;
+        let col_type = UnrestrictedType::new(&self.r#type)?;
         Ok(Column::new(
             &self.name,
             DerivedType::new(col_type),

@@ -19,7 +19,7 @@ fn simple_select() {
 				Child:
 				[id: 096] expression: Reference
 					Position: 0
-					Column type: integer
+					Column type: int
 			[id: 132] expression: Alias [name = product_code]
 				Child:
 				[id: 196] expression: Reference
@@ -29,17 +29,17 @@ fn simple_select() {
 				Child:
 				[id: 296] expression: Reference
 					Position: 2
-					Column type: boolean
+					Column type: bool
 			[id: 332] expression: Alias [name = sys_op]
 				Child:
 				[id: 396] expression: Reference
 					Position: 3
-					Column type: unsigned
+					Column type: int
 			[id: 432] expression: Alias [name = bucket_id]
 				Child:
 				[id: 496] expression: Reference
 					Position: 4
-					Column type: unsigned
+					Column type: int
 	---------------------------------------------
 	---------------------------------------------
 	[id: 364] relation: Projection
@@ -80,12 +80,12 @@ fn simple_join() {
     			Child:
     			[id: 096] expression: Reference
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     		[id: 132] expression: Alias [name = sysFrom]
     			Child:
     			[id: 196] expression: Reference
     				Position: 1
-    				Column type: unsigned
+    				Column type: int
     		[id: 232] expression: Alias [name = FIRST_NAME]
     			Child:
     			[id: 296] expression: Reference
@@ -95,12 +95,12 @@ fn simple_join() {
     			Child:
     			[id: 396] expression: Reference
     				Position: 3
-    				Column type: unsigned
+    				Column type: int
     		[id: 432] expression: Alias [name = bucket_id]
     			Child:
     			[id: 496] expression: Reference
     				Position: 4
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 364] relation: Projection
@@ -115,7 +115,7 @@ fn simple_join() {
     				Referenced table name (or alias): test_space
     				target_id: 164
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 564] relation: ScanSubQuery
@@ -131,7 +131,7 @@ fn simple_join() {
     				Referenced table name (or alias): test_space
     				target_id: 364
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 764] relation: ScanRelation
@@ -143,7 +143,7 @@ fn simple_join() {
     			Child:
     			[id: 796] expression: Reference
     				Position: 0
-    				Column type: integer
+    				Column type: int
     		[id: 832] expression: Alias [name = product_code]
     			Child:
     			[id: 896] expression: Reference
@@ -153,17 +153,17 @@ fn simple_join() {
     			Child:
     			[id: 996] expression: Reference
     				Position: 2
-    				Column type: boolean
+    				Column type: bool
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
     			[id: 1096] expression: Reference
     				Position: 3
-    				Column type: unsigned
+    				Column type: int
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
     			[id: 1196] expression: Reference
     				Position: 4
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 964] relation: Projection
@@ -178,7 +178,7 @@ fn simple_join() {
     				Referenced table name (or alias): hash_testing
     				target_id: 764
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 1164] relation: ScanSubQuery
@@ -194,7 +194,7 @@ fn simple_join() {
     				Referenced table name (or alias): hash_testing
     				target_id: 964
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = t2]
@@ -209,7 +209,7 @@ fn simple_join() {
     				Referenced table name (or alias): t2
     				target_id: 1164
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 1364] relation: InnerJoin
@@ -221,14 +221,14 @@ fn simple_join() {
     				Referenced table name (or alias): t1
     				target_id: 564
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     			Right child
     			[id: 1596] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
     				target_id: 0136
     				Position: 0
-    				Column type: integer
+    				Column type: int
     	Children:
     		Child_id = 564
     		Child_id = 0136
@@ -241,7 +241,7 @@ fn simple_join() {
     				Referenced table name (or alias): t1
     				target_id: 564
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     		[id: 1632] expression: Alias [name = identification_number]
     			Child:
     			[id: 1796] expression: Reference
@@ -249,7 +249,7 @@ fn simple_join() {
     				Referenced table name (or alias): t2
     				target_id: 0136
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 1564] relation: Projection
@@ -264,7 +264,7 @@ fn simple_join() {
     				Referenced table name (or alias): t1
     				target_id: 1364
     				Position: 0
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ");
 }
@@ -298,7 +298,7 @@ fn simple_join_subtree() {
     			Child:
     			[id: 796] expression: Reference
     				Position: 0
-    				Column type: integer
+    				Column type: int
     		[id: 832] expression: Alias [name = product_code]
     			Child:
     			[id: 896] expression: Reference
@@ -308,17 +308,17 @@ fn simple_join_subtree() {
     			Child:
     			[id: 996] expression: Reference
     				Position: 2
-    				Column type: boolean
+    				Column type: bool
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
     			[id: 1096] expression: Reference
     				Position: 3
-    				Column type: unsigned
+    				Column type: int
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
     			[id: 1196] expression: Reference
     				Position: 4
-    				Column type: unsigned
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 964] relation: Projection
@@ -333,7 +333,7 @@ fn simple_join_subtree() {
     				Referenced table name (or alias): hash_testing
     				target_id: 764
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 1164] relation: ScanSubQuery
@@ -349,7 +349,7 @@ fn simple_join_subtree() {
     				Referenced table name (or alias): hash_testing
     				target_id: 964
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     ---------------------------------------------
     [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = t2]
@@ -364,7 +364,7 @@ fn simple_join_subtree() {
     				Referenced table name (or alias): t2
     				target_id: 1164
     				Position: 0
-    				Column type: integer
+    				Column type: int
     ---------------------------------------------
     "
     );
@@ -375,10 +375,8 @@ fn simple_aggregation_with_group_by() {
     let query = r#"SELECT "product_code" FROM "hash_testing" GROUP BY "product_code""#;
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    let actual_arena = plan.formatted_arena().unwrap();
-    let mut expected_arena = String::new();
-    expected_arena.push_str(
-        r#"---------------------------------------------
+    insta::assert_snapshot!(plan.formatted_arena().unwrap(), @r"
+---------------------------------------------
 [id: 164] relation: ScanRelation
 	Relation: hash_testing
 	[No children]
@@ -388,7 +386,7 @@ fn simple_aggregation_with_group_by() {
 			Child:
 			[id: 096] expression: Reference
 				Position: 0
-				Column type: integer
+				Column type: int
 		[id: 132] expression: Alias [name = product_code]
 			Child:
 			[id: 196] expression: Reference
@@ -398,17 +396,17 @@ fn simple_aggregation_with_group_by() {
 			Child:
 			[id: 296] expression: Reference
 				Position: 2
-				Column type: boolean
+				Column type: bool
 		[id: 332] expression: Alias [name = sys_op]
 			Child:
 			[id: 396] expression: Reference
 				Position: 3
-				Column type: unsigned
+				Column type: int
 		[id: 432] expression: Alias [name = bucket_id]
 			Child:
 			[id: 496] expression: Reference
 				Position: 4
-				Column type: unsigned
+				Column type: int
 ---------------------------------------------
 ---------------------------------------------
 [id: 364] relation: GroupBy
@@ -430,7 +428,7 @@ fn simple_aggregation_with_group_by() {
 				Referenced table name (or alias): hash_testing
 				target_id: 164
 				Position: 0
-				Column type: integer
+				Column type: int
 		[id: 632] expression: Alias [name = product_code]
 			Child:
 			[id: 796] expression: Reference
@@ -446,7 +444,7 @@ fn simple_aggregation_with_group_by() {
 				Referenced table name (or alias): hash_testing
 				target_id: 164
 				Position: 2
-				Column type: boolean
+				Column type: bool
 		[id: 832] expression: Alias [name = sys_op]
 			Child:
 			[id: 996] expression: Reference
@@ -454,7 +452,7 @@ fn simple_aggregation_with_group_by() {
 				Referenced table name (or alias): hash_testing
 				target_id: 164
 				Position: 3
-				Column type: unsigned
+				Column type: int
 		[id: 932] expression: Alias [name = bucket_id]
 			Child:
 			[id: 1096] expression: Reference
@@ -462,7 +460,7 @@ fn simple_aggregation_with_group_by() {
 				Referenced table name (or alias): hash_testing
 				target_id: 164
 				Position: 4
-				Column type: unsigned
+				Column type: int
 ---------------------------------------------
 ---------------------------------------------
 [id: 764] relation: Projection
@@ -528,7 +526,5 @@ fn simple_aggregation_with_group_by() {
 				Position: 0
 				Column type: string
 ---------------------------------------------
-"#);
-
-    assert_eq!(expected_arena, actual_arena);
+");
 }

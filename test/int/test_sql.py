@@ -354,21 +354,21 @@ def test_pg_params(cluster: Cluster):
         )
 
     data = i1.sql("""select * from (select $1 union select ($1 * 2))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert data["rows"] == [[1], [2]]
 
     data = i1.sql("""select (select $1::int) + 1""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert data["rows"] == [[2]]
 
     data = i1.sql("""select * from (select * from (select $1))""", "picodata", strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "string"}]
 
     data = i1.sql("""select * from (select * from (select $1))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     data = i1.sql("""select * from (select * from (select $1))""", -1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     # first table is created
     ddl = i1.sql(
@@ -395,7 +395,7 @@ def test_pg_params(cluster: Cluster):
     # check the creation of the second table
     assert ddl["row_count"] == 1
 
-    with pytest.raises(TarantoolError, match="Unable to unify inconsistent types: Unsigned and String"):
+    with pytest.raises(TarantoolError, match="Unable to unify inconsistent types: Integer and String"):
         i1.sql(
             """
         SELECT "a", "b" FROM "test_params_1"
@@ -489,7 +489,7 @@ def test_pg_params(cluster: Cluster):
         2,
         strip_metadata=False,
     )
-    assert data["metadata"] == [{"name": "filtered_count", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "filtered_count", "type": "int"}]
     assert data["rows"] == [[2], [1], [0]]
 
     # Test nested window functions with complex FILTER and ORDER BY
@@ -543,7 +543,7 @@ def test_window_functions(cluster: Cluster):
 
     # Test integer + max(integer) -> integer
     data = i1.sql("""SELECT 1 + max(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert sorted(data["rows"]) == [[2], [3]]
 
     # Test integer + max(decimal) -> decimal
@@ -558,12 +558,12 @@ def test_window_functions(cluster: Cluster):
 
     # Test row_number() -> integer
     data = i1.sql("""SELECT 2 + row_number() OVER (ORDER BY x) FROM t7""", strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert sorted(data["rows"]) == [[3], [4]]
 
     # Test count() -> unsigned
     data = i1.sql("""SELECT count(*) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
     assert sorted(data["rows"]) == [[1], [2]]
 
     # Test min(decimal) -> decimal
@@ -690,7 +690,7 @@ def test_read_from_system_tables(cluster: Cluster):
     assert data["metadata"] == [
         {"name": "name", "type": "string"},
         {"name": "uuid", "type": "string"},
-        {"name": "raft_id", "type": "unsigned"},
+        {"name": "raft_id", "type": "int"},
         {"name": "replicaset_name", "type": "string"},
         {"name": "replicaset_uuid", "type": "string"},
         {"name": "current_state", "type": "array"},
@@ -843,7 +843,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     lines = i1.sql("explain insert into global_t select * from t")
     expected_explain = """insert "global_t" on conflict: fail
     motion [policy: full]
-        projection ("t"."x"::integer -> "x", "t"."y"::integer -> "y")
+        projection ("t"."x"::int -> "x", "t"."y"::int -> "y")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -1774,9 +1774,7 @@ def test_substring(instance: Instance):
         instance.sql("SELECT SUBSTRING('string', 2 , -10)")
 
     # invalid types of parameters
-    with pytest.raises(
-        TarantoolError, match=r"could not resolve function overload for substring\(text, bool, unsigned\)"
-    ):
+    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substring\(text, bool, int\)"):
         instance.sql(r"""SELECT SUBSTRING ('abc' FROM false FOR 1)""")
 
     # substring expression examples
@@ -1790,14 +1788,14 @@ def test_substring(instance: Instance):
     assert data[0] == ["456"]
 
     # check for caching similar queries #1
-    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
+    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, int, text\)"):
         instance.sql(r"""SELECT SUBSTRING('12' for ?)""", "12")
 
     data = instance.sql("SELECT SUBSTRING('12' for ?)", 12)
     assert data[0] == ["12"]
 
     # check for caching similar queries #2
-    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, unsigned, text\)"):
+    with pytest.raises(TarantoolError, match=r"could not resolve function overload for substr\(text, int, text\)"):
         instance.sql(r"""SELECT SUBSTRING('12' for ?)""", "12")
 
     # overflow cases
@@ -1933,7 +1931,7 @@ def test_substring(instance: Instance):
     assert data[0] == ["12"]
 
     # casted to integer expressions as parameters
-    data = instance.sql("SELECT SUBSTRING('1234567890' FOR 5::integer)")
+    data = instance.sql("SELECT SUBSTRING('1234567890' FOR 5::int)")
     assert data[0] == ["12345"]
 
     # casted arithmetic expression
@@ -2046,7 +2044,7 @@ def test_coalesce(instance: Instance):
     assert data == [[0], [1]]
 
     # Type mismatch: all values must have the same type.
-    with pytest.raises(TarantoolError, match="COALESCE types unsigned and text cannot be matched"):
+    with pytest.raises(TarantoolError, match="COALESCE types int and text cannot be matched"):
         instance.sql("select coalesce(bar, 'none'::text) from foo;")
 
     # 0 / 0 is not evaluated.
@@ -2220,7 +2218,7 @@ def test_except_parsing_panic_gl_1339(cluster: Cluster):
     ):
         i1.sql("select 1 except select 1, 2")
 
-    with pytest.raises(TarantoolError, match=r"could not resolve operator overload for \+\(unsigned, bool\)"):
+    with pytest.raises(TarantoolError, match=r"could not resolve operator overload for \+\(int, bool\)"):
         i1.sql("select 1 + false except select 1")
 
     ddl = i1.sql("create table lol(a int primary key, b int, c int);")
@@ -3603,8 +3601,8 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
         select_from_second_instance
         == """---
 - metadata:
-  - {'name': 'a', 'type': 'integer'}
-  - {'name': 'b', 'type': 'integer'}
+  - {'name': 'a', 'type': 'int'}
+  - {'name': 'b', 'type': 'int'}
   rows:
   - [22, 8]
 ...
@@ -5304,19 +5302,19 @@ def test_cte(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="COALESCE types text and unsigned cannot be matched",
+        match="COALESCE types text and int cannot be matched",
     ):
         i1.sql(""" with cte as (select coalesce('kek'::text,1487)) select * from cte; """)
 
     with pytest.raises(
         TarantoolError,
-        match="CASE/THEN types unsigned and bool cannot be matched",
+        match="CASE/THEN types int and bool cannot be matched",
     ):
         i1.sql("with cte as (select case when true then 1 else false end) select * from cte;")
 
     with pytest.raises(
         TarantoolError,
-        match=r"could not resolve operator overload for \+\(unsigned, bool\)",
+        match=r"could not resolve operator overload for \+\(int, bool\)",
     ):
         i1.sql(""" with cte as (select 1 + true) select * from cte; """)
 
@@ -5374,7 +5372,7 @@ def test_metadata(instance: Instance):
     assert ddl["row_count"] == 1
 
     data = instance.sql(""" select * from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "a", "type": "integer"}]
+    assert data["metadata"] == [{"name": "a", "type": "int"}]
 
     # Previously, we returned metadata from tarantool, not from the plan.
     # Sometimes it led to disinformation, for example (pay attention to the types):
@@ -5395,17 +5393,17 @@ def test_metadata(instance: Instance):
     #   -     sql_motion_row_max = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     data = instance.sql(""" select -2 + 1 from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     # Test that we can infer the actual type of min/max functions, which depends on the argument.
     data = instance.sql(""" select min(a) from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     data = instance.sql(""" select min(a) + max(a) from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
 
     # verify that we've fixed the problem from
     # https://git.picodata.io/picodata/picodata/sbroad/-/issues/632
@@ -5447,7 +5445,7 @@ def test_metadata(instance: Instance):
 
     # It used to return "T1.id" column name in metadata,
     # though it should return "id" (because of an alias).
-    assert data["metadata"] == [{"name": "id", "type": "integer"}]
+    assert data["metadata"] == [{"name": "id", "type": "int"}]
 
 
 def test_create_role_and_user_with_empty_name(cluster: Cluster):
@@ -5928,7 +5926,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     # property expects different value type
     with pytest.raises(
         TarantoolError,
-        match="invalid value for 'auth_password_enforce_digits': expected boolean, got unsigned.",
+        match="invalid value for 'auth_password_enforce_digits': expected bool, got unsigned.",
     ):
         dml = i1.sql(
             """
@@ -6288,13 +6286,13 @@ def test_select_without_scan(cluster: Cluster):
 
     data = i1.sql("select 1", strip_metadata=False)
     assert data["metadata"] == [
-        {"name": "col_1", "type": "unsigned"},
+        {"name": "col_1", "type": "int"},
     ]
     assert data["rows"] == [[1]]
 
     data = i1.sql("select 1 + 3 as foo", strip_metadata=False)
     assert data["metadata"] == [
-        {"name": "foo", "type": "unsigned"},
+        {"name": "foo", "type": "int"},
     ]
     assert data["rows"] == [[4]]
 
@@ -6308,7 +6306,7 @@ def test_select_without_scan(cluster: Cluster):
 
     data = i1.sql("select (select * from t where a = 3) as bar", strip_metadata=False)
     assert data["metadata"] == [
-        {"name": "bar", "type": "integer"},
+        {"name": "bar", "type": "int"},
     ]
     assert data["rows"] == [[3]]
 
@@ -6326,7 +6324,7 @@ def test_select_without_scan(cluster: Cluster):
 
     data = i1.sql("select (select 1 as foo) from t where a = (select 1)", strip_metadata=False)
     assert data["metadata"] == [
-        {"name": "col_1", "type": "unsigned"},
+        {"name": "col_1", "type": "int"},
     ]
     assert data["rows"] == [[1]]
 
@@ -6367,7 +6365,7 @@ def test_explain(cluster: Cluster):
     # ---------------------- DQL ----------------------
     # Reading from all buckets
     lines = i1.sql("explain select a from t")
-    expected_explain = """projection ("t"."a"::integer -> "a")
+    expected_explain = """projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6377,8 +6375,8 @@ buckets = [1-3000]"""
 
     # Reading from a single bucket => single node
     lines = i1.sql("explain select a from t where a = 1")
-    expected_explain = """projection ("t"."a"::integer -> "a")
-    selection "t"."a"::integer = 1::unsigned
+    expected_explain = """projection ("t"."a"::int -> "a")
+    selection "t"."a"::int = 1::int
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6387,8 +6385,8 @@ buckets = [1934]"""
     assert "\n".join(lines) == expected_explain
 
     lines = i1.sql("explain select a from t where a = 1 and a = 2")
-    expected_explain = """projection ("t"."a"::integer -> "a")
-    selection ("t"."a"::integer = 1::unsigned) and ("t"."a"::integer = 2::unsigned)
+    expected_explain = """projection ("t"."a"::int -> "a")
+    selection ("t"."a"::int = 1::int) and ("t"."a"::int = 2::int)
         scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6399,14 +6397,14 @@ buckets = []"""
     # When query has motions, we estimate buckets for whole
     # plan by buckets of leaf subtrees
     lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
-    expected_explain = """projection ("t"."a"::integer -> "a")
-    join on "t"."a"::integer = "t2"."b"::integer
+    expected_explain = """projection ("t"."a"::int -> "a")
+    join on "t"."a"::int = "t2"."b"::int
         scan "t"
-            projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
                 scan "t"
         motion [policy: segment([ref("b")])]
             scan "t2"
-                projection ("t2"."a"::integer -> "a", "t2"."b"::integer -> "b")
+                projection ("t2"."a"::int -> "a", "t2"."b"::int -> "b")
                     scan "t" -> "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6416,7 +6414,7 @@ buckets = unknown"""
 
     # Reading from global table
     lines = i1.sql("explain select id from _pico_table")
-    expected_explain = """projection ("_pico_table"."id"::unsigned -> "id")
+    expected_explain = """projection ("_pico_table"."id"::int -> "id")
     scan "_pico_table"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6429,9 +6427,9 @@ buckets = any"""
     expected_explain = """motion [policy: full]
     union
         motion [policy: local]
-            projection ("_pico_table"."id"::unsigned -> "id")
+            projection ("_pico_table"."id"::int -> "id")
                 scan "_pico_table"
-        projection ("t"."a"::integer -> "a")
+        projection ("t"."a"::int -> "a")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6446,7 +6444,7 @@ buckets = [1-3000]"""
     expected_explain = """insert "t" on conflict: fail
     motion [policy: segment([ref("COLUMN_1")])]
         values
-            value row (data=ROW(1::unsigned, 2::unsigned))
+            value row (data=ROW(1::int, 2::int))
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
@@ -6457,7 +6455,7 @@ buckets = unknown"""
     lines = i1.sql("explain insert into t select a, b from t")
     expected_explain = """insert "t" on conflict: fail
     motion [policy: local segment([ref("a")])]
-        projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6470,8 +6468,8 @@ buckets = [1-3000]"""
     expected_explain = """update "t"
 "b" = "col_0"
     motion [policy: local]
-        projection (1::unsigned -> "col_0", "t"."a"::integer -> "col_1")
-            selection "t"."b"::integer = 3::unsigned
+        projection (1::int -> "col_0", "t"."a"::int -> "col_1")
+            selection "t"."b"::int = 3::int
                 scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6488,8 +6486,8 @@ buckets = [1-3000]"""
 "c" = "col_0"
 "d" = "col_1"
     motion [policy: segment([])]
-        projection ("t2"."c"::integer -> "col_0", 1::unsigned -> "col_1", "t2"."d"::integer -> "col_2")
-            selection ("t2"."d"::integer = 2::unsigned) or ("t2"."d"::integer = 2002::unsigned)
+        projection ("t2"."c"::int -> "col_0", 1::int -> "col_1", "t2"."d"::int -> "col_2")
+            selection ("t2"."d"::int = 2::int) or ("t2"."d"::int = 2002::int)
                 scan "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6512,7 +6510,7 @@ buckets = [1-3000]"""
     lines = i1.sql("explain insert into g select a, b from t")
     expected_explain = """insert "g" on conflict: fail
     motion [policy: full]
-        projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
             scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6523,7 +6521,7 @@ buckets = [1-3000]"""
     lines = i1.sql("explain insert into g select u, v from g")
     expected_explain = """insert "g" on conflict: fail
     motion [policy: full]
-        projection ("g"."u"::integer -> "u", "g"."v"::integer -> "v")
+        projection ("g"."u"::int -> "u", "g"."v"::int -> "v")
             scan "g"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6613,7 +6611,7 @@ def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
 
     # Default values
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = """projection ("t"."a"::integer -> "a")
+    expected_explain = """projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -6627,7 +6625,7 @@ buckets = [1-3000]"""
 
     # Default value for sql_vdbe_opcode_max changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = f"""projection ("t"."a"::integer -> "a")
+    expected_explain = f"""projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}
@@ -6642,7 +6640,7 @@ buckets = [1-3000]"""
     # Default value for new_sql_motion_row_max changed and
     # value for new_sql_vdbe_opcode_max hasn't changed
     lines = i1.sql("EXPLAIN SELECT a FROM t")
-    expected_explain = f"""projection ("t"."a"::integer -> "a")
+    expected_explain = f"""projection ("t"."a"::int -> "a")
     scan "t"
 execution options:
     sql_vdbe_opcode_max = {new_sql_vdbe_opcode_max}

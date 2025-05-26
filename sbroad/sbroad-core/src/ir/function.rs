@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use super::expression::{FunctionFeature, VolatilityType};
-use super::relation::{DerivedType, Type};
+use super::types::{DerivedType, UnrestrictedType};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Function {
@@ -185,7 +185,7 @@ impl Plan {
         let func_type = match kind {
             Some(kind) => kind.get_type(self, &children)?,
             None => match func_name.as_str() {
-                "row_number" => DerivedType::new(Type::Integer),
+                "row_number" => DerivedType::new(UnrestrictedType::Integer),
                 "last_value" => {
                     if children.len() != 1 {
                         return Err(SbroadError::Invalid(

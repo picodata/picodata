@@ -42,7 +42,7 @@ SELECT
     END "case_result"
 FROM "arithmetic_space"
 -- ERROR:
-CASE/THEN types text and unsigned cannot be matched
+CASE/THEN types text and int cannot be matched
 
 -- TEST: test_arbitrary_valid-1
 -- SQL:

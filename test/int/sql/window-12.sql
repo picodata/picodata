@@ -30,19 +30,19 @@ SELECT (sum(x) OVER (ORDER BY x))::int * (count(y) OVER (ORDER BY x))::int FROM 
 -- SQL:
 select count(x) over (partition by 1 + false) from t6;
 -- ERROR:
-sbroad: could not resolve operator overload for \+\(unsigned, bool\)
+sbroad: could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: window12-2.2
 -- SQL:
 SELECT count(x) OVER (PARTITION BY 'hello'::text - 3) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for -\(text, unsigned\)
+sbroad: could not resolve operator overload for -\(text, int\)
 
 -- TEST: window12-2.3
 -- SQL:
 SELECT count(*) OVER (ORDER BY current_date || 5) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for ||(datetime, unsigned)
+sbroad: could not resolve operator overload for ||(datetime, int)
 
 -- TEST: window12-2.4
 -- SQL:
@@ -60,7 +60,7 @@ sbroad: could not resolve operator overload for >\(int, datetime\)
 -- SQL:
 SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6
 -- ERROR:
-sbroad: could not resolve operator overload for \+\(unsigned, bool\)
+sbroad: could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: window12-3.1
 -- SQL:
@@ -126,20 +126,20 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
-projection (avg("x"::integer) over win1 -> "col_1", sum("x"::integer) over win -> "col_2")
-    windows: win1 as (partition by ("x"::integer + ROW($0)) ), win as (order by (("y"::integer + (2::unsigned * ROW($2))) + ROW($1)) )
+projection (avg("x"::int) over win1 -> "col_1", sum("x"::int) over win -> "col_2")
+    windows: win1 as (partition by ("x"::int + ROW($0)) ), win as (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) )
         motion [policy: full]
-            projection ("t6"."x"::integer -> "x", "t6"."bucket_id"::unsigned -> "bucket_id", "t6"."y"::integer -> "y")
+            projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
                 scan "t6"
 subquery $0:
 scan
-        projection (3::unsigned -> "col_1")
+        projection (3::int -> "col_1")
 subquery $1:
 scan
-        projection (2::unsigned -> "col_1")
+        projection (2::int -> "col_1")
 subquery $2:
 scan
-        projection (111::unsigned -> "col_1")
+        projection (111::int -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
@@ -164,28 +164,28 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
-projection (row_number() over win2 -> "col_1", sum("y"::integer) over win2 -> "col_2", max("x"::integer) over win3 -> "col_3")
-    windows: win2 as (partition by ("x"::integer + ROW($1)) ), win3 as (order by ("x"::integer + ROW($0)::int) )
+projection (row_number() over win2 -> "col_1", sum("y"::int) over win2 -> "col_2", max("x"::int) over win3 -> "col_3")
+    windows: win2 as (partition by ("x"::int + ROW($1)) ), win3 as (order by ("x"::int + ROW($0)::int) )
         motion [policy: full]
-            projection ("t6"."x"::integer -> "x", "t6"."bucket_id"::unsigned -> "bucket_id", "t6"."y"::integer -> "y")
+            projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
                 scan "t6"
 subquery $0:
 motion [policy: full]
         scan
-            projection (count(*::integer) over win_nested -> "col_1")
+            projection (count(*::int) over win_nested -> "col_1")
                 windows: win_nested as (rows between current row and unbounded following)
                     scan
                         limit 1
                             motion [policy: full]
                                 limit 1
-                                    projection ("t6"."x"::integer -> "x", "t6"."y"::integer -> "y")
+                                    projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
                                         scan "t6"
 subquery $1:
 scan
-        projection (2::unsigned -> "col_1")
+        projection (2::int -> "col_1")
 subquery $2:
 scan
-        projection (1::unsigned -> "col_1")
+        projection (1::int -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000

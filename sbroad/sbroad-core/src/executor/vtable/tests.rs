@@ -349,11 +349,11 @@ fn vtable_values_types_casting_single_tuple() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Unsigned),
+        r#type: DerivedType::new(UnrestrictedType::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     });
-    expected_vtable.add_tuple(vec![Value::Unsigned(1)]);
+    expected_vtable.add_tuple(vec![Value::Integer(1)]);
 
     assert_eq!(actual_vtable, expected_vtable)
 }
@@ -371,7 +371,7 @@ fn vtable_values_types_casting_two_tuples() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Integer),
+        r#type: DerivedType::new(UnrestrictedType::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     });
@@ -393,7 +393,7 @@ fn vtable_values_types_casting_two_tuples_err() {
     assert_eq!(
         true,
         err.to_string()
-            .contains("Unable to unify inconsistent types: Unsigned and String.")
+            .contains("Unable to unify inconsistent types: Integer and String.")
     );
 }
 
@@ -410,16 +410,16 @@ fn vtable_values_types_casting_two_columns() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Unsigned),
+        r#type: DerivedType::new(UnrestrictedType::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     });
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Integer),
+        r#type: DerivedType::new(UnrestrictedType::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     });
-    expected_vtable.add_tuple(vec![Value::Unsigned(1), Value::Integer(1)]);
+    expected_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
 
     assert_eq!(actual_vtable, expected_vtable)
 }
@@ -438,12 +438,12 @@ fn vtable_values_types_casting_two_columns_two_tuples() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Decimal),
+        r#type: DerivedType::new(UnrestrictedType::Decimal),
         role: ColumnRole::User,
         is_nullable: false,
     });
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Integer),
+        r#type: DerivedType::new(UnrestrictedType::Integer),
         role: ColumnRole::User,
         is_nullable: false,
     });
@@ -468,7 +468,7 @@ fn vtable_values_types_casting_two_columns_with_nulls() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Decimal),
+        r#type: DerivedType::new(UnrestrictedType::Decimal),
         role: ColumnRole::User,
         is_nullable: true,
     });
@@ -507,12 +507,12 @@ fn vtable_values_types_casting_two_columns_numerical() {
 
     let mut expected_vtable = VirtualTable::new();
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Decimal),
+        r#type: DerivedType::new(UnrestrictedType::Decimal),
         role: ColumnRole::User,
         is_nullable: true,
     });
     expected_vtable.add_column(VTableColumn {
-        r#type: DerivedType::new(Type::Decimal),
+        r#type: DerivedType::new(UnrestrictedType::Decimal),
         role: ColumnRole::User,
         is_nullable: true,
     });

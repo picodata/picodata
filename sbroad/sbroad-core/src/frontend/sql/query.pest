@@ -166,8 +166,8 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
         ~ ((^"as" ~ W ~ "$$" ~ WO ~ ProcBody ~ WO ~ "$$") | (^"begin" ~ W ~ "atomic" ~ W ~ ProcBody ~ W ~ "end"))
         ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
     }
-        ProcParams = !{ "(" ~ ProcParamsColumnDefTypes? ~ ")" }
-            ProcParamsColumnDefTypes = _{ ColumnDefType ~ (WO ~ "," ~ WO ~ ColumnDefType)* }
+        ProcParams = !{ "(" ~ ProcParamsTypes? ~ ")" }
+            ProcParamsTypes = _{ Type ~ (WO ~ "," ~ WO ~ Type)* }
         ProcLanguage = { SQL }
             SQL = { ^"sql" }
         ProcBody = { (Insert | Update | Delete) }
@@ -401,7 +401,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             NotEq = { "<>" | "!=" }
     ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ CastPostfix* ~ (W ~ IsPostfix)* }
         UnaryNot   = { NotFlag }
-        CastPostfix = { "::" ~ ColumnDefType }
+        CastPostfix = { "::" ~ Type }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
         AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
@@ -480,9 +480,16 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             }
                 CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
-            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ ColumnDefType ~ WO ~ ")" }
-                ColumnDefType = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeJSON
-                                   | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
+            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ Type ~ WO ~ ")" }
+                
+                ColumnDefType = { DomainType | Type }
+
+                // Additional special types availiable only for DDL statements (CREATE TABLE, ALTER TABLE)
+                DomainType = { TypeUnsigned }
+
+                Type = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeJSON
+                                   | TypeString | TypeText | TypeVarchar | TypeUuid }
+
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
                     TypeDecimal = { ((^"decimal" | ^"number" | ^"numeric") ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }

@@ -52,21 +52,10 @@ def test_params_specified_via_cast(postgres: Postgres):
     # Test an ambiguous parameter type error.
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types unsigned and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::int and \$1::unsigned",
+        match=r"sbroad: inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
     ):
         conn.run(
-            """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::unsigned; """,
-            p1=-1,
-        )
-
-    # Test an even more ambiguous parameter type error.
-    with pytest.raises(
-        DatabaseError,
-        match=r"sbroad: inconsistent types unsigned and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::int and \$1::unsigned",
-    ):
-        conn.run(
-            """ SELECT "id" FROM "tall" \
-                WHERE "id" = :p1::integer + :p1::unsigned + :p1::decimal; """,
+            """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::double; """,
             p1=-1,
         )
 
@@ -361,14 +350,14 @@ def test_params_inference_errors(postgres: Postgres):
 
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types text and unsigned deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::text::unsigned and \$1::text",
+        match=r"sbroad: inconsistent types text and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::text::int and \$1::text",
     ):
         conn.run("SELECT * FROM (SELECT 1) WHERE :p = 1 AND :p = '1.5'", p=1)
 
     # Example of a suggestion with unsupported casts.
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types unsigned and bool deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::unsigned::bool and \$1::unsigned",
+        match=r"sbroad: inconsistent types int and bool deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::bool and \$1::int",
     ):
         conn.run("with q(x) as (select 1) select :p from q where :p and :p > 0", p=1)
 
@@ -417,14 +406,6 @@ def test_params_inference_in_complex_queries(postgres: Postgres):
     rows = conn.run("WITH t(a) AS (SELECT max(:p) + (1.5 + :p)) SELECT :p", p=1)
     assert rows == [[Decimal(1)]]
     assert cols_oids(conn) == [type_oid("numeric")]
-
-    # TODO: remove unsigned type to fix that
-    with pytest.raises(DatabaseError, match=r"inconsistent types unsigned and int deduced for parameter \$1"):
-        conn.run("WITH t(a) AS (SELECT max(:p) + (1 + :p)) SELECT :p", p=1)
-
-    # TODO: remove unsigned type to fix that
-    with pytest.raises(DatabaseError, match=r"inconsistent types unsigned and int deduced for parameter \$1"):
-        conn.run("WITH t(a) AS (SELECT max(:p) + (1 + :p)) SELECT :p", p=1)
 
     # Ensure types are consistent.
     rows = conn.run("SELECT i + :p, :p FROM t WHERE i + :p <> f + :p", p=1)
@@ -527,6 +508,6 @@ def test_caching_depends_on_parameter_types(postgres: Postgres):
 
     # Change parameter type and ensure query is not read from the cache by catching a typing error,
     # which cannot happen for cached queries, because type analysis is not performed for them.
-    with pytest.raises(psycopg.InternalError, match=r"could not resolve operator overload for \+\(unsigned, uuid\)"):
+    with pytest.raises(psycopg.InternalError, match=r"could not resolve operator overload for \+\(int, uuid\)"):
         uuid = UUID("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1")
         conn.execute("WITH t AS (VALUES (1 + %(p)s)) SELECT %(p)s", {"p": uuid})

@@ -1,24 +1,26 @@
+use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::{
     errors::{Entity, SbroadError},
     ir::node::{MutNode, NodeId},
-    ir::{relation::Type as RelationType, Node, Plan},
+    ir::{Node, Plan},
 };
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 
 use super::node::ddl::{Ddl, MutDdl};
+use super::types::DomainType;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ColumnDef {
     pub name: SmolStr,
-    pub data_type: RelationType,
+    pub data_type: DomainType,
     pub is_nullable: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ParamDef {
-    pub data_type: RelationType,
+    pub data_type: UnrestrictedType,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

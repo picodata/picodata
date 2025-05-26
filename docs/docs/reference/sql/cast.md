@@ -17,10 +17,10 @@
 ??? note "Диаграмма"
     ![Literal](../../images/ebnf/literal.svg)
 
-### Тип {: #type }
+### Тип {: #unrestricted_type }
 
 ??? note "Диаграмма"
-    ![Type](../../images/ebnf/type.svg)
+    ![Type](../../images/ebnf/unrestricted_type.svg)
 
 ## Примеры {: #examples }
 

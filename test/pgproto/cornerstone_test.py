@@ -419,7 +419,7 @@ def test_interactive_portals(pg_client: PgClient):
     pg_client.bind("", "", [], [])
     data = pg_client.execute("", 1)
     assert len(data["rows"]) == 1
-    assert ["""projection ("t"."key"::integer -> "key", "t"."value"::string -> "value")"""] == data["rows"][0]
+    assert ["""projection ("t"."key"::int -> "key", "t"."value"::string -> "value")"""] == data["rows"][0]
     assert data["is_finished"] is False
     data = pg_client.execute("", -1)
     assert len(data["rows"]) == 5

@@ -1,8 +1,9 @@
 use super::*;
-use crate::ir::relation::{SpaceEngine, Table, Type};
+use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::tests::column_user_non_null;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
+use crate::ir::types::UnrestrictedType as Type;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
@@ -15,7 +16,7 @@ fn proj_preserve_dist_key() {
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("b"), Type::Unsigned),
+            column_user_non_null(SmolStr::from("b"), Type::Integer),
             column_user_non_null(SmolStr::from("c"), Type::String),
             column_user_non_null(SmolStr::from("d"), Type::String),
         ],
@@ -64,9 +65,9 @@ fn projection_any_dist_for_expr() {
 
     // check explain first
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
+    projection (sum(("count_1"::int))::int -> "col_1")
         motion [policy: full]
-            projection (count(("test_space"."id"::unsigned))::unsigned -> "count_1")
+            projection (count(("test_space"."id"::int))::int -> "count_1")
                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

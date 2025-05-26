@@ -252,7 +252,12 @@ def test_unsigned(postgres: Postgres):
     # Note: u64::MAX can be sent, despite the fact, that PostgreSQL supports only
     # signed integers, because psycopg sends it as numeric. Also it explicitly sets
     # parameter type, so cast is needed to make type system happy,
-    conn.execute(""" INSERT INTO T VALUES(%t::unsigned); """, (u64_max,))
+    #
+    # This works with "SELECT %t::int" because we're working directly with the Value
+    # structure which can handle values larger than INT_MAX, but would fail with
+    # "VALUES (%t::int)" since that would materialize to a virtual table where the
+    # cast to int would enforce rust integer limits.
+    conn.execute(""" INSERT INTO T select %t::int; """, (u64_max,))
 
     # text encoding fails as u64::MAX can't be encoded as i64
     with pytest.raises(
@@ -475,7 +480,7 @@ def test_any(postgres: Postgres):
     conn.prepare("SELECT key, value FROM _pico_db_config WHERE value is not null")
 
     # test that type system prohibits to sum any with other types
-    with pytest.raises(pg8000.DatabaseError, match=r"could not resolve operator overload for \+\(any, unsigned\)"):
+    with pytest.raises(pg8000.DatabaseError, match=r"could not resolve operator overload for \+\(any, int\)"):
         conn.run("SELECT key, value + 2 FROM _pico_db_config WHERE key = 'sql_vdbe_opcode_max';")
 
     # comparison for any is not allowed

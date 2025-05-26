@@ -240,7 +240,7 @@ fn front_sql_join_single_left_1() {
 
 #[test]
 fn front_sql_join_single_left_2() {
-    let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, cast(sum("b") as unsigned) as b from "t") as o 
+    let input = r#"SELECT * from (select cast(sum("a") as integer) as a, cast(sum("b") as integer) as b from "t") as o 
         inner join (select "a" as c, "b" as d from "t") as i
         on (o.a, o.b) = (i.c, i.d)
     "#;
@@ -262,7 +262,7 @@ fn front_sql_join_single_left_3() {
 fn front_sql_join_single_left_4() {
     // Inner child here will have distribution Full, outer child will have
     // Distribution::Single
-    let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, cast(sum("b") as unsigned) as b from "t") as o 
+    let input = r#"SELECT * from (select cast(sum("a") as integer) as a, cast(sum("b") as integer) as b from "t") as o 
         inner join (select "a" as c, "b" as d from "t" group by "a", "b") as i
         on (o.a, o.b) = (i.c, i.d) and o.a in (select "a" from "t")
     "#;
@@ -272,7 +272,7 @@ fn front_sql_join_single_left_4() {
 
 #[test]
 fn front_sql_join_single_left_5() {
-    let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, sum("b") as b from "t") as o 
+    let input = r#"SELECT * from (select cast(sum("a") as integer) as a, sum("b") as b from "t") as o 
         inner join "test_space" as i
         on o.a = i."id" and (i."sysFrom" = i."sys_op" and o.a = cast(o.a as integer) + 1)
     "#;
@@ -282,9 +282,9 @@ fn front_sql_join_single_left_5() {
 
 #[test]
 fn front_sql_join_single_left_6() {
-    let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, sum("b") as b from "t") as o 
+    let input = r#"SELECT * from (select cast(sum("a") as integer) as a, sum("b") as b from "t") as o 
         inner join "test_space" as i
-        on o.a = i."id" and o.a in (select cast(sum("a") as unsigned) from "t")
+        on o.a = i."id" and o.a in (select cast(sum("a") as integer) from "t")
     "#;
 
     check_join_motions(

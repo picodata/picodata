@@ -8,7 +8,7 @@ use crate::{
             expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
             Update, Values, ValuesRow,
         },
-        relation::DerivedType,
+        types::DerivedType,
     },
     utils::MutexLike,
 };

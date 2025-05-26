@@ -6,10 +6,19 @@ use crate::ir::tests::column_user_non_null;
 
 #[test]
 fn column() {
-    let a = column_user_non_null(SmolStr::from("a"), Type::Boolean);
-    assert_eq!(a, column_user_non_null(SmolStr::from("a"), Type::Boolean));
-    assert_ne!(a, column_user_non_null(SmolStr::from("a"), Type::String));
-    assert_ne!(a, column_user_non_null(SmolStr::from("b"), Type::Boolean));
+    let a = column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean);
+    assert_eq!(
+        a,
+        column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean)
+    );
+    assert_ne!(
+        a,
+        column_user_non_null(SmolStr::from("a"), UnrestrictedType::String)
+    );
+    assert_ne!(
+        a,
+        column_user_non_null(SmolStr::from("b"), UnrestrictedType::Boolean)
+    );
 }
 
 #[test]
@@ -17,10 +26,10 @@ fn table_seg() {
     let t = Table::new_sharded(
         "t",
         vec![
-            column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-            column_user_non_null(SmolStr::from("c"), Type::String),
-            column_user_non_null(SmolStr::from("d"), Type::String),
+            column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
+            column_user_non_null(SmolStr::from("d"), UnrestrictedType::String),
         ],
         &["b", "a"],
         &["b", "a"],
@@ -38,7 +47,10 @@ fn table_seg() {
 fn table_seg_name() {
     let t = Table::new_sharded(
         "t",
-        vec![column_user_non_null(SmolStr::from("a"), Type::Boolean)],
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
         &["a"],
         &["a"],
         SpaceEngine::Memtx,
@@ -53,10 +65,10 @@ fn table_seg_duplicate_columns() {
         Table::new_sharded(
             "t",
             vec![
-                column_user_non_null(SmolStr::from("a"), Type::Boolean),
-                column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-                column_user_non_null(SmolStr::from("c"), Type::String),
-                column_user_non_null(SmolStr::from("a"), Type::String),
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+                column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+                column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::String),
             ],
             &["b", "a"],
             &["b", "a"],
@@ -74,9 +86,9 @@ fn table_seg_dno_bucket_id_column() {
     let t1 = Table::new_sharded(
         "t",
         vec![
-            column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-            column_user_non_null(SmolStr::from("c"), Type::String),
+            column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
         ],
         &["b", "a"],
         &["b", "a"],
@@ -95,18 +107,18 @@ fn table_seg_dno_bucket_id_column() {
     let t2 = Table::new_sharded(
         "t",
         vec![
-            column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-            column_user_non_null(SmolStr::from("c"), Type::String),
+            column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
             Column::new(
                 "bucket_id",
-                DerivedType::new(Type::String),
+                DerivedType::new(UnrestrictedType::String),
                 ColumnRole::Sharding,
                 false,
             ),
             Column::new(
                 "bucket_id2",
-                DerivedType::new(Type::String),
+                DerivedType::new(UnrestrictedType::String),
                 ColumnRole::Sharding,
                 false,
             ),
@@ -129,10 +141,10 @@ fn table_seg_wrong_key() {
         Table::new_sharded(
             "t",
             vec![
-                column_user_non_null(SmolStr::from("a"), Type::Boolean),
-                column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-                column_user_non_null(SmolStr::from("c"), Type::String),
-                column_user_non_null(SmolStr::from("d"), Type::String),
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+                column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+                column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
+                column_user_non_null(SmolStr::from("d"), UnrestrictedType::String),
             ],
             &["a", "e"],
             &["a"],
@@ -151,11 +163,11 @@ fn table_seg_compound_type_in_key() {
             vec![
                 Column::new(
                     "bucket_id",
-                    DerivedType::new(Type::Unsigned),
+                    DerivedType::new(UnrestrictedType::Integer),
                     ColumnRole::Sharding,
                     false
                 ),
-                column_user_non_null(SmolStr::from("a"), Type::Array),
+                column_user_non_null(SmolStr::from("a"), UnrestrictedType::Array),
             ],
             &["a"],
             &["a"],
@@ -171,7 +183,7 @@ fn table_seg_compound_type_in_key() {
 
 #[test]
 fn column_msgpack_serialize() {
-    let c = column_user_non_null(SmolStr::from("name"), Type::Boolean);
+    let c = column_user_non_null(SmolStr::from("name"), UnrestrictedType::Boolean);
 
     assert_eq!(
         vec![
@@ -182,7 +194,7 @@ fn column_msgpack_serialize() {
         rmp_serde::to_vec(&c).unwrap()
     );
 
-    let c = column_user_non_null(SmolStr::from("name"), Type::String);
+    let c = column_user_non_null(SmolStr::from("name"), UnrestrictedType::String);
 
     assert_eq!(
         vec![
@@ -193,7 +205,7 @@ fn column_msgpack_serialize() {
         rmp_serde::to_vec(&c).unwrap()
     );
 
-    let c = column_user_non_null(SmolStr::from("name"), Type::Integer);
+    let c = column_user_non_null(SmolStr::from("name"), UnrestrictedType::Integer);
 
     assert_eq!(
         vec![
@@ -203,22 +215,11 @@ fn column_msgpack_serialize() {
         ],
         rmp_serde::to_vec(&c).unwrap()
     );
-
-    let c = column_user_non_null(SmolStr::from("name"), Type::Unsigned);
-
-    assert_eq!(
-        vec![
-            0x83, 0xA4, 0x6E, 0x61, 0x6D, 0x65, 0xA4, 0x6E, 0x61, 0x6D, 0x65, 0xA4, 0x74, 0x79,
-            0x70, 0x65, 0xA8, 0x75, 0x6E, 0x73, 0x69, 0x67, 0x6E, 0x65, 0x64, 0xA4, 0x72, 0x6F,
-            0x6C, 0x65, 0xA4, 0x75, 0x73, 0x65, 0x72,
-        ],
-        rmp_serde::to_vec(&c).unwrap()
-    );
 }
 
 #[test]
 fn column_msgpack_deserialize() {
-    let c = column_user_non_null(SmolStr::from("name"), Type::Boolean);
+    let c = column_user_non_null(SmolStr::from("name"), UnrestrictedType::Boolean);
 
     let expected_msgpack = vec![
         0x83, 0xA4, 0x6E, 0x61, 0x6D, 0x65, 0xA4, 0x6E, 0x61, 0x6D, 0x65, 0xA4, 0x74, 0x79, 0x70,
@@ -239,10 +240,10 @@ fn table_converting() {
     let t = Table::new_sharded(
         "t",
         vec![
-            column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("b"), Type::Unsigned),
-            column_user_non_null(SmolStr::from("c"), Type::String),
-            column_user_non_null(SmolStr::from("d"), Type::String),
+            column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("b"), UnrestrictedType::Integer),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::String),
+            column_user_non_null(SmolStr::from("d"), UnrestrictedType::String),
         ],
         &["b", "a"],
         &["b", "a"],

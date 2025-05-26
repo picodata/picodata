@@ -1,6 +1,6 @@
 use super::*;
 use pretty_assertions::assert_eq;
-use sbroad::ir::relation::DerivedType;
+use sbroad::ir::types::DerivedType;
 
 #[test]
 fn test_yaml_schema_parser() {
@@ -176,7 +176,7 @@ fn test_getting_table_segment() {
             ),
             Column::new(
                 "bucket_id",
-                DerivedType::new(Type::Unsigned),
+                DerivedType::new(Type::Integer),
                 ColumnRole::Sharding,
                 true,
             ),

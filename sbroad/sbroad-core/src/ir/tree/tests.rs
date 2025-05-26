@@ -1,9 +1,10 @@
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Alias, ArenaType};
 use crate::ir::operator::Bool;
-use crate::ir::relation::{SpaceEngine, Table, Type};
+use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::tests::column_user_non_null;
 use crate::ir::tree::traversal::{BreadthFirst, LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -59,7 +60,10 @@ fn relational_post() {
 
     let t1 = Table::new_sharded(
         "t1",
-        vec![column_user_non_null(SmolStr::from("a"), Type::Boolean)],
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
         &["a"],
         &["a"],
         SpaceEngine::Memtx,
@@ -70,7 +74,10 @@ fn relational_post() {
 
     let t2 = Table::new_sharded(
         "t2",
-        vec![column_user_non_null(SmolStr::from("a"), Type::Boolean)],
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
         &["a"],
         &["a"],
         SpaceEngine::Memtx,
@@ -123,7 +130,10 @@ fn selection_subquery_dfs_post() {
 
     let t1 = Table::new_sharded(
         "t1",
-        vec![column_user_non_null(SmolStr::from("a"), Type::Boolean)],
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
         &["a"],
         &["a"],
         SpaceEngine::Memtx,
@@ -136,8 +146,8 @@ fn selection_subquery_dfs_post() {
     let t2 = Table::new_sharded(
         "t2",
         vec![
-            column_user_non_null(SmolStr::from("b"), Type::Boolean),
-            column_user_non_null(SmolStr::from("c"), Type::Boolean),
+            column_user_non_null(SmolStr::from("b"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::Boolean),
         ],
         &["b"],
         &["b"],
@@ -211,8 +221,8 @@ fn subtree_dfs_post() {
     let t1 = Table::new_sharded(
         "t1",
         vec![
-            column_user_non_null(SmolStr::from("a"), Type::Boolean),
-            column_user_non_null(SmolStr::from("c"), Type::Boolean),
+            column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
+            column_user_non_null(SmolStr::from("c"), UnrestrictedType::Boolean),
         ],
         &["a", "c"],
         &["a", "c"],

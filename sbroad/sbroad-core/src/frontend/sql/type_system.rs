@@ -1,6 +1,5 @@
 use crate::errors::SbroadError;
 use crate::frontend::sql::get_real_function_name;
-use crate::ir::expression::cast::Type as CastType;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -9,8 +8,8 @@ use crate::ir::node::{
     ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
-use crate::ir::relation::{DerivedType, Type as SbroadType};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
+use crate::ir::types::{CastType, DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::AHashMap;
@@ -37,7 +36,6 @@ pub type TypeReport = GenericTypeReport<NodeId>;
 impl From<SbroadType> for Type {
     fn from(value: SbroadType) -> Self {
         match value {
-            SbroadType::Unsigned => Type::Unsigned,
             SbroadType::Integer => Type::Integer,
             SbroadType::Decimal => Type::Numeric,
             SbroadType::Double => Type::Double,
@@ -55,7 +53,6 @@ impl From<SbroadType> for Type {
 impl From<Type> for DerivedType {
     fn from(value: Type) -> Self {
         match value {
-            Type::Unsigned => DerivedType::new(SbroadType::Unsigned),
             Type::Integer => DerivedType::new(SbroadType::Integer),
             Type::Double => DerivedType::new(SbroadType::Double),
             Type::Numeric => DerivedType::new(SbroadType::Decimal),
@@ -84,17 +81,14 @@ pub fn get_parameter_derived_types(analyzer: &TypeAnalyzer) -> Vec<DerivedType> 
 impl From<CastType> for Type {
     fn from(value: CastType) -> Self {
         match value {
-            CastType::Unsigned => Type::Unsigned,
             CastType::Integer => Type::Integer,
             CastType::Decimal => Type::Numeric,
             CastType::Double => Type::Double,
-            CastType::String | CastType::Text | CastType::Varchar(_) => Type::Text,
+            CastType::String => Type::Text,
             CastType::Boolean => Type::Boolean,
             CastType::Datetime => Type::Datetime,
-            // TODO: forbid casting to any
-            CastType::Any => Type::Any,
             CastType::Uuid => Type::Uuid,
-            CastType::Map => Type::Map,
+            CastType::Json => Type::Map,
         }
     }
 }
@@ -203,7 +197,7 @@ pub fn to_type_expr(
             Ok(TypeExpr::new(node_id, kind))
         }
         Expression::Cast(Cast { child, to }) => {
-            let to = Type::from(*to);
+            let to = Type::from(to);
             let child = to_type_expr(*child, plan, subquery_map)?;
             let kind = TypeExprKind::Cast(Box::new(child), to);
             Ok(TypeExpr::new(node_id, kind))
@@ -230,7 +224,7 @@ pub fn to_type_expr(
             // picodata> explain select 1 between 0 and 'kek'
             // ---
             // - null
-            // - 'sbroad: could not resolve overload for <=(unsigned, text)'
+            // - 'sbroad: could not resolve overload for <=(int, text)'
             // ...
             // ```
             let left = to_type_expr(*left, plan, subquery_map)?;
@@ -418,12 +412,6 @@ fn default_type_system() -> TypeSystem {
 
     let functions = vec![
         // Arithmetic operations.
-        // - unsigned
-        Function::new_operator("+", [Unsigned, Unsigned], Integer),
-        Function::new_operator("-", [Unsigned, Unsigned], Integer),
-        Function::new_operator("/", [Unsigned, Unsigned], Integer),
-        Function::new_operator("*", [Unsigned, Unsigned], Integer),
-        Function::new_operator("%", [Unsigned, Unsigned], Integer),
         // - int
         Function::new_operator("+", [Integer, Integer], Integer),
         Function::new_operator("-", [Integer, Integer], Integer),
@@ -490,15 +478,13 @@ fn default_type_system() -> TypeSystem {
         // Aggregates.
         // - count
         // TODO: consider adding `any` type
-        Function::new_aggregate("count", [Unsigned], Unsigned),
-        Function::new_aggregate("count", [Integer], Unsigned),
-        Function::new_aggregate("count", [Double], Unsigned),
-        Function::new_aggregate("count", [Numeric], Unsigned),
-        Function::new_aggregate("count", [Text], Unsigned),
-        Function::new_aggregate("count", [Boolean], Unsigned),
-        Function::new_aggregate("count", [Datetime], Unsigned),
+        Function::new_aggregate("count", [Integer], Integer),
+        Function::new_aggregate("count", [Double], Integer),
+        Function::new_aggregate("count", [Numeric], Integer),
+        Function::new_aggregate("count", [Text], Integer),
+        Function::new_aggregate("count", [Boolean], Integer),
+        Function::new_aggregate("count", [Datetime], Integer),
         // - max
-        Function::new_aggregate("max", [Unsigned], Unsigned),
         Function::new_aggregate("max", [Integer], Integer),
         Function::new_aggregate("max", [Double], Double),
         Function::new_aggregate("max", [Numeric], Numeric),
@@ -506,7 +492,6 @@ fn default_type_system() -> TypeSystem {
         Function::new_aggregate("max", [Boolean], Boolean),
         Function::new_aggregate("max", [Datetime], Datetime),
         // - min
-        Function::new_aggregate("min", [Unsigned], Unsigned),
         Function::new_aggregate("min", [Integer], Integer),
         Function::new_aggregate("min", [Double], Double),
         Function::new_aggregate("min", [Numeric], Numeric),
@@ -533,16 +518,14 @@ fn default_type_system() -> TypeSystem {
         // Windows.
         // - count
         // TODO: consider adding `any` type
-        Function::new_window("count", [], Unsigned),
-        Function::new_window("count", [Unsigned], Unsigned),
-        Function::new_window("count", [Integer], Unsigned),
-        Function::new_window("count", [Double], Unsigned),
-        Function::new_window("count", [Numeric], Unsigned),
-        Function::new_window("count", [Text], Unsigned),
-        Function::new_window("count", [Boolean], Unsigned),
-        Function::new_window("count", [Datetime], Unsigned),
+        Function::new_window("count", [], Integer),
+        Function::new_window("count", [Integer], Integer),
+        Function::new_window("count", [Double], Integer),
+        Function::new_window("count", [Numeric], Integer),
+        Function::new_window("count", [Text], Integer),
+        Function::new_window("count", [Boolean], Integer),
+        Function::new_window("count", [Datetime], Integer),
         // - max
-        Function::new_window("max", [Unsigned], Unsigned),
         Function::new_window("max", [Integer], Integer),
         Function::new_window("max", [Double], Double),
         Function::new_window("max", [Numeric], Numeric),
@@ -550,7 +533,6 @@ fn default_type_system() -> TypeSystem {
         Function::new_window("max", [Boolean], Boolean),
         Function::new_window("max", [Datetime], Datetime),
         // - min
-        Function::new_window("min", [Unsigned], Unsigned),
         Function::new_window("min", [Integer], Integer),
         Function::new_window("min", [Double], Double),
         Function::new_window("min", [Numeric], Numeric),
@@ -577,7 +559,6 @@ fn default_type_system() -> TypeSystem {
         // - row_number
         Function::new_window("row_number", [], Integer),
         // - last_value
-        Function::new_window("last_value", [Unsigned], Unsigned),
         Function::new_window("last_value", [Integer], Integer),
         Function::new_window("last_value", [Double], Double),
         Function::new_window("last_value", [Numeric], Numeric),

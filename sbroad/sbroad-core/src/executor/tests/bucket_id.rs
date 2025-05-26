@@ -58,7 +58,7 @@ fn bucket2_test() {
             format!(
                 "{} {}",
                 r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1""#,
-                r#"WHERE ("t1"."a" = CAST($1 AS string)) and ("t1"."b" = CAST($2 AS unsigned))"#,
+                r#"WHERE ("t1"."a" = CAST($1 AS string)) and ("t1"."b" = CAST($2 AS int))"#,
             ),
             vec![param1, param2],
         ))),

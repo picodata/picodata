@@ -90,11 +90,11 @@ fn like_explain3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("gr_expr_1"::boolean -> "col_1")
-        group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
+    projection ("gr_expr_1"::bool -> "col_1")
+        group by ("gr_expr_1"::bool) output: ("gr_expr_1"::bool -> "gr_expr_1")
             motion [policy: full]
                 projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "gr_expr_1")
-                    group by ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
+                    group by ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
                         scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -109,7 +109,7 @@ fn like_explain4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t1"."a"::string -> "a", "t1"."b"::integer -> "b")
+    projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
         selection ROW($2) LIKE ROW($1) ESCAPE ROW($0)
             scan "t1"
     subquery $0:
@@ -140,11 +140,11 @@ fn ilike_explain() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("gr_expr_1"::boolean -> "col_1")
-        group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
+    projection ("gr_expr_1"::bool -> "col_1")
+        group by ("gr_expr_1"::bool) output: ("gr_expr_1"::bool -> "gr_expr_1")
             motion [policy: full]
                 projection (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string -> "gr_expr_1")
-                    group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
+                    group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")
                         scan "t1"
     execution options:
         sql_vdbe_opcode_max = 45000

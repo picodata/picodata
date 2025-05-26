@@ -568,7 +568,7 @@ def test_create_table_smoke(cluster: Cluster):
 
         ret = conn.sql("select * from t")
 
-        assert ret == {"metadata": [{"name": "a", "type": "integer"}], "rows": [[1]]}
+        assert ret == {"metadata": [{"name": "a", "type": "int"}], "rows": [[1]]}
 
         ddl = conn.sql("drop table t")
         assert ddl["row_count"] == 1

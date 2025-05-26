@@ -8,13 +8,13 @@ fn format_type(t: Option<Type>) -> &'static str {
     t.map(|t| t.as_str()).unwrap_or("unknown")
 }
 
-// [Some(Unsigned), Some(Text), Some(Boolean), None] -> "unsigned, text, bool, unknown"
+// [Some(Integer), Some(Text), Some(Boolean), None] -> "int, text, bool, unknown"
 fn format_types(types: &[Option<Type>]) -> String {
     let types: Vec<_> = types.iter().map(|t| format_type(*t)).collect();
     types.join(", ")
 }
 
-// [Some(Unsigned), Some(Text), Some(Boolean), None] -> "unsigned, text, bool and unknown"
+// [Some(Integer), Some(Text), Some(Boolean), None] -> "int, text, bool and unknown"
 fn format_types_with_and(types: &[Option<Type>]) -> String {
     match types.len() {
         0 => String::new(),

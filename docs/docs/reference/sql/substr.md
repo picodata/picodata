@@ -8,9 +8,9 @@
 *string*.
 
 !!! note "Примечание"
-    *from* и *count* — результаты [выражений](#expression) типа [UNSIGNED].
+    *from* и *count* — результаты [выражений](#expression) типа [INTEGER].
 
-[UNSIGNED]: ../sql_types.md#unsigned
+[INTEGER]: ../sql_types.md#integer
 
 ## Синтаксис {: #syntax }
 

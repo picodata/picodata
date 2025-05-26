@@ -1,4 +1,4 @@
-use crate::ir::relation::Type;
+use crate::ir::types::UnrestrictedType;
 use sbroad_type_system::error::Error as TypeSystemError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::fmt;
@@ -289,9 +289,9 @@ impl fmt::Display for Action {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
-    AmbiguousParameterType(u16, Type, Type),
+    AmbiguousParameterType(u16, UnrestrictedType, UnrestrictedType),
     CouldNotDetermineParameterType(usize),
-    TypesCannotBeMatched(&'static str, Type, Type),
+    TypesCannotBeMatched(&'static str, UnrestrictedType, UnrestrictedType),
 }
 
 impl fmt::Display for TypeError {

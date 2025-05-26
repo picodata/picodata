@@ -9,7 +9,8 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::{Metadata, Router, Statistics};
 use crate::ir::operator::Bool;
-use crate::ir::relation::{Column, Type};
+use crate::ir::relation::Column;
+use crate::ir::types::UnrestrictedType;
 use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::utils::MutexLike;
@@ -269,14 +270,14 @@ pub fn calculate_filter_selectivity(
     };
 
     match column_type {
-        Type::Boolean => match constant {
+        UnrestrictedType::Boolean => match constant {
             Value::Boolean(b) => {
                 let downcasted_column_stats = downcast_column_stats::<bool>(&column_stats, column)?;
                 downcasted_column_stats.filter_selectivity(&table_stats, b, operator)
             }
             _ => types_mismatch_error,
         },
-        Type::Decimal => {
+        UnrestrictedType::Decimal => {
             let downcasted_column_stats = downcast_column_stats::<Decimal>(&column_stats, column)?;
             let casted_constant = match constant {
                 Value::Decimal(d) => **d,
@@ -287,21 +288,7 @@ pub fn calculate_filter_selectivity(
             };
             downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
         }
-        Type::Unsigned => {
-            let downcasted_column_stats = downcast_column_stats::<u64>(&column_stats, column)?;
-            let casted_constant = match constant {
-                Value::Decimal(d) => (**d).try_into()?,
-                Value::Unsigned(u) => *u,
-                Value::Integer(i) => (*i).try_into()?,
-                Value::Double(d) => {
-                    let decimal: Decimal = decimal_from_str(&d)?;
-                    decimal.try_into()?
-                }
-                _ => return types_mismatch_error,
-            };
-            downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
-        }
-        Type::Double => {
+        UnrestrictedType::Double => {
             let downcasted_column_stats = downcast_column_stats::<Double>(&column_stats, column)?;
             let casted_constant = match constant {
                 Value::Decimal(d) => double_from_str(d)?,
@@ -312,21 +299,36 @@ pub fn calculate_filter_selectivity(
             };
             downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
         }
-        Type::Integer => {
-            let downcasted_column_stats = downcast_column_stats::<i64>(&column_stats, column)?;
-            let casted_constant = match constant {
-                Value::Decimal(d) => (**d).try_into()?,
-                Value::Unsigned(u) => (*u).try_into()?,
-                Value::Integer(i) => *i,
-                Value::Double(d) => {
-                    let decimal: Decimal = decimal_from_str(&d)?;
-                    decimal.try_into()?
-                }
-                _ => return types_mismatch_error,
-            };
-            downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
-        }
-        Type::String => match constant {
+        UnrestrictedType::Integer => match downcast_column_stats::<i64>(&column_stats, column) {
+            Ok(downcasted_column_stats) => {
+                let casted_constant = match constant {
+                    Value::Decimal(d) => (**d).try_into()?,
+                    Value::Unsigned(u) => (*u).try_into()?,
+                    Value::Integer(i) => *i,
+                    Value::Double(d) => {
+                        let decimal: Decimal = decimal_from_str(&d)?;
+                        decimal.try_into()?
+                    }
+                    _ => return types_mismatch_error,
+                };
+                downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
+            }
+            Err(_) => {
+                let downcasted_column_stats = downcast_column_stats::<u64>(&column_stats, column)?;
+                let casted_constant = match constant {
+                    Value::Decimal(d) => (**d).try_into()?,
+                    Value::Unsigned(u) => *u,
+                    Value::Integer(i) => (*i).try_into()?,
+                    Value::Double(d) => {
+                        let decimal: Decimal = decimal_from_str(&d)?;
+                        decimal.try_into()?
+                    }
+                    _ => return types_mismatch_error,
+                };
+                downcasted_column_stats.filter_selectivity(&table_stats, &casted_constant, operator)
+            }
+        },
+        UnrestrictedType::String => match constant {
             Value::String(s) => {
                 let downcasted_column_stats =
                     downcast_column_stats::<String>(&column_stats, column)?;
@@ -334,13 +336,16 @@ pub fn calculate_filter_selectivity(
             }
             _ => types_mismatch_error,
         },
-        Type::Array | Type::Any | Type::Map | Type::Datetime => Err(SbroadError::Invalid(
+        UnrestrictedType::Array
+        | UnrestrictedType::Any
+        | UnrestrictedType::Map
+        | UnrestrictedType::Datetime => Err(SbroadError::Invalid(
             Entity::Statistics,
             Some(SmolStr::from(
                 "Unable to calculate selectivity for array type column",
             )),
         )),
-        Type::Uuid => {
+        UnrestrictedType::Uuid => {
             todo!("Don't know what to do here")
         }
     }
@@ -411,7 +416,7 @@ pub fn calculate_condition_selectivity(
     ));
 
     match (left_column_type.get(), right_column_type.get()) {
-        (Some(Type::Boolean), Some(Type::Boolean)) => {
+        (Some(UnrestrictedType::Boolean), Some(UnrestrictedType::Boolean)) => {
             let left_downcasted_stats =
                 downcast_column_stats::<bool>(&left_column_stats, left_column)?;
             let right_downcasted_stats =

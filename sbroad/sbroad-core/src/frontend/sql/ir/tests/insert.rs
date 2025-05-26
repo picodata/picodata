@@ -10,7 +10,7 @@ fn insert1() {
     insert "test_space" on conflict: fail
         motion [policy: segment([ref("COLUMN_1")])]
             values
-                value row (data=ROW(1::integer, 'test'::string))
+                value row (data=ROW(1::int, 'test'::string))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -26,7 +26,7 @@ fn insert2() {
     insert "test_space" on conflict: fail
         motion [policy: segment([ref("COLUMN_1")])]
             values
-                value row (data=ROW(1::unsigned, 'test'::string))
+                value row (data=ROW(1::int, 'test'::string))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -42,7 +42,7 @@ fn insert3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "test_space" on conflict: fail
         motion [policy: local segment([ref("id")])]
-            projection ("test_space"."id"::unsigned -> "id", "test_space"."id"::unsigned -> "id")
+            projection ("test_space"."id"::int -> "id", "test_space"."id"::int -> "id")
                 scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

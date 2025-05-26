@@ -5,8 +5,8 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, Node, Node32, NodeId, Parameter};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
+use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
-use crate::ir::DerivedType;
 use crate::ir::{Nodes, Plan};
 use smol_str::format_smolstr;
 

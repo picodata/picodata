@@ -53,7 +53,7 @@ fn between1_test() {
             format!(
                 "{} {} {}",
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-                r#"WHERE ("t"."identification_number" >= CAST($1 AS unsigned))"#,
+                r#"WHERE ("t"."identification_number" >= CAST($1 AS int))"#,
                 r#"and ("t"."identification_number" <= (SELECT "COL_1" FROM "TMP_test_0136"))"#,
             ),
             vec![Value::from(1_u64)],
@@ -107,8 +107,8 @@ fn between2_test() {
             format!(
                 "{} {} {}",
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-                r#"WHERE ((SELECT "COL_1" FROM "TMP_test_0136") >= CAST($1 AS unsigned))"#,
-                r#"and ((SELECT "COL_1" FROM "TMP_test_0136") <= CAST($2 AS unsigned))"#,
+                r#"WHERE ((SELECT "COL_1" FROM "TMP_test_0136") >= CAST($1 AS int))"#,
+                r#"and ((SELECT "COL_1" FROM "TMP_test_0136") <= CAST($2 AS int))"#,
             ),
             vec![Value::from(1_u64), Value::from(3_u64)],
         ))),

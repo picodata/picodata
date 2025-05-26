@@ -298,8 +298,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection true::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection true::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -321,8 +321,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection false::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -344,8 +344,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection true::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection true::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -367,8 +367,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection false::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -391,11 +391,11 @@ mod tests {
 
         insta::assert_snapshot!(query_explain, @r#"
         union all
-            projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-                selection false::boolean
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                selection false::bool
                     scan "t"
-            projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-                selection false::boolean
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                selection false::bool
                     scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -417,15 +417,15 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection true::boolean
-                join on true::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection true::bool
+                join on true::bool
                     scan "t"
-                        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                             scan "t"
                     motion [policy: full]
                         scan "t"
-                            projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -447,8 +447,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection false::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -470,7 +470,7 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
             selection NULL::unknown
                 scan "t"
         execution options:
@@ -493,8 +493,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection true::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection true::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -516,8 +516,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection true::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection true::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
@@ -539,8 +539,8 @@ mod tests {
         let buckets = query.bucket_discovery(top).unwrap();
 
         insta::assert_snapshot!(query_explain, @r#"
-        projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
-            selection false::boolean
+        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+            selection false::bool
                 scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000

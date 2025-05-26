@@ -21,7 +21,7 @@ fn split_columns1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = CAST($1 AS unsigned)) and (CAST($2 AS unsigned) = "t"."b")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = CAST($1 AS int)) and (CAST($2 AS int) = "t"."b")"#
     );
 }
 
@@ -33,7 +33,7 @@ fn split_columns2() {
     assert_eq!(actual_pattern_params.params, vec![Value::from(1_u64)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS unsigned)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int)"#
     );
 }
 
@@ -60,7 +60,7 @@ fn split_columns4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" in (CAST($1 AS unsigned), CAST($2 AS unsigned))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" in (CAST($1 AS int), CAST($2 AS int))"#
     );
 }
 
@@ -75,6 +75,6 @@ fn split_columns5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" < CAST($1 AS unsigned)) and (CAST($2 AS unsigned) < "t"."b")) and ("t"."a" > CAST($3 AS unsigned))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" < CAST($1 AS int)) and (CAST($2 AS int) < "t"."b")) and ("t"."a" > CAST($3 AS int))"#
     );
 }

@@ -87,7 +87,7 @@ GROUP BY "f", "boolean_col", "string_col"
 -- SQL:
 SELECT d, u
 FROM (
-    SELECT CAST("number_col" AS DOUBLE) AS d, CAST("number_col" AS UNSIGNED) AS u FROM "arithmetic_space2"
+    SELECT CAST("number_col" AS DOUBLE) AS d, CAST("number_col" AS INTEGER) AS u FROM "arithmetic_space2"
 )
 GROUP BY d, u
 -- EXPECTED:

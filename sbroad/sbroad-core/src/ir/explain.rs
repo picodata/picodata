@@ -11,7 +11,6 @@ use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::Router;
 use crate::executor::Query;
 use crate::ir::explain::execution_info::BucketsInfo;
-use crate::ir::expression::cast::Type as CastType;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, Insert, Join,
@@ -31,8 +30,8 @@ use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Bound, BoundType, Frame, FrameType, Limit, NamedWindows, Over, Window};
 use super::operator::{Arithmetic, Bool, Unary};
-use super::relation::DerivedType;
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use super::types::{CastType, DerivedType};
 use super::value::Value;
 
 #[derive(Debug, PartialEq, Serialize, Clone)]

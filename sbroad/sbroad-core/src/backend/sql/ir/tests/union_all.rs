@@ -16,7 +16,7 @@ fn union_all1_latest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)"#
@@ -40,7 +40,7 @@ fn union_all1_oldest() {
         format!(
             "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
-            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS unsigned)"#,
+            r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
             r#"UNION ALL"#,
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)"#

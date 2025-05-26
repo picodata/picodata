@@ -20,8 +20,9 @@ use crate::executor::protocol::{Binary, EncodedRows, EncodedVTables};
 use crate::executor::{bucket::Buckets, Vshard};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
-use crate::ir::relation::{Column, ColumnRole, DerivedType, Type};
+use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::transformation::redistribution::{ColumnPosition, MotionKey, Target};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::{EncodedValue, MsgPackValue, Value};
 use crate::utils::{write_u32_array_len, ByteCounter};
 
@@ -769,25 +770,24 @@ pub fn calculate_unified_types(
     types: &Vec<Vec<DerivedType>>,
 ) -> Result<Vec<(bool, DerivedType)>, SbroadError> {
     // Map of { type -> types_which_can_be_upcasted_to_given_one }.
-    let get_types_less = |ty: &Type| -> &[Type] {
+    let get_types_less = |ty: &UnrestrictedType| -> &[UnrestrictedType] {
         match ty {
-            Type::Any
-            | Type::Map
-            | Type::Array
-            | Type::Boolean
-            | Type::String
-            | Type::Unsigned
-            | Type::Datetime => &[],
-            Type::Uuid => &[Type::String],
-            Type::Integer => &[Type::Unsigned],
-            Type::Double => &[Type::Unsigned, Type::Integer],
-            Type::Decimal => &[Type::Unsigned, Type::Integer, Type::Double],
+            UnrestrictedType::Any
+            | UnrestrictedType::Map
+            | UnrestrictedType::Array
+            | UnrestrictedType::Boolean
+            | UnrestrictedType::String
+            | UnrestrictedType::Integer
+            | UnrestrictedType::Datetime => &[],
+            UnrestrictedType::Uuid => &[UnrestrictedType::String],
+            UnrestrictedType::Double => &[UnrestrictedType::Integer],
+            UnrestrictedType::Decimal => &[UnrestrictedType::Integer, UnrestrictedType::Double],
         }
     };
 
     let columns_len = types.first().expect("Types vec should not be empty").len();
     let mut nullable_column_indices = HashSet::with_capacity(columns_len);
-    let fix_type = |current_type_unified: &mut DerivedType, given_type: &Type| {
+    let fix_type = |current_type_unified: &mut DerivedType, given_type: &UnrestrictedType| {
         if let Some(current_type_unified) = current_type_unified.get_mut() {
             if get_types_less(given_type).contains(current_type_unified) {
                 *current_type_unified = *given_type;

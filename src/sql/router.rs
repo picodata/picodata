@@ -35,7 +35,8 @@ use crate::storage::{self, Catalog};
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
-use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, DerivedType, Table, Type};
+use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
+use sbroad::ir::types::{DerivedType, UnrestrictedType};
 
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
@@ -507,7 +508,7 @@ impl Metadata for RouterMetadata {
         for column_meta in &table.format {
             let col_name = &column_meta.name;
             let is_nullable = column_meta.is_nullable;
-            let col_type = Type::new(column_meta.field_type.as_str())?;
+            let col_type = UnrestrictedType::new(column_meta.field_type.as_str())?;
             let role = if col_name == DEFAULT_BUCKET_COLUMN {
                 ColumnRole::Sharding
             } else {

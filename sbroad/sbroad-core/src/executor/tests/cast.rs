@@ -17,7 +17,7 @@ fn cast1_test() {
 fn cast2_test() {
     broadcast_check(
         r#"SELECT CAST(true as bool) FROM "t1""#,
-        r#"SELECT CAST($1 AS boolean) as "col_1" FROM "t1""#,
+        r#"SELECT CAST($1 AS bool) as "col_1" FROM "t1""#,
         vec![Value::from(true)],
     );
 }
@@ -25,8 +25,8 @@ fn cast2_test() {
 #[test]
 fn cast3_test() {
     broadcast_check(
-        r#"SELECT CAST(false as boolean) FROM "t1""#,
-        r#"SELECT CAST($1 AS boolean) as "col_1" FROM "t1""#,
+        r#"SELECT CAST(false as bool) FROM "t1""#,
+        r#"SELECT CAST($1 AS bool) as "col_1" FROM "t1""#,
         vec![Value::from(false)],
     );
 }
@@ -53,7 +53,7 @@ fn cast5_test() {
 fn cast6_test() {
     broadcast_check(
         r#"SELECT CAST('1' as int) FROM "t1""#,
-        r#"SELECT CAST($1 AS integer) as "col_1" FROM "t1""#,
+        r#"SELECT CAST($1 AS int) as "col_1" FROM "t1""#,
         vec![Value::from(1)],
     );
 }
@@ -61,8 +61,8 @@ fn cast6_test() {
 #[test]
 fn cast7_test() {
     broadcast_check(
-        r#"SELECT CAST('1' as integer) FROM "t1""#,
-        r#"SELECT CAST($1 AS integer) as "col_1" FROM "t1""#,
+        r#"SELECT CAST('1' as int) FROM "t1""#,
+        r#"SELECT CAST($1 AS int) as "col_1" FROM "t1""#,
         vec![Value::from(1)],
     );
 }
@@ -71,7 +71,7 @@ fn cast7_test() {
 fn cast8_test() {
     broadcast_check(
         r#"SELECT CAST(1 as string) FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS unsigned) as string) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
     );
 }
@@ -80,7 +80,7 @@ fn cast8_test() {
 fn cast9_test() {
     broadcast_check(
         r#"SELECT CAST(1 as text) FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS unsigned) as text) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
     );
 }
@@ -88,9 +88,9 @@ fn cast9_test() {
 #[test]
 fn cast10_test() {
     broadcast_check(
-        r#"SELECT CAST('1' as unsigned) FROM "t1""#,
-        r#"SELECT CAST($1 AS unsigned) as "col_1" FROM "t1""#,
-        vec![Value::from(1 as u32)],
+        r#"SELECT CAST('1' as int) FROM "t1""#,
+        r#"SELECT CAST($1 AS int) as "col_1" FROM "t1""#,
+        vec![Value::from(1)],
     );
 }
 
@@ -98,7 +98,7 @@ fn cast10_test() {
 fn cast11_test() {
     broadcast_check(
         r#"SELECT CAST(1 as varchar(10)) FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS unsigned) as varchar(10)) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
     );
 }
@@ -107,7 +107,7 @@ fn cast11_test() {
 fn cast12_test() {
     broadcast_check(
         r#"SELECT CAST(trim("a") as varchar(100)) FROM "t1""#,
-        r#"SELECT CAST (TRIM ("t1"."a") as varchar(100)) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (TRIM ("t1"."a") as string) as "col_1" FROM "t1""#,
         vec![],
     );
 }
@@ -116,7 +116,7 @@ fn cast12_test() {
 fn pgcast1_test() {
     broadcast_check(
         r#"SELECT true::bool FROM "t1""#,
-        r#"SELECT CAST($1 AS boolean) as "col_1" FROM "t1""#,
+        r#"SELECT CAST($1 AS bool) as "col_1" FROM "t1""#,
         vec![Value::from(true)],
     );
 }
@@ -125,7 +125,7 @@ fn pgcast1_test() {
 fn pgcast2_test() {
     broadcast_check(
         r#"SELECT false::bool FROM "t1""#,
-        r#"SELECT CAST($1 AS boolean) as "col_1" FROM "t1""#,
+        r#"SELECT CAST($1 AS bool) as "col_1" FROM "t1""#,
         vec![Value::from(false)],
     );
 }
@@ -152,7 +152,7 @@ fn pgcast4_test() {
 fn pgcast5_test() {
     broadcast_check(
         r#"SELECT '1'::int FROM "t1""#,
-        r#"SELECT CAST($1 AS integer) as "col_1" FROM "t1""#,
+        r#"SELECT CAST($1 AS int) as "col_1" FROM "t1""#,
         vec![Value::from(1)],
     );
 }
@@ -160,8 +160,8 @@ fn pgcast5_test() {
 #[test]
 fn pgcast6_test() {
     broadcast_check(
-        r#"SELECT '1'::integer FROM "t1""#,
-        r#"SELECT CAST($1 AS integer) as "col_1" FROM "t1""#,
+        r#"SELECT '1'::int FROM "t1""#,
+        r#"SELECT CAST($1 AS int) as "col_1" FROM "t1""#,
         vec![Value::from(1)],
     );
 }
@@ -170,7 +170,7 @@ fn pgcast6_test() {
 fn pgcast7_test() {
     broadcast_check(
         r#"SELECT 1::string FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS unsigned) as string) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
     );
 }
@@ -179,7 +179,7 @@ fn pgcast7_test() {
 fn pgcast8_test() {
     broadcast_check(
         r#"SELECT 1::text FROM "t1""#,
-        r#"SELECT CAST (CAST($1 AS unsigned) as text) as "col_1" FROM "t1""#,
+        r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
         vec![Value::from(1_u64)],
     );
 }

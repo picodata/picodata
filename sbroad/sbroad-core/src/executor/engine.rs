@@ -10,6 +10,7 @@ use crate::cbo::histogram::Scalar;
 use crate::cbo::{ColumnStats, TableColumnPair, TableStats};
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::NodeId;
+use crate::ir::types::DerivedType;
 use crate::utils::MutexLike;
 use std::any::Any;
 
@@ -23,8 +24,8 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
 use crate::ir::function::Function;
-use crate::ir::relation::Type;
-use crate::ir::relation::{DerivedType, Table};
+use crate::ir::relation::Table;
+use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 
 use tarantool::msgpack;
@@ -86,17 +87,45 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 get_real_function_name("version")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(Type::String),
+                DerivedType::new(UnrestrictedType::String),
                 false,
             ),
-            Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
-            Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
-            Function::new_stable("substring".into(), DerivedType::new(Type::String), false),
+            Function::new_stable(
+                "to_date".into(),
+                DerivedType::new(UnrestrictedType::Datetime),
+                false,
+            ),
+            Function::new_stable(
+                "to_char".into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_stable(
+                "substring".into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
             // stable system functions
-            Function::new_stable("substr".into(), DerivedType::new(Type::String), true),
-            Function::new_stable("lower".into(), DerivedType::new(Type::String), true),
-            Function::new_stable("upper".into(), DerivedType::new(Type::String), true),
-            Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
+            Function::new_stable(
+                "substr".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "lower".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "upper".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "coalesce".into(),
+                DerivedType::new(UnrestrictedType::Any),
+                true,
+            ),
             // volatile functions
             Function::new_volatile(
                 // TODO: deprecated, remove in future version
@@ -105,28 +134,28 @@ pub fn get_builtin_functions() -> &'static [Function] {
                     .into(),
                 // TODO: use `Type::UUID`, to learn more see
                 // <https://git.picodata.io/core/picodata/-/issues/2027>
-                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
                 false,
             ),
             Function::new_volatile(
                 get_real_function_name("pico_instance_uuid")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
                 false,
             ),
             Function::new_volatile(
                 get_real_function_name("pico_raft_leader_uuid")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
                 false,
             ),
             Function::new_volatile(
                 get_real_function_name("pico_raft_leader_id")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(Type::Integer),
+                DerivedType::new(UnrestrictedType::Integer),
                 false,
             ),
         ]

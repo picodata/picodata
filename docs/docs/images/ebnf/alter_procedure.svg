@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="865"
-   height="227"
+   width="817"
+   height="325"
+   viewBox="0 0 817 325"
    version="1.1"
-   viewBox="0 0 865 227"
    id="svg42"
    sodipodi:docname="alter_procedure.svg"
-   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -21,13 +21,13 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="1.1895954"
-     inkscape:cx="432.5"
-     inkscape:cy="113.90428"
+     inkscape:zoom="1.0709914"
+     inkscape:cx="408.50001"
+     inkscape:cy="162.93315"
      inkscape:window-width="1858"
      inkscape:window-height="1014"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg42" />
   <defs
@@ -49,20 +49,20 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
 </style>
   </defs>
   <polygon
-     points="11 61 3 57 3 65"
+     points="9 61 1 57 1 65"
      id="polygon1" />
   <polygon
-     points="19 61 11 57 11 65"
+     points="17 61 9 57 9 65"
      id="polygon2" />
   <rect
-     x="33"
+     x="31"
      y="47"
      width="62"
      height="32"
      rx="10"
      id="rect2" />
   <rect
-     x="31"
+     x="29"
      y="45"
      width="62"
      height="32"
@@ -71,18 +71,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect3" />
   <text
      class="terminal"
-     x="41"
+     x="39"
      y="65"
      id="text3">ALTER</text>
   <rect
-     x="115"
+     x="113"
      y="47"
      width="104"
      height="32"
      rx="10"
      id="rect4" />
   <rect
-     x="113"
+     x="111"
      y="45"
      width="104"
      height="32"
@@ -91,7 +91,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect5" />
   <text
      class="terminal"
-     x="123"
+     x="121"
      y="65"
      id="text5">PROCEDURE</text>
   <a
@@ -99,13 +99,13 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      xlink:title="procedure"
      id="a7">
     <rect
-       x="239"
+       x="237"
        y="47"
        width="84"
        height="32"
        id="rect6" />
     <rect
-       x="237"
+       x="235"
        y="45"
        width="84"
        height="32"
@@ -113,19 +113,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="rect7" />
     <text
        class="nonterminal"
-       x="247"
+       x="245"
        y="65"
        id="text7">procedure</text>
   </a>
   <rect
-     x="363"
+     x="361"
      y="47"
      width="26"
      height="32"
      rx="10"
      id="rect8" />
   <rect
-     x="361"
+     x="359"
      y="45"
      width="26"
      height="32"
@@ -134,41 +134,41 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect9" />
   <text
      class="terminal"
-     x="371"
+     x="369"
      y="65"
      id="text9">(</text>
   <a
-     xlink:href="#type"
-     xlink:title="type"
+     xlink:href="#unrestricted_type"
+     xlink:title="unrestricted_type"
      id="a11">
     <rect
-       x="429"
+       x="427"
        y="47"
-       width="48"
+       width="128"
        height="32"
        id="rect10" />
     <rect
-       x="427"
+       x="425"
        y="45"
-       width="48"
+       width="128"
        height="32"
        class="nonterminal"
        id="rect11" />
     <text
        class="nonterminal"
-       x="437"
+       x="435"
        y="65"
-       id="text11">type</text>
+       id="text11">unrestricted_type</text>
   </a>
   <rect
-     x="429"
+     x="427"
      y="3"
      width="24"
      height="32"
      rx="10"
      id="rect12" />
   <rect
-     x="427"
+     x="425"
      y="1"
      width="24"
      height="32"
@@ -177,18 +177,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect13" />
   <text
      class="terminal"
-     x="437"
+     x="435"
      y="21"
      id="text13">,</text>
   <rect
-     x="517"
+     x="595"
      y="47"
      width="26"
      height="32"
      rx="10"
      id="rect14" />
   <rect
-     x="515"
+     x="593"
      y="45"
      width="26"
      height="32"
@@ -197,18 +197,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect15" />
   <text
      class="terminal"
-     x="525"
+     x="603"
      y="65"
      id="text15">)</text>
   <rect
-     x="583"
+     x="661"
      y="47"
      width="76"
      height="32"
      rx="10"
      id="rect16" />
   <rect
-     x="581"
+     x="659"
      y="45"
      width="76"
      height="32"
@@ -217,18 +217,18 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect17" />
   <text
      class="terminal"
-     x="591"
+     x="669"
      y="65"
      id="text17">RENAME</text>
   <rect
-     x="679"
+     x="757"
      y="47"
      width="38"
      height="32"
      rx="10"
      id="rect18" />
   <rect
-     x="677"
+     x="755"
      y="45"
      width="38"
      height="32"
@@ -237,7 +237,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect19" />
   <text
      class="terminal"
-     x="687"
+     x="765"
      y="65"
      id="text19">TO</text>
   <a
@@ -245,34 +245,34 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      xlink:title="procedure"
      id="a21">
     <rect
-       x="737"
-       y="47"
+       x="183"
+       y="129"
        width="84"
        height="32"
        id="rect20" />
     <rect
-       x="735"
-       y="45"
+       x="181"
+       y="127"
        width="84"
        height="32"
        class="nonterminal"
        id="rect21" />
     <text
        class="nonterminal"
-       x="745"
-       y="65"
+       x="191"
+       y="147"
        id="text21">procedure</text>
   </a>
   <rect
-     x="45"
-     y="149"
+     x="307"
+     y="161"
      width="58"
      height="32"
      rx="10"
      id="rect22" />
   <rect
-     x="43"
-     y="147"
+     x="305"
+     y="159"
      width="58"
      height="32"
      class="terminal"
@@ -280,19 +280,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect23" />
   <text
      class="terminal"
-     x="53"
-     y="167"
+     x="315"
+     y="179"
      id="text23">WAIT</text>
   <rect
-     x="123"
-     y="149"
+     x="385"
+     y="161"
      width="80"
      height="32"
      rx="10"
      id="rect24" />
   <rect
-     x="121"
-     y="147"
+     x="383"
+     y="159"
      width="80"
      height="32"
      class="terminal"
@@ -300,19 +300,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect25" />
   <text
      class="terminal"
-     x="131"
-     y="167"
+     x="393"
+     y="179"
      id="text25">APPLIED</text>
   <rect
-     x="243"
-     y="149"
+     x="505"
+     y="161"
      width="92"
      height="32"
      rx="10"
      id="rect26" />
   <rect
-     x="241"
-     y="147"
+     x="503"
+     y="159"
      width="92"
      height="32"
      class="terminal"
@@ -320,19 +320,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect27" />
   <text
      class="terminal"
-     x="251"
-     y="167"
+     x="513"
+     y="179"
      id="text27">GLOBALLY</text>
   <rect
-     x="243"
-     y="193"
+     x="505"
+     y="205"
      width="82"
      height="32"
      rx="10"
      id="rect28" />
   <rect
-     x="241"
-     y="191"
+     x="503"
+     y="203"
      width="82"
      height="32"
      class="terminal"
@@ -340,19 +340,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect29" />
   <text
      class="terminal"
-     x="251"
-     y="211"
+     x="513"
+     y="223"
      id="text29">LOCALLY</text>
   <rect
-     x="415"
-     y="149"
+     x="367"
+     y="291"
      width="76"
      height="32"
      rx="10"
      id="rect30" />
   <rect
-     x="413"
-     y="147"
+     x="365"
+     y="289"
      width="76"
      height="32"
      class="terminal"
@@ -360,19 +360,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect31" />
   <text
      class="terminal"
-     x="423"
-     y="167"
+     x="375"
+     y="309"
      id="text31">OPTION</text>
   <rect
-     x="511"
-     y="149"
+     x="463"
+     y="291"
      width="26"
      height="32"
      rx="10"
      id="rect32" />
   <rect
-     x="509"
-     y="147"
+     x="461"
+     y="289"
      width="26"
      height="32"
      class="terminal"
@@ -380,19 +380,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect33" />
   <text
      class="terminal"
-     x="519"
-     y="167"
+     x="471"
+     y="309"
      id="text33">(</text>
   <rect
-     x="557"
-     y="149"
+     x="509"
+     y="291"
      width="82"
      height="32"
      rx="10"
      id="rect34" />
   <rect
-     x="555"
-     y="147"
+     x="507"
+     y="289"
      width="82"
      height="32"
      class="terminal"
@@ -400,19 +400,19 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect35" />
   <text
      class="terminal"
-     x="565"
-     y="167"
+     x="517"
+     y="309"
      id="text35">TIMEOUT</text>
   <rect
-     x="659"
-     y="149"
+     x="611"
+     y="291"
      width="30"
      height="32"
      rx="10"
      id="rect36" />
   <rect
-     x="657"
-     y="147"
+     x="609"
+     y="289"
      width="30"
      height="32"
      class="terminal"
@@ -420,42 +420,42 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect37" />
   <text
      class="terminal"
-     x="667"
-     y="167"
+     x="619"
+     y="309"
      id="text37">=</text>
   <a
      xlink:href="../../sql_types#double"
      xlink:title="double"
      id="a39">
     <rect
-       x="709"
-       y="149"
+       x="661"
+       y="291"
        width="62"
        height="32"
        id="rect38" />
     <rect
-       x="707"
-       y="147"
+       x="659"
+       y="289"
        width="62"
        height="32"
        class="nonterminal"
        id="rect39" />
     <text
        class="nonterminal"
-       x="717"
-       y="167"
+       x="669"
+       y="309"
        id="text39">double</text>
   </a>
   <rect
-     x="791"
-     y="149"
+     x="743"
+     y="291"
      width="26"
      height="32"
      rx="10"
      id="rect40" />
   <rect
-     x="789"
-     y="147"
+     x="741"
+     y="289"
      width="26"
      height="32"
      class="terminal"
@@ -463,17 +463,17 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      id="rect41" />
   <text
      class="terminal"
-     x="799"
-     y="167"
+     x="751"
+     y="309"
      id="text41">)</text>
   <path
      class="line"
-     d="m19 61 h2 m0 0 h10 m62 0 h10 m0 0 h10 m104 0 h10 m0 0 h10 m84 0 h10 m20 0 h10 m26 0 h10 m20 0 h10 m48 0 h10 m-88 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m68 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-68 0 h10 m24 0 h10 m0 0 h24 m20 44 h10 m26 0 h10 m-220 0 h20 m200 0 h20 m-240 0 q10 0 10 10 m220 0 q0 -10 10 -10 m-230 10 v14 m220 0 v-14 m-220 14 q0 10 10 10 m200 0 q10 0 10 -10 m-210 10 h10 m0 0 h190 m20 -34 h10 m76 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m84 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-840 70 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h320 m-350 0 h20 m330 0 h20 m-370 0 q10 0 10 10 m350 0 q0 -10 10 -10 m-360 10 v12 m350 0 v-12 m-350 12 q0 10 10 10 m330 0 q10 0 10 -10 m-340 10 h10 m58 0 h10 m0 0 h10 m80 0 h10 m20 0 h10 m92 0 h10 m-132 0 h20 m112 0 h20 m-152 0 q10 0 10 10 m132 0 q0 -10 10 -10 m-142 10 v24 m132 0 v-24 m-132 24 q0 10 10 10 m112 0 q10 0 10 -10 m-122 10 h10 m82 0 h10 m0 0 h10 m60 -76 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
+     d="m17 61 h2 m0 0 h10 m62 0 h10 m0 0 h10 m104 0 h10 m0 0 h10 m84 0 h10 m20 0 h10 m26 0 h10 m20 0 h10 m128 0 h10 m-168 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m148 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-148 0 h10 m24 0 h10 m0 0 h104 m20 44 h10 m26 0 h10 m-300 0 h20 m280 0 h20 m-320 0 q10 0 10 10 m300 0 q0 -10 10 -10 m-310 10 v14 m300 0 v-14 m-300 14 q0 10 10 10 m280 0 q10 0 10 -10 m-290 10 h10 m0 0 h270 m20 -34 h10 m76 0 h10 m0 0 h10 m38 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-656 82 l2 0 m2 0 l2 0 m2 0 l2 0 m2 0 h10 m84 0 h10 m20 0 h10 m0 0 h320 m-350 0 h20 m330 0 h20 m-370 0 q10 0 10 10 m350 0 q0 -10 10 -10 m-360 10 v12 m350 0 v-12 m-350 12 q0 10 10 10 m330 0 q10 0 10 -10 m-340 10 h10 m58 0 h10 m0 0 h10 m80 0 h10 m20 0 h10 m92 0 h10 m-132 0 h20 m112 0 h20 m-152 0 q10 0 10 10 m132 0 q0 -10 10 -10 m-142 10 v24 m132 0 v-24 m-132 24 q0 10 10 10 m112 0 q10 0 10 -10 m-122 10 h10 m82 0 h10 m0 0 h10 m42 -76 l2 0 m2 0 l2 0 m2 0 l2 0 m-334 130 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
      id="path41" />
   <polygon
-     points="855 131 863 127 863 135"
+     points="807 273 815 269 815 277"
      id="polygon41" />
   <polygon
-     points="855 131 847 127 847 135"
+     points="807 273 799 269 799 277"
      id="polygon42" />
 </svg>

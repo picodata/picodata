@@ -10,9 +10,9 @@
 use ahash::AHashMap;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
-use std::fmt::{self, Formatter};
+use std::fmt::Formatter;
 use tarantool::index::Metadata as IndexMetadata;
-use tarantool::space::{Field, FieldType as SpaceFieldType, Space, SpaceEngineType, SystemSpace};
+use tarantool::space::{Field, Space, SpaceEngineType, SystemSpace};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
 
 use serde::de::{Error, MapAccess, Visitor};
@@ -23,204 +23,9 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::value::Value;
 
 use super::distribution::Key;
+use super::types::{DerivedType, UnrestrictedType};
 
 const DEFAULT_VALUE: Value = Value::Null;
-
-/// Supported column types, which is used in a schema only.
-/// This `Type` is derived from the result's metadata.
-#[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
-pub enum Type {
-    Any,
-    Map,
-    Array,
-    Boolean,
-    Datetime,
-    Decimal,
-    Double,
-    Integer,
-    String,
-    Uuid,
-    Unsigned,
-}
-
-/// Derived type (`Some<Type>`) or its absence (`None`).
-/// Type absence is possible in case we met a Null.
-#[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
-pub struct DerivedType(Option<Type>);
-
-impl DerivedType {
-    pub fn unknown() -> Self {
-        Self(None)
-    }
-
-    pub fn new(ty: Type) -> Self {
-        Self(Some(ty))
-    }
-
-    pub fn get(&self) -> &Option<Type> {
-        &self.0
-    }
-
-    pub fn get_mut(&mut self) -> &mut Option<Type> {
-        &mut self.0
-    }
-
-    pub fn set(&mut self, ty: Type) {
-        self.0 = Some(ty)
-    }
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Type::Array => write!(f, "array"),
-            Type::Boolean => write!(f, "boolean"),
-            Type::Decimal => write!(f, "decimal"),
-            Type::Datetime => write!(f, "datetime"),
-            Type::Double => write!(f, "double"),
-            Type::Integer => write!(f, "integer"),
-            Type::String => write!(f, "string"),
-            Type::Uuid => write!(f, "uuid"),
-            Type::Unsigned => write!(f, "unsigned"),
-            Type::Any => write!(f, "any"),
-            Type::Map => write!(f, "map"),
-        }
-    }
-}
-
-impl fmt::Display for DerivedType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            None => write!(f, "unknown"),
-            Some(t) => t.fmt(f),
-        }
-    }
-}
-
-impl From<&Type> for FieldType {
-    fn from(data_type: &Type) -> Self {
-        match data_type {
-            Type::Boolean => FieldType::Boolean,
-            Type::Decimal => FieldType::Decimal,
-            Type::Datetime => FieldType::Datetime,
-            Type::Double => FieldType::Double,
-            Type::Integer => FieldType::Integer,
-            Type::Uuid => FieldType::Uuid,
-            Type::String => FieldType::String,
-            Type::Unsigned => FieldType::Unsigned,
-            Type::Array => FieldType::Array,
-            Type::Any => FieldType::Any,
-            Type::Map => FieldType::Map,
-        }
-    }
-}
-
-impl From<&Type> for SpaceFieldType {
-    fn from(data_type: &Type) -> Self {
-        match data_type {
-            Type::Boolean => SpaceFieldType::Boolean,
-            Type::Datetime => SpaceFieldType::Datetime,
-            Type::Decimal => SpaceFieldType::Decimal,
-            Type::Double => SpaceFieldType::Double,
-            Type::Integer => SpaceFieldType::Integer,
-            Type::String => SpaceFieldType::String,
-            Type::Uuid => SpaceFieldType::Uuid,
-            Type::Unsigned => SpaceFieldType::Unsigned,
-            Type::Array => SpaceFieldType::Array,
-            Type::Any => SpaceFieldType::Any,
-            Type::Map => SpaceFieldType::Map,
-        }
-    }
-}
-
-impl TryFrom<SpaceFieldType> for Type {
-    type Error = SbroadError;
-
-    fn try_from(field_type: SpaceFieldType) -> Result<Self, Self::Error> {
-        match field_type {
-            SpaceFieldType::Boolean => Ok(Type::Boolean),
-            SpaceFieldType::Datetime => Ok(Type::Datetime),
-            SpaceFieldType::Decimal => Ok(Type::Decimal),
-            SpaceFieldType::Double => Ok(Type::Double),
-            SpaceFieldType::Integer => Ok(Type::Integer),
-            SpaceFieldType::String => Ok(Type::String),
-            SpaceFieldType::Unsigned => Ok(Type::Unsigned),
-            SpaceFieldType::Array => Ok(Type::Array),
-            SpaceFieldType::Uuid => Ok(Type::Uuid),
-            SpaceFieldType::Any
-            | SpaceFieldType::Varbinary
-            | SpaceFieldType::Map
-            | SpaceFieldType::Interval => Err(SbroadError::NotImplemented(
-                Entity::Type,
-                field_type.to_smolstr(),
-            )),
-            SpaceFieldType::Number | SpaceFieldType::Scalar => Err(SbroadError::Unsupported(
-                Entity::Type,
-                Some(field_type.to_smolstr()),
-            )),
-        }
-    }
-}
-
-impl Type {
-    /// Type constructor.
-    /// Used in `Metadata` `table` method implementations to get columns type when constructing
-    /// tables.
-    ///
-    /// # Errors
-    /// - Invalid type name.
-    pub fn new(s: &str) -> Result<Self, SbroadError> {
-        match s.to_string().to_lowercase().as_str() {
-            "boolean" => Ok(Type::Boolean),
-            "datetime" => Ok(Type::Datetime),
-            "decimal" => Ok(Type::Decimal),
-            "double" => Ok(Type::Double),
-            "integer" => Ok(Type::Integer),
-            "string" | "text" => Ok(Type::String),
-            "uuid" => Ok(Type::Uuid),
-            "unsigned" => Ok(Type::Unsigned),
-            "array" => Ok(Type::Array),
-            "any" => Ok(Type::Any),
-            "map" => Ok(Type::Map),
-            v => Err(SbroadError::Invalid(
-                Entity::Type,
-                Some(format_smolstr!("Unable to transform {v} to Type.")),
-            )),
-        }
-    }
-
-    /// The type of the column is scalar.
-    /// Only scalar types can be used as a distribution key.
-    #[must_use]
-    pub fn is_scalar(&self) -> bool {
-        matches!(
-            self,
-            Type::Boolean
-                | Type::Datetime
-                | Type::Decimal
-                | Type::Double
-                | Type::Integer
-                | Type::String
-                | Type::Uuid
-                | Type::Unsigned
-        )
-    }
-
-    /// Check if the type can be casted to another type.
-    #[must_use]
-    pub fn is_castable_to(&self, to: &Type) -> bool {
-        matches!(
-            (self, to),
-            (Type::Array, Type::Array)
-                | (Type::Boolean, Type::Boolean)
-                | (
-                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal,
-                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal,
-                )
-                | (Type::String | Type::Uuid, Type::String | Type::Uuid)
-        )
-    }
-}
 
 /// A role of the column in the relation.
 #[derive(Default, PartialEq, Debug, Eq, Clone)]
@@ -261,17 +66,16 @@ impl From<Column> for Field {
     fn from(column: Column) -> Self {
         let field = if let Some(ty) = column.r#type.get() {
             match ty {
-                Type::Boolean => Field::boolean(column.name),
-                Type::Datetime => Field::datetime(column.name),
-                Type::Decimal => Field::decimal(column.name),
-                Type::Double => Field::double(column.name),
-                Type::Integer => Field::integer(column.name),
-                Type::String => Field::string(column.name),
-                Type::Uuid => Field::uuid(column.name),
-                Type::Unsigned => Field::unsigned(column.name),
-                Type::Array => Field::array(column.name),
-                Type::Any => Field::any(column.name),
-                Type::Map => Field::map(column.name),
+                UnrestrictedType::Boolean => Field::boolean(column.name),
+                UnrestrictedType::Datetime => Field::datetime(column.name),
+                UnrestrictedType::Decimal => Field::decimal(column.name),
+                UnrestrictedType::Double => Field::double(column.name),
+                UnrestrictedType::Integer => Field::integer(column.name),
+                UnrestrictedType::String => Field::string(column.name),
+                UnrestrictedType::Uuid => Field::uuid(column.name),
+                UnrestrictedType::Array => Field::array(column.name),
+                UnrestrictedType::Any => Field::any(column.name),
+                UnrestrictedType::Map => Field::map(column.name),
             }
         } else {
             Field::scalar(column.name)
@@ -308,17 +112,16 @@ impl SerSerialize for Column {
 
         let type_str = match &self.r#type.get() {
             Some(ty) => match ty {
-                Type::Boolean => "boolean",
-                Type::Datetime => "datetime",
-                Type::Decimal => "decimal",
-                Type::Double => "double",
-                Type::Integer => "integer",
-                Type::String => "string",
-                Type::Uuid => "uuid",
-                Type::Unsigned => "unsigned",
-                Type::Array => "array",
-                Type::Any => "any",
-                Type::Map => "map",
+                UnrestrictedType::Boolean => "boolean",
+                UnrestrictedType::Datetime => "datetime",
+                UnrestrictedType::Decimal => "decimal",
+                UnrestrictedType::Double => "double",
+                UnrestrictedType::Integer => "integer",
+                UnrestrictedType::String => "string",
+                UnrestrictedType::Uuid => "uuid",
+                UnrestrictedType::Array => "array",
+                UnrestrictedType::Any => "any",
+                UnrestrictedType::Map => "map",
             },
             None => "unknown",
         };
@@ -371,17 +174,16 @@ impl<'de> Visitor<'de> for ColumnVisitor {
         let is_nullable = matches!(column_is_nullable.as_str(), "true");
 
         let ty = match column_type.as_str() {
-            "any" => DerivedType::new(Type::Any),
-            "boolean" => DerivedType::new(Type::Boolean),
-            "datetime" => DerivedType::new(Type::Datetime),
-            "decimal" | "numeric" => DerivedType::new(Type::Decimal),
-            "double" => DerivedType::new(Type::Double),
-            "integer" => DerivedType::new(Type::Integer),
-            "string" | "text" | "varchar" => DerivedType::new(Type::String),
-            "unsigned" => DerivedType::new(Type::Unsigned),
-            "array" => DerivedType::new(Type::Array),
-            "uuid" => DerivedType::new(Type::Uuid),
-            "map" => DerivedType::new(Type::Map),
+            "any" => DerivedType::new(UnrestrictedType::Any),
+            "boolean" => DerivedType::new(UnrestrictedType::Boolean),
+            "datetime" => DerivedType::new(UnrestrictedType::Datetime),
+            "decimal" | "numeric" => DerivedType::new(UnrestrictedType::Decimal),
+            "double" => DerivedType::new(UnrestrictedType::Double),
+            "integer" | "unsigned" => DerivedType::new(UnrestrictedType::Integer),
+            "string" | "text" | "varchar" => DerivedType::new(UnrestrictedType::String),
+            "array" => DerivedType::new(UnrestrictedType::Array),
+            "uuid" => DerivedType::new(UnrestrictedType::Uuid),
+            "map" => DerivedType::new(UnrestrictedType::Map),
             "unknown" => DerivedType::unknown(),
             s => return Err(Error::custom(format!("unsupported column type: {s}"))),
         };

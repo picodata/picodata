@@ -873,13 +873,13 @@ SELECT 7 % 3
 -- SQL:
 SELECT 7.0 % 3
 -- ERROR:
-could not resolve operator overload for %\(numeric, unsigned\)
+could not resolve operator overload for %\(numeric, int\)
 
 -- TEST: modulo-numeric-2
 -- SQL:
 SELECT 7 % 3.0
 -- ERROR:
-could not resolve operator overload for %\(unsigned, numeric\)
+could not resolve operator overload for %\(int, numeric\)
 
 -- TEST: modulo-numeric-3
 -- SQL:

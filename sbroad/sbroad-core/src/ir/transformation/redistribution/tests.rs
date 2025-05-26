@@ -287,21 +287,21 @@ fn test_slices_1() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::unsigned -> "e")
-        join on true::boolean
+    projection ("t2"."e"::int -> "e")
+        join on true::bool
             scan
-                projection ("t2"."f"::unsigned -> "f")
-                    join on true::boolean
+                projection ("t2"."f"::int -> "f")
+                    join on true::bool
                         scan "t2"
-                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                            projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                                 scan "t2"
                         motion [policy: full]
                             scan "t3"
-                                projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
+                                projection ("t3"."e"::int -> "e", "t3"."f"::int -> "f", "t3"."g"::int -> "g", "t3"."h"::int -> "h")
                                     scan "t2" -> "t3"
             motion [policy: full]
                 scan "t2"
-                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -324,23 +324,23 @@ fn test_slices_2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
+    projection (sum(("count_1"::int))::int -> "col_1")
         motion [policy: full]
-            projection (count(("t2"."e"::unsigned))::unsigned -> "count_1")
-                join on true::boolean
+            projection (count(("t2"."e"::int))::int -> "count_1")
+                join on true::bool
                     scan
-                        projection ("t2"."f"::unsigned -> "f")
-                            join on true::boolean
+                        projection ("t2"."f"::int -> "f")
+                            join on true::bool
                                 scan "t2"
-                                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                                         scan "t2"
                                 motion [policy: full]
                                     scan "t3"
-                                        projection ("t3"."e"::unsigned -> "e", "t3"."f"::unsigned -> "f", "t3"."g"::unsigned -> "g", "t3"."h"::unsigned -> "h")
+                                        projection ("t3"."e"::int -> "e", "t3"."f"::int -> "f", "t3"."g"::int -> "g", "t3"."h"::int -> "h")
                                             scan "t2" -> "t3"
                     motion [policy: full]
                         scan "t2"
-                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                            projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000

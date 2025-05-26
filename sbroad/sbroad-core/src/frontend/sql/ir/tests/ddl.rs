@@ -8,7 +8,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     executor::engine::mock::RouterConfigurationMock,
     frontend::sql::ast::AbstractSyntaxTree,
-    ir::{ddl::ColumnDef, relation::Type},
+    ir::{ddl::ColumnDef, types::DomainType as DataType},
 };
 
 #[test]
@@ -31,7 +31,7 @@ fn infer_not_null_on_pk1() {
 
     let def = ColumnDef {
         name: "a".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: false,
     };
 
@@ -62,19 +62,19 @@ fn infer_not_null_on_pk2() {
 
     let def_a = ColumnDef {
         name: "a".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: false,
     };
 
     let def_b = ColumnDef {
         name: "b".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: false,
     };
 
     let def_c = ColumnDef {
         name: "c".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: true,
     };
 
@@ -132,31 +132,31 @@ fn infer_alias_int2_int4_int8_bigint_smallint() {
 
     let def_a = ColumnDef {
         name: "a".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: false,
     };
 
     let def_b = ColumnDef {
         name: "b".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: true,
     };
 
     let def_c = ColumnDef {
         name: "c".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: true,
     };
 
     let def_d = ColumnDef {
         name: "d".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: true,
     };
 
     let def_e = ColumnDef {
         name: "e".into(),
-        data_type: Type::Integer,
+        data_type: DataType::Integer,
         is_nullable: true,
     };
 
@@ -177,7 +177,7 @@ fn infer_alias_numeric_two_parameters() {
 
     let def_a = ColumnDef {
         name: "a".into(),
-        data_type: Type::Decimal,
+        data_type: DataType::Decimal,
         is_nullable: false,
     };
 
@@ -198,7 +198,7 @@ fn infer_alias_numeric_one_parameter() {
 
     let def_a = ColumnDef {
         name: "a".into(),
-        data_type: Type::Decimal,
+        data_type: DataType::Decimal,
         is_nullable: false,
     };
 
@@ -219,7 +219,7 @@ fn infer_alias_numeric_no_parameters() {
 
     let def_a = ColumnDef {
         name: "a".into(),
-        data_type: Type::Decimal,
+        data_type: DataType::Decimal,
         is_nullable: false,
     };
 
@@ -243,7 +243,7 @@ fn infer_alias_number_two_parameters() {
 
         let def_a = ColumnDef {
             name: "a".into(),
-            data_type: Type::Decimal,
+            data_type: DataType::Decimal,
             is_nullable: false,
         };
 
@@ -268,7 +268,7 @@ fn infer_alias_number_one_parameter() {
 
         let def_a = ColumnDef {
             name: "a".into(),
-            data_type: Type::Decimal,
+            data_type: DataType::Decimal,
             is_nullable: false,
         };
 
@@ -293,7 +293,7 @@ fn infer_alias_number_zero_parameters() {
 
         let def_a = ColumnDef {
             name: "a".into(),
-            data_type: Type::Decimal,
+            data_type: DataType::Decimal,
             is_nullable: false,
         };
 

@@ -17,9 +17,9 @@ use tcl::Tcl;
 
 use super::{
     ddl::AlterSystemType,
-    expression::{cast, FunctionFeature, TrimKind, VolatilityType},
+    expression::{FunctionFeature, TrimKind, VolatilityType},
     operator::{self, ConflictStrategy, JoinKind, OrderByElement, UpdateStrategy},
-    relation::DerivedType,
+    types::{CastType, DerivedType},
 };
 use crate::ir::{
     acl::{AlterOption, GrantRevokeType},
@@ -159,7 +159,7 @@ pub struct Cast {
     /// Target expression that must be casted to another type.
     pub child: NodeId,
     /// Cast type.
-    pub to: cast::Type,
+    pub to: CastType,
 }
 
 impl From<Cast> for NodeAligned {

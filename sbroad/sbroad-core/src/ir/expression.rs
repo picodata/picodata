@@ -19,6 +19,7 @@ use super::node::{
     Selection, Window,
 };
 use super::operator::OrderByEntity;
+use super::types::DerivedType;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
     Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
@@ -29,8 +30,8 @@ use crate::executor::engine::helpers::to_user;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Parameter, ReferenceAsteriskSource};
 use crate::ir::operator::Bool;
-use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::types::UnrestrictedType;
 use crate::ir::{Nodes, Plan, Positions as Targets};
 
 pub mod cast;
@@ -1746,7 +1747,7 @@ impl Plan {
             }
             Expression::Reference(Reference { col_type, .. }) => {
                 let col_type_inner = col_type.get();
-                return Ok(col_type_inner.is_none_or(|t| matches!(t, Type::Boolean)));
+                return Ok(col_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
             }
             Expression::Parameter(_) => return Ok(true),
             _ => {}

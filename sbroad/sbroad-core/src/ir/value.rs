@@ -22,11 +22,9 @@ use tarantool::uuid::Uuid;
 use crate::error;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::hash::ToHashString;
-use crate::ir::relation::DerivedType;
-use crate::ir::value::double::Double;
-
-use super::relation::Type;
 use crate::frontend::sql::{try_parse_bool, try_parse_datetime};
+use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::value::double::Double;
 
 #[derive(
     Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Encode, Decode,
@@ -707,7 +705,7 @@ impl Value {
             Value::Datetime(_) => FieldType::Datetime,
             Value::Decimal(_) => FieldType::Decimal,
             Value::Double(_) => FieldType::Double,
-            Value::Unsigned(_) => FieldType::Unsigned,
+            Value::Unsigned(_) => FieldType::Integer,
             Value::String(_) => FieldType::String,
             Value::Tuple(_) => FieldType::Array,
             Value::Uuid(_) => FieldType::Uuid,
@@ -899,8 +897,8 @@ impl Value {
 
     /// Cast a value to a different type.
     #[allow(clippy::too_many_lines)]
-    pub fn cast(self, column_type: Type) -> Result<Self, SbroadError> {
-        fn cast_error(value: &Value, column_type: Type) -> SbroadError {
+    pub fn cast(self, column_type: UnrestrictedType) -> Result<Self, SbroadError> {
+        fn cast_error(value: &Value, column_type: UnrestrictedType) -> SbroadError {
             SbroadError::Invalid(
                 Entity::Value,
                 Some(format_smolstr!("Failed to cast {value} to {column_type}.")),
@@ -908,12 +906,12 @@ impl Value {
         }
 
         match column_type {
-            Type::Any => Ok(self),
-            Type::Array | Type::Map => match self {
+            UnrestrictedType::Any => Ok(self),
+            UnrestrictedType::Array | UnrestrictedType::Map => match self {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Boolean => match self {
+            UnrestrictedType::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
                 Value::String(ref s) => try_parse_bool(s)
@@ -921,7 +919,7 @@ impl Value {
                     .map(Value::Boolean),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Datetime => match self {
+            UnrestrictedType::Datetime => match self {
                 Value::Null => Ok(Value::Null),
                 Value::Datetime(_) => Ok(self),
                 Value::String(ref s) => try_parse_datetime(s)
@@ -929,7 +927,7 @@ impl Value {
                     .map(Value::Datetime),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Decimal => match self {
+            UnrestrictedType::Decimal => match self {
                 Value::Decimal(_) => Ok(self),
                 Value::Double(ref v) => Ok(Value::Decimal(
                     Decimal::from_str(&format!("{v}"))
@@ -946,7 +944,7 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Double => match self {
+            UnrestrictedType::Double => match self {
                 Value::Double(_) => Ok(self),
                 Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
@@ -955,11 +953,16 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Integer => match self {
+            UnrestrictedType::Integer => match self {
                 Value::Integer(_) => Ok(self),
-                Value::Decimal(ref v) => Ok(Value::Integer(
-                    v.to_i64().ok_or_else(|| cast_error(&self, column_type))?,
-                )),
+                Value::Decimal(ref v) => {
+                    let Some(int) = v.to_i64() else {
+                        let unsigned = v.to_u64().ok_or_else(|| cast_error(&self, column_type))?;
+                        return Ok(Value::Unsigned(unsigned));
+                    };
+
+                    Ok(Value::Integer(int))
+                }
                 Value::Double(ref v) => v
                     .to_string()
                     .parse::<i64>()
@@ -975,36 +978,16 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::String => match self {
+            UnrestrictedType::String => match self {
                 Value::String(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Uuid => match self {
+            UnrestrictedType::Uuid => match self {
                 Value::Uuid(_) => Ok(self),
                 Value::String(ref v) => Ok(Value::Uuid(
                     Uuid::parse_str(v).map_err(|_| cast_error(&self, column_type))?,
                 )),
-                Value::Null => Ok(Value::Null),
-                _ => Err(cast_error(&self, column_type)),
-            },
-            Type::Unsigned => match self {
-                Value::Unsigned(_) => Ok(self),
-                Value::Integer(v) => Ok(Value::Unsigned(
-                    u64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
-                )),
-                Value::Decimal(ref v) => Ok(Value::Unsigned(
-                    v.to_u64().ok_or_else(|| cast_error(&self, column_type))?,
-                )),
-                Value::Double(ref v) => v
-                    .to_string()
-                    .parse::<u64>()
-                    .map(Value::Unsigned)
-                    .map_err(|_| cast_error(&self, column_type)),
-                Value::String(ref v) => v
-                    .parse::<u64>()
-                    .map(Value::Unsigned)
-                    .map_err(|_| cast_error(&self, column_type)),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -1025,15 +1008,14 @@ impl Value {
 
         // First, try variants returning EncodedValue::Ref to avoid cloning.
         match (column_type, self) {
-            (Type::Any, value) => return Ok(value.into()),
-            (Type::Boolean, Value::Boolean(_)) => return Ok(self.into()),
-            (Type::Datetime, Value::Datetime(_)) => return Ok(self.into()),
-            (Type::Decimal, Value::Decimal(_)) => return Ok(self.into()),
-            (Type::Double, Value::Double(_)) => return Ok(self.into()),
-            (Type::Integer, Value::Integer(_)) => return Ok(self.into()),
-            (Type::String, Value::String(_)) => return Ok(self.into()),
-            (Type::Uuid, Value::Uuid(_)) => return Ok(self.into()),
-            (Type::Unsigned, Value::Unsigned(_)) => return Ok(self.into()),
+            (UnrestrictedType::Any, value) => return Ok(value.into()),
+            (UnrestrictedType::Boolean, Value::Boolean(_)) => return Ok(self.into()),
+            (UnrestrictedType::Datetime, Value::Datetime(_)) => return Ok(self.into()),
+            (UnrestrictedType::Decimal, Value::Decimal(_)) => return Ok(self.into()),
+            (UnrestrictedType::Double, Value::Double(_)) => return Ok(self.into()),
+            (UnrestrictedType::Integer, Value::Integer(_)) => return Ok(self.into()),
+            (UnrestrictedType::String, Value::String(_)) => return Ok(self.into()),
+            (UnrestrictedType::Uuid, Value::Uuid(_)) => return Ok(self.into()),
             _ => (),
         }
 
@@ -1044,15 +1026,14 @@ impl Value {
     #[must_use]
     pub fn get_type(&self) -> DerivedType {
         let ty = match self {
-            Value::Unsigned(_) => Type::Unsigned,
-            Value::Integer(_) => Type::Integer,
-            Value::Datetime(_) => Type::Datetime,
-            Value::Decimal(_) => Type::Decimal,
-            Value::Double(_) => Type::Double,
-            Value::Boolean(_) => Type::Boolean,
-            Value::String(_) => Type::String,
-            Value::Tuple(_) => Type::Array,
-            Value::Uuid(_) => Type::Uuid,
+            Value::Integer(_) | Value::Unsigned(_) => UnrestrictedType::Integer,
+            Value::Datetime(_) => UnrestrictedType::Datetime,
+            Value::Decimal(_) => UnrestrictedType::Decimal,
+            Value::Double(_) => UnrestrictedType::Double,
+            Value::Boolean(_) => UnrestrictedType::Boolean,
+            Value::String(_) => UnrestrictedType::String,
+            Value::Tuple(_) => UnrestrictedType::Array,
+            Value::Uuid(_) => UnrestrictedType::Uuid,
             Value::Null => return DerivedType::unknown(),
         };
         DerivedType::new(ty)

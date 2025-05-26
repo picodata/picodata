@@ -291,7 +291,7 @@ FROM items
 INNER JOIN orders
 ON items.id > 2;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on ROW("ITEMS"."ID"::integer) > ROW(2::unsigned)
+    join on ROW("ITEMS"."ID"::integer) > ROW(2::int)
         scan "ITEMS"
             projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
                 scan "ITEMS"

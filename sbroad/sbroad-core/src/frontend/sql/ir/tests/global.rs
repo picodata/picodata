@@ -81,19 +81,19 @@ fn front_sql_global_tbl_sq1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-        selection ("global_t"."a"::integer in ROW($1)) or ("global_t"."a"::integer in ROW($0))
+    projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+        selection ("global_t"."a"::int in ROW($1)) or ("global_t"."a"::int in ROW($0))
             scan "global_t"
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                        projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1")
+                    projection ("t"."a"::int -> "a1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -115,19 +115,19 @@ fn front_sql_global_tbl_multiple_sqs1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-        selection (ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($1, $1)) and ("global_t"."a"::integer in ROW($0))
+    projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+        selection (ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($1, $1)) and ("global_t"."a"::int in ROW($0))
             scan "global_t"
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                        projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                    projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -151,19 +151,19 @@ fn front_sql_global_tbl_multiple_sqs2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-        selection (ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($1, $1)) or ("global_t"."a"::integer in ROW($0))
+    projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+        selection (ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($1, $1)) or ("global_t"."a"::int in ROW($0))
             scan "global_t"
     subquery $0:
     scan
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
-                        projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                        projection (sum(("t"."a"::int))::decimal -> "sum_1")
                             scan "t"
     subquery $1:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                    projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -182,13 +182,13 @@ fn front_sql_global_tbl_sq2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-        selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
+    projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+        selection ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($0, $0)
             scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                    projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -208,18 +208,18 @@ fn front_sql_global_tbl_sq3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-        selection (not (ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($1, $1))) or (ROW("global_t"."a"::integer, "global_t"."b"::integer) < ROW($0, $0))
+    projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+        selection (not (ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($1, $1))) or (ROW("global_t"."a"::int, "global_t"."b"::int) < ROW($0, $0))
             scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                    projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     subquery $1:
     motion [policy: full]
                 scan
-                    projection ("t"."a"::unsigned -> "a1", "t"."b"::unsigned -> "b1")
+                    projection ("t"."a"::int -> "a1", "t"."b"::int -> "b1")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -240,17 +240,17 @@ fn front_sql_global_tbl_sq4() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("hash_testing"."product_code"::string -> "product_code")
-        join on ("t"."a"::unsigned = "hash_testing"."identification_number"::integer) and ("hash_testing"."product_code"::string in ROW($0))
+        join on ("t"."a"::int = "hash_testing"."identification_number"::int) and ("hash_testing"."product_code"::string in ROW($0))
             scan "t"
-                projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                     scan "t"
             motion [policy: full]
                 scan "hash_testing"
-                    projection ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op")
+                    projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
                         scan "hash_testing"
     subquery $0:
     scan
-                projection ("global_t"."a"::integer::text -> "a1")
+                projection ("global_t"."a"::int::string -> "a1")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -269,17 +269,17 @@ fn front_sql_global_tbl_sq5() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t"."a"::unsigned -> "a", "t2"."f"::unsigned -> "f")
-        join on (ROW("t"."a"::unsigned, "t"."b"::unsigned) = ROW("t2"."e"::unsigned, "t2"."f"::unsigned)) and ("t"."c"::unsigned in ROW($0))
+    projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
+        join on (ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) and ("t"."c"::int in ROW($0))
             scan "t"
-                projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                     scan "t"
             scan "t2"
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                     scan "t2"
     subquery $0:
     scan
-                projection ("global_t"."a"::integer -> "a1")
+                projection ("global_t"."a"::int -> "a1")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -302,32 +302,32 @@ fn front_sql_global_tbl_sq6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t"."a"::unsigned -> "a", "t2"."f"::unsigned -> "f")
-        selection "t2"."e"::unsigned in ROW($3)
-            join on ((ROW("t"."a"::unsigned, "t"."b"::unsigned) = ROW("t2"."e"::unsigned, "t2"."f"::unsigned)) or ("t"."c"::unsigned in ROW($2))) or (exists ROW($0) and (not ("t"."d"::unsigned in ROW($1))))
+    projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
+        selection "t2"."e"::int in ROW($3)
+            join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($2))) or (exists ROW($0) and (not ("t"."d"::int in ROW($1))))
                 scan "t"
-                    projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                         scan "t"
                 motion [policy: full]
                     scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                             scan "t2"
     subquery $0:
     scan
-                    projection ("global_t"."a"::integer * 20::unsigned -> "a1")
-                        selection "global_t"."a"::integer = 1::unsigned
+                    projection ("global_t"."a"::int * 20::int -> "a1")
+                        selection "global_t"."a"::int = 1::int
                             scan "global_t"
     subquery $1:
     scan
-                    projection ("global_t"."a"::integer -> "a1")
+                    projection ("global_t"."a"::int -> "a1")
                         scan "global_t"
     subquery $2:
     scan
-                    projection ("global_t"."a"::integer -> "a1")
+                    projection ("global_t"."a"::int -> "a1")
                         scan "global_t"
     subquery $3:
     scan
-                projection ("global_t"."a"::integer * 10::unsigned -> "col_1")
+                projection ("global_t"."a"::int * 10::int -> "col_1")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -347,22 +347,22 @@ fn front_sql_global_tbl_sq7() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t"."a"::unsigned -> "a", "t2"."f"::unsigned -> "f")
-        join on ((ROW("t"."a"::unsigned, "t"."b"::unsigned) = ROW("t2"."e"::unsigned, "t2"."f"::unsigned)) or ("t"."c"::unsigned in ROW($1))) or (not ("t"."d"::unsigned in ROW($0)))
+    projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
+        join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($1))) or (not ("t"."d"::int in ROW($0)))
             scan "t"
-                projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d")
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
                     scan "t"
             motion [policy: full]
                 scan "t2"
-                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                         scan "t2"
     subquery $0:
     scan
-                projection ("global_t"."a"::integer -> "a1")
+                projection ("global_t"."a"::int -> "a1")
                     scan "global_t"
     subquery $1:
     scan
-                projection ("global_t"."a"::integer -> "a1")
+                projection ("global_t"."a"::int -> "a1")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -389,13 +389,13 @@ fn front_sql_global_join1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::unsigned -> "e", "global_t"."a"::integer -> "a")
-        join on true::boolean
+    projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
+        join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
             scan "t2"
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -416,13 +416,13 @@ fn front_sql_global_join2() {
     check_join_dist(&plan, &[DistMock::Segment]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::unsigned -> "e", "global_t"."a"::integer -> "a")
-        join on ("t2"."e"::unsigned = "global_t"."a"::integer) or ("global_t"."b"::integer = "t2"."f"::unsigned)
+    projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
+        join on ("t2"."e"::int = "global_t"."a"::int) or ("global_t"."b"::int = "t2"."f"::int)
             scan "t2"
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -442,13 +442,13 @@ fn front_sql_global_join3() {
     check_join_dist(&plan, &[DistMock::Segment]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::unsigned -> "e", "global_t"."a"::integer -> "a")
-        left join on ("t2"."e"::unsigned = "global_t"."a"::integer) or ("global_t"."b"::integer = "t2"."f"::unsigned)
+    projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
+        left join on ("t2"."e"::int = "global_t"."a"::int) or ("global_t"."b"::int = "t2"."f"::int)
             scan "t2"
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -469,14 +469,14 @@ fn front_sql_global_join4() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("s"."e"::decimal -> "e")
-        left join on true::boolean
+        left join on true::bool
             scan "s"
                 projection (sum(("sum_1"::decimal))::decimal -> "e")
                     motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                        projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                             scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -497,14 +497,14 @@ fn front_sql_global_join5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("s"."e"::decimal -> "e")
-        left join on true::boolean
+        left join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
             scan "s"
                 projection (sum(("sum_1"::decimal))::decimal -> "e")
                     motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                        projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -524,13 +524,13 @@ fn front_sql_global_join6() {
     check_join_dist(&plan, &[DistMock::Any]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("s"."e"::unsigned -> "e")
-        join on true::boolean
+    projection ("s"."e"::int -> "e")
+        join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
             scan "s"
-                projection ("t2"."e"::unsigned * "t2"."e"::unsigned -> "e")
+                projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -550,13 +550,13 @@ fn front_sql_global_join7() {
     check_join_dist(&plan, &[DistMock::Any]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("s"."e"::unsigned -> "e")
-        join on true::boolean
+    projection ("s"."e"::int -> "e")
+        join on true::bool
             scan "s"
-                projection ("t2"."e"::unsigned * "t2"."e"::unsigned -> "e")
+                projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -576,13 +576,13 @@ fn front_sql_global_join8() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::integer -> "e")
-        join on true::boolean
+    projection ("e"::int -> "e")
+        join on true::bool
             scan
-                projection ("global_t"."a"::integer * "global_t"."a"::integer -> "e")
+                projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -602,13 +602,13 @@ fn front_sql_global_join9() {
     check_join_dist(&plan, &[DistMock::Any]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::unsigned -> "e")
-        left join on true::boolean
+    projection ("e"::int -> "e")
+        left join on true::bool
             scan
-                projection ("t2"."e"::unsigned * "t2"."e"::unsigned -> "e")
+                projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -628,18 +628,18 @@ fn front_sql_global_join10() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::integer -> "e")
-        join on "e"::integer in ROW($0)
+    projection ("e"::int -> "e")
+        join on "e"::int in ROW($0)
             scan
-                projection ("global_t"."a"::integer * "global_t"."a"::integer -> "e")
+                projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
-                    projection ("t2"."e"::unsigned -> "e")
+                    projection ("t2"."e"::int -> "e")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -659,18 +659,18 @@ fn front_sql_global_join11() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::integer -> "e")
-        join on ROW("e"::integer, "e"::integer) in ROW($0, $0)
+    projection ("e"::int -> "e")
+        join on ROW("e"::int, "e"::int) in ROW($0, $0)
             scan
-                projection ("global_t"."a"::integer * "global_t"."a"::integer -> "e")
+                projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                     scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
-                    projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -687,7 +687,7 @@ fn front_sql_global_aggregate1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("global_t"."a"::integer))::decimal + avg(("global_t"."b"::integer + "global_t"."b"::integer))::decimal -> "col_1")
+    projection (sum(("global_t"."a"::int))::decimal + avg(("global_t"."b"::int + "global_t"."b"::int))::decimal -> "col_1")
         scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -704,7 +704,7 @@ fn front_sql_global_aggregate2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (sum(("global_t"."a"::integer))::decimal + avg(("global_t"."b"::integer + "global_t"."b"::integer))::decimal -> "col_1")
+    projection (sum(("global_t"."a"::int))::decimal + avg(("global_t"."b"::int + "global_t"."b"::int))::decimal -> "col_1")
         scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -722,8 +722,8 @@ fn front_sql_global_aggregate3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."b"::integer + "global_t"."a"::integer -> "col_1", sum(("global_t"."a"::integer))::decimal -> "col_2")
-        group by ("global_t"."b"::integer + "global_t"."a"::integer) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+    projection ("global_t"."b"::int + "global_t"."a"::int -> "col_1", sum(("global_t"."a"::int))::decimal -> "col_2")
+        group by ("global_t"."b"::int + "global_t"."a"::int) output: ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -742,9 +742,9 @@ fn front_sql_global_aggregate4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."b"::integer + "global_t"."a"::integer -> "col_1", sum(("global_t"."a"::integer))::decimal -> "col_2")
-        having avg(("global_t"."b"::integer))::decimal > 3::unsigned
-            group by ("global_t"."b"::integer + "global_t"."a"::integer) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+    projection ("global_t"."b"::int + "global_t"."a"::int -> "col_1", sum(("global_t"."a"::int))::decimal -> "col_2")
+        having avg(("global_t"."b"::int))::decimal > 3::int
+            group by ("global_t"."b"::int + "global_t"."a"::int) output: ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                 scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -764,15 +764,15 @@ fn front_sql_global_aggregate5() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("global_t"."b"::integer + "global_t"."a"::integer -> "col_1", sum(("global_t"."a"::integer))::decimal -> "col_2")
-        having avg(("global_t"."b"::integer))::decimal > 3::unsigned
-            group by ("global_t"."b"::integer + "global_t"."a"::integer) output: ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-                selection ROW("global_t"."a"::integer, "global_t"."b"::integer) in ROW($0, $0)
+    projection ("global_t"."b"::int + "global_t"."a"::int -> "col_1", sum(("global_t"."a"::int))::decimal -> "col_2")
+        having avg(("global_t"."b"::int))::decimal > 3::int
+            group by ("global_t"."b"::int + "global_t"."a"::int) output: ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+                selection ROW("global_t"."a"::int, "global_t"."b"::int) in ROW($0, $0)
                     scan "global_t"
     subquery $0:
     motion [policy: full]
                         scan
-                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+                            projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -790,16 +790,16 @@ fn front_sql_global_left_join1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::unsigned -> "e", "b"::integer -> "b")
+    projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                join on true::boolean
+            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+                join on true::bool
                     motion [policy: full]
                         scan "global_t"
-                            projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                                 scan "global_t"
                     scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -818,17 +818,17 @@ fn front_sql_global_left_join2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::unsigned -> "e", sum(("b"::integer))::decimal -> "col_1")
-        group by ("e"::unsigned) output: ("a"::integer -> "a", "b"::integer -> "b", "e"::unsigned -> "e", "f"::unsigned -> "f", "g"::unsigned -> "g", "h"::unsigned -> "h")
+    projection ("e"::int -> "e", sum(("b"::int))::decimal -> "col_1")
+        group by ("e"::int) output: ("a"::int -> "a", "b"::int -> "b", "e"::int -> "e", "f"::int -> "f", "g"::int -> "g", "h"::int -> "h")
             motion [policy: full]
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                    join on true::boolean
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+                    join on true::bool
                         motion [policy: full]
                             scan "global_t"
-                                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                                     scan "global_t"
                         scan "t2"
-                            projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                            projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -847,16 +847,16 @@ fn front_sql_global_left_join3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::unsigned -> "e", "b"::integer -> "b")
+    projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("b"::integer -> "b", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                join on true::boolean
+            projection ("b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+                join on true::bool
                     motion [policy: full]
                         scan
-                            projection ("global_t"."b"::integer * "global_t"."b"::integer -> "b")
+                            projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
                     scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -877,16 +877,16 @@ fn front_sql_global_left_join4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::unsigned -> "e", "b"::integer -> "b")
+    projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("b"::integer -> "b", "e"::unsigned -> "e")
-                join on true::boolean
+            projection ("b"::int -> "b", "e"::int -> "e")
+                join on true::bool
                     motion [policy: full]
                         scan
-                            projection ("global_t"."b"::integer * "global_t"."b"::integer -> "b")
+                            projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
                     scan
-                        projection ("t2"."e"::unsigned + 1::unsigned -> "e")
+                        projection ("t2"."e"::int + 1::int -> "e")
                             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -901,10 +901,10 @@ fn front_order_by_from_global_node_must_not_add_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("b"::integer -> "b", "my_col"::integer -> "my_col")
-        order by ("my_col"::integer)
+    projection ("b"::int -> "b", "my_col"::int -> "my_col")
+        order by ("my_col"::int)
             scan
-                projection ("global_t"."b"::integer -> "b", "global_t"."a"::integer -> "my_col")
+                projection ("global_t"."b"::int -> "b", "global_t"."a"::int -> "my_col")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -936,9 +936,9 @@ fn front_sql_global_union_all1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         motion [policy: local]
-            projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                 scan "global_t"
-        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -961,9 +961,9 @@ fn front_sql_global_union_all2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
         motion [policy: local]
-            projection ("global_t"."a"::integer -> "a")
+            projection ("global_t"."a"::int -> "a")
                 scan "global_t"
-        projection ("t2"."e"::unsigned -> "e")
+        projection ("t2"."e"::int -> "e")
             scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -987,16 +987,16 @@ fn front_sql_global_union_all3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("a"::integer -> "a")
+        projection ("a"::int -> "a")
             scan
                 union all
-                    projection ("global_t"."a"::integer -> "a")
+                    projection ("global_t"."a"::int -> "a")
                         scan "global_t"
                     projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                         motion [policy: full]
-                            projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                            projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                                 scan "t2"
-        projection ("global_t"."b"::integer -> "b")
+        projection ("global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1018,9 +1018,9 @@ fn front_sql_global_union_all5() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("global_t"."a"::integer -> "a")
+        projection ("global_t"."a"::int -> "a")
             scan "global_t"
-        projection ("global_t"."b"::integer -> "b")
+        projection ("global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1043,9 +1043,9 @@ fn front_sql_global_union() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     motion [policy: full]
         union
-            projection ("global_t"."a"::integer -> "a")
+            projection ("global_t"."a"::int -> "a")
                 scan "global_t"
-            projection ("global_t"."b"::integer -> "b")
+            projection ("global_t"."b"::int -> "b")
                 scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1067,9 +1067,9 @@ fn front_sql_global_union1() {
     motion [policy: full]
         union
             motion [policy: local]
-                projection ("global_t"."a"::integer -> "a")
+                projection ("global_t"."a"::int -> "a")
                     scan "global_t"
-            projection ("t2"."e"::unsigned -> "e")
+            projection ("t2"."e"::int -> "e")
                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1089,11 +1089,11 @@ fn front_sql_global_union2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     motion [policy: full]
         union
-            projection ("global_t"."a"::integer -> "a")
+            projection ("global_t"."a"::int -> "a")
                 scan "global_t"
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full]
-                    projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                         scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1118,16 +1118,16 @@ fn front_sql_union() {
     motion [policy: full]
         union
             motion [policy: local]
-                projection ("a"::integer -> "a")
+                projection ("a"::int -> "a")
                     scan
                         motion [policy: full]
                             union
                                 motion [policy: local]
-                                    projection ("global_t"."a"::integer -> "a")
+                                    projection ("global_t"."a"::int -> "a")
                                         scan "global_t"
-                                projection ("t2"."e"::unsigned -> "e")
+                                projection ("t2"."e"::int -> "e")
                                     scan "t2"
-            projection ("t2"."f"::unsigned -> "f")
+            projection ("t2"."f"::int -> "f")
                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1144,21 +1144,21 @@ fn check_plan_except_global_vs_segment() {
     select "e", "f" from "t2"
     "#;
 
-    let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1)]);
+    let plan = sql_to_optimized_ir(input, vec![Value::Integer(1)]);
 
     // TODO: the subtree for left except child is reused
     // from another motion, show this in explain
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-            selection "global_t"."a"::integer = 1::unsigned
+        projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+            selection "global_t"."a"::int = 1::int
                 scan "global_t"
         motion [policy: full]
             intersect
-                projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                     scan "t2"
-                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
-                    selection "global_t"."a"::integer = 1::unsigned
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+                    selection "global_t"."a"::int = 1::int
                         scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1180,13 +1180,13 @@ fn check_plan_except_global_vs_any() {
     // from another motion, show this in explain
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("global_t"."a"::integer -> "a")
+        projection ("global_t"."a"::int -> "a")
             scan "global_t"
         motion [policy: full]
             intersect
-                projection ("t2"."e"::unsigned -> "e")
+                projection ("t2"."e"::int -> "e")
                     scan "t2"
-                projection ("global_t"."a"::integer -> "a")
+                projection ("global_t"."a"::int -> "a")
                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1206,9 +1206,9 @@ fn check_plan_except_global_vs_global() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("global_t"."a"::integer -> "a")
+        projection ("global_t"."a"::int -> "a")
             scan "global_t"
-        projection ("global_t"."b"::integer -> "b")
+        projection ("global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1228,11 +1228,11 @@ fn check_plan_except_global_vs_single() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("global_t"."a"::integer -> "a")
+        projection ("global_t"."a"::int -> "a")
             scan "global_t"
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full]
-                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                     scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1254,9 +1254,9 @@ fn check_plan_except_single_vs_global() {
     except
         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
             motion [policy: full]
-                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                     scan "t2"
-        projection ("global_t"."a"::integer -> "a")
+        projection ("global_t"."a"::int -> "a")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1276,9 +1276,9 @@ fn check_plan_except_segment_vs_global() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f")
+        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
             scan "t2"
-        projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+        projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1298,9 +1298,9 @@ fn check_plan_except_any_vs_global() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("t2"."e"::unsigned -> "e")
+        projection ("t2"."e"::int -> "e")
             scan "t2"
-        projection ("global_t"."b"::integer -> "b")
+        projection ("global_t"."b"::int -> "b")
             scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -1326,27 +1326,27 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
-        projection ("global_t"."b"::integer -> "b")
-            selection "global_t"."a"::integer = 1::unsigned
-                left join on "global_t"."a"::integer = "B"::integer
+        projection ("global_t"."b"::int -> "b")
+            selection "global_t"."a"::int = 1::int
+                left join on "global_t"."a"::int = "B"::int
                     scan "global_t"
-                        projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                        projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                             scan "global_t"
                     scan
-                        projection ("global_t"."b"::integer -> "B")
+                        projection ("global_t"."b"::int -> "B")
                             scan "global_t"
         motion [policy: full]
             intersect
-                projection ("t2"."e"::unsigned -> "e")
+                projection ("t2"."e"::int -> "e")
                     scan "t2"
-                projection ("global_t"."b"::integer -> "b")
-                    selection "global_t"."a"::integer = 1::unsigned
-                        left join on "global_t"."a"::integer = "B"::integer
+                projection ("global_t"."b"::int -> "b")
+                    selection "global_t"."a"::int = 1::int
+                        left join on "global_t"."a"::int = "B"::int
                             scan "global_t"
-                                projection ("global_t"."a"::integer -> "a", "global_t"."b"::integer -> "b")
+                                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
                                     scan "global_t"
                             scan
-                                projection ("global_t"."b"::integer -> "B")
+                                projection ("global_t"."b"::int -> "B")
                                     scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000

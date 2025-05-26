@@ -65,17 +65,17 @@ fn comparison() {
 
     assert_fails_with_error(
         "select 1 in (1, false)",
-        "IN types unsigned, unsigned and bool cannot be matched",
+        "IN types int, int and bool cannot be matched",
     );
 
     assert_fails_with_error(
         "select 1 in (1 * 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'::uuid, false)",
-        "could not resolve operator overload for *(unsigned, uuid)",
+        "could not resolve operator overload for *(int, uuid)",
     );
 
     assert_fails_with_error(
         "select (1, 2) <> (select 1, 'kek')",
-        "could not resolve operator overload for <>(unsigned, text)",
+        "could not resolve operator overload for <>(int, text)",
     );
 }
 
@@ -83,12 +83,12 @@ fn comparison() {
 fn arithmetic_errors() {
     assert_fails_with_error(
         "select 1 + false",
-        "could not resolve operator overload for +(unsigned, bool)",
+        "could not resolve operator overload for +(int, bool)",
     );
 
     assert_fails_with_error(
         "select 1 + (1 = 2)",
-        "could not resolve operator overload for +(unsigned, bool)",
+        "could not resolve operator overload for +(int, bool)",
     );
 
     assert_fails_with_error(
@@ -103,7 +103,7 @@ fn arithmetic_errors() {
 
     assert_fails_with_error(
         "select 1 + 'kek'",
-        "failed to parse 'kek' as a value of type unsigned, consider using explicit type casts",
+        "failed to parse 'kek' as a value of type int, consider using explicit type casts",
     );
 }
 
@@ -111,12 +111,12 @@ fn arithmetic_errors() {
 fn comparison_errors() {
     assert_fails_with_error(
         "select (select LOCALTIMESTAMP, 2) = (select 1, 2)",
-        "could not resolve operator overload for =(datetime, unsigned)",
+        "could not resolve operator overload for =(datetime, int)",
     );
 
     assert_fails_with_error(
         "select (1, 2) = (select 1, '2')",
-        "could not resolve operator overload for =(unsigned, text)",
+        "could not resolve operator overload for =(int, text)",
     );
 
     assert_fails_with_error(
@@ -178,15 +178,15 @@ fn functions() {
 fn functions_errors() {
     assert_fails_with_error(
         "select 1 like 2",
-        "could not resolve function overload for like(unsigned, unsigned, text)",
+        "could not resolve function overload for like(int, int, text)",
     );
     assert_fails_with_error(
         "select '1' like 2",
-        "could not resolve function overload for like(text, unsigned, text)",
+        "could not resolve function overload for like(text, int, text)",
     );
     assert_fails_with_error(
         "select '1' like '2' escape 3",
-        "could not resolve function overload for like(text, text, unsigned)",
+        "could not resolve function overload for like(text, text, int)",
     );
 
     assert_fails_with_error(
@@ -330,7 +330,7 @@ fn case() {
           END AS status
         FROM users;
         "#,
-        "failed to parse 'valid' as a value of type unsigned, consider using explicit type casts",
+        "failed to parse 'valid' as a value of type int, consider using explicit type casts",
     );
 
     assert_fails_with_error(
@@ -359,7 +359,7 @@ fn case() {
           END AS food_type;
         FROM params
         "#,
-        "failed to parse 'apple' as a value of type unsigned, consider using explicit type casts",
+        "failed to parse 'apple' as a value of type int, consider using explicit type casts",
     );
 }
 
@@ -377,14 +377,14 @@ fn unary() {
 
     assert_fails_with_error(
         "SELECT NOT 1",
-        "argument of NOT must be type boolean, not type unsigned",
+        "argument of NOT must be type boolean, not type int",
     );
 }
 
 #[test]
 fn coalesce() {
     assert_ok("SELECT COALESCE(1, -2)");
-    assert_ok("SELECT COALESCE(1::unsigned, -2::int)");
+    assert_ok("SELECT COALESCE(1::int, -2::int)");
     assert_ok("SELECT COALESCE(1.5, -2)");
     assert_ok("SELECT COALESCE(1.5, -2, 3.5)");
     assert_ok("SELECT COALESCE(1.5, -2, 3.5)");
@@ -440,7 +440,7 @@ fn values() {
 
     assert_fails_with_error(
         "SELECT * FROM (SELECT 1 AS a) WHERE EXISTS (VALUES (1, 2), (1, false), (1, 2))",
-        "VALUES types unsigned, bool and unsigned cannot be matched",
+        "VALUES types int, bool and int cannot be matched",
     );
 }
 
@@ -465,7 +465,7 @@ fn windows() {
 
     assert_fails_with_error(
         "SELECT count(*) over (PARTITION BY a + false) from (select 1 as a);",
-        "could not resolve operator overload for +(unsigned, bool)",
+        "could not resolve operator overload for +(int, bool)",
     );
 
     assert_fails_with_error(
@@ -501,21 +501,18 @@ fn order_by() {
 #[test]
 fn cast() {
     assert_ok("SELECT 1::int");
-    assert_ok("SELECT 1::unsigned");
     assert_ok("SELECT 1::double");
     assert_ok("SELECT 1::numeric");
     assert_ok("SELECT '2024-03-11 12:33:14 UTC'::datetime");
     assert_ok("SELECT CAST('11111111-1111-1111-1111-111111111111' AS UUID)");
 
     assert_ok("SELECT $1::int");
-    assert_ok("SELECT $1::unsigned");
     assert_ok("SELECT $1::double");
     assert_ok("SELECT $1::numeric");
     assert_ok("SELECT $1::datetime");
     assert_ok("SELECT $1::uuid");
 
     assert_ok("SELECT 1::int = $1");
-    assert_ok("SELECT 1::unsigned = $1");
     assert_ok("SELECT 1::double = $1");
     assert_ok("SELECT 1::numeric = $1");
     assert_ok("SELECT '2024-03-11 12:33:14 UTC'::datetime = $1");
@@ -524,12 +521,11 @@ fn cast() {
     assert_ok(
         "SELECT (\
         1::int, \
-        1::unsigned, \
         1::double, \
         1::numeric, \
         '2024-03-11 12:33:14 UTC'::datetime, \
         '11111111-1111-1111-1111-111111111111'::uuid \
-        ) = ($1, $2, $3, $4, $5, $6)",
+        ) = ($1, $2, $3, $4, $5)",
     );
 }
 

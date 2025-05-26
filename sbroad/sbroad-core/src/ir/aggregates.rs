@@ -2,11 +2,10 @@ use ahash::AHashMap;
 use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
-use crate::ir::expression::cast::Type;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{NodeId, ReferenceTarget, ScalarFunction};
 use crate::ir::operator::Arithmetic;
-use crate::ir::relation::Type as RelType;
+use crate::ir::types::{CastType, UnrestrictedType as RelType};
 use crate::ir::Plan;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -20,7 +19,7 @@ use super::function::Function;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Having, Projection};
-use super::relation::DerivedType;
+use super::types::DerivedType;
 use crate::frontend::sql::ir::SubtreeCloner;
 
 /// The kind of aggregate function.
@@ -74,7 +73,7 @@ impl AggregateKind {
     pub fn get_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
         let ty =
             match self {
-                AggregateKind::COUNT => RelType::Unsigned,
+                AggregateKind::COUNT => RelType::Integer,
                 AggregateKind::TOTAL => RelType::Double,
                 AggregateKind::GRCONCAT => RelType::String,
                 AggregateKind::SUM | AggregateKind::AVG => RelType::Decimal,
@@ -253,7 +252,7 @@ impl Aggregate {
             plan.nodes
                 .add_ref(ReferenceTarget::Single(child_id), position, col_type, None);
         let children: Vec<NodeId> = match self.kind {
-            AggregateKind::AVG => vec![plan.add_cast(ref_id, Type::Double)?],
+            AggregateKind::AVG => vec![plan.add_cast(ref_id, CastType::Double)?],
             AggregateKind::GRCONCAT => {
                 let Expression::ScalarFunction(ScalarFunction { children, .. }) =
                     plan.get_expression_node(self.fun_id)?

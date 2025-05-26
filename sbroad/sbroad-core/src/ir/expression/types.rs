@@ -5,7 +5,7 @@ use crate::{
     executor::vtable::calculate_unified_types,
     ir::{
         node::{Over, Parameter},
-        relation::{DerivedType, Type},
+        types::{DerivedType, UnrestrictedType},
         Plan,
     },
 };
@@ -63,7 +63,7 @@ impl Expression<'_> {
         let ty = match self {
             Expression::Window(_) => {
                 // We don't use in operations with expressions
-                DerivedType::new(Type::Any)
+                DerivedType::new(UnrestrictedType::Any)
             }
             Expression::Over(Over { stable_func, .. }) => plan.get_node_type(*stable_func)?,
             Expression::Case(Case {
@@ -98,7 +98,7 @@ impl Expression<'_> {
             }
             Expression::Alias(Alias { child, .. }) => plan.get_node_type(*child)?,
             Expression::Bool(_) | Expression::Unary(_) | Expression::Like { .. } => {
-                DerivedType::new(Type::Boolean)
+                DerivedType::new(UnrestrictedType::Boolean)
             }
             Expression::Arithmetic(ArithmeticExpr {
                 left, right, op, ..
@@ -112,15 +112,13 @@ impl Expression<'_> {
                 };
 
                 let res = match (left_type, right_type) {
-                    (Type::Double, Type::Double | Type::Unsigned | Type::Integer | Type::Decimal)
-                    | (Type::Unsigned | Type::Integer | Type::Decimal, Type::Double) => {
-                        Type::Double
+                    (UnrestrictedType::Double, UnrestrictedType::Double | UnrestrictedType::Integer | UnrestrictedType::Decimal)
+                    | (UnrestrictedType::Integer | UnrestrictedType::Decimal, UnrestrictedType::Double) => {
+                        UnrestrictedType::Double
                     }
-                    (Type::Decimal, Type::Decimal | Type::Unsigned | Type::Integer)
-                    | (Type::Unsigned | Type::Integer, Type::Decimal) => Type::Decimal,
-                    (Type::Integer, Type::Unsigned | Type::Integer)
-                    | (Type::Unsigned, Type::Integer) => Type::Integer,
-                    (Type::Unsigned, Type::Unsigned) => Type::Unsigned,
+                    (UnrestrictedType::Decimal, UnrestrictedType::Decimal | UnrestrictedType::Integer)
+                    | (UnrestrictedType::Integer, UnrestrictedType::Decimal) => UnrestrictedType::Decimal,
+                    (UnrestrictedType::Integer, UnrestrictedType::Integer) => UnrestrictedType::Integer,
                     _ => return Err(SbroadError::Invalid(
                         Entity::Expression,
                         Some(format_smolstr!("types {left_type} and {right_type} are not supported for arithmetic expression ({:?} {op:?} {:?})",
@@ -129,8 +127,10 @@ impl Expression<'_> {
                 };
                 DerivedType::new(res)
             }
-            Expression::Cast(Cast { to, .. }) => DerivedType::new(to.as_relation_type()),
-            Expression::Trim(_) | Expression::Concat(_) => DerivedType::new(Type::String),
+            Expression::Cast(Cast { to, .. }) => DerivedType::new((*to).into()),
+            Expression::Trim(_) | Expression::Concat(_) => {
+                DerivedType::new(UnrestrictedType::String)
+            }
             Expression::Constant(Constant { value, .. }) => value.get_type(),
             Expression::Reference(Reference { col_type, .. }) => *col_type,
             Expression::Row(Row { list, .. }) => {
@@ -138,7 +138,7 @@ impl Expression<'_> {
                     let expr = plan.get_expression_node(*expr_id)?;
                     expr.calculate_type(plan)?
                 } else {
-                    DerivedType::new(Type::Array)
+                    DerivedType::new(UnrestrictedType::Array)
                 }
             }
             Expression::ScalarFunction(ScalarFunction {
@@ -172,8 +172,8 @@ impl Expression<'_> {
                     _ => *func_type,
                 }
             }
-            Expression::CountAsterisk(_) => DerivedType::new(Type::Integer),
-            Expression::Timestamp(_) => DerivedType::new(Type::Datetime),
+            Expression::CountAsterisk(_) => DerivedType::new(UnrestrictedType::Integer),
+            Expression::Timestamp(_) => DerivedType::new(UnrestrictedType::Datetime),
             Expression::Parameter(Parameter { param_type, .. }) => *param_type,
         };
         Ok(ty)

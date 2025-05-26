@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::collection;
 use crate::ir::node::ReferenceTarget::Leaf;
-use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::check_transformation;
+use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -31,7 +31,7 @@ fn equality_propagation1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."c" = CAST($1 AS unsigned)) and ("t"."a" = CAST($2 AS unsigned))) and ("t"."b" = CAST($3 AS unsigned))) and ("t"."c" = "t"."a")) or ("t"."d" = CAST($4 AS unsigned))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."c" = CAST($1 AS int)) and ("t"."a" = CAST($2 AS int))) and ("t"."b" = CAST($3 AS int))) and ("t"."c" = "t"."a")) or ("t"."d" = CAST($4 AS int))"#
     );
 }
 
@@ -60,7 +60,7 @@ fn equality_propagation3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" = $1) and ("t"."a" = CAST($2 AS unsigned))) and ("t"."b" = $3)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" = $1) and ("t"."a" = CAST($2 AS int))) and ("t"."b" = $3)"#
     );
 }
 
@@ -81,7 +81,7 @@ fn equality_propagation4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."b" = CAST($1 AS unsigned)) and ("t"."a" = $2)) and ("t"."a" = CAST($3 AS unsigned))) and ("t"."b" = $4)) and ("t"."b" = "t"."a")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((("t"."b" = CAST($1 AS int)) and ("t"."a" = $2)) and ("t"."a" = CAST($3 AS int))) and ("t"."b" = $4)) and ("t"."a" = "t"."b")"#
     );
 }
 
@@ -102,7 +102,7 @@ fn equality_propagation5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS unsigned)) and ("t"."c" = CAST($2 AS unsigned))) and ("t"."a" = CAST($3 AS unsigned))) and ("t"."b" = CAST($4 AS unsigned))) and ("t"."d" = "t"."c")) and ("t"."c" = "t"."b")) and ("t"."b" = "t"."a")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS int)) and ("t"."c" = CAST($2 AS int))) and ("t"."a" = CAST($3 AS int))) and ("t"."b" = CAST($4 AS int))) and ("t"."a" = "t"."b")) and ("t"."b" = "t"."d")) and ("t"."d" = "t"."c")"#
     );
 }
 

@@ -36,8 +36,8 @@ def test_gl_1991(postgres: Postgres):
     # Expect that selection filter evaluates to
     # false and buckets set is empty.
     plan = cur.fetchall()
-    assert 'projection ("t"."id"::integer -> "id")' in plan[0]
-    assert "    selection false::boolean" in plan[1]
+    assert 'projection ("t"."id"::int -> "id")' in plan[0]
+    assert "    selection false::bool" in plan[1]
     assert '        scan "t"' in plan[2]
     assert "execution options:" in plan[3]
     assert "    sql_vdbe_opcode_max = 1" in plan[4]

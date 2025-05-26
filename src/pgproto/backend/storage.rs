@@ -20,7 +20,7 @@ use rmpv::Value;
 use sbroad::{
     executor::{ir::ExecutionPlan, Query},
     ir::{
-        relation::{DerivedType, Type as SbroadType},
+        types::{DerivedType, UnrestrictedType as SbroadType},
         Plan,
     },
 };
@@ -335,7 +335,7 @@ pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> postgres_types::Type {
         SbroadType::Boolean => PgType::BOOL,
         SbroadType::Decimal => PgType::NUMERIC,
         SbroadType::Double => PgType::FLOAT8,
-        SbroadType::Integer | SbroadType::Unsigned => PgType::INT8,
+        SbroadType::Integer => PgType::INT8,
         SbroadType::String => PgType::TEXT,
         SbroadType::Uuid => PgType::UUID,
         SbroadType::Map | SbroadType::Array | SbroadType::Any => PgType::JSON,
@@ -706,7 +706,7 @@ impl Return for UserPortalNames {
 mod test {
     use super::{pg_type_to_sbroad, sbroad_type_to_pg};
     use postgres_types::Type as PgType;
-    use sbroad::ir::relation::Type as SbroadType;
+    use sbroad::ir::types::UnrestrictedType as SbroadType;
 
     #[test]
     fn test_sbroad_type_to_pg() {
@@ -715,7 +715,6 @@ mod test {
             (SbroadType::Decimal, PgType::NUMERIC),
             (SbroadType::Double, PgType::FLOAT8),
             (SbroadType::Integer, PgType::INT8),
-            (SbroadType::Unsigned, PgType::INT8),
             (SbroadType::String, PgType::TEXT),
             (SbroadType::Uuid, PgType::UUID),
             (SbroadType::Any, PgType::JSON),

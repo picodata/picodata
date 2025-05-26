@@ -29,10 +29,10 @@ fn global_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("cte"."a"::integer -> "a")
+    projection ("cte"."a"::int -> "a")
         scan cte cte($0)
     subquery $0:
-    projection ("global_t"."a"::integer -> "a")
+    projection ("global_t"."a"::int -> "a")
                 scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -137,20 +137,20 @@ fn reuse_cte_values() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t"."c"::unsigned -> "c")
-        join on true::boolean
+    projection ("t"."c"::int -> "c")
+        join on true::bool
             scan "t"
-                projection (count((*::integer))::unsigned -> "c")
-                    join on true::boolean
+                projection (count((*::int))::int -> "c")
+                    join on true::bool
                         scan cte c1($0)
                         scan cte c2($0)
             scan cte cte($0)
     subquery $0:
     motion [policy: full]
-                                projection ("cte"."COLUMN_1"::unsigned -> "b")
+                                projection ("cte"."COLUMN_1"::int -> "b")
                                     scan "cte"
                                         values
-                                            value row (data=ROW(1::unsigned))
+                                            value row (data=ROW(1::int))
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -170,7 +170,7 @@ fn join_cte() {
     projection ("t"."FIRST_NAME"::string -> "FIRST_NAME")
         join on "t"."FIRST_NAME"::string = "cte"."a"::string
             scan "t"
-                projection ("t"."id"::unsigned -> "id", "t"."sysFrom"::unsigned -> "sysFrom", "t"."FIRST_NAME"::string -> "FIRST_NAME", "t"."sys_op"::unsigned -> "sys_op")
+                projection ("t"."id"::int -> "id", "t"."sysFrom"::int -> "sysFrom", "t"."FIRST_NAME"::string -> "FIRST_NAME", "t"."sys_op"::int -> "sys_op")
                     scan "test_space" -> "t"
             scan cte cte($0)
     subquery $0:
@@ -192,7 +192,7 @@ fn agg_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (count(("cte"."a"::string))::unsigned -> "col_1")
+    projection (count(("cte"."a"::string))::int -> "col_1")
         scan cte cte($0)
     subquery $0:
     motion [policy: full]
@@ -302,13 +302,13 @@ fn join_in_cte() {
     subquery $0:
     motion [policy: full]
                 projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
-                    join on "t1"."FIRST_NAME"::string = "t2"."id"::unsigned::text
+                    join on "t1"."FIRST_NAME"::string = "t2"."id"::int::string
                         scan "t1"
-                            projection ("t1"."id"::unsigned -> "id", "t1"."sysFrom"::unsigned -> "sysFrom", "t1"."FIRST_NAME"::string -> "FIRST_NAME", "t1"."sys_op"::unsigned -> "sys_op")
+                            projection ("t1"."id"::int -> "id", "t1"."sysFrom"::int -> "sysFrom", "t1"."FIRST_NAME"::string -> "FIRST_NAME", "t1"."sys_op"::int -> "sys_op")
                                 scan "test_space" -> "t1"
                         motion [policy: full]
                             scan "t2"
-                                projection ("t2"."id"::unsigned -> "id", "t2"."sysFrom"::unsigned -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::unsigned -> "sys_op")
+                                projection ("t2"."id"::int -> "id", "t2"."sysFrom"::int -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::int -> "sys_op")
                                     scan "test_space" -> "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -408,17 +408,17 @@ fn cte_with_left_join() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("E"::unsigned -> "E")
+    projection ("E"::int -> "E")
         motion [policy: full]
-            projection ("cte"."E"::unsigned -> "E", "t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
-                join on true::boolean
+            projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+                join on true::bool
                     scan cte cte($0)
                     scan "t2"
-                        projection ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h")
+                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
                             scan "t2"
     subquery $0:
     motion [policy: full]
-                            projection ("t2"."e"::unsigned -> "E")
+                            projection ("t2"."e"::int -> "E")
                                 scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000

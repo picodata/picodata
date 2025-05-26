@@ -72,4 +72,4 @@ true, true
 -- SQL:
 with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1
 -- ERROR:
-could not resolve operator overload for or\(bool, unsigned\)
+could not resolve operator overload for or\(bool, int\)

@@ -23,12 +23,11 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftSpaceAccess;
-use crate::util::edit_distance;
 use crate::util::file_exists;
+use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
 use observer::AtomicObserverProvider;
-use sbroad::ir::relation::DerivedType;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
@@ -41,13 +40,12 @@ use std::str::FromStr;
 use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
-/// This reexport is used in the derive macro for Introspection.
-pub use sbroad::ir::relation::Type as SbroadType;
-
 pub use crate::address::{
     DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_PGPROTO_PORT, DEFAULT_USERNAME,
 };
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
+
+pub use sbroad::ir::types::DomainType as SbroadType;
 
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
@@ -1873,8 +1871,7 @@ pub fn validate_alter_system_parameter_value<'v>(
         return Err(Error::other(format!("unknown parameter: '{name}'")));
     };
 
-    let expected_type = DerivedType::new(expected_type);
-    let Ok(casted_value) = value.cast_and_encode(&expected_type) else {
+    let Ok(casted_value) = cast_and_encode(value, &expected_type) else {
         let actual_type = value_type_str(value);
         #[rustfmt::skip]
         return Err(Error::other(format!("invalid value for '{name}': expected {expected_type}, got {actual_type}",)));

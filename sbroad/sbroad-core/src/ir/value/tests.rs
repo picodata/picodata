@@ -18,7 +18,7 @@ fn uuid() {
 
     assert_eq!(Value::from(t_uid_1), v_uid);
     assert_eq!(format!("{}", v_uid), uid.to_string());
-    assert_eq!(v_uid.get_type(), DerivedType::new(Type::Uuid));
+    assert_eq!(v_uid.get_type(), DerivedType::new(UnrestrictedType::Uuid));
     assert_eq!(v_uid.eq(&Value::Uuid(t_uid_1)), Trivalent::True);
     assert_eq!(v_uid.eq(&Value::Uuid(t_uid_2)), Trivalent::False);
     assert_eq!(
@@ -35,7 +35,7 @@ fn uuid() {
     );
     assert_eq!(
         Value::String(uid.to_string())
-            .cast_and_encode(&DerivedType::new(Type::Uuid))
+            .cast_and_encode(&DerivedType::new(UnrestrictedType::Uuid))
             .is_ok(),
         true
     );
@@ -46,7 +46,7 @@ fn uuid() {
 fn uuid_negative() {
     assert_eq!(
         Value::String("hello".to_string())
-            .cast_and_encode(&DerivedType::new(Type::Uuid))
+            .cast_and_encode(&DerivedType::new(UnrestrictedType::Uuid))
             .unwrap_err(),
         SbroadError::Invalid(
             Entity::Value,

@@ -6,8 +6,8 @@ use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::executor::ir::ExecutionPlan;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::frontend::Ast;
-use crate::ir::relation::DerivedType;
 use crate::ir::tree::Snapshot;
+use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 

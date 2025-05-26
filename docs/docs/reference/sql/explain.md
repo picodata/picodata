@@ -70,15 +70,15 @@ EXPLAIN SELECT amount FROM orders WHERE amount > 1000;
 Вывод в консоль:
 
 ```
-projection ("ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
+projection ("ORDERS"."AMOUNT"::int -> "AMOUNT")
+    selection ROW("ORDERS"."AMOUNT"::int) > ROW(1000::int)
         scan "ORDERS"
 ```
 
 Если `projection` выбирает столбцы (атрибуты таблицы), то `selection`
 фильтрует данные по строкам (`ROW`).
 
-Фраза `selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)` является результатом
+Фраза `selection ROW("ORDERS"."AMOUNT"::int) > ROW(1000::int)` является результатом
 трансформации фильтра `WHERE "AMOUNT" > 1000` в `WHERE ("AMOUNT") > (1000)`,
 т.е. превращения значения в строку из одного столбца.
 
@@ -97,10 +97,10 @@ WHERE amount > 1000;
 
 ```
 except
-    projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME")
+    projection ("ITEMS"."ID"::int -> "ID", "ITEMS"."NAME"::string -> "NAME")
         scan "ITEMS"
-    projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
-        selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
+    projection ("ORDERS"."ID"::int -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
+        selection ROW("ORDERS"."AMOUNT"::int) > ROW(1000::int)
             scan "ORDERS"
 ```
 
@@ -178,8 +178,8 @@ EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
 ```
 insert "ORDERS" on conflict: fail
     motion [policy: local segment([ref("ID")])]
-        projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-            selection ROW("ITEMS"."ID"::integer) = ROW(5::unsigned)
+        projection ("ITEMS"."ID"::int -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::int -> "STOCK")
+            selection ROW("ITEMS"."ID"::int) = ROW(5::int)
                 scan "ITEMS"
 ```
 
@@ -201,8 +201,8 @@ EXPLAIN DELETE FROM warehouse WHERE id = 1;
 ```
 delete "WAREHOUSE"
     motion [policy: local]
-        projection ("WAREHOUSE"."ID"::integer -> pk_col_0)
-            selection ROW("WAREHOUSE"."ID"::integer) = ROW(1::unsigned)
+        projection ("WAREHOUSE"."ID"::int -> pk_col_0)
+            selection ROW("WAREHOUSE"."ID"::int) = ROW(1::int)
                 scan "WAREHOUSE"
 ```
 
@@ -224,7 +224,7 @@ EXPLAIN UPDATE warehouse SET type = 'N/A';
 update "WAREHOUSE"
 "TYPE" = COL_0
     motion [policy: local]
-        projection ('N/A'::string -> COL_0, "WAREHOUSE"."ID"::integer -> COL_1)
+        projection ('N/A'::string -> COL_0, "WAREHOUSE"."ID"::int -> COL_1)
             scan "WAREHOUSE"
 ```
 
@@ -245,7 +245,7 @@ EXPLAIN INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
 insert "WAREHOUSE" on conflict: fail
     motion [policy: segment([ref("COLUMN_1")])]
         values
-            value row (data=ROW(1::unsigned, 'bricks'::string, 'heavy'::string))
+            value row (data=ROW(1::int, 'bricks'::string, 'heavy'::string))
 ```
 
 Пример `JOIN` двух таблиц с разными ключами шардирования:
@@ -260,14 +260,14 @@ ON orders.id=new_table.nmbr;
 Вывод в консоль:
 
 ```
-projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
-    join on ROW("ORDERS"."ID"::integer) = ROW("NEW_TABLE"."NMBR"::integer)
+projection ("ORDERS"."ID"::int -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
+    join on ROW("ORDERS"."ID"::int) = ROW("NEW_TABLE"."NMBR"::int)
         scan "ORDERS"
-            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
+            projection ("ORDERS"."ID"::int -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::int -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
         motion [policy: segment([ref("NMBR")])]
             scan "NEW_TABLE"
-                projection ("DELIVERIES"."NMBR"::integer -> "NMBR", "DELIVERIES"."PRODUCT"::string -> "PRODUCT")
+                projection ("DELIVERIES"."NMBR"::int -> "NMBR", "DELIVERIES"."PRODUCT"::string -> "PRODUCT")
                     scan "DELIVERIES"
 ```
 
@@ -286,8 +286,8 @@ update "DELIVERIES"
 "PRODUCT" = COL_1
 "QUANTITY" = COL_2
     motion [policy: segment([])]
-        projection ("DELIVERIES"."NMBR"::integer -> COL_0, 'metals'::string -> COL_1, 4000::unsigned -> COL_2, "DELIVERIES"."PRODUCT"::string -> COL_3)
-            selection ROW("DELIVERIES"."NMBR"::integer) = ROW(1::unsigned)
+        projection ("DELIVERIES"."NMBR"::int -> COL_0, 'metals'::string -> COL_1, 4000::int -> COL_2, "DELIVERIES"."PRODUCT"::string -> COL_3)
+            selection ROW("DELIVERIES"."NMBR"::int) = ROW(1::int)
                 scan "DELIVERIES"
 ```
 
@@ -313,7 +313,7 @@ ON items.name = new_table.item;
 projection ("ITEMS"."NAME"::string -> "NAME")
     join on ROW("ITEMS"."NAME"::string) = ROW("NEW_TABLE"."ITEM"::string)
         scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+            projection ("ITEMS"."ID"::int -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::int -> "STOCK")
                 scan "ITEMS"
         motion [policy: full]
             scan "NEW_TABLE"
@@ -330,10 +330,10 @@ EXPLAIN SELECT COUNT(id) FROM warehouse;
 Вывод в консоль:
 
 ```
-projection (sum(("0e660ad12ab24037a48f169fcf315549_count_11"::integer))::decimal -> "COL_1")
+projection (sum(("0e660ad12ab24037a48f169fcf315549_count_11"::int))::decimal -> "COL_1")
     motion [policy: full]
         scan
-            projection (count(("WAREHOUSE"."ID"::integer))::integer -> "0e660ad12ab24037a48f169fcf315549_count_11")
+            projection (count(("WAREHOUSE"."ID"::int))::int -> "0e660ad12ab24037a48f169fcf315549_count_11")
                 scan "WAREHOUSE"
 ```
 
@@ -362,8 +362,8 @@ EXPLAIN SELECT * FROM warehouse WHERE id IN (1,2,3);
 Вывод в консоль:
 
 ```sql
-projection ("warehouse"."id"::integer -> "id", "warehouse"."item"::string -> "item", "warehouse"."type"::string -> "type")
-    selection ROW("warehouse"."id"::integer) in ROW(1::unsigned, 2::unsigned, 3::unsigned)
+projection ("warehouse"."id"::int -> "id", "warehouse"."item"::string -> "item", "warehouse"."type"::string -> "type")
+    selection ROW("warehouse"."id"::int) in ROW(1::int, 2::int, 3::int)
         scan "warehouse"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -384,7 +384,7 @@ EXPLAIN UPDATE warehouse SET type = 'N/A';
 update "warehouse"
 "type" = "col_0"
     motion [policy: local]
-        projection ('N/A'::string -> "col_0", "warehouse"."id"::integer -> "col_1")
+        projection ('N/A'::string -> "col_0", "warehouse"."id"::int -> "col_1")
             scan "warehouse"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -408,8 +408,8 @@ EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
 ```sql
 insert "orders" on conflict: fail
     motion [policy: local segment([ref("id")])]
-        projection ("items"."id"::integer -> "id", "items"."name"::string -> "name", "items"."stock"::integer -> "stock")
-            selection ROW("items"."id"::integer) = ROW(5::unsigned)
+        projection ("items"."id"::int -> "id", "items"."name"::string -> "name", "items"."stock"::int -> "stock")
+            selection ROW("items"."id"::int) = ROW(5::int)
                 scan "items"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -430,7 +430,7 @@ EXPLAIN SELECT id FROM _pico_table;
 Вывод в консоль:
 
 ```sql
-projection ("_pico_table"."id"::unsigned -> "id")
+projection ("_pico_table"."id"::int -> "id")
     scan "_pico_table"
 execution options:
     sql_vdbe_opcode_max = 45000
@@ -457,8 +457,8 @@ update "deliveries"
 "product" = "col_1"
 "quantity" = "col_2"
     motion [policy: segment([])]
-        projection ("deliveries"."nmbr"::integer -> "col_0", 'metals'::string -> "col_1", 4000::unsigned -> "col_2", "deliveries"."product"::string -> "col_3")
-            selection ROW("deliveries"."nmbr"::integer) = ROW(1::unsigned)
+        projection ("deliveries"."nmbr"::int -> "col_0", 'metals'::string -> "col_1", 4000::int -> "col_2", "deliveries"."product"::string -> "col_3")
+            selection ROW("deliveries"."nmbr"::int) = ROW(1::int)
                 scan "deliveries"
 execution options:
     sql_vdbe_opcode_max = 45000
