@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Constant, Node, Node64, NodeId, Parameter};
+use crate::ir::node::{Constant, Node, Node32, NodeId, Parameter};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
@@ -96,7 +96,7 @@ impl Plan {
     /// - The parameters map is corrupted (parameters map points to invalid nodes).
     pub fn restore_constants(&mut self) -> Result<(), SbroadError> {
         for (id, constant) in self.constants.drain() {
-            self.nodes.replace(id, Node64::Constant(constant))?;
+            self.nodes.replace32(id, Node32::Constant(constant))?;
         }
         Ok(())
     }
@@ -120,14 +120,14 @@ impl Plan {
                 .map(DerivedType::new)
                 // NULL literal has an unknown type
                 .unwrap_or(DerivedType::unknown());
-            let const_node = self.nodes.replace(
+            let const_node = self.nodes.replace32(
                 *const_id,
-                Node64::Parameter(Parameter {
+                Node32::Parameter(Parameter {
                     param_type,
                     index: index(num)?,
                 }),
             )?;
-            if let Node64::Constant(constant) = const_node {
+            if let Node32::Constant(constant) = const_node {
                 self.constants.insert(*const_id, constant);
             } else {
                 panic!("{const_node:?} is not a constant");

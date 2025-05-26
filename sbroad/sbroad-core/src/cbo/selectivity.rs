@@ -279,7 +279,7 @@ pub fn calculate_filter_selectivity(
         Type::Decimal => {
             let downcasted_column_stats = downcast_column_stats::<Decimal>(&column_stats, column)?;
             let casted_constant = match constant {
-                Value::Decimal(d) => *d,
+                Value::Decimal(d) => **d,
                 Value::Unsigned(u) => Decimal::from(*u),
                 Value::Integer(i) => Decimal::from(*i),
                 Value::Double(d) => decimal_from_str(d)?,
@@ -290,7 +290,7 @@ pub fn calculate_filter_selectivity(
         Type::Unsigned => {
             let downcasted_column_stats = downcast_column_stats::<u64>(&column_stats, column)?;
             let casted_constant = match constant {
-                Value::Decimal(d) => (*d).try_into()?,
+                Value::Decimal(d) => (**d).try_into()?,
                 Value::Unsigned(u) => *u,
                 Value::Integer(i) => (*i).try_into()?,
                 Value::Double(d) => {
@@ -315,7 +315,7 @@ pub fn calculate_filter_selectivity(
         Type::Integer => {
             let downcasted_column_stats = downcast_column_stats::<i64>(&column_stats, column)?;
             let casted_constant = match constant {
-                Value::Decimal(d) => (*d).try_into()?,
+                Value::Decimal(d) => (**d).try_into()?,
                 Value::Unsigned(u) => (*u).try_into()?,
                 Value::Integer(i) => *i,
                 Value::Double(d) => {

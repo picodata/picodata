@@ -107,12 +107,14 @@ impl Nodes {
                 },
                 Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
                 Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
+                Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
+                Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
+                Node32::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
             }),
             ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
                 Node64::Over(over) => Node::Expression(Expression::Over(over)),
                 Node64::Case(case) => Node::Expression(Expression::Case(case)),
                 Node64::Invalid(invalid) => Node::Invalid(invalid),
-                Node64::Constant(constant) => Node::Expression(Expression::Constant(constant)),
                 Node64::CreateRole(create_role) => Node::Acl(Acl::CreateRole(create_role)),
                 Node64::Delete(delete) => Node::Relational(Relational::Delete(delete)),
                 Node64::DropIndex(drop_index) => Node::Ddl(Ddl::DropIndex(drop_index)),
@@ -127,7 +129,6 @@ impl Nodes {
                 Node64::Having(having) => Node::Relational(Relational::Having(having)),
                 Node64::Join(join) => Node::Relational(Relational::Join(join)),
                 Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
-                Node64::Parameter(param) => Node::Expression(Expression::Parameter(param)),
                 Node64::Procedure(proc) => Node::Block(Block::Procedure(proc)),
                 Node64::Projection(proj) => Node::Relational(Relational::Projection(proj)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
@@ -143,7 +144,6 @@ impl Nodes {
                 Node64::ValuesRow(values_row) => {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
-                Node64::LocalTimestamp(lt) => Node::Expression(Expression::LocalTimestamp(lt)),
                 Node64::NamedWindows(window) => Node::Relational(Relational::NamedWindows(window)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
@@ -245,6 +245,15 @@ impl Nodes {
                     },
                     Node32::CreateSchema => MutNode::Ddl(MutDdl::CreateSchema),
                     Node32::DropSchema => MutNode::Ddl(MutDdl::DropSchema),
+                    Node32::Constant(constant) => {
+                        MutNode::Expression(MutExpression::Constant(constant))
+                    }
+                    Node32::Parameter(param) => {
+                        MutNode::Expression(MutExpression::Parameter(param))
+                    }
+                    Node32::LocalTimestamp(lt) => {
+                        MutNode::Expression(MutExpression::LocalTimestamp(lt))
+                    }
                 }),
             ArenaType::Arena64 => self
                 .arena64
@@ -253,9 +262,6 @@ impl Nodes {
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
-                    Node64::Constant(constant) => {
-                        MutNode::Expression(MutExpression::Constant(constant))
-                    }
                     Node64::CreateRole(create_role) => {
                         MutNode::Acl(MutAcl::CreateRole(create_role))
                     }
@@ -275,9 +281,6 @@ impl Nodes {
                     Node64::Join(join) => MutNode::Relational(MutRelational::Join(join)),
                     Node64::OrderBy(order_by) => {
                         MutNode::Relational(MutRelational::OrderBy(order_by))
-                    }
-                    Node64::Parameter(param) => {
-                        MutNode::Expression(MutExpression::Parameter(param))
                     }
                     Node64::Procedure(proc) => MutNode::Block(MutBlock::Procedure(proc)),
                     Node64::Projection(proj) => {
@@ -299,9 +302,6 @@ impl Nodes {
                     }
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
-                    }
-                    Node64::LocalTimestamp(lt) => {
-                        MutNode::Expression(MutExpression::LocalTimestamp(lt))
                     }
                     Node64::NamedWindows(window) => {
                         MutNode::Relational(MutRelational::NamedWindows(window))
@@ -443,12 +443,11 @@ impl Nodes {
         self.arena32.iter()
     }
 
+    pub fn iter32_mut(&mut self) -> IterMut<'_, Node32> {
+        self.arena32.iter_mut()
+    }
     pub fn iter64(&self) -> Iter<'_, Node64> {
         self.arena64.iter()
-    }
-
-    pub fn iter64_mut(&mut self) -> IterMut<'_, Node64> {
-        self.arena64.iter_mut()
     }
 
     pub fn iter96(&self) -> Iter<'_, Node96> {
@@ -524,16 +523,16 @@ impl Nodes {
         }
     }
 
-    /// Replace a node in arena with another one.
+    /// Replace a node in arena 32 with another one.
     ///
     /// # Errors
     /// - The node with the given position doesn't exist.
-    pub fn replace(&mut self, id: NodeId, node: Node64) -> Result<Node64, SbroadError> {
+    pub fn replace32(&mut self, id: NodeId, node: Node32) -> Result<Node32, SbroadError> {
         let offset = id.offset as usize;
 
         match id.arena_type {
-            ArenaType::Arena64 => {
-                if offset >= self.arena64.len() {
+            ArenaType::Arena32 => {
+                if offset >= self.arena32.len() {
                     return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                         "can't replace node with id {id:?} as it is out of arena bounds"
                     )));
@@ -542,12 +541,15 @@ impl Nodes {
             _ => {
                 return Err(SbroadError::Invalid(
                     Entity::Node,
-                    Some(format_smolstr!("node {:?} is invalid", node)),
+                    Some(format_smolstr!(
+                        "can't replace node: node {:?} is invalid",
+                        node
+                    )),
                 ));
             }
         };
 
-        let old_node = std::mem::replace(&mut self.arena64[offset], node);
+        let old_node = std::mem::replace(&mut self.arena32[offset], node);
         Ok(old_node)
     }
 }
@@ -1983,9 +1985,9 @@ impl Plan {
     pub fn collect_parameter_types(&self) -> Vec<Type> {
         let params_count = self
             .nodes
-            .iter64()
+            .iter32()
             .map(|node| match node {
-                Node64::Parameter(Parameter { index, .. }) => *index,
+                Node32::Parameter(Parameter { index, .. }) => *index,
                 _ => 0,
             })
             .max()
@@ -1993,8 +1995,8 @@ impl Plan {
 
         let mut parameter_types = vec![Type::Any; params_count];
 
-        for node in self.nodes.iter64() {
-            if let Node64::Parameter(Parameter { param_type, index }) = node {
+        for node in self.nodes.iter32() {
+            if let Node32::Parameter(Parameter { param_type, index }) = node {
                 let index = (*index - 1) as usize;
                 // TODO: We need to introduce ParameterType that cannot be unknown and store it in
                 // Parameter nodes making parameters with unknown type impossible.

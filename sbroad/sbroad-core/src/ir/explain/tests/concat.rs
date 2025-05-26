@@ -1,6 +1,5 @@
 use super::*;
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn concat1_test() {
     let sql = r#"SELECT CAST('1' as string) || 'hello' FROM "t1""#;
@@ -14,7 +13,6 @@ fn concat1_test() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn concat2_test() {
     let sql = r#"SELECT "a" FROM "t1" WHERE CAST('1' as string) || "a" || '2' = '42'"#;

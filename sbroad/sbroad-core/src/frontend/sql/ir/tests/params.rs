@@ -6,7 +6,7 @@ fn front_param_in_cast() {
     let pattern = r#"SELECT CAST(? AS INTEGER) FROM "test_space""#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection (1::integer::int -> "col_1")
+    projection (1::integer -> "col_1")
         scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000

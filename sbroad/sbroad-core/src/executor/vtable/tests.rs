@@ -431,7 +431,7 @@ fn vtable_values_types_casting_two_columns_two_tuples() {
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Integer(1)]);
-    actual_vtable.add_tuple(vec![Value::Decimal(Decimal::from(2)), Value::Integer(1)]);
+    actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
@@ -447,8 +447,8 @@ fn vtable_values_types_casting_two_columns_two_tuples() {
         role: ColumnRole::User,
         is_nullable: false,
     });
-    expected_vtable.add_tuple(vec![Value::Decimal(Decimal::from(1)), Value::Integer(1)]);
-    expected_vtable.add_tuple(vec![Value::Decimal(Decimal::from(2)), Value::Integer(1)]);
+    expected_vtable.add_tuple(vec![Value::from(Decimal::from(1)), Value::Integer(1)]);
+    expected_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Integer(1)]);
 
     assert_eq!(actual_vtable, expected_vtable)
 }
@@ -461,7 +461,7 @@ fn vtable_values_types_casting_two_columns_with_nulls() {
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Null]);
     actual_vtable.add_tuple(vec![Value::Null, Value::Null]);
-    actual_vtable.add_tuple(vec![Value::Decimal(Decimal::from(2)), Value::Null]);
+    actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Null]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
@@ -477,9 +477,9 @@ fn vtable_values_types_casting_two_columns_with_nulls() {
         role: ColumnRole::User,
         is_nullable: true,
     });
-    expected_vtable.add_tuple(vec![Value::Decimal(Decimal::from(1)), Value::Null]);
+    expected_vtable.add_tuple(vec![Value::from(Decimal::from(1)), Value::Null]);
     expected_vtable.add_tuple(vec![Value::Null, Value::Null]);
-    expected_vtable.add_tuple(vec![Value::Decimal(Decimal::from(2)), Value::Null]);
+    expected_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Null]);
 
     assert_eq!(actual_vtable, expected_vtable)
 }
@@ -495,10 +495,10 @@ fn vtable_values_types_casting_two_columns_numerical() {
     actual_vtable.add_tuple(vec![Value::Integer(1), Value::Null]);
     actual_vtable.add_tuple(vec![
         Value::Double(4.2_f64.into()),
-        Value::Decimal(decimal!(5.4)),
+        Value::from(decimal!(5.4)),
     ]);
     actual_vtable.add_tuple(vec![
-        Value::Decimal(Decimal::from(2)),
+        Value::from(Decimal::from(2)),
         Value::Double(0.5_f64.into()),
     ]);
     let vtable_types = actual_vtable.get_types();
@@ -517,18 +517,15 @@ fn vtable_values_types_casting_two_columns_numerical() {
         is_nullable: true,
     });
     expected_vtable.add_tuple(vec![
-        Value::Decimal(Decimal::from(1)),
-        Value::Decimal(Decimal::from(1)),
+        Value::from(Decimal::from(1)),
+        Value::from(Decimal::from(1)),
     ]);
-    expected_vtable.add_tuple(vec![Value::Null, Value::Decimal(Decimal::from(5))]);
-    expected_vtable.add_tuple(vec![Value::Decimal(Decimal::from(1)), Value::Null]);
+    expected_vtable.add_tuple(vec![Value::Null, Value::from(Decimal::from(5))]);
+    expected_vtable.add_tuple(vec![Value::from(Decimal::from(1)), Value::Null]);
+    expected_vtable.add_tuple(vec![Value::from(decimal!(4.2)), Value::from(decimal!(5.4))]);
     expected_vtable.add_tuple(vec![
-        Value::Decimal(decimal!(4.2)),
-        Value::Decimal(decimal!(5.4)),
-    ]);
-    expected_vtable.add_tuple(vec![
-        Value::Decimal(Decimal::from(2)),
-        Value::Decimal(decimal!(0.5)),
+        Value::from(Decimal::from(2)),
+        Value::from(decimal!(0.5)),
     ]);
 
     assert_eq!(actual_vtable, expected_vtable)

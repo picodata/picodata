@@ -1,5 +1,4 @@
-use crate::ir::transformation::helpers::sql_to_optimized_ir;
-use crate::ir::value::Value;
+use crate::ir::transformation::helpers::sql_to_ir;
 
 #[test]
 fn text_literal_is_parsed_to_bool() {
@@ -7,7 +6,7 @@ fn text_literal_is_parsed_to_bool() {
     //
     // Text literal is coerced to the type desired by the context with `false`.
     let pattern = "explain select coalesce('f', false);";
-    let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
+    let plan = sql_to_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (coalesce((false::boolean, false::boolean))::any -> "col_1")
@@ -24,7 +23,7 @@ fn text_literal_is_left_as_text_due_to_exlicit_cast() {
     // In contrast to `text_literal_is_parsed_to_bool`, the text literal is not coerced to the
     // type desired by the type cast, because explicit type casts prevent coercion.
     let pattern = "explain select coalesce('f'::bool, false);";
-    let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
+    let plan = sql_to_ir(pattern, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (coalesce(('f'::string::bool, false::boolean))::any -> "col_1")

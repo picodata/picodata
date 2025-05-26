@@ -3395,7 +3395,6 @@ fn front_sql_not_equal() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn front_sql_not_cast() {
     let input = r#"SELECT * FROM (values (1)) where not cast('true' as boolean)"#;
@@ -3520,7 +3519,6 @@ fn front_sql_not_in() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn front_sql_not_complex_query() {
     let input = r#"

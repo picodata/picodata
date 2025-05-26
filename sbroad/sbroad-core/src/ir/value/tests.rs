@@ -57,24 +57,21 @@ fn uuid_negative() {
 
 #[test]
 fn decimal() {
+    assert_eq!(Value::from(decimal!(0)), Value::from(Decimal::from(0_u64)));
     assert_eq!(
-        Value::Decimal(decimal!(0)),
-        Value::from(Decimal::from(0_u64))
-    );
-    assert_eq!(
-        Value::Decimal(Decimal::from(0_u64)),
+        Value::from(Decimal::from(0_u64)),
         Value::from(Decimal::from_str("0.0").unwrap())
     );
     assert_eq!(
-        Value::Decimal(Decimal::from_str("1.000000000000000").unwrap()),
+        Value::from(Decimal::from_str("1.000000000000000").unwrap()),
         Value::from(Decimal::from_str("1").unwrap())
     );
     assert_eq!(
-        Value::Decimal(Decimal::from_str("9223372036854775807").unwrap()),
+        Value::from(Decimal::from_str("9223372036854775807").unwrap()),
         Value::from(Decimal::from(9_223_372_036_854_775_807_u64))
     );
     assert_ne!(
-        Value::Decimal(decimal!(1)),
+        Value::from(decimal!(1)),
         Value::from("0.9999999999999999".parse::<Decimal>().unwrap())
     );
 }
@@ -185,31 +182,31 @@ fn equivalence() {
     // Decimal
     assert_eq!(
         Trivalent::True,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(0_u64))
+        Value::from(decimal!(0.000)).eq(&Value::from(0_u64))
     );
     assert_eq!(
         Trivalent::True,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(decimal!(0)))
+        Value::from(decimal!(0.000)).eq(&Value::from(decimal!(0)))
     );
     assert_eq!(
         Trivalent::True,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(0_u64))
+        Value::from(decimal!(0.000)).eq(&Value::from(0_u64))
     );
     assert_eq!(
         Trivalent::True,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(0_i64))
+        Value::from(decimal!(0.000)).eq(&Value::from(0_i64))
     );
     assert_eq!(
         Trivalent::False,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(false))
+        Value::from(decimal!(0.000)).eq(&Value::from(false))
     );
     assert_eq!(
         Trivalent::False,
-        Value::Decimal(decimal!(0.000)).eq(&Value::from(""))
+        Value::from(decimal!(0.000)).eq(&Value::from(""))
     );
     assert_eq!(
         Trivalent::Unknown,
-        Value::Decimal(decimal!(0.000)).eq(&Value::Null)
+        Value::from(decimal!(0.000)).eq(&Value::Null)
     );
 
     // Double
@@ -272,14 +269,14 @@ fn equivalence() {
 fn arithmetic() {
     // Add
     assert_eq!(
-        Value::Decimal(decimal!(1.000)),
-        Value::Decimal(decimal!(0.000))
+        Value::from(decimal!(1.000)),
+        Value::from(decimal!(0.000))
             .add(&Value::from(1.000))
             .unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(1.000)),
-        Value::Decimal(decimal!(0.000))
+        Value::from(decimal!(1.000)),
+        Value::from(decimal!(0.000))
             .add(&Value::Double(Double { value: 1.0 }))
             .unwrap()
     );
@@ -293,41 +290,39 @@ fn arithmetic() {
 
     // Sub
     assert_eq!(
-        Value::Decimal(decimal!(1.000)),
-        Value::Decimal(decimal!(2.000))
+        Value::from(decimal!(1.000)),
+        Value::from(decimal!(2.000))
             .sub(&Value::Double(Double { value: 1.0 }))
             .unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(5.500)),
-        Value::Decimal(decimal!(8.000))
+        Value::from(decimal!(5.500)),
+        Value::from(decimal!(8.000))
             .sub(&Value::from(2.500))
             .unwrap()
     );
 
     // Mult
     assert_eq!(
-        Value::Decimal(decimal!(8.000)),
-        Value::Decimal(decimal!(2.000))
-            .mult(&Value::from(4))
-            .unwrap()
+        Value::from(decimal!(8.000)),
+        Value::from(decimal!(2.000)).mult(&Value::from(4)).unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(3.999)),
+        Value::from(decimal!(3.999)),
         Value::from(3).mult(&Value::from(1.333)).unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(555)),
+        Value::from(decimal!(555)),
         Value::from(5.0).mult(&Value::Unsigned(111)).unwrap()
     );
 
     // Div
     assert_eq!(
-        Value::Decimal(decimal!(3)),
+        Value::from(decimal!(3)),
         Value::from(9.0).div(&Value::Unsigned(3)).unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(1)),
+        Value::from(decimal!(1)),
         Value::Integer(2).div(&Value::Unsigned(2)).unwrap()
     );
     assert_eq!(
@@ -349,15 +344,15 @@ fn arithmetic() {
 
     // Negate
     assert_eq!(
-        Value::Decimal(decimal!(-3)),
+        Value::from(decimal!(-3)),
         Value::from(3.0).negate().unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(-1)),
+        Value::from(decimal!(-1)),
         Value::Integer(1).negate().unwrap()
     );
     assert_eq!(
-        Value::Decimal(decimal!(0)),
+        Value::from(decimal!(0)),
         Value::Double(Double::from(0.0)).negate().unwrap()
     );
 }

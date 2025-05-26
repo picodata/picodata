@@ -267,7 +267,7 @@ impl From<SqlValue> for SBroadValue {
                         raw_dec,
                     ))
                 };
-                SBroadValue(Value::Decimal(dec))
+                SBroadValue(Value::from(dec))
             }
             SqlValueInner::Double(f) => SBroadValue(Value::Double(Double { value: f })),
             SqlValueInner::Datetime(dt_raw) => SBroadValue(Value::Datetime(

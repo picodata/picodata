@@ -1,6 +1,5 @@
 use super::*;
 use crate::ir::value::Value;
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn concat1_test() {
     broadcast_check(

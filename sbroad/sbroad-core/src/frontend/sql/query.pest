@@ -472,11 +472,9 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             }
                 CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
-            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ TypeCast ~ WO ~ ")" }
-                TypeCast = _{ TypeAny | ColumnDefType }
+            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ ColumnDefType ~ WO ~ ")" }
                 ColumnDefType = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeJSON
                                    | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
-                    TypeAny = { ^"any" }
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
                     TypeDecimal = { (^"decimal" | ^"numeric" ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }

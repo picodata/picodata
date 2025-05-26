@@ -8,7 +8,7 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    LocalTimestamp, NamedWindows, Node64, Over, Parameter, Reference, ReferenceAsteriskSource, Row,
+    LocalTimestamp, NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, Row,
     ScalarFunction, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::relation::{DerivedType, Type};
@@ -2958,11 +2958,6 @@ fn connect_escape_to_like_node(
 }
 
 fn cast_type_from_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
-    if type_pair.as_rule() != Rule::ColumnDefType {
-        // TypeAny.
-        return CastType::try_from(&type_pair.as_rule());
-    }
-
     let mut column_def_type_pairs = type_pair.into_inner();
     let column_def_type = column_def_type_pairs
         .next()
@@ -6453,8 +6448,8 @@ impl Ast for AbstractSyntaxTree {
 impl Plan {
     /// Set inferred parameter types in all parameters nodes.
     fn set_types_in_parameter_nodes(&mut self, params: &[DerivedType]) -> Result<(), SbroadError> {
-        for node in self.nodes.iter64_mut() {
-            if let Node64::Parameter(Parameter {
+        for node in self.nodes.iter32_mut() {
+            if let Node32::Parameter(Parameter {
                 ref mut param_type,
                 ref index,
             }) = node

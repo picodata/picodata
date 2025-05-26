@@ -1,10 +1,8 @@
+use crate::ir::node::Node32;
 use crate::{
     errors::SbroadError,
     ir::{
-        node::{
-            expression::{Expression, MutExpression},
-            Cast, Constant, Node, NodeId, Row,
-        },
+        node::{expression::Expression, Cast, Constant, Node, NodeId},
         relation::Type,
         tree::traversal::{LevelNode, PostOrderWithFilter},
         value::Value,
@@ -40,20 +38,16 @@ impl Plan {
     /// This function focuses on simplifying the plan by eliminating unnecessary casts in selection
     /// expressions, enabling bucket filtering and in value rows, enabling local materialization.
     pub fn cast_constants(&mut self) -> Result<(), SbroadError> {
-        // For simplicity, we only evaluate constants wrapped in Row,
-        // e.g., Row(Cast(Constant), Cast(Cast(Constant))).
-        // This approach includes the target cases from the function comment
-        // (selection expressions and values rows).
-        let rows_filter = |node_id| {
+        let cast_filter = |node_id| {
             matches!(
                 self.get_node(node_id),
-                Ok(Node::Expression(Expression::Row(_)))
+                Ok(Node::Expression(Expression::Cast(_)))
             )
         };
         let mut subtree = PostOrderWithFilter::with_capacity(
             |node| self.subtree_iter(node, false),
             self.nodes.len(),
-            Box::new(rows_filter),
+            Box::new(cast_filter),
         );
 
         let top_id = self.get_top()?;
@@ -61,34 +55,20 @@ impl Plan {
         let row_ids = subtree.take_nodes();
         drop(subtree);
 
-        let mut new_list = Vec::new();
-        for LevelNode(_, row_id) in row_ids {
-            // Clone row children list to overcome borrow checker.
-            new_list.clear();
-            if let Expression::Row(Row { list, .. }) = self.get_expression_node(row_id)? {
-                new_list.clone_from(list);
-            }
-
-            // Try to apply cast to constants, push new values in the plan and remember ids in a
-            // copy if row children list.
-            for row_child in new_list.iter_mut() {
-                if let Expression::Cast(Cast {
-                    child: cast_child,
-                    to,
-                }) = self.get_expression_node(*row_child)?
-                {
-                    let to = to.as_relation_type();
-                    if let Some(value) = apply_cast(self, *cast_child, to) {
-                        *row_child = self.add_const(value);
-                    }
-                }
-            }
-
-            // Change row children to the new ones with casts applied.
-            if let MutExpression::Row(Row { ref mut list, .. }) =
-                self.get_mut_expression_node(row_id)?
+        for LevelNode(_, cast_id) in row_ids {
+            let replace_node = if let Expression::Cast(Cast {
+                child: cast_child,
+                to,
+            }) = self.get_expression_node(cast_id)?
             {
-                new_list.clone_into(list);
+                apply_cast(self, *cast_child, to.as_relation_type())
+                    .map(|value| Node32::Constant(Constant { value }))
+            } else {
+                None
+            };
+
+            if let Some(node) = replace_node {
+                self.nodes.replace32(cast_id, node)?;
             }
         }
 

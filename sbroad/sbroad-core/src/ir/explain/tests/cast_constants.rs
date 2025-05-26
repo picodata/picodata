@@ -35,7 +35,6 @@ fn insert_values_rows() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn select_selection() {
     let sql = r#"SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
@@ -52,7 +51,6 @@ fn select_selection() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn update_selection() {
     let sql = r#"UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::unsigned::decimal"#;
@@ -72,7 +70,6 @@ fn update_selection() {
     "#);
 }
 
-#[ignore = "(1806) while const cast is not reworked"]
 #[test]
 fn delete_selection() {
     let sql = r#"DELETE FROM "t2" where "e" = 3::unsigned and "f" = 2::decimal"#;

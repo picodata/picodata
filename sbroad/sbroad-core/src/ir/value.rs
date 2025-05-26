@@ -129,7 +129,8 @@ pub enum Value {
     /// Boolean type.
     Boolean(bool),
     /// Fixed point type.
-    Decimal(Decimal),
+    /// Box here to make the size of Value 32 bytes
+    Decimal(Box<Decimal>),
     /// Floating point type.
     Double(Double),
     /// Datetime type,
@@ -200,9 +201,10 @@ impl<'de> Decode<'de> for Value {
                 let ext: ExtStruct = Decode::decode(r, context)?;
 
                 match ext.tag {
-                    MP_DECIMAL => Ok(Value::Decimal(
-                        ext.try_into().map_err(DecodeError::new::<Self>)?,
-                    )),
+                    MP_DECIMAL => {
+                        let value: Decimal = ext.try_into().map_err(DecodeError::new::<Self>)?;
+                        Ok(value.into())
+                    }
                     MP_UUID => Ok(Value::Uuid(
                         ext.try_into().map_err(DecodeError::new::<Self>)?,
                     )),
@@ -353,7 +355,7 @@ impl From<Datetime> for Value {
 
 impl From<Decimal> for Value {
     fn from(v: Decimal) -> Self {
-        Value::Decimal(v)
+        Value::Decimal(Box::new(v))
     }
 }
 
@@ -437,7 +439,7 @@ pub(crate) fn value_to_decimal_or_error(value: &Value) -> Result<Decimal, Sbroad
                 ))
             }
         }
-        Value::Decimal(s) => Ok(*s),
+        Value::Decimal(s) => Ok(**s),
         _ => Err(SbroadError::Invalid(
             Entity::Value,
             Some(format_smolstr!(
@@ -595,7 +597,7 @@ impl Value {
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (s == o).into(),
-                Value::Decimal(o) => (&Decimal::from(*s) == o).into(),
+                Value::Decimal(o) => (Decimal::from(*s) == **o).into(),
                 // If double can't be converted to decimal without error then it is not equal to integer.
                 Value::Double(o) => (Decimal::from_str(&format!("{s}"))
                     == Decimal::from_str(&format!("{o}")))
@@ -611,7 +613,7 @@ impl Value {
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (*s == Double::from(*o)).into(),
                 // If double can't be converted to decimal without error then it is not equal to decimal.
-                Value::Decimal(o) => (Decimal::from_str(&format!("{s}")) == Ok(*o)).into(),
+                Value::Decimal(o) => (Decimal::from_str(&format!("{s}")) == Ok(**o)).into(),
                 Value::Double(o) => (s == o).into(),
                 // If double can't be converted to decimal without error then it is not equal to unsigned.
                 Value::Unsigned(o) => {
@@ -625,11 +627,11 @@ impl Value {
                 | Value::Uuid(_)
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
-                Value::Integer(o) => (s == &Decimal::from(*o)).into(),
+                Value::Integer(o) => (**s == Decimal::from(*o)).into(),
                 Value::Decimal(o) => (s == o).into(),
                 // If double can't be converted to decimal without error then it is not equal to decimal.
-                Value::Double(o) => (Ok(*s) == Decimal::from_str(&format!("{o}"))).into(),
-                Value::Unsigned(o) => (s == &Decimal::from(*o)).into(),
+                Value::Double(o) => (Ok(**s) == Decimal::from_str(&format!("{o}"))).into(),
+                Value::Unsigned(o) => (**s == Decimal::from(*o)).into(),
             },
             Value::Unsigned(s) => match other {
                 Value::Boolean(_)
@@ -639,7 +641,7 @@ impl Value {
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (Decimal::from(*s) == *o).into(),
-                Value::Decimal(o) => (&Decimal::from(*s) == o).into(),
+                Value::Decimal(o) => (Decimal::from(*s) == **o).into(),
                 // If double can't be converted to decimal without error then it is not equal to unsigned.
                 Value::Double(o) => {
                     (Ok(Decimal::from(*s)) == Decimal::from_str(&format!("{o}"))).into()
@@ -823,17 +825,17 @@ impl Value {
                 | Value::Uuid(_)
                 | Value::Tuple(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
-                Value::Integer(o) => TrivalentOrdering::from(s.cmp(&Decimal::from(*o))).into(),
+                Value::Integer(o) => TrivalentOrdering::from((**s).cmp(&Decimal::from(*o))).into(),
                 Value::Decimal(o) => TrivalentOrdering::from(s.cmp(o)).into(),
                 // If double can't be converted to decimal without error then it is not equal to decimal.
                 Value::Double(o) => {
                     if let Ok(d) = Decimal::from_str(&format!("{o}")) {
-                        TrivalentOrdering::from(s.cmp(&d)).into()
+                        TrivalentOrdering::from((**s).cmp(&d)).into()
                     } else {
                         None
                     }
                 }
-                Value::Unsigned(o) => TrivalentOrdering::from(s.cmp(&Decimal::from(*o))).into(),
+                Value::Unsigned(o) => TrivalentOrdering::from((**s).cmp(&Decimal::from(*o))).into(),
             },
             Value::Unsigned(s) => match other {
                 Value::Boolean(_)
@@ -931,12 +933,15 @@ impl Value {
                 Value::Decimal(_) => Ok(self),
                 Value::Double(ref v) => Ok(Value::Decimal(
                     Decimal::from_str(&format!("{v}"))
-                        .map_err(|_| cast_error(&self, column_type))?,
+                        .map_err(|_| cast_error(&self, column_type))?
+                        .into(),
                 )),
-                Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v))),
-                Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v))),
+                Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v).into())),
+                Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v).into())),
                 Value::String(ref v) => Ok(Value::Decimal(
-                    Decimal::from_str(v).map_err(|_| cast_error(&self, column_type))?,
+                    Decimal::from_str(v)
+                        .map_err(|_| cast_error(&self, column_type))?
+                        .into(),
                 )),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
@@ -952,7 +957,7 @@ impl Value {
             },
             Type::Integer => match self {
                 Value::Integer(_) => Ok(self),
-                Value::Decimal(v) => Ok(Value::Integer(
+                Value::Decimal(ref v) => Ok(Value::Integer(
                     v.to_i64().ok_or_else(|| cast_error(&self, column_type))?,
                 )),
                 Value::Double(ref v) => v
@@ -988,7 +993,7 @@ impl Value {
                 Value::Integer(v) => Ok(Value::Unsigned(
                     u64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
                 )),
-                Value::Decimal(v) => Ok(Value::Unsigned(
+                Value::Decimal(ref v) => Ok(Value::Unsigned(
                     v.to_u64().ok_or_else(|| cast_error(&self, column_type))?,
                 )),
                 Value::Double(ref v) => v
@@ -1172,7 +1177,7 @@ impl<'v> From<EncodedValue<'v>> for Value {
         match value {
             EncodedValue::Ref(MsgPackValue::Boolean(v)) => Value::Boolean(*v),
             EncodedValue::Ref(MsgPackValue::Datetime(v)) => Value::Datetime(*v),
-            EncodedValue::Ref(MsgPackValue::Decimal(v)) => Value::Decimal(*v),
+            EncodedValue::Ref(MsgPackValue::Decimal(v)) => Value::Decimal((*v).into()),
             EncodedValue::Ref(MsgPackValue::Double(v)) => Value::Double(Double::from(*v)),
             EncodedValue::Ref(MsgPackValue::Integer(v)) => Value::Integer(*v),
             EncodedValue::Ref(MsgPackValue::Unsigned(v)) => Value::Unsigned(*v),
@@ -1272,7 +1277,7 @@ where
         let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
             Ok(v) => {
                 let value: Decimal = v;
-                return Ok(Self::Decimal(value));
+                return Ok(Self::Decimal(value.into()));
             }
             Err((lua, _)) => lua,
         };

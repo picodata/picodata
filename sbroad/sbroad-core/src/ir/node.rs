@@ -196,7 +196,7 @@ pub struct Constant {
 
 impl From<Constant> for NodeAligned {
     fn from(value: Constant) -> Self {
-        Self::Node64(Node64::Constant(value))
+        Self::Node32(Node32::Constant(value))
     }
 }
 
@@ -372,7 +372,7 @@ pub struct Parameter {
 
 impl From<Parameter> for NodeAligned {
     fn from(value: Parameter) -> Self {
-        Self::Node64(Node64::Parameter(value))
+        Self::Node32(Node32::Parameter(value))
     }
 }
 
@@ -392,7 +392,7 @@ pub struct LocalTimestamp {
 
 impl From<LocalTimestamp> for NodeAligned {
     fn from(value: LocalTimestamp) -> Self {
-        Self::Node64(Node64::LocalTimestamp(value))
+        Self::Node32(Node32::LocalTimestamp(value))
     }
 }
 
@@ -1207,6 +1207,11 @@ pub enum Node32 {
     Tcl(Tcl),
     CreateSchema,
     DropSchema,
+    // begin the section to allow in-place swapping with Constant using the replace32()
+    Parameter(Parameter),
+    Constant(Constant),
+    LocalTimestamp(LocalTimestamp),
+    // end the section to allow in-place swapping with Constant using the replace32()
 }
 
 impl Node32 {
@@ -1240,6 +1245,9 @@ impl Node32 {
             },
             Node32::CreateSchema => NodeOwned::Ddl(DdlOwned::CreateSchema),
             Node32::DropSchema => NodeOwned::Ddl(DdlOwned::DropSchema),
+            Node32::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
+            Node32::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
+            Node32::LocalTimestamp(lt) => NodeOwned::Expression(ExprOwned::LocalTimestamp(lt)),
         }
     }
 }
@@ -1249,8 +1257,6 @@ impl Node32 {
 pub enum Node64 {
     ScanCte(ScanCte),
     Case(Case),
-    Parameter(Parameter),
-    Constant(Constant),
     Projection(Projection),
     Selection(Selection),
     Having(Having),
@@ -1271,8 +1277,6 @@ pub enum Node64 {
     SetParam(SetParam),
     SetTransaction(SetTransaction),
     Invalid(Invalid),
-    // Not in Node32 to allow in-place swapping with Constant using the replace()
-    LocalTimestamp(LocalTimestamp),
     Over(Over),
     NamedWindows(NamedWindows),
     TruncateTable(TruncateTable),
@@ -1285,7 +1289,6 @@ impl Node64 {
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),
-            Node64::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
             Node64::CreateRole(create_role) => NodeOwned::Acl(AclOwned::CreateRole(create_role)),
             Node64::Delete(delete) => NodeOwned::Relational(RelOwned::Delete(delete)),
             Node64::DropIndex(drop_index) => NodeOwned::Ddl(DdlOwned::DropIndex(drop_index)),
@@ -1299,7 +1302,6 @@ impl Node64 {
             Node64::Having(having) => NodeOwned::Relational(RelOwned::Having(having)),
             Node64::Join(join) => NodeOwned::Relational(RelOwned::Join(join)),
             Node64::OrderBy(order_by) => NodeOwned::Relational(RelOwned::OrderBy(order_by)),
-            Node64::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
             Node64::Row(row) => NodeOwned::Expression(ExprOwned::Row(row)),
             Node64::Procedure(proc) => NodeOwned::Block(BlockOwned::Procedure(proc)),
             Node64::Projection(proj) => NodeOwned::Relational(RelOwned::Projection(proj)),
@@ -1316,7 +1318,6 @@ impl Node64 {
                 NodeOwned::Ddl(DdlOwned::SetTransaction(set_trans))
             }
             Node64::ValuesRow(values_row) => NodeOwned::Relational(RelOwned::ValuesRow(values_row)),
-            Node64::LocalTimestamp(lt) => NodeOwned::Expression(ExprOwned::LocalTimestamp(lt)),
             Node64::NamedWindows(named_windows) => {
                 NodeOwned::Relational(RelOwned::NamedWindows(named_windows))
             }

@@ -4,7 +4,7 @@ use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, Constant, LocalTimestamp, MutNode, Node64, Node96, NodeId, Parameter, Reference,
+    Alias, Constant, LocalTimestamp, MutNode, Node32, Node96, NodeId, Parameter, Reference,
     ScalarFunction, ValuesRow,
 };
 use crate::ir::relation::{DerivedType, Type};
@@ -45,7 +45,8 @@ fn bind_params(
         if let Expression::Parameter(Parameter { index, .. }) = node {
             let value = values[(index - 1) as usize].clone();
             let constant = Constant { value };
-            plan.nodes.replace(*param_id, Node64::Constant(constant))?;
+            plan.nodes
+                .replace32(*param_id, Node32::Constant(constant))?;
         }
     }
 
@@ -85,14 +86,14 @@ impl Plan {
     #[must_use]
     pub fn get_param_set(&self) -> AHashSet<NodeId> {
         self.nodes
-            .arena64
+            .arena32
             .iter()
             .enumerate()
             .filter_map(|(id, node)| {
-                if let Node64::Parameter(_) = node {
+                if let Node32::Parameter(_) = node {
                     Some(NodeId {
                         offset: u32::try_from(id).unwrap(),
-                        arena_type: ArenaType::Arena64,
+                        arena_type: ArenaType::Arena32,
                     })
                 } else {
                     None
@@ -243,11 +244,11 @@ impl Plan {
 
         let mut local_timestamps = Vec::new();
 
-        for (id, node) in self.nodes.arena64.iter().enumerate() {
-            if let Node64::LocalTimestamp(_) = node {
+        for (id, node) in self.nodes.arena32.iter().enumerate() {
+            if let Node32::LocalTimestamp(_) = node {
                 let node_id = NodeId {
                     offset: u32::try_from(id).unwrap(),
-                    arena_type: ArenaType::Arena64,
+                    arena_type: ArenaType::Arena32,
                 };
 
                 if let Node::Expression(Expression::LocalTimestamp(LocalTimestamp { precision })) =
@@ -261,7 +262,7 @@ impl Plan {
         for (node_id, precision) in local_timestamps {
             let value = Self::create_datetime_value(local_datetime, precision);
             self.nodes
-                .replace(node_id, Node64::Constant(Constant { value }))?;
+                .replace32(node_id, Node32::Constant(Constant { value }))?;
         }
 
         Ok(())

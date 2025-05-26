@@ -35,7 +35,6 @@ impl TryFrom<&Rule> for Type {
     /// separately.
     fn try_from(ast_type: &Rule) -> Result<Self, Self::Error> {
         match ast_type {
-            Rule::TypeAny => Ok(Type::Any),
             Rule::TypeBool => Ok(Type::Boolean),
             Rule::TypeDatetime => Ok(Type::Datetime),
             Rule::TypeDecimal => Ok(Type::Decimal),
