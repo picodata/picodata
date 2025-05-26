@@ -509,11 +509,6 @@ test-mac-m1:
 .helm:
   stage: test
   needs: []
-  inherit:
-    variables:
-      - PUSH_DOCKER
-      - MULTIARCH
-      - PARENT_BRANCH
   rules:
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
@@ -534,6 +529,7 @@ test-mac-m1:
 helm-image:
   extends: .helm
   variables:
+    GIT_STRATEGY: none
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_REQUEST: "8Gi"
     MULTIARCH: "true"
@@ -633,12 +629,8 @@ pack-on-tag:
 
 .deploy-docker-tmpl:
   stage: docker
-  inherit:
-    variables:
-      - PUSH_DOCKER
-      - MULTIARCH
-      - PARENT_BRANCH
   variables:
+    GIT_STRATEGY: none
     PUSH_DOCKER: ""
     MULTIARCH: "true"
   rules:
@@ -654,7 +646,6 @@ deploy-docker:
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
       - DOCKERFILE: docker/picodata-distroless.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}-distroless
-
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
