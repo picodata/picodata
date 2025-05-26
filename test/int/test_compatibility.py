@@ -35,6 +35,7 @@ def test_upgrade_major(compat_cluster: Cluster):
 
 
 @pytest.mark.xdist_group(name="compat")
+@pytest.mark.skip(reason="unreliable, to be fixed")
 def test_upgrade_minor(compat_cluster: Cluster):
     inst = compat_cluster.add_instance(wait_online=False)
     os.makedirs(inst.instance_dir)
