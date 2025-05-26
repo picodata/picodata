@@ -12,7 +12,7 @@ Reminder:
 ---
 
 - Close #...
-- Cherry-pick to: none / 25.1 / 24.6
+- Cherry-pick to: none / 25.2 / 25.1
 - Docs follow-up: not necessary / [new issue](https://git.picodata.io/core/picodata/-/issues/new?issuable_template=followup) / docs updated in this MR
 - [ ] Changelog is updated
 
