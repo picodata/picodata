@@ -2871,18 +2871,24 @@ def pgrep_tree(pid):
 
 
 class log_crawler:
-    def __init__(self, instance: Instance, search_str: str) -> None:
+    def __init__(self, instance: Instance, search_str: str, use_regex: bool = False) -> None:
         self.instance = instance
         self.search_str = search_str
+        self.use_regex = use_regex
 
         # If search_str contains multiple lines, we need to be checking multiple
         # lines at a time. Because self._cb will only be called on 1 line at a
         # time we need to do some hoop jumping to make this work.
         self.matched = False
 
-        search_bytes = search_str.encode("utf-8")
-        self.expected_lines = search_bytes.splitlines()
-        self.n_lines = len(self.expected_lines)
+        if self.use_regex:
+            self.regex = re.compile(search_str)
+            self.expected_lines = []
+            self.n_lines = 1
+        else:
+            search_bytes = search_str.encode("utf-8")
+            self.expected_lines = search_bytes.splitlines()
+            self.n_lines = len(self.expected_lines)
 
         # This is the current window in which we're searching for the search_str.
         # Basically this is just last N lines of output we've seen.
@@ -2894,6 +2900,11 @@ class log_crawler:
     def _cb(self, line: bytes):
         # exit early if match was already found
         if self.matched:
+            return
+
+        if self.use_regex:
+            if self.regex.search(line.decode("utf-8")):
+                self.matched = True
             return
 
         if self.n_lines == 1 and self.expected_lines[0] in line:

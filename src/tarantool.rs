@@ -4,6 +4,7 @@ use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::tlog;
 use crate::traft::{self, error::Error};
 
 use ::tarantool::fiber;
@@ -25,6 +26,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tarantool::error::IntoBoxError;
+use tarantool::ffi::uuid::tt_uuid;
 use tarantool::network::protocol::{codec, iproto_key};
 use tlua::CallError;
 
@@ -1036,4 +1038,22 @@ pub fn set_use_system_alloc() {
 
 extern "C" fn use_system_alloc_cb(space_id: u32) -> bool {
     space_id <= crate::storage::SPACE_ID_INTERNAL_MAX
+}
+
+/// Set global cluster UUID for iproto connections (see IPROTO_ID).
+/// As a side effect, tarantool's machinery will now validate
+/// cluster UUIDs of all nodes trying to connect to this one.
+///
+/// XXX: this should only be called once, otherwise the process will abort!
+pub fn init_cluster_uuid(uuid: ::uuid::Uuid) {
+    extern "C" {
+        fn iproto_set_cluster_uuid(uuid: *const tt_uuid) -> std::os::raw::c_int;
+    }
+
+    tlog!(Info, "enabling cluster_uuid in IPROTO_ID");
+    let tt_uuid = ::tarantool::uuid::Uuid::from(uuid).to_tt_uuid();
+
+    // SAFETY: we pass a valid tt_uuid by ref.
+    let rc = unsafe { iproto_set_cluster_uuid(&tt_uuid) };
+    assert_eq!(rc, 0);
 }

@@ -15,6 +15,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Support unique indexes with non-sharded columns on sharded tables, with sharding key prefix provided
 - Introduce the governor script to add `is_default` column to the `_pico_tier` table
 - Pgproto now reports more verbose TLS error messages
+- Validate cluster UUID during IPROTO handshake and propagate `cluster_uuid` via IPROTO_ID. Connections with a mismatching `cluster_uuid` are rejected, ensuring cross-cluster isolation.
 
 ### SQL
 - SQL supports scalar function `abs()`.

@@ -1021,6 +1021,21 @@ pub fn relay_connection_config() -> Config {
         PICO_SERVICE_USER_NAME.into(),
         pico_service_password().into(),
     ));
+    // If local iproto cluster uuid is known, pass it via IPROTO_ID.
+    {
+        use ::tarantool::ffi::uuid::tt_uuid;
+        unsafe extern "C" {
+            fn iproto_get_cluster_uuid() -> *const tt_uuid;
+        }
+        // SAFETY: FFI returns pointer to global `tt_uuid`; not dereferenced here.
+        let ptr = unsafe { iproto_get_cluster_uuid() };
+        if !ptr.is_null() {
+            // SAFETY: `ptr` is non-null, points to static data; we copy by value.
+            let tt: tt_uuid = unsafe { *ptr };
+            let u = ::tarantool::uuid::Uuid::from_tt_uuid(tt);
+            config.cluster_uuid = Some(u.to_hyphenated().to_string());
+        }
+    }
     config
 }
 

@@ -1100,6 +1100,10 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     if let Some((storage, raft_storage)) = get_initialized_storage()? {
         if let Some(raft_id) = raft_storage.raft_id()? {
+            let cluster_uuid = raft_storage.cluster_uuid()?;
+            let cluster_uuid =
+                ::uuid::Uuid::parse_str(&cluster_uuid).expect("invalid cluster_uuid in storage");
+            tarantool::init_cluster_uuid(cluster_uuid);
             // This is a restart, go to postjoin immediately.
             tarantool::set_cfg_field("read_only", true)?;
             let instance_name = raft_storage
@@ -1255,7 +1259,9 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         ..Default::default()
     };
 
-    let cluster_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+    let cluster_uuid = uuid::Uuid::new_v4();
+    tarantool::init_cluster_uuid(cluster_uuid);
+    let cluster_uuid = cluster_uuid.to_hyphenated().to_string();
 
     let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, &storage)?;
 
@@ -1872,9 +1878,17 @@ fn start_join(
 
     crate::error_injection!(exit "EXIT_AFTER_REBOOTSTRAP_BEFORE_STORAGE_INIT_IN_START_JOIN");
 
-    let is_master = !cfg.read_only;
+    // XXX: Initialize cluster uuid before opening any iproto connections.
+    let uuid = resp
+        .cluster_uuid
+        .parse()
+        .expect("invalid cluster_uuid received from join response");
+
+    tarantool::init_cluster_uuid(uuid);
+
     init_common(config, &cfg, resp.shredding)?;
 
+    let is_master = !cfg.read_only;
     let (storage, raft_storage) = if is_master {
         bootstrap_storage_on_master()?
     } else {
@@ -1935,6 +1949,10 @@ fn start_join(
     tlog!(Info, "replicaset name: {}", resp.instance.replicaset_name);
     tlog!(Info, "replicaset uuid: {}", resp.instance.replicaset_uuid);
     tlog!(Info, "tier name: {}", resp.instance.tier);
+
+    // XXX: We should only do this after we've called tarantool::init_cluster_uuid!
+    tlog!(Info, "enabling replication via box.cfg.replication");
+    tarantool::set_cfg(&cfg)?;
 
     let instance_name = resp.instance.name.clone();
     postjoin(config, storage, raft_storage)?;

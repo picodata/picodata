@@ -1,5 +1,6 @@
 import time
 import pytest
+import re
 
 from conftest import (
     Cluster,
@@ -580,3 +581,17 @@ def test_fixing_broken_replication(cluster: Cluster):
     info_replication = i1.eval("return box.info.replication")
     assert info_replication[2]["upstream"]["status"] == "follow"
     assert info_replication[2]["downstream"]["status"] == "follow"
+
+
+def test_applier_cluster_uuid_mismatch(cluster: Cluster, second_cluster: Cluster):
+    a = cluster.add_instance(wait_online=True)
+    b = second_cluster.add_instance(wait_online=True)
+
+    assert a.cluster_uuid != b.cluster_uuid
+
+    uri_b = b.iproto_listen
+    pattern = rf"applier/{re.escape(uri_b)}.*ER_PICO_CLUSTER_UUID_MISMATCH: Picodata cluster UUID mismatch"
+    lc = log_crawler(a, pattern, use_regex=True)
+    a.eval(f"box.cfg{{replication = {{'{uri_b}'}}}}")
+
+    lc.wait_matched()
