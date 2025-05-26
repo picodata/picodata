@@ -4377,7 +4377,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc",
+ "tarantool-proc 3.2.0",
  "thiserror 1.0.69",
  "time",
  "tlua 3.1.0",
@@ -4410,7 +4410,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc",
+ "tarantool-proc 3.2.0",
  "tester",
  "thiserror 1.0.69",
  "time",
@@ -4445,7 +4445,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc",
+ "tarantool-proc 3.2.0",
  "thiserror 1.0.69",
  "time",
  "tlua 4.0.0",
@@ -4480,13 +4480,13 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc",
+ "tarantool-proc 4.0.0",
  "tempfile",
  "tester",
  "thiserror 1.0.69",
  "time",
  "time-macros",
- "tlua 5.0.0",
+ "tlua 6.0.0",
  "tokio",
  "uuid 0.8.2",
  "va_list",
@@ -4502,6 +4502,19 @@ dependencies = [
 [[package]]
 name = "tarantool-proc"
 version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccb355f2f6ff18bfa0bfad5630230a9c672754e182f30c0dab64d0fe51fc2591"
+dependencies = [
+ "darling 0.14.4",
+ "proc-macro-error",
+ "proc-macro2 1.0.94",
+ "quote 1.0.40",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "tarantool-proc"
+version = "4.0.0"
 dependencies = [
  "darling 0.14.4",
  "proc-macro-error",
@@ -4745,7 +4758,7 @@ dependencies = [
  "libc",
  "serde",
  "thiserror 1.0.69",
- "tlua-derive",
+ "tlua-derive 0.2.1",
 ]
 
 [[package]]
@@ -4757,24 +4770,35 @@ dependencies = [
  "libc",
  "serde",
  "thiserror 1.0.69",
- "tlua-derive",
+ "tlua-derive 0.2.1",
 ]
 
 [[package]]
 name = "tlua"
-version = "5.0.0"
+version = "6.0.0"
 dependencies = [
  "libc",
  "linkme 0.2.10",
  "serde",
  "tester",
  "thiserror 1.0.69",
- "tlua-derive",
+ "tlua-derive 1.0.0",
 ]
 
 [[package]]
 name = "tlua-derive"
 version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899e5490e17089fee6c49ceb15d62deee6c20561b3fa9bb9b12c7ed99ecc1214"
+dependencies = [
+ "proc-macro2 1.0.94",
+ "quote 1.0.40",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "tlua-derive"
+version = "1.0.0"
 dependencies = [
  "proc-macro2 1.0.94",
  "quote 1.0.40",
