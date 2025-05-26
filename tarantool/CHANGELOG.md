@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [?.?.?] Unreleased
+# [7.0.0] May 26 2025
 
 ### Added
 
