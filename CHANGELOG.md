@@ -8,7 +8,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.2.0] - Unreleased
+## [25.3.0] - Unreleased
+
+## [25.2.1] - 2025-05-26
 
 ### CLI
 - `picodata admin` in \lua mode no longer requires a delimiter for executing commands.
@@ -125,7 +127,7 @@ with the `YY.MINOR.MICRO` scheme.
   Query examples:
    - `SELECT 1 + '1'` is the same as `SELECT 1 + 1`
    - `INSERT INTO t (datetime_col) VALUES ('2023-07-07T12:34:56Z')` is the
-     same as `INSERT INTO t (datetime_col) VALUES ('2023-07-07T12:34:56Z'::datetime)` 
+     same as `INSERT INTO t (datetime_col) VALUES ('2023-07-07T12:34:56Z'::datetime)`
 
 ### Observability
 - Added picodata metrics in prometheus format to the `/metrics` endpoint. Metrics allow to monitor SQL, RPC, CAS, Raft, instance and governor states. List of metrics:
@@ -147,9 +149,9 @@ with the `YY.MINOR.MICRO` scheme.
   - pico_raft_leader_id
 
 ### Fixes
-- Display correct value for "can_vote" property in webUI   
+- Display correct value for "can_vote" property in webUI
 
-- Disallow DDL creation operations in a heterogeneous cluster. A cluster is considered 
+- Disallow DDL creation operations in a heterogeneous cluster. A cluster is considered
   heterogeneous if any instance differs from another by major or minor version.
 
 - Changed `picodata status` output format to more minimalistic and unix-stylished.
