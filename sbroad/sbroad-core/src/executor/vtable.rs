@@ -16,7 +16,7 @@ use tarantool::tuple::TupleBuilder;
 
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
-use crate::executor::protocol::{Binary, EncodedRows, EncodedTables};
+use crate::executor::protocol::{Binary, EncodedRows, EncodedVTables};
 use crate::executor::{bucket::Buckets, Vshard};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
@@ -732,11 +732,11 @@ fn vtable_marking(vtable: &VirtualTable) -> Vec<usize> {
 }
 
 impl ExecutionPlan {
-    pub fn encode_vtables(&self) -> EncodedTables {
+    pub fn encode_vtables(&self) -> EncodedVTables {
         let Some(vtables) = self.get_vtables() else {
-            return EncodedTables::default();
+            return EncodedVTables::default();
         };
-        let mut encoded_tables = EncodedTables::with_capacity(vtables.len());
+        let mut encoded_tables = EncodedVTables::with_capacity(vtables.len());
 
         for (id, vtable) in vtables {
             let marking = vtable_marking(vtable);
@@ -828,6 +828,7 @@ pub fn calculate_unified_types(
     Ok(res)
 }
 
+/// Map of { motion_id -> corresponding virtual table }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VirtualTableMap(HashMap<NodeId, Rc<VirtualTable>>);
 

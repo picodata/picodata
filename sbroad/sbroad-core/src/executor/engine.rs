@@ -105,23 +105,17 @@ pub fn get_builtin_functions() -> &'static [Function] {
 pub trait StorageCache {
     /// Put the prepared statement with given key in cache,
     /// remembering its version.
-    ///
-    /// # Errors
-    /// - failed to get schema version for some table
-    /// - invalid `schema_info`
     fn put(
         &mut self,
         plan_id: SmolStr,
         stmt: Statement,
         schema_info: &SchemaInfo,
-        table_ids: Vec<NodeId>,
+        motion_ids: Vec<NodeId>,
     ) -> Result<(), SbroadError>;
 
-    /// Get the prepared statement and a list of temporary tables from cache.
-    /// If the schema version for some table has been changed, `None` is returned.
-    ///
-    /// # Errors
-    /// - failed to get schema version for some table
+    /// Get the prepared statement and a list of motion ids from cache.
+    /// If the schema version for some virtual table (corresponding to some Motion)
+    /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
     fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError>;
 

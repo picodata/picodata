@@ -32,7 +32,7 @@ use tarantool::{space::Space, tuple::TupleBuffer};
 use crate::backend::sql::space::{TableGuard, ADMIN_ID};
 use crate::executor::engine::helpers::storage::{execute_prepared, execute_unprepared, prepare};
 use crate::executor::engine::{QueryCache, StorageCache};
-use crate::executor::protocol::{EncodedTables, SchemaInfo};
+use crate::executor::protocol::{EncodedVTables, SchemaInfo};
 use crate::ir::node::Node;
 use crate::ir::operator::ConflictStrategy;
 use crate::ir::value::{EncodedValue, MsgPackValue};
@@ -130,9 +130,6 @@ pub fn pk_name(plan_id: &str, node_id: NodeId) -> SmolStr {
     format_smolstr!("PK_{plan_id}_{node_id}")
 }
 
-/// # Errors
-/// - Invalid plan
-/// - Serialization errors
 pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, SbroadError> {
     let query_type = exec_plan.query_type()?;
     let mut sub_plan_id = None;
@@ -168,7 +165,7 @@ pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, Sb
     }
     let sub_plan_id = sub_plan_id.unwrap_or_default();
     let params = exec_plan.to_params()?;
-    let tables = exec_plan.encode_vtables();
+    let vtables = exec_plan.encode_vtables();
     let router_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().version_map);
     let schema_info = SchemaInfo::new(router_version_map);
     let required = RequiredData::new(
@@ -177,15 +174,12 @@ pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, Sb
         query_type,
         exec_plan.get_ir_plan().options.clone(),
         schema_info,
-        tables,
+        vtables,
     );
     let required_as_tuple = required.to_tuple()?;
     Ok(required_as_tuple.into())
 }
 
-/// # Errors
-/// - Invalid plan
-/// - Serialization errors
 pub fn build_optional_binary(mut exec_plan: ExecutionPlan) -> Result<Binary, SbroadError> {
     let query_type = exec_plan.query_type()?;
     let ordered = match query_type {
@@ -1207,18 +1201,18 @@ pub fn sharding_key_from_tuple<'tuple>(
 }
 
 fn populate_table(
-    node_id: NodeId,
+    motion_id: NodeId,
     plan_id: &SmolStr,
-    tables: &mut EncodedTables,
+    vtables: &mut EncodedVTables,
 ) -> Result<(), SbroadError> {
-    let data = tables.get_mut(&node_id).ok_or_else(|| {
+    let data = vtables.get_mut(&motion_id).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
-            format_smolstr!("encoded table with id {node_id}"),
+            format_smolstr!("encoded table with id {motion_id}"),
         )
     })?;
     with_su(ADMIN_ID, || -> Result<(), SbroadError> {
-        let name = table_name(plan_id, node_id);
+        let name = table_name(plan_id, motion_id);
         let space = Space::find(&name).ok_or_else(|| {
             // See https://git.picodata.io/core/picodata/-/issues/1859.
             SbroadError::Invalid(
@@ -1265,10 +1259,10 @@ pub trait RequiredPlanInfo {
     fn schema_info(&self) -> &SchemaInfo;
     fn sql_vdbe_opcode_max(&self) -> u64;
     fn sql_motion_row_max(&self) -> u64;
-    fn extract_data(&mut self) -> EncodedTables;
+    fn extract_data(&mut self) -> EncodedVTables;
 }
 
-pub trait PlanInfo: RequiredPlanInfo {
+pub trait FullPlanInfo: RequiredPlanInfo {
     /// Extracts the query and the temporary tables from the plan.
     /// Temporary tables truncate their data in destructor and act
     /// as a guard.
@@ -1312,12 +1306,12 @@ impl RequiredPlanInfo for QueryInfo<'_> {
         self.required.options.sql_motion_row_max
     }
 
-    fn extract_data(&mut self) -> EncodedTables {
-        std::mem::take(&mut self.required.tables)
+    fn extract_data(&mut self) -> EncodedVTables {
+        std::mem::take(&mut self.required.vtables)
     }
 }
 
-impl PlanInfo for QueryInfo<'_> {
+impl FullPlanInfo for QueryInfo<'_> {
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
@@ -1360,12 +1354,12 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
         self.required.options.sql_motion_row_max
     }
 
-    fn extract_data(&mut self) -> EncodedTables {
-        std::mem::take(&mut self.required.tables)
+    fn extract_data(&mut self) -> EncodedVTables {
+        std::mem::take(&mut self.required.vtables)
     }
 }
 
-impl PlanInfo for EncodedQueryInfo<'_> {
+impl FullPlanInfo for EncodedQueryInfo<'_> {
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
@@ -1391,7 +1385,7 @@ impl PlanInfo for EncodedQueryInfo<'_> {
 pub fn read_from_cache<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
     params: &[Value],
-    tables: &mut EncodedTables,
+    vtables: &mut EncodedVTables,
     plan_id: &SmolStr,
     sql_vdbe_opcode_max: u64,
     max_rows: u64,
@@ -1401,19 +1395,19 @@ where
     R::Cache: StorageCache,
 {
     // Look for the prepared statement in the cache.
-    if let Some((stmt, table_ids)) = locked_cache.get(plan_id)? {
+    if let Some((stmt, motion_ids)) = locked_cache.get(plan_id)? {
         // Transaction rollbacks are very expensive in Tarantool, so we're going to
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
         let result = 'dql: {
-            for node_id in table_ids {
-                if let Err(e) = populate_table(*node_id, plan_id, tables) {
+            for motion_id in motion_ids {
+                if let Err(e) = populate_table(*motion_id, plan_id, vtables) {
                     break 'dql Err(e);
                 }
             }
             execute_prepared(stmt, params, sql_vdbe_opcode_max, max_rows, return_format)
         };
-        truncate_tables(table_ids, plan_id);
+        truncate_tables(motion_ids, plan_id);
 
         return result;
     };
@@ -1434,7 +1428,7 @@ fn read_bypassing_cache(
     pattern: &str,
     params: &[Value],
     plan_id: &SmolStr,
-    tables: &mut EncodedTables,
+    vtables: &mut EncodedVTables,
     sql_vdbe_opcode_max: u64,
     max_rows: u64,
     return_format: &StorageReturnFormat,
@@ -1443,9 +1437,9 @@ fn read_bypassing_cache(
     // avoid transactions for DQL queries. We can achieve atomicity by truncating
     // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
     let result = 'dql: {
-        let table_ids = tables.keys().copied().collect::<Vec<NodeId>>();
-        for node_id in table_ids {
-            if let Err(e) = populate_table(node_id, plan_id, tables) {
+        let motion_ids = vtables.keys().copied().collect::<Vec<NodeId>>();
+        for motion_id in motion_ids {
+            if let Err(e) = populate_table(motion_id, plan_id, vtables) {
                 break 'dql Err(e);
             }
         }
@@ -1465,13 +1459,13 @@ fn read_bypassing_cache(
 /// - Execution errors
 pub fn prepare_and_read<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
-    info: &mut impl PlanInfo,
+    info: &mut impl FullPlanInfo,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError>
 where
     R::Cache: StorageCache,
 {
-    let mut tmp_tables = info.extract_data();
+    let mut vtables = info.extract_data();
     let sql_vdbe_opcode_max = info.sql_vdbe_opcode_max();
     let max_rows = info.sql_motion_row_max();
 
@@ -1481,15 +1475,15 @@ where
     let (pattern, params) = pattern_with_params.into_parts();
     match prepare(pattern.clone()) {
         Ok(stmt) => {
-            let table_ids: Vec<NodeId> = tmp_tables.keys().copied().collect();
-            locked_cache.put(plan_id.clone(), stmt, info.schema_info(), table_ids)?;
+            let motion_ids: Vec<NodeId> = vtables.keys().copied().collect();
+            locked_cache.put(plan_id.clone(), stmt, info.schema_info(), motion_ids)?;
             // It is safe to skip truncating temporary tables here as there are no early
             // returns after this point that could leave the tables populated with data.
             guards.iter_mut().for_each(TableGuard::skip_truncate);
             let res = cache_miss::<R, M>(
                 locked_cache,
                 &params,
-                &mut tmp_tables,
+                &mut vtables,
                 plan_id,
                 sql_vdbe_opcode_max,
                 max_rows,
@@ -1517,7 +1511,7 @@ where
         &pattern,
         &params,
         plan_id,
-        &mut tmp_tables,
+        &mut vtables,
         sql_vdbe_opcode_max,
         max_rows,
         return_format,
@@ -1530,7 +1524,7 @@ where
 /// - something wrong with the statement in the cache.
 pub fn read_or_prepare<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
-    info: &mut impl PlanInfo,
+    info: &mut impl FullPlanInfo,
     return_format: &StorageReturnFormat,
 ) -> Result<Box<dyn Any>, SbroadError>
 where
@@ -2195,7 +2189,7 @@ where
 /// - Execution errors
 pub fn execute_second_cacheable_request<R: Vshard + QueryCache>(
     runtime: &R,
-    info: &mut impl PlanInfo,
+    info: &mut impl FullPlanInfo,
 ) -> Result<Box<dyn Any>, SbroadError>
 where
     R::Cache: StorageCache,
@@ -2422,7 +2416,7 @@ fn encode_result_tuple(metadata: &[MetadataColumn], rows: &[u8]) -> Result<Tuple
 fn cache_hit<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
     params: &[Value],
-    tables: &mut EncodedTables,
+    tables: &mut EncodedVTables,
     plan_id: &SmolStr,
     sql_vdbe_opcode_max: u64,
     max_rows: u64,
@@ -2445,7 +2439,7 @@ where
 fn cache_miss<R: QueryCache, M: MutexLike<R::Cache>>(
     locked_cache: &mut M::Guard<'_>,
     params: &[Value],
-    tables: &mut EncodedTables,
+    tables: &mut EncodedVTables,
     plan_id: &SmolStr,
     sql_vdbe_opcode_max: u64,
     max_rows: u64,

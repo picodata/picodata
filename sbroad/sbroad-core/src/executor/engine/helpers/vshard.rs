@@ -12,14 +12,17 @@ use tarantool::{
     tlua::StringInLua,
 };
 
-use crate::ir::{
-    helpers::RepeatableState,
-    transformation::redistribution::{MotionOpcode, MotionPolicy},
-    tree::{
-        relation::RelationalIterator,
-        traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY},
+use crate::{
+    executor::engine::helpers::build_required_binary,
+    ir::{
+        helpers::RepeatableState,
+        transformation::redistribution::{MotionOpcode, MotionPolicy},
+        tree::{
+            relation::RelationalIterator,
+            traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY},
+        },
+        Plan,
     },
-    Plan,
 };
 use crate::{
     executor::{
@@ -48,7 +51,7 @@ use crate::{
     },
 };
 
-use super::{build_required_binary, filter_vtable, try_get_metadata_from_plan};
+use super::{filter_vtable, try_get_metadata_from_plan};
 
 /// Map between replicaset uuid and plan subtree (with additional info), sending to it.
 /// (see `Message`documentation for more info).

@@ -260,7 +260,7 @@ impl Iterator for EncodedRowsIter<'_> {
 }
 
 /// Encoded virtual tables data.
-pub type EncodedTables = HashMap<NodeId, EncodedRows>;
+pub type EncodedVTables = HashMap<NodeId, EncodedRows>;
 
 /// Query data used for executing of the cached statements.
 /// Note that it contains only meta-information about SQL query (
@@ -274,7 +274,7 @@ pub struct RequiredData {
     pub query_type: QueryType,
     pub options: Options,
     pub schema_info: SchemaInfo,
-    pub tables: EncodedTables,
+    pub vtables: EncodedVTables,
 }
 
 impl Default for RequiredData {
@@ -285,7 +285,7 @@ impl Default for RequiredData {
             query_type: QueryType::DQL,
             options: Options::default(),
             schema_info: SchemaInfo::default(),
-            tables: EncodedTables::default(),
+            vtables: EncodedVTables::default(),
         }
     }
 }
@@ -336,7 +336,7 @@ impl RequiredData {
         query_type: QueryType,
         options: Options,
         schema_info: SchemaInfo,
-        tables: EncodedTables,
+        vtables: EncodedVTables,
     ) -> Self {
         RequiredData {
             plan_id,
@@ -344,7 +344,7 @@ impl RequiredData {
             query_type,
             options,
             schema_info,
-            tables,
+            vtables,
         }
     }
 

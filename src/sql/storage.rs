@@ -10,12 +10,12 @@ use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat}
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
 use sbroad::executor::engine::helpers::{
     self, execute_first_cacheable_request, execute_second_cacheable_request, read_or_prepare,
-    EncodedQueryInfo, OptionalBytes, PlanInfo, RequiredPlanInfo,
+    EncodedQueryInfo, FullPlanInfo, OptionalBytes, RequiredPlanInfo,
 };
 use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
-use sbroad::executor::protocol::{EncodedTables, RequiredData, SchemaInfo};
+use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo};
 use sbroad::executor::result::ProducerResult;
 use sbroad::ir::value::Value;
 use tarantool::fiber::Mutex;
@@ -202,7 +202,7 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
         &self.schema_info
     }
 
-    fn extract_data(&mut self) -> EncodedTables {
+    fn extract_data(&mut self) -> EncodedVTables {
         self.exec_plan.encode_vtables()
     }
 
@@ -215,7 +215,7 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
     }
 }
 
-impl PlanInfo for LocalExecutionQueryInfo<'_> {
+impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
