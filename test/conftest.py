@@ -2971,6 +2971,22 @@ def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generato
         password="ldappass",
         data_dir=cluster.data_dir,
         port=port_distributor.get(),
+        tls=False,
+    )
+
+    yield server
+
+    server.process.kill()
+
+
+@pytest.fixture
+def ldap_server_with_tls(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
+    server = ldap.configure_ldap_server(
+        username="ldapuser",
+        password="ldappass",
+        data_dir=cluster.data_dir,
+        port=port_distributor.get(),
+        tls=True,
     )
 
     yield server

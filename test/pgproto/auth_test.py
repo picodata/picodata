@@ -210,3 +210,87 @@ def test_auth_ldap_server_down(cluster: Cluster, port_distributor: PortDistribut
             host=i1.pg_host,
             port=i1.pg_port,
         )
+
+
+@pytest.mark.skipif(
+    not is_glauth_available(),
+    reason=("need installed glauth"),
+)
+@pytest.mark.parametrize(
+    "tls_enabled",
+    [
+        pytest.param("true", id="tls_enabled"),
+        pytest.param("false", id="tls_disabled"),
+    ],
+)
+def test_auth_ldap_starttls(
+    cluster: Cluster, ldap_server_with_tls: LdapServer, port_distributor: PortDistributor, tls_enabled: str
+):
+    assert ldap_server_with_tls.tls
+    # Configure the instance
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server_with_tls.host}:{ldap_server_with_tls.port}"
+    i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    i1.env["TT_LDAP_ENABLE_TLS"] = tls_enabled
+    # Don't bother to check the server's cert
+    # Pass the cert check if cert is bad for some reason
+    # (only for tests because our test certs are self-signed)
+    # see https://www.openldap.org/doc/admin21/tls.html
+    i1.env["LDAPTLS_REQCERT"] = "never"
+    i1.pg_host = "127.0.0.1"
+    i1.pg_port = port_distributor.get()
+    i1.start()
+    i1.wait_online()
+
+    i1.sql(
+        f"""
+            CREATE USER "{ldap_server_with_tls.user}" USING LDAP
+        """
+    )
+    # valid creds
+    conn = pg.Connection(
+        ldap_server_with_tls.user,
+        password=ldap_server_with_tls.password,
+        host=i1.pg_host,
+        port=i1.pg_port,
+    )
+    assert conn.execute_simple("SELECT 1").rows == [[1]]
+
+
+@pytest.mark.skipif(
+    not is_glauth_available(),
+    reason=("need installed glauth"),
+)
+def test_auth_ldap_starttls_bad_cert(
+    cluster: Cluster, ldap_server_with_tls: LdapServer, port_distributor: PortDistributor
+):
+    """
+    Scenario: Self-signed certificate in certificate chain,
+    so cannot set up TLS connection
+    """
+    assert ldap_server_with_tls.tls
+    # Configure the instance
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server_with_tls.host}:{ldap_server_with_tls.port}"
+    i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    # Enable tls
+    i1.env["TT_LDAP_ENABLE_TLS"] = "true"
+    i1.pg_host = "127.0.0.1"
+    i1.pg_port = port_distributor.get()
+    i1.start()
+    i1.wait_online()
+
+    i1.sql(
+        f"""
+            CREATE USER "{ldap_server_with_tls.user}" USING LDAP
+        """
+    )
+    with pytest.raises(
+        pg.DatabaseError, match=f"authentication failed for user '{ldap_server_with_tls.user}': LDAP: Connect error"
+    ):
+        pg.Connection(
+            ldap_server_with_tls.user,
+            password=ldap_server_with_tls.password,
+            host=i1.pg_host,
+            port=i1.pg_port,
+        )

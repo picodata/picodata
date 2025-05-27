@@ -14,6 +14,11 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `ORDER BY ... NULLS FIRST/LAST` operation.
 - SQL supports `INSERT INTO ... ON CONFLICT DO FAIL/REPLACE/NOTHING` operation for globally distributed tables.
 
+### Pgproto
+
+- Support LDAP with TLS (StartTLS) for LDAP authentication menthod
+  - use TT_LDAP_ENABLE_TLS=true environment variable to turn on
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI

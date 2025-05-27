@@ -71,6 +71,10 @@ UNIX:
   Пример: `cn=$USER,ou=users,dc=example,dc=org`. Вместо `$USER` будет
   подставлено фактическое имя пользователя Picodata (производится только
   для первого упоминания `$USER`).
+* `TT_LDAP_ENABLE_TLS` - параметр, включающий использование TLS (через
+StartTLS); возможные значения - true, false. По умолчанию, TLS выключено. 
+Перед включением параметра необходимо убедиться, что LDAP-сервер
+сконфигурирован использовать StartTLS.
 
 Пример [конфигурационного файла] инстанса `i1`:
 
@@ -104,6 +108,7 @@ UNIX:
 ```shell
 export TT_LDAP_URL="ldap://127.0.0.1:1389"
 export TT_LDAP_DN_FMT='cn=$USER,ou=users,dc=example,dc=org'
+export TT_LDAP_ENABLE_TLS=true
 ```
 
 !!! note "Примечание"

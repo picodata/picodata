@@ -1,8 +1,10 @@
 import subprocess
 import hashlib
+import os
 import socket
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -12,6 +14,7 @@ class LdapServer:
     process: subprocess.Popen
     user: str
     password: str
+    tls: bool
 
 
 def is_glauth_available():
@@ -23,7 +26,7 @@ def is_glauth_available():
     return True
 
 
-def configure_ldap_server(username: str, password: str, data_dir: str, port: int) -> LdapServer:
+def configure_ldap_server(username: str, password: str, data_dir: str, port: int, tls: bool) -> LdapServer:
     subprocess.Popen(["glauth", "--version"])
 
     LDAP_SERVER_HOST = "127.0.0.1"
@@ -31,11 +34,18 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
     ldap_cfg_path = f"{data_dir}/ldap.cfg"
     with open(ldap_cfg_path, "x") as f:
         password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
+        tls_value = "true" if tls else "false"
+        ssl_dir = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+        client_cert_path = ssl_dir / "server-fullchain.crt"
+        client_key_path = ssl_dir / "server.key"
         f.write(
             f"""
             [ldap]
                 enabled = true
                 listen = "{LDAP_SERVER_HOST}:{port}"
+                tls = {tls_value}
+                tlsCertPath = "{client_cert_path}"
+                tlsKeyPath = "{client_key_path}"
 
             [ldaps]
                 enabled = false
@@ -77,4 +87,5 @@ def configure_ldap_server(username: str, password: str, data_dir: str, port: int
         process=process,
         user=username,
         password=password,
+        tls=tls,
     )
