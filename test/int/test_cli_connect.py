@@ -455,7 +455,7 @@ def test_connect_with_wrong_password_path(binary_path_fixt: str):
 
 
 def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
-    password_path = i1.instance_dir + "/password"
+    password_path = i1.instance_dir / "password"
     with open(password_path, "w") as f:
         f.write("Testpa55")
 
@@ -465,7 +465,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
             "connect",
             f"{i1.host}:{i1.port}",
             "--password-file",
-            password_path,
+            password_path.as_posix(),
             "-u",
             "testuser",
         ],

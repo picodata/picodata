@@ -27,10 +27,10 @@ from typing import (
     Iterator,
     List,
     Literal,
+    NoReturn,
     Optional,
     Tuple,
     Type,
-    Union,
 )
 from itertools import count
 from contextlib import contextmanager, suppress
@@ -613,7 +613,7 @@ class Instance:
 
     share_dir: str | None = None
     cluster_name: str | None = None
-    _instance_dir: str | None = None
+    _instance_dir: Path | None = None
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
@@ -2239,7 +2239,7 @@ class Cluster:
                 [user, privilege, object_type, object_name],
             )
 
-    def choose_instance_dir(self, wanted_name: str) -> str:
+    def choose_instance_dir(self, wanted_name: str) -> Path:
         wanted_path = f"{self.data_dir}/{wanted_name}"
 
         candidate = wanted_path
@@ -2248,7 +2248,7 @@ class Cluster:
             candidate = f"{wanted_path}-{n}"
             n += 1
 
-        return candidate
+        return Path(candidate)
 
 
 def picodata_expel(
@@ -2879,8 +2879,8 @@ class Compatibility:
 
     all_tags: List[Version]
     current_tag: Version
-    previous_major_tag: Optional[Version] = None
     previous_minor_tag: Optional[Version] = None
+    previous_patch_tag: Optional[Version] = None
 
     def __init__(self, root_path: Optional[Path] = None):
         self.root = root_path or Path(os.getcwd())
@@ -2890,18 +2890,52 @@ class Compatibility:
         self.all_tags = self._get_sorted_semver_tags()
         self.current_tag = self._find_current_tag()
 
-        previous_major_tag = self._find_previous_major_tag()
-        match previous_major_tag:
-            case (None, _):
-                self.previous_major_tag = None
-            case Version():
-                self.previous_major_tag = previous_major_tag
-        previous_minor_tag = self._find_previous_minor_tag()
-        match previous_minor_tag:
-            case (None, _):
-                self.previous_minor_tag = None
-            case Version():
-                self.previous_minor_tag = previous_minor_tag
+    @property
+    def previous_minor_path(self) -> Path:
+        version = self._check_set_previous_minor_tag()
+        return self.version_to_dir_path(version)
+
+    @property
+    def previous_minor_version(self) -> Version:
+        return self._check_set_previous_minor_tag()
+
+    @property
+    def previous_patch_path(self) -> Path:
+        version = self._check_set_previous_patch_tag()
+        return self.version_to_dir_path(version)
+
+    @property
+    def previous_patch_version(self) -> Version:
+        return self._check_set_previous_patch_tag()
+
+    @property
+    def current_tag_version(self) -> Version:
+        return self.current_tag
+
+    @property
+    def current_tag_path(self) -> Path:
+        version = self.current_tag
+        return self.version_to_dir_path(version)
+
+    def version_to_dir_path(self, version: Version) -> Path | NoReturn:
+        backup_path = Path(self.root) / "test" / "compat" / str(version)
+
+        if not backup_path.exists():
+            try:
+                backup_path.mkdir(parents=True)
+            except OSError as e:
+                pytest.fail(f"failed to create directory {backup_path}: {e}")
+
+            error = f"no backup instance directory for version {version} was found"
+            suggestion = f"new one was created at '{backup_path}' - fill it with backup data files"
+            pytest.fail(f"{error}\n{suggestion}")
+
+        if not any(backup_path.iterdir()):
+            error = f"backup instance directory for version {version} is empty"
+            suggestion = f"please fill '{backup_path}' with backup data files"
+            pytest.fail(f"{error}\n{suggestion}")
+
+        return backup_path
 
     def _get_sorted_semver_tags(self) -> List[Version]:
         raw_tags = self.git_repo.tags
@@ -2925,61 +2959,62 @@ class Compatibility:
         clean_version = Version(version_parts[0])
         return clean_version
 
-    # should not be `None`
-    def current_tag_with_path(self) -> Tuple[Version, Path]:
-        version = self.current_tag
-        path = self.version_to_dir_path(version)
-        return version, path
+    def _check_set_previous_minor_tag(self) -> Version:
+        if self.previous_minor_tag is None:
+            self._find_previous_minor_tag()
+        assert self.previous_minor_tag
+        return self.previous_minor_tag
 
-    def _find_previous_major_tag(self) -> Version | str | None:
-        current_major = self.current_tag.major
-        if current_major == 25:
-            return None  # first verison we started to support backwards compatibility
-
-        try:
-            current_index = self.all_tags.index(self.current_tag)
-        except ValueError:
-            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
-
-        # iterate backwards until we find a tag with a lower major version
-        for i in range(current_index - 1, -1, -1):
-            if self.all_tags[i].major < current_major:
-                return self.all_tags[i]
-
-        return f"no previous major version to current ({self.current_tag}) tag was found"
-
-    def previous_major_tag_path(self) -> Optional[Path]:
-        version = self.previous_major_tag
-        if version is None:
-            return None
-        return self.version_to_dir_path(version)
-
-    def _find_previous_minor_tag(self) -> Union[Version, Tuple[None, str]]:
+    def _find_previous_minor_tag(self) -> None:
         current_major = self.current_tag.major
         current_minor = self.current_tag.minor
+
         try:
             current_index = self.all_tags.index(self.current_tag)
         except ValueError:
-            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
+            pytest.fail(f"could not find current tag ({self.current_tag}) in list of tags")
 
-        # iterate backwards until we find a tag with the same major and a lower minor version
-        for i in range(current_index - 1, -1, -1):
+        # iterate backwards until we find a tag with a lower minor version
+        for i in reversed(range(current_index)):
             tag = self.all_tags[i]
             if tag.major == current_major and tag.minor < current_minor:
-                return tag
+                self.previous_minor_tag = tag
+                return
 
-        return None, f"no previous patch version to current ({self.current_tag}) was found"
+        missing_previous_minor_version = f"{self.current_tag.major}.ANY<{self.current_tag.minor}.ANY"
+        pytest.fail(
+            f"no previous minor version ({missing_previous_minor_version}) to current ({self.current_tag}) was found"
+        )
 
-    def previous_minor_tag_path(self) -> Optional[Path]:
-        version = self.previous_minor_tag
-        if version is None:
-            return None
-        return self.version_to_dir_path(version)
+    def _check_set_previous_patch_tag(self) -> Version:
+        if self.previous_patch_tag is None:
+            self._find_previous_patch_tag()
+        assert self.previous_patch_tag
+        return self.previous_patch_tag
 
-    def version_to_dir_path(self, version: Version) -> Path:
-        path = Path(f"{self.root}/test/compat/{version}/")
-        os.makedirs(path, exist_ok=True)
-        return path
+    def _find_previous_patch_tag(self) -> None:
+        current_major = self.current_tag.major
+        current_minor = self.current_tag.minor
+        current_patch = self.current_tag.micro
+
+        try:
+            current_index = self.all_tags.index(self.current_tag)
+        except ValueError:
+            pytest.fail(f"could not find current tag ({self.current_tag}) in list of tags")
+
+        # iterate backwards until we find a tag with the same minor and a lower patch version
+        for i in reversed(range(current_index)):
+            tag = self.all_tags[i]
+            if tag.major == current_major and tag.minor == current_minor and tag.micro < current_patch:
+                self.previous_patch_tag = tag
+                return
+
+        missing_previous_patch_version = (
+            f"{self.current_tag.major}.{self.current_tag.minor}.ANY<{self.current_tag.micro}"
+        )
+        pytest.fail(
+            f"no previous patch version ({missing_previous_patch_version}) to current ({self.current_tag}) was found"
+        )
 
 
 @pytest.fixture

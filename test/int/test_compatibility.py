@@ -1,56 +1,87 @@
 import pytest
 import os
 
+from typing import Generator
 from conftest import (
+    BASE_HOST,
     Cluster,
     Compatibility,
+    Instance,
+    PortDistributor,
     ProcessDead,
     Retriable,
     log_crawler,
     copy_dir,
 )
-from pathlib import Path
+
+
+@pytest.fixture
+def compat_cluster(binary_path_fixt, class_tmp_dir) -> Generator[Cluster, None, None]:
+    """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
+    cluster = Cluster(
+        binary_path=binary_path_fixt,
+        id="demo",  # should be in sync with snapshot generation script
+        data_dir=class_tmp_dir,
+        base_host=BASE_HOST,  # should be in sync with snapshot generation script
+        port_distributor=PortDistributor(3301, 3303),  # should be in sync with snapshot generation script
+    )
+    yield cluster
+    cluster.kill()
+
+
+@pytest.fixture
+def compat_instance(compat_cluster: Cluster) -> Instance:
+    instance = compat_cluster.add_instance(wait_online=False)
+    os.makedirs(instance.instance_dir)
+    return instance
 
 
 @pytest.mark.xdist_group(name="compat")
-def test_upgrade_major(compat_cluster: Cluster):
-    inst = compat_cluster.add_instance(wait_online=False)
-    os.makedirs(inst.instance_dir)
-    compat = Compatibility()
+def test_upgrade_minor(compat_instance: Instance):
+    """
+    Tests backward compatibility with the previous MINOR version's latest PATCH.
 
-    if compat.current_tag.major == 25:
-        pytest.skip("same major we started backwards compat guarantees")
+    This test verifies that the current version can properly start from recovery
+    files of the latest PATCH version of the previous MINOR release `X.(Y-1).*`.
+    For example, version `25.3.0` would test against `25.2.2`.
 
-    msg = "snapshot of the previous major was not found"
-    hint = "try to generate snapshot using makefile or justfile"
-    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
+    The test serves two purposes:
+    1. Ensures MINOR version boot works correctly.
+    2. Implicitly covers PATCH compatibility when there is no previous PATCH version
+       (e.g., for `X.Y.0`, since no `X.Y.-1` exists).
 
-    backups = compat.previous_major_tag_path()
-    assert backups, error
+    It only runs when there exists a recovery files of previous MINOR version to test against.
+    """
+    compatibility = Compatibility()
 
-    into = Path(inst.instance_dir)
-    copy_dir(backups, into)
-    inst.start()
-    inst.wait_online()
+    backup_files = compatibility.previous_minor_path
+    copy_dir(backup_files, compat_instance.instance_dir)
+
+    compat_instance.start()
+    compat_instance.wait_online()
 
 
 @pytest.mark.xdist_group(name="compat")
-def test_upgrade_minor(compat_cluster: Cluster):
-    inst = compat_cluster.add_instance(wait_online=False)
-    os.makedirs(inst.instance_dir)
-    compat = Compatibility()
+def test_upgrade_patch(compat_instance: Instance):
+    """
+    Tests backward compatibility with the previous PATCH version.
 
-    msg = "snapshot of the previous major was not found"
-    hint = "try to generate snapshot using makefile or justfile"
-    error = f"{msg}, hint: {hint}, current tag is {compat.current_tag}"
+    This test verifies that the current version can properly start from recovery
+    files of the previous PATCH version `X.Y.(Z-1)`. It only runs when:
+    - The current version has a PATCH number > 0 (e.g., `25.3.1` would test against `25.3.0`).
+    - There exists a recovery files of previous PATCH version to test against.
+    """
+    compatibility = Compatibility()
 
-    backups = compat.previous_minor_tag_path()
-    assert backups, error
+    current_version = compatibility.current_tag_version
+    if current_version.micro == 0:
+        pytest.skip("newly released minor versions are not testable against previous patch versions")
 
-    into = Path(inst.instance_dir)
-    copy_dir(backups, into)
-    inst.start()
-    inst.wait_online()
+    backup_files = compatibility.previous_patch_path
+    copy_dir(backup_files, compat_instance.instance_dir)
+
+    compat_instance.start()
+    compat_instance.wait_online()
 
 
 def test_instances_of_incompatible_versions(cluster: Cluster):
