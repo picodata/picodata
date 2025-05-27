@@ -1220,9 +1220,10 @@ fn populate_table(
     with_su(ADMIN_ID, || -> Result<(), SbroadError> {
         let name = table_name(plan_id, node_id);
         let space = Space::find(&name).ok_or_else(|| {
-            SbroadError::NotFound(
+            // See https://git.picodata.io/core/picodata/-/issues/1859.
+            SbroadError::Invalid(
                 Entity::Space,
-                format_smolstr!("temporary SQL table: {name}"),
+                Some(format_smolstr!("Temporary SQL table {name} not found. Probably there are unused Motions in the plan")),
             )
         })?;
         for tuple in data.iter() {
