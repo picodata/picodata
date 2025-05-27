@@ -364,3 +364,79 @@ SELECT * FROM int8;
 SELECT * FROM t ORDER BY a desc;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
+
+-- TEST: test-order-by-nulls-init-1
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT, c INT);
+INSERT INTO t VALUES(1, 2, 1), (2, 1, 2);
+INSERT INTO t (a, c) VALUES(3, 3), (4, 3);
+
+-- TEST: test-order-by-nulls-1
+-- SQL:
+SELECT c, b FROM t ORDER BY b NULLS FIRST, c ;
+-- EXPECTED:
+3, nil, 3, nil, 2, 1, 1, 2
+
+-- TEST: test-order-by-nulls-2
+-- SQL:
+SELECT c, b FROM t ORDER BY b NULLS LAST;
+-- EXPECTED:
+2, 1, 1, 2, 3, nil, 3, nil
+
+-- TEST: test-order-by-nulls-3
+-- SQL:
+SELECT c, b FROM t ORDER BY b DESC NULLS FIRST;
+-- EXPECTED:
+3, nil, 3, nil, 1, 2, 2, 1
+
+-- TEST: test-order-by-nulls-4
+-- SQL:
+SELECT c, b FROM t ORDER BY b DESC NULLS LAST;
+-- EXPECTED:
+1, 2, 2, 1, 3, nil, 3, nil
+
+-- TEST: test-order-by-nulls-5
+-- SQL:
+SELECT a, b FROM t ORDER BY b DESC NULLS FIRST, a DESC;
+-- EXPECTED:
+4, nil, 3, nil, 1, 2, 2, 1
+
+-- TEST: test-order-by-nulls-6
+-- SQL:
+SELECT a, b FROM t ORDER BY b DESC NULLS LAST, a DESC;
+-- EXPECTED:
+1, 2, 2, 1, 4, nil, 3, nil
+
+-- TEST: test-order-by-nulls-init-2
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT, c INT);
+INSERT INTO t (a) VALUES(1), (2);
+INSERT INTO t (a, c) VALUES(3, 4), (4, 3);
+INSERT INTO t (a, b) VALUES(5, 8), (6, 7);
+INSERT INTO t VALUES(7, 6, 8), (8, 5, 7);
+
+-- TEST: test-order-by-nulls-7
+-- SQL:
+SELECT b, c FROM t ORDER BY b NULLS FIRST, c NULLS LAST;
+-- EXPECTED:
+nil, 3, nil, 4, nil, nil, nil, nil, 5, 7, 6, 8, 7, nil, 8, nil
+
+-- TEST: test-order-by-nulls-init-3
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT);
+INSERT INTO t (a) VALUES(1), (2);
+INSERT INTO t (a, b) VALUES(3, 1), (4, 2);
+
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT PRIMARY KEY, b INT);
+INSERT INTO t1 (a) VALUES(1), (2);
+INSERT INTO t1 (a, b) VALUES(3, 1), (4, 2);
+
+-- TEST: test-order-by-nulls-8
+-- SQL:
+SELECT * FROM t ORDER BY b + (SELECT b FROM t1 ORDER BY b NULLS LAST LIMIT 1) NULLS FIRST;
+-- EXPECTED:
+1, nil, 2, nil, 3, 1, 4, 2

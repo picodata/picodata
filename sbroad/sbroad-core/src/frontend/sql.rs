@@ -4584,6 +4584,12 @@ impl<'pairs_map> ParsingPairsMap<'pairs_map> {
 /// * ast_id (value) -- id of our AST node.
 type PairToAstIdTranslation<'i> = HashMap<Pair<'i, Rule>, usize>;
 
+#[derive(Clone, Debug)]
+pub enum OrderNulls {
+    First,
+    Last,
+}
+
 impl AbstractSyntaxTree {
     /// Build an empty AST.
     fn empty() -> Self {
@@ -5104,21 +5110,50 @@ impl AbstractSyntaxTree {
                 _ => unreachable!("Unacceptable node as an ORDER BY element.")
             };
 
-            let order_type =
-                if let Some(order_type_child_node_id) = order_by_element_node.children.get(1) {
-                    let order_type_node = self.nodes.get_node(*order_type_child_node_id)?;
-                    let order_type = match order_type_node.rule {
-                        Rule::Asc => OrderByType::Asc,
-                        Rule::Desc => OrderByType::Desc,
-                        rule => unreachable!(
-                            "{}",
-                            format!("Unexpected rule met under OrderByElement: {rule:?}")
-                        ),
+            let mut order_type = None;
+            let mut order_nulls = None;
+
+            for child_id in order_by_element_node.children.iter().skip(1) {
+                let node = self.nodes.get_node(*child_id)?;
+                match node.rule {
+                    Rule::Asc => order_type = Some(OrderByType::Asc),
+                    Rule::Desc => order_type = Some(OrderByType::Desc),
+                    Rule::NullsFirst => order_nulls = Some(OrderNulls::First),
+                    Rule::NullsLast => order_nulls = Some(OrderNulls::Last),
+                    rule => unreachable!(
+                        "{}",
+                        format!("Unexpected rule met under OrderByElement: {rule:?}")
+                    ),
+                }
+            }
+
+            if let Some(order_nulls) = order_nulls {
+                let entity_expr_id =
+                    match entity {
+                        OrderByEntity::Expression { expr_id } => expr_id,
+                        OrderByEntity::Index { .. } => return Err(SbroadError::Invalid(
+                            Entity::Expression,
+                            Some(SmolStr::from(
+                                "Nulls order is not supported for index expressions under ORDER BY",
+                            )),
+                        )),
                     };
-                    Some(order_type)
-                } else {
-                    None
+
+                let is_null_expr_id = plan.add_unary(Unary::IsNull, entity_expr_id)?;
+                let top_expr_id = match order_nulls {
+                    OrderNulls::Last => is_null_expr_id,
+                    OrderNulls::First => plan.add_unary(Unary::Not, is_null_expr_id)?,
                 };
+                let new_entity_first = OrderByEntity::Expression {
+                    expr_id: top_expr_id,
+                };
+                order_by_elements.push(OrderByElement {
+                    entity: new_entity_first,
+                    order_type: None,
+                });
+                order_by_elements.push(OrderByElement { entity, order_type });
+                continue;
+            }
 
             order_by_elements.push(OrderByElement { entity, order_type });
         }
