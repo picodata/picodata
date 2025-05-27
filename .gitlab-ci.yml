@@ -743,6 +743,8 @@ downstream-front-deploy:
 
 publish-picodata-plugin:
   stage: pack
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
   rules:
     - <<: *if-build-base-changes-on-dev-branch
       when: manual
