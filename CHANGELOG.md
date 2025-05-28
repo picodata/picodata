@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.0] - Unreleased
 
+### SQL
+- SQL supports `ORDER BY ... NULLS FIRST/LAST` operation.
+- SQL supports `INSERT INTO ... ON CONFLICT DO FAIL/REPLACE/NOTHING` operation for globally distributed tables.
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI
