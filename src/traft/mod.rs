@@ -29,7 +29,6 @@ pub type Address = String;
 pub type Distance = u64;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;
-pub const DEPRECATED_RES_ROW_CNT: ResRowCount = ResRowCount::MAX;
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 

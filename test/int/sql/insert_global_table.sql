@@ -32,6 +32,16 @@ INSERT INTO "t" VALUES (2, 1) ON CONFLICT DO REPLACE;
 
 -- TEST: insert-global-table-6
 -- SQL:
-SELECT * FROM "t";
+SELECT * FROM "t" ORDER BY a;
 -- EXPECTED:
 1, 2, 2, 1
+
+-- TEST: insert-global-table-7
+-- SQL:
+INSERT INTO "t" VALUES (2, 2), (3, 3) ON CONFLICT DO NOTHING;
+
+-- TEST: insert-global-table-8
+-- SQL:
+SELECT * FROM "t" ORDER BY a;
+-- EXPECTED:
+1, 2, 2, 1, 3, 3

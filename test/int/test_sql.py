@@ -2703,6 +2703,52 @@ def test_insert_on_conflict(cluster: Cluster):
     )
     assert data == [[1, 2]]
 
+    i1.sql("""
+        drop table if exists t
+           """)
+
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("a")) 
+        distributed globally
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 1)
+    """
+    )
+    assert dml["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 1) on conflict do nothing
+    """
+    )
+    assert dml["row_count"] == 0
+
+    data = i1.sql(
+        """select * from "t"
+    """
+    )
+    assert data == [[1, 1]]
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 2) on conflict do replace
+    """
+    )
+    assert dml["row_count"] == 1
+
+    data = i1.sql(
+        """select * from "t"
+    """
+    )
+    assert data == [[1, 2]]
+
 
 def test_truncate_simple_flow(cluster: Cluster):
     cluster.deploy(instance_count=1)

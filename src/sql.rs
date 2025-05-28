@@ -18,7 +18,7 @@ use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
-use crate::traft::{self, node, DEPRECATED_RES_ROW_CNT};
+use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::version::Version;
 use crate::{cas, has_states, plugin, tlog};
@@ -2205,7 +2205,7 @@ fn do_dml_on_global_tbl(
         let res = crate::cas::compare_and_swap_and_wait(&cas_req, deadline)?;
 
         let (_, _, count) = res.no_retries()?;
-        if on_conflict == Some(ConflictStrategy::DoReplace) {
+        if on_conflict == Some(ConflictStrategy::DoNothing) {
             Ok(ConsumerResult { row_count: count })
         } else {
             Ok(ConsumerResult {

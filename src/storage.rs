@@ -10,7 +10,7 @@ use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
-use tarantool::tuple::{DecodeOwned, KeyDef};
+use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
 use tarantool::util::NumOrStr;
 
@@ -283,11 +283,20 @@ impl Catalog {
                 ..
             } => space.replace(tuple).map(Some),
             Dml::Insert {
-                tuple: _,
+                tuple,
                 conflict_strategy: DoNothing,
                 ..
             } => {
-                unreachable!("`INSERT INTO ... ON CONFLICT DO NOTHING` is not supported for globally distributed tables yet")
+                let index = space.primary_key();
+                let metadata = index.meta()?;
+                let key_def = metadata
+                    .try_to_key_def()
+                    .map_err(|e| ::tarantool::error::Error::other(e.to_string()))?;
+                let key = key_def.extract_key(&Tuple::from(&tuple.to_tuple_buffer()?))?;
+                match space.get(&key)? {
+                    Some(_) => Ok(None),
+                    None => space.replace(tuple).map(Some),
+                }
             }
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
