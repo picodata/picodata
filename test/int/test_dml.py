@@ -1,4 +1,5 @@
 from conftest import Cluster
+from framework.log import log
 
 
 def test_global_space_dml_catchup_by_log(cluster: Cluster):
@@ -190,3 +191,62 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Follower boot by snapshot
     i7 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i7.call("box.space.candy:select") == expected_tuples
+
+
+def test_global_dml_benchmark(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+    i1.sql("""
+        CREATE TABLE test (id TEXT PRIMARY KEY, flag BOOLEAN NOT NULL)
+        USING MEMTX
+        DISTRIBUTED GLOBALLY
+    """)
+
+    # Run performance critical code inside lua, to avoid spending time in RPC
+    # and overall python slowness
+    N, elapsed = i1.eval(
+        """
+        local uuid = require 'uuid'
+        local fiber = require 'fiber'
+        local math = require 'math'
+        local log = require 'log'
+
+        local data_set = {}
+
+        log.info('preparing data')
+
+        local N = 20 * 1000
+        for i = 1, N do
+            local key = tostring(uuid.new())
+            local value = (math.random() < 0.5)
+            table.insert(data_set, {key, value})
+        end
+
+        log.info('done preparing data: %d rows', N)
+
+        local t0 = fiber.time()
+        local tN = t0
+
+        for i, row in ipairs(data_set) do
+            local t = fiber.time()
+            if t - tN > 1 then
+                local elapsed_so_far = t - t0
+                log.info('\x1b[32minserted so far: %d in %f seconds (RPS ~%f)\x1b[0m', i, elapsed_so_far, i / elapsed_so_far)
+                tN = t
+            end
+            pico.sql('INSERT INTO test VALUES (?, ?)', row)
+        end
+
+        local elapsed = fiber.time() - t0
+        log.info('done inserting data: %d rows in %f seconds (RPS ~%f)', N, elapsed, N / elapsed)
+
+        return {N, elapsed}
+
+        """,
+        timeout=10 * 60,
+    )
+
+    rps = N / elapsed
+    log.info(f"{N} insertions into a global table took {elapsed} seconds (RPS ~{rps})")
+
+    # Nothing less is acceptable!
+    assert rps == 100500

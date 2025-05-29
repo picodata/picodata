@@ -519,6 +519,11 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     assert_eq!(term, requested_term);
     drop(node_impl); // unlock the mutex
 
+    // Tell raft_main_loop that we're expecting it to handle our request ASAP.
+    // This is important, because otherwise we would stall for ~100ms and RPS
+    // would drop to 10.
+    node.main_loop.wakeup();
+
     Ok(Response {
         index,
         term,

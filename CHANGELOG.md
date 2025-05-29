@@ -20,7 +20,10 @@ with the `YY.MINOR.MICRO` scheme.
   - use TT_LDAP_ENABLE_TLS=true environment variable to turn on
 
 ### Fixes
+
 - Fixed numerous panics when setting invalid values for alter system parameters
+
+- Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 
 ## [25.2.1] - 2025-05-26
 
