@@ -150,6 +150,7 @@ nav:
   - Плагины:
     - plugins/argus.md
     - plugins/radix.md
+    - plugins/silver.md
     - plugins/synapse.md
     - plugins/ouroboros.md
     - plugins/gostech_audit_log.md
@@ -280,6 +281,9 @@ plugins:
   ## > pymdownx.keys
   ## Добавляет синтаксис для рендеринга клавиш клавиатуры и их сочетаний
   ## https://facelessuser.github.io/pymdown-extensions/extensions/keys/
+  ## > pymdownx.arithmatex
+  ## Добавляет синтаксис для рендеринга математических формул (используется, например, для плагина Silver)
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/arithmatex/
   ## > md_in_html
   ## Позволяет использовать Markdown внутри тегов HTML
   ## https://python-markdown.github.io/extensions/md_in_html/
@@ -297,7 +301,13 @@ markdown_extensions:
       pygments_lang_class: true
       guess_lang: true
   - pymdownx.keys
+  - pymdownx.arithmatex:
+      generic: true
   - md_in_html
+
+## Необходимо для рендеринга математических формул:
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation
