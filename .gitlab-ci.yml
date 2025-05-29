@@ -45,7 +45,7 @@ variables:
   FF_USE_FASTZIP: "true"
   CACHE_COMPRESSION_LEVEL: "fastest"
   CACHE_POLICY: pull-push
-  GIT_STRATEGY: clone
+  GIT_STRATEGY: fetch
   GIT_DEPTH: 1
   GET_SOURCES_ATTEMPTS: 3
   GIT_FETCH_TAGS_DIRS: ".,tarantool-sys,tarantool-sys/third_party/luajit"
