@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
   does not include the actual schema upgrade procedure, so the cluster will
   still have a schema of the older version of picodata.
 
+- Fixed incorrect validation check for max number of users.
 
 ## [25.2.2] - 2025-06-25
 
