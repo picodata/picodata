@@ -30,6 +30,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 
 - Fixed numerous panics when setting invalid values for alter system parameters
+- Fixed the modification of `_pico_service_route`; it is now retriable.
 
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 

@@ -6,10 +6,11 @@ use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::ServiceState;
 use crate::plugin::{
-    remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
-    PluginError, PluginIdentifier, Result,
+    build_service_routes_replace_dml, reenterable_plugin_cas_request, remove_routes, topology,
+    Manifest, PluginAsyncEvent, PluginCallbackError, PluginError, PluginIdentifier,
+    PreconditionCheckResult, Result,
 };
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use crate::storage::Catalog;
 use crate::traft::network::ConnectionPool;
 use crate::traft::network::WorkerOptions;
@@ -35,6 +36,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
+use tarantool::session;
 use tarantool::util::IntoClones;
 
 fn context_from_node(node: &Node) -> PicoContext {
@@ -343,45 +345,41 @@ impl PluginManager {
     /// Load and start all enabled plugins and services that must be loaded.
     pub(crate) fn handle_instance_online(&self) -> Result<()> {
         let node = node::global().expect("node must be already initialized");
-
-        let instance_name = node
-            .raft_storage
-            .instance_name()
-            .expect("storage should never fail")
-            .expect("should be persisted before Node is initialized");
-
         // first, clear all routes handled by this instances
-        let instance_routes = node
-            .storage
-            .service_route_table
-            .get_by_instance(&instance_name)
-            .expect("storage should not fail");
-        let routing_keys: Vec<_> = instance_routes.iter().map(|r| r.key()).collect();
-        // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
-        remove_routes(&routing_keys, Duration::from_secs(10))
+        remove_routes(Duration::from_secs(10))
             .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
         // now plugins can be enabled and routing table filled again
-        let enabled_plugins = node.storage.plugins.all_enabled()?;
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
+        let check_and_make_op = || {
+            let instance_name = node.topology_cache.my_instance_name();
+            let enabled_plugins = node.storage.plugins.all_enabled()?;
 
-        for plugin in enabled_plugins {
-            let ident = plugin.into_identifier();
-            // no need to load already loaded plugins
-            if self.plugins.lock().get(&ident.name).is_none() {
-                self.try_load(&ident)?;
+            let mut items = Vec::new();
+            for plugin in enabled_plugins {
+                let ident = plugin.into_identifier();
+                // no need to load already loaded plugins
+                if self.plugins.lock().get(&ident.name).is_none() {
+                    self.try_load(&ident)?;
+                }
+
+                items.extend(self.plugins.lock()[&ident.name].services.iter().map(|svc| {
+                    ServiceRouteItem::new_healthy(instance_name.into(), &ident, &svc.id.service)
+                }));
             }
+            if items.is_empty() {
+                return Ok(PreconditionCheckResult::AlreadyApplied);
+            }
+            Ok(PreconditionCheckResult::DoOp((
+                build_service_routes_replace_dml(&items),
+                vec![],
+            )))
+        };
 
-            let items: Vec<_> = self.plugins.lock()[&ident.name]
-                .services
-                .iter()
-                .map(|svc| {
-                    ServiceRouteItem::new_healthy(instance_name.clone(), &ident, &svc.id.service)
-                })
-                .collect();
-            // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
-            replace_routes(&items, Duration::from_secs(10))
-                .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
-        }
+        let _su =
+            session::su(ADMIN_ID).expect("cant fail because admin should always have session");
+        reenterable_plugin_cas_request(node, check_and_make_op, deadline)
+            .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
         Ok(())
     }
@@ -456,76 +454,89 @@ impl PluginManager {
         new_cfg_raw: &[u8],
     ) -> traft::Result<()> {
         let node = node::global()?;
-        let mut ctx = context_from_node(node);
-        let storage = &node.storage;
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
+        let check_and_make_op = || {
+            let mut ctx = context_from_node(node);
+            let storage = &node.storage;
 
-        let maybe_service = {
-            let lock = self.plugins.lock();
-            lock.get(&plugin_identity.name)
-                .and_then(|plugin_state| {
-                    plugin_state
-                        .services
-                        .iter()
-                        .find(|svc| svc.id.service == service)
-                })
-                .cloned()
-        };
+            let maybe_service = {
+                let lock = self.plugins.lock();
+                lock.get(&plugin_identity.name)
+                    .and_then(|plugin_state| {
+                        plugin_state
+                            .services
+                            .iter()
+                            .find(|svc| svc.id.service == service)
+                    })
+                    .cloned()
+            };
 
-        let Some(service) = maybe_service else {
-            // service is not enabled yet, so we don't need to start a callback
-            return Ok(());
-        };
-        let id = &service.id;
-        context_set_service_info(&mut ctx, &service);
+            let Some(service) = maybe_service else {
+                // service is not enabled yet, so we don't need to start a callback
+                return Ok(PreconditionCheckResult::AlreadyApplied);
+            };
+            let id = &service.id;
+            context_set_service_info(&mut ctx, &service);
 
-        #[rustfmt::skip]
-        tlog!(Debug, "calling {id}.on_config_change");
+            #[rustfmt::skip]
+            tlog!(Debug, "calling {id}.on_config_change");
 
-        let mut guard = service.volatile_state.lock();
-        let change_config_result = guard.inner.on_config_change(
-            &ctx,
-            RSlice::from(new_cfg_raw),
-            RSlice::from(old_cfg_raw),
-        );
-        // Release the lock
-        drop(guard);
+            let mut guard = service.volatile_state.lock();
+            let change_config_result = guard.inner.on_config_change(
+                &ctx,
+                RSlice::from(new_cfg_raw),
+                RSlice::from(old_cfg_raw),
+            );
+            // Release the lock
+            drop(guard);
 
-        let instance_name = node.topology_cache.my_instance_name();
-        match change_config_result {
-            RResult::ROk(_) => {
-                let current_instance_poisoned = storage
-                    .service_route_table
-                    .get(&ServiceRouteKey::new(instance_name, id))?
-                    .map(|route| route.poison);
+            let instance_name = node.topology_cache.my_instance_name();
+            match change_config_result {
+                RResult::ROk(_) => {
+                    let current_instance_poisoned = storage
+                        .service_route_table
+                        .get(&ServiceRouteKey::new(instance_name, id))?
+                        .map(|route| route.poison);
 
-                if current_instance_poisoned == Some(true) {
-                    // now the route is healthy
-                    let route = ServiceRouteItem::new_healthy(
+                    if current_instance_poisoned == Some(true) {
+                        // now the route is healthy
+                        let route = ServiceRouteItem::new_healthy(
+                            instance_name.into(),
+                            plugin_identity,
+                            &id.service,
+                        );
+                        return Ok(PreconditionCheckResult::DoOp((
+                            build_service_routes_replace_dml(&[route]),
+                            vec![],
+                        )));
+                    }
+                }
+                RErr(_) => {
+                    let error = BoxError::last();
+                    let loc = DisplayErrorLocation(&error);
+                    tlog!(
+                        Warning,
+                        "service poisoned, {id}.on_config_change error: {loc}{error}"
+                    );
+                    // now the route is poison
+                    let route = ServiceRouteItem::new_poison(
                         instance_name.into(),
                         plugin_identity,
                         &id.service,
                     );
-                    // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
-                    replace_routes(&[route], Duration::from_secs(10))?;
+                    return Ok(PreconditionCheckResult::DoOp((
+                        build_service_routes_replace_dml(&[route]),
+                        vec![],
+                    )));
                 }
             }
-            RErr(_) => {
-                let error = BoxError::last();
-                let loc = DisplayErrorLocation(&error);
-                tlog!(
-                    Warning,
-                    "service poisoned, {id}.on_config_change error: {loc}{error}"
-                );
-                // now the route is poison
-                let route = ServiceRouteItem::new_poison(
-                    instance_name.into(),
-                    plugin_identity,
-                    &id.service,
-                );
-                // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
-                replace_routes(&[route], Duration::from_secs(10))?;
-            }
-        }
+
+            Ok(PreconditionCheckResult::AlreadyApplied)
+        };
+
+        let _su =
+            session::su(ADMIN_ID).expect("cant fail because admin should always have session");
+        reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
         Ok(())
     }
@@ -533,73 +544,86 @@ impl PluginManager {
     /// Call `on_leader_change` at services. Poison services if error at callbacks happens.
     pub(crate) fn handle_rs_leader_change(&self) -> traft::Result<()> {
         let node = node::global()?;
-        let mut ctx = context_from_node(node);
-        let storage = &node.storage;
-        let instance_name = node.topology_cache.my_instance_name();
-        let mut routes_to_replace = vec![];
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
+        let check_and_make_op = || {
+            let mut ctx = context_from_node(node);
+            let storage = &node.storage;
+            let instance_name = node.topology_cache.my_instance_name();
+            let mut routes_to_replace = vec![];
 
-        for (plugin_name, plugin_state) in self.plugins.lock().iter() {
-            let plugin_defs = node.storage.plugins.get_all_versions(plugin_name)?;
-            let mut enabled_plugins: Vec<_> =
-                plugin_defs.into_iter().filter(|p| p.enabled).collect();
-            let plugin_def = match enabled_plugins.len() {
-                0 => continue,
-                1 => enabled_plugins.pop().expect("infallible"),
-                _ => {
-                    warn_or_panic!("only one plugin should be enabled at a single moment");
-                    enabled_plugins.pop().expect("infallible")
-                }
-            };
-            let plugin_identity = plugin_def.into_identifier();
+            for (plugin_name, plugin_state) in self.plugins.lock().iter() {
+                let plugin_defs = node.storage.plugins.get_all_versions(plugin_name)?;
+                let mut enabled_plugins: Vec<_> =
+                    plugin_defs.into_iter().filter(|p| p.enabled).collect();
+                let plugin_def = match enabled_plugins.len() {
+                    0 => continue,
+                    1 => enabled_plugins.pop().expect("infallible"),
+                    _ => {
+                        warn_or_panic!("only one plugin should be enabled at a single moment");
+                        enabled_plugins.pop().expect("infallible")
+                    }
+                };
+                let plugin_identity = plugin_def.into_identifier();
 
-            for service in plugin_state.services.iter() {
-                let id = &service.id;
-                context_set_service_info(&mut ctx, service);
+                for service in plugin_state.services.iter() {
+                    let id = &service.id;
+                    context_set_service_info(&mut ctx, service);
 
-                #[rustfmt::skip]
-                tlog!(Debug, "calling {id}.on_leader_change");
+                    #[rustfmt::skip]
+                    tlog!(Debug, "calling {id}.on_leader_change");
+                    let is_master = ctx.is_master();
+                    tlog!(Error, "!!! {is_master}");
 
-                let mut guard = service.volatile_state.lock();
-                let result = guard.inner.on_leader_change(&ctx);
-                // Release the lock
-                drop(guard);
+                    let mut guard = service.volatile_state.lock();
+                    let result = guard.inner.on_leader_change(&ctx);
+                    // Release the lock
+                    drop(guard);
 
-                match result {
-                    RResult::ROk(_) => {
-                        let current_instance_poisoned = storage
-                            .service_route_table
-                            .get(&ServiceRouteKey::new(instance_name, id))?
-                            .map(|route| route.poison);
+                    match result {
+                        RResult::ROk(_) => {
+                            let current_instance_poisoned = storage
+                                .service_route_table
+                                .get(&ServiceRouteKey::new(instance_name, id))?
+                                .map(|route| route.poison);
 
-                        if current_instance_poisoned == Some(true) {
-                            // now the route is healthy
-                            routes_to_replace.push(ServiceRouteItem::new_healthy(
+                            if current_instance_poisoned == Some(true) {
+                                // now the route is healthy
+                                routes_to_replace.push(ServiceRouteItem::new_healthy(
+                                    instance_name.into(),
+                                    &plugin_identity,
+                                    &id.service,
+                                ));
+                            }
+                        }
+                        RErr(_) => {
+                            let error = BoxError::last();
+                            let loc = DisplayErrorLocation(&error);
+                            tlog!(
+                                Warning,
+                                "service poisoned, {id}.on_leader_change error: {loc}{error}"
+                            );
+                            // now the route is poison
+                            routes_to_replace.push(ServiceRouteItem::new_poison(
                                 instance_name.into(),
                                 &plugin_identity,
                                 &id.service,
                             ));
                         }
                     }
-                    RErr(_) => {
-                        let error = BoxError::last();
-                        let loc = DisplayErrorLocation(&error);
-                        tlog!(
-                            Warning,
-                            "service poisoned, {id}.on_leader_change error: {loc}{error}"
-                        );
-                        // now the route is poison
-                        routes_to_replace.push(ServiceRouteItem::new_poison(
-                            instance_name.into(),
-                            &plugin_identity,
-                            &id.service,
-                        ));
-                    }
                 }
             }
-        }
+            if routes_to_replace.is_empty() {
+                return Ok(PreconditionCheckResult::AlreadyApplied);
+            }
+            Ok(PreconditionCheckResult::DoOp((
+                build_service_routes_replace_dml(&routes_to_replace),
+                vec![],
+            )))
+        };
 
-        // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
-        replace_routes(&routes_to_replace, Duration::from_secs(10))?;
+        let _su =
+            session::su(ADMIN_ID).expect("cant fail because admin should always have session");
+        reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
         Ok(())
     }

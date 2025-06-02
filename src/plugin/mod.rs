@@ -9,12 +9,11 @@ pub mod topology;
 
 use crate::cas::Range;
 use crate::config::PicodataConfig;
-use crate::info::InstanceInfo;
 use crate::info::PICODATA_VERSION;
 use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::PluginNotFound;
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ADMIN_ID};
 use crate::storage::{self, PropertyName, SystemTable};
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
@@ -40,6 +39,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, IntoBoxError};
 use tarantool::fiber;
+use tarantool::session;
 use tarantool::time::Instant;
 
 pub const LOCK_RELEASE_MINIMUM_TIMEOUT: Duration = Duration::from_secs(5);
@@ -396,91 +396,64 @@ impl Display for PluginIdentifier {
     }
 }
 
-/// Perform clusterwide CAS operation related to plugin routing table.
-///
-/// # Arguments
-///
-/// * `dml_ops`: list of dml operations
-/// * `timeout`: timeout of whole operation
-/// * `ranges`: CAS ranges
-fn do_routing_table_cas(
-    dml_ops: Vec<Dml>,
-    ranges: Vec<Range>,
-    timeout: Duration,
-) -> traft::Result<()> {
-    let deadline = fiber::clock().saturating_add(timeout);
-    loop {
-        let op = Op::BatchDml {
-            ops: dml_ops.clone(),
-        };
-
-        let predicate = cas::Predicate::with_applied_index(ranges.clone());
-        let req = crate::cas::Request::new(op.clone(), predicate, ADMIN_ID)?;
-        let res = cas::compare_and_swap_and_wait(&req, deadline)?;
-        if res.is_retriable_error() {
-            continue;
-        }
-
-        return Ok(());
-    }
-}
-
-/// Replace routes in plugins routing table.
-pub fn replace_routes(items: &[ServiceRouteItem], timeout: Duration) -> traft::Result<()> {
-    if items.is_empty() {
-        // dont need to do parasite batch request
-        return Ok(());
-    }
-
+pub fn build_service_routes_replace_dml(items: &[ServiceRouteItem]) -> Op {
     let ops = items
         .iter()
         .map(|routing_item| {
             Dml::replace(
                 storage::ServiceRouteTable::TABLE_ID,
                 &routing_item,
-                ADMIN_ID,
+                effective_user_id(),
             )
             .expect("encoding should not fail")
         })
         .collect();
-
     // assert that instances update only self-owned information
     debug_assert!({
-        let node = node::global()?;
-        let info = InstanceInfo::try_get(node, None)?;
-        items.iter().all(|route| route.instance_name == info.name)
+        let node = node::global().expect("node must be already initialized");
+        let instance_name = node.topology_cache.my_instance_name();
+        items.iter().all(|key| key.instance_name == instance_name)
     });
-    // use empty ranges cause all instances update only self-owned information
-    let ranges = vec![];
-
-    do_routing_table_cas(ops, ranges, timeout)
+    Op::BatchDml { ops }
 }
 
 /// Remove routes from the plugin routing table.
-pub fn remove_routes(keys: &[ServiceRouteKey], timeout: Duration) -> traft::Result<()> {
-    if keys.is_empty() {
-        // dont need to do parasite batch request
-        return Ok(());
-    }
-
-    let ops = keys
-        .iter()
-        .map(|routing_key| {
-            Dml::delete(storage::ServiceRouteTable::TABLE_ID, &routing_key, ADMIN_ID)
-                .expect("encoding should not fail")
-        })
-        .collect();
-
-    // assert that instances update only self-owned information
-    debug_assert!({
-        let node = node::global()?;
+pub fn remove_routes(timeout: Duration) -> traft::Result<()> {
+    let deadline = fiber::clock().saturating_add(timeout);
+    let node = node::global()?;
+    let check_and_make_op = || {
         let instance_name = node.topology_cache.my_instance_name();
-        keys.iter().all(|key| key.instance_name == instance_name)
-    });
-    // use empty ranges cause all instances update only self-owned information
-    let ranges = vec![];
 
-    do_routing_table_cas(ops, ranges, timeout)
+        // clear all routes handled by this instances
+        let instance_routes = node
+            .storage
+            .service_route_table
+            .get_by_instance(&instance_name.into())
+            .expect("storage should not fail");
+        let routing_keys: Vec<_> = instance_routes.iter().map(|r| r.key()).collect();
+        if routing_keys.is_empty() {
+            return Ok(PreconditionCheckResult::AlreadyApplied);
+        }
+        let ops = routing_keys
+            .iter()
+            .map(|routing_key| {
+                Dml::delete(
+                    storage::ServiceRouteTable::TABLE_ID,
+                    &routing_key,
+                    effective_user_id(),
+                )
+                .expect("encoding should not fail")
+            })
+            .collect();
+        let batch_dml = Op::BatchDml { ops };
+
+        Ok(PreconditionCheckResult::DoOp((batch_dml, vec![])))
+    };
+
+    let _su = session::su(ADMIN_ID).expect("cant fail because admin should always have session");
+    reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
