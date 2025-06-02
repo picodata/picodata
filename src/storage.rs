@@ -1676,7 +1676,7 @@ impl<T, const MP: MpImpl> std::fmt::Debug for EntryIter<T, MP> {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// The hard upper bound (32) for max users comes from tarantool BOX_USER_MAX
-const MAX_USERS: usize = 32;
+const MAX_USERS: usize = 128;
 
 /// A struct for accessing info of all the picodata users.
 #[derive(Debug, Clone)]

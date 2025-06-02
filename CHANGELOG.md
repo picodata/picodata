@@ -10,6 +10,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.0] - Unreleased
 
+### ACL
+- The maximum number of users and roles that can be created has been increased from 32 to 128.
+
 ### SQL
 - SQL supports `ORDER BY ... NULLS FIRST/LAST` operation.
 - SQL supports `INSERT INTO ... ON CONFLICT DO FAIL/REPLACE/NOTHING` operation for globally distributed tables.
