@@ -458,6 +458,14 @@ fn init_handlers() {
     )
     .expect("pico.cas registration should never fail");
 
+    lua.exec(
+        r#"
+        box.schema.func.create('.proc_sql_execute', {language = 'C', if_not_exists = true})
+        box.schema.role.grant('public', 'execute', 'function', '.proc_sql_execute', {if_not_exists = true})
+        "#,
+    )
+    .expect(".proc_sql_execute registration should never fail");
+
     forbid_unsupported_iproto_requests();
     redirect_iproto_execute_requests();
 }

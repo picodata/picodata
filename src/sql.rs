@@ -64,7 +64,7 @@ use sbroad::ir::{Options, Plan as IrPlan};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
-use tarantool::tuple::{Decode, ToTupleBuffer};
+use tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, ToTupleBuffer};
 
 use crate::storage::Catalog;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
@@ -75,11 +75,11 @@ use ::tarantool::proc;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
-use ::tarantool::tuple::{RawBytes, Tuple};
+use ::tarantool::tuple::Tuple;
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
 use std::rc::Rc;
 use std::time::Duration;
-use tarantool::{msgpack, session};
+use tarantool::{msgpack, session, set_error};
 
 pub mod router;
 pub mod storage;
@@ -2056,26 +2056,68 @@ pub(crate) fn reenterable_schema_change_request(
 }
 
 /// Executes a query sub-plan on the local node.
-#[proc(packed_args)]
-pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
-    let (raw_required, optional_bytes, cache_info) = decode_msgpack(raw)?;
-    let mut required = RequiredData::try_from(EncodedRequiredData::from(raw_required))?;
-    let runtime = StorageRuntime::new()?;
+#[no_mangle]
+pub unsafe extern "C" fn proc_sql_execute(
+    mut ctx: FunctionCtx,
+    args: FunctionArgs,
+) -> ::std::os::raw::c_int {
+    let args_len = match usize::try_from(args.end.offset_from(args.start)) {
+        Ok(len) => len,
+        Err(e) => {
+            set_error!(
+                TarantoolErrorCode::ProcC,
+                "failed to decode the message size: {e:?}"
+            );
+            return TarantoolErrorCode::ProcC as i32;
+        }
+    };
+
+    let raw_args = std::slice::from_raw_parts(args.start, args_len);
+    let (raw_required, optional_bytes, cache_info) = match decode_msgpack(raw_args) {
+        Ok(decoded_res) => decoded_res,
+        Err(e) => {
+            set_error!(
+                TarantoolErrorCode::ProcC,
+                "failed to decode the message: {e:?}"
+            );
+            return TarantoolErrorCode::ProcC as i32;
+        }
+    };
+
+    let mut required = match RequiredData::try_from(EncodedRequiredData::from(raw_required)) {
+        Ok(required) => required,
+        Err(e) => {
+            set_error!(
+                TarantoolErrorCode::ProcC,
+                "failed to decode required data in the message: {e:?}"
+            );
+            return TarantoolErrorCode::ProcC as i32;
+        }
+    };
+
+    let runtime = StorageRuntime::new();
     match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
         Ok(mut any_tuple) => {
             if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                tlog!(Trace, "proc_sql_execute: Execution result: {tuple:?}");
-                let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                Ok(tuple)
+                let tuple: Tuple =
+                    std::mem::replace(tuple, Tuple::new(&()).expect("unable to create tuple"));
+                ctx.mut_port_c().add_tuple(&tuple);
+                0
             } else {
-                Err(Error::from(SbroadError::FailedTo(
+                let err = SbroadError::FailedTo(
                     Action::Decode,
                     None,
                     format_smolstr!("tuple {any_tuple:?}"),
-                )))
+                );
+
+                set_error!(TarantoolErrorCode::ProcC, "{err:?}");
+                TarantoolErrorCode::ProcC as i32
             }
         }
-        Err(e) => Err(Error::from(e)),
+        Err(e) => {
+            set_error!(TarantoolErrorCode::ProcC, "{:?}", Error::from(e));
+            TarantoolErrorCode::ProcC as i32
+        }
     }
 }
 

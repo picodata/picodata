@@ -309,12 +309,11 @@ impl StorageRuntime {
     ///
     /// # Errors
     /// - Failed to initialize the LRU cache.
-    pub fn new() -> Result<Self, SbroadError> {
-        let runtime = STATEMENT_CACHE.with(|cache| StorageRuntime {
+    pub fn new() -> Self {
+        STATEMENT_CACHE.with(|cache| StorageRuntime {
             bucket_count: DEFAULT_BUCKET_COUNT,
             cache: (*cache).clone(),
-        });
-        Ok(runtime)
+        })
     }
 
     /// Execute dispatched plan (divided into required and optional parts).

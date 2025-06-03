@@ -401,7 +401,7 @@ impl Vshard for Tier {
         sub_plan: ExecutionPlan,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        let runtime = StorageRuntime::new()?;
+        let runtime = StorageRuntime::new();
         runtime.exec_ir_on_any_node(sub_plan, return_format)
     }
 }
@@ -441,7 +441,7 @@ impl Vshard for &Tier {
         sub_plan: ExecutionPlan,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        let runtime = StorageRuntime::new()?;
+        let runtime = StorageRuntime::new();
         runtime.exec_ir_on_any_node(sub_plan, return_format)
     }
 }
