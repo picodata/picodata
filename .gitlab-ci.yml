@@ -228,14 +228,16 @@ build-stress-image:
         RELEASE_PROFILE: &release-profile "release"
         RELEASE_TARGET: &release-target "release"
         CACHE_POLICY: pull-push
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        RELEASE_PROFILE: &release-profile "fast-release"
+        RELEASE_TARGET: &release-target "fast-release"
+        CACHE_POLICY: pull
     - <<: *if-no-docs
       variables:
         RELEASE_PROFILE: &release-profile "fast-release"
         RELEASE_TARGET: &release-target "fast-release"
-        CACHE_POLICY: pull
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
         CACHE_POLICY: pull
 
 .parallel:
@@ -295,10 +297,12 @@ test-linux:
 lint:
   stage: test
   rules:
-    - <<: *if-no-docs
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        CACHE_POLICY: pull
+    - <<: *if-no-docs
+      variables:
         CACHE_POLICY: pull
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
