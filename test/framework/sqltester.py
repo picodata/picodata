@@ -114,7 +114,7 @@ def parse_file(cls: Type, file_name: str) -> list:
     test_file = Path(inspect.getfile(cls)).parent / file_name
     content = test_file.read_text()
     test_pattern = (
-        r"-- TEST: (.*?)\n"  # Test name
+        r"-- TEST: ([^\n]*)\n"  # Test name
         r"-- SQL:\n(.*?)\n"  # SQL query
         r"(?:-- EXPECTED:\n(.*?))?"  # Expected result (optional)
         r"(?:-- EXPECTED\s*\(\s*SORTED\s*\)\s*:\n(.*?))?"  # Expected sorted result (optional)
