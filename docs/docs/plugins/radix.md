@@ -549,6 +549,509 @@ HVALS key
 Возвращает значения всех полей в хэше, хранящиеся по адресу ключа `key`.
 
 
+### Команды для списков {: #lists }
+
+#### blmove
+
+```sql
+BLMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT> timeout
+```
+
+Работает аналогично [LMPOP](#lmpop), но с использованием блокировки.
+Если исходный список (`source`) пуст, то команда будет ждать наполнения
+списка в течение указанного в `timeout` времени (в секундах), и в случае
+неудачи вернет ошибку. Если таймаут установить в `0`, то блокировка
+будет бесконечной.
+
+#### blmpop
+
+```sql
+BLMPOP timeout numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
+```
+
+Работает аналогично [LMOVE](#lmove), но с использованием блокировки.
+Если все указанные списки ключей пусты, то команда будет ждать
+наполнения любого из них в течение указанного в `timeout` времени (в
+секундах), и в случае неудачи вернет ошибку. Если таймаут установить в
+`0`, то блокировка будет бесконечной.
+
+#### blpop
+
+```sql
+BLPOP key [key ...] timeout
+```
+
+Работает аналогично [LPOP](#lpop), но с использованием блокировки.
+Если указанный список пуст, то команда будет ждать его наполнения
+в течение указанного в `timeout` времени (в секундах), и в случае
+неудачи вернет ошибку. Если таймаут установить в `0`, то блокировка
+будет бесконечной.
+
+#### brpop
+
+```sql
+BRPOP key [key ...] timeout
+```
+
+Работает аналогично [RPOP](#lpop), но с использованием блокировки.
+Поведение механизма блокировки аналогично таковому для [BLPOP](#blpop).
+
+#### lindex
+
+```sql
+LINDEX key index
+```
+
+Возвращает элемент с указанным индексом (`index`) из списка, хранящегося
+по указанному ключу `key`. Индекс `0` означает первый элемент списка,
+`-1` — последний и т.д.
+
+Примеры:
+
+```sql
+redis> LPUSH mylist "World"
+(integer) 1
+redis> LPUSH mylist "Hello"
+(integer) 2
+redis> LINDEX mylist 0
+"Hello"
+redis> LINDEX mylist -1
+"World"
+redis> LINDEX mylist 3
+(nil)
+redis>
+```
+
+#### linsert
+
+```sql
+LINSERT key <BEFORE | AFTER> pivot element
+```
+
+Вставляет в список, хранящийся по ключу `key`, элемент (`element`) до
+(`BEFORE`) или после (`AFTER`) указанного другого элемента (`pivot`).
+Если указан несуществующий ключ, то команда ничего не сделает. Если по
+указанному ключу нет списка, то команда вернет ошибку.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "Hello"
+(integer) 1
+redis> RPUSH mylist "World"
+(integer) 2
+redis> LINSERT mylist BEFORE "World" "There"
+(integer) 3
+redis> LRANGE mylist 0 -1
+1) "Hello"
+2) "There"
+3) "World"
+redis>
+```
+
+#### llen
+
+```sql
+LLEN key
+```
+
+Возвращает длину (количество элементов) списка, хранящегося по ключу
+`key`. Если указан несуществующий ключ, то команда вернет `0`. Если по
+указанному ключу нет списка, то команда вернет ошибку.
+
+Примеры:
+
+```sql
+redis> LPUSH mylist "World"
+(integer) 1
+redis> LPUSH mylist "Hello"
+(integer) 2
+redis> LLEN mylist
+(integer) 2
+```
+
+#### lmove
+
+```sql
+LMOVE source destination <LEFT | RIGHT> <LEFT | RIGHT>
+```
+
+Перемещает первый/последний элемент первого списка (`source`) в
+начало/конец второго списка (`destination`).
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "one"
+(integer) 1
+redis> RPUSH mylist "two"
+(integer) 2
+redis> RPUSH mylist "three"
+(integer) 3
+redis> LMOVE mylist myotherlist RIGHT LEFT
+"three"
+redis> LMOVE mylist myotherlist LEFT RIGHT
+"one"
+redis> LRANGE mylist 0 -1
+1) "two"
+redis> LRANGE myotherlist 0 -1
+1) "three"
+2) "one"
+redis>
+```
+
+#### lmpop
+
+```sql
+LMPOP numkeys key [key ...] <LEFT | RIGHT> [COUNT count]
+```
+
+Извлекает (и удаляет) один или несколько (`count`) элементов в начале
+(`LEFT`) или в конце (`REFT`) из первого непустого
+списка ключей (`key`) в перечне списков ключей.
+
+Примеры:
+
+```sql
+redis> LMPOP 2 non1 non2 LEFT COUNT 10
+(nil)
+redis> LPUSH mylist "one" "two" "three" "four" "five"
+(integer) 5
+redis> LMPOP 1 mylist LEFT
+1) "mylist"
+2) 1) "five"
+redis> LRANGE mylist 0 -1
+1) "four"
+2) "three"
+3) "two"
+4) "one"
+redis> LMPOP 1 mylist RIGHT COUNT 10
+1) "mylist"
+2) 1) "one"
+   2) "two"
+   3) "three"
+   4) "four"
+redis> LPUSH mylist "one" "two" "three" "four" "five"
+(integer) 5
+redis> LPUSH mylist2 "a" "b" "c" "d" "e"
+(integer) 5
+redis> LMPOP 2 mylist mylist2 right count 3
+1) "mylist"
+2) 1) "one"
+   2) "two"
+   3) "three"
+redis> LRANGE mylist 0 -1
+1) "five"
+2) "four"
+redis> LMPOP 2 mylist mylist2 right count 5
+1) "mylist"
+2) 1) "four"
+   2) "five"
+redis> LMPOP 2 mylist mylist2 right count 10
+1) "mylist2"
+2) 1) "a"
+   2) "b"
+   3) "c"
+   4) "d"
+   5) "e"
+redis> EXISTS mylist mylist2
+(integer) 0
+redis>
+```
+
+#### lpop
+
+```sql
+LPOP key [count]
+```
+
+Извлекает (и удаляет) указанное число (`count`) первых элементов,
+хранящихся в списке по адресу ключа `key`. Без аргумента `count` команда
+извлекает один первый элемент в начале списка.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "one" "two" "three" "four" "five"
+(integer) 5
+redis> LPOP mylist
+"one"
+redis> LPOP mylist 2
+1) "two"
+2) "three"
+redis> LRANGE mylist 0 -1
+1) "four"
+2) "five"
+```
+
+#### lpos
+
+```sql
+LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
+```
+
+Возвращает индекс найденного в списке, хранящегося по ключу `key`,
+элемента (`element`). Без дополнительных аргументов эта команда
+просканирует список слева направо и вернет индекс первого найденного
+элемента. Нумерация элментов начинается с `0`.
+
+Пример:
+
+```sql
+> RPUSH mylist a b c 1 2 3 c c
+> LPOS mylist c
+2
+```
+
+Параметр `RANK` позволяет вывести другой (по счету `rank`) найденный
+элемент в случае, если их несколько. Отрицательной значение `rank`
+означает, что нумерация результата будет вестись справа налево.
+
+Примеры:
+
+```sql
+> LPOS mylist c RANK 2
+6
+> LPOS mylist c RANK -1
+7
+```
+
+Параметр `COUNT` позволяет вывести позиции всех (по счету `num-matches`)
+найденных элементов.
+
+Пример:
+
+```sql
+> LPOS mylist c COUNT 2
+[2,6]
+```
+
+При совместном использовании `COUNT` и `RANK` можно изменить точку
+отсчета, с которой будет производиться поиск совпадений.
+
+Пример:
+
+```sql
+> LPOS mylist c RANK -1 COUNT 2
+[7,6]
+```
+
+#### lpush
+
+```sql
+LPUSH key element [element ...]
+```
+
+Вставляет указанные элементы в начала списка, хранящегося по ключу
+`key`.
+
+Примеры:
+
+```sql
+redis> LPUSH mylist "world"
+(integer) 1
+redis> LPUSH mylist "hello"
+(integer) 2
+redis> LRANGE mylist 0 -1
+1) "hello"
+2) "world"
+```
+
+#### lpushx
+
+```sql
+LPUSHX key element [element ...]
+```
+
+Работает аналогично [LPUSH](#lpush), но проверяет, что указанный ключ
+`key` существует. В противном случае команда ничего не делает (в отличие
+от `LPUSH`).
+
+#### lrange
+
+```sql
+LRANGE key start stop
+```
+
+Возвращает диапазон элементов списка, хранящегося по ключу `key`.
+Позиция `start` обозначает начало диапазона, `stop` — его конец. При
+указании отрицательных значений можно использовать диапазон, отсчитанный
+справа налево. Нумерация элементов списка начинается с нуля.
+Некорректный диапазон будет воспринят либо как пустой список (если
+`start` превышает максимальный номер элемента), либо как корректный с
+отсечением пустой части (если `stop` превышает максимальный номер
+элемента). Следует учитывать, что при прямом отсчете элементов слева
+направо значение `stop` будет включено в состав элементов. То есть,
+диапазон `LRANGE list 0 10` будет содержать 11 элементов.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "one"
+(integer) 1
+redis> RPUSH mylist "two"
+(integer) 2
+redis> RPUSH mylist "three"
+(integer) 3
+redis> LRANGE mylist 0 0
+1) "one"
+redis> LRANGE mylist -3 2
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist -100 100
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist 5 10
+(empty array)
+```
+
+#### lrem
+
+```sql
+LREM key count element
+```
+
+Удаляет из списка, хранящегося по ключу `key`, указанное количество
+(`count`) найденных элементов (`element`). Положительное значение `count`
+означает поиск слева направо, отрицательное — справа налево. При
+значении `0` будут удалены все найденные элементы.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "hello"
+(integer) 1
+redis> RPUSH mylist "hello"
+(integer) 2
+redis> RPUSH mylist "foo"
+(integer) 3
+redis> RPUSH mylist "hello"
+(integer) 4
+redis> LREM mylist -2 "hello"
+(integer) 2
+redis> LRANGE mylist 0 -1
+1) "hello"
+2) "foo"
+redis>
+```
+
+#### lset
+
+```sql
+LSET key index element
+```
+
+Устанавливает индекс (`index`) для добавляемого элемента (`element`).
+Таким образом можно затереть один элемент списка и заменить его новым
+значением.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "one"
+(integer) 1
+redis> RPUSH mylist "two"
+(integer) 2
+redis> RPUSH mylist "three"
+(integer) 3
+redis> LSET mylist 0 "four"
+"OK"
+redis> LSET mylist -2 "five"
+"OK"
+redis> LRANGE mylist 0 -1
+1) "four"
+2) "five"
+3) "three"
+redis>
+```
+
+#### ltrim
+
+```sql
+LTRIM key start stop
+```
+
+Обрезает список, хранящийся по ключу `key`, задавая его размер с помощью
+диапазона. При указании отрицательных значений можно использовать
+диапазон, отсчитанный справа налево. Нумерация элементов списка
+начинается с нуля. Некорректный диапазон будет воспринят либо как пустой
+список (если `start` превышает максимальный номер элемента) c удалением
+ключей, либо как корректный с увеличением границ списка (если `stop`
+превышает максимальный номер элемента).
+
+Типичное применение `LTRIM`:
+
+```sql
+LPUSH mylist someelement
+LTRIM mylist 0 99
+```
+
+Эти команды добавят в список значение `someelement` и при этом установят
+емкость списка равной 100 элементам.
+
+Дополнительные примеры:
+
+```sql
+redis> RPUSH mylist "one"
+(integer) 1
+redis> RPUSH mylist "two"
+(integer) 2
+redis> RPUSH mylist "three"
+(integer) 3
+redis> LTRIM mylist 1 -1
+"OK"
+redis> LRANGE mylist 0 -1
+1) "two"
+2) "three"
+redis>
+```
+
+#### rpop
+
+```sql
+RPOP key [count]
+```
+
+Извлекает (и удаляет) указанное число (`count`) последних элементов,
+хранящихся в списке по адресу ключа `key`. Без аргумента `count` команда
+извлекает один первый элемент в начале списка.
+
+Примеры:
+
+```sql
+redis> RPUSH mylist "one" "two" "three" "four" "five"
+(integer) 5
+redis> RPOP mylist
+"five"
+redis> RPOP mylist 2
+1) "four"
+2) "three"
+redis> LRANGE mylist 0 -1
+1) "one"
+2) "two"
+```
+
+#### rpush
+
+```sql
+RPUSH key element [element ...]
+```
+
+Работает аналогично [LPUSH](#lpush), но добавляет элементы в конец
+списка.
+
+#### rpushx
+
+```sql
+RPUSHX key element [element ...]
+```
+
+Работает аналогично [RPUSH](#rpush), но проверяет существование ключа
+`key` и то, что этот ключ содержит список. В противном случае команжа
+ничего не делает.
+
 ### Команды для строк {: #string }
 
 #### get
