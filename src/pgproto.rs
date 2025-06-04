@@ -34,10 +34,11 @@ static mut CONTEXT: Option<Context> = None;
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    #[introspection(
-        config_default = PgprotoAddress::default()
-    )]
+    #[introspection(config_default = PgprotoAddress::default())]
     pub listen: Option<PgprotoAddress>,
+
+    #[introspection(config_default = self.listen())]
+    pub advertise: Option<PgprotoAddress>,
 
     #[introspection(config_default = false)]
     pub ssl: Option<bool>,
@@ -46,6 +47,12 @@ pub struct Config {
 impl Config {
     pub fn listen(&self) -> PgprotoAddress {
         self.listen
+            .clone()
+            .expect("must be checked before the call")
+    }
+
+    pub fn advertise(&self) -> PgprotoAddress {
+        self.advertise
             .clone()
             .expect("must be checked before the call")
     }

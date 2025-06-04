@@ -124,6 +124,7 @@ instance:
             pg=dict(
                 # pg is enabled by default, so listen should be set
                 listen=dict(source="default", value="127.0.0.1:4327"),
+                advertise=dict(source="default", value="127.0.0.1:4327"),
                 ssl=dict(source="default", value=False),
             ),
             boot_timeout=dict(value=7200, source="default"),

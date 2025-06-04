@@ -71,6 +71,7 @@
       http_listen: '0.0.0.0:8081'
       pg:
         listen: '0.0.0.0:4327'
+        advertise: '127.0.0.1:4327'
 
       memtx:
         memory: 64M
@@ -101,6 +102,7 @@
       http_listen: '0.0.0.0:8082'
       pg:
         listen: '0.0.0.0:4328'
+        advertise: '127.0.0.1:4328'
 
       memtx:
         memory: 64M
@@ -131,6 +133,7 @@
       http_listen: '0.0.0.0:8083'
       pg:
         listen: '0.0.0.0:4329'
+        advertise: '127.0.0.1:4329'
 
       memtx:
         memory: 64M
@@ -235,6 +238,7 @@ picodata run --config i3.yml
       http_listen: '0.0.0.0:8081'
       pg:
         listen: '0.0.0.0:4327'
+        advertise: '127.0.0.1:4327'
 
       memtx:
         memory: 64M
@@ -265,6 +269,7 @@ picodata run --config i3.yml
       http_listen: '0.0.0.0:8082'
       pg:
         listen: '0.0.0.0:4328'
+        advertise: '127.0.0.1:4328'
 
       memtx:
         memory: 1024M
@@ -295,6 +300,7 @@ picodata run --config i3.yml
       http_listen: '0.0.0.0:8083'
       pg:
         listen: '0.0.0.0:4329'
+        advertise: '127.0.0.1:4329'
 
       memtx:
         memory: 1024M

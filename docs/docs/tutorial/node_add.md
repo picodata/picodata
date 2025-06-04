@@ -119,6 +119,7 @@
       http_listen: '0.0.0.0:8084'
       pg:
         listen: '0.0.0.0:5435'
+        advertise: '127.0.0.1:5435'
 
       memtx:
         memory: 1024M

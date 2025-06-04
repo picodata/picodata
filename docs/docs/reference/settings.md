@@ -278,6 +278,14 @@ td.td3 ul {
             <td>PICODATA_PEER</td>
         </tr>
         <tr>
+            <td class="center"><span class="instance">pg-advertise</span></td>
+            <td>Публичный адрес сервера для подключения по протоколу PostgreSQL</td>
+            <td>127.0.0.1:4327</td>
+            <td>[picodata run --pg-advertise](cli.md#run_pg_advertise)</td>
+            <td>[instance.pg.advertise](config.md#instance_pg_advertise)</td>
+            <td>PICODATA_PG_ADVERTISE</td>
+        </tr>
+        <tr>
             <td class="center"><span class="instance">pg-listen</span></td>
             <td>Адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>

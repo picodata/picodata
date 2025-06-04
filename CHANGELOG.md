@@ -22,6 +22,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Support LDAP with TLS (StartTLS) for LDAP authentication menthod
   - use TT_LDAP_ENABLE_TLS=true environment variable to turn on
 
+### Config
+- Config supports `instance.pg.advertise` option for pgproto server advertise address,
+  which defaults to `instance.pg.listen`. It also can be set in the CLI via `--pg-advertise` option.
+
 ### Fixes
 
 - Fixed numerous panics when setting invalid values for alter system parameters

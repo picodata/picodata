@@ -1011,7 +1011,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         instance_name: config.instance.name(),
         replicaset_name: config.instance.replicaset_name(),
         advertise_address: config.instance.iproto_advertise().to_host_port(),
-        pgproto_advertise_address: config.instance.pg.listen().to_host_port(),
+        pgproto_advertise_address: config.instance.pgproto_advertise().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),
         tier: config.instance.tier().into(),
         picodata_version: version,

@@ -1,4 +1,4 @@
-use crate::address::{HttpAddress, IprotoAddress};
+use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -313,6 +313,10 @@ Using configuration file '{args_path}'.");
 
         if let Some(http_listen) = args.http_listen {
             config_from_args.instance.http_listen = Some(http_listen);
+        }
+
+        if let Some(pg_advertise) = args.pg_advertise {
+            config_from_args.instance.pg.advertise = Some(pg_advertise);
         }
 
         if let Some(pg_listen) = args.pg_listen {
@@ -687,7 +691,7 @@ Using configuration file '{args_path}'.");
             _ => {}
         }
 
-        // Advertise address
+        // Advertise addresses
         if let Some(raft_id) = raft_storage.raft_id()? {
             match (
                 storage
@@ -700,6 +704,22 @@ Using configuration file '{args_path}'.");
                 {
                     return Err(Error::InvalidConfiguration(format!(
                         "instance restarted with a different `iproto_advertise`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    )));
+                }
+                _ => {}
+            }
+
+            match (
+                storage
+                    .peer_addresses
+                    .get(raft_id, &traft::ConnectionType::Pgproto)?,
+                &self.instance.pg.advertise,
+            ) {
+                (Some(from_storage), Some(from_config))
+                    if from_storage != from_config.to_host_port() =>
+                {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "instance restarted with a different `pg.advertise`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
@@ -1298,6 +1318,16 @@ impl InstanceConfig {
     pub fn boot_timeout(&self) -> u64 {
         self.boot_timeout
             .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
+    pub fn pgproto_listen(&self) -> PgprotoAddress {
+        self.pg.listen()
+    }
+
+    #[inline]
+    pub fn pgproto_advertise(&self) -> PgprotoAddress {
+        self.pg.advertise()
     }
 }
 
@@ -2523,6 +2553,8 @@ cluster:
             assert_eq!(config.instance.name(), None);
             assert_eq!(config.instance.iproto_listen().to_host_port(), IprotoAddress::default_host_port());
             assert_eq!(config.instance.iproto_advertise().to_host_port(), IprotoAddress::default_host_port());
+            assert_eq!(config.instance.pgproto_listen().to_host_port(), PgprotoAddress::default_host_port());
+            assert_eq!(config.instance.pgproto_advertise().to_host_port(), PgprotoAddress::default_host_port());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -2712,6 +2744,32 @@ instance:
 
             assert_eq!(config.instance.iproto_listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.iproto_advertise().to_host_port(), "A-CONFIG:3301");
+        }
+
+        //
+        // Pgproto advertise = listen unless specified explicitly
+        //
+        {
+            std::env::set_var("PICODATA_PG_LISTEN", "L-ENVIRON:3301");
+            let config = setup_for_tests(Some(""), &["run"]).unwrap();
+
+            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "L-ENVIRON:3301");
+
+            let yaml = r###"
+instance:
+    pg:
+        advertise: A-CONFIG:3301
+"###;
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+
+            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-ENVIRON:3301");
+            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "A-CONFIG:3301");
+
+            let config = setup_for_tests(Some(yaml), &["run", "--pg-listen", "L-COMMANDLINE:3301"]).unwrap();
+
+            assert_eq!(config.instance.pgproto_listen().to_host_port(), "L-COMMANDLINE:3301");
+            assert_eq!(config.instance.pgproto_advertise().to_host_port(), "A-CONFIG:3301");
         }
 
         //

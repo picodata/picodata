@@ -131,22 +131,23 @@ instance:
 19. [instance.memtx.memory](#instance_memtx_memory)
 20. [instance.name](#instance_name)
 21. [instance.peer](#instance_peer)
-22. [instance.pg.listen](#instance_pg_listen)
-23. [instance.pg.ssl](#instance_pg_ssl)
-24. [instance.share_dir](#instance_share_dir)
-25. [instance.replicaset_name](#instance_replicaset_name)
-26. [instance.tier](#instance_tier)
-27. [instance.vinyl.cache](#instance_vinyl_cache)
-28. [instance.vinyl.memory](#instance_vinyl_memory)
-29. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-30. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-31. [instance.vinyl.page_size](#instance_vinyl_page_size)
-32. [instance.vinyl.range_size](#instance_vinyl_range_size)
-33. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-34. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-35. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-36. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-37. [instance.vinyl.timeout](#instance_vinyl_timeout)
+22. [instance.pg.advertise](#instance_pg_advertise)
+23. [instance.pg.listen](#instance_pg_listen)
+24. [instance.pg.ssl](#instance_pg_ssl)
+25. [instance.share_dir](#instance_share_dir)
+26. [instance.replicaset_name](#instance_replicaset_name)
+27. [instance.tier](#instance_tier)
+28. [instance.vinyl.cache](#instance_vinyl_cache)
+29. [instance.vinyl.memory](#instance_vinyl_memory)
+30. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+31. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+32. [instance.vinyl.page_size](#instance_vinyl_page_size)
+33. [instance.vinyl.range_size](#instance_vinyl_range_size)
+34. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+35. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+36. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+37. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+38. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -521,6 +522,22 @@ picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 Аналогичная команда: [`picodata run --peer`]
 
 [`picodata run --peer`]: cli.md#run_peer
+
+### instance.pg.advertise {: #instance_pg_advertise }
+
+Публичный адрес сервера для подключения по протоколу
+[PostgreSQL](../tutorial/connecting.md#postgresql).
+Анонсируется кластеру при запуске инстанса.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `127.0.0.1:4327`
+
+Аналогичная переменная окружения: `PICODATA_PG_ADVERTISE`<br>
+Аналогичная команда: [`picodata run --pg-advertise`]
+
+[`picodata run --pg-advertise`]: cli.md#run_pg_advertise
 
 ### instance.pg.listen {: #instance_pg_listen }
 

@@ -142,6 +142,22 @@ pub struct Run {
     /// By default "127.0.0.1:3301" is used.
     pub iproto_listen: Option<IprotoAddress>,
 
+    #[clap(
+        long,
+        value_name = "HOST:PORT",
+        env = "PICODATA_PG_ADVERTISE",
+        group = "advertise_arguments"
+    )]
+    /// Public network address of the pgproto server.
+    /// It is announced to the cluster during the instance start.
+    ///
+    /// Defaults to `--pg-listen` value which is enough in most cases. But,
+    /// for example, in case of `--pg-listen 0.0.0.0:5432` it should be
+    /// specified explicitly, .e.g.:
+    ///
+    /// `picodata run --pg-listen 0.0.0.0:5432 --pg-advertise 192.168.0.1:5432`
+    pub pg_advertise: Option<PgprotoAddress>,
+
     /// Pgproto server address.
     #[clap(long, value_name = "HOST:PORT", env = "PICODATA_PG_LISTEN")]
     pub pg_listen: Option<PgprotoAddress>,

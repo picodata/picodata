@@ -98,6 +98,7 @@ StartTLS); возможные значения - true, false. По умолча�
       http_listen: '0.0.0.0:8081'
       pg:
         listen: '0.0.0.0:4327'
+        advertise: '127.0.0.1:4327'
     ```
 
 [конфигурационного файла]: ../reference/config.md#config_file_description

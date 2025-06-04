@@ -53,7 +53,7 @@ pub(super) fn prepare(
             storage::PeerAddresses::TABLE_ID,
             &traft::PeerAddress {
                 raft_id: instance.raft_id,
-                address: config.instance.pg.listen().to_host_port(),
+                address: config.instance.pgproto_advertise().to_host_port(),
                 connection_type: traft::ConnectionType::Pgproto,
             },
             ADMIN_ID,

@@ -316,6 +316,27 @@ picodata run --peer server-1.picodata.int:13301,server-2.picodata.int:13301
 
 [`instance.peer`]: config.md#instance_peer
 
+### --pg-advertise {: #run_pg_advertise }
+
+`--pg-advertise <HOST:PORT>`
+
+Публичный адрес сервера для подключения по протоколу
+[PostgreSQL](../tutorial/connecting.md#postgresql).
+Анонсируется кластеру при запуске инстанса.
+
+По умолчанию используется значение параметра [`--pg-listen`](#run_pg_listen), и
+в большинстве случаев его не требуется менять. Но, например, в случае
+`--pg-listen 0.0.0.0` его придется указать явно:
+
+```shell
+picodata run --pg-listen 0.0.0.0:5432 --pg-advertise 192.168.0.5432
+```
+
+Аналогичная переменная окружения: `PICODATA_PG_ADVERTISE`<br>
+Аналогичный параметр файла конфигурации: [`instance.pg.advertise`]
+
+[`instance.pg.advertise`]: config.md#instance_pg_advertise
+
 ### --pg-listen {: #run_pg_listen }
 
 Адрес сервера для подключения по протоколу
