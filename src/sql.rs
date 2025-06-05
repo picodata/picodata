@@ -19,7 +19,7 @@ use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
-use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
+use crate::util::{duration_from_secs_f64_clamped, effective_user_id, AnyWithTypeName};
 use crate::version::Version;
 use crate::{cas, has_states, plugin, tlog};
 
@@ -2055,6 +2055,13 @@ pub(crate) fn reenterable_schema_change_request(
     }
 }
 
+#[inline(always)]
+fn report(msg: &str, e: Error) -> i32 {
+    set_error!(TarantoolErrorCode::ProcC, "{msg}{e}");
+    TarantoolErrorCode::ProcC as i32
+}
+
+/// # Safety
 /// Executes a query sub-plan on the local node.
 #[no_mangle]
 pub unsafe extern "C" fn proc_sql_execute(
@@ -2064,34 +2071,26 @@ pub unsafe extern "C" fn proc_sql_execute(
     let args_len = match usize::try_from(args.end.offset_from(args.start)) {
         Ok(len) => len,
         Err(e) => {
-            set_error!(
-                TarantoolErrorCode::ProcC,
-                "failed to decode the message size: {e:?}"
-            );
-            return TarantoolErrorCode::ProcC as i32;
+            return report(
+                "failed to cast the message size: ",
+                Error::Other(Box::new(e)),
+            )
         }
     };
 
     let raw_args = std::slice::from_raw_parts(args.start, args_len);
     let (raw_required, optional_bytes, cache_info) = match decode_msgpack(raw_args) {
         Ok(decoded_res) => decoded_res,
-        Err(e) => {
-            set_error!(
-                TarantoolErrorCode::ProcC,
-                "failed to decode the message: {e:?}"
-            );
-            return TarantoolErrorCode::ProcC as i32;
-        }
+        Err(e) => return report("failed to decode the message: ", Error::from(e)),
     };
 
     let mut required = match RequiredData::try_from(EncodedRequiredData::from(raw_required)) {
         Ok(required) => required,
         Err(e) => {
-            set_error!(
-                TarantoolErrorCode::ProcC,
-                "failed to decode required data in the message: {e:?}"
-            );
-            return TarantoolErrorCode::ProcC as i32;
+            return report(
+                "failed to decode required data in the message: ",
+                Error::from(e),
+            )
         }
     };
 
@@ -2104,20 +2103,14 @@ pub unsafe extern "C" fn proc_sql_execute(
                 ctx.mut_port_c().add_tuple(&tuple);
                 0
             } else {
-                let err = SbroadError::FailedTo(
-                    Action::Decode,
-                    None,
-                    format_smolstr!("tuple {any_tuple:?}"),
-                );
-
-                set_error!(TarantoolErrorCode::ProcC, "{err:?}");
-                TarantoolErrorCode::ProcC as i32
+                let e = Error::DowncastError {
+                    expected: "Tuple",
+                    actual: any_tuple.type_name(),
+                };
+                report("", e)
             }
         }
-        Err(e) => {
-            set_error!(TarantoolErrorCode::ProcC, "{:?}", Error::from(e));
-            TarantoolErrorCode::ProcC as i32
-        }
+        Err(e) => report("", Error::from(e)),
     }
 }
 

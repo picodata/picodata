@@ -309,6 +309,7 @@ impl StorageRuntime {
     ///
     /// # Errors
     /// - Failed to initialize the LRU cache.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         STATEMENT_CACHE.with(|cache| StorageRuntime {
             bucket_count: DEFAULT_BUCKET_COUNT,

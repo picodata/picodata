@@ -29,7 +29,7 @@ use tarantool::tlua::LuaFunction;
 
 use super::ConfigurationProvider;
 
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, clippy::new_without_default)]
 pub struct StorageRuntime {
     metadata: Mutex<StorageConfiguration>,
     bucket_count: u64,
