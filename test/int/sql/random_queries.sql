@@ -477,3 +477,39 @@ None, None, 90,
 5, 1, 4,
 6, None, 45,
 6, None, 45,
+
+-- TEST: select_distinct-1.0
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT) DISTRIBUTED GLOBALLY;
+INSERT INTO t VALUES (1, 1), (2, 1), (3, 2);
+
+-- TEST: select_distinct-1.1
+-- SQL:
+select distinct b from t order by b;
+-- EXPECTED:
+1, 2
+
+-- TEST: select_distinct-1.1
+-- SQL:
+select distinct cast(avg(b) as int) from t group by a;
+-- EXPECTED:
+1, 2
+
+-- TEST: select_distinct-2.0
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT);
+INSERT INTO t VALUES (1, 1), (2, 1), (3, 2);
+
+-- TEST: select_distinct-2.1
+-- SQL:
+select distinct b from t order by b;
+-- EXPECTED:
+1, 2
+
+-- TEST: select_distinct-2.1
+-- SQL:
+select distinct cast(avg(b) as int) from t group by a;
+-- EXPECTED:
+1, 2

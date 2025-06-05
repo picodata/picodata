@@ -3,8 +3,7 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Reference,
-    ScalarFunction, ScanRelation,
+    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Projection, Reference, ScalarFunction, ScanRelation
 };
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -417,6 +416,9 @@ impl ExecutionPlan {
                             Relational::Join(Join { kind, .. }) => sql.push_str(
                                 format!("{} JOIN", kind.to_string().to_uppercase()).as_str(),
                             ),
+                            Relational::Projection(Projection {
+                                is_distinct: true, ..
+                            }) => sql.push_str("SELECT DISTINCT"),
                             Relational::Projection { .. }
                             | Relational::SelectWithoutScan { .. } => sql.push_str("SELECT"),
                             Relational::ScanRelation(ScanRelation { relation, .. }) => {
