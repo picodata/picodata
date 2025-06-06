@@ -38,6 +38,31 @@
 
 # Change Log
 
+# [?.?.?] Unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Fix `tlua::Push`, `tlua::PushInto` and `tlua::LuaRead` derive macros to support default values for type parameters,
+    and `tlua::LuaRead` to support default values for default values for const parameters.
+
+### Deprecated
+
+### Breaking
+
+### Added (picodata)
+
+### Changed (picodata)
+
+### Fixed (picodata)
+
+### Deprecated (picodata)
+
+### Breaking (picodata)
+
 # [7.0.0] May 26 2025
 
 ### Added

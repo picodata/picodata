@@ -2,8 +2,8 @@ use std::io::Write;
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Ident, Lifetime, Type};
+use quote::{quote, ToTokens, TokenStreamExt};
+use syn::{parse_macro_input, AttrStyle, DeriveInput, Ident, Lifetime, Type};
 
 #[proc_macro_attribute]
 pub fn test(_attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
@@ -34,18 +34,6 @@ fn proc_macro_derive_push_impl(
     let info = Info::new(&input);
     let ctx = Context::with_generics(&input.generics).set_is_push_into(is_push_into);
     let (lifetimes, types, consts) = split_generics(&input.generics);
-    // We skip default values for constant generics parameters
-    // because they are not supported in impl blocks. You may want to check
-    // https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/219
-    let consts: Vec<syn::ConstParam> = consts
-        .into_iter()
-        .cloned()
-        .map(|mut param| {
-            param.eq_token = None;
-            param.default = None;
-            param
-        })
-        .collect();
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.push_bounds(&ctx);
@@ -820,19 +808,60 @@ impl<'a> Context<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
+struct ImplTypeParam<'a>(&'a syn::TypeParam);
+impl<'a> ToTokens for ImplTypeParam<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        // Leave off the type parameter defaults
+        let param = self.0;
+        tokens.append_all(
+            param
+                .attrs
+                .iter()
+                .filter(|attr| matches!(attr.style, AttrStyle::Outer)),
+        );
+        param.ident.to_tokens(tokens);
+        if !param.bounds.is_empty() {
+            if let Some(colon) = &param.colon_token {
+                colon.to_tokens(tokens);
+            }
+            param.bounds.to_tokens(tokens);
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct ImplConstParam<'a>(&'a syn::ConstParam);
+impl<'a> ToTokens for ImplConstParam<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        // Leave off the type parameter defaults
+        let param = self.0;
+        tokens.append_all(
+            param
+                .attrs
+                .iter()
+                .filter(|attr| matches!(attr.style, AttrStyle::Outer)),
+        );
+        param.const_token.to_tokens(tokens);
+        param.ident.to_tokens(tokens);
+        param.colon_token.to_tokens(tokens);
+        param.ty.to_tokens(tokens);
+    }
+}
+
 fn split_generics(
     generics: &syn::Generics,
 ) -> (
     Vec<&syn::LifetimeDef>,
-    Vec<&syn::TypeParam>,
-    Vec<&syn::ConstParam>,
+    Vec<ImplTypeParam>,
+    Vec<ImplConstParam>,
 ) {
     let mut res = (vec![], vec![], vec![]);
     for param in &generics.params {
         match param {
             syn::GenericParam::Lifetime(l) => res.0.push(l),
-            syn::GenericParam::Type(t) => res.1.push(t),
-            syn::GenericParam::Const(c) => res.2.push(c),
+            syn::GenericParam::Type(t) => res.1.push(ImplTypeParam(t)),
+            syn::GenericParam::Const(c) => res.2.push(ImplConstParam(c)),
         }
     }
     res
