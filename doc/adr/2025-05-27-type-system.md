@@ -6,7 +6,7 @@ See these ADR examples for inspiration:
 - [TiKV - Use Joint Consensus](https://github.com/tikv/rfcs/blob/master/text/0054-joint-consensus.md)
 -->
 status: "accepted"
-decision-makers: list everyone involved in the decision
+decision-makers: @UngiftedPoet, @funbringer
 
 <!--
 consulted: list everyone whose opinions are sought (typically subject-matter experts); and with whom there is a two-way communication
