@@ -682,27 +682,6 @@ pub(crate) fn setup() {
     );
 
     ///////////////////////////////////////////////////////////////////////////
-    #[rustfmt::skip]
-    luamod_set(
-        &l,
-        "exit",
-        indoc! {"
-        pico.exit([code])
-        =================
-
-        Terminates the picodata process with the supplied exit code.
-
-        Params:
-
-            1. code (optional number), default: 0
-        "},
-        #[allow(clippy::unused_unit)] // Needed to suppress dependency_on_unit_never_type_fallback
-        tlua::function1(|code: Option<i32>| -> () {
-            crate::tarantool::exit(code.unwrap_or(0));
-        }),
-    );
-
-    ///////////////////////////////////////////////////////////////////////////
     luamod_set(
         &l,
         "expel",

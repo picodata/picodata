@@ -33,6 +33,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 
+### Lua API
+
+- Remove `pico.exit` function as it is no longer used.
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI
