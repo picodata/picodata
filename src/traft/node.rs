@@ -1040,6 +1040,8 @@ impl NodeImpl {
                 ddl,
                 schema_version,
             } => {
+                crate::error_injection!("STALL_BEFORE_APPLYING_DDL_PREPARE" => return SleepAndRetry);
+
                 self.apply_op_ddl_prepare(ddl, schema_version)
                     .expect("storage should not fail");
             }
@@ -2543,8 +2545,7 @@ impl NodeImpl {
             }
         }
 
-        #[cfg(feature = "error_injection")]
-        if crate::error_injection::is_enabled("BLOCK_WHEN_PERSISTING_DDL_COMMIT") {
+        crate::error_injection!("BLOCK_WHEN_PERSISTING_DDL_COMMIT" => {
             for entry in entries_to_persist {
                 let row = traft::Entry::try_from(entry).unwrap();
                 let op = row.into_op();
@@ -2552,7 +2553,7 @@ impl NodeImpl {
                     crate::error_injection!(block "BLOCK_WHEN_PERSISTING_DDL_COMMIT");
                 }
             }
-        }
+        });
 
         if let Some(snapshot) = snapshot {
             // After applying the raft snapshot we send only the special
