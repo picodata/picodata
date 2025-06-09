@@ -932,7 +932,7 @@ pub(crate) fn setup() {
                             while let Some(&token) = lexer.peek_token() {
                                 if lexer.token_counter % 1000 == 0 {
                                     // Yield to other fibers so that the event loop is not blocked in case of huge raft log.
-                                    fiber::reschedule();
+                                    fiber::sleep(Duration::ZERO);
                                 }
 
                                 let mut added_chars = token.utf8_count;

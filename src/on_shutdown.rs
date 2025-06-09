@@ -32,6 +32,9 @@ pub async fn callback() {
 
     node.plugin_manager.handle_instance_shutdown();
 
+    // Let other fibers handle the shut down.
+    // Note that this skips the epoll_wait call,
+    // which is fine in this case because it is not called inside a loop.
     fiber::reschedule();
 
     // 2. Meanwhile, wait until either it succeeds or there is no quorum.
