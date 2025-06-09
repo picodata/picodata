@@ -2598,3 +2598,88 @@ def test_ddl_in_heterogeneous_cluster_is_prohibited(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+
+
+def test_no_deadlock_in_ddl_during_master_switchover_at_catchup_aka_gl_1294_regression(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+"""
+    )
+
+    leader = cluster.add_instance(tier="default", wait_online=False)
+    cluster.add_instance(tier="storage", wait_online=False)
+    cluster.add_instance(tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    # Apply some DDL which is later going to be applied at catchup by a new replicaset
+    leader.sql("CREATE TABLE i_have_no_brain_and_i_must_think (id UNSIGNED PRIMARY KEY)")
+
+    # Add a replicaset with an injected error which will make it simpler to
+    # catch the moment we're looking for
+    error_injection = "STALL_BEFORE_APPLYING_DDL_PREPARE"
+
+    storage_2_1 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_2_1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    storage_2_2 = cluster.add_instance(tier="storage", wait_online=False)
+    storage_2_2.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+
+    storage_2_1.start()
+    storage_2_2.start()
+
+    # We're not doing wait_online, because the instances will not be able to
+    # catchup with the raft log with that error injection
+
+    # Must call instance_info() to update the replicaset_name field
+    # (retriable, because there's no way to sync, because wait_online won't work)
+    Retriable().call(storage_2_1.instance_info)
+    Retriable().call(storage_2_2.instance_info)
+    assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
+    replicaset_storage_2 = storage_2_1.replicaset_name
+
+    counter = leader.governor_step_counter()
+
+    # Trigger replicaset master switchover (Look at this monstrosity of a SQL
+    # query! Normally I wouldn't do it this way, but I was curious if sbroad
+    # could handle it, and it did, so hurray!)
+    leader.sql(
+        """
+        UPDATE _pico_replicaset
+            SET target_master_name = (
+                SELECT i.name FROM _pico_instance AS i
+                    JOIN _pico_replicaset AS r ON i.replicaset_name = r.name
+                    WHERE i.name != r.current_master_name
+                      AND r.name = ?
+                    LIMIT 1
+            )
+            WHERE name = ?
+        """,
+        replicaset_storage_2,
+        replicaset_storage_2,
+    )
+
+    # Wait until governor switches over the master
+    # XXX: at this point we would timeout if the bug we're testing would reappear.
+    # After that governor blocks trying to configure sharding, because the new
+    # replicaset cannot advance in raft log application
+    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter)
+
+    # Unblock them
+    storage_2_1.call("pico._inject_error", error_injection, False)
+    storage_2_2.call("pico._inject_error", error_injection, False)
+
+    # Now the new replicaset successfully finishes catching up
+    leader.wait_governor_status("idle")
+    storage_2_1.wait_online()
+    storage_2_2.wait_online()
+
+    # And the DDL was applied of course (sanity check)
+    assert storage_2_1.eval("return box.space.i_have_no_brain_and_i_must_think.id") is not None
+    assert storage_2_2.eval("return box.space.i_have_no_brain_and_i_must_think.id") is not None
