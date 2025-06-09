@@ -17,6 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `ORDER BY ... NULLS FIRST/LAST` operation.
 - SQL supports `INSERT INTO ... ON CONFLICT DO FAIL/REPLACE/NOTHING` operation for globally distributed tables.
 - SQL supports modulo operator `%` for integers.
+- SQL supports window function `last_value()`.
 
 ### Pgproto
 

@@ -552,6 +552,14 @@ fn default_type_system() -> TypeSystem {
         Function::new_window("group_concat", [Text, Text], Text),
         // - row_number
         Function::new_window("row_number", [], Integer),
+        // - last_value
+        Function::new_window("last_value", [Unsigned], Unsigned),
+        Function::new_window("last_value", [Integer], Integer),
+        Function::new_window("last_value", [Double], Double),
+        Function::new_window("last_value", [Numeric], Numeric),
+        Function::new_window("last_value", [Text], Text),
+        Function::new_window("last_value", [Boolean], Boolean),
+        Function::new_window("last_value", [Datetime], Datetime),
     ];
 
     TypeSystem::new(functions)

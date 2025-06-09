@@ -75,7 +75,8 @@ partition   ::= ('PARTITION' 'BY' expression (',' expression)*)?
                       )
                    ) | ('UNBOUNDED' 'PRECEDING') | ('CURRENT' 'ROW') | ( expression 'PRECEDING')
                  ))?
-builtin     ::= 'ROW_NUMBER' '(' ')'
+builtin     ::= 'LAST_VALUE' '(' expression ')'
+                | 'ROW_NUMBER' '(' ')'
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'

@@ -186,6 +186,20 @@ impl Plan {
             Some(kind) => kind.get_type(self, &children)?,
             None => match func_name.as_str() {
                 "row_number" => DerivedType::new(Type::Integer),
+                "last_value" => {
+                    if children.len() != 1 {
+                        return Err(SbroadError::Invalid(
+                            Entity::Query,
+                            Some(format_smolstr!(
+                                "window function {} expects 1 argument, got {}",
+                                func_name,
+                                children.len()
+                            )),
+                        ));
+                    }
+                    let param = self.get_expression_node(children[0])?;
+                    param.calculate_type(self)?
+                }
                 _ => {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
