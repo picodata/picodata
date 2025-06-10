@@ -302,14 +302,15 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
 }
 
 pub fn main(args: args::Admin) -> ! {
-    let tt_args = args.tt_args().unwrap();
-    super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
-        if let Err(err) = admin_repl(args) {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        }
-        std::process::exit(0)
-    })
+    // main_cb is NOT used here, because it's hard to properly make admin use non-blocking IO
+    // and using blocking IO in tarantool runtime shows undesirable behaviours
+    // (read timeouts don't work, SIGINT and SIGTERM are not handled correctly)
+    // See https://git.picodata.io/core/picodata/-/merge_requests/1939 and https://git.picodata.io/core/picodata/-/issues/1206 for more context
+    if let Err(err) = admin_repl(args) {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    }
+    std::process::exit(0)
 }
 
 #[cfg(test)]
