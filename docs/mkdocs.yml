@@ -308,6 +308,7 @@ markdown_extensions:
 ## Необходимо для рендеринга математических формул:
 extra_javascript:
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+  - ./assets/sorttable.js
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation

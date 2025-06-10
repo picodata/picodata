@@ -32,10 +32,8 @@ hide:
     text-decoration: none;
 }
 
-table {
-    min-width: 800px !important;
-    max-width: 100% !important;
-    table-layout: fixed !important;
+.sortable table  {
+
 }
 
 td {
@@ -120,8 +118,26 @@ td.td3 ul {
 .fill-width {
     width: 1000px;
 }
-</style>
 
+.basic table {
+    width: 100% !important;
+    white-space: nowrap;
+    table-layout: fixed !important;
+    display: table;
+    overflow: auto;
+    overflow-x: hidden !important;
+    font-size: .64rem;
+    max-width: 100%;
+    touch-action: auto;
+}
+
+.basic th, td {
+    overflow-x: hidden !important;
+    word-break: break-word;
+
+}
+
+</style>
 
 ## Настройки запуска Picodata {: #picodata_start_settings }
 
@@ -131,18 +147,29 @@ td.td3 ul {
     <span class="instance legend-id">audit</span><span class="legend-dash">—</span>настройка применима к отдельному инстансу<br>
     <span class="cluster legend-id">cluster-name</span><span class="legend-dash">—</span>настройка применима ко всему кластеру<br>
 
-<table markdown="span">
+<table markdown="span" class="md-typeset__scrollwrap sortable">
     <thead>
         <tr>
-            <th class="heading" style="width:12%">Название</th>
-            <th class="heading">Описание</th>
-            <th class="heading" style="width:15%">Значение по умолчанию</th>
-            <th class="heading" style="width:20%">CLI</th>
-            <th class="heading">Файл конфигурации</th>
-            <th class="heading" style="width:20%">Переменная</th>
+            <th class="heading" style="width:12%"><button>Название</button></th>
+            <th class="heading"><button>Описание</button></th>
+            <th class="heading" style="width:15%"><button>Значение по умолчанию</button></th>
+            <th class="heading" style="width:20%"><button>CLI</button></th>
+            <th class="heading"><button>Файл конфигурации</button></th>
+            <th class="heading" style="width:20%"><button>Переменная</button></th>
         </tr>
     </thead>
     <tbody>
+        <tr>
+            <td class="center"><span class="instance">—</span></td>
+            <td>Пароль администратора для текущего инстанса</td>
+            <td>null</td>
+            <td>
+            `export PICODATA_ADMIN_PASSWORD='T0psecret'`
+            </td>
+            <td>
+            </td>
+            <td>PICODATA_ADMIN_PASSWORD</td>
+        </tr>
         <tr>
             <td class="center"><span class="instance">admin-sock</span></td>
             <td>Путь к unix-сокету для подключения к консоли администратора</td>
@@ -160,11 +187,27 @@ td.td3 ul {
             <td>PICODATA_AUDIT_LOG</td>
         </tr>
         <tr>
+            <td class="center"><span class="instance">auth-type</span></td>
+            <td>Метод аутентификации</td>
+            <td>md5</td>
+            <td>[picodata expel --auth-type](cli.md#expel_auth_type)</td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr>
             <td class="center"><span class="instance">boot_timeout</span></td>
             <td>Время, в течение которого инстанс ожидает загрузки перед присоединением к кластеру (с)</td>
             <td>7200</td>
             <td>[picodata run -c instance.boot_timeout=3600](cli.md#run_config_parameter)</td>
             <td>[instance.boot.timeout](config.md#instance_boot_timeout)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td class="center"><span class="cluster">bucket_count</span></td>
+            <td>Число сегментов в тире</td>
+            <td>3000</td>
+            <td></td>
+            <td>[cluster.tier.<tier_name\>.bucket_count](config.md#cluster_tier_tier_bucket_count)</td>
             <td></td>
         </tr>
         <tr>
@@ -182,6 +225,14 @@ td.td3 ul {
             <td>[picodata run --config-parameter](cli.md#run_config_parameter)</td>
             <td></td>
             <td>PICODATA_CONFIG_PARAMETERS</td>
+        </tr>
+        <tr>
+            <td class="center"><span class="cluster">default_bucket_count</span></td>
+            <td>Число сегментов в кластере по умолчанию</td>
+            <td>3000</td>
+            <td></td>
+            <td>[cluster.default_bucket_count](config.md#cluster_default_bucket_count)</td>
+            <td></td>
         </tr>
         <tr>
             <td class="center"><span class="instance">failure-domain</span></td>
@@ -264,6 +315,14 @@ td.td3 ul {
             <td>PICODATA_MEMTX_MEMORY</td>
         </tr>
         <tr>
+            <td class="center"><span class="instance">password-file</span></td>
+            <td>Путь к файлу с паролем указанного пользователя</td>
+            <td>null</td>
+            <td>[picodata expel --password-file](cli.md#expel_password_file)</td>
+            <td></td>
+            <td>PICODATA_PASSWORD_FILE</td>
+        </tr>
+        <tr>
             <td class="center"><span class="instance">peer</span></td>
             <td>Список сетевых адресов других инстансов, разделенных запятыми</td>
             <td>- 127.0.0.1:3301</td>
@@ -294,12 +353,31 @@ td.td3 ul {
             <td>PICODATA_PG_LISTEN</td>
         </tr>
         <tr>
+            <td class="center"><span class="instance">pg.ssl</span></td>
+            <td>Признак использования протокола SSL при подключении к SQL-консоли</td>
+            <td>false</td>
+            <td>[picodata run -c instance.pg.ssl=true](cli.md#run_config_parameter)</td>
+            <td>[instance.pg.ssl](config.md#instance_pg_ssl)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td class="center"><span class="instance">replicaset-name</span></td>
             <td>Имя репликасета. Используется при инициализации кластера и присоединении инстанса к уже существующему кластеру</td>
             <td>null</td>
             <td>[picodata run --replicaset-name](cli.md#run_replicaset_name)</td>
             <td>[instance.replicaset_name](config.md#instance_replicaset_name)</td>
             <td>PICODATA_REPLICASET_NAME</td>
+        </tr>
+        <tr>
+            <td class="center"><span class="instance">service-password-file</span></td>
+            <td>Путь к текстовому файлу с паролем для системного пользователя pico_service</td>
+            <td>null</td>
+            <td>
+            [picodata plugin configure --service-password-file](cli.md#plugin_configure_service_password_file)<br>
+            [picodata status --service-password-file](cli.md#status_service_password_file)
+            </td>
+            <td></td>
+            <td>PICODATA_SERVICE_PASSWORD_FILE</td>
         </tr>
         <tr>
             <td class="center"><span class="instance">script</span></td>
@@ -332,57 +410,6 @@ td.td3 ul {
             <td>[picodata run --tier](cli.md#run_tier)</td>
             <td>[instance.tier](config.md#instance_tier)</td>
             <td>PICODATA_SHREDDING</td>
-        </tr>
-        <tr>
-            <td class="center"><span class="instance">auth-type</span></td>
-            <td>Метод аутентификации</td>
-            <td>md5</td>
-            <td>[picodata expel --auth-type](cli.md#expel_auth_type)</td>
-            <td></td>
-            <td></td>
-        </tr>
-        <tr>
-            <td class="center"><span class="instance">password-file</span></td>
-            <td>Путь к файлу с паролем указанного пользователя</td>
-            <td>null</td>
-            <td>[picodata expel --password-file](cli.md#expel_password_file)</td>
-            <td></td>
-            <td>PICODATA_PASSWORD_FILE</td>
-        </tr>        
-        <tr>
-            <td class="center"><span class="instance">service-password-file</span></td>
-            <td>Путь к текстовому файлу с паролем для системного пользователя pico_service</td>
-            <td>null</td>
-            <td>
-            [picodata plugin configure --service-password-file](cli.md#plugin_configure_service_password_file)<br>
-            [picodata status --service-password-file](cli.md#status_service_password_file)
-            </td>
-            <td></td>
-            <td>PICODATA_SERVICE_PASSWORD_FILE</td>
-        </tr>
-        <tr>
-            <td class="center"><span class="cluster">default_bucket_count</span></td>
-            <td>Число сегментов в кластере по умолчанию</td>
-            <td>3000</td>
-            <td></td>
-            <td>[cluster.default_bucket_count](config.md#cluster_default_bucket_count)</td>
-            <td></td>
-        </tr>
-        <tr>
-            <td class="center"><span class="cluster">bucket_count</span></td>
-            <td>Число сегментов в тире</td>
-            <td>3000</td>
-            <td></td>
-            <td>[cluster.tier.<tier_name\>.bucket_count](config.md#cluster_tier_tier_bucket_count)</td>
-            <td></td>
-        </tr>
-        <tr>
-            <td class="center"><span class="instance">pg.ssl</span></td>
-            <td>Признак использования протокола SSL при подключении к SQL-консоли</td>
-            <td>false</td>
-            <td>[picodata run -c instance.pg.ssl=true](cli.md#run_config_parameter)</td>
-            <td>[instance.pg.ssl](config.md#instance_pg_ssl)</td>
-            <td></td>
         </tr>
         <tr>
             <td class="center"><span class="instance">vinyl.bloom_fpr</span></td>
@@ -478,10 +505,10 @@ td.td3 ul {
 <table markdown="span">
     <thead>
         <tr>
-            <th class="heading" style="width:27%">Название</th>
-            <th class="heading" style="width:20%">Описание</th>
-            <th class="heading">Значение по умолчанию</th>
-            <th class="heading" style="width:45%">Пример SQL-команды</th>
+            <th style="width:27%">Название</th>
+            <th style="width:20%">Описание</th>
+            <th>Значение по умолчанию</th>
+            <th style="width:45%">Пример SQL-команды</th>
         </tr>
     </thead>
     <tbody>
@@ -586,6 +613,36 @@ td.td3 ul {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-tier">[iproto_net_msg_max](db_config.md#iproto_net_msg_max){.link}</span></td>
+            <td>Максимальное количество сообщений, которое Picodata обрабатывает параллельно</td>
+            <td>0x300</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET iproto_net_msg_max = 0x400 FOR TIER default;
+            ```
+            </td>
+        </tr>
+        <tr>
+            <td><span class="sql-tier">[memtx_checkpoint_count](db_config.md#memtx_checkpoint_count){.link}</span></td>
+            <td>Максимальное количество снапшотов, хранящихся в директории `memtx_dir`</td>
+            <td>2</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR TIER default;
+            ```
+            </td>
+        </tr>
+        <tr>
+            <td><span class="sql-tier">[memtx_checkpoint_interval](db_config.md#memtx_checkpoint_interval){.link}</span></td>
+            <td>Период активности службы создания снапшотов (checkpoint daemon) в секундах</td>
+            <td>3600.0</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET memtx_checkpoint_interval= 7200.0 FOR TIER default;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-cluster">[pg_portal_max](db_config.md#pg_portal_max){.link}</span></td>
             <td>Размер хранилища порталов PostgreSQL</td>
             <td>1024</td>
@@ -682,36 +739,6 @@ td.td3 ul {
             <td>
             ```sql
             ALTER SYSTEM SET sql_vdbe_opcode_max = 90000;
-            ```
-            </td>
-        </tr>
-        <tr>
-            <td><span class="sql-tier">[iproto_net_msg_max](db_config.md#iproto_net_msg_max){.link}</span></td>
-            <td>Максимальное количество сообщений, которое Picodata обрабатывает параллельно</td>
-            <td>0x300</td>
-            <td>
-            ```sql
-            ALTER SYSTEM SET iproto_net_msg_max = 0x400 FOR TIER default;
-            ```
-            </td>
-        </tr>
-        <tr>
-            <td><span class="sql-tier">[memtx_checkpoint_count](db_config.md#memtx_checkpoint_count){.link}</span></td>
-            <td>Максимальное количество снапшотов, хранящихся в директории `memtx_dir`</td>
-            <td>2</td>
-            <td>
-            ```sql
-            ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR TIER default;
-            ```
-            </td>
-        </tr>
-        <tr>
-            <td><span class="sql-tier">[memtx_checkpoint_interval](db_config.md#memtx_checkpoint_interval){.link}</span></td>
-            <td>Период активности службы создания снапшотов (checkpoint daemon) в секундах</td>
-            <td>3600.0</td>
-            <td>
-            ```sql
-            ALTER SYSTEM SET memtx_checkpoint_interval= 7200.0 FOR TIER default;
             ```
             </td>
         </tr>
