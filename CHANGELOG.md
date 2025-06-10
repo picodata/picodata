@@ -14,6 +14,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 
+### Plugin API
+
+- The `authentication` function has been introduced, which determines the authentication method automatically.
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI

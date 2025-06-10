@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::error_code::ErrorCode;
+use crate::auth::Error as AuthError;
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
@@ -459,4 +459,21 @@ pub extern "C" fn pico_ffi_background_set_jobs_shutdown_timeout(
     );
 
     0
+}
+
+/// See [`crate::auth::authenticate`] for more information.
+#[no_mangle]
+#[sabi_extern_fn]
+pub extern "C" fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes) -> i32 {
+    // SAFETY: data outlives this function call
+    let name = unsafe { name.as_str() };
+    let password = unsafe { password.as_bytes() };
+
+    match crate::auth::authenticate(name, password, None) {
+        Ok(_) => 0,
+        Err(e) => {
+            e.into_box_error().set_last();
+            -1
+        }
+    }
 }

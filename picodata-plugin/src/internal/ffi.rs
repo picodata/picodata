@@ -5,8 +5,7 @@ use crate::metrics::FfiMetricsHandler;
 use crate::sql::types::SqlValue;
 use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
 use crate::transport::rpc::server::FfiRpcHandler;
-use crate::util::FfiSafeBytes;
-use crate::util::FfiSafeStr;
+use crate::util::{FfiSafeBytes, FfiSafeStr};
 use abi_stable::derive_macro_reexports::{ROption, RResult};
 use abi_stable::std_types::{RDuration, RVec};
 use abi_stable::RTuple;
@@ -79,4 +78,7 @@ extern "C" {
         version: FfiSafeStr,
         timeout: f64,
     ) -> i32;
+
+    /// See [`crate::internal::authenticate`] wrapper for more information.
+    pub fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes) -> i32;
 }

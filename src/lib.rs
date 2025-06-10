@@ -49,6 +49,7 @@ use config::PicodataConfig;
 mod access_control;
 pub mod address;
 pub mod audit;
+pub mod auth;
 mod bootstrap_entries;
 pub mod cas;
 pub mod cbus;

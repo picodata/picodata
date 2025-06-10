@@ -1,3 +1,4 @@
+use crate::auth;
 use crate::pgproto::error::{AuthError, PgError};
 use crate::pgproto::stream::{FeMessage, PgStream};
 use crate::pgproto::{error::PgResult, messages};
@@ -5,32 +6,9 @@ use crate::storage::Catalog;
 use crate::tlog;
 use pgwire::messages::startup::PasswordMessageFamily;
 use smol_str::{format_smolstr, ToSmolStr};
-use std::{io, os::raw::c_int};
+use std::io;
 use tarantool::auth::AuthMethod;
 use tarantool::error::BoxError;
-
-extern "C" {
-    /// pointers must have valid and non-null values, salt must be at least 20 bytes
-    #[link_name = "authenticate"]
-    fn authenticate_raw(
-        user: *const u8,
-        user_len: u32,
-        salt: *const u8,
-        auth_info: *const u8,
-    ) -> c_int;
-}
-
-/// Build auth_info that is used by authenticate_raw.
-fn build_auth_info(client_pass: &str, auth_method: &AuthMethod) -> Vec<u8> {
-    let auth_packet = [auth_method.as_str(), client_pass];
-
-    // mp_sizeof(["md5", md5-hash]) == 42,
-    // but it may vary if we get a non md5 password.
-    let mut result = Vec::with_capacity(42);
-    rmp_serde::encode::write(&mut result, &auth_packet).unwrap();
-
-    result
-}
 
 /// Perform authentication, throwing [`PgError::AuthError`] if it failed.
 pub fn do_authenticate(
@@ -39,41 +17,25 @@ pub fn do_authenticate(
     client_pass: &str,
     auth_method: AuthMethod,
 ) -> Result<(), AuthError> {
-    let auth_info = build_auth_info(client_pass, &auth_method);
+    let mut auth_salt = [0u8; auth::SALT_MIN_LEN];
+    auth_salt[0..4].copy_from_slice(&salt);
 
-    // Tarantool requires that the salt array contains no less than 20 bytes!
-    let mut extended_salt = [0u8; 20];
-    extended_salt[0..4].copy_from_slice(&salt);
+    auth::authenticate_inner(user, client_pass, auth_salt, auth_method).map_err(|_| {
+        let mut extra = None;
+        if auth_method == AuthMethod::Ldap {
+            let error = BoxError::maybe_last()
+                .err()
+                .map(|s| s.message().to_smolstr())
+                .unwrap_or_else(|| format_smolstr!("unknown error"));
 
-    // SAFETY: pointers have valid and non-null values, salt has at least 20 bytes.
-    let ret = unsafe {
-        authenticate_raw(
-            user.as_ptr(),
-            user.len() as u32,
-            extended_salt.as_ptr(),
-            auth_info.as_ptr(),
-        )
-    };
-
-    match ret {
-        0 => Ok(()),
-        _ => {
-            let mut extra = None;
-            if auth_method == AuthMethod::Ldap {
-                let error = BoxError::maybe_last()
-                    .err()
-                    .map(|s| s.message().to_smolstr())
-                    .unwrap_or_else(|| format_smolstr!("unknown error"));
-
-                extra = Some(format_smolstr!("LDAP: {error}"));
-            }
-
-            Err(AuthError {
-                user: user.into(),
-                extra,
-            })
+            extra = Some(format_smolstr!("LDAP: {error}"));
         }
-    }
+
+        AuthError {
+            user: user.into(),
+            extra,
+        }
+    })
 }
 
 fn extract_password(message: PasswordMessageFamily) -> String {

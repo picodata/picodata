@@ -7,6 +7,7 @@ import msgpack  # type: ignore
 import os
 import hashlib
 from pathlib import Path
+from framework.ldap import is_glauth_available, LdapServer
 
 from conftest import (
     Cluster,
@@ -2887,6 +2888,35 @@ def test_sdk_background(cluster: Cluster):
     PluginReflection.assert_persisted_data_exists("background_job_stopped", i1)
 
     PluginReflection.clear_persisted_data(i1)
+
+
+@pytest.mark.skipif(
+    not is_glauth_available(),
+    reason="need installed glauth",
+)
+def test_sdk_authentication(cluster: Cluster, ldap_server: LdapServer):
+    inst = cluster.add_instance(wait_online=False)
+
+    inst.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
+    inst.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+
+    inst.start()
+    inst.wait_online()
+
+    inst.sql("CREATE USER first WITH PASSWORD 'F1rstUs3r' USING MD5")
+    inst.sql("GRANT READ ON TABLE _pico_user TO first", sudo=True)
+    inst.sql("CREATE USER second WITH PASSWORD 'S3condUs3r' USING CHAP-SHA1")
+    inst.sql("GRANT READ ON TABLE _pico_user TO second", sudo=True)
+    inst.sql(f"CREATE USER {ldap_server.user} USING LDAP")
+    inst.sql(f"GRANT READ ON TABLE _pico_user TO {ldap_server.user}", sudo=True)
+
+    install_and_enable_plugin(
+        inst,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
+        default_config={"test_type": "authentication"},
+    )
 
 
 def test_sql_interface(cluster: Cluster):
