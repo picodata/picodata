@@ -604,13 +604,13 @@ fn front_sql_check_single_quotes_are_escaped() {
 fn front_sql_check_arbitraty_utf_in_identifiers() {
     let input = r#"SELECT "id" "from", "id" as "select", "id"
                                "123»&%ښ۞@Ƶǖselect.""''\\"
-                                , "id" aц1&@$Ƶǖ%^&«»§&%ښ۞@Ƶǖ FROM "test_space" &%ښ۞@Ƶǖ"#;
+                                , "id" aц1&@$Ƶǖ^&«»§&ښ۞@Ƶǖ FROM "test_space" &ښ۞@Ƶǖ"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("&%ښ۞@ƶǖ"."id"::unsigned -> "from", "&%ښ۞@ƶǖ"."id"::unsigned -> "select", "&%ښ۞@ƶǖ"."id"::unsigned -> "123»&%ښ۞@Ƶǖselect.""''\\", "&%ښ۞@ƶǖ"."id"::unsigned -> "aц1&@$ƶǖ%^&«»§&%ښ۞@ƶǖ")
-        scan "test_space" -> "&%ښ۞@ƶǖ"
+    projection ("&ښ۞@ƶǖ"."id"::unsigned -> "from", "&ښ۞@ƶǖ"."id"::unsigned -> "select", "&ښ۞@ƶǖ"."id"::unsigned -> "123»&%ښ۞@Ƶǖselect.""''\\", "&ښ۞@ƶǖ"."id"::unsigned -> "aц1&@$ƶǖ^&«»§&ښ۞@ƶǖ")
+        scan "test_space" -> "&ښ۞@ƶǖ"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

@@ -2033,7 +2033,10 @@ fn parse_param<M: Metadata>(
 lazy_static::lazy_static! {
     static ref PRATT_PARSER: PrattParser<Rule> = {
         use pest::pratt_parser::{Assoc::Left, Op};
-        use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq, In, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Multiply, NotEq, Or, Subtract, UnaryNot};
+        use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq,
+            In, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Modulo, Multiply,
+            NotEq, Or, Subtract, UnaryNot
+        };
 
         // Precedence is defined lowest to highest.
         PrattParser::new()
@@ -2051,7 +2054,7 @@ lazy_static::lazy_static! {
                 | Op::infix(LtEq, Left) | Op::infix(In, Left)
             )
             .op(Op::infix(Add, Left) | Op::infix(Subtract, Left))
-            .op(Op::infix(Multiply, Left) | Op::infix(Divide, Left) | Op::infix(ConcatInfixOp, Left))
+            .op(Op::infix(Multiply, Left) | Op::infix(Divide, Left) | Op::infix(ConcatInfixOp, Left) | Op::infix(Modulo, Left))
             .op(Op::postfix(IsPostfix))
             .op(Op::postfix(CastPostfix))
     };
@@ -4056,6 +4059,7 @@ where
                 }
                 Rule::Subtract      => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Subtract),
                 Rule::Divide        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Divide),
+                Rule::Modulo        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Modulo),
                 Rule::Multiply      => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Multiply),
                 Rule::Add        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Add),
                 Rule::ConcatInfixOp => ParseExpressionInfixOperator::Concat,

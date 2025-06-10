@@ -30,11 +30,17 @@ VALUES (1, 1, 1, 1, 1, 1, 1, false, '123', 4.599999),
         (10, 10, 10, 10, 10, 10, 10, false, '123', 4.599999);
 
 
--- TEST: test_arithmetic_invalid1-1
+-- TEST: test-arithmetic-modulo-1
 -- SQL:
 select "id" from "arithmetic_space" where "id" % 2 > 0
--- ERROR:
-rule parsing error
+-- EXPECTED:
+1, 3, 5, 7, 9
+
+-- TEST: test-arithmetic-modulo-2
+-- SQL:
+select "id" % 2 from "arithmetic_space"
+-- EXPECTED:
+1, 0, 1, 0, 1, 0, 1, 0, 1, 0
 
 -- TEST: test_arithmetic_invalid1-2
 -- SQL:
@@ -99,12 +105,6 @@ rule parsing error
 -- TEST: test_arithmetic_invalid2-2
 -- SQL:
 select ("id" + "a") as "alias1" + "b" as "alias2" from "arithmetic_space"
--- ERROR:
-rule parsing error
-
--- TEST: test_arithmetic_invalid2-3
--- SQL:
-select "id" % 2 from "arithmetic_space"
 -- ERROR:
 rule parsing error
 
@@ -820,3 +820,69 @@ select "a"+"b" from "arithmetic_space"
 select ("a"+"b") from "arithmetic_space"
 -- EXPECTED:
 3, 6, 9, 12, 15, 18, 21, 24, 27, 30
+
+-- TEST: modulo-precedence-1
+-- SQL:
+SELECT 3 * 7 % 3
+-- EXPECTED:
+0
+
+-- TEST: modulo-precedence-2
+-- SQL:
+SELECT 21 / 7 % 3
+-- EXPECTED:
+0
+
+-- TEST: modulo-precedence-3
+-- SQL:
+SELECT 3 + 7 % 3
+-- EXPECTED:
+4
+
+-- TEST: modulo-precedence-4
+-- SQL:
+SELECT 3 - 7 % 3
+-- EXPECTED:
+2
+
+-- TEST: modulo-precedence-5
+-- SQL:
+SELECT 7 % 3 * 3
+-- EXPECTED:
+3
+
+-- TEST: modulo-precedence-6
+-- SQL:
+SELECT 7 % 3 / 3
+-- EXPECTED:
+0
+
+-- TEST: modulo-int
+-- SQL:
+SELECT -7 % 3
+-- EXPECTED:
+-1
+
+-- TEST: modulo-unsigned
+-- SQL:
+SELECT 7 % 3
+-- EXPECTED:
+1
+
+-- TEST: modulo-numeric-1
+-- SQL:
+SELECT 7.0 % 3
+-- ERROR:
+could not resolve operator overload for %(numeric, unsigned)
+
+-- TEST: modulo-numeric-2
+-- SQL:
+SELECT 7 % 3.0
+-- ERROR:
+could not resolve operator overload for %(unsigned, numeric)
+
+-- TEST: modulo-numeric-3
+-- SQL:
+SELECT 7.0 % 3.0
+-- ERROR:
+could not resolve operator overload for %(numeric, numeric)

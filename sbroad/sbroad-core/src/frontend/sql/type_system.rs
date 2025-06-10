@@ -422,11 +422,13 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("-", [Unsigned, Unsigned], Integer),
         Function::new_operator("/", [Unsigned, Unsigned], Integer),
         Function::new_operator("*", [Unsigned, Unsigned], Integer),
+        Function::new_operator("%", [Unsigned, Unsigned], Integer),
         // - int
         Function::new_operator("+", [Integer, Integer], Integer),
         Function::new_operator("-", [Integer, Integer], Integer),
         Function::new_operator("/", [Integer, Integer], Integer),
         Function::new_operator("*", [Integer, Integer], Integer),
+        Function::new_operator("%", [Integer, Integer], Integer),
         // - double
         Function::new_operator("+", [Double, Double], Double),
         Function::new_operator("-", [Double, Double], Double),

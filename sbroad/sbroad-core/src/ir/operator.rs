@@ -108,6 +108,8 @@ impl Display for Bool {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Arithmetic {
+    /// `%`
+    Modulo,
     /// `*`
     Multiply,
     /// `/`
@@ -125,6 +127,7 @@ impl Arithmetic {
     /// Returns `SbroadError` when the operator is invalid.
     pub fn from(s: &str) -> Result<Self, SbroadError> {
         match s.to_lowercase().as_str() {
+            "%" => Ok(Arithmetic::Modulo),
             "*" => Ok(Arithmetic::Multiply),
             "/" => Ok(Arithmetic::Divide),
             "+" => Ok(Arithmetic::Add),
@@ -138,6 +141,7 @@ impl Arithmetic {
             Arithmetic::Add => "+",
             Arithmetic::Subtract => "-",
             Arithmetic::Divide => "/",
+            Arithmetic::Modulo => "%",
             Arithmetic::Multiply => "*",
         }
     }

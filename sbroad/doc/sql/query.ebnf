@@ -46,7 +46,7 @@ expression  ::= ('NOT'* (
                 | expression
                 (
                     'NOT'? 'BETWEEN' expression 'AND'
-                    | ('+' | '-' | '*' | '/')
+                    | ('+' | '-' | '*' | '/' | '%')
                     | ('<>' | '!=' | '>=' | '>' | '<=' | '<' | '=' | 'NOT'? 'IN')
                     | '||'
                     | 'AND'
