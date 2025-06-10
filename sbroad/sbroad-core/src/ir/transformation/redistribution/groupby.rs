@@ -10,9 +10,7 @@ use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference};
-use crate::ir::transformation::redistribution::{
-    MotionKey, MotionPolicy, Program, Strategy, Target,
-};
+use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use std::collections::HashMap;
@@ -1260,7 +1258,6 @@ impl Plan {
 
     fn add_motion_to_two_stage(
         &mut self,
-        groupby_info: &Option<GroupByInfo>,
         finals_child_id: NodeId,
         finals: &[NodeId],
     ) -> Result<(), SbroadError> {
@@ -1270,54 +1267,31 @@ impl Plan {
             unreachable!("Projection should be the first node in reduce stage")
         }
 
-        //  `finals_child_id`` is final GroupBy or a local Projection.
+        // In case we have final GroupBy, then `finals_child_id`` is final GroupBy.
         let finals_child_node = self.get_relation_node(finals_child_id)?;
-        let has_local_group_by = matches!(finals_child_node, Relational::GroupBy(_));
 
-        if let Relational::GroupBy(GroupBy { children, .. }) = finals_child_node {
-            let final_group_by_child_id = *children.first().unwrap_or_else(|| {
-                unreachable!("final GroupBy ({finals_child_id:?}) should have children")
-            });
+        let (finals_last_id, finals_last_child_id) =
+            if let Relational::GroupBy(GroupBy { children, .. }) = finals_child_node {
+                // Final GroupBy exists.
+                let final_group_by_child_id = *children.first().unwrap_or_else(|| {
+                    unreachable!("final GroupBy ({finals_child_id:?}) should have children")
+                });
+                (finals_child_id, final_group_by_child_id)
+            } else {
+                // No final GroupBy.
+                (*finals.last().unwrap(), finals_child_id)
+            };
 
-            let groupby_info = groupby_info.as_ref().expect("GroupBy should exists");
-            let grouping_positions: &Vec<usize> = &groupby_info.reduce_info.grouping_positions;
+        let mut strategy = Strategy::new(finals_last_id);
+        strategy.add_child(finals_last_child_id, MotionPolicy::Full, Program::default());
+        self.create_motion_nodes(strategy)?;
 
-            let mut strategy = Strategy::new(finals_child_id);
-            strategy.add_child(
-                final_group_by_child_id,
-                MotionPolicy::Segment(MotionKey {
-                    targets: grouping_positions
-                        .iter()
-                        .map(|x| Target::Reference(*x))
-                        .collect::<Vec<Target>>(),
-                }),
-                Program::default(),
-            );
-            self.create_motion_nodes(strategy)?;
-
-            // When we created final GroupBy we didn't set its distribution, because its
-            // actual child (Motion) wasn't created yet.
-            self.set_distribution(self.get_relational_output(finals_child_id)?)?;
-        } else {
-            // No final GroupBy.
-            let last_final_id = *finals.last().unwrap();
-            let mut strategy = Strategy::new(last_final_id);
-            strategy.add_child(finals_child_id, MotionPolicy::Full, Program::default());
-            self.create_motion_nodes(strategy)?;
-
-            self.set_dist(
-                self.get_relational_output(final_proj_id)?,
-                Distribution::Single,
-            )?;
-        }
-
-        // Set distribution to final outputs (except Projection).
-        for node_id in finals.iter().skip(1).rev() {
-            self.set_distribution(self.get_relational_output(*node_id)?)?;
-        }
-        if has_local_group_by {
-            // In case we've added final GroupBy we set distribution based on it.
-            self.set_distribution(self.get_relational_output(final_proj_id)?)?;
+        self.set_dist(
+            self.get_relational_output(finals_last_id)?,
+            Distribution::Single,
+        )?;
+        for node_id in finals {
+            self.set_dist(self.get_relational_output(*node_id)?, Distribution::Single)?;
         }
 
         Ok(())
@@ -1492,7 +1466,7 @@ impl Plan {
             &scalar_sqs_to_fix,
         )?;
 
-        self.add_motion_to_two_stage(&groupby_info, finals_child_id, &finals)?;
+        self.add_motion_to_two_stage(finals_child_id, &finals)?;
 
         self.fix_subqueries_under_having(&finals)?;
 

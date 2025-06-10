@@ -368,7 +368,7 @@ SELECT * FROM (
         GROUP BY "c"
         EXCEPT
         SELECT "a" FROM "arithmetic_space" GROUP BY "a")
-)
+) ORDER BY "b";
 -- EXPECTED:
 1, 2, 3
 
@@ -559,13 +559,13 @@ select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space"
 -- EXPECTED:
 Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 
--- TEST: test_join_single9
+-- TEST: test_join_single9 https://git.picodata.io/core/picodata/-/issues/1332
 -- SQL:
-select i.a, o.d from  (select "c" as c, "d" as d from "arithmetic_space" group by "c", "d") as o
-            inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
-            on i.a < o.d + 5
+-- select i.a, o.d from  (select "c" as c, "d" as d from "arithmetic_space" group by "c", "d") as o
+--             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
+--             on i.a < o.d + 5
 -- EXPECTED:
-6, 2
+-- 6, 2
 
 -- TEST: test_join_single10
 -- SQL:

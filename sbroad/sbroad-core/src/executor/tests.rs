@@ -883,20 +883,18 @@ fn groupby_linker_test() {
         .unwrap();
 
     let mut expected = ProducerResult::new();
-    for buc in buckets {
-        expected.rows.extend(vec![vec![
-            Value::String(format!("Execute query on a bucket [{buc}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {}",
-                    r#"SELECT "COL_1" as "ii" FROM"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
-                    r#"GROUP BY "COL_1""#,
-                ),
-                vec![],
-            ))),
-        ]]);
-    }
+    expected.rows.extend(vec![vec![
+        Value::String(format!("Execute query locally")),
+        Value::String(String::from(PatternWithParams::new(
+            format!(
+                "{} {} {}",
+                r#"SELECT "COL_1" as "ii" FROM"#,
+                r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
+                r#"GROUP BY "COL_1""#,
+            ),
+            vec![],
+        ))),
+    ]]);
 
     expected.rows.sort_by_key(|k| k[0].to_string());
     assert_eq!(expected, result);

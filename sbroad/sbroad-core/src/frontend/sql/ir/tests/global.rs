@@ -992,7 +992,7 @@ fn front_sql_global_union_all3() {
                 union all
                     projection ("global_t"."a"::integer -> "a")
                         scan "global_t"
-                    motion [policy: segment([ref("col_1")])]
+                    motion [policy: local]
                         projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                             motion [policy: full]
                                 projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
@@ -1093,7 +1093,7 @@ fn front_sql_global_union2() {
         union
             projection ("global_t"."a"::integer -> "a")
                 scan "global_t"
-            motion [policy: segment([ref("col_1")])]
+            motion [policy: local]
                 projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                     motion [policy: full]
                         projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")

@@ -260,19 +260,14 @@ fn front_sql_join_single_left_3() {
 
 #[test]
 fn front_sql_join_single_left_4() {
-    // Inner child here will have distribution Segment, while outer child will have
+    // Inner child here will have distribution Full, outer child will have
     // Distribution::Single
     let input = r#"SELECT * from (select cast(sum("a") as unsigned) as a, cast(sum("b") as unsigned) as b from "t") as o 
         inner join (select "a" as c, "b" as d from "t" group by "a", "b") as i
         on (o.a, o.b) = (i.c, i.d) and o.a in (select "a" from "t")
     "#;
 
-    check_join_motions(
-        input,
-        Policy::new_seg(&["a", "b"]),
-        Policy::None,
-        Some(vec![Policy::Full]),
-    );
+    check_join_motions(input, Policy::None, Policy::None, Some(vec![Policy::Full]));
 }
 
 #[test]

@@ -69,14 +69,12 @@ fn group_by() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 555
-        motion [policy: full]
-            limit 555
-                projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
-                    group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-                        motion [policy: segment([ref("gr_expr_1")])]
-                            projection ("t"."b"::unsigned -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
-                                group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
-                                    scan "t"
+        projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
+            group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
+                motion [policy: full]
+                    projection ("t"."b"::unsigned -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
+                        group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
+                            scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

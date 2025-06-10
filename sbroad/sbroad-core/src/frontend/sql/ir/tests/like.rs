@@ -92,7 +92,7 @@ fn like_explain3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::boolean -> "col_1")
         group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string -> "gr_expr_1")
                     group by ("t1"."a"::string LIKE "t1"."a"::string ESCAPE '\'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"
@@ -142,7 +142,7 @@ fn ilike_explain() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::boolean -> "col_1")
         group by ("gr_expr_1"::boolean) output: ("gr_expr_1"::boolean -> "gr_expr_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string -> "gr_expr_1")
                     group by (lower(("t1"."a"::string))::string LIKE lower(("t1"."a"::string))::string ESCAPE 'x'::string) output: ("t1"."a"::string -> "a", "t1"."bucket_id"::unsigned -> "bucket_id", "t1"."b"::integer -> "b")
                         scan "t1"

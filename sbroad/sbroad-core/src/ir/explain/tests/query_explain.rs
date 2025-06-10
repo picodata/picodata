@@ -192,7 +192,7 @@ fn test_query_explain_11() {
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("gr_expr_1"::string -> "a", sum(("count_1"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::string) output: ("gr_expr_1"::string -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("a"::string -> "gr_expr_1", count(("b"::integer))::unsigned -> "count_1")
                     group by ("a"::string) output: ("e"::unsigned -> "e", "f"::unsigned -> "f", "a"::string -> "a", "b"::integer -> "b")
                         join on "e"::unsigned = "b"::integer
@@ -208,7 +208,7 @@ fn test_query_explain_11() {
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
-    buckets = unknown
+    buckets <= [62,2132]
     "#);
 }
 

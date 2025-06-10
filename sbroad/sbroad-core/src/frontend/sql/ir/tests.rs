@@ -1287,7 +1287,7 @@ fn front_sql_groupby() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::integer -> "identification_number", "gr_expr_2"::string -> "product_code")
         group by ("gr_expr_1"::integer, "gr_expr_2"::string) output: ("gr_expr_1"::integer -> "gr_expr_1", "gr_expr_2"::string -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("hash_testing"."identification_number"::integer -> "gr_expr_1", "hash_testing"."product_code"::string -> "gr_expr_2")
                     group by ("hash_testing"."identification_number"::integer, "hash_testing"."product_code"::string) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
                         scan "hash_testing"
@@ -1309,7 +1309,7 @@ fn front_sql_groupby_less_cols_in_proj() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::integer -> "identification_number")
         group by ("gr_expr_1"::integer, "gr_expr_2"::boolean) output: ("gr_expr_1"::integer -> "gr_expr_1", "gr_expr_2"::boolean -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("hash_testing"."identification_number"::integer -> "gr_expr_1", "hash_testing"."product_units"::boolean -> "gr_expr_2")
                     group by ("hash_testing"."identification_number"::integer, "hash_testing"."product_units"::boolean) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
                         scan "hash_testing"
@@ -1330,12 +1330,13 @@ fn front_sql_groupby_union_1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("gr_expr_1"::integer -> "identification_number")
-            group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
-                motion [policy: segment([ref("gr_expr_1")])]
-                    projection ("hash_testing"."identification_number"::integer -> "gr_expr_1")
-                        group by ("hash_testing"."identification_number"::integer) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
-                            scan "hash_testing"
+        motion [policy: local]
+            projection ("gr_expr_1"::integer -> "identification_number")
+                group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
+                    motion [policy: full]
+                        projection ("hash_testing"."identification_number"::integer -> "gr_expr_1")
+                            group by ("hash_testing"."identification_number"::integer) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
+                                scan "hash_testing"
         projection ("hash_testing"."identification_number"::integer -> "identification_number")
             scan "hash_testing"
     execution options:
@@ -1361,12 +1362,13 @@ fn front_sql_groupby_union_2() {
         projection ("identification_number"::integer -> "identification_number")
             scan
                 union all
-                    projection ("gr_expr_1"::integer -> "identification_number")
-                        group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
-                            motion [policy: segment([ref("gr_expr_1")])]
-                                projection ("hash_testing"."identification_number"::integer -> "gr_expr_1")
-                                    group by ("hash_testing"."identification_number"::integer) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
-                                        scan "hash_testing"
+                    motion [policy: local]
+                        projection ("gr_expr_1"::integer -> "identification_number")
+                            group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
+                                motion [policy: full]
+                                    projection ("hash_testing"."identification_number"::integer -> "gr_expr_1")
+                                        group by ("hash_testing"."identification_number"::integer) output: ("hash_testing"."identification_number"::integer -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::boolean -> "product_units", "hash_testing"."sys_op"::unsigned -> "sys_op", "hash_testing"."bucket_id"::unsigned -> "bucket_id")
+                                            scan "hash_testing"
                     projection ("hash_testing"."identification_number"::integer -> "identification_number")
                         scan "hash_testing"
     execution options:
@@ -1388,7 +1390,7 @@ fn front_sql_groupby_join_1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::string -> "product_code", "gr_expr_2"::boolean -> "product_units")
         group by ("gr_expr_1"::string, "gr_expr_2"::boolean) output: ("gr_expr_1"::string -> "gr_expr_1", "gr_expr_2"::boolean -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("t2"."product_code"::string -> "gr_expr_1", "t2"."product_units"::boolean -> "gr_expr_2")
                     group by ("t2"."product_code"::string, "t2"."product_units"::boolean) output: ("t2"."product_units"::boolean -> "product_units", "t2"."product_code"::string -> "product_code", "t2"."identification_number"::integer -> "identification_number", "t"."id"::unsigned -> "id")
                         join on "t2"."identification_number"::integer = "t"."id"::unsigned
@@ -1491,7 +1493,7 @@ fn front_sql_groupby_insert() {
         motion [policy: segment([value(NULL), ref("d")])]
             projection ("gr_expr_1"::unsigned -> "b", "gr_expr_2"::unsigned -> "d")
                 group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-                    motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+                    motion [policy: full]
                         projection ("t"."b"::unsigned -> "gr_expr_1", "t"."d"::unsigned -> "gr_expr_2")
                             group by ("t"."b"::unsigned, "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                                 scan "t"
@@ -1537,7 +1539,7 @@ fn front_sql_aggregates() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(("count_1"::unsigned))::unsigned + sum(("count_2"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_2"::unsigned -> "count_2", "count_1"::unsigned -> "count_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", count(("t"."b"::unsigned))::unsigned -> "count_2", count(("t"."a"::unsigned))::unsigned -> "count_1")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -1555,7 +1557,7 @@ fn front_sql_distinct_asterisk() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "id", "gr_expr_2"::unsigned -> "id")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("id"::unsigned -> "gr_expr_1", "id"::unsigned -> "gr_expr_2")
                     group by ("id"::unsigned, "id"::unsigned) output: ("id"::unsigned -> "id", "id"::unsigned -> "id")
                         join on true::boolean
@@ -1701,7 +1703,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "id", group_concat(("group_concat_1"::string, ','::string))::string -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "group_concat_1"::string -> "group_concat_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("test_space"."id"::unsigned -> "gr_expr_1", group_concat(("test_space"."FIRST_NAME"::string, ','::string))::string -> "group_concat_1")
                     group by ("test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                         scan "test_space"
@@ -1737,7 +1739,7 @@ fn front_sql_count_asterisk2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1", "gr_expr_1"::unsigned -> "b")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -1772,7 +1774,7 @@ fn front_sql_aggregates_with_subexpressions() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(("count_1"::unsigned))::unsigned -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1", "count_2"::unsigned -> "count_2")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", count((("t"."a"::unsigned * "t"."b"::unsigned) + 1::unsigned))::unsigned -> "count_1", count((TRIM("t"."a"::unsigned::text)))::unsigned -> "count_2")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -1792,7 +1794,7 @@ fn front_sql_aggregates_with_distinct1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "col_1", count(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_2")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", "t"."a"::unsigned -> "gr_expr_2")
                     group by ("t"."b"::unsigned, "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -1812,7 +1814,7 @@ fn front_sql_aggregates_with_distinct2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", ("t"."a"::unsigned + "t"."b"::unsigned) + 3::unsigned -> "gr_expr_2")
                     group by ("t"."b"::unsigned, ("t"."a"::unsigned + "t"."b"::unsigned) + 3::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -1949,7 +1951,7 @@ fn front_sql_pg_style_params3() {
     projection ("gr_expr_1"::unsigned -> "col_1")
         having sum(("count_1"::unsigned))::unsigned > 42::unsigned
             group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-                motion [policy: segment([ref("gr_expr_1")])]
+                motion [policy: full]
                     projection ("t"."a"::unsigned + 42::unsigned -> "gr_expr_1", count(("t"."b"::unsigned))::unsigned -> "count_1")
                         group by ("t"."a"::unsigned + 42::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                             selection "t"."a"::unsigned = 42::unsigned
@@ -2192,7 +2194,7 @@ fn front_sql_union_single_left() {
     union all
         projection ("t"."a"::unsigned -> "a")
             scan "t"
-        motion [policy: segment([ref("col_1")])]
+        motion [policy: local]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full]
                     projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
@@ -2215,7 +2217,7 @@ fn front_sql_union_single_right() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: segment([ref("col_1")])]
+        motion [policy: local]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full]
                     projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
@@ -2378,7 +2380,7 @@ fn front_sql_groupby_expression() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1")
                     group by ("t"."a"::unsigned + "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2398,7 +2400,7 @@ fn front_sql_groupby_expression2() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned + sum(("count_1"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1", count(("t"."a"::unsigned))::unsigned -> "count_1")
                     group by ("t"."a"::unsigned + "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2418,7 +2420,7 @@ fn front_sql_groupby_expression3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1", ("gr_expr_2"::unsigned * sum(("sum_1"::decimal))::decimal) / sum(("count_2"::unsigned))::unsigned -> "col_2")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "count_2"::unsigned -> "count_2", "sum_1"::decimal -> "sum_1")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1", "t"."c"::unsigned * "t"."d"::unsigned -> "gr_expr_2", count(("t"."a"::unsigned * "t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."c"::unsigned * "t"."d"::unsigned))::decimal -> "sum_1")
                     group by ("t"."a"::unsigned + "t"."b"::unsigned, "t"."c"::unsigned * "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2438,7 +2440,7 @@ fn front_sql_groupby_expression4() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1", "gr_expr_2"::unsigned -> "a")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1", "t"."a"::unsigned -> "gr_expr_2")
                     group by ("t"."a"::unsigned + "t"."b"::unsigned, "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2462,18 +2464,17 @@ fn front_sql_groupby_with_aggregates() {
             scan "t1"
                 projection ("gr_expr_1"::unsigned -> "a", "gr_expr_2"::unsigned -> "b", sum(("sum_1"::decimal))::decimal -> "c")
                     group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
-                        motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+                        motion [policy: full]
                             projection ("t"."a"::unsigned -> "gr_expr_1", "t"."b"::unsigned -> "gr_expr_2", sum(("t"."c"::unsigned))::decimal -> "sum_1")
                                 group by ("t"."a"::unsigned, "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                                     scan "t"
-            motion [policy: segment([ref("e"), ref("g")])]
-                scan "t2"
-                    projection ("gr_expr_1"::unsigned -> "g", "gr_expr_2"::unsigned -> "e", sum(("sum_1"::decimal))::decimal -> "f")
-                        group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
-                            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
-                                projection ("t2"."g"::unsigned -> "gr_expr_1", "t2"."e"::unsigned -> "gr_expr_2", sum(("t2"."f"::unsigned))::decimal -> "sum_1")
-                                    group by ("t2"."g"::unsigned, "t2"."e"::unsigned) output: ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t2"."bucket_id"::unsigned -> "bucket_id")
-                                        scan "t2"
+            scan "t2"
+                projection ("gr_expr_1"::unsigned -> "g", "gr_expr_2"::unsigned -> "e", sum(("sum_1"::decimal))::decimal -> "f")
+                    group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
+                        motion [policy: full]
+                            projection ("t2"."g"::unsigned -> "gr_expr_1", "t2"."e"::unsigned -> "gr_expr_2", sum(("t2"."f"::unsigned))::decimal -> "sum_1")
+                                group by ("t2"."g"::unsigned, "t2"."e"::unsigned) output: ("t2"."e"::unsigned -> "e", "t2"."f"::unsigned -> "f", "t2"."g"::unsigned -> "g", "t2"."h"::unsigned -> "h", "t2"."bucket_id"::unsigned -> "bucket_id")
+                                    scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -2637,7 +2638,7 @@ fn front_sql_having1() {
     projection ("gr_expr_1"::unsigned -> "a", sum(("sum_1"::decimal))::decimal -> "col_1")
         having ("gr_expr_1"::unsigned > 1::unsigned) and (sum(distinct ("gr_expr_2"::decimal))::decimal > 1::unsigned)
             group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "sum_1"::decimal -> "sum_1")
-                motion [policy: segment([ref("gr_expr_1")])]
+                motion [policy: full]
                     projection ("t"."a"::unsigned -> "gr_expr_1", "t"."b"::unsigned -> "gr_expr_2", sum(("t"."b"::unsigned))::decimal -> "sum_1")
                         group by ("t"."a"::unsigned, "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                             scan "t"
@@ -2717,7 +2718,7 @@ fn front_sql_having_with_sq() {
     projection ("gr_expr_1"::unsigned -> "sysFrom", sum(distinct ("gr_expr_2"::decimal))::decimal -> "sum", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "count")
         having ROW($0) > count(distinct ("gr_expr_2"::unsigned))::unsigned
             group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-                motion [policy: segment([ref("gr_expr_1")])]
+                motion [policy: full]
                     projection ("test_space"."sysFrom"::unsigned -> "gr_expr_1", "test_space"."id"::unsigned -> "gr_expr_2")
                         group by ("test_space"."sysFrom"::unsigned, "test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                             scan "test_space"
@@ -2751,7 +2752,7 @@ fn front_sql_unmatched_column_in_having() {
 
 #[test]
 fn front_sql_having_with_sq_segment_motion() {
-    // check subquery has Segment Motion on groupby columns
+    // check subquery has Full Motion on groupby columns
     let input = r#"
         SELECT "sysFrom", "sys_op", sum(distinct "id") as "sum", count(distinct "id") as "count" from "test_space"
         group by "sysFrom", "sys_op"
@@ -2764,12 +2765,12 @@ fn front_sql_having_with_sq_segment_motion() {
     projection ("gr_expr_1"::unsigned -> "sysFrom", "gr_expr_2"::unsigned -> "sys_op", sum(distinct ("gr_expr_3"::decimal))::decimal -> "sum", count(distinct ("gr_expr_3"::unsigned))::unsigned -> "count")
         having ROW("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) in ROW($0, $0)
             group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "gr_expr_3"::unsigned -> "gr_expr_3")
-                motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+                motion [policy: full]
                     projection ("test_space"."sysFrom"::unsigned -> "gr_expr_1", "test_space"."sys_op"::unsigned -> "gr_expr_2", "test_space"."id"::unsigned -> "gr_expr_3")
                         group by ("test_space"."sysFrom"::unsigned, "test_space"."sys_op"::unsigned, "test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                             scan "test_space"
     subquery $0:
-    motion [policy: segment([ref("a"), ref("d")])]
+    motion [policy: full]
                 scan
                     projection ("t"."a"::unsigned -> "a", "t"."d"::unsigned -> "d")
                         scan "t"
@@ -2781,8 +2782,7 @@ fn front_sql_having_with_sq_segment_motion() {
 
 #[test]
 fn front_sql_having_with_sq_segment_local_motion() {
-    // Check subquery has no Motion, as it has the same distribution
-    // as columns used in GroupBy.
+    // Check subquery has Motion::Full
     let input = r#"
         SELECT "sysFrom", "sys_op", sum(distinct "id") as "sum", count(distinct "id") as "count" from "test_space"
         group by "sysFrom", "sys_op"
@@ -2795,14 +2795,15 @@ fn front_sql_having_with_sq_segment_local_motion() {
     projection ("gr_expr_1"::unsigned -> "sysFrom", "gr_expr_2"::unsigned -> "sys_op", sum(distinct ("gr_expr_3"::decimal))::decimal -> "sum", count(distinct ("gr_expr_3"::unsigned))::unsigned -> "count")
         having ROW("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) in ROW($0, $0)
             group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "gr_expr_3"::unsigned -> "gr_expr_3")
-                motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+                motion [policy: full]
                     projection ("test_space"."sysFrom"::unsigned -> "gr_expr_1", "test_space"."sys_op"::unsigned -> "gr_expr_2", "test_space"."id"::unsigned -> "gr_expr_3")
                         group by ("test_space"."sysFrom"::unsigned, "test_space"."sys_op"::unsigned, "test_space"."id"::unsigned) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                             scan "test_space"
     subquery $0:
-    scan
-                projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
-                    scan "t"
+    motion [policy: full]
+                scan
+                    projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
+                        scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -2841,7 +2842,7 @@ fn front_sql_unique_local_groupings() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(distinct ("gr_expr_2"::decimal))::decimal -> "col_1", count(distinct ("gr_expr_2"::unsigned))::unsigned -> "col_2", count(distinct ("gr_expr_1"::unsigned))::unsigned -> "col_3")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", "t"."a"::unsigned -> "gr_expr_2")
                     group by ("t"."b"::unsigned, "t"."a"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2899,7 +2900,7 @@ fn front_sql_select_distinct() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "a", "gr_expr_2"::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned -> "gr_expr_1", "t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_2")
                     group by ("t"."a"::unsigned, "t"."a"::unsigned + "t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2918,7 +2919,7 @@ fn front_sql_select_distinct_asterisk() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "a", "gr_expr_2"::unsigned -> "b", "gr_expr_3"::unsigned -> "c", "gr_expr_4"::unsigned -> "d")
         group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned, "gr_expr_3"::unsigned, "gr_expr_4"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "gr_expr_3"::unsigned -> "gr_expr_3", "gr_expr_4"::unsigned -> "gr_expr_4")
-            motion [policy: segment([ref("gr_expr_1"), ref("gr_expr_2"), ref("gr_expr_3"), ref("gr_expr_4")])]
+            motion [policy: full]
                 projection ("t"."a"::unsigned -> "gr_expr_1", "t"."b"::unsigned -> "gr_expr_2", "t"."c"::unsigned -> "gr_expr_3", "t"."d"::unsigned -> "gr_expr_4")
                     group by ("t"."a"::unsigned, "t"."b"::unsigned, "t"."c"::unsigned, "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -2954,7 +2955,7 @@ fn front_sql_select_distinct_with_aggr() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("sum_1"::decimal))::decimal -> "col_1", "gr_expr_1"::unsigned -> "b")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "sum_1"::decimal -> "sum_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("t"."b"::unsigned -> "gr_expr_1", sum(("t"."a"::unsigned))::decimal -> "sum_1")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
@@ -3856,7 +3857,7 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("count_1"::unsigned))::unsigned -> "col_1")
         group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1")
-            motion [policy: segment([ref("gr_expr_1")])]
+            motion [policy: full]
                 projection ("test_space"."id"::unsigned + ROW($0) -> "gr_expr_1", count((*::integer))::unsigned -> "count_1")
                     group by ("test_space"."id"::unsigned + ROW($0)) output: ("test_space"."id"::unsigned -> "id", "test_space"."sysFrom"::unsigned -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::unsigned -> "sys_op", "test_space"."bucket_id"::unsigned -> "bucket_id")
                         scan "test_space"

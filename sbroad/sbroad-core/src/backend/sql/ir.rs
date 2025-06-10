@@ -3,7 +3,8 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Projection, Reference, ScalarFunction, ScanRelation
+    BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Projection, Reference,
+    ScalarFunction, ScanRelation,
 };
 use crate::ir::relation::Column;
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
