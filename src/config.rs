@@ -621,8 +621,10 @@ Using configuration file '{args_path}'.");
         for (name, info) in tiers {
             if let Some(explicit_name) = &info.name {
                 return Err(Error::InvalidConfiguration(format!(
-                "tier '{name}' has an explicit name field '{explicit_name}', which is not allowed. Tier name is always derived from the outer dictionary's key"
-            )));
+                    "tier '{name}' has an explicit name field '{explicit_name}', \
+                     which is not allowed. \
+                     Tier name is always derived from the outer dictionary's key"
+                )));
             }
         }
 
@@ -644,7 +646,8 @@ Using configuration file '{args_path}'.");
         match (raft_storage.cluster_name()?, self.cluster_name()) {
             (from_storage, from_config) if from_storage != from_config => {
                 return Err(Error::InvalidConfiguration(format!(
-                    "instance restarted with a different `cluster_name`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    "instance restarted with a different `cluster_name`, \
+                     which is not allowed, was: '{from_storage}' became: '{from_config}'"
                 )));
             }
             _ => {}
@@ -655,7 +658,8 @@ Using configuration file '{args_path}'.");
         match (raft_storage.instance_name()?, &self.instance.name) {
             (Some(from_storage), Some(from_config)) if from_storage != from_config => {
                 return Err(Error::InvalidConfiguration(format!(
-                    "instance restarted with a different `instance_name`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    "instance restarted with a different `instance_name`, \
+                     which is not allowed, was: '{from_storage}' became: '{from_config}'"
                 )));
             }
             (Some(from_storage), _) => {
@@ -673,7 +677,8 @@ Using configuration file '{args_path}'.");
                 ) {
                     (from_storage, Some(from_config)) if from_storage != from_config => {
                         return Err(Error::InvalidConfiguration(format!(
-                            "instance restarted with a different `replicaset_name`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                            "instance restarted with a different `replicaset_name`, \
+                             which is not allowed, was: '{from_storage}' became: '{from_config}'"
                         )));
                     }
                     _ => {}
@@ -685,7 +690,8 @@ Using configuration file '{args_path}'.");
         match (&raft_storage.tier()?, &self.instance.tier) {
             (Some(from_storage), Some(from_config)) if from_storage != from_config => {
                 return Err(Error::InvalidConfiguration(format!(
-                    "instance restarted with a different `tier`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    "instance restarted with a different `tier`, \
+                     which is not allowed, was: '{from_storage}' became: '{from_config}'"
                 )));
             }
             _ => {}
@@ -703,7 +709,8 @@ Using configuration file '{args_path}'.");
                     if from_storage != from_config.to_host_port() =>
                 {
                     return Err(Error::InvalidConfiguration(format!(
-                        "instance restarted with a different `iproto_advertise`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                        "instance restarted with a different `iproto_advertise`, \
+                         which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
@@ -719,7 +726,8 @@ Using configuration file '{args_path}'.");
                     if from_storage != from_config.to_host_port() =>
                 {
                     return Err(Error::InvalidConfiguration(format!(
-                        "instance restarted with a different `pg.advertise`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                        "instance restarted with a different `pg.advertise`, \
+                         which is not allowed, was: '{from_storage}' became: '{from_config}'"
                     )));
                 }
                 _ => {}
