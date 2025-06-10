@@ -992,20 +992,18 @@ fn front_sql_global_union_all3() {
                 union all
                     projection ("global_t"."a"::integer -> "a")
                         scan "global_t"
-                    motion [policy: local]
-                        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                            motion [policy: full]
-                                projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
-                                    scan "t2"
-        motion [policy: local]
-            projection ("global_t"."b"::integer -> "b")
-                scan "global_t"
+                    projection (sum(("sum_1"::decimal))::decimal -> "col_1")
+                        motion [policy: full]
+                            projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                                scan "t2"
+        projection ("global_t"."b"::integer -> "b")
+            scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     "#);
 
-    check_union_dist(&plan, &[DistMock::Any, DistMock::Any]);
+    check_union_dist(&plan, &[DistMock::Single, DistMock::Single]);
 }
 
 #[test]
@@ -1093,11 +1091,10 @@ fn front_sql_global_union2() {
         union
             projection ("global_t"."a"::integer -> "a")
                 scan "global_t"
-            motion [policy: local]
-                projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                    motion [policy: full]
-                        projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
-                            scan "t2"
+            projection (sum(("sum_1"::decimal))::decimal -> "col_1")
+                motion [policy: full]
+                    projection (sum(("t2"."e"::unsigned))::decimal -> "sum_1")
+                        scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

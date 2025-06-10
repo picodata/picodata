@@ -2308,23 +2308,10 @@ impl Plan {
         let left_dist = self.get_rel_distribution(left_id)?;
         let right_dist = self.get_rel_distribution(right_id)?;
         match (left_dist, right_dist) {
-            (Distribution::Single, Distribution::Single) => {
-                // todo: do not use a motion here
-                map.add_child(
-                    left_id,
-                    MotionPolicy::Segment(MotionKey {
-                        targets: vec![Target::Reference(0)],
-                    }),
-                    Program::default(),
-                );
-                map.add_child(
-                    right_id,
-                    MotionPolicy::Segment(MotionKey {
-                        targets: vec![Target::Reference(0)],
-                    }),
-                    Program::default(),
-                );
-            }
+            (
+                Distribution::Single | Distribution::Global,
+                Distribution::Single | Distribution::Global,
+            ) => {}
             (Distribution::Single, _) => {
                 map.add_child(
                     left_id,

@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::collection;
-use crate::executor::engine::mock::{ReplicasetDispatchInfo, RouterRuntimeMock, VshardMock};
+use crate::executor::engine::mock::{ReplicasetDispatchInfo, RouterRuntimeMock};
 use crate::ir::node::{ArenaType, Node136};
 use crate::ir::relation::Type;
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
@@ -102,9 +102,9 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     exec_plan.set_vtables(vtables);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
     let motion_child_id = exec_plan.get_motion_subtree_root(motion_id).unwrap();
-    if let MotionPolicy::Segment(_) = exec_plan.get_motion_policy(motion_id).unwrap() {
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
     } else {
-        panic!("Expected MotionPolicy::Segment for local aggregation stage");
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
 
     // Check groupby local stage
@@ -151,9 +151,9 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    if let MotionPolicy::Segment(_) = exec_plan.get_motion_policy(motion_id).unwrap() {
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
     } else {
-        panic!("Expected MotionPolicy::Segment for local aggregation stage");
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(
         sql,
@@ -218,9 +218,9 @@ fn exec_plan_subtree_aggregates() {
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    if let MotionPolicy::Segment(_) = exec_plan.get_motion_policy(motion_id).unwrap() {
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
     } else {
-        panic!("Expected MotionPolicy::Segment for local aggregation stage");
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
     insta::assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", "T1"."id" * "T1"."sys_op" as "gr_expr_2", "T1"."id" as "gr_expr_3", count ("T1"."sysFrom") as "count_1", sum ("T1"."id") as "sum_2", count ("T1"."id") as "avg_4", min ("T1"."id") as "min_6", group_concat ("T1"."FIRST_NAME", CAST($1 AS string)) as "group_concat_3", total ("T1"."id") as "total_5", max ("T1"."id") as "max_7" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", "T1"."id" * "T1"."sys_op", "T1"."id""#);
@@ -464,9 +464,9 @@ fn exec_plan_subtree_having() {
 
     // Check groupby local stage
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
-    if let MotionPolicy::Segment(_) = exec_plan.get_motion_policy(motion_id).unwrap() {
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
     } else {
-        panic!("Expected MotionPolicy::Segment for local aggregation stage");
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(
         sql,
@@ -852,8 +852,7 @@ fn global_union_all2() {
 
 #[test]
 fn global_union_all3() {
-    // also check that we don't delete vtables,
-    // from other subtree
+    // check correct distribution on union all with group by
     let sql = r#"
     select "a" from "global_t" where "b"
     in (select "e" from "t2")
@@ -905,79 +904,7 @@ fn global_union_all3() {
 
     let top_id = query.exec_plan.get_ir_plan().get_top().unwrap();
     let buckets = query.bucket_discovery(top_id).unwrap();
-    let bucket1 = coordinator.determine_bucket_id(&[&tuple1[0]]).unwrap();
-    let bucket2 = coordinator.determine_bucket_id(&[&tuple2[0]]).unwrap();
-    let expected_buckets = Buckets::Filtered(collection!(bucket1, bucket2));
-    assert_eq!(expected_buckets, buckets);
-
-    let grouped = coordinator.vshard_mock.group(&buckets);
-    let mut rs_buckets: Vec<(usize, Vec<u64>)> = grouped
-        .into_iter()
-        .map(|(k, v)| (VshardMock::get_id(&k), v))
-        .collect();
-    rs_buckets.sort_by_key(|(id, _)| *id);
-    let groupby_vtable1 = groupby_vtable.new_with_buckets(&rs_buckets[0].1).unwrap();
-    let groupby_vtable2 = groupby_vtable.new_with_buckets(&rs_buckets[1].1).unwrap();
-
-    let sub_plan = query.exec_plan.take_subtree(top_id).unwrap();
-    // after take subtree motion id has changed
-    let (groupby_motion_id, _) = sub_plan
-        .get_ir_plan()
-        .nodes
-        .iter136()
-        .find_position(|n| {
-            matches!(
-                n,
-                Node136::Motion(Motion {
-                    policy: MotionPolicy::Segment(_),
-                    ..
-                })
-            )
-        })
-        .unwrap();
-    let (sq_motion_id, _) = sub_plan
-        .get_ir_plan()
-        .nodes
-        .iter136()
-        .find_position(|n| {
-            matches!(
-                n,
-                Node136::Motion(Motion {
-                    policy: MotionPolicy::Full,
-                    ..
-                })
-            )
-        })
-        .unwrap();
-
-    let actual_dispatch = coordinator.detailed_dispatch(sub_plan, &buckets);
-
-    let groupby_motion_id = NodeId {
-        offset: groupby_motion_id as u32,
-        arena_type: ArenaType::Arena136,
-    };
-
-    let sq_motion_id = NodeId {
-        offset: sq_motion_id as u32,
-        arena_type: ArenaType::Arena136,
-    };
-
-    let expected = vec![
-        ReplicasetDispatchInfo {
-            rs_id: 0,
-            pattern: r#" select cast(null as integer) where false UNION ALL SELECT "COL_1" as "f" FROM (SELECT "COL_1" FROM "TMP_test_2136") GROUP BY "COL_1""#.to_string(),
-            params: vec![],
-            vtables_map: collection!(groupby_motion_id => Rc::new(groupby_vtable1)),
-        },
-        ReplicasetDispatchInfo {
-            rs_id: 1,
-            pattern: r#"SELECT "global_t"."a" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "COL_1" as "f" FROM (SELECT "COL_1" FROM "TMP_test_2136") GROUP BY "COL_1""#.to_string(),
-            params: vec![],
-            vtables_map: collection!(groupby_motion_id => Rc::new(groupby_vtable2), sq_motion_id => Rc::new(sq_vtable)),
-        },
-    ];
-
-    assert_eq!(expected, actual_dispatch);
+    assert_eq!(Buckets::Any, buckets);
 }
 
 #[test]

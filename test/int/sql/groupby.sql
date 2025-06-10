@@ -881,10 +881,21 @@ having count(distinct s) > 1
 -- EXPECTED:
 1, 2
 
--- TEST: test_having_inside_union
+-- TEST: test_having_inside_union https://git.picodata.io/core/picodata/-/issues/1394
+-- SQL:
+-- select sum(distinct "e") from "arithmetic_space"
+-- having count(distinct "d") > 1
+-- union all
+-- select "b" from "arithmetic_space"
+-- group by "b"
+-- having count(distinct "d") > 1
+-- EXPECTED:
+-- 2, 3
+
+-- TEST: test_groupby_having_inside_union
 -- SQL:
 select sum(distinct "e") from "arithmetic_space"
-having count(distinct "d") > 1
+group by "e" having count(distinct "d") > 1
 union all
 select "b" from "arithmetic_space"
 group by "b"

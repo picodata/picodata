@@ -188,6 +188,9 @@ impl Distribution {
                 Distribution::Global | Distribution::Any,
             ) => Distribution::Any,
             (Distribution::Global, Distribution::Global) => Distribution::Global,
+            (Distribution::Single, Distribution::Single)
+            | (Distribution::Single, Distribution::Global)
+            | (Distribution::Global, Distribution::Single) => Distribution::Single,
             (Distribution::Single, _) | (_, Distribution::Single) => {
                 panic!("Union (all) child has unexpected distribution Single. Left: {left:?}, right: {right:?}.");
             }

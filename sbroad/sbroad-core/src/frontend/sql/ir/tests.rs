@@ -1330,7 +1330,7 @@ fn front_sql_groupby_union_1() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: local]
+        motion [policy: segment([ref("identification_number")])]
             projection ("gr_expr_1"::integer -> "identification_number")
                 group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
                     motion [policy: full]
@@ -1362,7 +1362,7 @@ fn front_sql_groupby_union_2() {
         projection ("identification_number"::integer -> "identification_number")
             scan
                 union all
-                    motion [policy: local]
+                    motion [policy: segment([ref("identification_number")])]
                         projection ("gr_expr_1"::integer -> "identification_number")
                             group by ("gr_expr_1"::integer) output: ("gr_expr_1"::integer -> "gr_expr_1")
                                 motion [policy: full]
@@ -2194,7 +2194,7 @@ fn front_sql_union_single_left() {
     union all
         projection ("t"."a"::unsigned -> "a")
             scan "t"
-        motion [policy: local]
+        motion [policy: segment([ref("col_1")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full]
                     projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
@@ -2217,7 +2217,7 @@ fn front_sql_union_single_right() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: local]
+        motion [policy: segment([ref("col_1")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1")
                 motion [policy: full]
                     projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
@@ -2242,16 +2242,14 @@ fn front_sql_union_single_both() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        motion [policy: segment([ref("col_1")])]
-            projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                motion [policy: full]
-                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
-                        scan "t"
-        motion [policy: segment([ref("col_1")])]
-            projection (sum(("sum_1"::decimal))::decimal -> "col_1")
-                motion [policy: full]
-                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
-                        scan "t"
+        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
+            motion [policy: full]
+                projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    scan "t"
+        projection (sum(("sum_1"::decimal))::decimal -> "col_1")
+            motion [policy: full]
+                projection (sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

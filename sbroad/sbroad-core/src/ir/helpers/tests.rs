@@ -409,172 +409,176 @@ fn simple_aggregation_with_group_by() {
     let query = r#"SELECT "product_code" FROM "hash_testing" GROUP BY "product_code""#;
     let plan = sql_to_optimized_ir(query, vec![]);
 
-    insta::assert_snapshot!(plan.formatted_arena().unwrap(), @r"
-    ---------------------------------------------
-    [id: 164] relation: ScanRelation
-    	Relation: hash_testing
-    	[No children]
-    	Output:	[id: 064] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
-    		List:
-    		[id: 032] expression: Alias [name = identification_number]
-    			Child:
-    			[id: 096] expression: Reference
-    				Parent: 164
-    				Position: 0
-    				Column type: integer
-    		[id: 132] expression: Alias [name = product_code]
-    			Child:
-    			[id: 196] expression: Reference
-    				Parent: 164
-    				Position: 1
-    				Column type: string
-    		[id: 232] expression: Alias [name = product_units]
-    			Child:
-    			[id: 296] expression: Reference
-    				Parent: 164
-    				Position: 2
-    				Column type: boolean
-    		[id: 332] expression: Alias [name = sys_op]
-    			Child:
-    			[id: 396] expression: Reference
-    				Parent: 164
-    				Position: 3
-    				Column type: unsigned
-    		[id: 432] expression: Alias [name = bucket_id]
-    			Child:
-    			[id: 496] expression: Reference
-    				Parent: 164
-    				Position: 4
-    				Column type: unsigned
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 364] relation: GroupBy
-    	Gr_cols:
-    		[id: 596] expression: Reference
-    			Alias: product_code
-    			Referenced table name (or alias): hash_testing
-    			Parent: 364
-    			target_id: 0
-    			Position: 1
-    			Column type: string
-    	Children:
-    		Child_id = 164
-    	Output:	[id: 264] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
-    		List:
-    		[id: 532] expression: Alias [name = identification_number]
-    			Child:
-    			[id: 696] expression: Reference
-    				Alias: identification_number
-    				Referenced table name (or alias): hash_testing
-    				Parent: 364
-    				target_id: 0
-    				Position: 0
-    				Column type: integer
-    		[id: 632] expression: Alias [name = product_code]
-    			Child:
-    			[id: 796] expression: Reference
-    				Alias: product_code
-    				Referenced table name (or alias): hash_testing
-    				Parent: 364
-    				target_id: 0
-    				Position: 1
-    				Column type: string
-    		[id: 732] expression: Alias [name = product_units]
-    			Child:
-    			[id: 896] expression: Reference
-    				Alias: product_units
-    				Referenced table name (or alias): hash_testing
-    				Parent: 364
-    				target_id: 0
-    				Position: 2
-    				Column type: boolean
-    		[id: 832] expression: Alias [name = sys_op]
-    			Child:
-    			[id: 996] expression: Reference
-    				Alias: sys_op
-    				Referenced table name (or alias): hash_testing
-    				Parent: 364
-    				target_id: 0
-    				Position: 3
-    				Column type: unsigned
-    		[id: 932] expression: Alias [name = bucket_id]
-    			Child:
-    			[id: 1096] expression: Reference
-    				Alias: bucket_id
-    				Referenced table name (or alias): hash_testing
-    				Parent: 364
-    				target_id: 0
-    				Position: 4
-    				Column type: unsigned
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 764] relation: Projection
-    	Children:
-    		Child_id = 364
-    	Output:	[id: 664] expression: Row [distribution = Any]
-    		List:
-    		[id: 1132] expression: Alias [name = gr_expr_1]
-    			Child:
-    			[id: 1296] expression: Reference
-    				Alias: product_code
-    				Referenced table name (or alias): hash_testing
-    				Parent: 764
-    				target_id: 0
-    				Position: 1
-    				Column type: string
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 0136] relation: Motion [policy = Segment(MotionKey { targets: [Reference(0)] }), alias = None]
-    	Children:
-    		Child_id = 764
-    	Output:	[id: 1064] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
-    		List:
-    		[id: 1332] expression: Alias [name = gr_expr_1]
-    			Child:
-    			[id: 1696] expression: Reference
-    				Alias: gr_expr_1
-    				Referenced table name (or alias): hash_testing
-    				Parent: 0136
-    				target_id: 0
-    				Position: 0
-    				Column type: string
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 964] relation: GroupBy
-    	Gr_cols:
-    		[id: 1396] expression: Reference
-    			Alias: gr_expr_1
-    			Parent: 964
-    			target_id: 0
-    			Position: 0
-    			Column type: string
-    	Children:
-    		Child_id = 0136
-    	Output:	[id: 864] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
-    		List:
-    		[id: 1232] expression: Alias [name = gr_expr_1]
-    			Child:
-    			[id: 1496] expression: Reference
-    				Alias: gr_expr_1
-    				Parent: 964
-    				target_id: 0
-    				Position: 0
-    				Column type: string
-    ---------------------------------------------
-    ---------------------------------------------
-    [id: 564] relation: Projection
-    	Children:
-    		Child_id = 964
-    	Output:	[id: 464] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0] }}) }]
-    		List:
-    		[id: 1032] expression: Alias [name = product_code]
-    			Child:
-    			[id: 1596] expression: Reference
-    				Alias: gr_expr_1
-    				Parent: 564
-    				target_id: 0
-    				Position: 0
-    				Column type: string
-    ---------------------------------------------
-    ");
+    let actual_arena = plan.formatted_arena().unwrap();
+    let mut expected_arena = String::new();
+    expected_arena.push_str(
+        r#"---------------------------------------------
+[id: 164] relation: ScanRelation
+	Relation: hash_testing
+	[No children]
+	Output:	[id: 064] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
+		List:
+		[id: 032] expression: Alias [name = identification_number]
+			Child:
+			[id: 096] expression: Reference
+				Parent: 164
+				Position: 0
+				Column type: integer
+		[id: 132] expression: Alias [name = product_code]
+			Child:
+			[id: 196] expression: Reference
+				Parent: 164
+				Position: 1
+				Column type: string
+		[id: 232] expression: Alias [name = product_units]
+			Child:
+			[id: 296] expression: Reference
+				Parent: 164
+				Position: 2
+				Column type: boolean
+		[id: 332] expression: Alias [name = sys_op]
+			Child:
+			[id: 396] expression: Reference
+				Parent: 164
+				Position: 3
+				Column type: unsigned
+		[id: 432] expression: Alias [name = bucket_id]
+			Child:
+			[id: 496] expression: Reference
+				Parent: 164
+				Position: 4
+				Column type: unsigned
+---------------------------------------------
+---------------------------------------------
+[id: 364] relation: GroupBy
+	Gr_cols:
+		[id: 596] expression: Reference
+			Alias: product_code
+			Referenced table name (or alias): hash_testing
+			Parent: 364
+			target_id: 0
+			Position: 1
+			Column type: string
+	Children:
+		Child_id = 164
+	Output:	[id: 264] expression: Row [distribution = Segment { keys: KeySet({Key { positions: [0, 1] }}) }]
+		List:
+		[id: 532] expression: Alias [name = identification_number]
+			Child:
+			[id: 696] expression: Reference
+				Alias: identification_number
+				Referenced table name (or alias): hash_testing
+				Parent: 364
+				target_id: 0
+				Position: 0
+				Column type: integer
+		[id: 632] expression: Alias [name = product_code]
+			Child:
+			[id: 796] expression: Reference
+				Alias: product_code
+				Referenced table name (or alias): hash_testing
+				Parent: 364
+				target_id: 0
+				Position: 1
+				Column type: string
+		[id: 732] expression: Alias [name = product_units]
+			Child:
+			[id: 896] expression: Reference
+				Alias: product_units
+				Referenced table name (or alias): hash_testing
+				Parent: 364
+				target_id: 0
+				Position: 2
+				Column type: boolean
+		[id: 832] expression: Alias [name = sys_op]
+			Child:
+			[id: 996] expression: Reference
+				Alias: sys_op
+				Referenced table name (or alias): hash_testing
+				Parent: 364
+				target_id: 0
+				Position: 3
+				Column type: unsigned
+		[id: 932] expression: Alias [name = bucket_id]
+			Child:
+			[id: 1096] expression: Reference
+				Alias: bucket_id
+				Referenced table name (or alias): hash_testing
+				Parent: 364
+				target_id: 0
+				Position: 4
+				Column type: unsigned
+---------------------------------------------
+---------------------------------------------
+[id: 764] relation: Projection
+	Children:
+		Child_id = 364
+	Output:	[id: 664] expression: Row [distribution = Any]
+		List:
+		[id: 1132] expression: Alias [name = gr_expr_1]
+			Child:
+			[id: 1296] expression: Reference
+				Alias: product_code
+				Referenced table name (or alias): hash_testing
+				Parent: 764
+				target_id: 0
+				Position: 1
+				Column type: string
+---------------------------------------------
+---------------------------------------------
+[id: 0136] relation: Motion [policy = Full, alias = None]
+	Children:
+		Child_id = 764
+	Output:	[id: 1064] expression: Row [distribution = Global]
+		List:
+		[id: 1332] expression: Alias [name = gr_expr_1]
+			Child:
+			[id: 1696] expression: Reference
+				Alias: gr_expr_1
+				Referenced table name (or alias): hash_testing
+				Parent: 0136
+				target_id: 0
+				Position: 0
+				Column type: string
+---------------------------------------------
+---------------------------------------------
+[id: 964] relation: GroupBy
+	Gr_cols:
+		[id: 1396] expression: Reference
+			Alias: gr_expr_1
+			Parent: 964
+			target_id: 0
+			Position: 0
+			Column type: string
+	Children:
+		Child_id = 0136
+	Output:	[id: 864] expression: Row [distribution = Single]
+		List:
+		[id: 1232] expression: Alias [name = gr_expr_1]
+			Child:
+			[id: 1496] expression: Reference
+				Alias: gr_expr_1
+				Parent: 964
+				target_id: 0
+				Position: 0
+				Column type: string
+---------------------------------------------
+---------------------------------------------
+[id: 564] relation: Projection
+	Children:
+		Child_id = 964
+	Output:	[id: 464] expression: Row [distribution = Single]
+		List:
+		[id: 1032] expression: Alias [name = product_code]
+			Child:
+			[id: 1596] expression: Reference
+				Alias: gr_expr_1
+				Parent: 564
+				target_id: 0
+				Position: 0
+				Column type: string
+---------------------------------------------
+"#);
+
+    assert_eq!(expected_arena, actual_arena);
 }
