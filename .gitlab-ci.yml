@@ -15,6 +15,7 @@ default:
 
 stages:
   - build-base-image
+  - clone
   - test
   - pack
   - docker
@@ -91,6 +92,7 @@ variables:
     changes:
       paths:
         - docker-build-base/**
+        - tools/clone.sh
         - .gitlab-ci.yml
       compare_to: *main-branch
 
@@ -103,6 +105,14 @@ variables:
 
   - &if-no-docs
     if: ($CI_PIPELINE_SOURCE != "schedule") && ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_COMMIT_BRANCH !~ /^docs/)
+
+
+.cache_git: &cache_git
+  paths:
+    - $CI_PROJECT_DIR
+  key: cache_git-$CI_COMMIT_BRANCH
+  fallback_keys:
+    - cache_git-$MAIN_BRANCH
 
 .base_cache: &base_cache
   paths:
@@ -199,30 +209,52 @@ build-stress-image:
     DOCKERFILE: docker-build-base/stress.Dockerfile
     DESTINATION: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 
-.test:
-  stage: test
+# When on master, the job creates cache containing fully fetched repository in working directory.
+# The cache includes submodules. This will happen once
+# per day or more. In dev branches, the cache is taken from the master by
+# fallback_keys and the current commit is fetched. In dev branches cloning via
+# gitlab is disabled in tests and lint, and implemented via git clone/fetch.
+clone:
+  stage: clone
+  cache:
+    - <<: *cache_git
+      policy: $CACHE_POLICY
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        CACHE_POLICY: pull-push
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *if-no-docs
+    - if: $CI_PIPELINE_SOURCE == "schedule"
   variables:
-    GIT_SUBMODULE_STRATEGY: recursive
-    GIT_DESCRIBE: $PICODATA_DESCRIBE
-    RUST_BACKTRACE: full
-    KUBERNETES_CPU_REQUEST: 6
-    KUBERNETES_MEMORY_REQUEST: "6Gi"
-  before_script:
+    GIT_STRATEGY: none
+    CACHE_POLICY: pull
+    # slow is as fast as the fastest level, but the cache takes up 40% less space
+    CACHE_COMPRESSION_LEVEL: "slow"
+  script:
+    - clone.sh
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
     # but it doesn't imply fetching tags. We clone them manually with the
     # `git fetch` command.
     #
     # Tags in `tarantool-sys` and `luajit` submodules are necessary for
     # the build scripts. Without them the job fails.
-    - &fetch-tags |
-      ci-log-section start "fetch-submodule-tags" Fetching tags for submodules
-      ./tools/get_tags.py
-      ci-log-section end "fetch-submodule-tags"
+    - ./tools/get_tags.py
 
-  # By default "fast-release" profile is used, because of its faster
-  # compilation time compared to the "release" profile, which includes
-  # additional optimizations.
-  # The actual "release" profile is only used when running on master branch.
+.test:
+  stage: test
+  variables:
+    GIT_DESCRIBE: $PICODATA_DESCRIBE
+    RUST_BACKTRACE: full
+    GIT_STRATEGY: none
+    KUBERNETES_CPU_REQUEST: 6
+    KUBERNETES_MEMORY_REQUEST: "6Gi"
+    # By default "fast-release" profile is used, because of its faster
+    # compilation time compared to the "release" profile, which includes
+    # additional optimizations.
+    # The actual "release" profile is only used when running on master branch.
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       variables:
@@ -260,6 +292,8 @@ test-linux:
     - .test
     - .parallel
   cache:
+    - <<: *cache_git
+      policy: pull
     - <<: *py_cache
       policy: $CACHE_POLICY
     - <<: *base_cache
@@ -307,10 +341,12 @@ lint:
         CACHE_POLICY: pull
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
-    GIT_SUBMODULE_STRATEGY: recursive
+    GIT_STRATEGY: none
     GIT_DESCRIBE: $PICODATA_DESCRIBE
     TARGET: debug
   cache:
+    - <<: *cache_git
+      policy: pull
     - <<: *py_cache
       policy: pull
     - <<: *base_cache
@@ -318,7 +354,6 @@ lint:
     - <<: *base_node
       policy: pull
   script:
-    - *fetch-tags
     - *poetry-install
     - make lint
     - pushd webui && yarn lint; popd
@@ -452,7 +487,6 @@ test-patch-picodata:
   extends: .test
   <<: *test-patch-rules
   variables:
-    GIT_SUBMODULE_STRATEGY: recursive
     BUILD_PROFILE: release
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_REQUEST: "8Gi"
@@ -475,8 +509,6 @@ test-patch-picodata:
 test-patch-tarantool:
   extends: .test
   <<: *test-patch-rules
-  variables:
-    GIT_SUBMODULE_STRATEGY: recursive
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - pushd tarantool-sys/ && make -f .test.mk test-release;
@@ -551,6 +583,8 @@ helm-image:
 
 gamayun-prepare:
   extends: .test
+  variables:
+      GIT_STRATEGY: clone
   when: manual
   rules:
     - <<: *if-build-base-changes-on-dev-branch
@@ -568,6 +602,8 @@ gamayun-prepare:
 
 gamayun-run:
   extends: .test
+  variables:
+      GIT_STRATEGY: clone
   needs: ["gamayun-prepare"]
   tags:
     - picodata-shell
@@ -693,7 +729,7 @@ docker-compose:
     # creating a shallow copy with $GIT_DEPTH commits might not include this tag.
     # Fetching all commits takes too much time, so we incrementally download more
     # chunks of commits until we find the required tag.
-    - *fetch-tags
+    - ./tools/get_tags.py
   script:
     - cargo build --locked --release --features webui
     - mv target/release/picodata target/release/picodata-$VER

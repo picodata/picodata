@@ -62,6 +62,7 @@ rustup component add rustfmt && \
 cargo install cargo-audit --locked
 
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
+COPY tools/clone.sh /usr/bin/clone.sh
 
 # install poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
