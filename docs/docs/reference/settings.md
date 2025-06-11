@@ -80,6 +80,7 @@ td.td3 ul {
 .legend-id {
     line-height: 2.5em;
     margin-left: 0.5em;
+    width: 87em;
 }
 
 .legend-dash {
@@ -137,22 +138,68 @@ td.td3 ul {
 
 }
 
+/* Sortable tables */
+table.sortable thead {
+    background-color:#eee;
+    color:#666666;
+    cursor: default;
+    margin:0;
+    margin-bottom:.5em;
+    padding:0 .8rem;
+    white-space: nowrap;
+    table-layout: fixed !important;
+    overflow: auto;
+    font-size: .64rem;
+    overflow: auto !important;
+    overflow-x: visible !important;
+}
+
+table.sortable {
+    border-width: 0.1em !important;
+    border-style: solid;
+    width: 87em;
+}
+
+table.sortable tbody tr:nth-child(2n) td {
+    font-size: .64rem;
+    background-color:var(--md-typeset-table-color--light);
+}
+
+table.sortable tbody tr:nth-child(2n+1) td {
+    font-size: .64rem;
+    background-color:var(--md-default-bg-color);
+}
+
+.container{
+  display: block;
+  overflow-x: auto;
+}
+
+table.legend {
+    border-collapse:separate;
+    border:solid #9e9e9e 1px;
+    border-radius:10px;
+    width: 87em;
+}
+
 </style>
 
 ## Настройки запуска Picodata {: #picodata_start_settings }
 
 ### Легенда {: #legend_picodata data-search-exclude }
 
-!!! abstract ""
+<table class="legend"><tr><td>
     <span class="instance legend-id">audit</span><span class="legend-dash">—</span>настройка применима к отдельному инстансу<br>
     <span class="cluster legend-id">cluster-name</span><span class="legend-dash">—</span>настройка применима ко всему кластеру<br>
-
-<table markdown="span" class="md-typeset__scrollwrap sortable">
+</td></tr></table>
+<br>
+<div markdown="span" class="container">
+<table markdown="span" class="sortable">
     <thead>
         <tr>
-            <th class="heading" style="width:12%"><button>Название</button></th>
-            <th class="heading"><button>Описание</button></th>
-            <th class="heading" style="width:15%"><button>Значение по умолчанию</button></th>
+            <th class="heading" style="width:15%"><button>Название</button></th>
+            <th class="heading" style="width:20%"><button>Описание</button></th>
+            <th class="heading" style="width:5%"><button>Значение <br> по умолчанию</button></th>
             <th class="heading" style="width:20%"><button>CLI</button></th>
             <th class="heading"><button>Файл конфигурации</button></th>
             <th class="heading" style="width:20%"><button>Переменная</button></th>
@@ -160,7 +207,7 @@ td.td3 ul {
     </thead>
     <tbody>
         <tr>
-            <td class="center"><span class="instance">—</span></td>
+            <td><span class="instance">—</span></td>
             <td>Пароль администратора для текущего инстанса</td>
             <td>null</td>
             <td>
@@ -171,7 +218,7 @@ td.td3 ul {
             <td>PICODATA_ADMIN_PASSWORD</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">admin-sock</span></td>
+            <td><span class="instance">admin-sock</span></td>
             <td>Путь к unix-сокету для подключения к консоли администратора</td>
             <td>admin.sock в рабочей директории инстанса</td>
             <td>[picodata run --admin-sock](cli.md#run_admin_sock)</td>
@@ -179,7 +226,7 @@ td.td3 ul {
             <td>PICODATA_ADMIN_SOCK</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">audit</span></td>
+            <td><span class="instance">audit</span></td>
             <td>Конфигурация журнала аудита</td>
             <td>null</td>
             <td>[picodata run --audit](cli.md#run_audit)</td>
@@ -187,7 +234,7 @@ td.td3 ul {
             <td>PICODATA_AUDIT_LOG</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">auth-type</span></td>
+            <td><span class="instance">auth-type</span></td>
             <td>Метод аутентификации</td>
             <td>md5</td>
             <td>[picodata expel --auth-type](cli.md#expel_auth_type)</td>
@@ -195,7 +242,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">boot_timeout</span></td>
+            <td><span class="instance">boot_timeout</span></td>
             <td>Время, в течение которого инстанс ожидает загрузки перед присоединением к кластеру (с)</td>
             <td>7200</td>
             <td>[picodata run -c instance.boot_timeout=3600](cli.md#run_config_parameter)</td>
@@ -203,7 +250,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="cluster">bucket_count</span></td>
+            <td><span class="cluster">bucket_count</span></td>
             <td>Число сегментов в тире</td>
             <td>3000</td>
             <td></td>
@@ -211,7 +258,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="cluster">config</span></td>
+            <td><span class="cluster">config</span></td>
             <td>Путь к файлу конфигурации в формате YAML</td>
             <td>null</td>
             <td>[picodata run --config](cli.md#run_config)</td>
@@ -219,7 +266,7 @@ td.td3 ul {
             <td>PICODATA_CONFIG_FILE</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">config-parameter</span></td>
+            <td><span class="instance">config-parameter</span></td>
             <td>Список пар ключ-значение, определяющий параметры конфигурации</td>
             <td>null</td>
             <td>[picodata run --config-parameter](cli.md#run_config_parameter)</td>
@@ -227,7 +274,7 @@ td.td3 ul {
             <td>PICODATA_CONFIG_PARAMETERS</td>
         </tr>
         <tr>
-            <td class="center"><span class="cluster">default_bucket_count</span></td>
+            <td><span class="cluster">default_bucket_count</span></td>
             <td>Число сегментов в кластере по умолчанию</td>
             <td>3000</td>
             <td></td>
@@ -235,7 +282,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">failure-domain</span></td>
+            <td><span class="instance">failure-domain</span></td>
             <td>Список пар ключ-значение, разделенных запятыми, определяющий географическое расположение сервера</td>
             <td>{}</td>
             <td>[picodata run --failure-domain](cli.md#run_failure_domain)</td>
@@ -243,7 +290,7 @@ td.td3 ul {
             <td>PICODATA_FAILURE_DOMAIN</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">http-listen</span></td>
+            <td><span class="instance">http-listen</span></td>
             <td>Адрес HTTP-сервера</td>
             <td>null</td>
             <td>[picodata run --http-listen](cli.md#run_http_listen)</td>
@@ -251,7 +298,7 @@ td.td3 ul {
             <td>PICODATA_HTTP_LISTEN</td>
         </tr>
         <tr>
-            <td class="center"><span class="cluster">init-replication-factor</span></td>
+            <td><span class="cluster">init-replication-factor</span></td>
             <td>Число реплик (инстансов с одинаковым набором хранимых данных) для каждого репликасета</td>
             <td>1</td>
             <td>[picodata run --init-replication-factor](cli.md#run_init_replication_factor)</td>
@@ -259,7 +306,7 @@ td.td3 ul {
             <td>PICODATA_INIT_REPLICATION_FACTOR</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">instance-dir</span></td>
+            <td><span class="instance">instance-dir</span></td>
             <td>Рабочая директория инстанса</td>
             <td>./</td>
             <td>[picodata run --instance-dir](cli.md#run_instance_dir)</td>
@@ -267,7 +314,7 @@ td.td3 ul {
             <td>PICODATA_INSTANCE_DIR</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">instance-name</span></td>
+            <td><span class="instance">instance-name</span></td>
             <td>Имя инстанса</td>
             <td>null</td>
             <td>[picodata run --instance-name](cli.md#run_instance_name)</td>
@@ -275,7 +322,7 @@ td.td3 ul {
             <td>PICODATA_INSTANCE_NAME</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">iproto-advertise</span></td>
+            <td><span class="instance">iproto-advertise</span></td>
             <td>Публичный сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-advertise](cli.md#run_iproto_advertise)</td>
@@ -283,7 +330,7 @@ td.td3 ul {
             <td>PICODATA_IPROTO_ADVERTISE</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">iproto-listen</span></td>
+            <td><span class="instance">iproto-listen</span></td>
             <td>Сетевой адрес инстанса</td>
             <td>127.0.0.1:3301</td>
             <td>[picodata run --iproto-listen](cli.md#run_iproto_listen)</td>
@@ -291,7 +338,7 @@ td.td3 ul {
             <td>PICODATA_IPROTO_LISTEN</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">log</span></td>
+            <td><span class="instance">log</span></td>
             <td>Конфигурация отладочного журнала</td>
             <td>null</td>
             <td>[picodata run --log](cli.md#run_log)</td>
@@ -299,7 +346,7 @@ td.td3 ul {
             <td>PICODATA_LOG</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">log-level</span></td>
+            <td><span class="instance">log-level</span></td>
             <td>Уровень важности событий, регистрируемых в отладочном журнале</td>
             <td>info</td>
             <td>[picodata run --log-level](cli.md#run_log_level)</td>
@@ -307,7 +354,7 @@ td.td3 ul {
             <td>PICODATA_LOG_LEVEL</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">memtx-memory</span></td>
+            <td><span class="instance">memtx-memory</span></td>
             <td>Объем оперативной памяти в байтах, используемый движком хранения memtx</td>
             <td>67108864</td>
             <td>[picodata run --memtx-memory](cli.md#run_memtx_memory)</td>
@@ -315,7 +362,7 @@ td.td3 ul {
             <td>PICODATA_MEMTX_MEMORY</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">password-file</span></td>
+            <td><span class="instance">password-file</span></td>
             <td>Путь к файлу с паролем указанного пользователя</td>
             <td>null</td>
             <td>[picodata expel --password-file](cli.md#expel_password_file)</td>
@@ -323,7 +370,7 @@ td.td3 ul {
             <td>PICODATA_PASSWORD_FILE</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">peer</span></td>
+            <td><span class="instance">peer</span></td>
             <td>Список сетевых адресов других инстансов, разделенных запятыми</td>
             <td>- 127.0.0.1:3301</td>
             <td>
@@ -337,7 +384,7 @@ td.td3 ul {
             <td>PICODATA_PEER</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">pg-advertise</span></td>
+            <td><span class="instance">pg-advertise</span></td>
             <td>Публичный адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-advertise](cli.md#run_pg_advertise)</td>
@@ -345,7 +392,7 @@ td.td3 ul {
             <td>PICODATA_PG_ADVERTISE</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">pg-listen</span></td>
+            <td><span class="instance">pg-listen</span></td>
             <td>Адрес сервера для подключения по протоколу PostgreSQL</td>
             <td>127.0.0.1:4327</td>
             <td>[picodata run --pg-listen](cli.md#run_pg_listen)</td>
@@ -353,7 +400,7 @@ td.td3 ul {
             <td>PICODATA_PG_LISTEN</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">pg.ssl</span></td>
+            <td><span class="instance">pg.ssl</span></td>
             <td>Признак использования протокола SSL при подключении к SQL-консоли</td>
             <td>false</td>
             <td>[picodata run -c instance.pg.ssl=true](cli.md#run_config_parameter)</td>
@@ -361,7 +408,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">replicaset-name</span></td>
+            <td><span class="instance">replicaset-name</span></td>
             <td>Имя репликасета. Используется при инициализации кластера и присоединении инстанса к уже существующему кластеру</td>
             <td>null</td>
             <td>[picodata run --replicaset-name](cli.md#run_replicaset_name)</td>
@@ -369,7 +416,7 @@ td.td3 ul {
             <td>PICODATA_REPLICASET_NAME</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">service-password-file</span></td>
+            <td><span class="instance">service-password-file</span></td>
             <td>Путь к текстовому файлу с паролем для системного пользователя pico_service</td>
             <td>null</td>
             <td>
@@ -380,7 +427,7 @@ td.td3 ul {
             <td>PICODATA_SERVICE_PASSWORD_FILE</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">script</span></td>
+            <td><span class="instance">script</span></td>
             <td>Путь к файлу Lua-скрипта, который будет выполнен после присоединения инстанса к кластеру</td>
             <td>null</td>
             <td>[picodata run --script](cli.md#run_script)</td>
@@ -388,7 +435,7 @@ td.td3 ul {
             <td>PICODATA_SCRIPT</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">share-dir</span></td>
+            <td><span class="instance">share-dir</span></td>
             <td>Путь к директории, содержащей файлы плагинов</td>
             <td>null</td>
             <td>[picodata run --share-dir](cli.md#run_share_dir)</td>
@@ -396,7 +443,7 @@ td.td3 ul {
             <td>PICODATA_SHARE_DIR</td>
         </tr>
         <tr>
-            <td class="center"><span class="cluster">shredding</span></td>
+            <td><span class="cluster">shredding</span></td>
             <td>Режим безопасного удаления рабочих файлов инстанса</td>
             <td>false</td>
             <td>[picodata run --shredding](cli.md#run_shredding)</td>
@@ -404,7 +451,7 @@ td.td3 ul {
             <td>PICODATA_SHREDDING</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">tier</span></td>
+            <td><span class="instance">tier</span></td>
             <td>Имя тира, которому будет принадлежать инстанс</td>
             <td>default</td>
             <td>[picodata run --tier](cli.md#run_tier)</td>
@@ -412,7 +459,7 @@ td.td3 ul {
             <td>PICODATA_SHREDDING</td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.bloom_fpr</span></td>
+            <td><span class="instance">vinyl.bloom_fpr</span></td>
             <td>Вероятность ложноположительного срабатывания фильтра Блума для движка хранения vinyl, измеряемая в долях единицы</td>
             <td>0.05</td>
             <td>[picodata run -c instance.vinyl.bloom_fpr=0.10](cli.md#run_config_parameter)</td>
@@ -420,7 +467,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.cache</span></td>
+            <td><span class="instance">vinyl.cache</span></td>
             <td>Размер кэша в байтах для движка хранения vinyl</td>
             <td>134217728</td>
             <td>[picodata run -c instance.vinyl.cache=256M](cli.md#run_config_parameter)</td>
@@ -428,7 +475,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.max_tuple_size</span></td>
+            <td><span class="instance">vinyl.max_tuple_size</span></td>
             <td>Максимальный размер кортежа в байтах для движка хранения vinyl</td>
             <td>1048576</td>
             <td>[picodata run -c instance.vinyl.max_tuple_size=2M](cli.md#run_config_parameter)</td>
@@ -436,7 +483,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.memory</span></td>
+            <td><span class="instance">vinyl.memory</span></td>
             <td>Максимальное количество оперативной памяти в байтах, которое использует движок хранения vinyl</td>
             <td>134217728</td>
             <td>[picodata run -c instance.vinyl.memory=256M](cli.md#run_config_parameter)</td>
@@ -444,7 +491,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.page_size</span></td>
+            <td><span class="instance">vinyl.page_size</span></td>
             <td>Размер страницы в байтах, используемой движком хранения vinyl для операций чтения и записи на диск</td>
             <td>8192</td>
             <td>[picodata run -c instance.vinyl.page_size=16M](cli.md#run_config_parameter)</td>
@@ -452,7 +499,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.range_size</span></td>
+            <td><span class="instance">vinyl.range_size</span></td>
             <td>Максимальный размер LSM-поддерева по умолчанию в байтах для движка хранения vinyl</td>
             <td>1073741824</td>
             <td>[picodata run -c instance.vinyl.range_size=2G](cli.md#run_config_parameter)</td>
@@ -460,7 +507,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.read_threads</span></td>
+            <td><span class="instance">vinyl.read_threads</span></td>
             <td>Максимальное количество потоков чтения для движка хранения vinyl</td>
             <td>1</td>
             <td>[picodata run -c instance.vinyl.run_count_per_level=4](cli.md#run_config_parameter)</td>
@@ -468,7 +515,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.run_size_ratio</span></td>
+            <td><span class="instance">vinyl.run_size_ratio</span></td>
             <td>Соотношение между размерами разных уровней в LSM-дереве для движка хранения vinyl</td>
             <td>3.5</td>
             <td>[picodata run -c instance.vinyl.run_size_ratio=7.0](cli.md#run_config_parameter)</td>
@@ -476,7 +523,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.timeout</span></td>
+            <td><span class="instance">vinyl.timeout</span></td>
             <td>Максимальное время обработки запроса движком хранения vinyl в секундах</td>
             <td>60.0</td>
             <td>[picodata run -c instance.vinyl.timeout=120.0](cli.md#run_config_parameter)</td>
@@ -484,7 +531,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="instance">vinyl.write_threads</span></td>
+            <td><span class="instance">vinyl.write_threads</span></td>
             <td>Максимальное количество потоков записи для движка хранения vinyl</td>
             <td>4</td>
             <td>[picodata run -c instance.vinyl.write_threads=8](cli.md#run_config_parameter)</td>
@@ -493,22 +540,26 @@ td.td3 ul {
         </tr>
     </tbody>
 </table>
+</div>
 
 ## Настройки СУБД {: #sql_settings }
 
 ### Легенда {: #legend_db data-search-exclude }
 
-!!! abstract ""
+<table class="legend"><tr><td>
     <span class="sql-cluster legend-id">pg_portal_max</span><span class="legend-dash">—</span>настройка применима к кластеру<br>
     <span class="sql-tier legend-id">iproto_net_msg_max</span><span class="legend-dash">—</span>настройка применима к отдельному тиру<br>
+</td></tr></table>
+<br>
 
-<table markdown="span">
+<div markdown="span" class="container">
+<table markdown="span" class="sortable">
     <thead>
         <tr>
-            <th style="width:27%">Название</th>
-            <th style="width:20%">Описание</th>
-            <th>Значение по умолчанию</th>
-            <th style="width:45%">Пример SQL-команды</th>
+            <th style="width:30%"><button>Название</button></th>
+            <th style="width:30%"><button>Описание</button></th>
+            <th style="width:10%"><button>Значение <br> по умолчанию</button></th>
+            <th style="width:10%"><button>Пример SQL-команды</button></th>
         </tr>
     </thead>
     <tbody>
@@ -744,3 +795,4 @@ td.td3 ul {
         </tr>
     </tbody>
 </table>
+</div>
