@@ -810,7 +810,7 @@ impl<'a> Context<'a> {
 
 #[derive(Copy, Clone)]
 struct ImplTypeParam<'a>(&'a syn::TypeParam);
-impl<'a> ToTokens for ImplTypeParam<'a> {
+impl ToTokens for ImplTypeParam<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         // Leave off the type parameter defaults
         let param = self.0;
@@ -832,7 +832,7 @@ impl<'a> ToTokens for ImplTypeParam<'a> {
 
 #[derive(Copy, Clone)]
 struct ImplConstParam<'a>(&'a syn::ConstParam);
-impl<'a> ToTokens for ImplConstParam<'a> {
+impl ToTokens for ImplConstParam<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         // Leave off the type parameter defaults
         let param = self.0;
