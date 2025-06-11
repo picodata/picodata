@@ -62,3 +62,8 @@ class TestWindow11(ClusterTwoInstances):
 @sql_test_file("window-12.sql")
 class TestWindow12(ClusterTwoInstances):
     pass
+
+
+@sql_test_file("window-13.sql")
+class TestWindow13(ClusterTwoInstances):
+    pass

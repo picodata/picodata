@@ -140,6 +140,10 @@ impl KeySet {
     pub fn union(&self, other: &Self) -> Self {
         KeySet(self.0.union(&other.0).cloned().collect())
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl From<HashSet<Key, RepeatableState>> for KeySet {

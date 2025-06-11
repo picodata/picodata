@@ -290,6 +290,25 @@ fn join_policy_for_and(
         }
     }
 }
+#[inline(always)]
+fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distribution {
+    match (this, other) {
+        (Distribution::Any | Distribution::Global, _)
+        | (_, Distribution::Any | Distribution::Global) => {
+            unreachable!("Unexpected window distribution: {this:?} vs {other:?}")
+        }
+        (Distribution::Single, _) => Distribution::Single,
+        (_, Distribution::Single) => Distribution::Single,
+        (Distribution::Segment { keys: this_keys }, Distribution::Segment { keys: other_keys }) => {
+            let keys = this_keys.intersection(other_keys);
+            if keys.is_empty() {
+                Distribution::Single
+            } else {
+                Distribution::Segment { keys }
+            }
+        }
+    }
+}
 
 impl Plan {
     /// Get unary NOT expression nodes.
@@ -777,6 +796,38 @@ impl Plan {
         Ok(None)
     }
 
+    #[inline(always)]
+    fn window_dist(&self, window_id: NodeId) -> Result<Distribution, SbroadError> {
+        let window_expr = self.get_expression_node(window_id)?;
+        let Expression::Window(Window { partition, .. }) = window_expr else {
+            return Err(SbroadError::Invalid(
+                Entity::Expression,
+                Some(format_smolstr!(
+                    "Expected Window expression, got {window_expr:?}"
+                )),
+            ));
+        };
+        let partition = match partition {
+            None => return Ok(Distribution::Single),
+            Some(partition) if partition.is_empty() => return Ok(Distribution::Single),
+            Some(partition) => partition,
+        };
+        let mut positions: Vec<usize> = Vec::with_capacity(partition.len());
+        for part_id in partition {
+            let part_expr = self.get_expression_node(*part_id)?;
+            if let Expression::Reference(Reference { position, .. }) = part_expr {
+                positions.push(*position);
+            } else {
+                // If partition is not a column, we can't use it for redistribution.
+                return Ok(Distribution::Single);
+            }
+        }
+        let key = Key::new(positions);
+        let mut keys = KeySet::empty();
+        keys.insert(key);
+        Ok(Distribution::Segment { keys })
+    }
+
     fn resolve_window_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
         let rel = self.get_relation_node(rel_id)?;
         let Relational::Projection(Projection { windows, .. }) = rel else {
@@ -797,50 +848,22 @@ impl Plan {
         }
 
         // Collect the distribution of the windows (if any).
-        let mut window_dist = None;
+        let mut final_dist = None;
         for window_id in windows {
-            let window_expr = self.get_expression_node(*window_id)?;
-            if let Expression::Window(Window { partition, .. }) = window_expr {
-                let Some(partition) = partition else {
-                    window_dist = Some(Distribution::Single);
-                    break;
-                };
-                let mut positions: Vec<usize> = Vec::with_capacity(partition.len());
-                for part_id in partition {
-                    let part_expr = self.get_expression_node(*part_id)?;
-                    if let Expression::Reference(Reference { position, .. }) = part_expr {
-                        positions.push(*position);
-                    }
-                }
-                if positions.is_empty() {
-                    // It should never happen, but let's treat is as non-defined partition
-                    // rather than trow an error.
-                    continue;
-                }
-                let key = Key::new(positions);
-                let mut keys = KeySet::empty();
-                keys.insert(key);
-                match &mut window_dist {
-                    None => {
-                        window_dist = Some(Distribution::Segment { keys });
-                    }
-                    Some(Distribution::Segment {
-                        keys: ref window_keys,
-                    }) => {
-                        if *window_keys != keys {
-                            window_dist = Some(Distribution::Single);
-                            break;
-                        }
-                    }
-                    _ => {
-                        window_dist = Some(Distribution::Single);
-                        break;
-                    }
-                }
+            let window_dist = self.window_dist(*window_id)?;
+            let Some(dist) = &final_dist else {
+                // If this is the first window, we can just set the distribution.
+                final_dist = Some(window_dist);
+                continue;
+            };
+            final_dist = Some(compare_window_dist(&window_dist, dist));
+            if final_dist == Some(Distribution::Single) {
+                // If we have a single distribution, we can stop.
+                break;
             }
         }
         let mut strategy = Strategy::new(parent_id);
-        let Some(window_dist) = window_dist else {
+        let Some(window_dist) = final_dist else {
             // If there are no windows, we don't need to do anything.
             strategy.add_child(first_child_id, MotionPolicy::None, Program::default());
             return Ok(strategy);
