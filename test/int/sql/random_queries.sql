@@ -438,11 +438,11 @@ SELECT * FROM t ORDER BY b + (SELECT b FROM t1 ORDER BY b NULLS LAST LIMIT 1) NU
 -- TEST: test-check-compare-order
 -- SQL:
 SELECT * FROM t UNION ALL SELECT * FROM t;
--- EXPECTED(SORTED):
+-- UNORDERED:
+4, 2, 4, 2,
 1, None, 1, None,
-2, None, 2, None,
 3, 1, 3, 1,
-4, 2, 4, 2
+2, None, 2, None,
 
 -- TEST: test-check-compare-order-2-init
 -- SQL:
@@ -460,7 +460,7 @@ INSERT INTO t1 VALUES(4, 3, 9);
 -- TEST: test-check-compare-order-2
 -- SQL:
 SELECT * FROM t1 UNION ALL SELECT * FROM t1;
--- EXPECTED(SORTED):
+-- UNORDERED:
 None, None, 90,
 None, None, 90,
 1, 1, 2,

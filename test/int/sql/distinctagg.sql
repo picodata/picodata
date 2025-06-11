@@ -121,7 +121,7 @@ SELECT count(DISTINCT c) FROM t1 WHERE c=2
 -- TEST: distinctagg-3.10
 -- SQL:
 SELECT a, count(DISTINCT b) FROM t1 GROUP BY a;
--- EXPECTED(SORTED):
+-- UNORDERED:
 1, 1,
 2, 2,
 3, 2,
@@ -166,7 +166,7 @@ INSERT INTO t4 VALUES(1, 1), (2, 2), (3, 2), (4, 3), (5, 1);
 -- TEST: distinctagg-4.1
 -- SQL:
 SELECT count(DISTINCT c) AS count FROM t1 GROUP BY b
--- EXPECTED(SORTED):
+-- UNORDERED:
 0,
 1,
 2,
@@ -175,7 +175,7 @@ SELECT count(DISTINCT c) AS count FROM t1 GROUP BY b
 -- TEST: distinctagg-4.2
 -- SQL:
 SELECT count(DISTINCT a) AS count FROM t1 GROUP BY b
--- EXPECTED(SORTED):
+-- UNORDERED:
 0,
 1,
 2,
@@ -185,7 +185,7 @@ SELECT count(DISTINCT a) AS count FROM t1 GROUP BY b
 -- TEST: distinctagg-4.4
 -- SQL:
 SELECT count(DISTINCT f) FROM t2 GROUP BY d, e
--- EXPECTED(SORTED):
+-- UNORDERED:
 1,
 2,
 2,
@@ -194,7 +194,7 @@ SELECT count(DISTINCT f) FROM t2 GROUP BY d, e
 -- TEST: distinctagg-4.5
 -- SQL:
 SELECT count(DISTINCT f) FROM t2 GROUP BY d
--- EXPECTED(SORTED):
+-- UNORDERED:
 2, 3
 
 -- TEST: distinctagg-4.6

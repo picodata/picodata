@@ -1,9 +1,9 @@
 import inspect
+from collections import Counter
 from pathlib import Path
 from typing import Type
 from typing import Any
 import pytest
-from functools import cmp_to_key
 from decimal import Decimal
 import re
 from conftest import Cluster, TarantoolError
@@ -16,30 +16,39 @@ def init_cluster(cluster: Cluster, instance_count: int) -> Cluster:
     return cluster
 
 
-def compare_lists(a: list, b: list):
-    for x, y in zip(a, b):
-        if x is None:
-            return -1
-        elif y is None:
-            return 1
-        elif x != y:
-            return (x > y) - (x < y)
-    return 0
+def compare_results(expected, actual):
+    expected_counter = Counter(map(tuple, expected))
+    actual_counter = Counter(map(tuple, actual))
+
+    missing = expected_counter - actual_counter
+    unexpected = actual_counter - expected_counter
+
+    if missing or unexpected:
+        message = ["Mismatch in SQL test results:"]
+        if missing:
+            message.append("\nMissing tuples:")
+            for tup, count in missing.items():
+                message.append(f"  {tup} (x{count})")
+        if unexpected:
+            message.append("\nUnexpected tuples:")
+            for tup, count in unexpected.items():
+                message.append(f"  {tup} (x{count})")
+        raise AssertionError("\n".join(message))
 
 
 def do_execsql(cluster: Cluster, query: str, expected: list):
     instance = cluster.leader()
     result = instance.sql(query)
-    data = [col for row in result for col in row]
-    assert data == expected
-
-
-def do_execsorted_sql(cluster: Cluster, query: str, expected: list):
-    instance = cluster.leader()
-    result = instance.sql(query)
     result_len = len(result[0]) if len(result) > 0 else 0
     new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
-    assert sorted(result, key=cmp_to_key(compare_lists)) == new_expected
+    compare_results(new_expected, result)
+
+
+def do_execsql_exact(cluster: Cluster, query: str, expected: list):
+    instance = cluster.leader()
+    result = instance.sql(query)
+    data = [col for row in result for col in row]
+    assert data == expected
 
 
 def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
@@ -114,12 +123,21 @@ def parse_file(cls: Type, file_name: str) -> list:
     test_file = Path(inspect.getfile(cls)).parent / file_name
     content = test_file.read_text()
     test_pattern = (
-        r"-- TEST: ([^\n]*)\n"  # Test name
-        r"-- SQL:\n(.*?)\n"  # SQL query
-        r"(?:-- EXPECTED:\n(.*?))?"  # Expected result (optional)
-        r"(?:-- EXPECTED\s*\(\s*SORTED\s*\)\s*:\n(.*?))?"  # Expected sorted result (optional)
-        r"(?:-- ERROR:\n(.*?))?"  # Expected error (optional)
-        r"(?=-- TEST:|\Z)"  # Next test or end of file
+        # Test name
+        r"-- TEST: ([^\n]*)\n"
+        # SQL query
+        r"-- SQL:\n(.*?)\n"
+        # EXPECTED (optional): tuples returned by the picodata must
+        # appear in exactly the same order as specified in the test
+        # result.
+        # UNORDERED (optional): tuples returned by the picodata have
+        # no ordering guarantees. Expected and actual values will be
+        # sorted before comparison.
+        # ERROR (optional): error message that must be raised by the
+        # picodata.
+        r"(?:-- (EXPECTED|UNORDERED|ERROR):\n(.*?))?"
+        # Next test or end of file
+        r"(?=-- TEST:|\Z)"
     )
     matches = re.findall(test_pattern, content, re.DOTALL)
     params = []
@@ -131,19 +149,18 @@ def parse_file(cls: Type, file_name: str) -> list:
             continue
         query = query.strip()
         assert query, "SQL query must be provided"
+        error = None
         expected = None
-        sorted_flag: bool = False
-        if match[2]:
+        is_exact: bool = False
+        if match[2] == "ERROR":
+            error = match[3].strip().split("\n")
+        elif match[2] == "EXPECTED" or match[2] == "UNORDERED":
+            is_exact = True if match[2] == "EXPECTED" else False
             if query.lower().startswith("explain"):
-                expected = _parse_line(match[2], "\n", "\n")
+                expected = _parse_line(match[3], "\n", "\n")
             else:
-                expected = _parse_line(match[2], None, ",")
-        elif match[3]:
-            sorted_flag = True
-            expected = _parse_line(match[3], None, ",")
-        error = match[4].strip().split("\n") if match[4] else None
-        assert not (expected and error), "Cannot provide both expected result and error"
-        params.append(pytest.param(query, expected, sorted_flag, error, id=name))
+                expected = _parse_line(match[3], None, ",")
+        params.append(pytest.param(query, expected, is_exact, error, id=name))
     return params
 
 
@@ -162,7 +179,7 @@ def pytest_generate_tests(metafunc):
         assert "query" in metafunc.fixturenames
         assert "expected" in metafunc.fixturenames
         assert "error" in metafunc.fixturenames
-        metafunc.parametrize(["query", "expected", "sorted_flag", "error"], metafunc.cls.params)
+        metafunc.parametrize(["query", "expected", "is_exact", "error"], metafunc.cls.params)
 
 
 @pytest.fixture(scope="class")
@@ -178,13 +195,13 @@ def cluster_1(cluster: Cluster):
 class ClusterSingleInstance:
     params: list = []
 
-    def test_sql(self, cluster_1: Cluster, query: str, sorted_flag: bool, expected: list, error: str):
-        if sorted_flag:
-            do_execsorted_sql(cluster_1, query, expected)
-        elif query.lower().startswith("explain"):
+    def test_sql(self, cluster_1: Cluster, query: str, is_exact: bool, expected: list, error: str):
+        if query.lower().startswith("explain") and not error:
             do_explain_sql(cluster_1, query, expected)
-        elif expected:
+        elif expected and not is_exact:
             do_execsql(cluster_1, query, expected)
+        elif expected and is_exact:
+            do_execsql_exact(cluster_1, query, expected)
         else:
             do_catchsql(cluster_1, query, error)
 
@@ -202,12 +219,12 @@ def cluster_2(cluster: Cluster):
 class ClusterTwoInstances:
     params: list = []
 
-    def test_sql(self, cluster_2: Cluster, query: str, expected: list, sorted_flag: bool, error: str):
-        if sorted_flag:
-            do_execsorted_sql(cluster_2, query, expected)
-        elif query.lower().startswith("explain") and not error:
+    def test_sql(self, cluster_2: Cluster, query: str, expected: list, is_exact: bool, error: str):
+        if query.lower().startswith("explain") and not error:
             do_explain_sql(cluster_2, query, expected)
-        elif expected:
+        elif expected and not is_exact:
             do_execsql(cluster_2, query, expected)
+        elif expected and is_exact:
+            do_execsql_exact(cluster_2, query, expected)
         else:
             do_catchsql(cluster_2, query, error)

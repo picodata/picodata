@@ -9,28 +9,28 @@ INSERT INTO t1 VALUES(4, 'A', 'B', 'C');
 -- TEST: distinct-2.1
 -- SQL:
 SELECT DISTINCT a, b FROM t1;
--- EXPECTED(SORTED):
+-- UNORDERED:
 'A', 'B',
 'a', 'b'
 
 -- TEST: distinct-2.2
 -- SQL:
 SELECT DISTINCT b, a FROM t1;
--- EXPECTED(SORTED):
+-- UNORDERED:
 'B', 'A',
 'b', 'a'
 
 -- TEST: distinct-2.3
 -- SQL:
 SELECT DISTINCT a, b, c FROM t1;
--- EXPECTED(SORTED):
+-- UNORDERED:
 'A', 'B', 'C',
 'a', 'b', 'c'
 
 -- TEST: distinct-2.4
 -- TBD: https://git.picodata.io/core/picodata/-/issues/1924
 SELECT DISTINCT a, b FROM t1 ORDER BY a, b, c;
--- EXPECTED(SORTED):
+-- UNORDERED:
 'A', 'B', 'C',
 'a', 'b', 'c'
 
@@ -50,7 +50,7 @@ SELECT DISTINCT b FROM t1 ORDER BY b;
 -- TEST: distinct-2.7
 -- SQL:
 SELECT DISTINCT a FROM t1 ORDER BY a;
--- EXPECTED(SORTED):
+-- UNORDERED:
 'A',
 'a'
 
