@@ -485,7 +485,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                                    | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
-                    TypeDecimal = { (^"decimal" | ^"numeric" ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }
+                    TypeDecimal = { ((^"decimal" | ^"number" | ^"numeric") ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }
                     TypeDouble = { ^"double" }
                     TypeInt = { (^"integer" | ^"bigint" | ^"smallint" | ^"int" ~ ("2" | "4" | "8")?) }
                     TypeJSON = { ^"json" }

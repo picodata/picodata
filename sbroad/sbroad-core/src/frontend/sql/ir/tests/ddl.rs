@@ -225,3 +225,78 @@ fn infer_alias_numeric_no_parameters() {
 
     assert_eq!(format, &vec![def_a]);
 }
+
+#[test]
+fn infer_alias_number_two_parameters() {
+    let types: Vec<&str> = vec!["decimal", "numeric", "number"];
+
+    for typ in types {
+        let input = format!("create table t (\"a\" {}(5, 2) primary key)", typ);
+        let metadata = &RouterConfigurationMock::new();
+        let plan = AbstractSyntaxTree::transform_into_plan(input.as_str(), &[], metadata).unwrap();
+        let top_id = plan.get_top().unwrap();
+        let top_node = plan.get_ddl_node(top_id).unwrap();
+
+        let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+            panic!("expected create table")
+        };
+
+        let def_a = ColumnDef {
+            name: "a".into(),
+            data_type: Type::Decimal,
+            is_nullable: false,
+        };
+
+        assert_eq!(format, &vec![def_a]);
+    }
+}
+
+#[test]
+fn infer_alias_number_one_parameter() {
+    let types: Vec<&str> = vec!["decimal", "numeric", "number"];
+
+    for typ in types {
+        let input = format!("create table t (\"a\" {}(5) primary key)", typ);
+        let metadata = &RouterConfigurationMock::new();
+        let plan = AbstractSyntaxTree::transform_into_plan(input.as_str(), &[], metadata).unwrap();
+        let top_id = plan.get_top().unwrap();
+        let top_node = plan.get_ddl_node(top_id).unwrap();
+
+        let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+            panic!("expected create table")
+        };
+
+        let def_a = ColumnDef {
+            name: "a".into(),
+            data_type: Type::Decimal,
+            is_nullable: false,
+        };
+
+        assert_eq!(format, &vec![def_a]);
+    }
+}
+
+#[test]
+fn infer_alias_number_zero_parameters() {
+    let types: Vec<&str> = vec!["decimal", "numeric", "number"];
+
+    for typ in types {
+        let input = format!("create table t (\"a\" {} primary key)", typ);
+        let metadata = &RouterConfigurationMock::new();
+        let plan = AbstractSyntaxTree::transform_into_plan(input.as_str(), &[], metadata).unwrap();
+        let top_id = plan.get_top().unwrap();
+        let top_node = plan.get_ddl_node(top_id).unwrap();
+
+        let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+            panic!("expected create table")
+        };
+
+        let def_a = ColumnDef {
+            name: "a".into(),
+            data_type: Type::Decimal,
+            is_nullable: false,
+        };
+
+        assert_eq!(format, &vec![def_a]);
+    }
+}

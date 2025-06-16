@@ -2,6 +2,34 @@ use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
 
 #[test]
+fn front_numeric_param_in_cast() {
+    let typ = "numeric";
+    let pattern = format!("SELECT CAST(? AS {}) FROM \"test_space\"", typ);
+    let plan = sql_to_optimized_ir(pattern.as_str(), vec![Value::from(1_i64)]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (1::decimal -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_number_param_in_cast() {
+    let typ = "number";
+    let pattern = format!("SELECT CAST(? AS {}) FROM \"test_space\"", typ);
+    let plan = sql_to_optimized_ir(pattern.as_str(), vec![Value::from(1_i64)]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection (1::decimal -> "col_1")
+        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
 fn front_param_in_cast() {
     let pattern = r#"SELECT CAST(? AS INTEGER) FROM "test_space""#;
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(1_i64)]);
