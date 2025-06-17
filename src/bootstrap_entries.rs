@@ -124,7 +124,10 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
         op::Dml::insert(
             storage::Properties::TABLE_ID,
-            &(PropertyName::SystemCatalogVersion, "25.1.0".to_owned()),
+            &(
+                PropertyName::SystemCatalogVersion,
+                storage::LATEST_SYSTEM_CATALOG_VERSION,
+            ),
             ADMIN_ID,
         )
         .expect("serialization cannot fail"),
