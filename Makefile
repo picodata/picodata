@@ -57,7 +57,7 @@ build-release: override CARGO_FLAGS += --profile=release $(ERROR_INJECTION)
 build-release: build
 
 .PHONY: build-release-pkg
-build-release-pkg: CARGO_FLAGS = --features webui --profile=release
+build-release-pkg: CARGO_FLAGS = --features webui --profile=release -p picodata -p gostech-audit-log
 build-release-pkg: CARGO_FLAGS += $(if $(USE_DYNAMIC_BUILD),--features dynamic_build)
 build-release-pkg: build
 
@@ -163,6 +163,7 @@ k6:
 install:
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 0755 target/*/picodata $(DESTDIR)/usr/bin/picodata
+	install -m 0755 target/*/gostech-audit-log $(DESTDIR)/usr/bin/gostech-audit-log
 
 # IMPORTANT. This rule is primarily used in CI pack stage. It repeats
 # the behavior of build.rs `build_webui()`, but uses a different out_dir
