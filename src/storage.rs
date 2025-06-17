@@ -106,6 +106,13 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
 
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
+/// The latest system catalog version this version of picodata is aware of.
+///
+/// If this version of the executable bootstraps a new picodata cluster this
+/// will be the value of 'system_catalog_version' field in `_pico_property`.
+/// Otherwise this will be the version the cluster is going to be upgrading to.
+pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.1.0";
+
 ////////////////////////////////////////////////////////////////////////////////
 // Catalog
 ////////////////////////////////////////////////////////////////////////////////
