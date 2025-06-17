@@ -5,7 +5,7 @@ use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
-use crate::traft::{ConnectionType, Result};
+use crate::traft::{node, ConnectionType, Result};
 use crate::util::Uppercase;
 use crate::{has_states, tlog, unwrap_ok_or};
 use futures::future::join_all;
@@ -144,6 +144,7 @@ pub(crate) struct TierInfo {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClusterInfo {
     capacity_usage: f64,
+    cluster_name: String,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: String,
     replicasets_count: usize,
@@ -376,12 +377,15 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
         });
     }
 
+    let cluster_name = node::global()?.raft_storage.cluster_name()?;
+
     let res = ClusterInfo {
         capacity_usage: if mem_info.usable == 0 {
             0_f64
         } else {
             ((mem_info.used as f64) / (mem_info.usable as f64) * 10000_f64).round() / 100_f64
         },
+        cluster_name,
         current_instance_version: version,
         replicasets_count,
         instances_current_state_offline: (instances - instances_online),

@@ -82,6 +82,7 @@ def test_webui_basic(instance: Instance):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 50,
+            "clusterName": instance.cluster_name,
             "replicasetsCount": 1,
             "instancesCurrentStateOffline": 0,
             "currentInstaceVersion": instance_version,
@@ -240,6 +241,7 @@ def test_webui_with_plugin(cluster: Cluster):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 50,
+            "clusterName": cluster.id,
             "replicasetsCount": 3,
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 0,
