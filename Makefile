@@ -57,7 +57,8 @@ build-release: override CARGO_FLAGS += --profile=release $(ERROR_INJECTION)
 build-release: build
 
 .PHONY: build-release-pkg
-build-release-pkg: override CARGO_FLAGS += --profile=release
+build-release-pkg: CARGO_FLAGS = --features webui --profile=release
+build-release-pkg: CARGO_FLAGS += $(if $(USE_DYNAMIC_BUILD),--features dynamic_build)
 build-release-pkg: build
 
 # We have to specify target to disable ASan for proc macros, build.rs, etc.
