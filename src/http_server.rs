@@ -64,6 +64,7 @@ struct InstanceInfo {
     target_state: StateVariant,
     name: InstanceName,
     binary_address: String,
+    pg_address: String,
 }
 
 // From the Lua version:
@@ -163,7 +164,7 @@ fn get_peer_addresses(
     replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
-) -> Result<HashMap<u64, String>> {
+) -> Result<HashMap<u64, (String, String)>> {
     let leaders: HashMap<u64, bool> = instances
         .iter()
         .filter(|item| {
@@ -174,13 +175,31 @@ fn get_peer_addresses(
         })
         .map(|item| (item.raft_id, true))
         .collect();
-    let i = storage
-        .peer_addresses
-        .iter()?
-        .filter(|peer| peer.connection_type == ConnectionType::Iproto);
-    Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true))
-        .map(|pa| (pa.raft_id, pa.address))
-        .collect())
+    let i = storage.peer_addresses.iter()?.filter(|peer| {
+        peer.connection_type == ConnectionType::Iproto
+            || peer.connection_type == ConnectionType::Pgproto
+    });
+    Ok(i.filter(|pa| leaders.get(&pa.raft_id) == Some(&true)).fold(
+        HashMap::<u64, (String, String)>::new(),
+        |mut acc, pa| {
+            acc.entry(pa.raft_id)
+                .and_modify(|(iproto, pgproto)| {
+                    // Destructure the tuple for clarity
+                    match pa.connection_type {
+                        ConnectionType::Iproto => *iproto = pa.address.clone(),
+                        ConnectionType::Pgproto => *pgproto = pa.address.clone(),
+                    }
+                })
+                .or_insert_with(|| {
+                    // Use or_insert_with for lazy evaluation
+                    match pa.connection_type {
+                        ConnectionType::Iproto => (pa.address, String::new()), // More idiomatic than "".to_string()
+                        ConnectionType::Pgproto => (String::new(), pa.address),
+                    }
+                });
+            acc // Only inserts if key doesn't exist
+        },
+    ))
 }
 
 // Get data from instances: memory, PICO_VERSION, httpd address if exists
@@ -290,7 +309,8 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
             current_state: instance.current_state.variant,
             target_state: instance.target_state.variant,
             name: instance.name.clone(),
-            binary_address: address,
+            binary_address: address.0,
+            pg_address: address.1,
         };
 
         let replicaset_info = res

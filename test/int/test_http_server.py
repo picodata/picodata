@@ -55,6 +55,7 @@ def test_webui_basic(instance: Instance):
                                 "version": instance_version,
                                 "httpAddress": http_listen,
                                 "binaryAddress": instance.iproto_listen,
+                                "pgAddress": instance.pg_listen,
                             }
                         ],
                         "instanceCount": 1,
@@ -156,18 +157,21 @@ def test_webui_with_plugin(cluster: Cluster):
         **instance_template,
         "name": "red_1_1",
         "binaryAddress": i1.iproto_listen,
+        "pgAddress": i1.pg_listen,
         "httpAddress": http_listen,
     }
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
         "binaryAddress": i2.iproto_listen,
+        "pgAddress": i2.pg_listen,
         "httpAddress": "",
     }
     instance_3 = {
         **instance_template,
         "name": "green_1_1",
         "binaryAddress": i3.iproto_listen,
+        "pgAddress": i3.pg_listen,
         "httpAddress": "",
     }
 
@@ -282,12 +286,14 @@ def test_webui_can_vote_flag(cluster: Cluster):
         **instance_template,
         "name": "red_1_1",
         "binaryAddress": i1.iproto_listen,
+        "pgAddress": i1.pg_listen,
         "httpAddress": http_listen,
     }
     instance_2 = {
         **instance_template,
         "name": "blue_1_1",
         "binaryAddress": i2.iproto_listen,
+        "pgAddress": i2.pg_listen,
         "httpAddress": "",
     }
 
