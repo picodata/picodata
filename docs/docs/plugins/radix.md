@@ -59,42 +59,42 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 Для создания плагина в кластере и регистрации его сервиса на доступных тирах:
 
 ```sql title="В примере использованы два тира: `default` и `extra`"
-CREATE PLUGIN radix 0.7.0;
-ALTER PLUGIN radix 0.7.0 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 0.7.0 ADD SERVICE radix TO TIER extra;
+CREATE PLUGIN radix 0.9.0;
+ALTER PLUGIN radix 0.9.0 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 0.9.0 ADD SERVICE radix TO TIER extra;
 ```
 
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_0='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_1='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_2='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_3='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_4='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_5='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_6='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_7='default';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_8='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_9='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_10='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_11='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_12='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_13='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_14='extra';
-ALTER PLUGIN radix 0.7.0 SET migration_context.tier_15='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_0='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_1='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_2='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_3='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_4='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_5='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_6='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_7='default';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_8='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_9='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_10='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_11='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_12='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_13='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_14='extra';
+ALTER PLUGIN radix 0.9.0 SET migration_context.tier_15='extra';
 ```
 
 Для выполнения миграции:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 0.7.0 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 0.9.0 OPTION(TIMEOUT=300);
 ```
 
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.7.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.9.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -1202,7 +1202,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.7.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -1255,7 +1255,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.7.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернет ошибку.
@@ -1274,7 +1274,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.7.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -1406,5 +1406,236 @@ WATCH key [key ...]
 
 Включает проверку значений указанных ключей для последующих транзакций.
 
+### Команды управления и диагностики {: #server }
+
+#### info
+
+```sql
+INFO [section [section ...]]
+```
+
+Возвращает информацию о сервере, подключенных клиентах, нагрузке на
+текущий узел и прочую статистику. Параметр `section` позволяет уточнить
+запрос, ограничив его нужной секцией. Доступные секции:
+
+- `server`
+- `clients`
+- `memory`
+- `persistence`
+- `stats`
+- `replication`
+- `cpu`
+- `modules`
+- `cluster`
+- `keyspace`
+- `errorstats`
+- `commandstats`
+
+??? example "Образец вывода полного наборы сведений"
+    ```
+    127.0.0.1:7379> info
+    # Server
+    radix_version:0.9.0
+    picodata_version:25.2.1-19-g283377900
+    picodata_cluster_name:my_cluster
+    picodata_cluster_uuid:928ab3b9-fe7f-4aff-a740-2e6700fc2960
+    redis_version:7.4.0
+    redis_git_sha1:a50a984f18925124a58f41616408b9d32ba73f79
+    redis_git_dirty:0
+    redis_build_id:
+    redis_mode:standalone
+    os:Fedora Linux 6.14.6-300.fc42.x86_64 x86_64
+    arch_bits:64
+    monotonic_clock:POSIX clock_gettime with CLOCK_MONOTONIC
+    multiplexing_api:epoll
+    atomicvar_api:c11-builtin
+    gcc_version:rustc 1.86.0 (05f9846f8 2025-03-31)
+    process_id:2844495
+    process_supervised:no
+    run_id:f83b08c241514fe7bd9ffa8906896734
+    tcp_port:7379
+    server_time_usec:1750776554886845
+    uptime_in_seconds:30
+    uptime_in_days:0
+    hz:3500
+    configured_hz:0
+    lru_clock:0
+    executable:/usr/local/bin/picodata
+    config_file:
+    io_threads_active:1
+
+    # Clients
+    connected_clients:1
+    cluster_connections:0
+    maxclients:0
+    client_recent_max_input_buffer:0
+    client_recent_max_output_buffer:8192
+    blocked_clients:0
+    tracking_clients:0
+    pubsub_clients:0
+    watching_clients:0
+    clients_in_timeout_table:0
+    total_watched_keys:0
+    total_blocking_keys:0
+    total_blocking_keys_on_nokey:0
+
+    # Memory
+    used_memory:117440512
+    used_memory_human:112.00M
+    used_memory_rss:137404416
+    used_memory_rss_human:131.04M
+    used_memory_peak:117440512
+    used_memory_peak_human:112.00M
+    used_memory_peak_perc:100.00
+    used_memory_overhead:83886080
+    used_memory_startup:117440512
+    used_memory_dataset:33554432
+    used_memory_dataset_perc:28.57
+    allocator_allocated:117440512
+    allocator_active:117440512
+    allocator_resident:137404416
+    total_system_memory:33285476352
+    total_system_memory_human:31.00G
+    used_memory_lua:13287519
+    used_memory_vm_eval:13287519
+    used_memory_lua_human:12.67M
+    used_memory_scripts_eval:0
+    number_of_cached_scripts:0
+    number_of_functions:0
+    number_of_libraries:0
+    used_memory_vm_functions:0
+    used_memory_vm_total:13287519
+    used_memory_vm_total_human:12.67M
+    used_memory_functions:0
+    used_memory_scripts:0
+    used_memory_scripts_human:0B
+    maxmemory:0
+    maxmemory_human:0B
+    maxmemory_policy:allkeys-lru
+    allocator_frag_ratio:50.00
+    allocator_frag_bytes:33554432
+    allocator_muzzy:0
+    allocator_rss_ratio:NaN
+    allocator_rss_bytes:0
+    mem_not_counted_for_evict:0
+    mem_replication_backlog:0
+    mem_total_replication_buffers:0
+    mem_fragmentation_ratio:NaN
+    mem_fragmentation_bytes:0
+    mem_clients_normal:16384
+    mem_allocator:slab
+    active_defrag_running:0
+    lazyfree_pending_objects:0
+    lazyfreed_objects:0
+    slab_info_items_size:2402512
+    slab_info_items_used:401520
+    slab_info_items_used_ratio:16.71
+    slab_info_quota_size:67108864
+    slab_info_quota_used:33554432
+    slab_info_quota_used_ratio:50
+    slab_info_arena_size:33554432
+    slab_info_arena_used:4137072
+    slab_info_arena_used_ratio:12.3
+
+    # Persistence
+    loading:0
+    async_loading:0
+
+    # Stats
+    total_connections_received:1
+    total_commands_processed:3
+    instantaneous_ops_per_sec:0
+    total_net_input_bytes:84
+    total_net_output_bytes:880
+    total_net_repl_input_bytes:0
+    total_net_repl_output_bytes:0
+    instantaneous_input_kbps:0.00
+    instantaneous_output_kbps:0.03
+    instantaneous_input_repl_kbps:0.00
+    instantaneous_output_repl_kbps:0.00
+    rejected_connections:0
+    sync_full:0
+    sync_partial_ok:0
+    sync_partial_err:0
+    expired_keys:0
+    evicted_keys:0
+    keyspace_hits:0
+    keyspace_misses:0
+    pubsub_channels:0
+    pubsub_patterns:0
+    latest_fork_usec:0
+    migrate_cached_sockets:0
+    unexpected_error_replies:0
+    total_error_replies:0
+    total_reads_processed:4
+    total_writes_processed:3
+    client_query_buffer_limit_disconnections:0
+    client_output_buffer_limit_disconnections:0
+    reply_buffer_expands:0
+    reply_buffer_shrinks:0
+
+    # Replication
+    role:master
+    connected_slaves:0
+    master_failover_state:no-failover
+    master_replid:f02d94ba-47fa-40b7-a48f-c33fb208dd0d
+    master_replid2:f02d94ba-47fa-40b7-a48f-c33fb208dd0d
+    master_repl_offset:82972
+    second_repl_offset:82972
+    repl_backlog_active:0
+    repl_backlog_size:0
+    repl_backlog_first_byte_offset: 0
+    repl_backlog_histlen:0
+    master_host:
+    master_port:0
+    master_link_status:down
+    master_last_io_seconds_ago: 0
+    master_sync_in_progress: 0
+    slave_read_repl_offset:82972
+    slave_repl_offset:82972
+    slave_priority:0
+    slave_read_only:0
+    replica_announced:0
+    master_sync_total_bytes: 0
+    master_sync_read_bytes:0
+    master_sync_left_bytes:0
+    master_sync_perc:0
+    master_sync_last_io_seconds_ago:0
+    master_link_down_since_seconds:0
+    min_slaves_good_slaves:0
+    slave0: i1, , running, 0, 0
+
+    # CPU
+    used_cpu_sys:2.078520
+    used_cpu_user:9.099032
+    used_cpu_sys_children:0.000000
+    used_cpu_user_children:0.000000
+    used_cpu_sys_main_thread:1.016605
+    used_cpu_user_main_thread:8.037833
+
+    # Modules
+
+    # Errorstats
+
+    # Cluster
+    cluster_enabled:1
+
+    # Keyspace
+
+    # Commandstats
+    cmdstat_info:calls=1,usec=154,usec_per_call=0,rejected_calls=0,failed_calls=0
+    ```
+
+#### memory usage {: #memory_usage }
+
+```sql
+MEMORY USAGE key [SAMPLES count]
+```
+
+Показывает объем ОЗУ, занимаемый указанным ключом `key`. Параметр
+`SAMPLES` позволяет указать число дочерних элементов ключа (если такие
+имеются), объем которых также будет учтен. По умолчанию, значение
+`SAMPLES` равно 5. Для учета всех дочерних элементов следует указать
+`SAMPLES 0`.
 
 
