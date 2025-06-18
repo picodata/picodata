@@ -1455,17 +1455,19 @@ pub fn system_role_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
 /// find all the places where we refer to "pico_service".
 pub const PICO_SERVICE_USER_NAME: &'static str = "pico_service";
 
-pub fn init_user_pico_service() {
+pub fn user_pico_service_is_initialized() -> bool {
     let sys_user = SystemSpace::User.as_space();
-    let sys_priv = SystemSpace::Priv.as_space();
 
     let t = sys_user
         .get(&[PICO_SERVICE_ID])
         .expect("reading from _user shouldn't fail");
-    if t.is_some() {
-        // Already exists (instance restarted)
-        return;
-    }
+    t.is_some()
+}
+
+pub fn init_user_pico_service() {
+    assert!(!user_pico_service_is_initialized());
+
+    let sys_priv = SystemSpace::Priv.as_space();
 
     let found = system_user_definitions()
         .into_iter()

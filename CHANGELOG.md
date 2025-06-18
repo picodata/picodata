@@ -36,6 +36,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed sorting in WebUI - it's now consistent across reloads
 
+- Fixed a bug which broke intra-replicaset replication when upgrading from 25.1.* to 25.2.*.
+  Note that clusters broken by this bug require some manual actions in addition
+  to this fix, but newer version should upgrade fine. Note also that this fix
+  does not include the actual schema upgrade procedure, so the cluster will
+  still have a schema of the older version of picodata.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.

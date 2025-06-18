@@ -404,15 +404,38 @@ fn start_webui() {
     .expect("failed to add Web UI routes")
 }
 
+fn stored_procedures_are_initialized(log_non_found: bool) -> Result<bool> {
+    let sys_func = ::tarantool::space::SystemSpace::Func.as_space();
+    let sys_func_by_name = sys_func
+        .index("name")
+        .expect("_func should always have index by name");
+
+    let mut failed = false;
+    for proc in ::tarantool::proc::all_procs().iter() {
+        let proc_name = proc.name();
+        let t = sys_func_by_name
+            .get(&[format!(".{proc_name}")])
+            .expect("reading stored procedure metadata shouldn't fail");
+        if t.is_some() {
+            continue;
+        }
+
+        if !log_non_found {
+            return Ok(false);
+        }
+
+        tlog!(Warning, "stored procedure .{proc_name} is not defined");
+        failed = true;
+    }
+
+    Ok(!failed)
+}
+
 /// Initializes Tarantool stored procedures.
 ///
 /// Those are used for inter-instance communication
 /// (discovery, rpc, public proc api).
-fn init_handlers() {
-    plugin::rpc::server::init_handlers();
-
-    rpc::init_static_proc_set();
-
+fn init_stored_procedures() {
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         let proc_name = proc.name();
@@ -466,9 +489,6 @@ fn init_handlers() {
         "#,
     )
     .expect(".proc_sql_execute registration should never fail");
-
-    forbid_unsupported_iproto_requests();
-    redirect_iproto_execute_requests();
 }
 
 /// Sets interactive prompt to display `picodata>`.
@@ -503,7 +523,7 @@ fn redirect_interactive_sql() {
 /// Checks for user exceeding maximum number of login attempts and if user was blocked.
 ///
 /// Also see [`config::AlterSystemParameters::auth_login_attempt_max`].
-fn set_login_check(storage: Catalog) {
+fn set_login_check() {
     const MAX_ATTEMPTS_EXCEEDED: &str = "Maximum number of login attempts exceeded";
     const NO_LOGIN_PRIVILEGE: &str = "User does not have login privilege";
 
@@ -515,7 +535,7 @@ fn set_login_check(storage: Catalog) {
     }
 
     // Determines the outcome of an authentication attempt.
-    let compute_auth_verdict = move |user_name: String, successful_authentication: bool| {
+    let f = move |user_name: String, successful_authentication: bool, storage: &Catalog| {
         use std::collections::hash_map::Entry;
 
         // If the user is pico service (used for internal communication) we don't perform any additional checks.
@@ -592,6 +612,7 @@ fn set_login_check(storage: Catalog) {
             }
         }
     };
+    let compute_auth_verdict = f;
 
     let lua = ::tarantool::lua_state();
     lua.exec_with(
@@ -605,7 +626,22 @@ fn set_login_check(storage: Catalog) {
 
         box.session.on_auth(on_auth)",
         tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
-            match compute_auth_verdict(user.clone(), status) {
+            let storage = match Catalog::try_get(false) {
+                Ok(v) => v,
+                Err(err) => {
+                    tlog!(Error, "failed accessing storage: {err}");
+                    // An iproto connection was opened before the global storage
+                    // was initialized. This is possible in rare cases in a short
+                    // window of time when an instance is booting up.
+                    // In this case we simply drop the connection,
+                    // because we can't yet determine verify anything.
+                    // From the client's perspective the iproto interface is not
+                    // yet ready to receive connections.
+                    tlua::error!(lua, "{}", err);
+                }
+            };
+
+            match compute_auth_verdict(user.clone(), status, storage) {
                 Verdict::AuthOk => {
                     // We don't want to spam admins with
                     // unneeded info about internal user
@@ -766,7 +802,7 @@ fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
     shredding: bool,
-) -> Result<(Catalog, RaftSpaceAccess), Error> {
+) -> Result<(), Error> {
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
             "failed creating instance directory {}: {}",
@@ -825,16 +861,82 @@ fn init_common(
 
     set_console_prompt();
     redirect_interactive_sql();
-    init_handlers();
 
-    let storage = Catalog::try_get(true).expect("storage initialization should never fail");
-    schema::init_user_pico_service();
+    // Setup plugin RPC handlers
+    plugin::rpc::server::init_handlers();
+    rpc::init_static_proc_set();
 
-    set_login_check(storage.clone());
+    // Setup IPROTO redirection
+    forbid_unsupported_iproto_requests();
+    redirect_iproto_execute_requests();
+
+    // Setup access checks
+    set_login_check();
     set_on_access_denied_audit_trigger();
+
+    Ok(())
+}
+
+fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
+    assert!(!storage::storage_is_initialized());
+
+    tlog!(Debug, "initializing global storage");
+
+    // Create picodata system table definitions in `_space`, `_index`, etc.
+    let storage = Catalog::try_get(true).expect("storage initialization should never fail");
+
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
+
+    // Create a `pico_service` user record in `_user` tarantool space.
+    assert!(!schema::user_pico_service_is_initialized());
+    schema::init_user_pico_service();
+
+    // Create a stored procedure records in `_func` tarantool space.
+    assert!(!stored_procedures_are_initialized(false)?);
+    init_stored_procedures();
+
+    tlog!(Info, "initialized picodata storage");
+
+    // The actual system_catalog_version field in _pico_property will only be
+    // populated from the bootstrap_entries once the raft main loop gets going.
+    let system_catalog_version = storage::LATEST_SYSTEM_CATALOG_VERSION;
+    tlog!(Info, "system catalog version: {system_catalog_version}");
+
     Ok((storage.clone(), raft_storage))
+}
+
+fn get_initialized_storage() -> Result<Option<(Catalog, RaftSpaceAccess)>> {
+    // Make sure picodata system table definitions are created in `_space`, `_index`, etc.
+    if !storage::storage_is_initialized() {
+        return Ok(None);
+    }
+
+    // Create the storage wrapper structs to be used throughout the code base.
+    let storage = Catalog::try_get(true).expect("storage initialization should never fail");
+    let raft_storage =
+        RaftSpaceAccess::new().expect("raft storage initialization should never fail");
+
+    // Make sure `pico_service` user record is in `_user` tarantool space.
+    assert!(schema::user_pico_service_is_initialized());
+
+    // Make sure stored procedure records are in `_func` tarantool space.
+    // FIXME: we want to make this an assertion, but at the moment we can't
+    // because it will fail at the moment of upgrade if new stored procedures
+    // were added. We need a better system_catalog_version aware validation
+    // routine. See also <https://git.picodata.io/core/picodata/-/issues/961>
+    stored_procedures_are_initialized(true)?;
+
+    tlog!(Info, "recovered picodata storage");
+
+    let res = storage.properties.system_catalog_version()?;
+    if let Some(system_catalog_version) = res {
+        tlog!(Info, "system catalog version: {system_catalog_version}");
+    } else {
+        tlog!(Info, "system catalog version not yet known");
+    }
+
+    Ok(Some((storage.clone(), raft_storage)))
 }
 
 fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> {
@@ -844,33 +946,44 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_discovery(config)?;
-    let (storage, raft_storage) = init_common(config, &cfg, false)?;
+    init_common(config, &cfg, false)?;
     discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
-    if let Some(raft_id) = raft_storage.raft_id()? {
-        // This is a restart, go to postjoin immediately.
-        tarantool::set_cfg_field("read_only", true)?;
-        let instance_name = raft_storage
-            .instance_name()?
-            .expect("instance_name should be already set");
-        postjoin(config, storage, raft_storage)?;
-        crate::audit!(
-            message: "local database recovered on `{instance_name}`",
-            title: "recover_local_db",
-            severity: Low,
-            instance_name: %instance_name,
-            raft_id: %raft_id,
-            initiator: "admin",
-        );
-        crate::audit!(
-            message: "local database connected on `{instance_name}`",
-            title: "connect_local_db",
-            severity: Low,
-            instance_name: %instance_name,
-            raft_id: %raft_id,
-            initiator: "admin",
-        );
-        return Ok(None);
+    if let Some((storage, raft_storage)) = get_initialized_storage()? {
+        if let Some(raft_id) = raft_storage.raft_id()? {
+            // This is a restart, go to postjoin immediately.
+            tarantool::set_cfg_field("read_only", true)?;
+            let instance_name = raft_storage
+                .instance_name()?
+                .expect("instance_name should be already set");
+            postjoin(config, storage, raft_storage)?;
+
+            crate::audit!(
+                message: "local database recovered on `{instance_name}`",
+                title: "recover_local_db",
+                severity: Low,
+                instance_name: %instance_name,
+                raft_id: %raft_id,
+                initiator: "admin",
+            );
+            crate::audit!(
+                message: "local database connected on `{instance_name}`",
+                title: "connect_local_db",
+                severity: Low,
+                instance_name: %instance_name,
+                raft_id: %raft_id,
+                initiator: "admin",
+            );
+            return Ok(None);
+        } else {
+            tlog!(Warning, "picodata storage is initialized but the raft node is not, instance likely previously terminated prematurely");
+        }
+    } else {
+        // When going into the discovery procedure we don't need the whole storage
+        // initialized but it's simpler to just call this instead of picking just
+        // the things we need which is `.proc_discover`, the auth trigger and the
+        // `_pico_user` table it needs, etc.
+        bootstrap_storage_on_master()?;
     }
 
     // Start listening only after we've checked if this is a restart.
@@ -946,7 +1059,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance)?;
-    let (storage, raft_storage) = init_common(config, &cfg, config.cluster.shredding())?;
+    init_common(config, &cfg, config.cluster.shredding())?;
+    let (storage, raft_storage) = bootstrap_storage_on_master()?;
 
     let cs = raft::ConfState {
         voters: vec![raft_id],
@@ -1075,7 +1189,19 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_instance_join(config, &resp)?;
-    let (storage, raft_storage) = init_common(config, &cfg, resp.shredding)?;
+
+    let is_master = !cfg.read_only;
+    init_common(config, &cfg, resp.shredding)?;
+
+    let (storage, raft_storage);
+    if is_master {
+        (storage, raft_storage) = bootstrap_storage_on_master()?;
+    } else {
+        // In case of read-only replica the storage is initialized by the master
+        // and this instance receives all the data via tarantool replication.
+        (storage, raft_storage) = get_initialized_storage()?
+            .expect("read-only replica should receive tarantool snapshot from master");
+    }
 
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {

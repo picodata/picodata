@@ -2661,6 +2661,9 @@ def pgrep_tree(pid):
 
 class log_crawler:
     def __init__(self, instance: Instance, search_str: str) -> None:
+        self.instance = instance
+        self.search_str = search_str
+
         # If search_str contains multiple lines, we need to be checking multiple
         # lines at a time. Because self._cb will only be called on 1 line at a
         # time we need to do some hoop jumping to make this work.
@@ -2717,6 +2720,9 @@ class log_crawler:
             assert self.matched
 
         Retriable(timeout=timeout, rps=4).call(func=must_match)
+
+    def __repr__(self):
+        return f"log_crawler({self.instance}, '{self.search_str}')"
 
 
 def server(queue: Queue, host: str, port: int) -> None:
