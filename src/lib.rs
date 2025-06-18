@@ -445,6 +445,7 @@ fn init_handlers() {
 
     lua.exec(
         r#"
+        box.schema.func.create('.proc_sql_dispatch', {language = 'C', if_not_exists = true})
         box.schema.role.grant('public', 'execute', 'function', '.proc_sql_dispatch', {if_not_exists = true})
         "#,
     )

@@ -584,11 +584,22 @@ impl<'de> Decode<'de> for BindArgs {
     }
 }
 
+/// # Safety
 /// Dispatches an SQL query to the cluster.
 /// Part of public RPC API.
-#[proc(packed_args)]
-pub fn proc_sql_dispatch(args: BindArgs) -> traft::Result<Tuple> {
-    sql_dispatch(&args.pattern, args.params, None).map_err(err_for_tnt_console)
+#[no_mangle]
+pub unsafe extern "C" fn proc_sql_dispatch(
+    mut ctx: FunctionCtx,
+    args: FunctionArgs,
+) -> ::std::os::raw::c_int {
+    let bind_args = match args.decode::<BindArgs>() {
+        Ok(v) => v,
+        Err(e) => return report("", Error::from(e)),
+    };
+    let result =
+        sql_dispatch(&bind_args.pattern, bind_args.params, None).map_err(err_for_tnt_console);
+
+    tarantool::proc::Return::ret(result, ctx)
 }
 
 pub fn sql_dispatch(
