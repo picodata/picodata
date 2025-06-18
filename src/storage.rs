@@ -104,6 +104,17 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
     Ok(space)
 }
 
+pub fn storage_is_initialized() -> bool {
+    // FIXME: this is a quick and dirty sanity check for when we're booting up
+    // the instance to help catch some bugs. A better approach would be to
+    // develop an upgrade system which verifies the storage against the
+    // system_catalog_version from _pico_property, but this should really be a
+    // part of the whole upgrade system...
+    // See also <https://git.picodata.io/core/picodata/-/issues/961>
+    space_by_name(Instances::TABLE_NAME).is_ok()
+        && space_by_name(crate::traft::raft_storage::RaftSpaceAccess::SPACE_RAFT_STATE).is_ok()
+}
+
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
 /// The latest system catalog version this version of picodata is aware of.
@@ -214,9 +225,17 @@ impl Catalog {
     }
 
     /// Get a reference to a global instance of clusterwide storage.
-    /// If `init` is true, will do the initialization which may involve creation
-    /// of system spaces. This should only be done at instance initialization in
-    /// init_common.
+    ///
+    /// If `init` is true, this will
+    /// - create a global variable `STORAGE`, which may later be accessed by
+    ///   calling [`Self::try_get`]`(false)`
+    /// - create the system tables in the tarantool's storage engine if they are
+    ///   not yet created
+    ///
+    /// Calling this with `init = true` should only be done at instance
+    /// initialization in [`crate::bootstrap_storage_on_master`] and
+    /// [`crate::get_initialized_storage`].
+    ///
     /// Returns an error
     ///   - if `init` is `false` and storage is not initialized.
     ///   - if `init` is `true` and storage initialization failed.
@@ -1463,6 +1482,12 @@ impl Properties {
         let res: String = self
             .get::<String>(PropertyName::ClusterVersion.as_str())?
             .expect("ClusterVersion should be initialized");
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn system_catalog_version(&self) -> tarantool::Result<Option<String>> {
+        let res = self.get(PropertyName::SystemCatalogVersion.as_str())?;
         Ok(res)
     }
 }

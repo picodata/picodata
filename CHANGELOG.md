@@ -8,6 +8,17 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.2.3] - Unreleased
+
+### Fixes
+
+- Fixed a bug which broke intra-replicaset replication when upgrading from 25.1.* to 25.2.*.
+  Note that clusters broken by this bug require some manual actions in addition
+  to this fix, but newer version should upgrade fine. Note also that this fix
+  does not include the actual schema upgrade procedure, so the cluster will
+  still have a schema of the older version of picodata.
+
+
 ## [25.2.2] - 2025-06-25
 
 ### Features

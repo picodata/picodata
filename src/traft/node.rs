@@ -2741,6 +2741,7 @@ impl MainLoop {
     }
 }
 
+#[track_caller]
 pub fn global() -> Result<&'static Node, BoxError> {
     // Uninitialized raft node is a regular case. This case may take
     // place while the instance is executing `start_discover()` function.
@@ -2754,8 +2755,19 @@ pub fn global() -> Result<&'static Node, BoxError> {
     // can't use it because it doesn't implement Sync, and we don't want to use
     // std::sync::OnceLock, because we don't want to pay for the atomic read
     // which we don't need.
-    unsafe { static_ref!(const RAFT_NODE).as_deref() }
-        .ok_or_else(|| BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"))
+    let res = unsafe { static_ref!(const RAFT_NODE).as_deref() };
+    let Some(node) = res else {
+        let loc = std::panic::Location::caller();
+        tlog!(
+            Debug,
+            "{}:{}: attempt to access raft node before it's initialized",
+            loc.file(),
+            loc.line()
+        );
+        return Err(BoxError::new(ErrorCode::Uninitialized, "uninitialized yet"));
+    };
+
+    Ok(node)
 }
 
 #[proc(packed_args)]

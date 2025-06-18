@@ -301,7 +301,7 @@ mod tests {
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
-        crate::init_handlers();
+        crate::init_stored_procedures();
 
         let result = pool
             .call(

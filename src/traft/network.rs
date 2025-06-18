@@ -666,7 +666,7 @@ mod tests {
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
 
-        crate::init_handlers();
+        crate::init_stored_procedures();
 
         let result: u32 = fiber::block_on(
             pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32), None)
@@ -721,7 +721,7 @@ mod tests {
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
 
-        crate::init_handlers();
+        crate::init_stored_procedures();
 
         tlog!(Info, "TEST: connecting {listen}");
         // pool.connect(1337, listen);
@@ -811,7 +811,7 @@ mod tests {
             .peer_addresses
             .put(instance.raft_id, &listen, &traft::ConnectionType::Iproto)
             .unwrap();
-        crate::init_handlers();
+        crate::init_stored_procedures();
 
         tlog!(Info, "TEST: connecting {listen}");
 
