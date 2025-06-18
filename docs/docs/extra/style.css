@@ -313,3 +313,8 @@ article > p > img {
 span.keys {
     white-space: nowrap;
 }
+
+/* Maximum space for text block */
+.md-grid {
+  max-width: 100%; /* or 100%, if you want to stretch to full-width */
+}
