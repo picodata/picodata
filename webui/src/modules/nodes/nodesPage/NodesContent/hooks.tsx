@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { sortByString } from "shared/utils/string/sort";
+import { sortByString, SortByStringOptions } from "shared/utils/string/sort";
 import { InstanceType } from "shared/entity/instance";
 
 import { TSortValue } from "./TopBar/SortBy/config";
@@ -43,18 +43,33 @@ export const useSortedInstances = (
 
     if (!sortBy) return instances;
 
-    return [...instances].sort((a, b) => {
-      if (sortBy.by === "FAILURE_DOMAIN") {
-        return sortByString(
-          formatFailDomains(a.failureDomain),
-          formatFailDomains(b.failureDomain),
-          {
-            order: sortBy.order,
-          }
-        );
-      }
-
-      return sortByString(a.name, b.name, { order: sortBy.order });
-    });
+    return sortByStringProp(
+      instances,
+      (a) =>
+        sortBy.by === "FAILURE_DOMAIN"
+          ? // Fallback to sorting by-name if failure domain is empty
+            // Make sure to make empty instances "float to the top" by prefixing with `_`
+            formatFailDomains(a.failureDomain) || `_${a.name}`
+          : a.name,
+      { order: sortBy.order }
+    );
   }, [instances, sortBy]);
 };
+
+export function useSortedByString<T>(
+  array: T[] | undefined,
+  prop: (x: T) => string,
+  options?: SortByStringOptions
+) {
+  if (!array) return [];
+
+  return sortByStringProp<T>(array, prop, options);
+}
+
+export function sortByStringProp<T>(
+  array: T[],
+  prop: (x: T) => string,
+  options?: SortByStringOptions
+) {
+  return [...array].sort((a, b) => sortByString(prop(a), prop(b), options));
+}
