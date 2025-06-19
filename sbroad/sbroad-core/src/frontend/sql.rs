@@ -1917,8 +1917,8 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
     }
 }
 
-/// Common logic for [`sbroad::ir::OptionKind::VdbeOpcodeMax`]
-/// and [`sbroad::ir::OptionKind::MotionRowMax`] parsing.
+/// Common logic for [`crate::ir::OptionKind::VdbeOpcodeMax`]
+/// and [`crate::ir::OptionKind::MotionRowMax`] parsing.
 fn parse_option<M: Metadata>(
     ast: &AbstractSyntaxTree,
     option_node_id: usize,
@@ -2144,6 +2144,7 @@ where
     pub reference_to_name_map: HashMap<NodeId, (SmolStr, bool)>,
     /// Flag indicating whether parameter in Tarantool (? mark) style was met.
     met_tnt_param: bool,
+    #[allow(rustdoc::invalid_html_tags)]
     /// Flag indicating whether parameter in Postgres ($<index>) style was met.
     met_pg_param: bool,
     /// Map of (relational_node_id, columns_position_map).
@@ -2322,8 +2323,8 @@ enum ParseExpression {
     ///
     /// And
     ///   - left  = InterimBetween
-    ///               - left  = expr_1
-    ///               - right = expr_2
+    ///     - left  = expr_1
+    ///     - right = expr_2
     ///   - right = expr_3
     ///
     /// because priority of BETWEEN is higher than of AND.

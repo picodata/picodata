@@ -255,8 +255,8 @@ impl ServiceWorkerManager {
     /// # Arguments
     ///
     /// * `job`: callback that will be executed in separated fiber.
-    /// Note that it is your responsibility to organize job graceful shutdown, see a
-    /// [`CancellationToken`] for details.
+    ///   Note that it is your responsibility to organize job graceful shutdown, see a
+    ///   [`CancellationToken`] for details.
     ///
     /// # Examples
     ///
@@ -543,6 +543,7 @@ impl FfiBackgroundJobCancellationToken {
 
     /// The error is returned via [`BoxError::set_last`].
     #[inline(always)]
+    #[allow(clippy::result_unit_err)]
     pub fn wait_job_finished(&self, timeout: Duration) -> Result<(), ()> {
         let rc = (self.callback)(
             self,

@@ -986,7 +986,7 @@ impl Plan {
     /// # Arguments
     /// * `finals` - ids of nodes to be patched
     /// * `finals_child_id` - id of a relational node right after `finals` in the plan. In case
-    ///    original query had `GroupBy`, this will be final `GroupBy` id.
+    ///   original query had `GroupBy`, this will be final `GroupBy` id.
     /// * `local_aliases_map` - map between grouping expressions ids and corresponding local aliases.
     /// * `aggrs` - list of metadata about aggregates
     fn patch_finals(

@@ -35,15 +35,17 @@ impl PicoContext {
         }
     }
 
+    /// # Safety
+    ///
     /// Note: this is for internal use only. Plugin developers should never
     /// be copying pico context.
     #[inline]
     pub unsafe fn clone(&self) -> Self {
         Self {
             is_master: self.is_master,
-            plugin_name: self.plugin_name.clone(),
-            service_name: self.service_name.clone(),
-            plugin_version: self.plugin_version.clone(),
+            plugin_name: self.plugin_name,
+            service_name: self.service_name,
+            plugin_version: self.plugin_version,
         }
     }
 
@@ -76,8 +78,8 @@ impl PicoContext {
     /// # Arguments
     ///
     /// * `job`: callback that will be executed in separated fiber.
-    /// Note that it is your responsibility to organize job graceful shutdown, see a
-    /// [`background::CancellationToken`] for details.
+    ///   Note that it is your responsibility to organize job graceful shutdown, see a
+    ///   [`background::CancellationToken`] for details.
     ///
     /// # Examples
     ///
@@ -565,6 +567,7 @@ impl ServiceRegistry {
 
     /// Create service from service name and plugin version pair.
     /// Return an error if there is more than one factory suitable for creating a service.
+    #[allow(clippy::result_unit_err)]
     pub fn make(&self, service_name: &str, version: &str) -> Result<Option<ServiceBox>, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
         let maybe_factories = self.services.get(&ident);
@@ -580,6 +583,7 @@ impl ServiceRegistry {
 
     /// Return true if registry contains needle service, false elsewhere.
     /// Return an error if there is more than one factory suitable for creating a service.
+    #[allow(clippy::result_unit_err)]
     pub fn contains(&self, service_name: &str, version: &str) -> Result<bool, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
         match self.services.get(&ident) {

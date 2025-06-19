@@ -48,7 +48,7 @@ pub struct Query<'a> {
     params: Vec<SqlValue>,
 }
 
-impl<'a> Query<'a> {
+impl Query<'_> {
     /// Bind a value for use with this SQL query.
     #[inline(always)]
     pub fn bind<T: Into<SqlValue>>(mut self, value: T) -> Self {

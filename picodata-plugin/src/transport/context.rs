@@ -4,6 +4,7 @@ use crate::util::FfiSafeBytes;
 use crate::util::FfiSafeStr;
 use std::borrow::Cow;
 use std::cell::OnceCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::Cursor;
 use tarantool::error::BoxError;
@@ -160,13 +161,11 @@ tarantool::define_enum_with_introspection! {
 }
 
 #[inline]
-fn decode_msgpack_string_fields<'a>(raw: &'a [u8]) -> Result<ContextNamedFields<'a>, BoxError> {
+fn decode_msgpack_string_fields(raw: &[u8]) -> Result<ContextNamedFields<'_>, BoxError> {
     decode_msgpack_string_fields_impl(raw).map_err(|e| log_context_decoding_error(raw, e))
 }
 
-fn decode_msgpack_string_fields_impl<'a>(
-    raw: &'a [u8],
-) -> Result<ContextNamedFields<'a>, BoxError> {
+fn decode_msgpack_string_fields_impl(raw: &[u8]) -> Result<ContextNamedFields<'_>, BoxError> {
     let mut buffer = Cursor::new(raw);
 
     let count = rmp::decode::read_map_len(&mut buffer).map_err(invalid_msgpack)? as usize;
@@ -229,9 +228,9 @@ impl ContextValue<'_> {
 
     #[inline(always)]
     pub fn float(&self) -> Option<f64> {
-        match self {
-            &Self::Float(v) => Some(v),
-            &Self::Int(v) => Some(v as _),
+        match *self {
+            Self::Float(v) => Some(v),
+            Self::Int(v) => Some(v as _),
             _ => None,
         }
     }
@@ -247,7 +246,7 @@ impl ContextValue<'_> {
     #[inline(always)]
     pub fn array(&self) -> Option<&[Self]> {
         match self {
-            Self::Array(v) => Some(&*v),
+            Self::Array(v) => Some(v),
             _ => None,
         }
     }
@@ -380,6 +379,7 @@ impl FfiSafeContext {
     }
 
     #[inline(always)]
+    #[allow(clippy::result_unit_err)]
     pub fn decode_msgpack(path: &str, raw: &[u8]) -> Result<Self, ()> {
         Self::decode_msgpack_impl(path, raw)
             // Note: error is passed via box_error_last, because plugin may have
@@ -443,13 +443,12 @@ impl FfiSafeContext {
         }
 
         let end_index = buffer.position() as usize;
-        if end_index > raw.len() {
+        match end_index.cmp(&raw.len()) {
             #[rustfmt::skip]
-            return Err(BoxError::new(InvalidMsgpack, format!("expected more data after {}", DisplayAsHexBytesLimitted(raw))));
-        } else if end_index < raw.len() {
-            let tail = &raw[end_index..];
+            Ordering::Greater => return Err(BoxError::new(InvalidMsgpack, format!("expected more data after {}", DisplayAsHexBytesLimitted(raw)))),
             #[rustfmt::skip]
-            return Err(BoxError::new(InvalidMsgpack, format!("unexpected data after context: {}", DisplayAsHexBytesLimitted(tail))));
+            Ordering::Less => return Err(BoxError::new(InvalidMsgpack, format!("unexpected data after context: {}", DisplayAsHexBytesLimitted(&raw[end_index..])))),
+            Ordering::Equal => {}
         }
 
         let Some(request_id) = request_id else {
@@ -511,22 +510,13 @@ fn read_rest_of_str<'a>(
 ) -> Result<Option<&'a str>, BoxError> {
     use rmp::decode::RmpRead as _;
 
-    let length;
-    match marker {
-        rmp::Marker::FixStr(v) => {
-            length = v as usize;
-        }
-        rmp::Marker::Str8 => {
-            length = buffer.read_data_u8().map_err(invalid_msgpack)? as usize;
-        }
-        rmp::Marker::Str16 => {
-            length = buffer.read_data_u16().map_err(invalid_msgpack)? as usize;
-        }
-        rmp::Marker::Str32 => {
-            length = buffer.read_data_u32().map_err(invalid_msgpack)? as usize;
-        }
+    let length = match marker {
+        rmp::Marker::FixStr(v) => v as usize,
+        rmp::Marker::Str8 => buffer.read_data_u8().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Str16 => buffer.read_data_u16().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Str32 => buffer.read_data_u32().map_err(invalid_msgpack)? as usize,
         _ => return Ok(None),
-    }
+    };
 
     str_from_cursor(length, buffer).map(Some)
 }
@@ -693,7 +683,7 @@ mod tests {
         data.extend(b"\xa3foo\xa3bar");
         data.extend(b"\xa4bool\xc3");
         data.extend(b"\xa3int\x45");
-        data.extend(b"\xa5float\xcb\x40\x09\x1e\xb8\x51\xeb\x85\x1f");
+        data.extend(b"\xa5float\xcb\x40\x09\x70\xa3\xd7\x0a\x3d\x71");
         data.extend(b"\xa5array\x93\x01\xa3two\x03");
 
         let context = FfiSafeContext::decode_msgpack_impl("path", &data).unwrap();
@@ -722,7 +712,7 @@ mod tests {
         );
         assert_eq!(
             *context.get("float").unwrap().unwrap(),
-            ContextValue::from(3.14)
+            ContextValue::from(3.18)
         );
         assert_eq!(
             *context.get("array").unwrap().unwrap(),

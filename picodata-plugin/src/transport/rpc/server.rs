@@ -104,12 +104,8 @@ impl<'a> RouteBuilder<'a> {
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "path must be specified for RPC endpoint"));
         };
 
-        let identifier = PackedServiceIdentifier::pack(
-            path.into(),
-            self.plugin.into(),
-            self.service.into(),
-            self.version.into(),
-        )?;
+        let identifier =
+            PackedServiceIdentifier::pack(path, self.plugin, self.service, self.version)?;
         let handler = FfiRpcHandler::new(identifier, f);
         if let Err(e) = register_rpc_handler(handler) {
             // Note: recreating the error to capture the caller's source location
@@ -141,7 +137,7 @@ fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
         return Err(BoxError::last());
     }
 
-    return Ok(());
+    Ok(())
 }
 
 type RpcHandlerCallback = extern "C" fn(
@@ -224,11 +220,11 @@ impl FfiRpcHandler {
                 // This is safe. To verify see `FfiRpcHandler::call` bellow.
                 unsafe { std::ptr::write(output, region_slice.into()) }
 
-                return 0;
+                0
             }
             Err(e) => {
                 e.set_last();
-                return -1;
+                -1
             }
         }
     }
@@ -254,6 +250,7 @@ impl FfiRpcHandler {
     }
 
     #[inline(always)]
+    #[allow(clippy::result_unit_err)]
     pub fn call(&self, input: &[u8], context: &FfiSafeContext) -> Result<&'static [u8], ()> {
         let mut output = MaybeUninit::uninit();
 

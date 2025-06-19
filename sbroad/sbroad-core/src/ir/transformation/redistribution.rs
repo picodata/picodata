@@ -1844,7 +1844,7 @@ impl Plan {
                         Program(vec![pk_op, op]),
                     );
                 }
-                UpdateStrategy::LocalUpdate { .. } => {
+                UpdateStrategy::LocalUpdate => {
                     // NB: currently when sharding column is not updated,
                     // the children below projection will always have the same distribution
                     // as update table, but this may change in the future: e.g. if join children
