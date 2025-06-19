@@ -3,6 +3,7 @@ import cn from "classnames";
 
 import { LinkSystemIcon } from "shared/icons/LinkSystemIcon";
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
+import { sortByString } from "shared/utils/string/sort";
 
 import { formatFailDomain } from "../../../utils";
 
@@ -23,19 +24,22 @@ export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
 
   return (
     <HiddenWrapper className={cn(styles.container, className)}>
-      {failureDomain.map((domain, index) => {
-        const isLastItem = index === failureDomain.length - 1;
+      {failureDomain
+        .map(formatFailDomain)
+        .sort((a, b) => sortByString(b, a)) // Ensure consistent display order for key=value pairs
+        .map((domain, index) => {
+          const isLastItem = index === failureDomain.length - 1;
 
-        return (
-          <React.Fragment key={index}>
-            <LinkSystemIcon width={16} height={16} className={styles.icon} />
-            <span className={styles.text}>
-              {formatFailDomain(domain)}
-              {isLastItem ? "" : ";"}
-            </span>
-          </React.Fragment>
-        );
-      })}
+          return (
+            <React.Fragment key={index}>
+              <LinkSystemIcon width={16} height={16} className={styles.icon} />
+              <span className={styles.text}>
+                {domain}
+                {isLastItem ? "" : ";"}
+              </span>
+            </React.Fragment>
+          );
+        })}
     </HiddenWrapper>
   );
 };
