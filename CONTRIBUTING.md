@@ -70,6 +70,17 @@ dnf install curl-devel libicu-devel libyaml-devel libzstd-devel openldap-devel o
 dnf install nodejs yarnpkg
 ```
 
+### Prerequisites for Windows (WSL)
+
+Picodata is not currently able to run on Windows machines. But it is still possible to build and run it in WSL.
+
+Make sure you have [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) installed.
+Then:
+```shell
+wsl ~
+```
+Then simply follow the instructions above for the WSL distribution you have installed (default is Ubuntu).
+
 ### Install Rust
 
 ```shell
@@ -83,6 +94,27 @@ git clone https://git.picodata.io/core/picodata.git
 cd picodata
 git submodule update --init --recursive
 ```
+
+<details>
+<summary>Note for Windows (WSL) users</summary>
+
+Make sure to clone the repository from the WSL console, and into a native WSL directory.\
+Simply check the current WSL console directory:
+- `/mnt/c/some/windows/path` - ❌ starts with `/mnt`, will not work
+- `~` - ✅ a folder in a native home directory
+- `/home/user/projects` - ✅ a folder in a native WSL directory
+
+For example, clone into your WSL home directory:
+```
+wsl
+cd ~
+git clone https://git.picodata.io/picodata/picodata/picodata.git --recursive
+cd picodata
+```
+
+</details>
+<br>
+
 Compile the project:
 ```bash
 make build-dev
