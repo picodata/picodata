@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 
+- Fixed sorting in WebUI - it's now consistent across reloads
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.
