@@ -2,8 +2,7 @@ import cn from "classnames";
 
 import { Content } from "shared/ui/layout/Content/Content";
 import { useTranslation } from "shared/intl";
-
-import { useClusterInfo } from "../../../../shared/entity/cluster/info";
+import { useClusterInfo } from "shared/entity/cluster/info";
 
 import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
 
