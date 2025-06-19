@@ -1,0 +1,23 @@
+diff --git a/src/box/space.c b/src/box/space.c
+index 201f64dc3..69dfc1999 100644
+--- a/src/box/space.c
++++ b/src/box/space.c
+@@ -292,6 +292,8 @@ space_create(struct space *space, struct engine *engine,
+ 	     const struct space_vtab *vtab, struct space_def *def,
+ 	     struct rlist *key_list, struct tuple_format *format)
+ {
++	if (!format)
++		panic("format == NULL in %s:%d", __FILE__, __LINE__);
+ 	if (!rlist_empty(key_list)) {
+ 		/* Primary key must go first. */
+ 		struct index_def *pk = rlist_first_entry(key_list,
+@@ -319,8 +321,7 @@ space_create(struct space *space, struct engine *engine,
+ 	space->run_triggers = true;
+ 
+ 	space->format = format;
+-	if (format != NULL)
+-		tuple_format_ref(format);
++	tuple_format_ref(format);
+ 
+ 	space->def = space_def_dup(def);
+ 
