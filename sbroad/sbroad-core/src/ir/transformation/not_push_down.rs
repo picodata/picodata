@@ -34,11 +34,11 @@ enum NotState {
     /// E.g. in expression `not (true and cast(foo(x) as bool))` this status will be `On` during
     /// the whole tree traveral. Here is detailed states for each node:
     /// * and  -> On { parent_not_op: Some(id) } -> change to Or and don't pass `parent_not_op`
-    ///           to children, because it has alredy been "used" for negating And itself.
+    ///   to children, because it has alredy been "used" for negating And itself.
     /// * true -> On { parent_not_op: None } -> change to false and do nothing.
     /// * cast -> On { parent_not_op: None } -> don't change self, because we don't know, what
-    ///           value will cast return. As soon as parent_not_op is None, create one as a parent
-    ///           node.
+    ///   value will cast return. As soon as parent_not_op is None, create one as a parent
+    ///   node.
     On { parent_not_op: Option<NodeId> },
 }
 

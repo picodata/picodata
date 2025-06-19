@@ -547,7 +547,7 @@ impl Plan {
                 Distribution::Segment { .. } => {
                     suggested_dist = Some(Distribution::Any);
                 }
-                Distribution::Any { .. } => {
+                Distribution::Any => {
                     // Earlier when resolving conflicts for subqueries we must have
                     // inserted Motion(Full) for subquery with Any distribution.
                     panic!("Expected Motion(Full) for subquery child ({sq_id}).")

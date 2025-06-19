@@ -115,8 +115,6 @@ lint-rs:
 	cargo clippy \
 		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
 		--features=load_test,error_injection \
-		--exclude picodata-plugin \
-		--exclude sbroad-core \
 		--exclude tarantool \
 		--exclude tlua \
 		-- --deny clippy::all --no-deps
@@ -125,7 +123,7 @@ lint-rs:
 		cargo doc \
 			$(LOCKED) $(MAKE_JOBSERVER_ARGS) \
 			--workspace --no-deps --document-private-items \
-			--exclude=tlua --exclude=sbroad-core --exclude=tarantool
+			--exclude=tlua --exclude=tarantool
 
 .PHONY: lint-py
 lint-py:

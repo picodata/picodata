@@ -139,6 +139,7 @@ impl FfiMetricsHandler {
     /// The result is stored on the current fiber's region allocator. The caller
     /// is responsible for calling `box_region_truncate` or equivalent.
     #[inline(always)]
+    #[allow(clippy::result_unit_err)]
     pub fn call(&self) -> Result<&'static str, ()> {
         let mut output = MaybeUninit::uninit();
 

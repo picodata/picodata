@@ -1788,7 +1788,7 @@ impl Plan {
             }
             Expression::Reference(Reference { col_type, .. }) => {
                 let col_type_inner = col_type.get();
-                return Ok(col_type_inner.map_or(true, |t| matches!(t, Type::Boolean)));
+                return Ok(col_type_inner.is_none_or(|t| matches!(t, Type::Boolean)));
             }
             Expression::Parameter(_) => return Ok(true),
             _ => {}

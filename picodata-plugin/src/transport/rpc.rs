@@ -84,7 +84,7 @@ impl<'a> Request<'a> {
     /// This method should be used on the **server side** of the RPC request.
     #[inline(always)]
     pub fn as_bytes(&'a self) -> &'a [u8] {
-        &*self.raw
+        &self.raw
     }
 
     /// Decodes the request arguments from msgpack using the [`rmp_serde`]
@@ -182,7 +182,7 @@ impl Response {
     pub fn as_bytes(&self) -> &[u8] {
         match &self.inner {
             ResponseImpl::RegionSlice(region_slice) => region_slice,
-            ResponseImpl::Owned(boxed_slice) => &boxed_slice,
+            ResponseImpl::Owned(boxed_slice) => boxed_slice,
         }
     }
 

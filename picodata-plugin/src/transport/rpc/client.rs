@@ -118,7 +118,7 @@ impl<'a> RequestBuilder<'a> {
             #[rustfmt::skip]
             tarantool::say_warn!("RequestBuilder input is silently changed from {old:?} to {input:?}");
         }
-        self.input = Some(input.into());
+        self.input = Some(input);
         self
     }
 

@@ -24,6 +24,14 @@ impl FfiSafeBytes {
     }
 
     #[inline(always)]
+    pub fn is_empty(self) -> bool {
+        self.len == 0
+    }
+
+    /// # Safety
+    ///
+    /// `pointer` and `len` must be correct pointer and length
+    #[inline(always)]
     pub unsafe fn from_raw_parts(pointer: NonNull<u8>, len: usize) -> Self {
         Self { pointer, len }
     }
@@ -99,6 +107,14 @@ impl FfiSafeStr {
     }
 
     #[inline(always)]
+    pub fn is_empty(self) -> bool {
+        self.len == 0
+    }
+
+    /// # Safety
+    ///
+    /// `pointer` and `len` must be correct pointer and length
+    #[inline(always)]
     pub unsafe fn from_raw_parts(pointer: NonNull<u8>, len: usize) -> Self {
         Self { pointer, len }
     }
@@ -134,6 +150,15 @@ impl FfiSafeStr {
         }
     }
 
+    /// Converts `self` back to a borrowed string `&[u8]`.
+    ///
+    /// # Safety
+    /// `FfiSafeStr` can only be constructed from a valid rust byte slice,
+    /// so you only need to make sure that the original `&[u8]` outlives the lifetime `'a`.
+    ///
+    /// This should generally be true when borrowing strings owned by the current
+    /// function and calling a function via FFI, but borrowing global data or
+    /// data stored within a `Rc` for example is probably unsafe.
     #[inline(always)]
     pub unsafe fn as_bytes<'a>(self) -> &'a [u8] {
         std::slice::from_raw_parts(self.pointer.as_ptr(), self.len)
@@ -172,6 +197,7 @@ pub struct RegionGuard {
 impl RegionGuard {
     /// TODO
     #[inline(always)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         // This is safe as long as the function is called within an initialized
         // fiber runtime
@@ -243,6 +269,7 @@ pub struct RegionBuffer {
 
 impl RegionBuffer {
     #[inline(always)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             guard: RegionGuard::new(),

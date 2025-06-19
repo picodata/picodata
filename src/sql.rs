@@ -72,7 +72,6 @@ use ::tarantool::access_control::{box_access_check_space, PrivType};
 use ::tarantool::auth::{AuthData, AuthDef};
 use ::tarantool::error::BoxError;
 use ::tarantool::error::TarantoolErrorCode;
-use ::tarantool::proc;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
@@ -590,7 +589,7 @@ impl<'de> Decode<'de> for BindArgs {
 /// Part of public RPC API.
 #[no_mangle]
 pub unsafe extern "C" fn proc_sql_dispatch(
-    mut ctx: FunctionCtx,
+    ctx: FunctionCtx,
     args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
     let bind_args = match args.decode::<BindArgs>() {

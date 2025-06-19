@@ -3,7 +3,8 @@
 //! This module provides two API's:
 //! - low level `cbus` API - with raw channels between custom runtime and `picodata` runtime
 //! - high level `tros` API - with the ability to execute async tasks in third party async runtimes
-//! and wait for execution results.
+//!   and wait for execution results.
+//!
 //! You should prefer a second one.
 //! The usage of cbus API at one's own risk
 //! as there are some pitfalls unbeknownst even to the authors of the runtime.
@@ -65,15 +66,15 @@
 //!
 //! Here we will give a description of the `cbus` channels:
 //! - [`cbus::oneshot::channel`] - provide the oneshot channels, using these channels you can send
-//! data just once.
+//!   data just once.
 //! - [`cbus::unbounded::channel`] - provide unbounded channels, using these channels you can
-//! send data any number of times.
+//!   send data any number of times.
 //! - [`cbus::sync::std::channel`] - provide sync std channels, this channels similar to unbounded
-//! but when you call `send` function from std thread it returns only when `picodata` plugin code
-//! receive data.
+//!   but when you call `send` function from std thread it returns only when `picodata` plugin code
+//!   receive data.
 //! - [`cbus::sync::tokio::channel`] - provide sync `tokio` channels, this channels is similar to unbounded one
-//! but when you call `send` function from `tokio` task it returns only when `picodata` plugin code
-//! receive data.
+//!   but when you call `send` function from `tokio` task it returns only when `picodata` plugin code
+//!   receive data.
 //!
 //! ## Cbus example
 //!
