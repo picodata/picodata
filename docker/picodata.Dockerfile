@@ -1,4 +1,4 @@
-FROM rockylinux:8 AS builder
+FROM almalinux:8 AS builder
 
 ARG RUST_VERSION
 RUN set -e; \
