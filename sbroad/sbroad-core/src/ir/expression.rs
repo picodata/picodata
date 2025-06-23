@@ -23,7 +23,7 @@ use super::{
 };
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
-use crate::ir::node::ReferenceAsteriskSource;
+use crate::ir::node::{Parameter, ReferenceAsteriskSource};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
@@ -287,7 +287,19 @@ impl<'plan> Comparator<'plan> {
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
-                    Expression::Alias(_) | Expression::Timestamp(_) | Expression::Parameter(_) => {}
+                    Expression::Alias(_) | Expression::Timestamp(_) => {}
+                    Expression::Parameter(Parameter {
+                        param_type: _,
+                        index: l_index,
+                    }) => {
+                        if let Expression::Parameter(Parameter {
+                            param_type: _,
+                            index: r_index,
+                        }) = right
+                        {
+                            return Ok(l_index == r_index);
+                        }
+                    }
                     Expression::Window(Window {
                         name: l_name,
                         partition: l_partition,

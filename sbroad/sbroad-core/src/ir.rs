@@ -866,7 +866,8 @@ impl Plan {
     }
 
     /// Validate options stored in `Plan.raw_options` and initialize
-    /// `Plan`'s fields for corresponding options
+    /// `Plan`'s fields for corresponding options if dry_run = false
+    ///
     ///
     /// # Errors
     /// - Invalid parameter value for given option
@@ -874,9 +875,9 @@ impl Plan {
     /// - Option value already violated in current `Plan`
     /// - The given option does not work for this specific query
     #[allow(clippy::uninlined_format_args)]
-    pub fn apply_options(&mut self) -> Result<(), SbroadError> {
+    fn retrive_options(&self) -> Result<Options, SbroadError> {
         let mut used_options: HashSet<OptionKind> = HashSet::new();
-        let options = std::mem::take(&mut self.raw_options);
+        let options = &self.raw_options;
         let values_count = {
             let mut values_count: Option<usize> = None;
             let mut bfs =
@@ -896,6 +897,9 @@ impl Plan {
             }
             values_count
         };
+
+        let mut res_options = self.options.clone();
+
         for opt in options {
             if !used_options.insert(opt.kind.clone()) {
                 return Err(SbroadError::Invalid(
@@ -906,7 +910,7 @@ impl Plan {
                     )),
                 ));
             }
-            let OptionParamValue::Value { val } = opt.val else {
+            let OptionParamValue::Value { val } = &opt.val else {
                 return Err(SbroadError::Invalid(Entity::OptionSpec, None));
             };
             match opt.kind {
@@ -918,7 +922,7 @@ impl Plan {
                         );
                     }
                     if let Value::Unsigned(num) = val {
-                        self.options.sql_vdbe_opcode_max = num;
+                        res_options.sql_vdbe_opcode_max = *num;
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::OptionSpec,
@@ -930,16 +934,19 @@ impl Plan {
                     }
                 }
                 OptionKind::MotionRowMax => {
-                    if let Value::Unsigned(limit) = val {
+                    if let Value::Unsigned(limit) = &val {
                         if let Some(vtable_rows_count) = values_count {
-                            if limit < vtable_rows_count as u64 {
-                                return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                                    "Exceeded maximum number of rows ({limit}) in virtual table: {}",
-                                    vtable_rows_count
-                                )));
+                            if *limit < vtable_rows_count as u64 {
+                                return Err(SbroadError::UnexpectedNumberOfValues(
+                                    format_smolstr!(
+                                        "Exceeded maximum number of rows ({}) in virtual table: {}",
+                                        *limit,
+                                        vtable_rows_count,
+                                    ),
+                                ));
                             }
                         }
-                        self.options.sql_motion_row_max = limit;
+                        res_options.sql_motion_row_max = *limit;
                     } else {
                         return Err(SbroadError::Invalid(
                             Entity::OptionSpec,
@@ -952,6 +959,35 @@ impl Plan {
                 }
             }
         }
+        Ok(res_options)
+    }
+
+    /// Validate options stored in `Plan.raw_options` and initialize
+    /// `Plan`'s fields for corresponding options if dry_run = false
+    ///
+    ///
+    /// # Errors
+    /// - Invalid parameter value for given option
+    /// - The same option used more than once in `Plan.raw_options`
+    /// - Option value already violated in current `Plan`
+    /// - The given option does not work for this specific query
+    #[allow(clippy::uninlined_format_args)]
+    pub fn apply_options(&mut self) -> Result<(), SbroadError> {
+        self.options = self.retrive_options()?;
+        Ok(())
+    }
+
+    /// Validate options stored in `Plan.raw_options`
+    ///
+    ///
+    /// # Errors
+    /// - Invalid parameter value for given option
+    /// - The same option used more than once in `Plan.raw_options`
+    /// - Option value already violated in current `Plan`
+    /// - The given option does not work for this specific query
+    #[allow(clippy::uninlined_format_args)]
+    pub fn check_options(&self) -> Result<(), SbroadError> {
+        self.retrive_options()?;
         Ok(())
     }
 

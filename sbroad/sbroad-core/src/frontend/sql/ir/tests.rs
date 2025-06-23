@@ -1995,7 +1995,7 @@ fn front_sql_pg_style_params6() {
     let input = r#"select $1 + $1"#;
     let metadata = &RouterConfigurationMock::new();
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
-    let err = plan.bind_params(vec![]).unwrap_err();
+    let err = plan.bind_params(&vec![]).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
         err.to_string()
@@ -2009,7 +2009,7 @@ fn front_sql_pg_style_params7() {
     let metadata = &RouterConfigurationMock::new();
     let params = [DerivedType::new(Type::Integer)];
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &params, metadata).unwrap();
-    let err = plan.bind_params(vec![]).unwrap_err();
+    let err = plan.bind_params(&vec![]).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
         err.to_string()
@@ -2022,7 +2022,7 @@ fn front_sql_pg_style_params8() {
     let input = r#"select $1 + $1 = $2"#;
     let metadata = &RouterConfigurationMock::new();
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
-    let err = plan.bind_params(vec![Value::Unsigned(1)]).unwrap_err();
+    let err = plan.bind_params(&vec![Value::Unsigned(1)]).unwrap_err();
     assert_eq!(
         "invalid query: expected 2 values for parameters, got 1",
         err.to_string()

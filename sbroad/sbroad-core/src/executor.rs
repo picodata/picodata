@@ -55,8 +55,6 @@ impl Plan {
     /// # Errors
     /// - Failed to optimize the plan.
     pub fn optimize(&mut self) -> Result<(), SbroadError> {
-        self.update_timestamps()?;
-        self.cast_constants()?;
         self.replace_in_operator()?;
         self.push_down_not()?;
         self.split_columns()?;
@@ -151,27 +149,46 @@ where
                 }
                 plan.version_map = table_version_map;
             }
+
+            if let Some(options) = options {
+                plan.options = options;
+            }
+
+            if !plan.is_block()?
+                && !plan.is_ddl()?
+                && !plan.is_acl()?
+                && !plan.is_plugin()?
+                && !plan.is_deallocate()?
+                && !plan.is_tcl()?
+            {
+                let raw_options_clone = plan.raw_options.clone();
+                plan.bind_option_params(&params);
+                plan.check_options()?;
+                plan.raw_options = raw_options_clone;
+                plan.optimize()?;
+            }
+
             if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
                 cache.put(key, plan.clone())?;
             }
-        }
-
-        if let Some(options) = options {
+        } else if let Some(options) = options {
             plan.options = options;
         }
 
         if plan.is_block()? {
-            plan.bind_params(params)?;
+            plan.bind_params(&params)?;
         } else if !plan.is_ddl()?
             && !plan.is_acl()?
             && !plan.is_plugin()?
             && !plan.is_deallocate()?
             && !plan.is_tcl()?
         {
-            plan.bind_params(params)?;
+            plan.bind_params(&params)?;
             plan.apply_options()?;
-            plan.optimize()?;
+            plan.update_timestamps()?;
+            plan.cast_constants()?;
         }
+
         let query = Query {
             is_explain: plan.is_explain(),
             exec_plan: ExecutionPlan::from(plan),

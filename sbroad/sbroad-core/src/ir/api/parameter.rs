@@ -59,7 +59,7 @@ impl Plan {
     }
 
     /// Bind params related to `Option` clause.
-    fn bind_option_params(&mut self, values: &[Value]) {
+    pub fn bind_option_params(&mut self, values: &[Value]) {
         let mut params = Vec::new();
         for opt in self.raw_options.iter() {
             if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
@@ -193,7 +193,7 @@ impl Plan {
     /// The purpose of this function is to find every `Expression::Parameter` node and replace it
     /// with `Expression::Constant` (under the row).
     #[allow(clippy::too_many_lines)]
-    pub fn bind_params(&mut self, values: Vec<Value>) -> Result<(), SbroadError> {
+    pub fn bind_params(&mut self, values: &[Value]) -> Result<(), SbroadError> {
         let param_node_ids = self.get_param_set();
         // As parameter indexes are used as indexes in parameters array,
         // we expect that the number of parameters is not less than the max index.
@@ -224,10 +224,10 @@ impl Plan {
         let nodes = tree.take_nodes();
 
         if !self.raw_options.is_empty() {
-            self.bind_option_params(&values);
+            self.bind_option_params(values);
         }
 
-        bind_params(self, &param_node_ids, &values)?;
+        bind_params(self, &param_node_ids, values)?;
 
         self.update_value_rows(&nodes)?;
         self.recalculate_ref_types()?;

@@ -146,9 +146,11 @@ pub fn bind(
         && !plan.is_tcl()?
         && !plan.is_plugin()?
     {
-        plan.bind_params(params)?;
+        plan.bind_params(&params)?;
         plan.apply_options()?;
         plan.optimize()?;
+        plan.update_timestamps()?;
+        plan.cast_constants()?;
     }
 
     let key = storage::Key(id, portal_name.into());
