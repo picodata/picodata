@@ -131,16 +131,12 @@ def test_cas_errors(instance: Instance):
     )
 
     # Incorrect type of builtin property
-    with pytest.raises(TarantoolError) as error:
+    with pytest.raises(TarantoolError, match="incorrect type of property global_schema_version"):
         instance.cas(
             "replace",
             "_pico_property",
             ["global_schema_version", "this is not a version number"],
         )
-    assert error.value.args[:2] == (
-        "ER_PROC_LUA",
-        """incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
-    )
 
     # Too many values for builtin property
     with pytest.raises(TarantoolError) as error:

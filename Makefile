@@ -34,10 +34,19 @@ tarantool-patch:
 		echo "${VER_TNT}" > tarantool-sys/VERSION; \
 	fi
 
+# XXX: All targets but build-release-pkg should trigger this one!
+# XXX: We can't use CARGO_FLAGS here since it's a standalone project w/o profile definitions etc.
+.PHONY: build-plug-wrong-version
+build-plug-wrong-version:
+	cd test/plug_wrong_version && \
+		$(CARGO_ENV) \
+		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) --profile=dev
+
 # CARGO_FLAGS_EXTRA is meant to be set outside the makefile by user
 .PHONY: build
 build: tarantool-patch
-	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && $(CARGO_ENV) \
+	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && \
+		$(CARGO_ENV) \
 		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
 # There are 4 build options. 3 for each build profile (dev, fast-release, release).
@@ -45,20 +54,32 @@ build: tarantool-patch
 # Remaining `build-release-pkg` is intended for packages we ship as our release artifacts.
 # For now the only difference is absence of error_injection feature.
 .PHONY: build-dev
-build-dev: override CARGO_FLAGS += --profile=dev $(ERROR_INJECTION)
+build-dev: override CARGO_FLAGS += $(ERROR_INJECTION)
+build-dev: override CARGO_FLAGS += --profile=dev
+build-dev: build-plug-wrong-version
 build-dev: build
 
 .PHONY: build-fast-release
-build-fast-release: override CARGO_FLAGS += --profile=fast-release $(ERROR_INJECTION)
+build-fast-release: override CARGO_FLAGS += $(ERROR_INJECTION)
+build-fast-release: override CARGO_FLAGS += --profile=fast-release
+build-fast-release: build-plug-wrong-version
 build-fast-release: build
 
 .PHONY: build-release
-build-release: override CARGO_FLAGS += --profile=release $(ERROR_INJECTION)
+build-release: override CARGO_FLAGS += $(ERROR_INJECTION)
+build-release: override CARGO_FLAGS += --profile=release
+build-release: build-plug-wrong-version
 build-release: build
 
+# Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
+# We only use `override` for the mandatory flags, because:
+#  - We want to give user a certain level of control over CARGO_FLAGS.
+#  - At the same time, the package must always be optimized, include binaries etc.
 .PHONY: build-release-pkg
-build-release-pkg: CARGO_FLAGS = --features webui --profile=release -p picodata -p gostech-audit-log
+build-release-pkg: CARGO_FLAGS = # reset the defaults
 build-release-pkg: CARGO_FLAGS += $(if $(USE_DYNAMIC_BUILD),--features dynamic_build)
+build-release-pkg: override CARGO_FLAGS += -p picodata -p gostech-audit-log --features webui
+build-release-pkg: override CARGO_FLAGS += --profile=release
 build-release-pkg: build
 
 # We have to specify target to disable ASan for proc macros, build.rs, etc.
@@ -68,7 +89,8 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # TODO: drop nightly features once sanitizers are stable.
 .PHONY: build-asan-dev
 build-asan-dev: override CARGO_ENV = RUSTC_BOOTSTRAP=1 RUSTFLAGS=-Zsanitizer=address
-build-asan-dev: override CARGO_FLAGS += --profile=asan-dev --target=$(DEFAULT_TARGET)
+build-asan-dev: override CARGO_FLAGS += --target=$(DEFAULT_TARGET)
+build-asan-dev: override CARGO_FLAGS += --profile=asan-dev
 build-asan-dev: build
 
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary can be
