@@ -1,0 +1,93 @@
+diff --git a/src/lib/ares_getaddrinfo.c b/src/lib/ares_getaddrinfo.c
+index 0a0225a..c1582c8 100644
+--- a/src/lib/ares_getaddrinfo.c
++++ b/src/lib/ares_getaddrinfo.c
+@@ -47,6 +47,7 @@
+ #endif
+ 
+ #include "ares.h"
++#include "ares_getenv.h"
+ #include "bitncmp.h"
+ #include "ares_private.h"
+ 
+@@ -410,10 +411,12 @@ static int file_lookup(struct host_query *hquery)
+   int error;
+   int status;
+   const char *path_hosts = NULL;
++  int do_check = false;
+ 
+   if (hquery->hints.ai_flags & ARES_AI_ENVHOSTS)
+     {
+       path_hosts = getenv("CARES_HOSTS");
++      do_check = true;
+     }
+ 
+   if (!path_hosts)
+@@ -458,6 +461,13 @@ static int file_lookup(struct host_query *hquery)
+       path_hosts = PATH_HOSTS;
+     }
+ 
++  if (do_check)
++    {
++      int rc = check_path(path_hosts);
++      if (rc != ARES_SUCCESS)
++        return rc;
++    }
++
+   fp = fopen(path_hosts, "r");
+   if (!fp)
+     {
+@@ -557,17 +567,13 @@ static void host_callback(void *arg, int status, int timeouts,
+             hquery->nodata_cnt++;
+           next_lookup(hquery, hquery->nodata_cnt?ARES_ENODATA:status);
+         }
+-      else if (status == ARES_EDESTRUCTION)
++      else
+         {
+           /* NOTE: Could also be ARES_EDESTRUCTION.  We need to only call this
+            * once all queries (there can be multiple for getaddrinfo) are
+            * terminated.  */
+           end_hquery(hquery, status);
+         }
+-      else
+-        {
+-          end_hquery(hquery, status);
+-        }
+     }
+ 
+   /* at this point we keep on waiting for the next query to finish */
+@@ -771,18 +777,24 @@ static int as_is_first(const struct host_query* hquery)
+ {
+   char* p;
+   int ndots = 0;
+-  size_t nname = hquery->name?strlen(hquery->name):0;
+-  for (p = hquery->name; *p; p++)
++  if (hquery->name)
+     {
+-      if (*p == '.')
++      size_t nname = strlen(hquery->name);
++      for (p = hquery->name; *p; p++)
+         {
+-          ndots++;
++          if (*p == '.')
++            {
++              ndots++;
++            }
++        }
++      if (nname && hquery->name[nname-1] == '.')
++        {
++          /*
++	   * Prevent ARES_EBADNAME for valid FQDN,
++	   * where ndots < channel->ndots.
++	   */
++          return 1;
+         }
+-    }
+-  if (nname && hquery->name[nname-1] == '.')
+-    {
+-      /* prevent ARES_EBADNAME for valid FQDN, where ndots < channel->ndots  */
+-      return 1;
+     }
+   return ndots >= hquery->channel->ndots;
+ }
+

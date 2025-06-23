@@ -1,0 +1,25 @@
+diff --git a/src/lib/ares__addrinfo_localhost.c b/src/lib/ares__addrinfo_localhost.c
+index 7940ecd..6dd7e58 100644
+--- a/src/lib/ares__addrinfo_localhost.c
++++ b/src/lib/ares__addrinfo_localhost.c
+@@ -104,7 +104,8 @@ static int ares__default_loopback_addrs(int aftype,
+   if (aftype == AF_UNSPEC || aftype == AF_INET6)
+     {
+       struct ares_in6_addr addr6;
+-      ares_inet_pton(AF_INET6, "::1", &addr6);
++      /* Always parse IPv6 loopback address (::1) successfully. */
++      (void)ares_inet_pton(AF_INET6, "::1", &addr6);
+       status = ares_append_ai_node(AF_INET6, port, 0, &addr6, nodes);
+       if (status != ARES_SUCCESS)
+         {
+@@ -115,7 +116,8 @@ static int ares__default_loopback_addrs(int aftype,
+   if (aftype == AF_UNSPEC || aftype == AF_INET)
+     {
+       struct in_addr addr4;
+-      ares_inet_pton(AF_INET, "127.0.0.1", &addr4);
++      /* Always parse IPv4 loopback address (127.0.0.1) successfully. */
++      (void)ares_inet_pton(AF_INET, "127.0.0.1", &addr4);
+       status = ares_append_ai_node(AF_INET, port, 0, &addr4, nodes);
+       if (status != ARES_SUCCESS)
+         {
+

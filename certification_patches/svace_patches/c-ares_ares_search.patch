@@ -1,0 +1,23 @@
+diff --git a/src/lib/ares_search.c b/src/lib/ares_search.c
+index c4b0424..31df5d7 100644
+--- a/src/lib/ares_search.c
++++ b/src/lib/ares_search.c
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include "ares_setup.h"
++#include "ares_getenv.h"
+ 
+ #ifdef HAVE_STRINGS_H
+ #  include <strings.h>
+@@ -256,6 +257,9 @@ int ares__single_domain(ares_channel channel, const char *name, char **s)
+       hostaliases = getenv("HOSTALIASES");
+       if (hostaliases)
+         {
++          int rc = check_path(hostaliases);
++          if (rc != ARES_SUCCESS)
++            return rc;
+           fp = fopen(hostaliases, "r");
+           if (fp)
+             {
+

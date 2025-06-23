@@ -1,0 +1,60 @@
+diff --git a/src/lib/ares_getenv.c b/src/lib/ares_getenv.c
+index f6e4dc2..8555ef7 100644
+--- a/src/lib/ares_getenv.c
++++ b/src/lib/ares_getenv.c
+@@ -16,6 +16,7 @@
+  */
+ 
+ #include "ares_setup.h"
++#include "ares.h"
+ #include "ares_getenv.h"
+ 
+ #ifndef HAVE_GETENV
+@@ -26,3 +27,35 @@ char *ares_getenv(const char *name)
+ }
+ 
+ #endif
++
++#ifdef HAVE_LIMITS_H
++#include <limits.h>
++#endif
++
++#ifdef HAVE_UNISTD_H
++#include <unistd.h>
++#endif
++
++int check_path(const char *path)
++{
++#if defined(HAVE_LIMITS_H) && defined(HAVE_UNISTD_H)
++  char resolved[PATH_MAX];
++  if (realpath(path, resolved) == NULL)
++    {
++      DEBUGF(fprintf(stderr, "Error validating path: %s\n",
++                     strerror(ERRNO)));
++      return ARES_EFILE;
++    }
++#elif defined(WIN32) || defined(WATT32)
++  char resolved[MAX_PATH];
++  if (_fullpath(resolved, path, MAX_PATH) == NULL)
++    {
++      DEBUGF(fprintf(stderr, "Error validating path: %lu\n",
++                     GetLastError()));
++      return ARES_EFILE;
++    }
++#else
++  (void)path;
++#endif
++  return ARES_SUCCESS;
++}
+diff --git a/src/lib/ares_getenv.h b/src/lib/ares_getenv.h
+index 6da6cc5..0aa298a 100644
+--- a/src/lib/ares_getenv.h
++++ b/src/lib/ares_getenv.h
+@@ -23,4 +23,6 @@
+ extern char *ares_getenv(const char *name);
+ #endif
+ 
++int check_path(const char *path);
++
+ #endif /* HEADER_CARES_GETENV_H */
+
