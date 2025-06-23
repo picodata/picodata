@@ -1,0 +1,28 @@
+diff --git a/lib/bufq.c b/lib/bufq.c
+index 547d4d376..ec8fd567a 100644
+--- a/lib/bufq.c
++++ b/lib/bufq.c
+@@ -605,6 +605,11 @@ ssize_t Curl_bufq_pass(struct bufq *q, Curl_bufq_writer *writer,
+       }
+       break;
+     }
++    if(chunk_written > SSIZE_MAX - nwritten) {
++      /* prevent signed integer overflow */
++      *err = CURLE_OUT_OF_MEMORY;
++      break;
++    }
+     Curl_bufq_skip(q, (size_t)chunk_written);
+     nwritten += chunk_written;
+   }
+@@ -725,6 +730,11 @@ static ssize_t bufq_slurpn(struct bufq *q, size_t max_len,
+       *err = CURLE_OK;
+       break;
+     }
++    else if(n > SSIZE_MAX - nread) {
++      /* prevent signed integer overflow */
++      *err = CURLE_OUT_OF_MEMORY;
++      break;
++    }
+     nread += (size_t)n;
+     if(max_len) {
+       DEBUGASSERT((size_t)n <= max_len);
