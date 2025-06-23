@@ -1,0 +1,17 @@
+diff --git a/src/lib/ares_query.c b/src/lib/ares_query.c
+index 508274d..523f204 100644
+--- a/src/lib/ares_query.c
++++ b/src/lib/ares_query.c
+@@ -146,6 +146,12 @@ static void qcallback(void *arg, int status, int timeouts, unsigned char *abuf,
+ 
+   if (status != ARES_SUCCESS)
+     qquery->callback(qquery->arg, status, timeouts, abuf, alen);
++  else if (abuf == NULL)
++    /*
++     * abuf should never be empty on ARES_SUCCESS,
++     * but guard against a NULL dereference just in case.
++     */
++    qquery->callback(qquery->arg, ARES_ENOMEM, timeouts, NULL, 0);
+   else
+     {
+       /* Pull the response code and answer count from the packet. */
