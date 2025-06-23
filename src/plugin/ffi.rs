@@ -8,7 +8,7 @@ use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
 use crate::{cas, sql, traft};
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
-use abi_stable::std_types::{RDuration, RVec, Tuple2};
+use abi_stable::std_types::{RDuration, RString, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
 use picodata_plugin::background::FfiBackgroundJobCancellationToken;
 use picodata_plugin::background::JobCancellationResult;
@@ -44,6 +44,16 @@ extern "C" fn pico_ffi_version() -> RTuple!(*const u8, usize) {
 extern "C" fn pico_ffi_rpc_version() -> RTuple!(*const u8, usize) {
     let version = VersionInfo::current().rpc_api_version;
     Tuple2(version.as_ptr(), version.len())
+}
+
+#[no_mangle]
+extern "C" fn pico_ffi_cluster_uuid() -> RResult<RString, ()> {
+    let node = node::global().expect("node must be already initialized");
+    let cluster_uuid = node
+        .raft_storage
+        .cluster_uuid()
+        .expect("storage should never fail");
+    ROk(RString::from(cluster_uuid))
 }
 
 impl From<StateVariant> for types::StateVariant {

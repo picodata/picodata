@@ -4,8 +4,8 @@ pub(crate) mod ffi;
 pub mod types;
 
 use crate::internal::ffi::{
-    pico_ffi_authenticate, pico_ffi_instance_info, pico_ffi_raft_info, pico_ffi_rpc_version,
-    pico_ffi_version,
+    pico_ffi_authenticate, pico_ffi_cluster_uuid, pico_ffi_instance_info, pico_ffi_raft_info,
+    pico_ffi_rpc_version, pico_ffi_version,
 };
 use crate::internal::types::InstanceInfo;
 use abi_stable::derive_macro_reexports::RResult;
@@ -26,6 +26,17 @@ pub fn rpc_version() -> &'static str {
     // SAFETY: ptr points to static string
     let slice = unsafe { std::slice::from_raw_parts(ptr_and_len.0, ptr_and_len.1) };
     std::str::from_utf8(slice).expect("should be valid utf8")
+}
+
+/// Return UUID of the cluster the current instance belongs to.
+pub fn cluster_uuid() -> Result<String, BoxError> {
+    match unsafe { pico_ffi_cluster_uuid() } {
+        RResult::ROk(rstring) => Ok(rstring.into()),
+        RResult::RErr(_) => {
+            let error = BoxError::last();
+            Err(error)
+        }
+    }
 }
 
 /// Return information about current picodata instance.

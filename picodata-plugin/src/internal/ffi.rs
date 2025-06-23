@@ -7,7 +7,7 @@ use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
 use crate::transport::rpc::server::FfiRpcHandler;
 use crate::util::{FfiSafeBytes, FfiSafeStr};
 use abi_stable::derive_macro_reexports::{ROption, RResult};
-use abi_stable::std_types::{RDuration, RVec};
+use abi_stable::std_types::{RDuration, RString, RVec};
 use abi_stable::RTuple;
 use tarantool::ffi::tarantool::BoxTuple;
 
@@ -32,6 +32,9 @@ extern "C" {
 
     #[allow(improper_ctypes)]
     pub fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()>;
+
+    #[allow(improper_ctypes)]
+    pub fn pico_ffi_cluster_uuid() -> RResult<RString, ()>;
 
     pub fn pico_ffi_raft_info() -> types::RaftInfo;
 
