@@ -1,6 +1,7 @@
 import os
 import pytest
 import signal
+from pathlib import Path
 
 from conftest import (
     Cluster,
@@ -773,18 +774,41 @@ def test_proc_runtime_info(instance: Instance):
     )
 
 
-def test_file_shredding(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=False)
-    i1.env["PICODATA_SHREDDING"] = "true"
-    i1.start()
-    i1.wait_online()
-
+def check_file_shredding_common(i1: Instance):
     i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", True)
 
-    with open(os.path.join(i1.instance_dir, "00000000000000000000.xlog"), "rb") as xlog:
-        xlog_before_shred = xlog.read(100)
-    with open(os.path.join(i1.instance_dir, "00000000000000000000.snap"), "rb") as snap:
-        snap_before_shred = snap.read(100)
+    def read_plaintext_snapshots(dir):
+        dir = Path(dir)
+        files_to_stamp = list(dir.glob("*.xlog")) + list(dir.glob("*.snap"))
+
+        snapshots = dict()
+        for file in files_to_stamp:
+            with open(file, "rb") as f:
+                contents = f.read(100)
+                assert b"XLOG" in contents or b"SNAP" in contents, (
+                    "File doesn't appear to have expected magic bytes. Was it already shredded?"
+                )
+                snapshots[file] = contents
+
+        print(f"Picked up {len(snapshots)} snapshot files: {[x.name for x in snapshots.keys()]}")
+
+        return snapshots
+
+    def verify_files_were_shredded(snapshot):
+        for file in snapshot:
+            old_contents = snapshot[file]
+            assert file.exists(), (
+                "Snapshot file does not exist. Was `KEEP_FILES_AFTER_SHREDDING` error injected successfully?"
+            )
+            with open(file, "rb") as f:
+                new_contents = f.read(100)
+
+            assert len(old_contents) == len(new_contents)
+            assert old_contents != new_contents, (
+                "First 100 bytes of the file stayed the same, it doesn't seem to have been shredded"
+            )
+
+    snapshots = read_plaintext_snapshots(i1.instance_dir)
 
     # allow only one snapshot at a time
     i1.eval("box.cfg{ checkpoint_count = 1 }")
@@ -793,20 +817,49 @@ def test_file_shredding(cluster: Cluster):
     # do it twice to remove an old xlog too
     i1.eval("box.snapshot(); box.snapshot()")
 
-    def check_files_got_shredded():
-        with open(os.path.join(i1.instance_dir, "00000000000000000000.xlog"), "rb") as xlog:
-            xlog_after_shred = xlog.read(100)
-        with open(os.path.join(i1.instance_dir, "00000000000000000000.snap"), "rb") as snap:
-            snap_after_shred = snap.read(100)
-
-        assert xlog_before_shred != xlog_after_shred
-        assert snap_before_shred != snap_after_shred
-
     # There's currently no way to synchronously wait for the snapshot to be
     # generated (and shredded) so we do a retriable call. If this starts getting
     # flaky try increasing the timeout, although it's very sad if we need to
     # wait more than 5 seconds for the shredding to take place...
-    Retriable(timeout=5, rps=5).call(check_files_got_shredded)
+    Retriable(timeout=5, rps=5).call(lambda: verify_files_were_shredded(snapshots))
+
+
+def test_file_shredding(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["PICODATA_SHREDDING"] = "true"
+    i1.start()
+    i1.wait_online()
+
+    check_file_shredding_common(i1)
+
+
+def test_file_shredding_after_restart(cluster: Cluster):
+    # start the instance and let it write the shredding setting to the _pico_db_config
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["PICODATA_SHREDDING"] = "true"
+    i1.start()
+    i1.wait_online()
+
+    # restart the instance without specifying shredding in config
+    # it should still have shredding working
+    i1.terminate()
+    del i1.env["PICODATA_SHREDDING"]
+    i1.start()
+    i1.wait_online()
+
+    check_file_shredding_common(i1)
+
+
+def test_file_shredding_after_join(cluster: Cluster):
+    # start the instance and let it write the shredding setting to the _pico_db_config
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["PICODATA_SHREDDING"] = "true"
+    i1.start()
+    i1.wait_online()
+
+    # make another instance join the cluster
+    i2 = cluster.add_instance(wait_online=True)
+    check_file_shredding_common(i2)
 
 
 def test_pico_service_password_security_warning(cluster: Cluster):

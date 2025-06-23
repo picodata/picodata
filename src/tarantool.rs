@@ -6,14 +6,6 @@ use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::{self, error::Error};
 
-use std::collections::HashMap;
-use std::ffi::CStr;
-use std::io::Cursor;
-use std::mem;
-use std::ops::Range;
-use std::os::unix::ffi::OsStrExt;
-use std::slice;
-
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::msgpack;
@@ -24,6 +16,14 @@ use file_shred::*;
 use rmpv::Value as RmpvValue;
 use serde::Deserialize;
 use smallvec::SmallVec;
+use std::collections::HashMap;
+use std::ffi::CStr;
+use std::io::Cursor;
+use std::mem;
+use std::ops::Range;
+use std::os::unix::ffi::OsStrExt;
+use std::slice;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tarantool::error::IntoBoxError;
 use tarantool::network::protocol::{codec, iproto_key};
 use tlua::CallError;
@@ -507,17 +507,32 @@ extern "C" {
     /// mostly recommended.
     pub static mut xlog_remove_file_impl: extern "C" fn(
         filename: *const std::os::raw::c_char,
-        existed: *mut bool,
+        existed: &mut bool,
     ) -> std::os::raw::c_int;
 }
 
-pub fn xlog_set_remove_file_impl() {
-    unsafe { xlog_remove_file_impl = xlog_remove_cb };
+/// Replaces default `tarantool`'s xlog removal implementation
+///   with a one that will respect the setting shredding setting
+///
+/// Will panic if [`xlog_set_remove_file_impl`] was already called before
+pub fn xlog_set_remove_file_impl(enable_shredding: bool) {
+    static SHREDDING_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+    if SHREDDING_INITIALIZED.swap(true, Ordering::Relaxed) {
+        panic!("`xlog_set_remove_file_impl` was already called before")
+    }
+
+    if enable_shredding {
+        crate::tlog!(Info, "shredding enabled");
+        unsafe { xlog_remove_file_impl = xlog_shredding_remove_cb }
+    } else {
+        // keep the default shredding implementation
+    }
 }
 
-extern "C" fn xlog_remove_cb(
+extern "C" fn xlog_shredding_remove_cb(
     filename: *const std::os::raw::c_char,
-    existed: *mut bool,
+    existed: &mut bool,
 ) -> std::os::raw::c_int {
     const OVERWRITE_COUNT: u32 = 6;
     const RENAME_COUNT: u32 = 4;
@@ -536,7 +551,7 @@ extern "C" fn xlog_remove_cb(
     );
 
     let path_exists = path.exists();
-    unsafe { *existed = path_exists };
+    *existed = path_exists;
 
     if !path_exists {
         return 0;

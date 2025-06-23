@@ -27,6 +27,7 @@ with the `YY.MINOR.MICRO` scheme.
   where long-running plugin commands could be incorrectly aborted due to the 
   artificial timeout. 
 - Fixed restart the whole cluster at once taking too long.
+- Fixed an issue where `cluster.shredding` option does not get applied on instance restart.
 
 ## [25.3.1] - 2025-07-25
 

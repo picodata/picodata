@@ -19,6 +19,9 @@ use regex::Regex;
 use sbroad::frontend::sql::transform_to_regex_pattern;
 use sbroad::frontend::sql::FUNCTION_NAME_MAPPINGS;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::path::{Path, PathBuf};
 use storage::ToEntryIter;
 
 use ::raft::prelude as raft;
@@ -762,6 +765,10 @@ fn reapply_dynamic_parameters(storage: &Catalog, current_tier: &str) -> Result<(
     Ok(())
 }
 
+fn get_shredding_marker_path(config: &PicodataConfig) -> PathBuf {
+    config.instance.instance_dir().join("pico_shredding_marker")
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
@@ -817,6 +824,36 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
     Ok(next_entrypoint)
 }
 
+fn ensure_marker_file_exists_durable(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    // use `create_new` to skip writing the contents/fsyncing when a marker already exist
+    match std::fs::File::create_new(path) {
+        Ok(mut file) => {
+            // a new marker file was created; write the contents
+            file.write_all(contents)?;
+
+            // now try to make sure the written marker file is synchronized to disk
+            // sync the file itself
+            nix::unistd::fsync(file.as_raw_fd())?;
+            drop(file);
+
+            // and sync the parent directory too
+            let parent_path = path.parent().expect("marker file path must have a parent");
+            let dir = nix::dir::Dir::open(
+                parent_path,
+                nix::fcntl::OFlag::O_RDONLY,
+                nix::sys::stat::Mode::empty(),
+            )?;
+            nix::unistd::fsync(dir.as_raw_fd())?;
+            drop(dir);
+
+            Ok(())
+        }
+        // do not write to file in case a marker file already exists
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// Performs tarantool initialization calling `box.cfg` for the first time.
 ///
 /// This function is called from:
@@ -826,6 +863,7 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
 /// - `start_pre_join`
 /// - `start_join`
 ///
+/// The `shredding` parameter will be used to initialize the tarantool removal function ([`tarantool::xlog_set_remove_file_impl`]).
 fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
@@ -871,8 +909,23 @@ fn init_common(
 
     cbus::init_cbus_endpoint();
 
+    tarantool::xlog_set_remove_file_impl(shredding);
     if shredding {
-        tarantool::xlog_set_remove_file_impl();
+        // put down a shredding marker file so that we could determine whether to enable shredding on instance restart.
+        // this is required because we can't read `_pico_db_config` before a file removal can take place.
+        // note that this marker will not reflect changes made to `_pico_db_config` table.
+        let shredding_marker_path = get_shredding_marker_path(config);
+        ensure_marker_file_exists_durable(
+            &shredding_marker_path,
+            b"this file signals picodata to shred all deleted files",
+        )
+        .map_err(|err| {
+            Error::other(format!(
+                "failed writing shredding marker {}: {}",
+                shredding_marker_path.display(),
+                err
+            ))
+        })?;
     }
 
     set_tarantool_compat_options();
@@ -1012,14 +1065,21 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_discovery(config)?;
-    init_common(config, &cfg, false)?;
+
+    // when an instance restarts it initially runs in discovery mode.
+    // we need to check for `pico_shredding_marker`, which is a proxy for `cluster.shredding` config option.
+    // a more proper way would be to read `_pico_db_config` table, but we can't do this without initializing tarantool storage,
+    //   which by itself may cause deletions, so it would be too late.
+    let enable_shredding = get_shredding_marker_path(config).exists();
+
+    init_common(config, &cfg, enable_shredding)?;
     let can_vote = {
         let tiers = config.cluster.tiers();
         let my_tier_name = config.instance.tier();
         let Some(tier) = tiers.get(my_tier_name) else {
             return Err(Error::other(format!(
-            "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
-        )));
+                "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
+            )));
         };
         tier.can_vote
     };
