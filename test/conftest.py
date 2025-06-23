@@ -2416,7 +2416,7 @@ def binary_path() -> str:
             "--no-deps",
         ]
     )
-    target_dir = json.loads(metadata)["target_directory"]
+    cargo_target_dir = json.loads(metadata)["target_directory"]
     # This file is huge, hide it from pytest output in case there's an exception
     # somewhere in this function.
     del metadata
@@ -2432,14 +2432,14 @@ def binary_path() -> str:
         cargo_build_target = target()
 
     if cargo_build_target:
-        target_dir = os.path.join(target_dir, cargo_build_target)
+        cargo_target_dir = os.path.join(cargo_target_dir, cargo_build_target)
 
     # Note: rust names the debug profile `dev`, but puts the binaries into the
     # `debug` directory.
     if profile == "dev":
         profile = "debug"
 
-    binary_path = os.path.realpath(os.path.join(target_dir, f"{profile}/picodata"))
+    binary_path = os.path.realpath(os.path.join(cargo_target_dir, f"{profile}/picodata"))
 
     test_dir = get_test_dir()
     # Copy the test plugin library into the appropriate location
@@ -2458,21 +2458,27 @@ def binary_path() -> str:
         f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken",
         f"{test_dir}/testplug/testplug_sdk/0.1.0",
     ]
-    for destination in destinations:
-        copy_plugin_library(binary_path, destination)
+
+    cargo_target_dir = Path(binary_path).parent
+    for dst_dir in destinations:
+        copy_plugin_library(cargo_target_dir, dst_dir, "libtestplug")
 
     return binary_path
 
 
-def copy_plugin_library(binary_path: Path | str, share_dir: Path | str, file_name: str = "libtestplug"):
+# TODO: implement a proper plugin installation routine for tests
+def copy_plugin_library(from_dir: Path | str, share_dir: Path | str, lib_name: str):
     ext = dynamic_library_extension()
-    lib_name = f"{file_name}.{ext}"
-    source = Path(binary_path).parent / lib_name
-    destination = Path(share_dir) / lib_name
-    if os.path.exists(destination) and filecmp.cmp(source, destination):
+    file_name = f"{lib_name}.{ext}"
+
+    src = Path(from_dir) / file_name
+    dst = Path(share_dir) / file_name
+
+    if os.path.exists(dst) and filecmp.cmp(src, dst):
         return
-    log.info(f"Copying '{source}' to '{destination}'")
-    shutil.copyfile(source, destination)
+
+    log.info(f"Copying '{src}' to '{dst}'")
+    shutil.copyfile(src, dst)
 
 
 def dynamic_library_extension() -> str:
@@ -2512,13 +2518,19 @@ def cargo_build(with_webui: bool = False) -> None:
     ]
     # fmt: on
     log.info(f"Running {cmd}")
-    assert subprocess.call(cmd) == 0, "cargo build failed"
+    subprocess.check_call(cmd)
 
-    crates = ["gostech-audit-log", "testplug", "plug_wrong_version"]
+    crates = ["gostech-audit-log", "testplug"]
     for crate in crates:
         cmd = ["cargo", "build", "-p", crate, "--profile", build_profile()]
         log.info(f"Running {cmd}")
-        assert subprocess.call(cmd) == 0, f"cargo build {crate} failed"
+        subprocess.check_call(cmd)
+
+    # XXX: plug_wrong_version is even more special than the other ones
+    plug_wrong_version_dir = get_test_dir() / "plug_wrong_version"
+    cmd = ["cargo", "build", "-p", "plug_wrong_version", "--profile=dev"]
+    log.info(f"Running {cmd}")
+    subprocess.check_call(cmd, cwd=plug_wrong_version_dir)
 
 
 @pytest.fixture(scope="session")

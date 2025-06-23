@@ -3,6 +3,12 @@ name = "plug_wrong_version"
 version = "0.1.0"
 edition = "2021"
 
+# This empty workspace declaration is important to exclude this package from the workspace.
+# This is needed to avoid outdated/bad version being resolved for entire workspace
+# given that we intentionally depend on older picodata plugin.
+# Ideally there should be a better way to mock version to avoid such a crate in the first place
+[workspace]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 crate-type = ["lib", "cdylib"]

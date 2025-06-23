@@ -20,6 +20,7 @@ from conftest import (
     log_crawler,
     assert_starts_with,
     copy_plugin_library,
+    get_test_dir,
 )
 from framework.thread import spawn_thread
 from decimal import Decimal
@@ -388,6 +389,7 @@ def init_dummy_plugin(
     services: list[str] = [],
     migrations: list[str] = [],
     library_name: str = "libtestplug",
+    cargo_target_dir: Optional[Path] = None,
 ) -> Path:
     """Does the following:
     - Setup --share-dir option for the cluster
@@ -398,15 +400,18 @@ def init_dummy_plugin(
     Returns the path to the newly created plugin directory.
 
     Does *NOT* create migration files, you have to do it yourself.
-
     """
+
     cluster.share_dir = cluster.data_dir
     # Initialize the plugin directory
     plugin_dir = Path(cluster.share_dir) / plugin / version
     os.makedirs(plugin_dir)
 
+    if not cargo_target_dir:
+        cargo_target_dir = Path(cluster.binary_path).parent
+
     # Copy plugin library
-    copy_plugin_library(cluster.binary_path, plugin_dir, library_name)
+    copy_plugin_library(cargo_target_dir, plugin_dir, library_name)
 
     # Create manifest
     manifest_path = plugin_dir / "manifest.yaml"
@@ -3153,12 +3158,15 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
 
 
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
+    # TODO: implement a proper plugin installation routine for tests
+    cargo_target_dir = get_test_dir() / "plug_wrong_version" / "target" / "debug"
     init_dummy_plugin(
         cluster,
         "plug_wrong_version",
         "0.1.0",
         services=["testservice"],
         library_name="libplug_wrong_version",
+        cargo_target_dir=cargo_target_dir,
     )
 
     instance = cluster.add_instance()
