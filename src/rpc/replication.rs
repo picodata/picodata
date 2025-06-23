@@ -180,10 +180,34 @@ fn update_sys_cluster() -> Result<()> {
             Error::other("failed to decode 'instance_uuid' field of table _cluster")
         })?;
         let Ok(instance) = topology_ref.instance_by_uuid(instance_uuid) else {
-            ids_to_delete.push(instance_id);
+            tlog!(Warning, "instance with uuid {instance_uuid} not found in _pico_instance, but there's a record for it in _cluster. Not doing anything for now");
+            // Note: we cannot remove instance from _cluster if it's not in
+            // _pico_instance, because in some cases instances will be added
+            // into _cluster before _pico_instance. This happens for example
+            // when a replicaset is joining a cluster in which a DDL operation
+            // was performed, because _pico_instance is a global table it will
+            // be updated only after the DDL was applied, but that requires
+            // tarantool replication to be configured and hence records being
+            // added to _cluster.
+            //
+            // This also means that we cannot remove Expelled instance records
+            // from _pico_instance before they're removed from _cluster, as that
+            // would leave _cluster broken without a way to know when to remove
+            // these records...
+            //
+            // Although now that I think about it there is a way to know, it's
+            // just that proc_replication is called without wait_index and
+            // because of that it has outdated _pico_instance contents. So the
+            // solution is to do an explicit request to update _cluster which
+            // involves wait_index, that way it would be safe to remove instance
+            // from _cluster if it's not in _pico_instance.
             continue;
         };
         if has_states!(instance, Expelled -> *) {
+            tlog!(
+                Debug,
+                "instance with uuid {instance_uuid} is expelled, removing it from _cluster"
+            );
             ids_to_delete.push(instance_id);
         }
     }
