@@ -1,0 +1,40 @@
+diff --git a/lib/http2.c b/lib/http2.c
+index 42abe1daa..d700f1fb0 100644
+--- a/lib/http2.c
++++ b/lib/http2.c
+@@ -1323,7 +1323,7 @@ static int on_frame_recv(nghttp2_session *session, const nghttp2_frame *frame,
+          * window and *assume* that we treat this like a WINDOW_UPDATE. Some
+          * servers send an explicit WINDOW_UPDATE, but not all seem to do that.
+          * To be safe, we UNHOLD a stream in order not to stall. */
+-        if(CURL_WANT_SEND(data)) {
++        if(data && CURL_WANT_SEND(data)) {
+           struct h2_stream_ctx *stream = H2_STREAM_CTX(ctx, data);
+           if(stream)
+             drain_stream(cf, data, stream);
+@@ -2314,14 +2314,9 @@ static ssize_t cf_h2_send(struct Curl_cfilter *cf, struct Curl_easy *data,
+   if(should_close_session(ctx)) {
+     /* nghttp2 thinks this session is done. If the stream has not been
+      * closed, this is an error state for out transfer */
+-    if(stream->closed) {
+-      nwritten = http2_handle_stream_close(cf, data, stream, err);
+-    }
+-    else {
+-      CURL_TRC_CF(data, cf, "send: nothing to do in this session");
+-      *err = CURLE_HTTP2;
+-      nwritten = -1;
+-    }
++    CURL_TRC_CF(data, cf, "send: nothing to do in this session");
++    *err = CURLE_HTTP2;
++    nwritten = -1;
+   }
+ 
+ out:
+@@ -2645,7 +2640,7 @@ static bool cf_h2_is_alive(struct Curl_cfilter *cf,
+   struct cf_call_data save;
+ 
+   CF_DATA_SAVE(save, cf, data);
+-  result = (ctx && ctx->h2 && http2_connisalive(cf, data, input_pending));
++  result = (ctx->h2 && http2_connisalive(cf, data, input_pending));
+   CURL_TRC_CF(data, cf, "conn alive -> %d, input_pending=%d",
+               result, *input_pending);
+   CF_DATA_RESTORE(cf, save);

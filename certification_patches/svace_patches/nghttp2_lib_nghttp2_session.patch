@@ -1,0 +1,18 @@
+diff --git a/lib/nghttp2_session.c b/lib/nghttp2_session.c
+index 93f3f07c..70f4641e 100644
+--- a/lib/nghttp2_session.c
++++ b/lib/nghttp2_session.c
+@@ -625,8 +625,11 @@ static int session_new(nghttp2_session **session_ptr,
+ 
+     if (!server) {
+       (*session_ptr)->aob.state = NGHTTP2_OB_SEND_CLIENT_MAGIC;
+-      nghttp2_bufs_add(&(*session_ptr)->aob.framebufs, NGHTTP2_CLIENT_MAGIC,
+-                       NGHTTP2_CLIENT_MAGIC_LEN);
++      rv = nghttp2_bufs_add(&(*session_ptr)->aob.framebufs, NGHTTP2_CLIENT_MAGIC,
++                            NGHTTP2_CLIENT_MAGIC_LEN);
++      if (rv != 0) {
++        goto fail_aob_framebuf;
++      }
+     }
+   }
+ 
