@@ -30,8 +30,9 @@ clean:
 	rm -rf $(TARGET_ROOT)/debug/incremental/libsbroad*
 
 check:
-        # "fmt", "clippy", "doc" are done in the root Makefile
-	cargo audit -f audit.toml
+	# formatting and linting (both for docs and the code)
+	# are done in the root `Makefile`/`Justfile`, the same
+	# goes for the project dependencies audit.
 	./deps.sh
 	./.rocks/bin/luacheck .
 

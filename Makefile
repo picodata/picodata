@@ -162,6 +162,10 @@ fmt:
 	cargo fmt
 	poetry run ruff format ./test
 
+.PHONY: audit
+audit:
+	cargo deny --workspace check
+
 .PHONY: clean
 clean:
 	cargo clean || true

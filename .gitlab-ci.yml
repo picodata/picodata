@@ -859,6 +859,18 @@ publish-picodata-plugin:
   before_script:
     - pushd sbroad
 
+audit:
+  stage: test
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        CACHE_POLICY: pull
+  script:
+    - make audit
+
 stress_tests:
   parallel:
     matrix:

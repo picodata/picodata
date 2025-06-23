@@ -163,6 +163,11 @@ k6:
 #*************#
 
 [group("misc")]
+[doc("audits library dependencies and their licenses with trusted entity verification")]
+audit:
+	cargo deny --workspace check
+
+[group("misc")]
 [doc("remove cargo and python cache, clean submodules")]
 [confirm("Do you really want to clear all cache and submodules? (y/n):")]
 clean:
