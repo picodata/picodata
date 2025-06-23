@@ -3722,7 +3722,10 @@ mod tests {
 
                 // Check parts separately from other fields
                 let parts_as_known_by_picodata = std::mem::take(&mut index_def.parts);
-                let parts_as_known_by_tarantool = std::mem::take(&mut tt_index_def.parts);
+                let parts_as_known_by_tarantool = std::mem::take(&mut tt_index_def.parts)
+                    .into_iter()
+                    .map(|x| x.into())
+                    .collect::<Vec<_>>();
 
                 check_index_parts_match(
                     &index_def,

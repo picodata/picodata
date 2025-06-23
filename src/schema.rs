@@ -417,22 +417,31 @@ impl IndexDef {
         // We must convert any field names to field indexes in the index parts,
         // because it is very important for tarantool, and we are very
         // understanding and supportive of it.
-        let mut parts = self.parts.clone();
-        for part in &mut parts {
-            let NumOrStr::Str(field_name) = &part.field else {
-                continue;
+        let mut parts = vec![];
+        for part in self.parts.clone() {
+            let index = match &part.field {
+                NumOrStr::Str(field_name) => {
+                    let mut index = 0;
+                    for field in &table_def.format {
+                        if &field.name == field_name {
+                            break;
+                        }
+                        index += 1;
+                    }
+                    // No need to check the field was found,
+                    // tarantool will tell us if the field index is out of range
+                    index
+                }
+                NumOrStr::Num(index) => *index,
             };
 
-            let mut index = 0;
-            for field in &table_def.format {
-                if &field.name == field_name {
-                    break;
-                }
-                index += 1;
-            }
-            // No need to check the field was found,
-            // tarantool will tell us if the field index is out of range
-            part.field = NumOrStr::Num(index as _);
+            parts.push(Part {
+                field: index,
+                r#type: part.r#type,
+                collation: part.collation,
+                is_nullable: part.is_nullable,
+                path: part.path,
+            });
         }
 
         let index_meta = IndexMetadata {

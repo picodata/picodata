@@ -14,7 +14,6 @@ use std::fmt::{self, Formatter};
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::space::{Field, FieldType as SpaceFieldType, Space, SpaceEngineType, SystemSpace};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
-use tarantool::util::NumOrStr;
 
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::{Serialize as SerSerialize, SerializeMap, Serializer};
@@ -869,16 +868,7 @@ pub fn space_pk_columns(
     })?;
     let mut primary_key = Vec::with_capacity(pk_meta.parts.len());
     for part in pk_meta.parts {
-        let col_pos = if let NumOrStr::Num(pos) = part.field {
-            pos as usize
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::PrimaryKey,
-                Some(format_smolstr!(
-                    "part of {space_name} has unexpected format: {part:?}"
-                )),
-            ));
-        };
+        let col_pos = part.field as usize;
         let col = space_columns
             .get(col_pos)
             .ok_or_else(|| {
