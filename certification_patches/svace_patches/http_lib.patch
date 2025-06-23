@@ -1,0 +1,14 @@
+diff --git a/http/lib.c b/http/lib.c
+index ec9c54b..1056db4 100644
+--- a/http/lib.c
++++ b/http/lib.c
+@@ -304,7 +304,8 @@ http_parser_on_error(void *uobj, int code, const char *fmt, va_list ap)
+ {
+ 	struct lua_State *L = (struct lua_State *)uobj;
+ 	char estr[256];
+-	vsnprintf(estr, 256, fmt, ap);
++	/* Discard any characters that do not fit into `estr` buffer. */
++	(void)vsnprintf(estr, 256, fmt, ap);
+ 	lua_pushliteral(L, "error");
+ 	lua_pushstring(L, estr);
+ 	lua_rawset(L, -4);
