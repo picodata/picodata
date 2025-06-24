@@ -38,11 +38,11 @@
 
 # Change Log
 
-# [?.?.?] Unreleased
-
-### Added
+# [8.0.0] Jun 24 2025
 
 ### Changed
+
+- Unpinned the version of `tokio` crate optional dependency
 
 ### Fixed
 
@@ -53,15 +53,8 @@
 
 ### Breaking
 
-### Added (picodata)
-
-### Changed (picodata)
-
-### Fixed (picodata)
-
-### Deprecated (picodata)
-
-### Breaking (picodata)
+- Split a single `index::Part` type into `Part<String>`, `Part<u32>` and `Part<NumOrStr>`,
+  depending on the accepted/returned types by the tarantool API
 
 # [7.0.0] May 26 2025
 
@@ -87,8 +80,6 @@
 
 - Use `extern "C-unwind"` instead of `extern "C"` for lua ffi functions, which
   seems to help with lua_error!() in release builds on recent versions of rust.
-- Split a single `index::Part` type into `Part<String>`, `Part<u32>` and `Part<NumOrStr>`,
-  depending on the accepted/returned types by the tarantool API
 
 ### Added (picodata)
 
