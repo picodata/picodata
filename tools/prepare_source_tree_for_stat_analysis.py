@@ -48,6 +48,14 @@ DEAD_LIST = [
     "tarantool-sys/third_party/luajit/src/luajit_lldb.py",
     "tarantool-sys/perf/lua/1mops_write.lua",
     "tarantool-sys/third_party/metrics/rpm/prebuild.sh",
+    # 25.2
+    "dev/plan-drawer/draw.py",
+    "docker-build-base/stress.Dockerfile",
+    "docker/docker-compose.yml",
+    "tarantool-sys/extra/pico_parse_git_log.py",
+    "tarantool-sys/third_party/nghttp2/script/fetch-ocsp-response",
+    "tarantool-sys/vendor/openssl-3.2.3/fuzz/helper.py",
+    "tools/get_tags.py",
 ]
 
 
@@ -102,7 +110,7 @@ def apply_patches():
 def restore():
     subprocess.check_call(
         shlex.split("git submodule foreach --recursive git restore .")
-    )
+    )  # nosec
 
 
 if __name__ == "__main__":
