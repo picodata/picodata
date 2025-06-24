@@ -693,6 +693,8 @@ impl Plan {
                     .insert(expr.id, local_alias.clone());
             }
 
+            let child = self.get_relational_child(groupby_info.id, 0)?;
+
             // Move scalar subqueries that came from DISTINCT qualifier to GroupBy children.
             let groupby = self.get_mut_relation_node(groupby_info.id)?;
             let MutRelational::GroupBy(GroupBy { children, .. }) = groupby else {
@@ -707,6 +709,7 @@ impl Plan {
                     *gr_expr_local,
                 )?;
                 self.set_parent_in_subtree(*gr_expr_local, groupby_info.id)?;
+                self.set_target_in_subtree(*gr_expr_local, child)?;
 
                 // For query `SELECT 1 FROM t GROUP BY (SELECT 1)`
                 // we'd like to clone scalar subquery from local GroupBy
@@ -906,6 +909,8 @@ impl Plan {
 
         // Expressions used under newly created output are referencing final Projection. We
         // have to fix it so that they reference newly created Projection.
+
+        self.set_target_in_subtree(proj_output, upper_id)?;
         self.set_parent_in_subtree(proj_output, proj_id)?;
 
         self.set_rel_output_distribution(proj_id)?;
@@ -1196,10 +1201,7 @@ impl Plan {
                 let mut fixed_children = Vec::with_capacity(children.len());
                 fixed_children.push(children[0]);
                 for (index_prev, child_id) in children.iter().enumerate() {
-                    if index_prev == 0
-                        || scalar_sqs_to_fix
-                            .iter()
-                            .any(|sq_id| *sq_id == *child_id)
+                    if index_prev == 0 || scalar_sqs_to_fix.iter().any(|sq_id| *sq_id == *child_id)
                     {
                         continue;
                     }

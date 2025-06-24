@@ -1820,6 +1820,35 @@ impl Plan {
     pub fn set_parent_in_subtree(
         &mut self,
         expr_id: NodeId,
+        _rel_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
+                return true;
+            }
+            false
+        };
+        let mut subtree = PostOrderWithFilter::with_capacity(
+            |node| self.nodes.expr_iter(node, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+        subtree.populate_nodes(expr_id);
+        let references = subtree.take_nodes();
+        drop(subtree);
+        for LevelNode(_, id) in references {
+            let _ = self.get_mut_expression_node(id)?;
+            // TODO: remove this function
+            // if let MutExpression::Reference(Reference { parent, .. }) = node {
+            //     *parent = Some(rel_id);
+            // }
+        }
+        Ok(())
+    }
+
+    pub fn set_target_in_subtree(
+        &mut self,
+        expr_id: NodeId,
         rel_id: NodeId,
     ) -> Result<(), SbroadError> {
         let filter = |node_id: NodeId| -> bool {
@@ -1837,9 +1866,24 @@ impl Plan {
         let references = subtree.take_nodes();
         drop(subtree);
         for LevelNode(_, id) in references {
+            // We don't change references to additional children because we could lose
+            // connection with them.
+            let node_id = self.get_relational_from_reference_node(id)?;
+            let node = self.get_relation_node(node_id)?;
+            if matches!(
+                node,
+                Relational::ScanSubQuery { .. } | Relational::Motion { .. }
+            ) && self.is_additional_child(node_id)?
+            {
+                continue;
+            }
+
             let node = self.get_mut_expression_node(id)?;
-            if let MutExpression::Reference(Reference { parent, .. }) = node {
-                *parent = Some(rel_id);
+            if let MutExpression::Reference(Reference { target, .. }) = node {
+                if !matches!(target, ReferenceTarget::Single(_)) {
+                    panic!("try to change to single")
+                }
+                *target = ReferenceTarget::Single(rel_id);
             }
         }
         Ok(())
