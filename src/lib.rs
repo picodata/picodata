@@ -1324,15 +1324,26 @@ fn postjoin(
                 break;
             }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {
+                // A network error happened. Try again later.
                 error_message = e.to_string();
             }
             Err(timeout::Error::Failed(TntError::IO(e))) => {
+                // Hopefully a network error happened? Try again later.
                 error_message = e.to_string();
             }
             Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::NotALeader as u32 => {
+                // Our info about raft leader is outdated, just wait a while for
+                // it to update and send a request to hopefully the new leader.
+                error_message = e.to_string();
+            }
+            Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::LeaderUnknown as u32 => {
+                // The peer no longer knows who the raft leader is. This is
+                // possible for example if a leader election is in progress. We
+                // should just wait some more and try again later.
                 error_message = e.to_string();
             }
             Err(e) => {
+                // Other kinds of errors, which can't/shouldn't be fixed by a "try again later" strategy
                 return Err(Error::other(format!(
                     "failed to activate myself: {e}, shutting down..."
                 )));
