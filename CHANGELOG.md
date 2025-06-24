@@ -8,11 +8,19 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.2.2] - Unreleased
+## [25.2.2] - 2025-06-25
+
+### Features
+
+- Increase max number of users to 128
+- Support LDAP with TLS (StartTLS)
 
 ### Fixes
 
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
+- Used to fail to start when raft election was in progress
+- row_number marked as non-deterministic function
+- Re-enable basic auth for credentials in URL
 
 ### Plugin API
 
