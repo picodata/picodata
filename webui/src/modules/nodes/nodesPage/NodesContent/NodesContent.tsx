@@ -34,7 +34,7 @@ export const NodesContent = () => {
   const instancesTranslations = translation.pages.instances;
 
   const groupedByTiers = groupByFilterValue === "TIERS";
-  const groupedByRepicasets = groupByFilterValue === "REPLICASETS";
+  const groupedByReplicasets = groupByFilterValue === "REPLICASETS";
   const groupedByInstances = groupByFilterValue === "INSTANCES";
 
   const isNoData = data?.replicasets.length === 0;
@@ -58,7 +58,7 @@ export const NodesContent = () => {
           />
           <div className={styles.list}>
             {groupedByTiers && Tiers(data?.tiers)}
-            {groupedByRepicasets && Replicasets(data?.replicasets)}
+            {groupedByReplicasets && Replicasets(data?.replicasets)}
             {groupedByInstances && (
               <Instances
                 instances={data?.instances}
