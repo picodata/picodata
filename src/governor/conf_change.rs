@@ -44,7 +44,7 @@ impl RaftConf<'_> {
         }
 
         raft::ConfChangeSingle {
-            change_type,
+            change_type: change_type.into(),
             node_id,
             ..Default::default()
         }
@@ -254,8 +254,8 @@ pub(crate) fn raft_conf_change(
     }
 
     let conf_change = raft::ConfChangeV2 {
-        transition: raft::ConfChangeTransition::Auto,
-        changes: changes.into(),
+        transition: raft::ConfChangeTransition::Auto.into(),
+        changes,
         ..Default::default()
     };
 
@@ -333,12 +333,12 @@ mod tests {
             Some(raft::ConfChangeV2 {
                 changes: vec![$(
                     raft::ConfChangeSingle {
-                        change_type: raft::ConfChangeType::$change,
+                        change_type: raft::ConfChangeType::$change.into(),
                         node_id: $raft_id,
                         ..Default::default()
                     }
                 ),*].into(),
-                transition: raft::ConfChangeTransition::Auto,
+                transition: raft::ConfChangeTransition::Auto.into(),
                 ..Default::default()
             })
         }};

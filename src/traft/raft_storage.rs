@@ -502,7 +502,7 @@ impl RaftSpaceAccess {
         // Must bump the applied index before doing log compaction,
         // because log compaction only removes applied entries
         self.persist_applied(meta_index)?;
-        self.persist_conf_state(meta.get_conf_state())?;
+        self.persist_conf_state(meta.conf_state())?;
 
         // We don't want to have a hole in the log, so we clear everything
         // before applying the snapshot
@@ -795,7 +795,7 @@ impl raft::Storage for RaftSpaceAccess {
         *meta.mut_conf_state() = self.conf_state().cvt_err()?;
 
         let data = data.to_tuple_buffer().cvt_err()?;
-        *snapshot.mut_data() = Vec::from(data).into();
+        snapshot.set_data(Vec::from(data));
 
         // SAFETY: this is safe as long as we only use tlog from tx thread.
         unsafe {

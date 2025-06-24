@@ -631,7 +631,7 @@ impl NodeImpl {
         let mut m = raft::Message::default();
         m.set_msg_type(raft::MessageType::MsgPropose);
         m.from = self.raw_node.raft.id;
-        m.set_entries(vec![entry].into());
+        m.set_entries(vec![entry]);
 
         crate::error_injection!("RAFT_PROPOSAL_DROPPED" => return Err(traft::error::Error::Raft(RaftError::ProposalDropped)));
         self.raw_node.raft.step(m)?;
@@ -2026,7 +2026,7 @@ impl NodeImpl {
         let mut skip_count = 0;
 
         for msg in messages {
-            if msg.msg_type == raft::MessageType::MsgHeartbeat {
+            if msg.msg_type() == raft::MessageType::MsgHeartbeat {
                 let instance_reachability = self.instance_reachability.borrow();
                 if !instance_reachability.should_send_heartbeat_this_tick(msg.to) {
                     skip_count += 1;
@@ -2151,7 +2151,7 @@ impl NodeImpl {
         }
 
         let snapshot_data = crate::unwrap_ok_or!(
-            SnapshotData::decode(snapshot.get_data()),
+            SnapshotData::decode(snapshot.data()),
             Err(e) => {
                 tlog!(Warning, "skipping snapshot, which failed to deserialize: {e}");
                 return Err(e.into());
@@ -2210,8 +2210,8 @@ impl NodeImpl {
         if snapshot_data.next_chunk_position.is_some() {
             self.main_loop_status("receiving snapshot");
             let entry_id = RaftEntryId {
-                index: snapshot.get_metadata().index,
-                term: snapshot.get_metadata().term,
+                index: snapshot.metadata().index,
+                term: snapshot.metadata().term,
             };
             if let Err(e) = self.fetch_chunkwise_snapshot(&mut snapshot_data, entry_id) {
                 // Error has been logged.
@@ -2358,7 +2358,7 @@ impl NodeImpl {
                     #[rustfmt::skip]
                     debug_assert!(entries_to_persist.is_empty(), "can't have both the snapshot & log entries");
 
-                    let meta = snapshot.get_metadata();
+                    let meta = snapshot.metadata();
                     let applied_index = self.raft_storage.applied()?;
                     // Persist snapshot metadata and compact raft log if it wasn't empty.
                     self.raft_storage.handle_snapshot_metadata(meta)?;
