@@ -529,89 +529,6 @@ impl Plan {
         Ok(false)
     }
 
-    /// Fix `target` field of references under final nodes.
-    /// Some of the final node children should be removed and we fix the offsets here.
-    fn fix_references_targets_in_subtree_final(
-        &mut self,
-        _final_node_id: NodeId,
-        _children_to_save: &[NodeId],
-        _subtree_id: NodeId,
-    ) -> Result<(), SbroadError> {
-        //TODO: remove it?
-        // // Map of { old_child_index -> new_child_index }.
-        // let ref_targets_remap = {
-        //     let mut inner = AHashMap::new();
-        //     let mut index_new = 1;
-        //     let final_node_children = self.children(final_node_id);
-        //     for (index_prev, child_id) in final_node_children.iter().enumerate() {
-        //         if index_prev == 0 || !children_to_save.contains(child_id) {
-        //             continue;
-        //         }
-        //         inner.insert(index_prev, index_new);
-        //         index_new += 1;
-        //     }
-        //     inner
-        // };
-        //
-        // for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
-        //     let ref_node = self.get_mut_expression_node(ref_to_fix)?;
-        //
-        //
-        //     let MutExpression::Reference(Reference {
-        //         targets: Some(targets),
-        //         ..
-        //     }) = ref_node
-        //     else {
-        //         unreachable!("Reference with targets should be met under Projection output")
-        //     };
-        //     let prev_index = targets.first().expect("Reference targets should be empty");
-        //     if let Some(new_index) = ref_targets_remap.get(prev_index) {
-        //         *targets
-        //             .first_mut()
-        //             .expect("Targets vec should not be empty") = *new_index;
-        //     }
-        // }
-        Ok(())
-    }
-
-    /// Fix `target` field of references under local nodes.
-    fn fix_references_targets_in_subtree_local(
-        &mut self,
-        _local_rel_id: NodeId,
-        _scalar_sqs_to_fix: &OrderedMap<NodeId, NodeId, RepeatableState>,
-        _subtree_id: NodeId,
-    ) -> Result<(), SbroadError> {
-        // TODO: remove it?
-        // let local_rel_children_list = self.children(local_rel_id).to_vec();
-        // for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
-        //     let (parent, prev_index) = self.get_ref_parent_and_target(ref_to_fix)?;
-        //     let ref_node = self.get_mut_expression_node(ref_to_fix)?;
-        //     let MutExpression::Reference(Reference {
-        //         targets: Some(targets),
-        //         ..
-        //     }) = ref_node
-        //     else {
-        //         unreachable!("Reference with targets should be met under Projection output")
-        //     };
-        //
-        //     for ((par, tar), sq_id) in scalar_sqs_to_fix.iter() {
-        //         // It's important to compare here because references
-        //         // may have come from different final nodes.
-        //         if *par == parent && *tar == prev_index {
-        //             let new_index = local_rel_children_list
-        //                 .iter()
-        //                 .position(|child_id| *child_id == *sq_id)
-        //                 .expect("Sq should be find under local relational node");
-        //
-        //             *targets
-        //                 .first_mut()
-        //                 .expect("Targets vec should not be empty") = new_index;
-        //         }
-        //     }
-        // }
-        Ok(())
-    }
-
     /// "Grouping exprs" are expressions that are used in GroupBy clause
     /// (on both Map and Reduce stages of the algorithm). In this function we try
     /// to identify which grouping exprs we have to add in order to
@@ -695,11 +612,6 @@ impl Plan {
             children.extend(scalar_sqs_to_fix.iter());
 
             for gr_expr_local in &grouping_exprs_local {
-                self.fix_references_targets_in_subtree_local(
-                    groupby_info.id,
-                    scalar_sqs_to_fix,
-                    *gr_expr_local,
-                )?;
                 self.set_target_in_subtree(*gr_expr_local, child)?;
 
                 // For query `SELECT 1 FROM t GROUP BY (SELECT 1)`
@@ -892,11 +804,6 @@ impl Plan {
             is_distinct: false,
         };
         let proj_id = self.add_relational(proj.into())?;
-
-        // In case we've cloned some reference from final Projection or Having to the local Projection
-        // and in case final Projection or Having contains scalar subqueries (which we want to move here)
-        // we have to fix `target` field for the references under local Projection.
-        self.fix_references_targets_in_subtree_local(proj_id, scalar_sqs_to_fix, proj_output)?;
 
         // Expressions used under newly created output are referencing final Projection. We
         // have to fix it so that they reference newly created Projection.
@@ -1168,17 +1075,15 @@ impl Plan {
         // left (e.g. for aggregates they are replaced with aliases above).
         for final_id in finals.iter().rev() {
             let final_node = self.get_relation_node(*final_id)?;
-            let (children, subtree_id) = match final_node {
+            let children = match final_node {
                 Relational::Projection(Projection {
                     children,
-                    output: subtree_id,
                     ..
                 })
                 | Relational::Having(Having {
                     children,
-                    filter: subtree_id,
                     ..
-                }) => (children, subtree_id),
+                }) => children,
                 _ => unreachable!("Unexpected node in reduce stage: {final_node:?}"),
             };
 
@@ -1192,11 +1097,6 @@ impl Plan {
                     }
                     fixed_children.push(*child_id);
                 }
-                self.fix_references_targets_in_subtree_final(
-                    *final_id,
-                    &fixed_children,
-                    *subtree_id,
-                )?;
                 fixed_children
             };
             let mut final_node_mut = self.get_mut_relation_node(*final_id)?;
