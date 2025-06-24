@@ -1,5 +1,4 @@
-use pretty_assertions::{assert_eq, assert_ne};
-
+use crate::ir::node::{Reference, ReferenceTarget};
 use crate::{
     frontend::sql::ir::SubtreeCloner,
     ir::{
@@ -10,6 +9,7 @@ use crate::{
         Plan,
     },
 };
+use pretty_assertions::{assert_eq, assert_ne};
 
 #[test]
 fn test_clone_dag() {
@@ -119,4 +119,47 @@ fn except_transform_with_dag_plan() {
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     "#);
+}
+
+#[test]
+fn subtree_external_links() {
+    // We check that cloning a tree with references that point to nodes that will not be copied
+    // does not panic and the references still point to the same nodes.
+
+    let mut plan = Plan::default();
+
+    let a_value_id = plan.add_const(Value::Integer(10));
+    let b_value_id = plan.add_const(Value::Integer(100));
+    let a_id = plan.nodes.add_alias("a", a_value_id).unwrap();
+    let b_id = plan.nodes.add_alias("b", b_value_id).unwrap();
+    let scan = plan.add_select_without_scan(&[a_id, b_id]).unwrap();
+    let proj = plan.add_proj(scan, vec![], &["a"], false, false).unwrap();
+    plan.set_top(proj).unwrap();
+
+    let output = plan.get_relational_output(proj).unwrap();
+
+    let mut cloner = SubtreeCloner::new(0);
+    let new_output = cloner.clone(&mut plan, output, 0).unwrap();
+
+    let new_ids: Vec<NodeId> = {
+        let mut dfs = PostOrder::with_capacity(|x| plan.subtree_iter(x, true), 0);
+        dfs.populate_nodes(new_output);
+        dfs.take_nodes().into_iter().map(|n| n.1).collect()
+    };
+
+    assert_eq!(new_ids.len(), 3);
+
+    let new_ref = new_ids[0];
+    let Expression::Reference(Reference { target, .. }) =
+        plan.get_expression_node(new_ref).unwrap()
+    else {
+        panic!("Expected reference node");
+    };
+
+    let ReferenceTarget::Single(ref_node) = target else {
+        panic!("Expected single reference target");
+    };
+
+    // Should point to the same node as in the original plan
+    assert_eq!(*ref_node, scan);
 }

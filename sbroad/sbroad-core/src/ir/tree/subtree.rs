@@ -16,6 +16,7 @@ trait SubtreePlanIterator<'plan>: PlanTreeIterator<'plan> {
     fn need_output(&self) -> bool;
     fn need_motion_subtree(&self) -> bool;
     fn output_first(&self) -> bool;
+    fn need_subquery(&self) -> bool;
 }
 
 /// Expression and relational nodes iterator.
@@ -27,6 +28,7 @@ pub struct SubtreeIterator<'plan> {
     plan: &'plan Plan,
     need_output: bool,
     output_first: bool,
+    traverse_subquery: bool,
 }
 
 impl<'nodes> TreeIterator<'nodes> for SubtreeIterator<'nodes> {
@@ -60,6 +62,9 @@ impl<'plan> SubtreePlanIterator<'plan> for SubtreeIterator<'plan> {
     fn output_first(&self) -> bool {
         self.output_first
     }
+    fn need_subquery(&self) -> bool {
+        self.traverse_subquery
+    }
 }
 
 impl Iterator for SubtreeIterator<'_> {
@@ -79,6 +84,7 @@ impl<'plan> Plan {
             plan: self,
             need_output,
             output_first: true,
+            traverse_subquery: true,
         }
     }
 
@@ -93,6 +99,22 @@ impl<'plan> Plan {
             plan: self,
             need_output,
             output_first: false,
+            traverse_subquery: true,
+        }
+    }
+
+    pub fn subtree_iter_except_subquery(
+        &'plan self,
+        current: NodeId,
+        need_output: bool,
+    ) -> SubtreeIterator<'plan> {
+        SubtreeIterator {
+            current,
+            child: RefCell::new(0),
+            plan: self,
+            need_output,
+            output_first: false,
+            traverse_subquery: false,
         }
     }
 }
@@ -140,6 +162,10 @@ impl<'plan> SubtreePlanIterator<'plan> for FlashbackSubtreeIterator<'plan> {
     fn output_first(&self) -> bool {
         true
     }
+
+    fn need_subquery(&self) -> bool {
+        true
+    }
 }
 
 impl Iterator for FlashbackSubtreeIterator<'_> {
@@ -168,6 +194,7 @@ pub struct ExecPlanSubtreeIterator<'plan> {
     child: RefCell<usize>,
     plan: &'plan Plan,
     snapshot_type: Snapshot,
+    output_first: bool,
 }
 
 impl<'nodes> TreeIterator<'nodes> for ExecPlanSubtreeIterator<'nodes> {
@@ -199,6 +226,9 @@ impl<'plan> SubtreePlanIterator<'plan> for ExecPlanSubtreeIterator<'plan> {
         false
     }
     fn output_first(&self) -> bool {
+        self.output_first
+    }
+    fn need_subquery(&self) -> bool {
         true
     }
 }
@@ -224,6 +254,21 @@ impl<'plan> Plan {
             child: RefCell::new(0),
             plan: self,
             snapshot_type: snapshot,
+            output_first: false,
+        }
+    }
+
+    pub fn exec_plan_subtree_output_first_iter(
+        &'plan self,
+        current: NodeId,
+        snapshot: Snapshot,
+    ) -> ExecPlanSubtreeIterator<'plan> {
+        ExecPlanSubtreeIterator {
+            current,
+            child: RefCell::new(0),
+            plan: self,
+            snapshot_type: snapshot,
+            output_first: true,
         }
     }
 }
@@ -270,6 +315,10 @@ fn subtree_next<'plan>(
                 | Expression::Timestamp { .. }
                 | Expression::Parameter { .. } => None,
                 Expression::Reference { .. } => {
+                    if !iter.need_subquery() {
+                        return None;
+                    }
+
                     let step = *iter.get_child().borrow();
                     if step == 0 {
                         *iter.get_child().borrow_mut() += 1;
@@ -481,18 +530,8 @@ fn subtree_next<'plan>(
                 })
                 | Relational::SelectWithoutScan(SelectWithoutScan {
                     output, children, ..
-                }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
-                    if step == 0 {
-                        return Some(*output);
-                    }
-                    if step <= children.len() {
-                        return children.get(step - 1).copied();
-                    }
-                    None
-                }
-                Relational::Projection(Projection {
+                })
+                | Relational::Projection(Projection {
                     output, children, ..
                 }) => {
                     let step = *iter.get_child().borrow();
@@ -517,12 +556,23 @@ fn subtree_next<'plan>(
                 Relational::Update(Update { output, child, .. }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
-                    if step == 0 {
-                        return Some(*output);
-                    }
 
-                    if step <= 1 {
-                        return Some(*child);
+                    if iter.output_first() {
+                        if step == 0 {
+                            return Some(*output);
+                        }
+
+                        if step <= 1 {
+                            return Some(*child);
+                        }
+                    } else {
+                        if step == 0 {
+                            return Some(*child);
+                        }
+
+                        if step <= 1 {
+                            return Some(*output);
+                        }
                     }
 
                     None

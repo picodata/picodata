@@ -12,9 +12,9 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
     Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, NamedWindows, Node,
-    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, Row, ScalarFunction, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
-    Update, Values, ValuesRow, Window,
+    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row,
+    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim,
+    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -296,10 +296,22 @@ impl SubtreeCloner {
         let old_relational = plan.get_relation_node(id)?;
         let mut copied: RelOwned = old_relational.get_rel_owned();
 
-        // all relational nodes have output and children list,
-        // which must be copied.
+        // All relational nodes have output and children lists, which must be copied.
+        // The exception is subqueries - we don't copy them and they will be added as is.
         let children = old_relational.children().to_vec();
-        let new_children = self.copy_list(&children)?;
+        let mut additonal_index = None;
+        for (index, child) in children.iter().enumerate() {
+            if plan.is_additional_child_of_rel(id, *child)? {
+                additonal_index = Some(index);
+            }
+        }
+        let new_children = if let Some(additonal_index) = additonal_index {
+            let mut new_children = self.copy_list(&children[..additonal_index])?;
+            new_children.extend(children[additonal_index..].iter().clone());
+            new_children
+        } else {
+            self.copy_list(&children)?
+        };
         copied.set_children(new_children);
         let new_output_id = self.get_new_id(old_relational.output())?;
         *copied.mut_output() = new_output_id;
@@ -526,10 +538,14 @@ impl SubtreeCloner {
         top_id: NodeId,
         capacity: usize,
     ) -> Result<NodeId, SbroadError> {
-        let mut dfs = PostOrder::with_capacity(|x| plan.subtree_iter(x, true), capacity);
+        // We don't copy the subquery's children because otherwise it would create a new subquery.
+        // All references would then point to the same subquery.
+        let mut dfs =
+            PostOrder::with_capacity(|x| plan.subtree_iter_except_subquery(x, true), capacity);
         dfs.populate_nodes(top_id);
         let nodes = dfs.take_nodes();
         drop(dfs);
+        let mut invalid_refs = Vec::new();
         for LevelNode(_, id) in nodes {
             if self.old_new_map.contains_key(&id) {
                 // IR is a DAG and our DFS traversal does not
@@ -543,7 +559,46 @@ impl SubtreeCloner {
             let node = plan.get_node(id)?;
             let new_node: NodeAligned = match node {
                 Node::Relational(_) => self.clone_relational(plan, id)?.into(),
-                Node::Expression(expr) => self.clone_expression(&expr)?.into(),
+                Node::Expression(expr) => {
+                    let mut node = self.clone_expression(&expr)?;
+                    if let ExprOwned::Reference(Reference { target, .. }) = &mut node {
+                        match target {
+                            ReferenceTarget::Leaf => {}
+                            ReferenceTarget::Single(node_id) => {
+                                match self.old_new_map.get(node_id) {
+                                    Some(node) => {
+                                        *target = ReferenceTarget::Single(*node);
+                                    }
+                                    None => invalid_refs.push(*node_id),
+                                }
+                            }
+                            ReferenceTarget::Union(left, right) => {
+                                let new_left = self.old_new_map.get(left).unwrap_or_else(|| {
+                                    invalid_refs.push(*left);
+                                    left
+                                });
+                                let new_right = self.old_new_map.get(right).unwrap_or_else(|| {
+                                    invalid_refs.push(*right);
+                                    right
+                                });
+                                *target = ReferenceTarget::Union(*new_left, *new_right);
+                            }
+                            ReferenceTarget::Values(nodes) => {
+                                let new_targets = nodes
+                                    .iter()
+                                    .map(|node_id| {
+                                        *self.old_new_map.get(node_id).unwrap_or_else(|| {
+                                            invalid_refs.push(*node_id);
+                                            node_id
+                                        })
+                                    })
+                                    .collect();
+                                *target = ReferenceTarget::Values(new_targets);
+                            }
+                        }
+                    }
+                    node.into()
+                }
                 _ => {
                     return Err(SbroadError::Invalid(
                         Entity::Node,
@@ -555,6 +610,23 @@ impl SubtreeCloner {
             };
             let new_id = plan.nodes.push(new_node);
             self.old_new_map.insert(id, new_id);
+        }
+
+        // Here we check for invalid references that should not appear later.
+        // There are two scenarios we need to handle:
+        // 1) We traverse in the wrong order - the referenced node will be copied before
+        //    the reference is traversed, so the reference points to the old version
+        // 2) A reference points to a node that will not be copied, meaning the reference
+        //    remains valid and we don't need to change it
+        for id in invalid_refs.iter() {
+            if self.old_new_map.contains_key(id) {
+                return Err(SbroadError::Invalid(
+                    Entity::Plan,
+                    Some(format_smolstr!(
+                        "invalid subtree traversal with ref to: {id}"
+                    )),
+                ));
+            }
         }
 
         self.replace_backward_refs(plan)?;

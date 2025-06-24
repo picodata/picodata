@@ -71,8 +71,10 @@ impl Plan {
             }
             false
         };
+        // Here we need to output first so that constants have the right order.
+        // Otherwise they will be in reverse order (e.g., $1 $2 $3 becomes $3 $2 $1).
         let mut tree = PostOrderWithFilter::with_capacity(
-            |node| self.exec_plan_subtree_iter(node, snapshot),
+            |node| self.exec_plan_subtree_output_first_iter(node, snapshot),
             REL_CAPACITY,
             Box::new(filter),
         );

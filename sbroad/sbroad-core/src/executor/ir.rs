@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
@@ -14,8 +14,8 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
     GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136, NodeId, NodeOwned,
-    OrderBy, Over, Reference, Row, ScalarFunction, ScanCte, ScanRelation, Selection, Trim,
-    UnaryExpr, Update, ValuesRow, Window,
+    OrderBy, Over, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte, ScanRelation,
+    Selection, Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -85,6 +85,10 @@ impl SubtreeMap {
             .inner
             .get(&expr_id)
             .unwrap_or_else(|| panic!("Could not find node with id {expr_id:?} in subtree map"))
+    }
+
+    fn get_id_if_exist(&self, expr_id: NodeId) -> Option<&NodeId> {
+        self.inner.get(&expr_id)
     }
 
     fn contains_key(&self, expr_id: NodeId) -> bool {
@@ -474,6 +478,11 @@ impl ExecutionPlan {
         // This map tracks outputs of rel nodes that have changed their aliases.
         let mut rel_renamed_output_lists: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
+        // In motion, we can eliminate children. To keep references valid, we use this set.
+        // This set is also needed for debugging purposes: if we traverse in the wrong order,
+        // the array will contain references that point to incorrect locations.
+        let mut invalid_refs = HashSet::with_capacity(nodes.len());
+
         for LevelNode(_, node_id) in nodes {
             // We have already processed this node (sub-queries in BETWEEN
             // and CTEs can be referred twice).
@@ -492,6 +501,7 @@ impl ExecutionPlan {
             };
 
             let mut relational_output_id: Option<NodeId> = None;
+            let mut is_invalid_ref = false;
             let ir_plan = self.get_ir_plan();
             match node {
                 NodeOwned::Relational(ref mut rel) => {
@@ -584,6 +594,31 @@ impl ExecutionPlan {
                             // The subtree is needed to compile the SQL on the storage.
                             if !policy.is_local() {
                                 *child = None;
+
+                                // We need to make invalid reference leafs
+                                if !invalid_refs.is_empty() {
+                                    let output_list: Vec<NodeId> = new_plan
+                                        .get_row_list(subtree_map.get_id(*output))?
+                                        .to_vec();
+
+                                    for node in output_list {
+                                        let node = new_plan.get_child_under_alias(node)?;
+
+                                        if !invalid_refs.contains(&node) {
+                                            continue;
+                                        }
+
+                                        invalid_refs.remove(&node);
+
+                                        if let MutExpression::Reference(Reference {
+                                            ref mut target,
+                                            ..
+                                        }) = new_plan.get_mut_expression_node(node)?
+                                        {
+                                            *target = ReferenceTarget::Leaf;
+                                        }
+                                    }
+                                }
                             }
                         }
                         RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
@@ -824,9 +859,42 @@ impl ExecutionPlan {
                         }
                         *target = subtree_map.get_id(*target);
                     }
-                    ExprOwned::Reference(Reference { .. }) => {
-                        // The new parent node id MUST be set while processing the relational nodes.
-                    }
+                    ExprOwned::Reference(Reference { ref mut target, .. }) => match target {
+                        ReferenceTarget::Leaf => {}
+                        ReferenceTarget::Single(node_id) => {
+                            match subtree_map.get_id_if_exist(*node_id) {
+                                Some(node) => {
+                                    *target = ReferenceTarget::Single(*node);
+                                }
+                                None => is_invalid_ref = true,
+                            }
+                        }
+                        ReferenceTarget::Union(left, right) => {
+                            match (
+                                subtree_map.get_id_if_exist(*left),
+                                subtree_map.get_id_if_exist(*right),
+                            ) {
+                                (Some(left), Some(right)) => {
+                                    *target = ReferenceTarget::Union(*left, *right);
+                                }
+                                _ => is_invalid_ref = true,
+                            }
+                        }
+                        ReferenceTarget::Values(nodes) => {
+                            if nodes
+                                .iter()
+                                .any(|node| subtree_map.get_id_if_exist(*node).is_none())
+                            {
+                                is_invalid_ref = true;
+                            } else {
+                                let new_targets = nodes
+                                    .iter()
+                                    .map(|node_id| subtree_map.get_id(*node_id))
+                                    .collect();
+                                *target = ReferenceTarget::Values(new_targets);
+                            }
+                        }
+                    },
                     ExprOwned::Row(Row {
                         list: ref mut children,
                         ..
@@ -875,10 +943,21 @@ impl ExecutionPlan {
                 new_plan.replace_parent_in_subtree(output_id, None, Some(id))?;
             }
 
+            if is_invalid_ref {
+                invalid_refs.insert(id);
+            }
+
             subtree_map.insert(node_id, id);
             if top_id == node_id {
                 new_plan.set_top(id)?;
             }
+        }
+
+        if !invalid_refs.is_empty() {
+            return Err(SbroadError::Other(format_smolstr!(
+                "invalid references ({}) should be resolved",
+                invalid_refs.len()
+            )));
         }
 
         new_plan.stash_constants(Snapshot::Oldest)?;
