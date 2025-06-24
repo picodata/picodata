@@ -82,15 +82,25 @@ function Tiers(tiers?: TierType[]) {
     (x) => x.name
   );
 
-  return sortedTiers.map((tier) => <TierCard key={tier.name} tier={tier} />);
+  return (
+    <>
+      {sortedTiers.map((tier) => (
+        <TierCard key={tier.name} tier={tier} />
+      ))}
+    </>
+  );
 }
 
 function Replicasets(replicasets?: ReplicasetType[]) {
   const sortedRepicasets = useSortedByString(replicasets, (x) => x.name);
 
-  return sortedRepicasets.map((rep) => (
-    <ReplicasetCard key={rep.name} replicaset={rep} />
-  ));
+  return (
+    <>
+      {sortedRepicasets.map((rep) => (
+        <ReplicasetCard key={rep.name} replicaset={rep} />
+      ))}
+    </>
+  );
 }
 
 function Instances({
@@ -108,7 +118,11 @@ function Instances({
     sortByValue
   );
 
-  return sortedFilteredInstances.map((instance) => (
-    <InstanceCard key={instance.name} instance={instance} theme="primary" />
-  ));
+  return (
+    <>
+      {sortedFilteredInstances.map((instance) => (
+        <InstanceCard key={instance.name} instance={instance} theme="primary" />
+      ))}
+    </>
+  );
 }

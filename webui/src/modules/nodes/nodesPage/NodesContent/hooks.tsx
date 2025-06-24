@@ -43,16 +43,38 @@ export const useSortedInstances = (
 
     if (!sortBy) return instances;
 
-    return sortByStringProp(
-      instances,
-      (a) =>
-        sortBy.by === "FAILURE_DOMAIN"
-          ? // Fallback to sorting by-name if failure domain is empty
-            // Make sure to make empty instances "float to the top" by prefixing with `_`
-            formatFailDomains(a.failureDomain) || `_${a.name}`
-          : a.name,
-      { order: sortBy.order }
-    );
+    switch (sortBy.by) {
+      default:
+      case "NAME":
+        return sortByStringProp(instances, (a) => a.name, {
+          order: sortBy.order,
+        });
+
+      case "FAILURE_DOMAIN":
+        return [...instances].sort((a, b) => {
+          const domainA = formatFailDomains(a.failureDomain);
+          const domainB = formatFailDomains(b.failureDomain);
+
+          // Fallback to sorting by-name if failure domain is empty or similar
+          // Make sure to make empty instances "float to the top" by prefixing with `_`
+          const domainANameStub = `_${b.name}`;
+          const domainBNameStub = `_${a.name}`;
+
+          if (domainA === domainB) {
+            return sortByString(domainANameStub, domainBNameStub, {
+              order: sortBy.order,
+            });
+          }
+
+          return sortByString(
+            domainA || domainANameStub,
+            domainB || domainBNameStub,
+            {
+              order: sortBy.order,
+            }
+          );
+        });
+    }
   }, [instances, sortBy]);
 };
 
@@ -61,9 +83,11 @@ export function useSortedByString<T>(
   prop: (x: T) => string,
   options?: SortByStringOptions
 ) {
-  if (!array) return [];
+  return useMemo(() => {
+    if (!array) return [];
 
-  return sortByStringProp<T>(array, prop, options);
+    return sortByStringProp<T>(array, prop, options);
+  }, [array, prop, options]);
 }
 
 export function sortByStringProp<T>(
