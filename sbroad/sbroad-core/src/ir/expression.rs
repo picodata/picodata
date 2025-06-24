@@ -1975,7 +1975,6 @@ impl Plan {
         }
         Ok(())
     }
-
 }
 
 impl Expression<'_> {

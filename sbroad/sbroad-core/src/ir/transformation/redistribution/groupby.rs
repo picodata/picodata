@@ -1076,14 +1076,8 @@ impl Plan {
         for final_id in finals.iter().rev() {
             let final_node = self.get_relation_node(*final_id)?;
             let children = match final_node {
-                Relational::Projection(Projection {
-                    children,
-                    ..
-                })
-                | Relational::Having(Having {
-                    children,
-                    ..
-                }) => children,
+                Relational::Projection(Projection { children, .. })
+                | Relational::Having(Having { children, .. }) => children,
                 _ => unreachable!("Unexpected node in reduce stage: {final_node:?}"),
             };
 
