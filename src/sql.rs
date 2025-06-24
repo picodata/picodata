@@ -82,6 +82,7 @@ use std::time::Duration;
 use tarantool::{msgpack, session, set_error};
 
 pub mod router;
+pub mod router_port;
 pub mod storage;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
