@@ -53,7 +53,6 @@ DEAD_LIST = [
     "docker-build-base/stress.Dockerfile",
     "docker/docker-compose.yml",
     "tarantool-sys/extra/pico_parse_git_log.py",
-    "tarantool-sys/third_party/nghttp2/script/fetch-ocsp-response",
     "tarantool-sys/vendor/openssl-3.2.3/fuzz/helper.py",
     "tools/get_tags.py",
 ]
