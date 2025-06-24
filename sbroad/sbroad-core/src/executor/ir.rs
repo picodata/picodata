@@ -500,7 +500,6 @@ impl ExecutionPlan {
                 mut_plan.replace_with_stub(node_id)
             };
 
-            let mut relational_output_id: Option<NodeId> = None;
             let mut is_invalid_ref = false;
             let ir_plan = self.get_ir_plan();
             match node {
@@ -523,7 +522,6 @@ impl ExecutionPlan {
                             condition: ref mut expr_id,
                             ..
                         }) => {
-                            let next_id = new_plan.nodes.next_id(ArenaType::Arena64);
                             // We transform selection's, having's filter and join's condition to DNF for a better bucket calculation.
                             // But as a result we can produce an extremely verbose SQL query from such a plan (tarantool's
                             // parser can fail to parse such SQL).
@@ -532,7 +530,6 @@ impl ExecutionPlan {
                             // for filter/condition (but then the UNDO logic should be changed as well).
                             let undo_expr_id = ir_plan.undo.get_oldest(expr_id);
                             *expr_id = subtree_map.get_id(*undo_expr_id);
-                            new_plan.replace_parent_in_subtree(*expr_id, None, Some(next_id))?;
                         }
                         RelOwned::ScanRelation(ScanRelation { relation, .. })
                         | RelOwned::Insert(Insert { relation, .. })
@@ -622,15 +619,9 @@ impl ExecutionPlan {
                             }
                         }
                         RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
-                            let next_id = new_plan.nodes.next_id(ArenaType::Arena64);
                             let mut new_cols: Vec<NodeId> = Vec::with_capacity(gr_exprs.len());
                             for col_id in gr_exprs.iter() {
                                 let new_col_id = subtree_map.get_id(*col_id);
-                                new_plan.replace_parent_in_subtree(
-                                    new_col_id,
-                                    None,
-                                    Some(next_id),
-                                )?;
                                 new_cols.push(new_col_id);
                             }
                             *gr_exprs = new_cols;
@@ -638,18 +629,12 @@ impl ExecutionPlan {
                         RelOwned::OrderBy(OrderBy {
                             order_by_elements, ..
                         }) => {
-                            let next_id = new_plan.nodes.next_id(ArenaType::Arena64);
                             let mut new_elements: Vec<OrderByElement> =
                                 Vec::with_capacity(order_by_elements.len());
                             for element in order_by_elements.iter() {
                                 let new_entity = match element.entity {
                                     OrderByEntity::Expression { expr_id } => {
                                         let new_element_id = subtree_map.get_id(expr_id);
-                                        new_plan.replace_parent_in_subtree(
-                                            new_element_id,
-                                            None,
-                                            Some(next_id),
-                                        )?;
                                         OrderByEntity::Expression {
                                             expr_id: new_element_id,
                                         }
@@ -694,7 +679,6 @@ impl ExecutionPlan {
                     if rel.has_output() {
                         let output = rel.mut_output();
                         *rel.mut_output() = subtree_map.get_id(*output);
-                        relational_output_id = Some(*rel.mut_output());
 
                         // If we deal with Projection we have to fix
                         // only References that have an Asterisk source.
@@ -939,9 +923,6 @@ impl ExecutionPlan {
             }
 
             let id = new_plan.nodes.push(node.into());
-            if let Some(output_id) = relational_output_id {
-                new_plan.replace_parent_in_subtree(output_id, None, Some(id))?;
-            }
 
             if is_invalid_ref {
                 invalid_refs.insert(id);

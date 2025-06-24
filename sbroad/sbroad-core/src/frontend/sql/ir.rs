@@ -315,7 +315,6 @@ impl SubtreeCloner {
         copied.set_children(new_children);
         let new_output_id = self.get_new_id(old_relational.output())?;
         *copied.mut_output() = new_output_id;
-        let next_rel_id = plan.nodes.next_id(copied.arena_type());
 
         // copy node specific fields, that reference other plan nodes
 
@@ -419,7 +418,6 @@ impl SubtreeCloner {
                 kind: _,
             }) => {
                 *filter = self.get_new_id(*filter)?;
-                plan.set_parent_in_subtree(*filter, next_rel_id)?
             }
             RelOwned::Motion(Motion {
                 alias: _,
@@ -457,9 +455,6 @@ impl SubtreeCloner {
                 output: _,
             }) => {
                 *gr_exprs = self.copy_list(gr_exprs)?;
-                for expr_id in gr_exprs.iter() {
-                    plan.set_parent_in_subtree(*expr_id, next_rel_id)?;
-                }
             }
             RelOwned::OrderBy(OrderBy {
                 children: _,
@@ -471,7 +466,6 @@ impl SubtreeCloner {
                     let new_entity = match element.entity {
                         OrderByEntity::Expression { expr_id } => {
                             let new_expr_id = self.get_new_id(expr_id)?;
-                            plan.set_parent_in_subtree(new_expr_id, next_rel_id)?;
                             OrderByEntity::Expression {
                                 expr_id: new_expr_id,
                             }

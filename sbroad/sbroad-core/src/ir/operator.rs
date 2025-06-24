@@ -362,11 +362,8 @@ impl Plan {
             child,
             output,
         };
-        let delete_id = self.add_relational(delete.into())?;
-        if let Some(output) = output {
-            self.replace_parent_in_subtree(output, None, Some(delete_id))?;
-        }
-        Ok(delete_id)
+
+        self.add_relational(delete.into())
     }
 
     /// Adds except node.
@@ -399,9 +396,7 @@ impl Plan {
             output,
         };
 
-        let except_id = self.add_relational(except.into())?;
-        self.replace_parent_in_subtree(output, None, Some(except_id))?;
-        Ok(except_id)
+        self.add_relational(except.into())
     }
 
     /// Add `Update` relational node.
@@ -498,8 +493,6 @@ impl Plan {
                 )
             })?;
             let col_type = col.r#type;
-            // It will be updated using `replace_parent_in_subtree`
-            // in the end of the function.
             let id = plan.nodes.add_ref(
                 ReferenceTarget::Single(rel_child_id),
                 output_pos,
@@ -659,7 +652,6 @@ impl Plan {
             is_distinct: false,
         };
         let proj_id = self.add_relational(proj_node.into())?;
-        self.replace_parent_in_subtree(proj_output, None, Some(proj_id))?;
         let upd_output = self.add_row_for_output(proj_id, &[], false, None)?;
         let update_node = Update {
             relation: relation.to_smolstr(),
@@ -670,7 +662,6 @@ impl Plan {
             strategy: update_kind,
         };
         let update_id = self.add_relational(update_node.into())?;
-        self.replace_parent_in_subtree(upd_output, None, Some(update_id))?;
 
         Ok((proj_id, update_id))
     }
@@ -768,7 +759,6 @@ impl Plan {
             conflict_strategy,
         };
         let insert_id = self.nodes.push(insert.into());
-        self.replace_parent_in_subtree(output, None, Some(insert_id))?;
         Ok(insert_id)
     }
 
@@ -794,9 +784,7 @@ impl Plan {
                 alias: alias.map(SmolStr::from),
             };
 
-            let scan_id = self.add_relational(scan.into())?;
-            self.replace_parent_in_subtree(output_id, None, Some(scan_id))?;
-            return Ok(scan_id);
+            return self.add_relational(scan.into());
         }
         Err(SbroadError::NotFound(
             Entity::Table,
@@ -917,10 +905,7 @@ impl Plan {
                 kind,
             };
 
-            let join_id = self.add_relational(join.into())?;
-            self.replace_parent_in_subtree(condition, None, Some(join_id))?;
-            self.replace_parent_in_subtree(output, None, Some(join_id))?;
-            return Ok(join_id);
+            return self.add_relational(join.into());
         }
         Err(SbroadError::Invalid(
             Entity::Expression,
@@ -993,7 +978,6 @@ impl Plan {
             output,
         };
         let motion_id = self.add_relational(motion.into())?;
-        self.replace_parent_in_subtree(output, None, Some(motion_id))?;
         let mut context = self.context_mut();
         context
             .shard_col_info
@@ -1026,9 +1010,7 @@ impl Plan {
             is_distinct,
         };
 
-        let proj_id = self.add_relational(proj.into())?;
-        self.replace_parent_in_subtree(output, None, Some(proj_id))?;
-        Ok(proj_id)
+        self.add_relational(proj.into())
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).
@@ -1052,9 +1034,7 @@ impl Plan {
             is_distinct,
         };
 
-        let proj_id = self.add_relational(proj.into())?;
-        self.replace_parent_in_subtree(output, None, Some(proj_id))?;
-        Ok(proj_id)
+        self.add_relational(proj.into())
     }
 
     pub fn add_named_windows(
@@ -1069,9 +1049,7 @@ impl Plan {
             output,
         };
 
-        let named_windows_id = self.add_relational(named_windows.into())?;
-        self.replace_parent_in_subtree(output, None, Some(named_windows_id))?;
-        Ok(named_windows_id)
+        self.add_relational(named_windows.into())
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).
@@ -1124,10 +1102,7 @@ impl Plan {
             output,
         };
 
-        let select_id = self.add_relational(select.into())?;
-        self.replace_parent_in_subtree(filter, None, Some(select_id))?;
-        self.replace_parent_in_subtree(output, None, Some(select_id))?;
-        Ok(select_id)
+        self.add_relational(select.into())
     }
 
     /// Adds having node
@@ -1172,10 +1147,7 @@ impl Plan {
             output,
         };
 
-        let having_id = self.add_relational(having.into())?;
-        self.replace_parent_in_subtree(filter, None, Some(having_id))?;
-        self.replace_parent_in_subtree(output, None, Some(having_id))?;
-        Ok(having_id)
+        self.add_relational(having.into())
     }
 
     /// Add `OrderBy` node into the plan.
@@ -1203,16 +1175,6 @@ impl Plan {
         };
 
         let plan_order_by_id = self.add_relational(order_by.into())?;
-        for order_by_element in order_by_elements {
-            if let OrderByElement {
-                entity: OrderByEntity::Expression { expr_id },
-                ..
-            } = order_by_element
-            {
-                self.replace_parent_in_subtree(expr_id, None, Some(plan_order_by_id))?;
-            }
-        }
-        self.replace_parent_in_subtree(output, None, Some(plan_order_by_id))?;
         let top_proj_id = self.add_proj(plan_order_by_id, vec![], &[], false, true)?;
         Ok((plan_order_by_id, top_proj_id))
     }
@@ -1236,9 +1198,7 @@ impl Plan {
             output,
         };
 
-        let sq_id = self.add_relational(sq.into())?;
-        self.replace_parent_in_subtree(output, None, Some(sq_id))?;
-        Ok(sq_id)
+        self.add_relational(sq.into())
     }
 
     /// Appends a new CTE node to the plan arena.
@@ -1355,9 +1315,7 @@ impl Plan {
             .into()
         };
 
-        let union_id = self.add_relational(union_all)?;
-        self.replace_parent_in_subtree(output, None, Some(union_id))?;
-        Ok(union_id)
+        self.add_relational(union_all)
     }
 
     /// Adds a limit node to the top of select node.
@@ -1372,9 +1330,7 @@ impl Plan {
             child: select,
         };
 
-        let limit_id = self.add_relational(limit.into())?;
-        self.replace_parent_in_subtree(output, None, Some(limit_id))?;
-        Ok(limit_id)
+        self.add_relational(limit.into())
     }
 
     /// Adds a values row node.
@@ -1404,9 +1360,7 @@ impl Plan {
             data: expr_row_id,
             children: vec![],
         };
-        let values_row_id = self.add_relational(values_row.into())?;
-        self.replace_parent_in_subtree(expr_row_id, None, Some(values_row_id))?;
-        Ok(values_row_id)
+        self.add_relational(values_row.into())
     }
 
     /// Adds values node.
@@ -1519,9 +1473,7 @@ impl Plan {
             output,
             children: value_rows,
         };
-        let values_id = self.add_relational(values.into())?;
-        self.replace_parent_in_subtree(output, None, Some(values_id))?;
-        Ok(values_id)
+        self.add_relational(values.into())
     }
 
     /// Gets an output tuple from relational node id

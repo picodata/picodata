@@ -94,8 +94,6 @@ impl Plan {
 
 fn create_projection(plan: &mut Plan, join_id: NodeId) -> Result<NodeId, SbroadError> {
     let proj_id = plan.add_proj(join_id, vec![], &[], false, false)?;
-    let output_id = plan.get_relational_output(proj_id)?;
-    plan.replace_parent_in_subtree(output_id, Some(join_id), Some(proj_id))?;
     plan.set_rel_output_distribution(proj_id)?;
     Ok(proj_id)
 }

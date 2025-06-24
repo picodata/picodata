@@ -274,7 +274,7 @@ impl Plan {
             ));
         };
 
-        let groupby_id = self.add_groupby(*first_child, other, None)?;
+        let groupby_id = self.add_groupby(*first_child, other)?;
         Ok(groupby_id)
     }
 
@@ -283,7 +283,6 @@ impl Plan {
         &mut self,
         child_id: NodeId,
         grouping_exprs: &[NodeId],
-        prev_refs_parent_id: Option<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let final_output = self.add_row_for_output(child_id, &[], true, None)?;
         let groupby = GroupBy {
@@ -292,14 +291,7 @@ impl Plan {
             output: final_output,
         };
 
-        let groupby_id = self.add_relational(groupby.into())?;
-
-        self.replace_parent_in_subtree(final_output, None, Some(groupby_id))?;
-        for expr in grouping_exprs {
-            self.replace_parent_in_subtree(*expr, prev_refs_parent_id, Some(groupby_id))?;
-        }
-
-        Ok(groupby_id)
+        self.add_relational(groupby.into())
     }
 
     /// Get ids of nodes in Reduce stage (finals) and id of the top node in Map stage.
@@ -393,7 +385,7 @@ impl Plan {
                 let col = SubtreeCloner::clone_subtree(self, proj_col_id)?;
                 grouping_exprs.push(col);
             }
-            let groupby_id = self.add_groupby(upper, &grouping_exprs, Some(proj_id))?;
+            let groupby_id = self.add_groupby(upper, &grouping_exprs)?;
             Some(groupby_id)
         } else {
             None
@@ -601,7 +593,7 @@ impl Plan {
         //     else {
         //         unreachable!("Reference with targets should be met under Projection output")
         //     };
-        // 
+        //
         //     for ((par, tar), sq_id) in scalar_sqs_to_fix.iter() {
         //         // It's important to compare here because references
         //         // may have come from different final nodes.
@@ -610,7 +602,7 @@ impl Plan {
         //                 .iter()
         //                 .position(|child_id| *child_id == *sq_id)
         //                 .expect("Sq should be find under local relational node");
-        // 
+        //
         //             *targets
         //                 .first_mut()
         //                 .expect("Targets vec should not be empty") = new_index;
@@ -708,7 +700,6 @@ impl Plan {
                     scalar_sqs_to_fix,
                     *gr_expr_local,
                 )?;
-                self.set_parent_in_subtree(*gr_expr_local, groupby_info.id)?;
                 self.set_target_in_subtree(*gr_expr_local, child)?;
 
                 // For query `SELECT 1 FROM t GROUP BY (SELECT 1)`
@@ -911,7 +902,6 @@ impl Plan {
         // have to fix it so that they reference newly created Projection.
 
         self.set_target_in_subtree(proj_output, upper_id)?;
-        self.set_parent_in_subtree(proj_output, proj_id)?;
 
         self.set_rel_output_distribution(proj_id)?;
 
@@ -967,15 +957,11 @@ impl Plan {
 
         // Because GroupBy node lies in the Arena64.
         let final_id = self.nodes.next_id(ArenaType::Arena64);
-        for col in &gr_exprs {
-            self.replace_parent_in_subtree(*col, None, Some(final_id))?;
-        }
         let final_groupby = GroupBy {
             gr_exprs,
             children: vec![child_id],
             output,
         };
-        self.replace_parent_in_subtree(output, None, Some(final_id))?;
         self.add_relational(final_groupby.into())?;
 
         Ok(final_id)
@@ -1138,7 +1124,6 @@ impl Plan {
                     let child_id = *children.first().expect("Having should have a child");
                     let output = self.add_row_for_output(child_id, &[], true, None)?;
                     *self.get_mut_relation_node(*node_id)?.mut_output() = output;
-                    self.replace_parent_in_subtree(output, None, Some(*node_id))?;
                 }
                 _ => unreachable!("Unexpected node in reduce stage: {node:?}"),
             }
@@ -1367,7 +1352,7 @@ impl Plan {
             // Currently it's the only case when GroupBy will be present
             // on a Map stage, but will not be generated for Reduce stage.
 
-            let groupby_id = self.add_groupby(upper_id, &[], None)?;
+            let groupby_id = self.add_groupby(upper_id, &[])?;
             upper_id = groupby_id;
             groupby_info = Some(GroupByInfo::new(upper_id));
         }

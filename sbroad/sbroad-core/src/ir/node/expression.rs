@@ -197,22 +197,4 @@ impl MutExpression<'_> {
             )),
         }
     }
-
-    /// Replaces parent in the reference node with the new one.
-    pub fn replace_parent_in_reference(
-        &mut self,
-        _from_id: Option<NodeId>,
-        _to_id: Option<NodeId>,
-    ) {
-        if let MutExpression::Reference(Reference { .. }) = self {
-            // TODO: remove function
-        }
-    }
-
-    /// Flushes parent in the reference node.
-    pub fn flush_parent_in_reference(&mut self) {
-        if let MutExpression::Reference(Reference { .. }) = self {
-            // TODO: remove function
-        }
-    }
 }
