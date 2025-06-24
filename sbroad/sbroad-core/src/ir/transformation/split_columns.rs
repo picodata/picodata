@@ -23,6 +23,7 @@ use super::{ExprId, TransformationOldNewPair};
 
 fn call_expr_tree_split_columns(
     plan: &mut Plan,
+    _parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     plan.expr_tree_replace_bool(

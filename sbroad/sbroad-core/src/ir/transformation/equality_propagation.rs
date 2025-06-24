@@ -333,10 +333,11 @@ impl EqClassChain {
 /// Replace IN operator with the chain of the OR-ed equalities in the expression tree.
 fn call_expr_tree_derive_equalities(
     plan: &mut Plan,
+    parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     let new_top_id =
-        plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)?;
+        plan.expr_tree_modify_and_chains(parent_id, top_id, &call_build_and_chains, &call_as_plan)?;
     Ok(TransformationOldNewPair {
         old_id: top_id,
         new_id: new_top_id,
@@ -354,7 +355,7 @@ fn call_build_and_chains(
     Ok(chains)
 }
 
-fn call_as_plan(chain: &Chain, plan: &mut Plan) -> Result<NodeId, SbroadError> {
+fn call_as_plan(_parent_id: NodeId, chain: &Chain, plan: &mut Plan) -> Result<NodeId, SbroadError> {
     chain.as_plan_ecs(plan)
 }
 

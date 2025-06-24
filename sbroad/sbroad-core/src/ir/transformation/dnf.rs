@@ -175,6 +175,7 @@ impl Chain {
 
 fn call_expr_tree_to_dnf(
     plan: &mut Plan,
+    _parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     let new_top_id = plan.expr_tree_to_dnf(top_id)?;

@@ -51,6 +51,7 @@ impl NotState {
 
 fn call_expr_tree_not_push_down(
     plan: &mut Plan,
+    _parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     let mut transformation_map = OldNewTransformationMap::new();

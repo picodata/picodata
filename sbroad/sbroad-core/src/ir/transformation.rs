@@ -29,6 +29,7 @@ use crate::ir::operator::Bool;
 use crate::ir::{Node, Plan};
 
 pub type ExprId = NodeId;
+pub type RelationId = NodeId;
 
 /// Pair of:
 /// * node which should be considered an old version of expression tree
@@ -79,7 +80,7 @@ impl OldNewTransformationMap {
 /// Function passed for being applied on WHERE/ON condition expressions.
 /// Returns pair of (old_top_id, new_top_id).
 pub type TransformFunctionOldNew<'func> =
-    &'func dyn Fn(&mut Plan, ExprId) -> Result<TransformationOldNewPair, SbroadError>;
+    &'func dyn Fn(&mut Plan, RelationId, ExprId) -> Result<TransformationOldNewPair, SbroadError>;
 
 /// Function passed for being applied on WHERE/ON condition expressions.
 /// Returns only new_top_id (unlike `TransformFunctionOldNew`).
@@ -181,7 +182,7 @@ impl Plan {
                     unreachable!("Selection or Join nodes expected for transformation application")
                 }
             };
-            let TransformationOldNewPair { old_id, new_id } = f(self, tree_id)?;
+            let TransformationOldNewPair { old_id, new_id } = f(self, id, tree_id)?;
 
             if old_id == new_id {
                 // Nothing has changed.

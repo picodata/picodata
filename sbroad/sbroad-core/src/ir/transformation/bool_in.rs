@@ -22,6 +22,7 @@ use super::{ExprId, TransformationOldNewPair};
 /// Replace IN operator with the chain of the OR-ed equalities in the expression tree.
 fn call_expr_tree_replace_in(
     plan: &mut Plan,
+    _parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     plan.expr_tree_replace_bool(top_id, &call_from_in, &[Bool::In])

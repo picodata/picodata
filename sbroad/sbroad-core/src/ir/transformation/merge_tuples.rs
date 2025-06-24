@@ -28,10 +28,11 @@ use super::{ExprId, TransformationOldNewPair};
 
 fn call_expr_tree_merge_tuples(
     plan: &mut Plan,
+    parent_id: NodeId,
     top_id: NodeId,
 ) -> Result<TransformationOldNewPair, SbroadError> {
     let new_top_id =
-        plan.expr_tree_modify_and_chains(top_id, &call_build_and_chains, &call_as_plan)?;
+        plan.expr_tree_modify_and_chains(parent_id, top_id, &call_build_and_chains, &call_as_plan)?;
     Ok(TransformationOldNewPair {
         old_id: top_id,
         new_id: new_top_id,
@@ -45,8 +46,8 @@ fn call_build_and_chains(
     plan.populate_and_chains(nodes)
 }
 
-fn call_as_plan(chain: &Chain, plan: &mut Plan) -> Result<NodeId, SbroadError> {
-    chain.as_plan(plan)
+fn call_as_plan(parent_id: NodeId, chain: &Chain, plan: &mut Plan) -> Result<NodeId, SbroadError> {
+    chain.as_plan(parent_id, plan)
 }
 
 /// "AND" chain grouped by the operator type.
@@ -159,7 +160,7 @@ impl Chain {
         Ok(())
     }
 
-    fn as_plan(&self, plan: &mut Plan) -> Result<NodeId, SbroadError> {
+    fn as_plan(&self, parent_id: NodeId, plan: &mut Plan) -> Result<NodeId, SbroadError> {
         let other_top_id = match self.other.split_first() {
             Some((first, other)) => {
                 let mut top_id = *first;
@@ -181,7 +182,7 @@ impl Chain {
                 continue;
             };
             let cond_id = if *op == Bool::Eq {
-                if let Some(grouped) = plan.split_join_references(left, right) {
+                if let Some(grouped) = plan.split_join_references(parent_id, left, right)? {
                     grouped.add_rows_to_plan(plan)?
                 } else {
                     add_rows_and_cond(plan, left.clone(), right.clone(), op)?
@@ -478,13 +479,14 @@ impl Plan {
     #[allow(clippy::type_complexity, clippy::too_many_lines)]
     pub fn expr_tree_modify_and_chains(
         &mut self,
+        parent_id: NodeId,
         expr_id: NodeId,
         f_build_chains: &dyn Fn(
             &mut Plan,
             &[NodeId],
         )
             -> Result<HashMap<NodeId, Chain, RepeatableState>, SbroadError>,
-        f_to_plan: &dyn Fn(&Chain, &mut Plan) -> Result<NodeId, SbroadError>,
+        f_to_plan: &dyn Fn(NodeId, &Chain, &mut Plan) -> Result<NodeId, SbroadError>,
     ) -> Result<ExprId, SbroadError> {
         let mut tree = BreadthFirst::with_capacity(
             |node| self.nodes.expr_iter(node, false),
@@ -501,7 +503,7 @@ impl Plan {
                 Expression::Alias(Alias { child, .. }) => {
                     let chain = chains.get(child);
                     if let Some(chain) = chain {
-                        let new_child_id = f_to_plan(chain, self)?;
+                        let new_child_id = f_to_plan(parent_id, chain, self)?;
                         let expr_mut = self.get_mut_expression_node(id)?;
                         if let MutExpression::Alias(Alias {
                             child: ref mut child_id,
@@ -522,7 +524,7 @@ impl Plan {
                     for (pos, child) in children.iter().enumerate() {
                         let chain = chains.get(child);
                         if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(chain, self)?;
+                            let new_child_id = f_to_plan(parent_id, chain, self)?;
                             let expr_mut = self.get_mut_expression_node(id)?;
                             if let MutExpression::Bool(BoolExpr {
                                 left: ref mut left_id,
@@ -551,7 +553,7 @@ impl Plan {
                     for (pos, child) in children.iter().enumerate() {
                         let chain = chains.get(child);
                         if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(chain, self)?;
+                            let new_child_id = f_to_plan(parent_id, chain, self)?;
                             let expr_mut = self.get_mut_expression_node(id)?;
                             if let MutExpression::Arithmetic(ArithmeticExpr {
                                 left: ref mut left_id,
@@ -580,7 +582,7 @@ impl Plan {
                     for (pos, child) in children.iter().enumerate() {
                         let chain = chains.get(child);
                         if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(chain, self)?;
+                            let new_child_id = f_to_plan(parent_id, chain, self)?;
                             let expr_mut = self.get_mut_expression_node(id)?;
                             if let MutExpression::Row(Row { ref mut list, .. }) = expr_mut {
                                 if let Some(child_id) = list.get_mut(pos) {
@@ -605,7 +607,7 @@ impl Plan {
 
         // Try to replace the subtree top node (if it is also AND).
         if let Some(top_chain) = chains.get(&expr_id) {
-            let new_expr_id = f_to_plan(top_chain, self)?;
+            let new_expr_id = f_to_plan(parent_id, top_chain, self)?;
             return Ok(new_expr_id);
         }
 
