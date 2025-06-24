@@ -329,7 +329,7 @@ def normalize_net_box_result(func):
                 return x
             case [None, err]:
                 raise ReturnError(err)
-            case [*args]:
+            case [*args]:  # type: ignore
                 raise MalformedAPI(*args)
             case _:
                 raise RuntimeError("unreachable")
