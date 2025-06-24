@@ -664,7 +664,9 @@ impl Plan {
                 if let MotionPolicy::None = policy {
                     children_with_motions.push(child);
                 } else {
-                    children_with_motions.push(self.add_motion(child, policy, program)?);
+                    let motion_id = self.add_motion(child, policy, program)?;
+                    self.replace_target_in_relational(parent_id, child, motion_id)?;
+                    children_with_motions.push(motion_id);
                 }
             } else {
                 children_with_motions.push(child);
@@ -673,7 +675,6 @@ impl Plan {
         self.set_relational_children(parent_id, children_with_motions);
         Ok(())
     }
-
     /// Get `Relational::SubQuery` node that is referenced by passed `row_id`.
     /// Only returns `SubQuery` that is an additional child of passed `rel_id` node.
     fn get_additional_sq(
@@ -935,6 +936,7 @@ impl Plan {
                         .map(|child| if *child == child_id { proj_id } else { *child })
                         .collect();
                     self.set_relational_children(parent_id, children);
+                    self.replace_target_in_relational(parent_id, child_id, proj_id)?;
                 }
                 _ => {}
             }

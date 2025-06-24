@@ -49,6 +49,7 @@ impl Plan {
 
         self.set_rel_output_distribution(projection_id)?;
         self.change_child(parent_id, join_id, projection_id)?;
+        self.replace_target_in_relational(parent_id, join_id, projection_id)?;
 
         let outer_id = self.get_relational_child(join_id, 0)?;
 
@@ -72,6 +73,7 @@ impl Plan {
                 let motion_id =
                     self.add_motion(outer_id, &MotionPolicy::Full, Program::default())?;
                 self.change_child(join_id, outer_id, motion_id)?;
+                self.replace_target_in_relational(join_id, outer_id, motion_id)?;
                 motion_child_id = Some(motion_id);
             }
             motion_child_id.unwrap()

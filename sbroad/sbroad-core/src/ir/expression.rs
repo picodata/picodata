@@ -14,7 +14,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
-use super::node::{Bound, BoundType, Like, Over, ReferenceTarget, Window};
+use super::node::{
+    Bound, BoundType, GroupBy, Having, Join, Like, NamedWindows, OrderBy, Over, ReferenceTarget,
+    Selection, Window,
+};
 use super::operator::OrderByEntity;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
@@ -1781,6 +1784,98 @@ impl Plan {
         }
     }
 
+    /// Changes reference targets in relational node fields (output and other fields except children)
+    /// rather than making changes in multiple places. This avoids having several
+    /// sources that need to be changed and ensures the undo journal is handled properly.
+    pub fn replace_target_in_relational(
+        &mut self,
+        parent_id: NodeId,
+        from: NodeId,
+        to: NodeId,
+    ) -> Result<(), SbroadError> {
+        self.replace_target_in_subtree(self.get_relational_output(parent_id)?, from, to)?;
+
+        // We maintain the undo journal because sometimes we revert changes with undo, and their
+        // references point to an old target. This is relevant for motion, for example, because
+        // motion can appear after detaching the first version of a node.
+        let parent = self.get_relation_node(parent_id)?;
+        match parent {
+            Relational::Join(Join { condition, .. }) => {
+                let condition = *condition;
+                self.replace_target_in_subtree(condition, from, to)?;
+                // TODO(#2009): rethink support with undo
+                let oldest = self.undo.get_oldest(&condition);
+                if *oldest != condition {
+                    self.replace_target_in_subtree(*oldest, from, to)?;
+                }
+            }
+            Relational::OrderBy(OrderBy {
+                order_by_elements, ..
+            }) => {
+                let mut refs = Vec::with_capacity(order_by_elements.len());
+                for order in order_by_elements.iter() {
+                    match order.entity {
+                        OrderByEntity::Expression { expr_id } => {
+                            refs.push(expr_id);
+                        }
+                        OrderByEntity::Index { .. } => {}
+                    }
+                }
+
+                for ref_node in refs {
+                    self.replace_target_in_subtree(ref_node, from, to)?;
+                }
+            }
+            Relational::GroupBy(GroupBy { gr_exprs, .. }) => {
+                let refs = gr_exprs.clone();
+                for ref_node in refs {
+                    self.replace_target_in_subtree(ref_node, from, to)?;
+                }
+            }
+            Relational::Selection(Selection { filter, .. }) => {
+                let filter = *filter;
+                self.replace_target_in_subtree(filter, from, to)?;
+                // TODO(#2009): rethink support with undo
+                let oldest = self.undo.get_oldest(&filter);
+                if *oldest != filter {
+                    self.replace_target_in_subtree(*oldest, from, to)?;
+                }
+            }
+            Relational::Having(Having { filter, .. }) => {
+                let filter = *filter;
+                self.replace_target_in_subtree(filter, from, to)?;
+                // TODO(#2009): rethink support with undo
+                let oldest = self.undo.get_oldest(&filter);
+                if *oldest != filter {
+                    self.replace_target_in_subtree(*oldest, from, to)?;
+                }
+            }
+            Relational::NamedWindows(NamedWindows { windows, .. }) => {
+                for window in windows.clone() {
+                    self.replace_target_in_subtree(window, from, to)?;
+                }
+            }
+            Relational::ScanCte(_) => {}
+            Relational::Except(_) => {}
+            Relational::Delete(_) => {}
+            Relational::Insert(_) => {}
+            Relational::Intersect(_) => {}
+            Relational::Update(_) => {}
+            Relational::Limit(_) => {}
+            Relational::Motion(_) => {}
+            Relational::Projection(_) => {}
+            Relational::ScanRelation(_) => {}
+            Relational::ScanSubQuery(_) => {}
+            Relational::SelectWithoutScan(_) => {}
+            Relational::UnionAll(_) => {}
+            Relational::Union(_) => {}
+            Relational::Values(_) => {}
+            Relational::ValuesRow(_) => {}
+        }
+
+        Ok(())
+    }
+
     /// Replace parent from one to another for all references in the expression subtree of the provided node.
     pub fn replace_parent_in_subtree(
         &mut self,
@@ -1809,7 +1904,7 @@ impl Plan {
         Ok(())
     }
 
-    /// Replace parent from one to another for all references in the expression subtree of the provided node.
+    /// Replace target from one to another for all references in the expression subtree of the provided node.
     pub fn replace_target_in_subtree(
         &mut self,
         node_id: NodeId,
