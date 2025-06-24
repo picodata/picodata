@@ -898,7 +898,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1420,7 +1420,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1476,7 +1476,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if 1.0.1",
  "rustix 1.0.7",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2268,7 +2268,7 @@ checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2860,7 +2860,7 @@ dependencies = [
  "socket2",
  "sqlparser",
  "syn 1.0.109",
- "tarantool 7.0.0",
+ "tarantool 8.0.0",
  "tarantool-build",
  "tempfile",
  "thiserror 1.0.69",
@@ -2884,7 +2884,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol_str",
- "tarantool 7.0.0",
+ "tarantool 8.0.0",
  "tarolog",
  "thiserror 1.0.69",
  "threadpool",
@@ -3560,7 +3560,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3573,7 +3573,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3689,7 +3689,7 @@ dependencies = [
  "serde_bytes",
  "serde_yaml",
  "smol_str",
- "tarantool 7.0.0",
+ "tarantool 8.0.0",
  "time",
  "uuid 1.17.0",
 ]
@@ -4196,7 +4196,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
-version = "7.0.0"
+version = "8.0.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -4227,7 +4227,7 @@ dependencies = [
  "thiserror 1.0.69",
  "time",
  "time-macros",
- "tlua 6.0.0",
+ "tlua 6.0.1",
  "tokio",
  "uuid 0.8.2",
  "va_list",
@@ -4290,7 +4290,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.7",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4487,14 +4487,14 @@ dependencies = [
 
 [[package]]
 name = "tlua"
-version = "6.0.0"
+version = "6.0.1"
 dependencies = [
  "libc",
  "linkme 0.2.10",
  "serde",
  "tester",
  "thiserror 1.0.69",
- "tlua-derive 1.0.0",
+ "tlua-derive 1.0.1",
 ]
 
 [[package]]
@@ -4510,7 +4510,7 @@ dependencies = [
 
 [[package]]
 name = "tlua-derive"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2 1.0.95",
  "quote 1.0.40",
@@ -5028,7 +5028,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5132,15 +5132,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.60.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
-dependencies = [
- "windows-targets 0.53.2",
 ]
 
 [[package]]
