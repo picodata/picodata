@@ -15,10 +15,11 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
+use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
     BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId, OrderBy,
-    Projection, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
+    Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
 use crate::ir::tree::traversal::{
@@ -2280,6 +2281,11 @@ impl Plan {
         let intersect_id = self.add_relational(intersect.into())?;
 
         self.change_child(except_id, right_id, intersect_id)?;
+        self.replace_target_in_subtree(
+            self.get_relational_output(except_id)?,
+            right_id,
+            intersect_id,
+        )?;
 
         let mut map = Strategy::new(except_id);
         map.add_child(intersect_id, MotionPolicy::Full, Program::default());
@@ -2461,6 +2467,11 @@ impl Plan {
             for child_id in &node.children() {
                 if let Some(new_id) = old_new.get(child_id) {
                     self.change_child(id, *child_id, *new_id)?;
+                    self.replace_target_in_subtree(
+                        self.get_relational_output(id)?,
+                        *child_id,
+                        *new_id,
+                    )?;
                     old_new.remove(child_id);
                 }
             }
@@ -2703,6 +2714,11 @@ impl Plan {
                     // can just copy the corresponding motion node.
                     if let Some(motion_id) = cte_motions.get(&child) {
                         self.set_relational_children(id, vec![*motion_id]);
+                        self.replace_target_in_subtree(
+                            self.get_relational_output(id)?,
+                            child,
+                            *motion_id,
+                        )?;
                     } else {
                         let strategy = self.resolve_cte_conflicts(id)?;
                         self.create_motion_nodes(strategy)?;

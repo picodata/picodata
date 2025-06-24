@@ -5227,6 +5227,16 @@ impl AbstractSyntaxTree {
             worker,
         )?;
 
+        for order_by_element in order_by_elements.as_slice() {
+            if let OrderByElement {
+                entity: OrderByEntity::Expression { expr_id },
+                ..
+            } = order_by_element
+            {
+                plan.replace_target_in_subtree(*expr_id, child_rel_id, sq_plan_id)?
+            }
+        }
+
         let (order_by_id, plan_node_id) = plan.add_order_by(sq_plan_id, order_by_elements)?;
         plan.fix_subquery_rows(worker, order_by_id)?;
         map.add(node_id, plan_node_id);

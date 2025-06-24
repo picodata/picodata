@@ -900,6 +900,10 @@ impl Plan {
                         }
                     }
                 }
+
+                for ref_id in refs {
+                    self.replace_target_in_subtree(ref_id, *child, sq_id)?;
+                }
             } else {
                 children.push(*child);
             }

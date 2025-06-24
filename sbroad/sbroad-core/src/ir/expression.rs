@@ -1809,6 +1809,60 @@ impl Plan {
         Ok(())
     }
 
+    /// Replace parent from one to another for all references in the expression subtree of the provided node.
+    pub fn replace_target_in_subtree(
+        &mut self,
+        node_id: NodeId,
+        from_id: NodeId,
+        to_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
+                return true;
+            }
+            false
+        };
+        let mut subtree = PostOrderWithFilter::with_capacity(
+            |node| self.nodes.expr_iter(node, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+        subtree.populate_nodes(node_id);
+        let references = subtree.take_nodes();
+        drop(subtree);
+        for LevelNode(_, id) in references {
+            if let MutExpression::Reference(Reference { target, .. }) =
+                self.get_mut_expression_node(id)?
+            {
+                match target {
+                    ReferenceTarget::Leaf => {}
+                    ReferenceTarget::Single(node_id) => {
+                        if node_id == &from_id {
+                            *node_id = to_id;
+                        }
+                    }
+                    ReferenceTarget::Union(left, right) => {
+                        if left == &from_id {
+                            *left = to_id;
+                        }
+
+                        if right == &from_id {
+                            *right = to_id;
+                        }
+                    }
+                    ReferenceTarget::Values(nodes) => {
+                        nodes.iter_mut().for_each(|node| {
+                            if node == &from_id {
+                                *node = to_id;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Replaces the parent node ID for all references in the expression subtree of the provided node.
     /// Unlike conditional replacement, this updates any parent reference.
     ///
