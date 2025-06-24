@@ -43,7 +43,7 @@ fn scan_rel() {
     assert_eq!(scan_node, scan_id);
     plan.top = Some(scan_node);
 
-    plan.set_distribution(scan_output).unwrap();
+    plan.set_rel_output_distribution(scan_id).unwrap();
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(

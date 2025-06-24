@@ -37,7 +37,7 @@ impl Plan {
         if let MutRelational::Join(Join { kind, .. }) = self.get_mut_relation_node(join_id)? {
             *kind = JoinKind::Inner;
         }
-        self.set_distribution(self.get_relational_output(join_id)?)?;
+        self.set_rel_output_distribution(join_id)?;
 
         let Some(parent_id) = self.find_parent_rel(join_id)? else {
             return Err(SbroadError::Invalid(
@@ -47,7 +47,7 @@ impl Plan {
         };
         let projection_id = create_projection(self, join_id)?;
 
-        self.set_distribution(self.get_relational_output(projection_id)?)?;
+        self.set_rel_output_distribution(projection_id)?;
         self.change_child(parent_id, join_id, projection_id)?;
 
         let outer_id = self.get_relational_child(join_id, 0)?;
@@ -94,6 +94,6 @@ fn create_projection(plan: &mut Plan, join_id: NodeId) -> Result<NodeId, SbroadE
     let proj_id = plan.add_proj(join_id, vec![], &[], false, false)?;
     let output_id = plan.get_relational_output(proj_id)?;
     plan.replace_parent_in_subtree(output_id, Some(join_id), Some(proj_id))?;
-    plan.set_distribution(output_id)?;
+    plan.set_rel_output_distribution(proj_id)?;
     Ok(proj_id)
 }

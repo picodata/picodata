@@ -36,7 +36,7 @@ fn proj_preserve_dist_key() {
     let rel_node = plan.get_relation_node(scan_id).unwrap();
     let scan_output = rel_node.output();
 
-    plan.set_distribution(scan_output).unwrap();
+    plan.set_rel_output_distribution(scan_id).unwrap();
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(
@@ -47,7 +47,7 @@ fn proj_preserve_dist_key() {
     let rel_node = plan.get_relation_node(proj_id).unwrap();
     let proj_output: NodeId = rel_node.output();
 
-    plan.set_distribution(proj_output).unwrap();
+    plan.set_rel_output_distribution(proj_id).unwrap();
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(

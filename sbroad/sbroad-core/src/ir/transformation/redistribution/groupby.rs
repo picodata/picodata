@@ -723,7 +723,7 @@ impl Plan {
             self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
             self.fill_grouping_exprs_map(finals, groupby_info)?;
 
-            self.set_distribution(self.get_relational_output(groupby_info.id)?)?;
+            self.set_rel_output_distribution(groupby_info.id)?;
         }
 
         Ok(())
@@ -908,7 +908,7 @@ impl Plan {
         // have to fix it so that they reference newly created Projection.
         self.set_parent_in_subtree(proj_output, proj_id)?;
 
-        self.set_distribution(proj_output)?;
+        self.set_rel_output_distribution(proj_id)?;
 
         Ok(proj_id)
     }

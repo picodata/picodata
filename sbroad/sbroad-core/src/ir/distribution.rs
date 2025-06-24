@@ -10,10 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::collection;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{NodeId, Reference, Row};
+use crate::ir::node::{NodeId, Reference, ReferenceTarget, Row, ScanRelation};
 use crate::ir::transformation::redistribution::{MotionKey, Target};
 
-use super::api::children::Children;
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::Relational;
 use super::node::NamedWindows;
@@ -352,11 +351,7 @@ struct ReferenceInfo {
 }
 
 impl ReferenceInfo {
-    pub fn new(
-        row_id: NodeId,
-        ir: &Plan,
-        parent_children: &Children<'_>,
-    ) -> Result<Self, SbroadError> {
+    pub fn new(row_id: NodeId, ir: &Plan) -> Result<Self, SbroadError> {
         let mut ref_nodes = ReferredNodes::new();
         let mut ref_map: AHashMap<ChildColumnReference, Vec<ParentColumnPosition>> =
             AHashMap::new();
@@ -374,29 +369,25 @@ impl ReferenceInfo {
             let child_id = ir.get_child_under_alias(*id)?;
             let child_id = ir.get_child_under_cast(child_id)?;
             if let Expression::Reference(Reference {
-                targets, position, ..
+                target, position, ..
             }) = ir.get_expression_node(child_id)?
             {
                 // As the row is located in the branch relational node, the targets should be non-empty.
-                let targets = targets.as_ref().ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(
+                let targets_len = target.len();
+                if targets_len == 0 {
+                    return Err(SbroadError::UnexpectedNumberOfValues(
                         "Reference targets are empty".to_smolstr(),
-                    )
-                })?;
-                ref_map.reserve(targets.len());
-                ref_nodes.reserve(targets.len());
-                for target in targets {
-                    let referred_id = parent_children.get(*target).ok_or_else(|| {
-                        SbroadError::NotFound(
-                            Entity::Expression,
-                            "reference points to invalid column".to_smolstr(),
-                        )
-                    })?;
-                    ref_nodes.append(*referred_id);
+                    ));
+                }
+
+                ref_map.reserve(targets_len);
+                ref_nodes.reserve(targets_len);
+                for target_id in target.iter() {
                     ref_map
-                        .entry((*referred_id, *position).into())
+                        .entry((*target_id, *position).into())
                         .or_default()
                         .push(parent_column_pos);
+                    ref_nodes.append(*target_id);
                 }
             }
         }
@@ -460,12 +451,9 @@ impl Plan {
 
         let output_id = self.get_relational_output(proj_id)?;
         let child_id = self.get_relational_child(proj_id, 0)?;
-        let children = self.get_relational_children(proj_id)?;
-        let ref_info = ReferenceInfo::new(output_id, self, &children)?;
-        if let Relational::NamedWindows(NamedWindows { output, .. }) =
-            self.get_relation_node(child_id)?
-        {
-            self.set_distribution(*output)?;
+        let ref_info = ReferenceInfo::new(output_id, self)?;
+        if let Relational::NamedWindows(NamedWindows { .. }) = self.get_relation_node(child_id)? {
+            self.set_rel_output_distribution(child_id)?;
         }
         let child_dist = self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?;
 
@@ -505,6 +493,96 @@ impl Plan {
         self.set_dist(row_id, dist)?;
 
         Ok(())
+    }
+
+    pub fn set_rel_expr_distribution(
+        &mut self,
+        rel_id: NodeId,
+        row_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let relation_node = self.get_relation_node(rel_id)?;
+
+        match relation_node {
+            Relational::ScanRelation(ScanRelation { .. }) => {
+                let dist = self.get_dist_from_scan_relation(rel_id, row_id)?;
+                self.set_dist(row_id, dist)?;
+                return Ok(());
+            }
+            Relational::Join(_)
+            | Relational::Union(_)
+            | Relational::UnionAll(_)
+            | Relational::Except(_) => {
+                let ref_info = ReferenceInfo::new(row_id, self)?;
+
+                if let ReferredNodes::Pair(n1, n2) = ref_info.referred_children {
+                    let dist = self.get_two_children_node_dist(
+                        &ref_info.child_column_to_parent_col,
+                        n1,
+                        n2,
+                        rel_id,
+                    )?;
+                    self.set_dist(row_id, dist)?;
+                    return Ok(());
+                }
+            }
+            _ => {}
+        }
+
+        self.set_distribution(row_id)
+    }
+
+    fn get_dist_from_scan_relation(
+        &self,
+        scan_id: NodeId,
+        output_id: NodeId,
+    ) -> Result<Distribution, SbroadError> {
+        // Working with a leaf node (ScanRelation).
+        let tbl_name = self.get_scan_relation(scan_id)?;
+        let tbl = self.get_relation_or_error(tbl_name)?;
+        if tbl.is_global() {
+            return Ok(Distribution::Global);
+        }
+        let children_list = self.get_row_list(output_id)?;
+        let mut table_map: HashMap<usize, usize, RandomState> =
+            HashMap::with_capacity_and_hasher(children_list.len(), RandomState::new());
+        for (pos, id) in children_list.iter().enumerate() {
+            let child_id = self.get_child_under_alias(*id)?;
+            let child_id = self.get_child_under_cast(child_id)?;
+            if let Expression::Reference(Reference {
+                target: ReferenceTarget::Leaf,
+                position,
+                ..
+            }) = self.get_expression_node(child_id)?
+            {
+                table_map.insert(*position, pos);
+            } else {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some("References to the children targets in the leaf (relation scan) node are not supported".to_smolstr()),
+                ));
+            }
+        }
+        let sk = tbl.get_sk()?;
+        let mut new_key: Key = Key::new(Vec::with_capacity(sk.len()));
+        let all_found = sk.iter().all(|pos| {
+            table_map.get(pos).is_some_and(|v| {
+                new_key.positions.push(*v);
+                true
+            })
+        });
+
+        assert!(
+            all_found,
+            "Broken reference in scan relation ({}).",
+            scan_id
+        );
+
+        let keys: HashSet<Key, RepeatableState> = collection! { new_key };
+        Ok(Distribution::Segment { keys: keys.into() })
+    }
+    pub fn set_rel_output_distribution(&mut self, node_id: NodeId) -> Result<(), SbroadError> {
+        let output = self.get_relational_output(node_id)?;
+        self.set_rel_expr_distribution(node_id, output)
     }
 
     /// Each relational node have non-sq (required) and sq (additional) children.
@@ -569,72 +647,29 @@ impl Plan {
             _ => std::array::from_ref(&node_id),
         };
 
-        let mut parent_node = None;
+        let mut reference_target = None;
         for id in children_list {
             let child_id = self.get_child_under_alias(*id)?;
             let child_id = self.get_child_under_cast(child_id)?;
-            if let Expression::Reference(Reference { parent, .. }) =
+            if let Expression::Reference(Reference { target, .. }) =
                 self.get_expression_node(child_id)?
             {
-                parent_node = *parent;
+                reference_target = Some(target);
                 break;
             }
         }
 
-        let Some(parent_id) = parent_node else {
+        let Some(reference_target) = reference_target else {
             // We haven't met any Reference in the output.
             return Ok(Distribution::Any);
         };
 
-        let parent = self.get_relation_node(parent_id)?;
-
-        let children = parent.children();
-        if children.is_empty() {
-            // Working with a leaf node (ScanRelation).
-            let tbl_name = self.get_scan_relation(parent_id)?;
-            let tbl = self.get_relation_or_error(tbl_name)?;
-            if tbl.is_global() {
-                return Ok(Distribution::Global);
-            }
-            let mut table_map: HashMap<usize, usize, RandomState> =
-                HashMap::with_capacity_and_hasher(children_list.len(), RandomState::new());
-            for (pos, id) in children_list.iter().enumerate() {
-                let child_id = self.get_child_under_alias(*id)?;
-                let child_id = self.get_child_under_cast(child_id)?;
-                if let Expression::Reference(Reference {
-                    targets, position, ..
-                }) = self.get_expression_node(child_id)?
-                {
-                    if targets.is_some() {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some("References to the children targets in the leaf (relation scan) node are not supported".to_smolstr()),
-                        ));
-                    }
-                    table_map.insert(*position, pos);
-                }
-            }
-            let sk = tbl.get_sk()?;
-            let mut new_key: Key = Key::new(Vec::with_capacity(sk.len()));
-            let all_found = sk.iter().all(|pos| {
-                table_map.get(pos).is_some_and(|v| {
-                    new_key.positions.push(*v);
-                    true
-                })
-            });
-
-            assert!(
-                all_found,
-                "Broken reference in scan relation({}).",
-                parent_id
-            );
-
-            let keys: HashSet<Key, RepeatableState> = collection! { new_key };
-            return Ok(Distribution::Segment { keys: keys.into() });
+        if reference_target == &ReferenceTarget::Leaf {
+            unreachable!("distribution with leaf targets should be handled in parent function");
         }
 
         // Working with all other nodes.
-        let ref_info = ReferenceInfo::new(node_id, self, &children)?;
+        let ref_info = ReferenceInfo::new(node_id, self)?;
 
         let dist = match ref_info.referred_children {
             ReferredNodes::None => {
@@ -644,14 +679,9 @@ impl Plan {
             ReferredNodes::Single(child_id) => {
                 self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?
             }
-            ReferredNodes::Pair(n1, n2) => {
+            ReferredNodes::Pair(_, _) => {
                 // Union, join
-                self.get_two_children_node_dist(
-                    &ref_info.child_column_to_parent_col,
-                    n1,
-                    n2,
-                    parent_id,
-                )?
+                unreachable!("Pair should be handled in parent function.");
             }
             ReferredNodes::Multiple(_) => {
                 // Reference points to more than two relational children nodes,

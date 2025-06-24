@@ -967,10 +967,10 @@ impl Plan {
         for LevelNode(_, bool_node) in &bool_nodes {
             let bool_op = BoolOp::from_expr(self, *bool_node)?;
             if self.is_row(bool_op.left)? {
-                self.set_distribution(bool_op.left)?;
+                self.set_rel_expr_distribution(rel_parent_id, bool_op.left)?;
             }
             if self.is_row(bool_op.right)? {
-                self.set_distribution(bool_op.right)?;
+                self.set_rel_expr_distribution(rel_parent_id, bool_op.right)?;
             }
         }
 
@@ -1321,16 +1321,20 @@ impl Plan {
         }
     }
 
-    fn set_rows_distributions_in_expr(&mut self, expr_id: NodeId) -> Result<(), SbroadError> {
+    fn set_rows_distributions_in_expr(
+        &mut self,
+        rel_id: NodeId,
+        expr_id: NodeId,
+    ) -> Result<(), SbroadError> {
         let nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
         for level_node in &nodes {
             let node = level_node.1;
             let bool_op = BoolOp::from_expr(self, node)?;
             if self.is_row(bool_op.left)? {
-                self.set_distribution(bool_op.left)?;
+                self.set_rel_expr_distribution(rel_id, bool_op.left)?;
             }
             if self.is_row(bool_op.right)? {
-                self.set_distribution(bool_op.right)?;
+                self.set_rel_expr_distribution(rel_id, bool_op.right)?;
             }
         }
         Ok(())
@@ -1354,12 +1358,12 @@ impl Plan {
             self.calculate_strategy_for_single_distribution(rel_id, cond_id, join_kind)?
         {
             self.create_motion_nodes(strategy)?;
-            self.set_rows_distributions_in_expr(cond_id)?;
+            self.set_rows_distributions_in_expr(rel_id, cond_id)?;
             return Ok(());
         }
 
         // First, we need to set the motion policy for each boolean expression in the join condition.
-        self.set_rows_distributions_in_expr(cond_id)?;
+        self.set_rows_distributions_in_expr(rel_id, cond_id)?;
 
         if let Some(strategy) =
             self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind)?
@@ -2361,7 +2365,7 @@ impl Plan {
         if let Some(dist) = self.dist_from_subqueries(id)? {
             self.set_dist(output, dist)?;
         } else {
-            self.set_distribution(output)?;
+            self.set_rel_output_distribution(id)?;
         }
         Ok(())
     }
@@ -2501,17 +2505,17 @@ impl Plan {
                         }
                     }
                 }
-                RelOwned::ScanRelation(ScanRelation { output, .. })
-                | RelOwned::ScanSubQuery(ScanSubQuery { output, .. })
-                | RelOwned::Intersect(Intersect { output, .. })
-                | RelOwned::Having(Having { output, .. }) => {
+                RelOwned::ScanRelation(ScanRelation { .. })
+                | RelOwned::ScanSubQuery(ScanSubQuery { .. })
+                | RelOwned::Intersect(Intersect { .. })
+                | RelOwned::Having(Having { .. }) => {
                     // Note: For `Having` true distribution is calculated
                     //       at the end of `add_two_stage_aggregation` function
                     //       after Map-Reduce transformation is applied.
 
                     // Leaf nodes that calculate distribution only out of their output
                     // (native or resulted from children).
-                    self.set_distribution(output)?;
+                    self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Values(Values { output, .. }) => {
                     self.set_dist(output, Distribution::Global)?;
@@ -2656,7 +2660,7 @@ impl Plan {
                     if let Some(dist) = self.dist_from_subqueries(id)? {
                         self.set_dist(output, dist)?;
                     } else {
-                        self.set_distribution(output)?;
+                        self.set_rel_output_distribution(id)?;
                     }
                 }
                 RelOwned::Delete { .. } => {
@@ -2668,20 +2672,20 @@ impl Plan {
                     let strategy = self.resolve_insert_conflicts(id)?;
                     self.create_motion_nodes(strategy)?;
                 }
-                RelOwned::Update(Update { output, .. }) => {
+                RelOwned::Update(Update { .. }) => {
                     let strategy = self.resolve_update_conflicts(id)?;
                     self.create_motion_nodes(strategy)?;
-                    self.set_distribution(output)?;
+                    self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Except(Except { output, .. }) => {
+                RelOwned::Except(Except { .. }) => {
                     let strategy = self.resolve_except_conflicts(id)?;
                     self.create_motion_nodes(strategy)?;
-                    self.set_distribution(output)?;
+                    self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Union(Union { output, .. }) => {
+                RelOwned::Union(Union { .. }) => {
                     let strategy = self.resolve_union_conflicts(id)?;
                     self.create_motion_nodes(strategy)?;
-                    self.set_distribution(output)?;
+                    self.set_rel_output_distribution(id)?;
                     let new_top_id = self.add_motion(
                         id,
                         &MotionPolicy::Full,
@@ -2689,10 +2693,10 @@ impl Plan {
                     )?;
                     old_new.insert(id, new_top_id);
                 }
-                RelOwned::UnionAll(UnionAll { output, .. }) => {
+                RelOwned::UnionAll(UnionAll { .. }) => {
                     let strategy = self.resolve_union_conflicts(id)?;
                     self.create_motion_nodes(strategy)?;
-                    self.set_distribution(output)?;
+                    self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::ScanCte(ScanCte { output, child, .. }) => {
                     // Possible, current CTE subtree has already been resolved and we
