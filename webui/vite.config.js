@@ -53,17 +53,10 @@ const generateBuildFolder = (currentNamespace = "") => {
         };
       }
       debug(path.join(currentDir, "pack-fron.lia"), "test");
-      // const pathToPacker = './pack-front.lua';
       fs.writeFileSync(buildFolder + "/bundle.json", JSON.stringify(filemap), {
         encoding: "utf8",
       });
       debug("compile bundle.json");
-      // ChildProcess.execSync(
-      //   lua + " " + pathToPacker + " ./dist/bundle.json ./dist/" + bundleName
-      // );
-      // debug("dist " + bundleName);
-      // fs.unlinkSync(buildFolder + "/bundle.json");
-      // debug("delete bundle.json");
     },
   };
 };
