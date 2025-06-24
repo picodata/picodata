@@ -219,7 +219,7 @@ impl Entry {
 
 mod entry_type_as_i32 {
     use ::raft::prelude as raft;
-    use protobuf::ProtobufEnum as _;
+    use protobuf::Enum as _;
     use serde::{self, Deserialize, Deserializer, Serializer};
 
     use serde::de::Error as _;
@@ -302,15 +302,15 @@ impl std::fmt::Display for EntryPayload<'_> {
             EntryPayload::NormalEmpty => f.write_str("-"),
             EntryPayload::Normal(op) => write!(f, "{}", op),
             EntryPayload::ConfChange(cc) => {
-                write!(f, "{}({})", change_type(cc.change_type), cc.node_id)
+                write!(f, "{}({})", change_type(cc.change_type()), cc.node_id)
             }
             EntryPayload::ConfChangeV2(ccv2) => {
                 write!(f, "{:?}(", ccv2.transition)?;
                 let mut iter = ccv2.changes.iter();
                 if let Some(cc) = iter.next() {
-                    write!(f, "{}({})", change_type(cc.change_type), cc.node_id)?;
+                    write!(f, "{}({})", change_type(cc.change_type()), cc.node_id)?;
                     for cc in iter.take(ccv2.changes.len() - 1) {
-                        write!(f, ", {}({})", change_type(cc.change_type), cc.node_id)?;
+                        write!(f, ", {}({})", change_type(cc.change_type()), cc.node_id)?;
                     }
                 }
                 f.write_str(")")?;
@@ -349,8 +349,8 @@ impl EntryContext {
     #[inline(always)]
     fn to_raft_entry(&self) -> raft::Entry {
         let mut res = raft::Entry::new();
-        res.entry_type = raft::EntryType::EntryNormal;
-        res.context = self.to_raft_ctx().into();
+        res.set_entry_type(raft::EntryType::EntryNormal);
+        res.context = self.to_raft_ctx();
         res
     }
 }
@@ -360,10 +360,10 @@ impl TryFrom<&raft::Entry> for self::Entry {
 
     fn try_from(e: &raft::Entry) -> StdResult<Self, Self::Error> {
         let ret = Self {
-            entry_type: e.entry_type,
+            entry_type: e.entry_type(),
             index: e.index,
             term: e.term,
-            data: Vec::from(e.get_data()),
+            data: Vec::from(e.data()),
             context: EntryContext::from_raft_entry(e)?,
         };
 
@@ -374,11 +374,11 @@ impl TryFrom<&raft::Entry> for self::Entry {
 impl From<self::Entry> for raft::Entry {
     fn from(row: self::Entry) -> raft::Entry {
         raft::Entry {
-            entry_type: row.entry_type,
+            entry_type: row.entry_type.into(),
             index: row.index,
             term: row.term,
-            data: row.data.into(),
-            context: row.context.to_raft_ctx().into(),
+            data: row.data,
+            context: row.context.to_raft_ctx(),
             ..Default::default()
         }
     }
@@ -408,7 +408,7 @@ impl From<raft::Message> for self::MessagePb {
 }
 
 impl TryFrom<self::MessagePb> for raft::Message {
-    type Error = protobuf::ProtobufError;
+    type Error = protobuf::Error;
 
     fn try_from(pb: self::MessagePb) -> StdResult<raft::Message, Self::Error> {
         let mut ret = raft::Message::default();

@@ -628,12 +628,11 @@ mod tests {
     use tarantool::tlua;
 
     fn heartbeat_to_from(to: RaftId, from: RaftId) -> raft::Message {
-        raft::Message {
-            msg_type: raft::MessageType::MsgHeartbeat,
-            to,
-            from,
-            ..Default::default()
-        }
+        let mut msg = raft::Message::new();
+        msg.set_msg_type(raft::MessageType::MsgHeartbeat);
+        msg.to = to;
+        msg.from = from;
+        msg
     }
 
     #[::tarantool::test]
@@ -691,7 +690,7 @@ mod tests {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
                 msg.merge_from_bytes(pb.as_bytes()).unwrap();
-                tx.send((msg.msg_type, msg.to, msg.from)).unwrap();
+                tx.send((msg.msg_type(), msg.to, msg.from)).unwrap();
 
                 // Lock forever, never respond. This trick allows to check
                 // how pool behaves in case of the irresponsive TCP connection.
@@ -787,7 +786,7 @@ mod tests {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
                 msg.merge_from_bytes(pb.as_bytes()).unwrap();
-                tx.send((msg.msg_type, msg.to, msg.from)).unwrap();
+                tx.send((msg.msg_type(), msg.to, msg.from)).unwrap();
             }),
         );
 

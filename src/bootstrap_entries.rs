@@ -365,7 +365,7 @@ pub(super) fn prepare(
     //
     init_entries.push({
         let conf_change = raft::ConfChange {
-            change_type: raft::ConfChangeType::AddNode,
+            change_type: raft::ConfChangeType::AddNode.into(),
             node_id: instance.raft_id,
             ..Default::default()
         };
