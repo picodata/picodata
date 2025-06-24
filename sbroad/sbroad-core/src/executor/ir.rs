@@ -675,7 +675,7 @@ impl ExecutionPlan {
                                 let ref_expr = new_plan.get_expression_node(ref_under_alias)?;
                                 let Expression::Reference(Reference {
                                     position,
-                                    targets,
+                                    target,
                                     asterisk_source,
                                     ..
                                 }) = ref_expr
@@ -687,27 +687,16 @@ impl ExecutionPlan {
                                     continue;
                                 }
 
-                                let mut ref_rel_node = None;
-
-                                let target = if let Some(targets) = targets {
-                                    *targets
-                                        .first()
-                                        .expect("Reference must have at least one target.")
-                                } else {
+                                if target.is_leaf() {
                                     break;
-                                };
-                                for (index, child) in rel.children().iter().enumerate() {
-                                    if index != target {
-                                        continue;
-                                    }
-                                    ref_rel_node = Some(*child);
                                 }
-                                let Some(ref_rel_node) = ref_rel_node else {
-                                    continue;
-                                };
+
+                                let ref_rel_node = target
+                                    .first()
+                                    .expect("Reference must have at least one target.");
 
                                 if let Some(child_output_list) =
-                                    rel_renamed_output_lists.get(&ref_rel_node)
+                                    rel_renamed_output_lists.get(ref_rel_node)
                                 {
                                     let child_output_alias_id =
                                         child_output_list.get(*position).unwrap_or_else(|| {
@@ -835,9 +824,8 @@ impl ExecutionPlan {
                         }
                         *target = subtree_map.get_id(*target);
                     }
-                    ExprOwned::Reference(Reference { ref mut parent, .. }) => {
+                    ExprOwned::Reference(Reference { .. }) => {
                         // The new parent node id MUST be set while processing the relational nodes.
-                        *parent = None;
                     }
                     ExprOwned::Row(Row {
                         list: ref mut children,

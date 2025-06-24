@@ -9,9 +9,9 @@ use pretty_assertions::assert_eq;
 #[test]
 fn window_simple_partition_by() {
     let mut plan = Plan::default();
+    let id = NodeId::default();
     let a_ref = plan.nodes.add_ref(
-        None,
-        Some(vec![0]),
+        ReferenceTarget::Single(id),
         0,
         DerivedType::new(Type::Boolean),
         None,
@@ -37,16 +37,15 @@ fn window_simple_partition_by() {
 #[test]
 fn window_complex_partition_by() {
     let mut plan = Plan::default();
+    let id = NodeId::default();
     let a_ref = plan.nodes.add_ref(
-        None,
-        Some(vec![0]),
+        ReferenceTarget::Single(id),
         0,
         DerivedType::new(Type::Boolean),
         None,
     );
     let b_ref = plan.nodes.add_ref(
-        None,
-        Some(vec![0]),
+        ReferenceTarget::Single(id),
         1,
         DerivedType::new(Type::Boolean),
         None,

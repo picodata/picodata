@@ -148,23 +148,6 @@ impl Expression<'_> {
         }
     }
 
-    /// Gets relational node id containing the reference.
-    ///
-    /// # Errors
-    /// - node isn't reference type
-    /// - reference doesn't have a parent
-    pub fn get_parent(&self) -> Result<NodeId, SbroadError> {
-        if let Expression::Reference(Reference { parent, .. }) = self {
-            return parent.ok_or_else(|| {
-                SbroadError::Invalid(Entity::Expression, Some("Reference has no parent".into()))
-            });
-        }
-        Err(SbroadError::Invalid(
-            Entity::Expression,
-            Some("node is not Reference type".into()),
-        ))
-    }
-
     /// The node is a row expression.
     #[must_use]
     pub fn is_row(&self) -> bool {
@@ -216,18 +199,20 @@ impl MutExpression<'_> {
     }
 
     /// Replaces parent in the reference node with the new one.
-    pub fn replace_parent_in_reference(&mut self, from_id: Option<NodeId>, to_id: Option<NodeId>) {
-        if let MutExpression::Reference(Reference { parent, .. }) = self {
-            if *parent == from_id {
-                *parent = to_id;
-            }
+    pub fn replace_parent_in_reference(
+        &mut self,
+        _from_id: Option<NodeId>,
+        _to_id: Option<NodeId>,
+    ) {
+        if let MutExpression::Reference(Reference { .. }) = self {
+            // TODO: remove function
         }
     }
 
     /// Flushes parent in the reference node.
     pub fn flush_parent_in_reference(&mut self) {
-        if let MutExpression::Reference(Reference { parent, .. }) = self {
-            *parent = None;
+        if let MutExpression::Reference(Reference { .. }) = self {
+            // TODO: remove function
         }
     }
 }

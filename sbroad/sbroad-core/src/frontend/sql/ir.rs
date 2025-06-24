@@ -209,13 +209,7 @@ impl SubtreeCloner {
             ExprOwned::Constant(Constant { value: _ })
             | ExprOwned::Timestamp(_)
             | ExprOwned::Parameter(_)
-            | ExprOwned::Reference(Reference {
-                parent: _,
-                targets: _,
-                position: _,
-                col_type: _,
-                asterisk_source: _,
-            })
+            | ExprOwned::Reference(_)
             | ExprOwned::CountAsterisk { .. } => {}
             ExprOwned::Alias(Alias {
                 ref mut child,

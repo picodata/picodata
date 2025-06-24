@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::collection;
-use crate::ir::node::NodeId;
+use crate::ir::node::ReferenceTarget::Leaf;
 use crate::ir::relation::{DerivedType, Type};
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
@@ -123,12 +123,8 @@ impl ColumnBuilder {
         });
 
         EqClassExpr::EqClassRef(EqClassRef {
-            targets: Some(vec![0]),
+            target: Leaf,
             position,
-            parent: Some(NodeId {
-                offset: 0,
-                arena_type: crate::ir::node::ArenaType::Arena64,
-            }),
             col_type: DerivedType::new(Type::Integer),
             asterisk_source: None,
         })

@@ -7,16 +7,16 @@ use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::aggregates::Aggregate;
 use crate::ir::distribution::Distribution;
 use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
-use crate::ir::node::expression::{Expression, MutExpression};
+use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference};
+use crate::ir::node::{ArenaType, GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget};
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use std::collections::HashMap;
 
 use crate::ir::helpers::RepeatableState;
-use crate::utils::OrderedMap;
+use crate::utils::{OrderedMap, OrderedSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -263,24 +263,6 @@ impl GroupByInfo {
 }
 
 impl Plan {
-    /// Helper function used only for two stage aggregation logic that helps retrieve
-    /// `parent` and `targets` fields from a Reference.
-    fn get_ref_parent_and_target(&self, ref_id: NodeId) -> Result<(NodeId, usize), SbroadError> {
-        let Reference {
-            parent, targets, ..
-        } = self
-            .get_reference(ref_id)
-            .expect("Reference should exist for aggregate");
-        let parent = parent.expect("Parent should exist for reference");
-        let targets = targets
-            .as_deref()
-            .expect("Targets should exist for reference");
-        let target = targets
-            .first()
-            .expect("Targets should not be empty for reference");
-        Ok((parent, *target))
-    }
-
     /// Used to create a `GroupBy` IR node from AST.
     /// The added `GroupBy` node is local - meaning
     /// that it is part of local stage in 2-stage
@@ -378,7 +360,7 @@ impl Plan {
         &mut self,
         proj_id: NodeId,
         upper: NodeId,
-        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<Option<NodeId>, SbroadError> {
         let Relational::Projection(Projection {
             is_distinct,
@@ -395,13 +377,7 @@ impl Plan {
 
             for i in 0..proj_cols_len {
                 let aliased_col = self.get_proj_col(proj_id, i)?;
-                let proj_col_id = if let Expression::Alias(Alias { child, .. }) =
-                    self.get_expression_node(aliased_col)?
-                {
-                    *child
-                } else {
-                    aliased_col
-                };
+                let proj_col_id = self.get_child_under_alias(aliased_col)?;
 
                 // For query like `SELECT DISTINCT (values (1)), a FROM t`
                 // we should remove scalar subquery from the final projection children
@@ -409,8 +385,7 @@ impl Plan {
                 for ref_id in self.get_refs_from_subtree(proj_col_id)? {
                     let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
                     if self.is_additional_child(referred_rel_id)? {
-                        let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
-                        scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                        scalar_sqs_to_fix.insert(referred_rel_id);
                     }
                 }
 
@@ -566,78 +541,82 @@ impl Plan {
     /// Some of the final node children should be removed and we fix the offsets here.
     fn fix_references_targets_in_subtree_final(
         &mut self,
-        final_node_id: NodeId,
-        children_to_save: &[NodeId],
-        subtree_id: NodeId,
+        _final_node_id: NodeId,
+        _children_to_save: &[NodeId],
+        _subtree_id: NodeId,
     ) -> Result<(), SbroadError> {
-        // Map of { old_child_index -> new_child_index }.
-        let ref_targets_remap = {
-            let mut inner = AHashMap::new();
-            let mut index_new = 1;
-            let final_node_children = self.children(final_node_id);
-            for (index_prev, child_id) in final_node_children.iter().enumerate() {
-                if index_prev == 0 || !children_to_save.contains(child_id) {
-                    continue;
-                }
-                inner.insert(index_prev, index_new);
-                index_new += 1;
-            }
-            inner
-        };
-
-        for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
-            let ref_node = self.get_mut_expression_node(ref_to_fix)?;
-            let MutExpression::Reference(Reference {
-                targets: Some(targets),
-                ..
-            }) = ref_node
-            else {
-                unreachable!("Reference with targets should be met under Projection output")
-            };
-            let prev_index = targets.first().expect("Reference targets should be empty");
-            if let Some(new_index) = ref_targets_remap.get(prev_index) {
-                *targets
-                    .first_mut()
-                    .expect("Targets vec should not be empty") = *new_index;
-            }
-        }
+        //TODO: remove it?
+        // // Map of { old_child_index -> new_child_index }.
+        // let ref_targets_remap = {
+        //     let mut inner = AHashMap::new();
+        //     let mut index_new = 1;
+        //     let final_node_children = self.children(final_node_id);
+        //     for (index_prev, child_id) in final_node_children.iter().enumerate() {
+        //         if index_prev == 0 || !children_to_save.contains(child_id) {
+        //             continue;
+        //         }
+        //         inner.insert(index_prev, index_new);
+        //         index_new += 1;
+        //     }
+        //     inner
+        // };
+        //
+        // for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
+        //     let ref_node = self.get_mut_expression_node(ref_to_fix)?;
+        //
+        //
+        //     let MutExpression::Reference(Reference {
+        //         targets: Some(targets),
+        //         ..
+        //     }) = ref_node
+        //     else {
+        //         unreachable!("Reference with targets should be met under Projection output")
+        //     };
+        //     let prev_index = targets.first().expect("Reference targets should be empty");
+        //     if let Some(new_index) = ref_targets_remap.get(prev_index) {
+        //         *targets
+        //             .first_mut()
+        //             .expect("Targets vec should not be empty") = *new_index;
+        //     }
+        // }
         Ok(())
     }
 
     /// Fix `target` field of references under local nodes.
     fn fix_references_targets_in_subtree_local(
         &mut self,
-        local_rel_id: NodeId,
-        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
-        subtree_id: NodeId,
+        _local_rel_id: NodeId,
+        _scalar_sqs_to_fix: &OrderedMap<NodeId, NodeId, RepeatableState>,
+        _subtree_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let local_rel_children_list = self.children(local_rel_id).to_vec();
-        for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
-            let (parent, prev_index) = self.get_ref_parent_and_target(ref_to_fix)?;
-            let ref_node = self.get_mut_expression_node(ref_to_fix)?;
-            let MutExpression::Reference(Reference {
-                targets: Some(targets),
-                ..
-            }) = ref_node
-            else {
-                unreachable!("Reference with targets should be met under Projection output")
-            };
-
-            for ((par, tar), sq_id) in scalar_sqs_to_fix.iter() {
-                // It's important to compare here because references
-                // may have come from different final nodes.
-                if *par == parent && *tar == prev_index {
-                    let new_index = local_rel_children_list
-                        .iter()
-                        .position(|child_id| *child_id == *sq_id)
-                        .expect("Sq should be find under local relational node");
-
-                    *targets
-                        .first_mut()
-                        .expect("Targets vec should not be empty") = new_index;
-                }
-            }
-        }
+        // TODO: remove it?
+        // let local_rel_children_list = self.children(local_rel_id).to_vec();
+        // for ref_to_fix in self.get_refs_from_subtree(subtree_id)? {
+        //     let (parent, prev_index) = self.get_ref_parent_and_target(ref_to_fix)?;
+        //     let ref_node = self.get_mut_expression_node(ref_to_fix)?;
+        //     let MutExpression::Reference(Reference {
+        //         targets: Some(targets),
+        //         ..
+        //     }) = ref_node
+        //     else {
+        //         unreachable!("Reference with targets should be met under Projection output")
+        //     };
+        // 
+        //     for ((par, tar), sq_id) in scalar_sqs_to_fix.iter() {
+        //         // It's important to compare here because references
+        //         // may have come from different final nodes.
+        //         if *par == parent && *tar == prev_index {
+        //             let new_index = local_rel_children_list
+        //                 .iter()
+        //                 .position(|child_id| *child_id == *sq_id)
+        //                 .expect("Sq should be find under local relational node");
+        // 
+        //             *targets
+        //                 .first_mut()
+        //                 .expect("Targets vec should not be empty") = new_index;
+        //         }
+        //     }
+        // }
         Ok(())
     }
 
@@ -650,7 +629,7 @@ impl Plan {
         groupby_info: &mut Option<GroupByInfo>,
         aggrs: &mut [Aggregate],
         finals: &Vec<NodeId>,
-        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         let distinct_aggr_grouping_exprs =
             self.collect_grouping_exprs_from_distinct_aggrs(aggrs, scalar_sqs_to_fix)?;
@@ -719,7 +698,7 @@ impl Plan {
             let MutRelational::GroupBy(GroupBy { children, .. }) = groupby else {
                 unreachable!("GroupBy node should be met for groupby info")
             };
-            children.extend(scalar_sqs_to_fix.iter().map(|(_, sq_id)| sq_id));
+            children.extend(scalar_sqs_to_fix.iter());
 
             for gr_expr_local in &grouping_exprs_local {
                 self.fix_references_targets_in_subtree_local(
@@ -735,20 +714,8 @@ impl Plan {
                 for ref_id in self.get_refs_from_subtree(*gr_expr_local)? {
                     let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
 
-                    // If `scalar_sqs_to_fix` contains sq that came from DISTINCT qualifier
-                    // or distinct aggregates, we should remove it and add again with new
-                    // (parent, target) key from local GroupBy.
-                    let sq_key = scalar_sqs_to_fix
-                        .iter()
-                        .find(|(_, sq_id)| *sq_id == referred_rel_id)
-                        .map(|(key, _)| *key);
-                    if let Some(sq_key) = sq_key {
-                        scalar_sqs_to_fix.remove(&sq_key);
-                    }
-
                     if self.is_additional_child(referred_rel_id)? {
-                        let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
-                        scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                        scalar_sqs_to_fix.insert(referred_rel_id);
                     }
                 }
             }
@@ -768,7 +735,7 @@ impl Plan {
     fn collect_grouping_exprs_from_distinct_aggrs<'aggr>(
         &self,
         aggrs: &'aggr mut [Aggregate],
-        scalar_sqs_to_fix: &mut OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        scalar_sqs_to_fix: &mut OrderedSet<NodeId, RepeatableState>,
     ) -> Result<Vec<(NodeId, &'aggr mut Aggregate)>, SbroadError> {
         let mut res = Vec::with_capacity(aggrs.len());
         for aggr in aggrs.iter_mut().filter(|x| x.is_distinct) {
@@ -783,8 +750,7 @@ impl Plan {
             for ref_id in self.get_refs_from_subtree(arg)? {
                 let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
                 if self.is_additional_child(referred_rel_id)? {
-                    let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
-                    scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                    scalar_sqs_to_fix.insert(referred_rel_id);
                 }
             }
 
@@ -913,7 +879,7 @@ impl Plan {
         upper_id: NodeId,
         aggrs: &mut [Aggregate],
         groupby_info: &mut Option<GroupByInfo>,
-        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        scalar_sqs_to_fix: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<NodeId, SbroadError> {
         let proj_output_cols = self.create_columns_for_local_proj(aggrs, groupby_info)?;
         let proj_output: NodeId = self.nodes.add_row(proj_output_cols, None);
@@ -921,7 +887,7 @@ impl Plan {
         let mut children = vec![upper_id];
         // Handle scalar subqueries which we have to move
         // from final Projection to this local one.
-        children.extend(scalar_sqs_to_fix.iter().map(|(_, sq_id)| sq_id));
+        children.extend(scalar_sqs_to_fix.iter());
 
         let proj = Projection {
             output: proj_output,
@@ -982,8 +948,7 @@ impl Plan {
             }
             let new_col = Reference {
                 position,
-                parent: None,
-                targets: Some(vec![0]),
+                target: ReferenceTarget::Single(child_id),
                 col_type,
                 asterisk_source: None,
             };
@@ -1083,8 +1048,7 @@ impl Plan {
                     };
                 }
                 let new_ref = Reference {
-                    parent: Some(rel_id),
-                    targets: Some(vec![0]),
+                    target: ReferenceTarget::Single(child_id),
                     position,
                     col_type,
                     asterisk_source: None,
@@ -1145,7 +1109,7 @@ impl Plan {
         finals_child_id: NodeId,
         aggrs: &Vec<Aggregate>,
         groupby_info: &Option<GroupByInfo>,
-        scalar_sqs_to_fix: &OrderedMap<(NodeId, usize), NodeId, RepeatableState>,
+        scalar_sqs_to_fix: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         // Update relational child of the last final.
         let last_final_id = finals.last().expect("last final node should exist");
@@ -1235,7 +1199,6 @@ impl Plan {
                     if index_prev == 0
                         || scalar_sqs_to_fix
                             .iter()
-                            .map(|(_, sq_id)| sq_id)
                             .any(|sq_id| *sq_id == *child_id)
                     {
                         continue;
@@ -1367,7 +1330,7 @@ impl Plan {
         //
         // Here is a map of { (ref_parent, ref_target) -> sq_id }.
         // Mapping is needed only for the stage of local targets fixing (not for final nodes fixing).
-        let mut scalar_sqs_to_fix = OrderedMap::with_hasher(RepeatableState);
+        let mut scalar_sqs_to_fix = OrderedSet::with_hasher(RepeatableState);
 
         if groupby_info.is_none() && aggrs.is_empty() {
             if let Some(groupby_id) =
@@ -1440,8 +1403,7 @@ impl Plan {
             for ref_id in self.get_refs_from_subtree(arg)? {
                 let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
                 if self.is_additional_child(referred_rel_id)? {
-                    let (parent, target) = self.get_ref_parent_and_target(ref_id)?;
-                    scalar_sqs_to_fix.insert((parent, target), referred_rel_id);
+                    scalar_sqs_to_fix.insert(referred_rel_id);
                 }
             }
         }

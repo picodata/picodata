@@ -2,8 +2,8 @@ use crate::errors::SbroadError;
 use crate::ir::expression::ExpressionId;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Like, NodeId, Reference, Row,
-    ScalarFunction, Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Like, NodeId, Reference, ReferenceTarget,
+    Row, ScalarFunction, Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::transformation::redistribution::BoolOp;
@@ -73,6 +73,8 @@ impl ReferredMap {
         condition_id: NodeId,
         join_id: NodeId,
     ) -> Result<Self, SbroadError> {
+        let outer_child = plan.get_relational_child(join_id, 0)?;
+        let inner_child = plan.get_relational_child(join_id, 1)?;
         let mut referred = ReferredMap::with_capacity(EXPR_CAPACITY);
         let mut expr_tree =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
@@ -128,12 +130,10 @@ impl ReferredMap {
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
                 | Expression::Parameter { .. } => Referred::None,
-                Expression::Reference(Reference {
-                    targets, parent, ..
-                }) => {
-                    if *parent == Some(join_id) && *targets == Some(vec![1]) {
+                Expression::Reference(Reference { target, .. }) => {
+                    if target == &ReferenceTarget::Single(inner_child) {
                         Referred::Inner
-                    } else if *parent == Some(join_id) && *targets == Some(vec![0]) {
+                    } else if target == &ReferenceTarget::Single(outer_child) {
                         Referred::Outer
                     } else {
                         Referred::None
@@ -315,14 +315,12 @@ impl EqualityCols {
                 (
                     Expression::Reference(Reference {
                         position: pos_left,
-                        parent: parent_left,
                         col_type: col_type_left,
                         asterisk_source: asterisk_source_left,
                         ..
                     }),
                     Expression::Reference(Reference {
                         position: pos_right,
-                        parent: parent_right,
                         col_type: col_type_right,
                         asterisk_source: asterisk_source_right,
                         ..
@@ -332,8 +330,7 @@ impl EqualityCols {
 
                     // if one Reference refers to one child, and the second one refers to another one,
                     // then we have an equality pair
-                    if parent_left == parent_right
-                        && col_type_left == col_type_right
+                    if col_type_left == col_type_right
                         && asterisk_source_left == asterisk_source_right
                     {
                         let left_referred_child_id =

@@ -185,14 +185,13 @@ impl Plan {
                 }
                 Expression::CountAsterisk(_) => writeln!(buf, "CountAsterisk")?,
                 Expression::Reference(Reference {
-                    targets,
+                    target,
                     position,
-                    parent,
                     col_type,
                     ..
                 }) => {
                     writeln!(buf, "Reference")?;
-                    if targets.is_some() {
+                    if !target.is_leaf() {
                         let alias = self.get_alias_from_reference_node(&expr);
                         if let Result::Ok(alias) = alias {
                             writeln_with_tabulation(
@@ -218,22 +217,12 @@ impl Plan {
                         }
                     }
 
-                    if let Some(parent) = parent {
+                    for target_id in target.iter() {
                         writeln_with_tabulation(
                             buf,
                             tabulation_number + 1,
-                            format!("Parent: {parent}").as_str(),
+                            format!("target_id: {target_id}").as_str(),
                         )?;
-                    }
-
-                    if let Some(targets) = targets {
-                        for target_id in targets {
-                            writeln_with_tabulation(
-                                buf,
-                                tabulation_number + 1,
-                                format!("target_id: {target_id}").as_str(),
-                            )?;
-                        }
                     }
 
                     writeln_with_tabulation(

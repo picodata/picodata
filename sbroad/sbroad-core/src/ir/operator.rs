@@ -9,8 +9,8 @@ use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Motion, MutNode, NodeId,
-    OrderBy, Projection, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, Union,
-    UnionAll, Update, Values, ValuesRow,
+    OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
+    Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::Plan;
 use ahash::RandomState;
@@ -35,7 +35,7 @@ use super::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::relation::{Column, ColumnRole};
-use crate::ir::transformation::redistribution::{ColumnPosition, JoinChild};
+use crate::ir::transformation::redistribution::ColumnPosition;
 
 /// Binary operator returning Bool expression.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
@@ -473,6 +473,7 @@ impl Plan {
         // Create Reference node from given table column.
         fn create_ref_from_column(
             plan: &mut Plan,
+            rel_child_id: NodeId,
             relation: &str,
             table_position_map: &HashMap<ColumnPosition, ColumnPosition>,
             col_pos: usize,
@@ -497,16 +498,14 @@ impl Plan {
                 )
             })?;
             let col_type = col.r#type;
-            let node = Reference {
-                // It will be updated using `replace_parent_in_subtree`
-                // in the end of the function.
-                parent: None,
-                targets: Some(vec![0]),
-                position: output_pos,
+            // It will be updated using `replace_parent_in_subtree`
+            // in the end of the function.
+            let id = plan.nodes.add_ref(
+                ReferenceTarget::Single(rel_child_id),
+                output_pos,
                 col_type,
-                asterisk_source: None,
-            };
-            let id = plan.nodes.push(node.into());
+                None,
+            );
             Ok(id)
         }
 
@@ -560,7 +559,7 @@ impl Plan {
                 let expr_id = if let Some(id) = update_defs.get(&table_col) {
                     *id
                 } else {
-                    create_ref_from_column(self, relation, &child_map, table_col)?
+                    create_ref_from_column(self, rel_child_id, relation, &child_map, table_col)?
                 };
                 projection_cols.push(expr_id);
                 proj_pos += 1;
@@ -578,7 +577,7 @@ impl Plan {
                     ))
                 })?;
                 let shard_col_expr_id =
-                    create_ref_from_column(self, relation, &child_map, col_pos)?;
+                    create_ref_from_column(self, rel_child_id, relation, &child_map, col_pos)?;
                 projection_cols.push(shard_col_expr_id);
             }
             UpdateStrategy::ShardedUpdate {
@@ -599,7 +598,7 @@ impl Plan {
                 .positions
                 .clone()
                 .iter()
-                .map(|pos| create_ref_from_column(self, relation, &child_map, *pos))
+                .map(|pos| create_ref_from_column(self, rel_child_id, relation, &child_map, *pos))
                 .collect::<Result<Vec<NodeId>, SbroadError>>()?;
 
             let mut pos = 0;
@@ -745,7 +744,9 @@ impl Plan {
 
         let mut refs: Vec<NodeId> = Vec::with_capacity(rel.columns.len());
         for (pos, col) in rel.columns.iter().enumerate() {
-            let r_id = self.nodes.add_ref(None, None, pos, col.r#type, None);
+            let r_id = self
+                .nodes
+                .add_ref(ReferenceTarget::Leaf, pos, col.r#type, None);
             let col_alias_id = self.nodes.add_alias(&col.name, r_id)?;
             refs.push(col_alias_id);
         }
@@ -781,7 +782,7 @@ impl Plan {
         if let Some(rel) = self.relations.get(table) {
             let mut refs: Vec<NodeId> = Vec::with_capacity(rel.columns.len());
             for (pos, col) in rel.columns.iter().enumerate() {
-                let r_id = nodes.add_ref(None, None, pos, col.r#type, None);
+                let r_id = nodes.add_ref(ReferenceTarget::Leaf, pos, col.r#type, None);
                 let col_alias_id = nodes.add_alias(&col.name, r_id)?;
                 refs.push(col_alias_id);
             }
@@ -831,7 +832,7 @@ impl Plan {
         // to the child's output in the condition expression as
         // we have filtered out the sharding column.
         let mut children: Vec<NodeId> = Vec::with_capacity(2);
-        for (child, join_child) in &[(left, JoinChild::Outer), (right, JoinChild::Inner)] {
+        for child in &[left, right] {
             let child_node = self.get_relation_node(*child)?;
             if let Relational::ScanRelation(ScanRelation {
                 relation, alias, ..
@@ -855,19 +856,15 @@ impl Plan {
                     condition_tree.populate_nodes(condition);
                     condition_tree.take_nodes()
                 };
-                // We should update ONLY references that refer to current child (left, right)
-                let current_target = match join_child {
-                    JoinChild::Inner => Some(vec![1_usize]),
-                    JoinChild::Outer => Some(vec![0_usize]),
-                };
                 let mut refs = Vec::with_capacity(condition_nodes.len());
                 for LevelNode(_, id) in condition_nodes {
                     let expr = self.get_expression_node(id)?;
                     if let Expression::Reference(Reference {
-                        position, targets, ..
+                        position, target, ..
                     }) = expr
                     {
-                        if *targets == current_target {
+                        // We should update ONLY references that refer to current child (left, right)
+                        if *target == ReferenceTarget::Single(*child) {
                             if Some(*position) == sharding_column_pos {
                                 needs_bucket_id_column = true;
                             }
@@ -886,19 +883,19 @@ impl Plan {
                 let sq_id = self.add_sub_query(proj_id, Some(&scan_name))?;
                 children.push(sq_id);
 
-                if needs_bucket_id_column {
-                    continue;
-                }
-
-                if let Some(sharding_column_pos) = sharding_column_pos {
-                    for ref_id in refs {
-                        let expr = self.get_mut_expression_node(ref_id)?;
-                        if let MutExpression::Reference(Reference {
-                            position, targets, ..
-                        }) = expr
-                        {
-                            if current_target == *targets && *position > sharding_column_pos {
-                                *position -= 1;
+                if !needs_bucket_id_column {
+                    if let Some(sharding_column_pos) = sharding_column_pos {
+                        for ref_id in refs.iter() {
+                            let expr = self.get_mut_expression_node(*ref_id)?;
+                            if let MutExpression::Reference(Reference {
+                                position, target, ..
+                            }) = expr
+                            {
+                                if ReferenceTarget::Single(*child) == *target
+                                    && *position > sharding_column_pos
+                                {
+                                    *position -= 1;
+                                }
                             }
                         }
                     }
@@ -1504,8 +1501,7 @@ impl Plan {
         for (pos, name) in names.iter().enumerate() {
             let unified_type = unified_types[pos].1;
             let ref_id = self.nodes.add_ref(
-                None,
-                Some((0..value_rows.len()).collect::<Vec<usize>>()),
+                ReferenceTarget::Values(value_rows.clone()),
                 pos,
                 unified_type,
                 None,

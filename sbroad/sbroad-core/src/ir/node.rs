@@ -238,6 +238,86 @@ impl From<Like> for NodeAligned {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub enum ReferenceTarget {
+    Leaf,
+    Single(NodeId),
+    Union(NodeId, NodeId),
+    Values(Vec<NodeId>),
+}
+
+pub struct ReferenceIterator<'a> {
+    counter: usize,
+    source: &'a ReferenceTarget,
+}
+
+impl<'a> Iterator for ReferenceIterator<'a> {
+    type Item = &'a NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = match self.source {
+            ReferenceTarget::Leaf => None,
+            ReferenceTarget::Single(id) => {
+                if self.counter == 0 {
+                    Some(id)
+                } else {
+                    None
+                }
+            }
+            ReferenceTarget::Union(left, right) => {
+                if self.counter == 0 {
+                    Some(left)
+                } else if self.counter == 1 {
+                    Some(right)
+                } else {
+                    None
+                }
+            }
+            ReferenceTarget::Values(nodes) => nodes.get(self.counter),
+        };
+
+        if node.is_some() {
+            self.counter += 1;
+        }
+        node
+    }
+}
+
+impl ReferenceTarget {
+    pub fn first(&self) -> Option<&NodeId> {
+        match self {
+            ReferenceTarget::Leaf => None,
+            ReferenceTarget::Single(id) => Some(id),
+            ReferenceTarget::Union(id, _) => Some(id),
+            ReferenceTarget::Values(nodes) => nodes.first(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ReferenceTarget::Leaf => 0,
+            ReferenceTarget::Single(_) => 1,
+            ReferenceTarget::Union(_, _) => 2,
+            ReferenceTarget::Values(nodes) => nodes.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        matches!(self, ReferenceTarget::Leaf)
+    }
+
+    pub fn iter(&self) -> ReferenceIterator {
+        ReferenceIterator {
+            counter: 0,
+            source: self,
+        }
+    }
+}
+
 /// Reference to the position in the incoming tuple(s).
 /// Uses a relative pointer as a coordinate system:
 /// - relational node (containing this reference)
@@ -245,13 +325,8 @@ impl From<Like> for NodeAligned {
 /// - column position in the child(ren) output tuple
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 pub struct Reference {
-    /// Relational node ID that contains current reference.
-    pub parent: Option<NodeId>,
-    /// Targets in the relational node children list.
-    /// - Leaf nodes (relation scans): None.
-    /// - Union nodes: two elements (left and right).
-    /// - Other: single element.
-    pub targets: Option<Vec<usize>>,
+    /// Target node
+    pub target: ReferenceTarget,
     /// Expression position in the input tuple (i.e. `Alias` column).
     pub position: usize,
     /// Referred column type in the input tuple.

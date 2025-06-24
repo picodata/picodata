@@ -14,7 +14,9 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{Alias, ArithmeticExpr, BoolExpr, NodeId, Reference, Row};
+use crate::ir::node::{
+    Alias, ArithmeticExpr, BoolExpr, Join, NodeId, Reference, ReferenceTarget, Row,
+};
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::BreadthFirst;
 use crate::ir::tree::traversal::EXPR_CAPACITY;
@@ -283,19 +285,39 @@ impl GroupedRows {
 }
 
 impl Plan {
-    fn split_join_references(&self, left: &[NodeId], right: &[NodeId]) -> Option<GroupedRows> {
+    fn split_join_references(
+        &self,
+        parent_id: NodeId,
+        left: &[NodeId],
+        right: &[NodeId],
+    ) -> Result<Option<GroupedRows>, SbroadError> {
+        let parent_node = self.get_relation_node(parent_id)?;
+        let Relational::Join(Join { children, .. }) = parent_node else {
+            return Ok(None);
+        };
+        let first_child_target: NodeId = *children.first().ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("cannot get first join child")),
+            )
+        })?;
+        let second_child_target: NodeId = *children.get(1).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!("cannot get second join child")),
+            )
+        })?;
+
         // First check that we are in join
         let contains_join_refs = |row: &[NodeId]| -> bool {
             row.iter().any(|id| {
                 self.get_expression_node(*id).is_ok_and(|expr| {
                     if let Expression::Reference(Reference {
-                        parent: Some(p), ..
+                        target: ReferenceTarget::Single(node),
+                        ..
                     }) = expr
                     {
-                        if self
-                            .get_relation_node(*p)
-                            .is_ok_and(|rel| matches!(rel, Relational::Join(_)))
-                        {
+                        if node == &first_child_target || node == &second_child_target {
                             return true;
                         }
                     }
@@ -304,7 +326,7 @@ impl Plan {
             })
         };
         if !contains_join_refs(left) && !contains_join_refs(right) {
-            return None;
+            return Ok(None);
         }
 
         // Split (left) = (right) into
@@ -327,9 +349,6 @@ impl Plan {
         let mut other_left = Vec::new();
         let mut other_right = Vec::new();
 
-        let first_child_target = Some(vec![0]);
-        let second_child_target = Some(vec![1]);
-
         left.iter()
             .zip(right.iter())
             .map(|(left_id, right_id)| {
@@ -341,26 +360,25 @@ impl Plan {
 
                 let other_pair = (left_id, right_id, false);
                 let Some(Reference {
-                    targets: target_l,
-                    parent: parent_l,
-                    ..
+                    target: target_l, ..
                 }) = self.get_reference(*left_id)
                 else {
                     return other_pair;
                 };
                 let Some(Reference {
-                    targets: target_r,
-                    parent: parent_r,
-                    ..
+                    target: target_r, ..
                 }) = self.get_reference(*right_id)
                 else {
                     return other_pair;
                 };
-                debug_assert!(parent_r == parent_l);
 
-                if target_l == &first_child_target && target_r == &second_child_target {
+                if target_l == &ReferenceTarget::Single(first_child_target)
+                    && target_r == &ReferenceTarget::Single(second_child_target)
+                {
                     return (left_id, right_id, true);
-                } else if target_l == &second_child_target && target_r == &first_child_target {
+                } else if target_l == &ReferenceTarget::Single(second_child_target)
+                    && target_r == &ReferenceTarget::Single(first_child_target)
+                {
                     return (right_id, left_id, true);
                 }
                 other_pair
@@ -375,12 +393,12 @@ impl Plan {
                 }
             });
 
-        Some(GroupedRows {
+        Ok(Some(GroupedRows {
             join_refs_left,
             join_refs_right,
             other_left,
             other_right,
-        })
+        }))
     }
 
     fn get_columns_or_self(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {

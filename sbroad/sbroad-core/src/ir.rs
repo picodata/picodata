@@ -27,9 +27,9 @@ use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
-    Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId,
-    NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection, Trim,
-    UnaryExpr, Values,
+    Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned,
+    OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection, Trim, UnaryExpr,
+    Values,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::{Column, DerivedType};
@@ -1880,49 +1880,15 @@ impl Plan {
     /// - Plan is in invalid state
     pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<&str, SbroadError> {
         let Expression::Reference(Reference {
-            targets,
-            position,
-            parent,
-            ..
+            target, position, ..
         }) = node
         else {
             unreachable!("get_alias_from_reference_node: Node is not of a reference type");
         };
 
-        let ref_node = if let Some(parent) = parent {
-            self.get_relation_node(*parent)?
-        } else {
-            unreachable!("get_alias_from_reference_node: Reference node has no parent");
-        };
-
-        // In a case of insert we don't inspect children output tuple
-        // but rather use target relation columns.
-        if let Relational::Insert(Insert { ref relation, .. }) = ref_node {
-            let rel = self
-                .relations
-                .get(relation)
-                .unwrap_or_else(|| panic!("Relation {relation} is not found."));
-            let col_name = rel
-                .columns
-                .get(*position)
-                .unwrap_or_else(|| {
-                    panic!("Not found column at position {position} at relation {rel:?}.")
-                })
-                .name
-                .as_str();
-            return Ok(col_name);
-        }
-
-        let ref_node_children = ref_node.children();
-
-        let Some(targets) = targets else {
-            unreachable!("get_alias_from_reference_node: No targets in reference");
-        };
-        let first_target = targets.first().expect("Reference targets list is empty");
-        let ref_node_target_child =
-            ref_node_children
-                .get(*first_target)
-                .unwrap_or_else(|| panic!("Failed to get target index {first_target:?} for reference {node:?} and ref_node [id = {parent:?}] {ref_node:?}"));
+        let ref_node_target_child = target
+            .first()
+            .expect("Expected at least one node in reference");
 
         let column_rel_node = self.get_relation_node(*ref_node_target_child)?;
         let column_expr_node = self.get_expression_node(column_rel_node.output())?;
@@ -2135,22 +2101,21 @@ impl ShardColumnsMap {
             // and we haven't bound parameters yet,
             // we will get an error.
             let Ok(Expression::Reference(Reference {
-                targets, position, ..
+                target, position, ..
             })) = plan.get_expression_node(ref_id)
             else {
                 continue;
             };
-            let Some(targets) = targets else {
-                continue;
-            };
 
-            let children = plan.get_relational_children(node_id)?;
+            if target.is_leaf() {
+                continue;
+            }
+
             // For node with multiple targets (Union, Except, Intersect)
             // we need that ALL targets would refer to the shard column.
             let mut refers_to_shard_col = true;
-            for target in targets {
-                let child_id = children.get(*target).expect("invalid reference");
-                let Some(positions) = self.memo.get(child_id) else {
+            for target in target.iter() {
+                let Some(positions) = self.memo.get(target) else {
                     refers_to_shard_col = false;
                     break;
                 };

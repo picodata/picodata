@@ -92,7 +92,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Constant, NodeId, Reference, ReferenceAsteriskSource, Row};
+use crate::ir::node::{Constant, NodeId, Reference, ReferenceAsteriskSource, ReferenceTarget, Row};
 use crate::ir::operator::Bool;
 use crate::ir::relation::DerivedType;
 use crate::ir::transformation::merge_tuples::Chain;
@@ -107,9 +107,8 @@ use super::TransformationOldNewPair;
 /// A copy of the `Expression::Reference` with traits for the `HashSet`.
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 struct EqClassRef {
-    targets: Option<Vec<usize>>,
+    target: ReferenceTarget,
     position: usize,
-    parent: Option<NodeId>,
     col_type: DerivedType,
     asterisk_source: Option<ReferenceAsteriskSource>,
 }
@@ -117,17 +116,15 @@ struct EqClassRef {
 impl EqClassRef {
     fn from_ref(expr: &Expression) -> Result<Self, SbroadError> {
         if let Expression::Reference(Reference {
-            targets: expr_tgt,
+            target: expr_tgt,
             position: expr_pos,
-            parent: expr_prt,
             col_type: expr_type,
             asterisk_source: expr_asterisk_source,
         }) = expr
         {
             return Ok(EqClassRef {
-                targets: expr_tgt.clone(),
+                target: expr_tgt.clone(),
                 position: *expr_pos,
-                parent: *expr_prt,
                 col_type: *expr_type,
                 asterisk_source: expr_asterisk_source.clone(),
             });
@@ -137,8 +134,7 @@ impl EqClassRef {
 
     fn to_ref(&self, plan: &mut Plan) -> NodeId {
         plan.nodes.add_ref(
-            self.parent,
-            self.targets.clone(),
+            self.target.clone(),
             self.position,
             self.col_type,
             self.asterisk_source.clone(),

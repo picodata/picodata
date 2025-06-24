@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, Case, Cast, Constant, Expression, MutExpression, Node, NodeId,
-    Reference, Row, ScalarFunction,
+    Reference, ReferenceTarget, Row, ScalarFunction,
 };
 
 impl Plan {
@@ -195,36 +195,21 @@ impl Expression<'_> {
     pub fn recalculate_ref_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
         let prev_type = self.calculate_type(plan)?;
         let Expression::Reference(Reference {
-            parent,
-            targets,
-            position,
-            ..
+            target, position, ..
         }) = self
         else {
             return Ok(prev_type);
         };
 
-        let Some(targets) = targets else {
+        if target == &ReferenceTarget::Leaf {
             // No need to recalculate types for Scan node references.
             return Ok(prev_type);
-        };
-
-        let parent_id = parent.ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Expression,
-                Some("reference expression has no parent".to_smolstr()),
-            )
-        })?;
-        let parent_rel = plan.get_relation_node(parent_id)?;
-        let rel_children: crate::ir::api::children::Children<'_> = parent_rel.children();
+        }
 
         let mut types = Vec::new();
-        for target_index in targets {
-            let target_rel_id = *rel_children.get(*target_index).unwrap_or_else(|| {
-                panic!("reference expression has no target relation at position {target_index}")
-            });
 
-            let target_rel = plan.get_relation_node(target_rel_id)?;
+        for target_rel_id in target.iter() {
+            let target_rel = plan.get_relation_node(*target_rel_id)?;
             let columns = plan.get_row_list(target_rel.output())?;
             let column_id = *columns.get(*position).unwrap_or_else(|| {
                 panic!("reference expression has no target column at position {position}")

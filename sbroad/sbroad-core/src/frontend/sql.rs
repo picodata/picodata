@@ -8,8 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
-    TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
+    NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget,
+    Row, ScalarFunction, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::relation::{DerivedType, Type};
 use ahash::{AHashMap, AHashSet};
@@ -2155,13 +2155,12 @@ where
     /// because we'll copy references without adequate `parent` and `target` that we couldn't fix
     /// later.
     subquery_replaces: AHashMap<NodeId, NodeId>,
-    /// Vec of { (sq_id, ref_ids_to_fix_parent_and_target) }
+    /// Vec of { sq_id }
     /// After calling `parse_expr` and creating relational node that can contain SubQuery as
     /// additional child (Selection, Join, Having, OrderBy, GroupBy, Projection) we should pop the
     /// queue till it's not empty and:
     /// * Add subqueries to the list of relational children
-    /// * Fix References
-    sub_queries_to_fix_queue: VecDeque<(NodeId, Vec<NodeId>)>,
+    sub_queries_to_fix_queue: VecDeque<NodeId>,
     // Parametes pairs positions in the query. This map is used to index tnt parameters.
     // For example, for query `select ? + ?` this vector will contain 2 pairs for `?`, and the pair
     // on the left will be the first, while the right pair will be the second.
@@ -2418,14 +2417,13 @@ impl Plan {
         sq_id: NodeId,
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<NodeId, SbroadError> {
-        let (sq_row_id, new_refs) = self.add_row_from_subquery(sq_id)?;
+        let sq_row_id = self.add_row_from_subquery(sq_id)?;
         worker.subquery_replaces.insert(sq_id, sq_row_id);
-        worker.sub_queries_to_fix_queue.push_back((sq_id, new_refs));
+        worker.sub_queries_to_fix_queue.push_back(sq_id);
         Ok(sq_row_id)
     }
 
-    /// Fix subqueries (already represented as rows) for newly created relational node:
-    /// replace its references' `parent` and `target` field with valid values.
+    /// Fix subqueries (already represented as rows) for newly created relational node
     fn fix_subquery_rows<M: Metadata>(
         &mut self,
         worker: &mut ExpressionsWorker<M>,
@@ -2433,25 +2431,8 @@ impl Plan {
     ) -> Result<(), SbroadError> {
         let mut rel_node = self.get_mut_relation_node(rel_id)?;
 
-        let mut rel_node_children_len = rel_node.mut_children().len();
-        for (sq_id, _) in &worker.sub_queries_to_fix_queue {
-            rel_node.add_sq_child(*sq_id);
-        }
-
-        while let Some((_, new_refs)) = worker.sub_queries_to_fix_queue.pop_front() {
-            for new_ref_id in new_refs {
-                let new_ref = self.get_mut_expression_node(new_ref_id)?;
-                if let MutExpression::Reference(Reference {
-                    parent, targets, ..
-                }) = new_ref
-                {
-                    *parent = Some(rel_id);
-                    *targets = Some(vec![rel_node_children_len]);
-                } else {
-                    panic!("Expected SubQuery reference to fix.")
-                }
-            }
-            rel_node_children_len += 1;
+        while let Some(sq_id) = worker.sub_queries_to_fix_queue.pop_front() {
+            rel_node.add_sq_child(sq_id);
         }
         Ok(())
     }
@@ -2474,7 +2455,6 @@ impl Plan {
 
     fn adjust_grouping_exprs(&mut self, final_proj_id: NodeId) -> Result<(), SbroadError> {
         let (_, upper) = self.split_group_by(final_proj_id)?;
-
         let final_proj_output = self.get_relational_output(final_proj_id)?;
         let final_proj_cols = self.get_row_list(final_proj_output)?.clone();
         let mut grouping_exprs =
@@ -2589,9 +2569,13 @@ impl Plan {
                 position, col_type, ..
             }) = expr_node
             {
-                let ref_id =
-                    self.nodes
-                        .add_ref(Some(groupby_id), Some(vec![0]), *position, *col_type, None);
+                let node_id = self.get_relational_child(groupby_id, 0)?;
+                let ref_id = self.nodes.add_ref(
+                    ReferenceTarget::Single(node_id),
+                    *position,
+                    *col_type,
+                    None,
+                );
 
                 *expr = ref_id;
             } else if let Expression::ScalarFunction(ScalarFunction { name, .. }) = expr_node {
@@ -3828,7 +3812,7 @@ where
                         let col_type = plan
                             .get_expression_node(*child_alias_id)?
                             .calculate_type(plan)?;
-                        plan.nodes.add_ref(None, Some(vec![0]), col_position, col_type, None)
+                        plan.nodes.add_ref(ReferenceTarget::Single(*plan_left_id), col_position, col_type, None)
                     };
                     worker.reference_to_name_map.insert(ref_id, col_name);
                     ParseExpression::PlanId { plan_id: ref_id }
@@ -5143,8 +5127,8 @@ impl AbstractSyntaxTree {
                             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
                         for LevelNode(_, node_id) in expr_tree.iter(expr_plan_node_id) {
-                            if let Expression::Reference(Reference { targets, .. }) = plan.get_expression_node(node_id)? {
-                                if targets.is_some() {
+                            if let Expression::Reference(Reference { target, .. }) = plan.get_expression_node(node_id)? {
+                                if !target.is_leaf() {
                                     // Subquery reference met.
                                     reference_met = true;
                                     break

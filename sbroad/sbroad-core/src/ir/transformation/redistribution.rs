@@ -514,7 +514,6 @@ impl Plan {
         &self,
         left_row_id: NodeId,
         right_row_id: NodeId,
-        rel_id: NodeId,
         op: &Bool,
     ) -> Result<bool, SbroadError> {
         if !(Bool::Eq == *op || Bool::In == *op) {
@@ -542,22 +541,14 @@ impl Plan {
             };
             for (pos_in_row, ref_id) in refs.iter().enumerate() {
                 let ref node @ Expression::Reference(Reference {
-                    targets,
+                    target,
                     position: ref_pos,
                     ..
                 }) = self.get_expression_node(*ref_id)?
                 else {
                     continue;
                 };
-                let targets = targets.as_ref().ok_or_else(|| {
-                    SbroadError::Invalid(
-                        Entity::Node,
-                        Some(format_smolstr!(
-                            "ref ({ref_id:?}) in join condition with no targets: {node:?}"
-                        )),
-                    )
-                })?;
-                let child_idx = targets.first().ok_or_else(|| {
+                let child_id = target.first().ok_or_else(|| {
                     SbroadError::Invalid(
                         Entity::Node,
                         Some(format_smolstr!(
@@ -565,18 +556,17 @@ impl Plan {
                         )),
                     )
                 })?;
-                let child_id = self.get_relational_child(rel_id, *child_idx)?;
                 let mut context = self.context_mut();
-                if let Some(positions) = context.get_shard_columns_positions(child_id, self)? {
+                if let Some(positions) = context.get_shard_columns_positions(*child_id, self)? {
                     if positions[0] != Some(*ref_pos) && positions[1] != Some(*ref_pos) {
                         continue;
                     }
                     if let Some(other_child_id) = memo.get(&pos_in_row) {
-                        if *other_child_id != child_id {
+                        if other_child_id != child_id {
                             return Ok(true);
                         }
                     } else {
-                        memo.insert(pos_in_row, child_id);
+                        memo.insert(pos_in_row, *child_id);
                     }
                 }
             }
@@ -714,7 +704,7 @@ impl Plan {
         // If we eq/in where both rows contain bucket_id in same position
         // we don't need Motion nodes.
         if (left.is_some() || right.is_some())
-            && self.has_eq_on_bucket_id(bool_op.left, bool_op.right, rel_id, &bool_op.op)?
+            && self.has_eq_on_bucket_id(bool_op.left, bool_op.right, &bool_op.op)?
         {
             if let Some(left_sq) = left {
                 strategies.push((left_sq, MotionPolicy::None));
@@ -1039,7 +1029,6 @@ impl Plan {
         &self,
         key: &Key,
         row_map: &HashMap<usize, NodeId>,
-        join_children: &Children<'_>,
     ) -> Result<NodeId, SbroadError> {
         let mut children_set: HashSet<NodeId> = HashSet::new();
         for pos in &key.positions {
@@ -1050,19 +1039,11 @@ impl Plan {
                 )
             })?;
             let column_id = self.get_child_under_cast(column_id)?;
-            if let Expression::Reference(Reference { targets, .. }) =
+            if let Expression::Reference(Reference { target, .. }) =
                 self.get_expression_node(column_id)?
             {
-                if let Some(targets) = targets {
-                    for target in targets {
-                        let child_id = *join_children.get(*target).ok_or_else(|| {
-                            SbroadError::NotFound(
-                                Entity::Target,
-                                format_smolstr!("{target} in join children {join_children:?}"),
-                            )
-                        })?;
-                        children_set.insert(child_id);
-                    }
+                for target in target.iter() {
+                    children_set.insert(*target);
                 }
             } else {
                 return Err(SbroadError::Invalid(
@@ -1130,7 +1111,7 @@ impl Plan {
         })?;
 
         for key in keys {
-            let child = self.get_join_child_by_key(key, row_map, &children)?;
+            let child = self.get_join_child_by_key(key, row_map)?;
             if child == outer_child {
                 outer_keys.push(key.clone());
             } else if child == inner_child {
@@ -1154,18 +1135,16 @@ impl Plan {
     /// This function extracts only the positions of the references to the inner child.
     fn get_inner_positions_from_condition_row(
         &self,
+        join_id: NodeId,
         row_map: &HashMap<usize, NodeId>,
     ) -> Result<AHashSet<usize>, SbroadError> {
+        // Inner child of the join node is always the second one.
+        let inner_child = self.get_relational_child(join_id, 1)?;
         let mut inner_positions: AHashSet<usize> = AHashSet::with_capacity(row_map.len());
         for (pos, col) in row_map {
             let expression = self.get_expression_node(*col)?;
-            if let Expression::Reference(Reference {
-                targets: Some(targets),
-                ..
-            }) = expression
-            {
-                // Inner child of the join node is always the second one.
-                if targets == &[1; 1] {
+            if let Expression::Reference(Reference { target, .. }) = expression {
+                if target == &Single(inner_child) {
                     inner_positions.insert(*pos);
                 }
             }
@@ -1177,9 +1156,12 @@ impl Plan {
     /// and return the positions of the columns in the inner child row.
     fn get_referred_inner_child_column_positions(
         &self,
+        join_id: NodeId,
         column_positions: &[usize],
         condition_row_map: &HashMap<usize, NodeId>,
     ) -> Result<Vec<usize>, SbroadError> {
+        // Inner child of the join node is always the second one.
+        let inner_child_id = self.get_relational_child(join_id, 1)?;
         let mut referred_column_positions: Vec<usize> = Vec::with_capacity(column_positions.len());
         for pos in column_positions {
             let column_id = *condition_row_map.get(pos).ok_or_else(|| {
@@ -1189,14 +1171,11 @@ impl Plan {
                 )
             })?;
             if let Expression::Reference(Reference {
-                targets, position, ..
+                target, position, ..
             }) = self.get_expression_node(column_id)?
             {
-                if let Some(targets) = targets {
-                    // Inner child of the join node is always the second one.
-                    if targets == &[1; 1] {
-                        referred_column_positions.push(*position);
-                    }
+                if &ReferenceTarget::Single(inner_child_id) == target {
+                    referred_column_positions.push(*position);
                 }
             } else {
                 return Err(SbroadError::Invalid(
@@ -1218,9 +1197,11 @@ impl Plan {
     fn get_inner_policy_by_outer_segment(
         &self,
         outer_keys: &[Key],
+        join_id: NodeId,
         inner_row_map: &HashMap<usize, NodeId>,
     ) -> Result<MotionPolicy, SbroadError> {
-        let inner_position_map = self.get_inner_positions_from_condition_row(inner_row_map)?;
+        let inner_position_map =
+            self.get_inner_positions_from_condition_row(join_id, inner_row_map)?;
         for outer_key in outer_keys {
             if outer_key
                 .positions
@@ -1237,6 +1218,7 @@ impl Plan {
                     matched_inner_positions.push(pos);
                 }
                 let inner_child_positions = self.get_referred_inner_child_column_positions(
+                    join_id,
                     &matched_inner_positions,
                     inner_row_map,
                 )?;
@@ -1259,7 +1241,7 @@ impl Plan {
         left_row_id: NodeId,
         right_row_id: NodeId,
     ) -> Result<MotionPolicy, SbroadError> {
-        if self.has_eq_on_bucket_id(left_row_id, right_row_id, join_id, &Bool::Eq)? {
+        if self.has_eq_on_bucket_id(left_row_id, right_row_id, &Bool::Eq)? {
             return Ok(MotionPolicy::None);
         }
 
@@ -1314,24 +1296,26 @@ impl Plan {
                 // (t2.e, t2.d). The motion node would have a distribution segment[0, 1] as t2.e is
                 // at position 0 and t2.d is at position 1 in the inner child t2.
 
-                if let MotionPolicy::Segment(inner_key) =
-                    self.get_inner_policy_by_outer_segment(&left_outer_keys, &row_map_right)?
-                {
+                if let MotionPolicy::Segment(inner_key) = self.get_inner_policy_by_outer_segment(
+                    &left_outer_keys,
+                    join_id,
+                    &row_map_right,
+                )? {
                     return Ok(MotionPolicy::Segment(inner_key));
                 }
-                self.get_inner_policy_by_outer_segment(&right_outer_keys, &row_map_left)
+                self.get_inner_policy_by_outer_segment(&right_outer_keys, join_id, &row_map_left)
             }
             (Distribution::Segment { keys: keys_set }, _) => {
                 let keys_left = keys_set.iter().map(Clone::clone).collect::<Vec<_>>();
                 let (left_outer_keys, _) =
                     self.split_join_keys_to_inner_and_outer(join_id, &keys_left, &row_map_left)?;
-                self.get_inner_policy_by_outer_segment(&left_outer_keys, &row_map_right)
+                self.get_inner_policy_by_outer_segment(&left_outer_keys, join_id, &row_map_right)
             }
             (_, Distribution::Segment { keys: keys_set }) => {
                 let keys_right = keys_set.iter().map(Clone::clone).collect::<Vec<_>>();
                 let (right_outer_keys, _) =
                     self.split_join_keys_to_inner_and_outer(join_id, &keys_right, &row_map_right)?;
-                self.get_inner_policy_by_outer_segment(&right_outer_keys, &row_map_left)
+                self.get_inner_policy_by_outer_segment(&right_outer_keys, join_id, &row_map_left)
             }
             _ => Ok(MotionPolicy::Full),
         }

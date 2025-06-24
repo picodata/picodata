@@ -4,7 +4,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 use crate::errors::{Entity, SbroadError};
 use crate::ir::expression::cast::Type;
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{NodeId, Reference, ScalarFunction};
+use crate::ir::node::{NodeId, ReferenceTarget, ScalarFunction};
 use crate::ir::operator::Arithmetic;
 use crate::ir::relation::Type as RelType;
 use crate::ir::Plan;
@@ -248,16 +248,10 @@ impl Aggregate {
     ) -> Result<NodeId, SbroadError> {
         let fun_expr = plan.get_expression_node(self.fun_id)?;
         let col_type = fun_expr.calculate_type(plan)?;
-
-        let ref_node = Reference {
-            parent: Some(self.parent_rel),
-            // Final node has only one required child.
-            targets: Some(vec![0]),
-            position,
-            col_type,
-            asterisk_source: None,
-        };
-        let ref_id = plan.nodes.push(ref_node.into());
+        let child_id = plan.get_relational_child(self.parent_rel, 0)?;
+        let ref_id =
+            plan.nodes
+                .add_ref(ReferenceTarget::Single(child_id), position, col_type, None);
         let children: Vec<NodeId> = match self.kind {
             AggregateKind::AVG => vec![plan.add_cast(ref_id, Type::Double)?],
             AggregateKind::GRCONCAT => {

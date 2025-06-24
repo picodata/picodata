@@ -4,8 +4,7 @@ use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, Constant, MutNode, Node96, NodeId, Parameter, Reference, ScalarFunction, Timestamp,
-    ValuesRow,
+    Alias, Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp, ValuesRow,
 };
 use crate::ir::node::{Node32, TimeParameters};
 use crate::ir::relation::{DerivedType, Type};
@@ -166,11 +165,8 @@ impl Plan {
             // Before binding, references that referred to
             // parameters had an unknown types,
             // but in fact they should have the types of given parameters.
-            let new_type = if let Node::Expression(
-                ref mut expr @ Expression::Reference(Reference {
-                    parent: Some(_), ..
-                }),
-            ) = self.get_node(*id)?
+            let new_type = if let Node::Expression(ref mut expr @ Expression::Reference(_)) =
+                self.get_node(*id)?
             {
                 Some(expr.recalculate_ref_type(self)?)
             } else {

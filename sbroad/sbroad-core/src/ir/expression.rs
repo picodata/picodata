@@ -14,15 +14,16 @@ use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
-use super::node::{Bound, BoundType, Like, Over, Window};
+use super::node::{Bound, BoundType, Like, Over, ReferenceTarget, Window};
 use super::operator::OrderByEntity;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant,
-    Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Relational, Row,
-    ScalarFunction, Trim, UnaryExpr, Value,
+    Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
+    Trim, UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
+use crate::ir::node::relational::Relational;
 use crate::ir::node::{Parameter, ReferenceAsteriskSource};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{DerivedType, Type};
@@ -151,15 +152,13 @@ impl Nodes {
     /// Adds reference node.
     pub fn add_ref(
         &mut self,
-        parent: Option<NodeId>,
-        targets: Option<Vec<usize>>,
+        target: ReferenceTarget,
         position: usize,
         col_type: DerivedType,
         asterisk_source: Option<ReferenceAsteriskSource>,
     ) -> NodeId {
         let r = Reference {
-            parent,
-            targets,
+            target,
             position,
             col_type,
             asterisk_source,
@@ -575,14 +574,10 @@ impl<'plan> Comparator<'plan> {
                         }
                     }
                     Expression::Reference(Reference {
-                        targets: t_left,
-                        position: p_left,
-                        ..
+                        position: p_left, ..
                     }) => {
                         if let Expression::Reference(Reference {
-                            targets: t_right,
-                            position: p_right,
-                            ..
+                            position: p_right, ..
                         }) = right
                         {
                             // TODO: It's assumed that comparison is taking place for relational
@@ -597,7 +592,7 @@ impl<'plan> Comparator<'plan> {
                             //       1. For Projection and GroupBy scalar subquery `(select 1)` will have different targets
                             //       2. They are referencing different relations.
 
-                            let base_equal = t_left == t_right && p_left == p_right;
+                            let base_equal = p_left == p_right;
                             // When we call `add_update` we have to compare references
                             // without parent relation being added yet. That's why we don't unwrap
                             // results here.
@@ -856,14 +851,12 @@ impl<'plan> Comparator<'plan> {
                 value.hash(state);
             }
             Expression::Reference(Reference {
-                parent: _,
                 position,
-                targets,
+                target: _,
                 col_type,
                 asterisk_source: is_asterisk,
             }) => {
                 position.hash(state);
-                targets.hash(state);
                 col_type.hash(state);
                 is_asterisk.hash(state);
             }
@@ -1202,10 +1195,6 @@ impl<'iter, 'source: 'iter> IntoIterator for &'source NewColumnsSource<'iter> {
 }
 
 impl<'source> NewColumnsSource<'source> {
-    fn is_join(&self) -> bool {
-        matches!(self, NewColumnsSource::Join { .. })
-    }
-
     fn get_columns_spec(&self) -> Option<ColumnsRetrievalSpec> {
         match self {
             NewColumnsSource::Join { targets, .. } => match targets {
@@ -1225,18 +1214,6 @@ impl<'source> NewColumnsSource<'source> {
                 asterisk_source, ..
             } => asterisk_source.clone(),
             _ => None,
-        }
-    }
-
-    fn targets(&self) -> Vec<usize> {
-        match self {
-            NewColumnsSource::Join { targets, .. } => match targets {
-                JoinTargets::Left { .. } => vec![0],
-                JoinTargets::Right { .. } => vec![1],
-                JoinTargets::Both => vec![0, 1],
-            },
-            NewColumnsSource::ExceptUnion { .. } => vec![0, 1],
-            NewColumnsSource::Other { .. } => vec![0],
         }
     }
 
@@ -1266,7 +1243,7 @@ impl Plan {
         need_sharding_column: bool,
     ) -> Result<Vec<NodeId>, SbroadError> {
         // Vec of (column position in child output, column plan id, new_targets).
-        let mut filtered_children_row_list: Vec<(usize, NodeId, Vec<usize>)> = Vec::new();
+        let mut filtered_children_row_list: Vec<(usize, NodeId, ReferenceTarget)> = Vec::new();
 
         // Helper lambda to retrieve column positions we need to exclude from child `rel_id`.
         let column_positions_to_exclude = |rel_id| -> Result<Targets, SbroadError> {
@@ -1318,14 +1295,30 @@ impl Plan {
                 if exclude_positions[0] == Some(index) || exclude_positions[1] == Some(index) {
                     continue;
                 }
-                filtered_children_row_list.push((index, col_id, source.targets()));
+                filtered_children_row_list.push((
+                    index,
+                    col_id,
+                    ReferenceTarget::Single(rel_child),
+                ));
             }
         } else {
-            for (child_node_id, target_idx) in source {
-                let new_targets: Vec<usize> = if source.is_join() {
-                    vec![target_idx]
-                } else {
-                    source.targets()
+            for (child_node_id, _) in source {
+                let new_targets: ReferenceTarget = match source {
+                    NewColumnsSource::ExceptUnion {
+                        left_child,
+                        right_child,
+                    } => ReferenceTarget::Union(*left_child, *right_child),
+                    NewColumnsSource::Join {
+                        targets: JoinTargets::Both,
+                        ..
+                    }
+                    | NewColumnsSource::Other { .. } => ReferenceTarget::Single(child_node_id),
+                    _ => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Node,
+                            Some("WE DIDN'T expect here somehting".into()),
+                        ))
+                    }
                 };
 
                 let rel_node = self.get_relation_node(child_node_id)?;
@@ -1357,7 +1350,7 @@ impl Plan {
 
             let r_id = self
                 .nodes
-                .add_ref(None, Some(new_targets), pos, col_type, asterisk_source);
+                .add_ref(new_targets, pos, col_type, asterisk_source);
             if need_aliases {
                 let a_id = self.nodes.add_alias(&alias_name, r_id)?;
                 result_row_list.push(a_id);
@@ -1509,13 +1502,8 @@ impl Plan {
     /// Project all the columns from the child's subquery node.
     /// New columns don't have aliases.
     ///
-    /// Returns a pair of:
-    /// * Created row id
-    /// * Vec of created references ids whose `parent` and `target` should be changed.
-    pub(crate) fn add_row_from_subquery(
-        &mut self,
-        sq_id: NodeId,
-    ) -> Result<(NodeId, Vec<NodeId>), SbroadError> {
+    /// Returns сreated row id
+    pub(crate) fn add_row_from_subquery(&mut self, sq_id: NodeId) -> Result<NodeId, SbroadError> {
         let sq_rel = self.get_relation_node(sq_id)?;
         let sq_output_id = sq_rel.output();
         let sq_alias_ids_len = self.get_row_list(sq_output_id)?.len();
@@ -1527,11 +1515,13 @@ impl Plan {
                 .get(pos)
                 .expect("subquery output row already checked");
             let alias_type = self.get_expression_node(alias_id)?.calculate_type(self)?;
-            let ref_id = self.nodes.add_ref(None, None, pos, alias_type, None);
+            let ref_id = self
+                .nodes
+                .add_ref(ReferenceTarget::Single(sq_id), pos, alias_type, None);
             new_refs.push(ref_id);
         }
         let row_id = self.nodes.add_row(new_refs.clone(), None);
-        Ok((row_id, new_refs))
+        Ok(row_id)
     }
 
     /// Project column from the join's left branch.
@@ -1612,53 +1602,20 @@ impl Plan {
         &self,
         ref_id: NodeId,
     ) -> Result<NodeId, SbroadError> {
-        if let Node::Expression(Expression::Reference(Reference {
-            targets, parent, ..
-        })) = self.get_node(ref_id)?
+        if let Node::Expression(Expression::Reference(Reference { target, .. })) =
+            self.get_node(ref_id)?
         {
-            let Some(referred_rel_id) = parent else {
-                return Err(SbroadError::Invalid(
-                    Entity::Node,
-                    Some(format_smolstr!(
-                        "Reference ({ref_id}) parent node not found."
-                    )),
-                ));
-            };
-            let rel = self.get_relation_node(*referred_rel_id)?;
-            if let Relational::Insert { .. } = rel {
-                return Ok(*referred_rel_id);
-            }
-            let children = self.children(*referred_rel_id);
-            match targets {
-                None => {
-                    return Err(SbroadError::UnexpectedNumberOfValues(
-                        "Reference node has no targets".into(),
+            return match target {
+                ReferenceTarget::Leaf => Err(SbroadError::UnexpectedNumberOfValues(
+                    "Reference node has no targets".into(),
+                )),
+                ReferenceTarget::Single(child_id) => Ok(*child_id),
+                ReferenceTarget::Union(_, _) | ReferenceTarget::Values(_) => {
+                    Err(SbroadError::UnexpectedNumberOfValues(
+                        "Reference expected to point exactly a single relational node".into(),
                     ))
                 }
-                Some(targets) => match (targets.first(), targets.get(1)) {
-                    (Some(target_index), None) => {
-                        if let Some(child_id) = children.get(*target_index) {
-                            return Ok(*child_id);
-                        }
-                        // When we dispatch IR to the storage, we truncate the
-                        // subtree below the Motion node. So, the references in
-                        // the Motion's output row are broken. We treat them in
-                        // a special way: we return the Motion node itself. Be
-                        // aware of the circular references in the tree!
-                        if let Relational::Motion { .. } = rel {
-                            return Ok(*referred_rel_id);
-                        }
-                        return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                            "Relational node {rel:?} does not have a child on index {target_index}"
-                        )));
-                    }
-                    _ => {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
-                            "Reference expected to point exactly a single relational node".into(),
-                        ))
-                    }
-                },
-            }
+            };
         }
         Err(SbroadError::Invalid(Entity::Expression, None))
     }
@@ -1726,24 +1683,10 @@ impl Plan {
         rel_nodes: &mut HashSet<NodeId, RandomState>,
     ) -> Result<(), SbroadError> {
         let reference = self.get_expression_node(ref_id)?;
-        if let Expression::Reference(Reference {
-            targets, parent, ..
-        }) = reference
-        {
-            let referred_rel_id = parent.ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Node,
-                    format_smolstr!("that is Reference ({ref_id}) parent"),
-                )
-            })?;
-            let rel = self.get_relation_node(referred_rel_id)?;
-            let children = rel.children();
-            if let Some(positions) = targets {
-                for pos in positions {
-                    if let Some(child) = children.get(*pos) {
-                        rel_nodes.insert(*child);
-                    }
-                }
+        if let Expression::Reference(Reference { target, .. }) = reference {
+            rel_nodes.reserve(target.len());
+            for target_id in target.iter() {
+                rel_nodes.insert(*target_id);
             }
         }
         Ok(())

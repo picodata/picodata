@@ -278,9 +278,6 @@ fn subtree_next<'plan>(
                         // for selection filter or a join condition, we need to check whether
                         // the reference points to an **additional** sub-query and then traverse
                         // into it. Otherwise, stop traversal.
-                        let Ok(parent_id) = expr.get_parent() else {
-                            return None;
-                        };
                         if let Ok(rel_id) = iter
                             .get_plan()
                             .get_relational_from_reference_node(iter.get_current())
@@ -289,10 +286,9 @@ fn subtree_next<'plan>(
                                 Ok(rel_node)
                                     if rel_node.is_subquery_or_cte() || rel_node.is_motion() =>
                                 {
-                                    let is_additional_child = iter
-                                        .get_plan()
-                                        .is_additional_child_of_rel(parent_id, rel_id)
-                                        .expect(
+                                    // TODO(#2008): how to check it better
+                                    let is_additional_child =
+                                        iter.get_plan().is_additional_child(rel_id).expect(
                                             "Relational node failed to check additional child.",
                                         );
                                     if is_additional_child {
