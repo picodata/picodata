@@ -1538,9 +1538,9 @@ fn front_sql_aggregates() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(("count_1"::unsigned))::unsigned + sum(("count_2"::unsigned))::unsigned -> "col_1")
-        group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_2"::unsigned -> "count_2", "count_1"::unsigned -> "count_1")
+        group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1", "count_2"::unsigned -> "count_2")
             motion [policy: full]
-                projection ("t"."b"::unsigned -> "gr_expr_1", count(("t"."b"::unsigned))::unsigned -> "count_2", count(("t"."a"::unsigned))::unsigned -> "count_1")
+                projection ("t"."b"::unsigned -> "gr_expr_1", count(("t"."a"::unsigned))::unsigned -> "count_1", count(("t"."b"::unsigned))::unsigned -> "count_2")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
@@ -1583,7 +1583,7 @@ fn front_sql_avg_aggregate() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal -> "col_1", avg(distinct ("gr_expr_1"::decimal::double))::decimal -> "col_2", (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) * (sum(("avg_1"::decimal::double))::decimal / sum(("avg_2"::decimal::double))::decimal) -> "col_3")
         motion [policy: full]
-            projection ("t"."b"::unsigned -> "gr_expr_1", count(("t"."b"::unsigned))::unsigned -> "avg_2", sum(("t"."b"::unsigned))::decimal -> "avg_1")
+            projection ("t"."b"::unsigned -> "gr_expr_1", sum(("t"."b"::unsigned))::decimal -> "avg_1", count(("t"."b"::unsigned))::unsigned -> "avg_2")
                 group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                     scan "t"
     execution options:
@@ -1773,9 +1773,9 @@ fn front_sql_aggregates_with_subexpressions() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "b", sum(("count_1"::unsigned))::unsigned -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
-        group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_1"::unsigned -> "count_1", "count_2"::unsigned -> "count_2")
+        group by ("gr_expr_1"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "count_2"::unsigned -> "count_2", "count_1"::unsigned -> "count_1")
             motion [policy: full]
-                projection ("t"."b"::unsigned -> "gr_expr_1", count((("t"."a"::unsigned * "t"."b"::unsigned) + 1::unsigned))::unsigned -> "count_1", count((TRIM("t"."a"::unsigned::text)))::unsigned -> "count_2")
+                projection ("t"."b"::unsigned -> "gr_expr_1", count((TRIM("t"."a"::unsigned::text)))::unsigned -> "count_2", count((("t"."a"::unsigned * "t"."b"::unsigned) + 1::unsigned))::unsigned -> "count_1")
                     group by ("t"."b"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:
@@ -2290,7 +2290,7 @@ fn front_sql_except_single_right() {
         motion [policy: segment([ref("col_1"), ref("col_2")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
                 motion [policy: full]
-                    projection (count(("t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1", count(("t"."b"::unsigned))::unsigned -> "count_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2311,7 +2311,7 @@ fn front_sql_except_single_right() {
         motion [policy: segment([ref("col_2"), ref("col_1")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
                 motion [policy: full]
-                    projection (count(("t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1", count(("t"."b"::unsigned))::unsigned -> "count_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2332,7 +2332,7 @@ fn front_sql_except_single_left() {
         motion [policy: segment([ref("col_1"), ref("col_2")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
                 motion [policy: full]
-                    projection (count(("t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1", count(("t"."b"::unsigned))::unsigned -> "count_2")
                         scan "t"
         projection ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b")
             scan "t"
@@ -2355,12 +2355,12 @@ fn front_sql_except_single_both() {
         motion [policy: segment([ref("col_1")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("count_2"::unsigned))::unsigned -> "col_2")
                 motion [policy: full]
-                    projection (count(("t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1", count(("t"."b"::unsigned))::unsigned -> "count_2")
                         scan "t"
         motion [policy: segment([ref("col_1")])]
             projection (sum(("sum_1"::decimal))::decimal -> "col_1", sum(("sum_2"::decimal))::decimal -> "col_2")
                 motion [policy: full]
-                    projection (sum(("t"."b"::unsigned))::decimal -> "sum_2", sum(("t"."a"::unsigned))::decimal -> "sum_1")
+                    projection (sum(("t"."a"::unsigned))::decimal -> "sum_1", sum(("t"."b"::unsigned))::decimal -> "sum_2")
                         scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -2417,9 +2417,9 @@ fn front_sql_groupby_expression3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::unsigned -> "col_1", ("gr_expr_2"::unsigned * sum(("sum_1"::decimal))::decimal) / sum(("count_2"::unsigned))::unsigned -> "col_2")
-        group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "count_2"::unsigned -> "count_2", "sum_1"::decimal -> "sum_1")
+        group by ("gr_expr_1"::unsigned, "gr_expr_2"::unsigned) output: ("gr_expr_1"::unsigned -> "gr_expr_1", "gr_expr_2"::unsigned -> "gr_expr_2", "sum_1"::decimal -> "sum_1", "count_2"::unsigned -> "count_2")
             motion [policy: full]
-                projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1", "t"."c"::unsigned * "t"."d"::unsigned -> "gr_expr_2", count(("t"."a"::unsigned * "t"."b"::unsigned))::unsigned -> "count_2", sum(("t"."c"::unsigned * "t"."d"::unsigned))::decimal -> "sum_1")
+                projection ("t"."a"::unsigned + "t"."b"::unsigned -> "gr_expr_1", "t"."c"::unsigned * "t"."d"::unsigned -> "gr_expr_2", sum(("t"."c"::unsigned * "t"."d"::unsigned))::decimal -> "sum_1", count(("t"."a"::unsigned * "t"."b"::unsigned))::unsigned -> "count_2")
                     group by ("t"."a"::unsigned + "t"."b"::unsigned, "t"."c"::unsigned * "t"."d"::unsigned) output: ("t"."a"::unsigned -> "a", "t"."b"::unsigned -> "b", "t"."c"::unsigned -> "c", "t"."d"::unsigned -> "d", "t"."bucket_id"::unsigned -> "bucket_id")
                         scan "t"
     execution options:

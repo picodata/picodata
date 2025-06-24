@@ -102,7 +102,7 @@ fn equality_propagation5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS unsigned)) and ("t"."c" = CAST($2 AS unsigned))) and ("t"."a" = CAST($3 AS unsigned))) and ("t"."b" = CAST($4 AS unsigned))) and ("t"."d" = "t"."b")) and ("t"."b" = "t"."c")) and ("t"."c" = "t"."a")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS unsigned)) and ("t"."c" = CAST($2 AS unsigned))) and ("t"."a" = CAST($3 AS unsigned))) and ("t"."b" = CAST($4 AS unsigned))) and ("t"."d" = "t"."c")) and ("t"."c" = "t"."b")) and ("t"."b" = "t"."a")"#
     );
 }
 

@@ -18,31 +18,26 @@ fn simple_select() {
 			[id: 032] expression: Alias [name = identification_number]
 				Child:
 				[id: 096] expression: Reference
-					Parent: 164
 					Position: 0
 					Column type: integer
 			[id: 132] expression: Alias [name = product_code]
 				Child:
 				[id: 196] expression: Reference
-					Parent: 164
 					Position: 1
 					Column type: string
 			[id: 232] expression: Alias [name = product_units]
 				Child:
 				[id: 296] expression: Reference
-					Parent: 164
 					Position: 2
 					Column type: boolean
 			[id: 332] expression: Alias [name = sys_op]
 				Child:
 				[id: 396] expression: Reference
-					Parent: 164
 					Position: 3
 					Column type: unsigned
 			[id: 432] expression: Alias [name = bucket_id]
 				Child:
 				[id: 496] expression: Reference
-					Parent: 164
 					Position: 4
 					Column type: unsigned
 	---------------------------------------------
@@ -57,8 +52,7 @@ fn simple_select() {
 				[id: 596] expression: Reference
 					Alias: product_code
 					Referenced table name (or alias): hash_testing
-					Parent: 364
-					target_id: 0
+					target_id: 164
 					Position: 1
 					Column type: string
 	---------------------------------------------
@@ -85,31 +79,26 @@ fn simple_join() {
     		[id: 032] expression: Alias [name = id]
     			Child:
     			[id: 096] expression: Reference
-    				Parent: 164
     				Position: 0
     				Column type: unsigned
     		[id: 132] expression: Alias [name = sysFrom]
     			Child:
     			[id: 196] expression: Reference
-    				Parent: 164
     				Position: 1
     				Column type: unsigned
     		[id: 232] expression: Alias [name = FIRST_NAME]
     			Child:
     			[id: 296] expression: Reference
-    				Parent: 164
     				Position: 2
     				Column type: string
     		[id: 332] expression: Alias [name = sys_op]
     			Child:
     			[id: 396] expression: Reference
-    				Parent: 164
     				Position: 3
     				Column type: unsigned
     		[id: 432] expression: Alias [name = bucket_id]
     			Child:
     			[id: 496] expression: Reference
-    				Parent: 164
     				Position: 4
     				Column type: unsigned
     ---------------------------------------------
@@ -124,8 +113,7 @@ fn simple_join() {
     			[id: 596] expression: Reference
     				Alias: id
     				Referenced table name (or alias): test_space
-    				Parent: 364
-    				target_id: 0
+    				target_id: 164
     				Position: 0
     				Column type: unsigned
     ---------------------------------------------
@@ -141,8 +129,7 @@ fn simple_join() {
     			[id: 696] expression: Reference
     				Alias: id
     				Referenced table name (or alias): test_space
-    				Parent: 564
-    				target_id: 0
+    				target_id: 364
     				Position: 0
     				Column type: unsigned
     ---------------------------------------------
@@ -155,31 +142,26 @@ fn simple_join() {
     		[id: 732] expression: Alias [name = identification_number]
     			Child:
     			[id: 796] expression: Reference
-    				Parent: 764
     				Position: 0
     				Column type: integer
     		[id: 832] expression: Alias [name = product_code]
     			Child:
     			[id: 896] expression: Reference
-    				Parent: 764
     				Position: 1
     				Column type: string
     		[id: 932] expression: Alias [name = product_units]
     			Child:
     			[id: 996] expression: Reference
-    				Parent: 764
     				Position: 2
     				Column type: boolean
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
     			[id: 1096] expression: Reference
-    				Parent: 764
     				Position: 3
     				Column type: unsigned
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
     			[id: 1196] expression: Reference
-    				Parent: 764
     				Position: 4
     				Column type: unsigned
     ---------------------------------------------
@@ -194,8 +176,7 @@ fn simple_join() {
     			[id: 1296] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				Parent: 964
-    				target_id: 0
+    				target_id: 764
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -211,8 +192,7 @@ fn simple_join() {
     			[id: 1396] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				Parent: 1164
-    				target_id: 0
+    				target_id: 964
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -227,8 +207,7 @@ fn simple_join() {
     			[id: 1996] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				Parent: 0136
-    				target_id: 0
+    				target_id: 1164
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -240,16 +219,14 @@ fn simple_join() {
     			[id: 1496] expression: Reference
     				Alias: id
     				Referenced table name (or alias): t1
-    				Parent: 1364
-    				target_id: 0
+    				target_id: 564
     				Position: 0
     				Column type: unsigned
     			Right child
     			[id: 1596] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				Parent: 1364
-    				target_id: 1
+    				target_id: 0136
     				Position: 0
     				Column type: integer
     	Children:
@@ -262,8 +239,7 @@ fn simple_join() {
     			[id: 1696] expression: Reference
     				Alias: id
     				Referenced table name (or alias): t1
-    				Parent: 1364
-    				target_id: 0
+    				target_id: 564
     				Position: 0
     				Column type: unsigned
     		[id: 1632] expression: Alias [name = identification_number]
@@ -271,8 +247,7 @@ fn simple_join() {
     			[id: 1796] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				Parent: 1364
-    				target_id: 1
+    				target_id: 0136
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -287,8 +262,7 @@ fn simple_join() {
     			[id: 1896] expression: Reference
     				Alias: id
     				Referenced table name (or alias): t1
-    				Parent: 1564
-    				target_id: 0
+    				target_id: 1364
     				Position: 0
     				Column type: unsigned
     ---------------------------------------------
@@ -323,31 +297,26 @@ fn simple_join_subtree() {
     		[id: 732] expression: Alias [name = identification_number]
     			Child:
     			[id: 796] expression: Reference
-    				Parent: 764
     				Position: 0
     				Column type: integer
     		[id: 832] expression: Alias [name = product_code]
     			Child:
     			[id: 896] expression: Reference
-    				Parent: 764
     				Position: 1
     				Column type: string
     		[id: 932] expression: Alias [name = product_units]
     			Child:
     			[id: 996] expression: Reference
-    				Parent: 764
     				Position: 2
     				Column type: boolean
     		[id: 1032] expression: Alias [name = sys_op]
     			Child:
     			[id: 1096] expression: Reference
-    				Parent: 764
     				Position: 3
     				Column type: unsigned
     		[id: 1132] expression: Alias [name = bucket_id]
     			Child:
     			[id: 1196] expression: Reference
-    				Parent: 764
     				Position: 4
     				Column type: unsigned
     ---------------------------------------------
@@ -362,8 +331,7 @@ fn simple_join_subtree() {
     			[id: 1296] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				Parent: 964
-    				target_id: 0
+    				target_id: 764
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -379,8 +347,7 @@ fn simple_join_subtree() {
     			[id: 1396] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): hash_testing
-    				Parent: 1164
-    				target_id: 0
+    				target_id: 964
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -395,8 +362,7 @@ fn simple_join_subtree() {
     			[id: 1996] expression: Reference
     				Alias: identification_number
     				Referenced table name (or alias): t2
-    				Parent: 0136
-    				target_id: 0
+    				target_id: 1164
     				Position: 0
     				Column type: integer
     ---------------------------------------------
@@ -421,31 +387,26 @@ fn simple_aggregation_with_group_by() {
 		[id: 032] expression: Alias [name = identification_number]
 			Child:
 			[id: 096] expression: Reference
-				Parent: 164
 				Position: 0
 				Column type: integer
 		[id: 132] expression: Alias [name = product_code]
 			Child:
 			[id: 196] expression: Reference
-				Parent: 164
 				Position: 1
 				Column type: string
 		[id: 232] expression: Alias [name = product_units]
 			Child:
 			[id: 296] expression: Reference
-				Parent: 164
 				Position: 2
 				Column type: boolean
 		[id: 332] expression: Alias [name = sys_op]
 			Child:
 			[id: 396] expression: Reference
-				Parent: 164
 				Position: 3
 				Column type: unsigned
 		[id: 432] expression: Alias [name = bucket_id]
 			Child:
 			[id: 496] expression: Reference
-				Parent: 164
 				Position: 4
 				Column type: unsigned
 ---------------------------------------------
@@ -455,8 +416,7 @@ fn simple_aggregation_with_group_by() {
 		[id: 596] expression: Reference
 			Alias: product_code
 			Referenced table name (or alias): hash_testing
-			Parent: 364
-			target_id: 0
+			target_id: 164
 			Position: 1
 			Column type: string
 	Children:
@@ -468,8 +428,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 696] expression: Reference
 				Alias: identification_number
 				Referenced table name (or alias): hash_testing
-				Parent: 364
-				target_id: 0
+				target_id: 164
 				Position: 0
 				Column type: integer
 		[id: 632] expression: Alias [name = product_code]
@@ -477,8 +436,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 796] expression: Reference
 				Alias: product_code
 				Referenced table name (or alias): hash_testing
-				Parent: 364
-				target_id: 0
+				target_id: 164
 				Position: 1
 				Column type: string
 		[id: 732] expression: Alias [name = product_units]
@@ -486,8 +444,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 896] expression: Reference
 				Alias: product_units
 				Referenced table name (or alias): hash_testing
-				Parent: 364
-				target_id: 0
+				target_id: 164
 				Position: 2
 				Column type: boolean
 		[id: 832] expression: Alias [name = sys_op]
@@ -495,8 +452,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 996] expression: Reference
 				Alias: sys_op
 				Referenced table name (or alias): hash_testing
-				Parent: 364
-				target_id: 0
+				target_id: 164
 				Position: 3
 				Column type: unsigned
 		[id: 932] expression: Alias [name = bucket_id]
@@ -504,8 +460,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 1096] expression: Reference
 				Alias: bucket_id
 				Referenced table name (or alias): hash_testing
-				Parent: 364
-				target_id: 0
+				target_id: 164
 				Position: 4
 				Column type: unsigned
 ---------------------------------------------
@@ -520,8 +475,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 1296] expression: Reference
 				Alias: product_code
 				Referenced table name (or alias): hash_testing
-				Parent: 764
-				target_id: 0
+				target_id: 364
 				Position: 1
 				Column type: string
 ---------------------------------------------
@@ -536,8 +490,7 @@ fn simple_aggregation_with_group_by() {
 			[id: 1696] expression: Reference
 				Alias: gr_expr_1
 				Referenced table name (or alias): hash_testing
-				Parent: 0136
-				target_id: 0
+				target_id: 764
 				Position: 0
 				Column type: string
 ---------------------------------------------
@@ -546,8 +499,7 @@ fn simple_aggregation_with_group_by() {
 	Gr_cols:
 		[id: 1396] expression: Reference
 			Alias: gr_expr_1
-			Parent: 964
-			target_id: 0
+			target_id: 0136
 			Position: 0
 			Column type: string
 	Children:
@@ -558,8 +510,7 @@ fn simple_aggregation_with_group_by() {
 			Child:
 			[id: 1496] expression: Reference
 				Alias: gr_expr_1
-				Parent: 964
-				target_id: 0
+				target_id: 0136
 				Position: 0
 				Column type: string
 ---------------------------------------------
@@ -573,8 +524,7 @@ fn simple_aggregation_with_group_by() {
 			Child:
 			[id: 1596] expression: Reference
 				Alias: gr_expr_1
-				Parent: 564
-				target_id: 0
+				target_id: 964
 				Position: 0
 				Column type: string
 ---------------------------------------------
