@@ -2837,7 +2837,7 @@ dependencies = [
  "postgres-types",
  "pretty_assertions",
  "prometheus",
- "protobuf 3.7.2",
+ "protobuf",
  "quote 1.0.40",
  "raft",
  "rand 0.8.5",
@@ -3110,24 +3110,18 @@ dependencies = [
 
 [[package]]
 name = "prometheus"
-version = "0.13.4"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+checksum = "3ca5326d8d0b950a9acd87e6a3f94745394f62e4dae1b1ee22b2bc0c394af43a"
 dependencies = [
  "cfg-if 1.0.1",
  "fnv",
  "lazy_static",
  "memchr",
  "parking_lot",
- "protobuf 2.28.0",
- "thiserror 1.0.69",
+ "protobuf",
+ "thiserror 2.0.12",
 ]
-
-[[package]]
-name = "protobuf"
-version = "2.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "protobuf"
@@ -3149,7 +3143,7 @@ checksum = "5d3976825c0014bbd2f3b34f0001876604fe87e0c86cd8fa54251530f1544ace"
 dependencies = [
  "anyhow",
  "once_cell",
- "protobuf 3.7.2",
+ "protobuf",
  "protobuf-parse",
  "regex",
  "tempfile",
@@ -3165,7 +3159,7 @@ dependencies = [
  "anyhow",
  "indexmap 2.9.0",
  "log",
- "protobuf 3.7.2",
+ "protobuf",
  "protobuf-support",
  "tempfile",
  "thiserror 1.0.69",
@@ -3248,7 +3242,7 @@ source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#0f
 dependencies = [
  "fxhash",
  "getset",
- "protobuf 3.7.2",
+ "protobuf",
  "raft-proto",
  "rand 0.8.5",
  "slog",
@@ -3263,7 +3257,7 @@ name = "raft-proto"
 version = "0.7.0"
 source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#0fb3d649b5bec13c4a2711aa4c243483dbf50cb8"
 dependencies = [
- "protobuf 3.7.2",
+ "protobuf",
  "protobuf-codegen",
 ]
 

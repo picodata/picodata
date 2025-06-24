@@ -199,16 +199,18 @@ pub fn observe_rpc_request_duration(proc_name: &str, duration_ms: f64) {
 pub fn record_cas_ops_total(cas_ops: &Op) {
     let operations = get_op_type_and_table(cas_ops);
 
-    for (op_type, table) in operations.iter() {
-        CAS_RECORDS_TOTAL.with_label_values(&[op_type, table]).inc();
+    for (op_type, table) in operations {
+        CAS_RECORDS_TOTAL
+            .with_label_values(&[op_type, &table])
+            .inc();
     }
 }
 
 pub fn record_cas_errors_total(cas_ops: &Op) {
     let operations = get_op_type_and_table(cas_ops);
 
-    for (op_type, table) in operations.iter() {
-        CAS_ERRORS_TOTAL.with_label_values(&[op_type, table]).inc();
+    for (op_type, table) in operations {
+        CAS_ERRORS_TOTAL.with_label_values(&[op_type, &table]).inc();
     }
 }
 
