@@ -335,6 +335,97 @@ picodata run --config storage-1.yml
 picodata run --config storage-2.yml
 ```
 
+## Управление плагинами {: #plugin_management }
+
+### Предварительные действия {: #prerequisites }
+
+Плагины в Picodata могут работать как во всем кластере, так и в отдельных
+[тирах]. Для запуска и работы плагина все инстансы тира должны быть запущены с
+параметром [`share_dir`] в файле конфигурации.
+
+??? example "Пример файла конфигурации с указанием директории плагинов"
+    ```yaml
+    cluster:
+      name: my_cluster
+      shredding: False
+
+      tier:
+        default:
+          replication_factor: 3
+
+    instance:
+      instance_dir: './i1'
+      name: 'i1'
+      tier: 'default'
+      share_dir: extra/plugins
+      peer: [ 127.0.0.1:3301 ]
+
+      iproto_listen: '0.0.0.0:3301'
+      iproto_advertise: '127.0.0.1:3301'
+      http_listen: '0.0.0.0:8081'
+      pg:
+        listen: '0.0.0.0:4327'
+        advertise: '127.0.0.1:4327'
+
+      memtx:
+        memory: 64M
+    ```
+
+Для каждого инстанса в указанной директории должны
+находиться файлы плагина, организованные в определенную иерархическую
+структуру, например:
+
+```
+share_dir
+└── weather_cache                 # название плагина
+    └── 0.1.0                     # версия плагина
+        ├── libweather_cache.so   # разделяемая библиотека плагина
+        └── manifest.yaml         # манифест плагина
+```
+
+Плагины для Picodata поставляются сразу с правильной структурой файлов и
+директорий: достаточно распаковать архив с плагином в `share_dir`.
+
+См. также:
+
+- [Пробный запуск плагина](create_plugin.md#plugin_test_run)
+
+Если работа плагина требует объявления переменных или установки
+адресов/портов, то их нужно указать индивидуально для каждого инстанса.
+Если инстансы кластера/тира запускаются в одном пространстве имен (например,
+на одном хосте), то эти параметры должны отличаться между собой ([пример]).
+
+[тирах]: ../overview/glossary.md#tier
+[`share_dir`]: ../reference/config.md#instance_share_dir
+[пример]: ../plugins/radix.md#prerequisites
+
+
+### Включение плагина {: #plugin_enable }
+
+В общем случае, процедура включения плагина в кластере (или отдельном
+тире) сводится к выполнению нескольких типовых действий от лица
+администратора СУБД:
+
+```sql title="Создание плагина"
+CREATE PLUGIN <plugin_name> <plugin_version>;
+```
+
+```sql title="Добавление сервиса плагина к тиру"
+ALTER PLUGIN <plugin_name> <plugin_version> ADD SERVICE <service_name> TO TIER <tier_name>;
+```
+
+```sql title="Запуск миграции плагина"
+ALTER PLUGIN <plugin_name> MIGRATE TO <plugin_version>;
+```
+
+```sql title="Включение плагина"
+ALTER PLUGIN <plugin_name> <plugin_version> ENABLE;
+```
+
+См. также:
+
+- [Управление плагинами](plugins.md)
+
 ## Зоны доступности (failure domains) {: #failure_domains }
 
 ### Использование зон доступности {: #setting_failure_domain}
