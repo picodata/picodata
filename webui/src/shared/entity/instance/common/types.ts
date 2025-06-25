@@ -7,6 +7,7 @@ export type ServerInstanceType = {
   failureDomain: Record<string, string>;
   version: string;
   isLeader: boolean;
+  pgAddress: string;
   binaryAddress: string;
   httpAddress?: string;
 };

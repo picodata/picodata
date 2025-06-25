@@ -6,7 +6,6 @@ import {
 
 export type ServerTierType = {
   name: string;
-  pgAddress: string;
   services: string[];
   replicasetCount: number;
   instanceCount: number;
