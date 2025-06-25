@@ -30,7 +30,7 @@ ENV PATH=/root/.cargo/bin:${PATH}
 
 RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \
     chmod 755 nsolid_setup_deb.sh && \
-    ./nsolid_setup_deb.sh 21 && \
+    ./nsolid_setup_deb.sh 22 && \
     apt install -y nodejs && \
     corepack enable
 

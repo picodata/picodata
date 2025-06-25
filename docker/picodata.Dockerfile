@@ -8,7 +8,7 @@ ENV PATH=/root/.cargo/bin:${PATH}
 
 RUN dnf -y install dnf-plugins-core epel-release \
     && dnf config-manager --set-enabled powertools \
-    && dnf module -y enable nodejs:20 \
+    && dnf module -y enable nodejs:22 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
     && dnf install -y --nobest \
@@ -21,7 +21,7 @@ WORKDIR /build/picodata
 COPY . .
 RUN cargo build --locked --release --features webui
 
-FROM rockylinux:8
+FROM almalinux:8
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 
