@@ -6,7 +6,6 @@
   min-width: 1440px;
   display: flex;
   flex-direction: column;
-  background-color: $colorBgLight;
 }
 
 .layoutMain {
@@ -20,5 +19,4 @@
 .bodyWrapper {
   display: flex;
   flex-grow: 1;
-  overflow: hidden;
 }

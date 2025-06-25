@@ -1,0 +1,13 @@
+@import 'styles/vars';
+
+.title {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 30px;
+  margin-bottom: 16px;
+  color: $colorTextOrange;
+}
+
+.prefix {
+  user-select: none;
+}
