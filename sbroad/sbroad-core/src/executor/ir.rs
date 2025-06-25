@@ -14,8 +14,8 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
     GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136, NodeId, NodeOwned,
-    OrderBy, Over, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte, ScanRelation,
-    Selection, Trim, UnaryExpr, Update, ValuesRow, Window,
+    OrderBy, Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte,
+    ScanRelation, Selection, Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -653,9 +653,13 @@ impl ExecutionPlan {
                         RelOwned::ValuesRow(ValuesRow { data, .. }) => {
                             *data = subtree_map.get_id(*data);
                         }
+                        RelOwned::Projection(Projection { windows, .. }) => {
+                            for window in windows {
+                                *window = subtree_map.get_id(*window);
+                            }
+                        }
                         RelOwned::Except { .. }
                         | RelOwned::Intersect { .. }
-                        | RelOwned::Projection { .. }
                         | RelOwned::SelectWithoutScan { .. }
                         | RelOwned::ScanSubQuery { .. }
                         | RelOwned::ScanCte { .. }

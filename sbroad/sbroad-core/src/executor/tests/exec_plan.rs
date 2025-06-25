@@ -8,12 +8,13 @@ use std::rc::Rc;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::collection;
 use crate::executor::engine::mock::{ReplicasetDispatchInfo, RouterRuntimeMock};
-use crate::ir::node::{ArenaType, Node136};
-use crate::ir::relation::Type;
+use crate::ir::node::{ArenaType, Node, Node136, Over, Projection, ReferenceTarget, Window};
+use crate::ir::operator::{OrderByElement, OrderByEntity};
+use crate::ir::relation::{DerivedType, Type};
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
-use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::Snapshot;
-use crate::ir::Slice;
+use crate::ir::{expression, Slice};
 
 use super::*;
 
@@ -1407,4 +1408,166 @@ fn subtree_hash7() {
             Value::String("abc".to_string()),
         ],
     );
+}
+
+#[test]
+fn take_subtree_projection_windows_transfer() {
+    // Description: When take_tree was called, window references in the projection were not
+    // transferred to the new tree.
+    //
+    // If the projection's window field pointed to a window with index 0, and we added a motion
+    // with index 1, then when we took the tree, the tree was traversed in post-order. This
+    // caused the motion to receive index 0 and the window to receive index 1. The test
+    // verifies that the window reference is now properly transferred.
+    let mut plan = Plan::default();
+
+    let a_value = plan.nodes.add_const(1.into());
+    let a = plan.nodes.add_alias("a", a_value).unwrap();
+    let b_value = plan.nodes.add_const(2.into());
+    let b = plan.nodes.add_alias("b", b_value).unwrap();
+    let scan_relation = plan.add_select_without_scan(&[a, b]).unwrap();
+    let window = {
+        let ordering = [0, 1]
+            .iter()
+            .map(|n| {
+                let new_ref = plan.nodes.add_ref(
+                    ReferenceTarget::Single(scan_relation),
+                    *n,
+                    DerivedType::new(Type::Integer),
+                    None,
+                );
+                OrderByElement {
+                    entity: OrderByEntity::Expression { expr_id: new_ref },
+                    order_type: None,
+                }
+            })
+            .collect();
+        let window = Window {
+            name: None,
+            partition: None,
+            ordering: Some(ordering),
+            frame: None,
+        };
+        plan.nodes.push(window.into())
+    };
+    let stable_func_id = {
+        let r#ref = plan.nodes.add_ref(
+            ReferenceTarget::Single(scan_relation),
+            1,
+            DerivedType::new(Type::Integer),
+            None,
+        );
+        let cast = plan
+            .add_cast(r#ref, expression::cast::Type::String)
+            .unwrap();
+        let r#const = plan.nodes.add_const(".".into());
+        plan.add_builtin_window_function("group_concat".into(), vec![cast, r#const])
+            .unwrap()
+    };
+    let over = {
+        let over = Over {
+            stable_func: stable_func_id,
+            window,
+            filter: None,
+            ref_by_name: false,
+        };
+
+        plan.nodes.push(over.into())
+    };
+    let col_1 = plan.nodes.add_alias("col_1", over).unwrap();
+
+    let projection = {
+        let output = plan.nodes.add_row(vec![col_1], None);
+
+        let projection = Projection {
+            children: vec![scan_relation],
+            windows: vec![window],
+            output,
+            is_distinct: false,
+        };
+
+        plan.nodes.push(projection.into())
+    };
+
+    plan.set_top(projection).unwrap();
+
+    // apply motion
+
+    let motion = {
+        let motion_refs = [0, 1]
+            .iter()
+            .map(|n| {
+                let new_ref = plan.nodes.add_ref(
+                    ReferenceTarget::Single(scan_relation),
+                    *n,
+                    DerivedType::new(Type::Integer),
+                    None,
+                );
+                plan.nodes
+                    .add_alias(format!("col_{n}").as_str(), new_ref)
+                    .unwrap()
+            })
+            .collect();
+        let motion_output = plan.nodes.add_row(motion_refs, None);
+
+        let motion = Motion {
+            alias: None,
+            child: Some(scan_relation),
+            policy: MotionPolicy::Full,
+            program: Program::new(vec![MotionOpcode::ReshardIfNeeded]),
+            output: motion_output,
+        };
+        plan.add_relational(motion.into()).unwrap()
+    };
+
+    plan.change_child(projection, scan_relation, motion)
+        .unwrap();
+    plan.replace_target_in_relational(projection, scan_relation, motion)
+        .unwrap();
+
+    {
+        let Node::Relational(Relational::Projection(Projection { windows, .. })) =
+            plan.get_node(projection).unwrap()
+        else {
+            panic!("should be projection")
+        };
+
+        let Some(window) = windows.get(0) else {
+            panic!("should be at least one window")
+        };
+
+        assert_eq!(
+            *window,
+            NodeId {
+                offset: 0,
+                arena_type: ArenaType::Arena136
+            }
+        );
+    }
+
+    let mut execution_plan: ExecutionPlan = plan.into();
+
+    let new_plan = execution_plan.take_subtree(projection).unwrap();
+
+    let new_top = new_plan.get_ir_plan().get_top().unwrap();
+
+    {
+        let Node::Relational(Relational::Projection(Projection { windows, .. })) =
+            new_plan.get_ir_plan().get_node(new_top).unwrap()
+        else {
+            panic!("should be projection")
+        };
+
+        let Some(window) = windows.get(0) else {
+            panic!("should be at least one window")
+        };
+
+        assert_eq!(
+            *window,
+            NodeId {
+                offset: 1,
+                arena_type: ArenaType::Arena136
+            }
+        );
+    }
 }
