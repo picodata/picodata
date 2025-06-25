@@ -313,6 +313,37 @@ impl Cfg {
         Ok(res)
     }
 
+    pub fn for_instance_pre_join(
+        config: &PicodataConfig,
+        instance_uuid: String,
+    ) -> Result<Self, Error> {
+        let mut res = Self {
+            instance_uuid: Some(instance_uuid),
+
+            // As long as we are going to rebootstrap a little bit later,
+            // it is fine to skip initialization on our side. Anyway,
+            // Tarantool will still generate it, but we don't really care
+            // for now on what value would it be initialized by Tarantool.
+            replicaset_uuid: None,
+
+            // We don't expect any incoming connections because we will
+            // rebootstrap later.
+            listen: None,
+
+            // Even though we rebootstrap later, we need to persist data to Raft space.
+            read_only: false,
+
+            // This is temporary configuration, we don't really need replication,
+            // because we will rebootstrap a little bit later.
+            replication: Vec::new(),
+
+            ..Default::default()
+        };
+
+        res.set_core_parameters(config)?;
+        Ok(res)
+    }
+
     pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
         self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);

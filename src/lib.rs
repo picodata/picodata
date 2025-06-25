@@ -750,11 +750,17 @@ fn reapply_dynamic_parameters(storage: &Catalog, current_tier: &str) -> Result<(
 }
 
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
     StartDiscover,
     StartBoot,
-    StartJoin { leader_address: String },
+    StartPreJoin {
+        leader_address: String,
+        instance_uuid: Option<String>,
+    },
+    StartJoin {
+        join_response: rpc::join::Response,
+    },
 }
 
 /// Runs one of picodata's entry points.
@@ -780,10 +786,18 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
             start_boot(config)?;
         }
-        StartJoin { leader_address } => {
+        StartPreJoin {
+            leader_address,
+            instance_uuid,
+        } => {
             // Cleanup the instance directory with WALs from the previous StartDiscover run
             tarantool::rm_tarantool_files(config.instance.instance_dir())?;
-            start_join(config, leader_address)?;
+            next_entrypoint = start_pre_join(config, leader_address, instance_uuid)?;
+        }
+        StartJoin { ref join_response } => {
+            // Cleanup the instance directory with WALs from the previous StartJoin run
+            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
+            start_join(config, join_response)?;
         }
     }
 
@@ -796,6 +810,7 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
 ///
 /// - `start_discover`
 /// - `start_boot`
+/// - `start_pre_join`
 /// - `start_join`
 ///
 fn init_common(
@@ -1031,6 +1046,27 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
         } else {
             tlog!(Warning, "picodata storage is initialized but the raft node is not, instance likely previously terminated prematurely");
         }
+
+        let join_state = raft_storage.join_state()?;
+        if join_state.is_some() {
+            let uuid = raft_storage
+                .instance_uuid()?
+                .expect("instance uuid is always persisted with join_state on rebootstrap");
+
+            let role = discovery::wait_global();
+            match role {
+                discovery::Role::Leader { .. } => {
+                    unreachable!("we cannot be a leader when joining to the cluster after membership inconsistency");
+                }
+                discovery::Role::NonLeader { leader } => {
+                    let next_entrypoint = Entrypoint::StartPreJoin {
+                        leader_address: leader,
+                        instance_uuid: Some(uuid),
+                    };
+                    return Ok(Some(next_entrypoint));
+                }
+            }
+        }
     } else {
         // When going into the discovery procedure we don't need the whole storage
         // initialized but it's simpler to just call this instead of picking just
@@ -1054,8 +1090,9 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     let role = discovery::wait_global();
     let next_entrypoint = match role {
         discovery::Role::Leader { .. } => Entrypoint::StartBoot,
-        discovery::Role::NonLeader { leader } => Entrypoint::StartJoin {
+        discovery::Role::NonLeader { leader } => Entrypoint::StartPreJoin {
             leader_address: leader,
+            instance_uuid: None,
         },
     };
 
@@ -1141,7 +1178,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         raft_storage.persist_hard_state(&hs).unwrap();
         Ok(())
     })
-    .unwrap();
+    .expect("transactions should not fail as it introduces unrecoverable state");
 
     tlog!(Info, "cluster_uuid {}", cluster_uuid);
     tlog!(Info, "created cluster {}", config.cluster_name());
@@ -1166,11 +1203,65 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     Ok(())
 }
 
-fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
-    tlog!(Info, "joining cluster, peer address: {instance_address}");
+fn start_pre_join(
+    config: &PicodataConfig,
+    instance_address: String,
+    instance_uuid_opt: Option<String>,
+) -> Result<Option<Entrypoint>, Error> {
+    tlog!(
+        Info,
+        "joining cluster, peer address: {instance_address}, instance_uuid: {instance_uuid_opt:?}"
+    );
 
-    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
-    tlog!(Info, "generated instance uuid: {instance_uuid}");
+    let instance_uuid: String;
+    if let Some(uuid) = instance_uuid_opt {
+        // Instance uuid is already known from a previous attempt to join the
+        // cluster. This can happen if the instance unexpectedly exited before
+        // receiving and handling the response to proc_raft_join RPC. In this
+        // case we simply send another proc_raft_join RPC with the same
+        // instance_uuid and everything works correctly.
+        instance_uuid = uuid;
+    } else {
+        // This is this initial attempt to join the cluster as a new picodata
+        // instance. We need to generate a new instance_uuid and persist it to
+        // storage before sending the proc_raft_join RPC. This means that we
+        // need to initialize the storage. But there's a problem: when
+        // initializing we must also initialize the replicaset, but we don't
+        // know yet which replicaset this instance is going to be a part of,
+        // this decision is made in `proc_raft_join` on leader and we will only
+        // know the result when we get the response.
+        //
+        // The solution is: we bootstrap a throw-away temporary replicaset just
+        // so we can initialize storage and persist the instance_uuid. After
+        // that once we received the proc_raft_join response from leader and we
+        // know which replicaset to join we rebootstrap the storage and go
+        // directly to `start_post_join`.
+
+        assert!(!tarantool::is_box_configured());
+
+        // TODO: explain lua setup
+        luamod::setup();
+
+        let uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+        tlog!(Info, "generated instance uuid: {uuid}");
+
+        let tnt_cfg = tarantool::Cfg::for_instance_pre_join(config, uuid.clone())?;
+        // shredding=false because the Tarantool configuration is temporary
+        // and we will rebootstrap later, so no user data is persisted
+        init_common(config, &tnt_cfg, false)?;
+
+        let (_, raft_storage) = bootstrap_storage_on_master()?;
+        transaction(|| -> Result<(), TntError> {
+            raft_storage.persist_instance_uuid(&uuid)?;
+            raft_storage
+                .persist_join_state("prepare".to_owned())
+                .unwrap();
+            Ok(())
+        })
+        .expect("transactions should not fail as it introduces unrecoverable state");
+
+        instance_uuid = uuid;
+    };
 
     #[allow(unused_mut)]
     let mut version = info::PICODATA_VERSION.to_string();
@@ -1207,6 +1298,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         let res = fiber::block_on(f);
         match res {
             Ok(resp) => {
+                crate::error_injection!(exit "EXIT_AFTER_RPC_PROC_RAFT_JOIN");
                 break resp;
             }
             Err(timeout::Error::Expired) => {
@@ -1236,86 +1328,9 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         }
     };
 
-    luamod::setup();
-    assert!(!tarantool::is_box_configured());
-
-    let cfg = tarantool::Cfg::for_instance_join(config, &resp)?;
-
-    let is_master = !cfg.read_only;
-    init_common(config, &cfg, resp.shredding)?;
-
-    let (storage, raft_storage);
-    if is_master {
-        (storage, raft_storage) = bootstrap_storage_on_master()?;
-    } else {
-        // In case of read-only replica the storage is initialized by the master
-        // and this instance receives all the data via tarantool replication.
-        (storage, raft_storage) = get_initialized_storage()?
-            .expect("read-only replica should receive tarantool snapshot from master");
-    }
-
-    let raft_id = resp.instance.raft_id;
-    transaction(|| -> Result<(), TntError> {
-        storage.instances.put(&resp.instance).unwrap();
-        for traft::PeerAddress {
-            raft_id,
-            address,
-            connection_type,
-        } in resp.peer_addresses
-        {
-            storage
-                .peer_addresses
-                .put(raft_id, &address, &connection_type)
-                .unwrap();
-        }
-        raft_storage.persist_raft_id(raft_id).unwrap();
-        raft_storage
-            .persist_instance_name(&resp.instance.name)
-            .unwrap();
-        raft_storage
-            .persist_cluster_name(config.cluster_name())
-            .unwrap();
-        raft_storage
-            .persist_cluster_uuid(&resp.cluster_uuid)
-            .unwrap();
-        raft_storage.persist_tier(config.instance.tier()).unwrap();
-        Ok(())
-    })
-    .unwrap();
-
-    let cluster_uuid = raft_storage
-        .cluster_uuid()
-        .expect("storage should never fail");
-
-    tlog!(Info, "cluster_uuid {}", cluster_uuid);
-    tlog!(Info, "joined cluster {}", config.cluster_name());
-    tlog!(Info, "raft_id: {}", resp.instance.raft_id);
-    tlog!(Info, "instance name: {}", resp.instance.name);
-    tlog!(Info, "instance uuid: {}", resp.instance.uuid);
-    tlog!(Info, "replicaset name: {}", resp.instance.replicaset_name);
-    tlog!(Info, "replicaset uuid: {}", resp.instance.replicaset_uuid);
-    tlog!(Info, "tier name: {}", resp.instance.tier);
-
-    let instance_name = resp.instance.name;
-    postjoin(config, storage, raft_storage)?;
-    crate::audit!(
-        message: "local database created on `{instance_name}`",
-        title: "create_local_db",
-        severity: Low,
-        instance_name: %instance_name,
-        raft_id: %raft_id,
-        initiator: "admin",
-    );
-    crate::audit!(
-        message: "local database connected on `{instance_name}`",
-        title: "connect_local_db",
-        severity: Low,
-        instance_name: %instance_name,
-        raft_id: %raft_id,
-        initiator: "admin",
-    );
-
-    Ok(())
+    return Ok(Some(Entrypoint::StartJoin {
+        join_response: resp,
+    }));
 }
 
 fn postjoin(
@@ -1564,6 +1579,93 @@ fn postjoin(
     node.sentinel_loop.on_self_activate();
 
     Ok(())
+}
+
+fn start_join(
+    config: &PicodataConfig,
+    resp: &rpc::join::Response,
+) -> Result<Option<Entrypoint>, Error> {
+    luamod::setup();
+
+    let cfg = tarantool::Cfg::for_instance_join(config, resp)?;
+
+    let is_master = !cfg.read_only;
+    init_common(config, &cfg, resp.shredding)?;
+
+    let (storage, raft_storage) = if is_master {
+        bootstrap_storage_on_master()?
+    } else {
+        // In case of read-only replica the storage is initialized by the master
+        // and this instance receives all the data via tarantool replication.
+        get_initialized_storage()?
+            .expect("read-only replica should receive tarantool snapshot from master")
+    };
+
+    let raft_id = resp.instance.raft_id;
+    transaction(|| -> Result<(), TntError> {
+        storage.instances.put(&resp.instance).unwrap();
+        for traft::PeerAddress {
+            raft_id,
+            address,
+            connection_type,
+        } in &resp.peer_addresses
+        {
+            storage
+                .peer_addresses
+                .put(*raft_id, address, connection_type)
+                .unwrap();
+        }
+        raft_storage.persist_raft_id(raft_id).unwrap();
+        raft_storage
+            .persist_instance_name(&resp.instance.name)
+            .unwrap();
+        raft_storage
+            .persist_cluster_name(config.cluster_name())
+            .unwrap();
+        raft_storage
+            .persist_cluster_uuid(&resp.cluster_uuid)
+            .unwrap();
+        raft_storage.persist_tier(config.instance.tier()).unwrap();
+        raft_storage
+            .persist_join_state("confirm".to_owned())
+            .unwrap();
+        Ok(())
+    })
+    .expect("transactions should not fail as it introduces unrecoverable state");
+
+    let cluster_uuid = raft_storage
+        .cluster_uuid()
+        .expect("storage should never fail");
+
+    tlog!(Info, "cluster_uuid {}", cluster_uuid);
+    tlog!(Info, "joined cluster {}", config.cluster_name());
+    tlog!(Info, "raft_id: {}", resp.instance.raft_id);
+    tlog!(Info, "instance name: {}", resp.instance.name);
+    tlog!(Info, "instance uuid: {}", resp.instance.uuid);
+    tlog!(Info, "replicaset name: {}", resp.instance.replicaset_name);
+    tlog!(Info, "replicaset uuid: {}", resp.instance.replicaset_uuid);
+    tlog!(Info, "tier name: {}", resp.instance.tier);
+
+    let instance_name = resp.instance.name.clone();
+    postjoin(config, storage, raft_storage)?;
+    crate::audit!(
+        message: "local database created on `{instance_name}`",
+        title: "create_local_db",
+        severity: Low,
+        instance_name: %instance_name,
+        raft_id: %raft_id,
+        initiator: "admin",
+    );
+    crate::audit!(
+        message: "local database connected on `{instance_name}`",
+        title: "connect_local_db",
+        severity: Low,
+        instance_name: %instance_name,
+        raft_id: %raft_id,
+        initiator: "admin",
+    );
+
+    Ok(None)
 }
 
 /// Updates to tarantool-sys might bring incompatible changes.

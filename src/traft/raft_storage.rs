@@ -142,6 +142,12 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
+    pub fn instance_uuid(&self) -> tarantool::Result<Option<String>> {
+        let res = self.try_get_raft_state("instance_uuid")?;
+        Ok(res)
+    }
+
+    #[inline(always)]
     pub fn tier(&self) -> tarantool::Result<Option<String>> {
         let res = self.try_get_raft_state("tier")?;
         Ok(res)
@@ -259,6 +265,12 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
+    pub fn join_state(&self) -> tarantool::Result<Option<String>> {
+        let res = self.try_get_raft_state("join_state")?;
+        Ok(res)
+    }
+
+    #[inline(always)]
     pub fn conf_state(&self) -> tarantool::Result<raft::ConfState> {
         Ok(raft::ConfState {
             voters: self.voters()?,
@@ -335,6 +347,13 @@ impl RaftSpaceAccess {
     pub fn persist_instance_name(&self, instance_name: &InstanceName) -> tarantool::Result<()> {
         self.space_raft_state
             .insert(&("instance_name", instance_name))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_instance_uuid(&self, instance_uuid: &str) -> tarantool::Result<()> {
+        self.space_raft_state
+            .insert(&("instance_uuid", instance_uuid))?;
         Ok(())
     }
 
@@ -427,6 +446,12 @@ impl RaftSpaceAccess {
     fn persist_compacted_term(&self, compacted_term: RaftTerm) -> tarantool::Result<()> {
         self.space_raft_state
             .replace(&("compacted_term", compacted_term))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_join_state(&self, join_state: String) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("join_state", join_state))?;
         Ok(())
     }
 

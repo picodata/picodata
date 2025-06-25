@@ -651,3 +651,82 @@ def test_retry_join_on_blocked_proc_raft_join(cluster: Cluster):
     joining_instance.assert_raft_status("Follower", leader_id=leader.raft_id)
 
     assert count_instances_by_uuid(leader, joining_instance.uuid()) == 1
+
+
+def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
+    """
+    1) make a cluster of one instance
+    2) create follower candidate to be joined
+    3) initiate raft join procedure
+    4) after sending raft join from follower candidate, kill it before getting a response from leader
+    5) check if follower candidate's instance uuid was noticed by a leader
+    6) try to revive and rejoin killed follower candidate, but now successfully
+    """
+    leader_member_instance_name = "i_am_leader"
+    leader_member = cluster.add_instance(name=leader_member_instance_name, wait_online=True)
+
+    follower_candidate_instance_name = "i_am_candidate"
+    follower_candidate = cluster.add_instance(name=follower_candidate_instance_name, wait_online=False)
+
+    error_injection_prefix = "PICODATA_ERROR_INJECTION"
+    error_injection_value = "EXIT_AFTER_RPC_PROC_RAFT_JOIN"
+    error_injection = error_injection_prefix + "_" + error_injection_value
+
+    follower_candidate.env[error_injection] = "1"
+    follower_candidate.fail_to_start()
+
+    current_cluster_members = leader_member.sql(
+        """
+        SELECT
+            name
+        FROM
+            _pico_instance
+        ORDER BY
+            name
+        """,
+    )
+    assert current_cluster_members == sorted([[leader_member_instance_name], [follower_candidate_instance_name]])
+
+    leader_member_instance_uuid = leader_member.uuid()
+    instance_uuid_select_result = leader_member.sql(
+        """
+        SELECT
+            uuid
+        FROM
+            _pico_instance
+        WHERE
+            name=?
+        """,
+        follower_candidate_instance_name,
+    )
+    assert instance_uuid_select_result
+    follower_candidate_instance_uuid = instance_uuid_select_result[0][0]
+    assert follower_candidate_instance_uuid
+
+    del follower_candidate.env[error_injection]
+    follower_candidate.restart(kill=True)
+    follower_candidate.wait_online()
+
+    current_cluster_members = leader_member.sql(
+        """
+        SELECT
+            name, uuid
+        FROM
+            _pico_instance
+        ORDER BY
+            name
+        """,
+    )
+    assert current_cluster_members == sorted(
+        [
+            [leader_member_instance_name, leader_member_instance_uuid],
+            [follower_candidate_instance_name, follower_candidate_instance_uuid],
+        ]
+    )
+
+    current_joining_raft_state = follower_candidate.eval(
+        """
+        return box.space._raft_state:get("join_state").value
+        """
+    )
+    assert current_joining_raft_state == "confirm"

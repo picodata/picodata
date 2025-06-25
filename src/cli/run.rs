@@ -72,11 +72,12 @@ pub fn main(mut args: args::Run) -> ! {
         let next_entrypoint = start(config, entrypoint)?;
 
         if let Some(next_entrypoint) = &next_entrypoint {
-            debug_assert_ne!(next_entrypoint, &Entrypoint::StartDiscover);
-            // If picodata invocation starts with a --entrypoint-fd then it goes
-            // into start_boot or start_join, both of which end with a normal
-            // execution.
-            debug_assert!(input_entrypoint_pipe.is_none());
+            // Next entrypoint cannot be discovery, because initialization starts
+            // with discovery and is not passed afterwards anywhere. Also, no other
+            // entrypoints return next entrypoint as a discovery, because it is a
+            // logical error on bootstraping cluster members.
+            debug_assert!(!matches!(next_entrypoint, Entrypoint::StartDiscover));
+
             let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
             output_entrypoint_pipe = Some(pipe);
 
@@ -109,8 +110,21 @@ pub fn main(mut args: args::Run) -> ! {
             std::process::abort();
         }
 
-        let mut argv = copied_argv;
-        argv.push(format!("--entrypoint-fd={}", *fd).into());
+        // If we enter the PostJoin stage, it will be our second rebootstrap. As
+        // long as we don't prioritize the latest passed `--entrypoint-fd` over
+        // other ones, we must remove previous entrypoint arguments, otherwise
+        // we will panic with repeating arguments.
+        let mut argv: Vec<OsString> = copied_argv
+            .into_iter()
+            .filter(|predicate| {
+                let arg = predicate.to_str().unwrap();
+                !arg.starts_with("--entrypoint-fd=")
+            })
+            .collect();
+
+        // Append newest entrypoint file descriptor parameter to reboostrap from.
+        let new_entrypoint_fd_arg = format!("--entrypoint-fd={}", *fd).into();
+        argv.push(new_entrypoint_fd_arg);
 
         // Disable the destructor, so that the read half of the pipe is not closed yet
         std::mem::forget(fd);
