@@ -13,6 +13,7 @@ $leader-height: 16px;
   border-radius: 4px;
   box-shadow: $elevation1;
   position: relative;
+  overflow: hidden;
 }
 
 .content {
@@ -134,9 +135,9 @@ $leader-height: 16px;
 .leaderBlock {
   position: absolute;
   bottom: 0;
-  left: $leader-height;
-  height: $leader-height;
-  width: 64px;
+  left: 0;
+  width: $leader-height;
+  height: 100%;
   background-color: $colorNotificationSuccess;
   font-size: 10px;
   line-height: 16px;
@@ -146,6 +147,6 @@ $leader-height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform-origin: bottom left;
-  transform: rotate(-90deg);
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
 }
