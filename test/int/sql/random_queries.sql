@@ -520,3 +520,12 @@ create table t (a json primary key);
 -- ERROR:
 Sharding key column a is not of scalar type.
 
+-- TEST: next-index-id-invalidation
+-- SQL:
+DROP TABLE IF EXISTS t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT, c TEXT);
+CREATE INDEX ta on t (a);
+DROP TABLE t;
+CREATE TABLE t(a INT PRIMARY KEY, b INT, c TEXT);
+CREATE INDEX ta ON t (a);
+CREATE INDEX tb ON t (b);

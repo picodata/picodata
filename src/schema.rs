@@ -1876,7 +1876,7 @@ impl CreateIndexParams {
         let name_idx = sys_index
             .index_cached("name")
             .expect("_index should have an index by table_id and name");
-        let Some(space) = Space::find_cached(&self.space_name) else {
+        let Some(space) = Space::find(&self.space_name) else {
             return false;
         };
         let idx = name_idx
@@ -1896,7 +1896,7 @@ impl CreateIndexParams {
     }
 
     pub fn next_index_id(&self) -> traft::Result<IndexId> {
-        let Some(space) = Space::find_cached(&self.space_name) else {
+        let Some(space) = Space::find(&self.space_name) else {
             return Err(CreateIndexError::TableNotFound {
                 table_name: self.space_name.clone(),
             })?;
