@@ -4139,6 +4139,7 @@ mod cte;
 mod ddl;
 mod funcs;
 mod global;
+mod index;
 mod insert;
 mod join;
 mod like;

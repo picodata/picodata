@@ -182,7 +182,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable | CreateIndex | Dr
 
     CreateIndex = ${
         ^"create" ~ W ~ (Unique ~ W)? ~ ^"index" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~
-        ^"on" ~ W ~ (PublicSchema)? ~ Table ~ W ~ (IndexType ~ W)? ~ "(" ~ WO ~ Parts ~ WO ~ ")" ~
+        ^"on" ~ W ~ (PublicSchema)? ~ Table ~ WO ~ (IndexType ~ WO)? ~ "(" ~ WO ~ Parts ~ WO ~ ")" ~
         (W ~ IndexOptions)? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)?
     }
     Unique = { ^"unique" }
