@@ -75,7 +75,7 @@ $chevron-column-flex: 0.2;
 }
 
 .chevronColumn {
-  flex: 1 64px;
+  flex-basis: 64px;
   justify-content: center;
   padding: $column-item-vertical-padding calc($column-item-horizontal-padding * 2);
 }
