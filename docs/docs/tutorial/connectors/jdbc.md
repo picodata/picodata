@@ -47,6 +47,11 @@ JDBC-драйвер для Picodata использует протокол PGPROT
 качестве адреса для подключения следует использовать формат
 `jdbc:picodata://host:port/?user=sqluser,password=P@ssw0rd`.
 
+Полный список поддерживаемых возможностей приведен в документации API JDBC-драйвера:
+
+- [параметры PicodataProperty](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html)
+- [настройка источника данных PicodataClusterAwareDataSource](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/datasource/PicodataClusterAwareDataSource.html)
+
 ## Проверка работы {: #testing }
 
 Мы предоставляем [тестовое Java-приложение][example], которое создает и
