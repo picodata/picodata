@@ -57,8 +57,10 @@ export const NodesContent = () => {
             setFilterByValue={setFilterByValue}
           />
           <div className={styles.list}>
-            {groupedByTiers && Tiers(data?.tiers)}
-            {groupedByReplicasets && Replicasets(data?.replicasets)}
+            {groupedByTiers && <Tiers tiers={data?.tiers} />}
+            {groupedByReplicasets && (
+              <Replicasets replicasets={data?.replicasets} />
+            )}
             {groupedByInstances && (
               <Instances
                 instances={data?.instances}
@@ -73,7 +75,7 @@ export const NodesContent = () => {
   );
 };
 
-function Tiers(tiers?: TierType[]) {
+function Tiers({ tiers }: { tiers?: TierType[] }) {
   const sortedTiers = useSortedByString(
     tiers?.map((tier) => ({
       ...tier,
@@ -91,7 +93,7 @@ function Tiers(tiers?: TierType[]) {
   );
 }
 
-function Replicasets(replicasets?: ReplicasetType[]) {
+function Replicasets({ replicasets }: { replicasets?: ReplicasetType[] }) {
   const sortedRepicasets = useSortedByString(replicasets, (x) => x.name);
 
   return (
