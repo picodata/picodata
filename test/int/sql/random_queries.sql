@@ -513,3 +513,10 @@ select distinct b from t order by b;
 select distinct cast(avg(b) as int) from t group by a;
 -- EXPECTED:
 1, 2
+
+-- TEST: invalid-sharding-key
+-- SQL:
+create table t (a json primary key);
+-- ERROR:
+Sharding key column a is not of scalar type.
+

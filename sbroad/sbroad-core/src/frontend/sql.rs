@@ -967,6 +967,19 @@ fn parse_create_table(
     }
     // infer sharding key from primary key
     if shard_key.is_empty() && !is_global {
+        for pk_key in &pk_keys {
+            let sharding_column = columns.iter().find(|c| c.name == *pk_key).ok_or_else(|| {
+                SbroadError::Other(format_smolstr!("Primary key column {pk_key} not found."))
+            })?;
+            if !sharding_column.data_type.is_scalar() {
+                return Err(SbroadError::Invalid(
+                    Entity::Column,
+                    Some(format_smolstr!(
+                        "Sharding key column {pk_key} is not of scalar type."
+                    )),
+                ));
+            }
+        }
         shard_key.clone_from(&pk_keys);
     }
 
