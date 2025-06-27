@@ -227,7 +227,6 @@ impl ExecutionPlan {
         plan_id: &str,
         vtables_meta: Option<&VTablesMeta>,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let vtable_engine = self.vtable_engine()?;
         let capacity = self.get_vtables().map_or(1, HashMap::len);
         // In our data structures, we store plan identifiers without
         // quotes in normalized form, but tarantool local sql has
@@ -598,8 +597,7 @@ impl ExecutionPlan {
                         )
                     })?;
                     // BETWEEN can refer to the same virtual table multiple times.
-                    let table_guard =
-                        create_table(self, plan_id, *motion_id, &vtable_engine, vtables_meta)?;
+                    let table_guard = create_table(self, plan_id, *motion_id, vtables_meta)?;
                     guard.push(table_guard);
                 }
             }

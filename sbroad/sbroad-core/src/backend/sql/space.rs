@@ -4,7 +4,6 @@ use crate::errors::SbroadError;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::NodeId;
-use crate::ir::relation::SpaceEngine;
 
 #[cfg(not(feature = "mock"))]
 mod prod_imports {
@@ -30,7 +29,6 @@ mod prod_imports {
         exec_plan: &ExecutionPlan,
         plan_id: &str,
         motion_id: NodeId,
-        engine: &SpaceEngine,
         vtables_meta: Option<&VTablesMeta>,
     ) -> Result<SmolStr, SbroadError> {
         let cleanup = |space: Space, name: &str| match with_su(ADMIN_ID, || space.drop()) {
@@ -70,15 +68,10 @@ mod prod_imports {
 
         let pk_name = pk_name(plan_id, motion_id);
         fields.push(Field::unsigned(pk_name.clone()));
-        // Vinyl engine does not support temporary spaces.
-        let space_type = match engine {
-            SpaceEngine::Memtx => SpaceType::Temporary,
-            SpaceEngine::Vinyl => SpaceType::Normal,
-        };
         let options = SpaceCreateOptions {
             format: Some(fields),
-            engine: engine.into(),
-            space_type,
+            engine: SpaceEngine::Memtx.into(),
+            space_type: SpaceType::Temporary,
             if_not_exists: false,
             ..Default::default()
         };
@@ -143,12 +136,11 @@ pub fn create_table(
     exec_plan: &ExecutionPlan,
     plan_id: &str,
     motion_id: NodeId,
-    engine: &SpaceEngine,
     #[allow(unused_variables)] vtables_meta: Option<&VTablesMeta>,
 ) -> Result<TableGuard, SbroadError> {
     #[cfg(not(feature = "mock"))]
     {
-        let name = create_tmp_space_impl(exec_plan, plan_id, motion_id, engine, vtables_meta)?;
+        let name = create_tmp_space_impl(exec_plan, plan_id, motion_id, vtables_meta)?;
         Ok(TableGuard {
             name,
             do_truncate: true,
@@ -158,7 +150,7 @@ pub fn create_table(
     {
         use crate::executor::engine::helpers::table_name;
 
-        let (_, _) = (exec_plan, engine);
+        let _ = exec_plan;
         let name = table_name(plan_id, motion_id);
         Ok(TableGuard {
             name,

@@ -312,3 +312,69 @@ def test_global_dml_benchmark_5_instances_batching(cluster: Cluster):
     # but we don't want this test to be flaky due to CI machine being overloaded
     rows_per_second = do_test_global_dml_benchmark(cluster, instance_count=5, total_row_count=20000, batch_size=100)
     assert rows_per_second > 500
+
+
+def test_vinyl_tmp_table(cluster: Cluster):
+    # Check insertion into temporary table for vinyl engine
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="r1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r1")
+
+    ddl = i1.sql(
+        """
+        create table v1 (a int primary key, b int) using vinyl distributed by (a);
+"""
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        create table v2 (a int primary key, b int) using vinyl distributed by (a);
+"""
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into v1 values (1, 1), (3, 3), (5, 5), (7, 7), (9, 9);
+"""
+    )
+    assert dml["row_count"] == 5
+
+    dml = i1.sql(
+        """
+        insert into v2 values (2, 2), (4, 4), (6, 6), (8, 8), (10, 10);
+"""
+    )
+    assert dml["row_count"] == 5
+
+    ro_replica = i2
+    if not ro_replica.eval("return box.cfg.read_only"):
+        ro_replica = i1
+        # i1 became rw replica between i2.eval('return box.cfg.read_only') and i1.eval('return box.cfg.read_only')
+        assert ro_replica.eval("return box.cfg.read_only")
+
+    dml = ro_replica.sql(
+        """
+        insert into v1 (a, b) select * from v2;
+"""
+    )
+
+    assert dml["row_count"] == 5
+
+    def check_table_row_count(table_name, expected_count):
+        dql = ro_replica.sql(
+            f"""
+            select * from {table_name};
+"""
+        )
+        assert len(dql) == expected_count
+
+    check_table_row_count("v1", 10)
+
+    dml = ro_replica.sql(
+        """
+        insert into v1 select a + 10, b + 10 from v1;
+"""
+    )
+
+    check_table_row_count("v1", 20)
