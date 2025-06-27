@@ -42,6 +42,12 @@ with the `YY.MINOR.MICRO` scheme.
   does not include the actual schema upgrade procedure, so the cluster will
   still have a schema of the older version of picodata.
 
+- Preserve parameter types provided by client.
+  Previously, we'd completely replace parameter types array with the one
+  derived by the Sbroad's type system. As a result, sometimes the type
+  could implicitly change from VARCHAR to TEXT, causing various problems
+  to client drivers.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.

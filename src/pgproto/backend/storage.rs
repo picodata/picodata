@@ -356,26 +356,36 @@ pub(super) fn param_oid_to_derived_type(oid: Oid) -> PgResult<DerivedType> {
     Ok(DerivedType::new(sbroad_type))
 }
 
-// The only reason we need `client_params_oids` is to translate integer type from sbroad back
-// into original type from PostgreSQL (int2 vs int4 vs int8).
-pub fn collect_param_oids(plan: &Plan, client_params_oids: &[Oid]) -> Vec<Oid> {
-    let inferred_types = plan.collect_parameter_types();
-    let mut oids: Vec<_> = inferred_types
+/// Note that `client_types` may be incomplete or even empty,
+/// as postgres protocol forces the backend to implement type inference.
+/// Take the original client params and extended them with the inferred ones.
+pub fn collect_param_oids(plan: &Plan, client_types: &[Oid]) -> Vec<Oid> {
+    #[allow(non_snake_case)]
+    let UNKNOWN_OID = PgType::UNKNOWN.oid();
+    const BAD_OID: u32 = 0;
+    debug_assert_ne!(UNKNOWN_OID, BAD_OID);
+
+    let inferred_types = plan
+        .collect_parameter_types()
+        .into_iter()
+        .map(|ty| sbroad_type_to_pg(&ty).oid());
+
+    let client_types = client_types
         .iter()
-        .map(|ty| sbroad_type_to_pg(ty).oid())
-        .collect();
+        .copied()
+        // NOTE: client_types might be shorter!
+        .chain(std::iter::repeat(UNKNOWN_OID));
 
-    // Sbroad does not support PgType::INT2 and PgType::INT4 types, so we map them to
-    // Sborad::Integer (8-byte integer), which is then mapped back to PgType::INT8, potentially
-    // losing the original type information. Therefore, we need to restore the original types.
-    for (n, oid) in client_params_oids.iter().enumerate() {
-        if *oid == PgType::INT8.oid() || *oid == PgType::INT4.oid() || *oid == PgType::INT2.oid() {
-            assert!(inferred_types[n] == SbroadType::Integer);
-            oids[n] = *oid;
-        }
-    }
-
-    oids
+    inferred_types
+        .zip(client_types)
+        .map(|(inferred_oid, client_oid)| {
+            if [BAD_OID, UNKNOWN_OID].contains(&client_oid) {
+                inferred_oid
+            } else {
+                client_oid
+            }
+        })
+        .collect()
 }
 
 /// Get rows from DQL or EXPLAIN query execution result tuple.
