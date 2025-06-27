@@ -1,4 +1,4 @@
-from conftest import Postgres
+from conftest import Postgres, PgClient
 import psycopg
 from psycopg.types.json import Jsonb, Json
 from decimal import Decimal
@@ -529,3 +529,168 @@ def test_gl_1125_f64_cannot_be_represented_as_int8(postgres: Postgres):
 
     rows = conn.run("select id from clients;")
     assert sorted(rows) == [[x] for x in range(nrows)]
+
+
+def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
+    # How to check: `select 'varchar'::regtype::oid;`
+    varchar_oid = 1043
+    unknown_oid = 705
+    text_oid = 25
+
+    id = "100"
+    pg_client.parse(id, "select $1", [varchar_oid])
+    pg_client.bind(id, id, ["hello"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [varchar_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == ["hello"]
+
+    id = "200"
+    pg_client.parse(id, "select $1", [text_oid])
+    pg_client.bind(id, id, ["hello"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [text_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == ["hello"]
+
+    id = "300"
+    pg_client.parse(id, "select $1, $2", [text_oid, varchar_oid])
+    pg_client.bind(id, id, ["hello", "world"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [text_oid, varchar_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == ["hello", "world"]
+
+    id = "400"
+    pg_client.parse(id, "select $1, $2", [0, varchar_oid])
+    pg_client.bind(id, id, ["hello", "world"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [text_oid, varchar_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == ["hello", "world"]
+
+    id = "500"
+    pg_client.parse(id, "select $1, $2", [varchar_oid, unknown_oid])
+    pg_client.bind(id, id, ["hello", "world"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [varchar_oid, text_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == ["hello", "world"]
+
+    id = "600"
+    pg_client.parse(id, "select $1 = $2", [varchar_oid, unknown_oid])
+    pg_client.bind(id, id, ["foobar", "foobar"], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [varchar_oid, text_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == [True]
+
+
+def test_gl_1730_via_bindings_int_2_4_8(pg_client: PgClient):
+    # How to check: `select 'int8'::regtype::oid;`
+    int2_oid = 21
+    int4_oid = 23
+    int8_oid = 20
+
+    # we should default to int8
+    # (at least until we implement int2 & int4 in picodata)
+    id = "100"
+    pg_client.parse(id, "select $1 = 100", [])
+    pg_client.bind(id, id, [100], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [int8_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == [True]
+
+    # basic test for int2
+    id = "200"
+    pg_client.parse(id, "select $1", [int2_oid])
+    pg_client.bind(id, id, [2], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [int2_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == [2]
+
+    # basic test for int4
+    id = "300"
+    pg_client.parse(id, "select $1", [int4_oid])
+    pg_client.bind(id, id, [4], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [int4_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == [4]
+
+    # basic test for int8
+    id = "400"
+    pg_client.parse(id, "select $1", [int8_oid])
+    pg_client.bind(id, id, [8], [])
+    desc = pg_client.describe_stmt(id)
+    assert desc["param_oids"] == [int8_oid]
+    res = pg_client.execute(id)["rows"][0]
+    assert res == [8]
+
+
+# XXX: see the comment for Int2 below.
+class Varchar(str):
+    # psycopg.types.string.StrBinaryDumperVarchar
+    class Dumper(psycopg.adapt.Dumper):
+        oid = psycopg.adapters.types["varchar"].oid
+        format = psycopg.pq.Format.BINARY
+
+        def dump(self, obj):
+            return obj.encode("utf-8")
+
+    @classmethod
+    def register_for(cls, conn):
+        conn.adapters.register_dumper(cls, cls.Dumper)
+
+
+def test_gl_1730_via_psycopg_varchar(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+    Varchar.register_for(conn)
+
+    cur = conn.execute("select %b", [Varchar("foobar")])
+    assert sorted(cur.fetchall()) == [("foobar",)]
+
+
+# psycopg 3 will choose int's binary representation according to
+# its value, meaning it may send it as int2, int4 or int8.
+# However, we don't want to gamble. The test should be futureproof.
+#
+# See https://www.psycopg.org/psycopg3/docs/basic/adapt.html
+class Int2(int):
+    # psycopg.types.numeric.Int2BinaryDumper
+    class Dumper(psycopg.adapt.Dumper):
+        oid = psycopg.adapters.types["int2"].oid
+        format = psycopg.pq.Format.BINARY
+
+        def dump(self, obj):
+            return obj.to_bytes(2, byteorder="big")
+
+    @classmethod
+    def register_for(cls, conn):
+        conn.adapters.register_dumper(cls, cls.Dumper)
+
+
+def test_gl_1730_via_psycopg_int2(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+    Int2.register_for(conn)
+
+    cur = conn.execute("select %b", [Int2(128)])
+    assert sorted(cur.fetchall()) == [(128,)]

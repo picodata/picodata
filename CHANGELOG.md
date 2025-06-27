@@ -20,6 +20,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed incorrect validation check for max number of users.
 
+- Preserve parameter types provided by client.
+  Previously, we'd completely replace parameter types array with the one
+  derived by the Sbroad's type system. As a result, sometimes the type
+  could implicitly change from VARCHAR to TEXT, causing various problems
+  to client drivers.
+
+### Lua API
+
 ## [25.2.2] - 2025-06-25
 
 ### Features
