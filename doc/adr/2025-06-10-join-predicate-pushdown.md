@@ -834,3 +834,4 @@ _OLAP_ системы (DuckDB, Snowflake) же напротив поддержи
 7. [Algorithms for Acyclic Database Schemes](https://www.researchgate.net/publication/200034379_Algorithms_for_Acyclic_Database_Schemes)
 8. [Optimized Predicate Transfer: Efficient Pre-Filtering on Multi-Join Queries](https://openreview.net/forum?id=GiAayFBIkE)
 9. [Datafusion: коммит добавления filter-_pushdown_ для `JOIN`](https://github.com/apache/datafusion/commit/a1c979b3a8e8bc55f299d2ca7dbd14e9ec6367ce)
+10. [Building Query Compilers](https://pi3.informatik.uni-mannheim.de/~moer/querycompiler.pdf)
