@@ -292,10 +292,10 @@ impl Backend {
     /// Execute a simple query. Handler for a Query message.
     ///
     /// First, it closes an unnamed portal and statement, just like PG does when gets a Query
-    /// messsage. After that the extended pipeline is executed on unnamed portal and statement:
+    /// message. After that the extended pipeline is executed on unnamed portal and statement:
     /// parse + bind + describe + execute and result is returned.
     ///
-    /// Note that it closes the uunamed portal and statement even in case of a failure.
+    /// Note that it closes the unnamed portal and statement even in case of a failure.
     pub fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
         let do_simple_query = || {
             let close_unnamed = || {
@@ -427,7 +427,7 @@ impl Backend {
 
     /// Handler for an Execute message.
     ///
-    /// Take a portal from the storage and retrive at most max_rows rows from it. In case of
+    /// Take a portal from the storage and retrieve at most max_rows rows from it. In case of
     /// non-dql queries max_rows is ignored and result with no rows is returned.
     pub fn execute(&self, portal: Option<String>, max_rows: i64) -> PgResult<ExecuteResult> {
         let name = portal.unwrap_or_default();

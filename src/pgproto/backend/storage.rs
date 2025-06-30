@@ -208,7 +208,7 @@ impl PortalStorage {
     }
 }
 
-// TODO: those shoudn't be global variables; move them to some context (backend?).
+// TODO: those shouldn't be global variables; move them to some context (backend?).
 thread_local! {
     pub static PG_STATEMENTS: RefCell<StatementStorage> = RefCell::new(StatementStorage::new());
     pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
