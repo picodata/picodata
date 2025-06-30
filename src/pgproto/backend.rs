@@ -46,13 +46,14 @@ fn decode_parameters(
     params: Vec<Option<Bytes>>,
     param_oids: &[Oid],
     formats: &[FieldFormat],
+    statement: &str,
 ) -> PgResult<Vec<SbroadValue>> {
     if params.len() != param_oids.len() {
         return Err(PgError::ProtocolViolation(format_smolstr!(
-            "got {} parameters, {} oids and {} formats",
+            "bind message supplies {} parameters, but prepared statement \"{}\" requires {}",
             params.len(),
+            statement,
             param_oids.len(),
-            formats.len()
         )));
     }
 
@@ -411,7 +412,7 @@ impl Backend {
         let describe = describe_statement(self.client_id, &statement)?;
         let params_format = prepare_encoding_format(params_format, params.len())?;
         let result_format = prepare_encoding_format(result_format, describe.ncolumns())?;
-        let params = decode_parameters(params, &describe.param_oids, &params_format)?;
+        let params = decode_parameters(params, &describe.param_oids, &params_format, &statement)?;
         let default_options = self.params.execution_options();
 
         bind(

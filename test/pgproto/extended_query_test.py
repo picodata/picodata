@@ -5,6 +5,7 @@ from conftest import Postgres
 # We use psycopg when we want the client to send parameters types explicitly.
 import psycopg
 from psycopg.pq import ExecStatus
+from psycopg import RawCursor
 
 # We use pg8000 when we want to prepare statements explicitly or when we don't want the client
 # to send parameters types, which is useful when we test parameter types inference.
@@ -344,3 +345,46 @@ def test_drop_schema(postgres: Postgres):
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
     assert cur.statusmessage == "DROP SCHEMA"
+
+
+def test_wrong_number_of_params(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+
+    dsn = f"host={postgres.host} port={postgres.port} user={user} password={password}"
+    with psycopg.connect(dsn) as conn:
+        with RawCursor(conn) as cur:
+            # correct params
+            cur.execute("SELECT $1, $2", [4, 5], prepare=True)
+            assert cur.fetchone() == (4, 5)
+
+            # insufficient params
+            with pytest.raises(
+                psycopg.errors.ProtocolViolation,
+                match="bind message supplies 0 parameters, but prepared statement .* requires 1",
+            ):
+                cur.execute("SELECT $1", [], prepare=True)
+
+            # insufficient params
+            with pytest.raises(
+                psycopg.errors.ProtocolViolation,
+                match="bind message supplies 2 parameters, but prepared statement .* requires 4",
+            ):
+                cur.execute("SELECT $1, $2, $3, $4", ["Hello", "4"], prepare=True)
+
+            # excessive params
+            with pytest.raises(
+                psycopg.errors.ProtocolViolation,
+                match="bind message supplies 1 parameters, but prepared statement .* requires 0",
+            ):
+                cur.execute("SELECT 1", ["hello"], prepare=True)
+
+            # excessive params
+            with pytest.raises(
+                psycopg.errors.ProtocolViolation,
+                match="bind message supplies 3 parameters, but prepared statement .* requires 2",
+            ):
+                cur.execute("SELECT $1, $2", [2, 1, 4], prepare=True)
