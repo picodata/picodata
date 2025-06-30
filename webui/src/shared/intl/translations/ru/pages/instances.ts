@@ -109,10 +109,13 @@ export const instances: TPages["instances"] = {
         label: "Текущее состояние",
       },
       binaryAddress: {
-        label: "RPC-адрес",
+        label: "IPROTO",
       },
       httpAddress: {
-        label: "HTTP-адрес",
+        label: "HTTP",
+      },
+      pgAddress: {
+        label: "PG",
       },
       version: {
         label: "Версия",

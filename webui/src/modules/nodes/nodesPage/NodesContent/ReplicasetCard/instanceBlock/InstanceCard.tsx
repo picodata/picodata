@@ -1,13 +1,14 @@
 import cn from "classnames";
-import React, { FC } from "react";
+import React, { FC, ReactNode } from "react";
 
 import { InstanceType } from "shared/entity/instance";
 import { useTranslation } from "shared/intl";
 import { NetworkState } from "shared/components/NetworkState/NetworkState";
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
+import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
-import { IpAddressLabel } from "./IpAddressLabel/IpAddressLabel";
+import { AddressBlock } from "./AddressBlock/AddressBlock";
 
 import styles from "./InstanceCard.module.scss";
 
@@ -92,37 +93,31 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
                 <NetworkState state={instance.currentState} />
               </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.binaryAddressColumn)}>
-              <div className={styles.label}>
-                {instanceTranslations.binaryAddress.label}
-              </div>
-              <IpAddressLabel
-                className={cn(styles.value, styles.hiddenValue)}
-                address={instance.binaryAddress}
+            <div className={styles.endColumn}>
+              <AddressBlock
+                addresses={[
+                  {
+                    title: instanceTranslations.binaryAddress.label,
+                    value: instance.binaryAddress,
+                  },
+                  {
+                    title: instanceTranslations.httpAddress.label,
+                    value: instance.httpAddress ?? "",
+                  },
+                  {
+                    title: instanceTranslations.pgAddress.label,
+                    value: instance.pgAddress,
+                  },
+                ]}
               />
-            </div>
-            <div className={cn(styles.infoColumn, styles.httpAddressColumn)}>
-              <div className={styles.label}>
-                {instanceTranslations.httpAddress.label}
-              </div>
-              <IpAddressLabel
-                className={cn(styles.value, styles.hiddenValue)}
-                address={instance.httpAddress ?? ""}
+              <VersionBlock
+                className={cn(styles.infoColumn, styles.hiddenValue)}
+                label={instanceTranslations.version.label}
+                version={instance.version}
+                noData={
+                  <InfoNoData text={translation.components.infoNoData.label} />
+                }
               />
-            </div>
-            <div
-              className={cn(
-                styles.infoColumn,
-                styles.versionColumn,
-                styles.hiddenValue
-              )}
-            >
-              <div className={styles.label}>
-                {instanceTranslations.version.label}
-              </div>
-              <div className={cn(styles.value, styles.hiddenValue)}>
-                <HiddenWrapper>{instance.version}</HiddenWrapper>
-              </div>
             </div>
           </div>
         </div>
@@ -136,3 +131,23 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
     );
   }
 );
+
+function VersionBlock(props: {
+  label: string;
+  version: string;
+  noData?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn(props.className, styles.versionColumn)}>
+      <div className={styles.label}>{props.label}</div>
+      {props.version ? (
+        <div className={cn(styles.value, styles.hiddenValue)}>
+          <HiddenWrapper>{props.version}</HiddenWrapper>
+        </div>
+      ) : (
+        props.noData
+      )}
+    </div>
+  );
+}

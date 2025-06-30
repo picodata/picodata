@@ -107,10 +107,13 @@ export const instances = {
         label: "Current state",
       },
       binaryAddress: {
-        label: "Binary address",
+        label: "IPROTO",
       },
       httpAddress: {
-        label: "HTTP address",
+        label: "HTTP",
+      },
+      pgAddress: {
+        label: "PG",
       },
       version: {
         label: "Version",

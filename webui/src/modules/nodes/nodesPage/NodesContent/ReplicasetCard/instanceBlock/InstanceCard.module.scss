@@ -2,14 +2,12 @@
 @import 'styles/mixins';
 
 $column-item-vertical-padding: 4px;
-$column-item-horizontal-padding: 8px;
+$column-item-horizontal-padding: 0;
 
 $leader-height: 16px;
 
 .cardWrapper {
   display: flex;
-  flex-direction: column;
-  padding: 8px 16px;
   border-radius: 4px;
   box-shadow: $elevation1;
   position: relative;
@@ -19,13 +17,18 @@ $leader-height: 16px;
 .content {
   display: flex;
   justify-content: space-between;
-  column-gap: 10px;
+  column-gap: 8px;
+  flex-grow: 1;
+  align-items: center;
+  min-height: 60px;
+  padding: 0 16px;
 }
 
 .infoColumn {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 8px 0;
 }
 
 .hiddenColumn {
@@ -35,34 +38,38 @@ $leader-height: 16px;
 .nameColumn {
   align-items: flex-start;
   justify-content: center;
+  min-width: 10px;
+  max-width: fit-content;
   flex: 1 143px;
+
+  .label {
+    text-align: left;
+  }
 }
 
 .failureDomainColumn {
   flex: 1 198px;
+  min-width: 86px;
+  max-width: fit-content;
   overflow: hidden;
 }
 
 .targetStateColumn {
-  flex: 1 118px;
+  min-width: 95px;
 }
 
 .currentStateColumn {
-  flex: 1 118px;
-}
-
-.binaryAddressColumn {
-  flex: 1 135px;
-  overflow: hidden;
-}
-
-.httpAddressColumn {
-  flex: 1 135px;
-  overflow: hidden;
+  min-width: 95px;
 }
 
 .versionColumn {
-  flex: 1 157px;
+  flex: 1 60px;
+}
+
+.endColumn {
+  display: flex;
+  column-gap: 16px;
+  overflow: hidden;
 }
 
 .label {
@@ -70,6 +77,10 @@ $leader-height: 16px;
   font-style: normal;
   font-weight: 400;
   line-height: 16px;
+  text-align: center;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-height: 24px;
   color: $colorTextBlack;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
 }
@@ -86,6 +97,7 @@ $leader-height: 16px;
 
 .hiddenValue {
   width: 100%;
+  display: grid;
 
   @include ellipsis;
 }
@@ -116,28 +128,14 @@ $leader-height: 16px;
   &:hover {
     background-color: darken($colorLightGrey, 3);
   }
-
-  .content {
-    padding: 8px 16px 8px calc(16px + $leader-height);
-    column-gap: 10px;
-  }
 }
 
 .secondary {
   background-color: $colorBgWhite;
-
-  .content {
-    padding: 8px 16px 8px calc(16px + $leader-height);
-    column-gap: 10px;
-  }
 }
 
 .leaderBlock {
-  position: absolute;
-  bottom: 0;
-  left: 0;
   width: $leader-height;
-  height: 100%;
   background-color: $colorNotificationSuccess;
   font-size: 10px;
   line-height: 16px;
