@@ -868,6 +868,25 @@ fn init_common(
     Ok(())
 }
 
+/// Initialize a fresh picodata instance storage snapshot. Returns storage
+/// access wrapper structs for the newly initialized storage.
+///
+/// This function is called in the following scenarios:
+/// - when a new instance is entering a "discovery phase" it calls this function
+///   to initialize the storage because it needs some minimum amount of
+///   functionality for the discovery algorithm
+/// - when a new instance is bootstrapping a new picodata cluster it calls this
+///   function to initialize the storage
+/// - when a new instance is joining a cluster as the first replica in a new
+///   replicaset it calls this function to initialize the storage
+///
+/// The storage initialization includes the following:
+/// - creating `_pico_*` system tables which are necessary for other parts of
+///   the system to function
+/// - creating `pico_service` system user account, which is used for all
+///   internal RPC communication between cluster instances
+/// - creating `.proc_*` stored procedure definitions which are use for all
+///   internal RPC communication between cluster instances
 fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     assert!(!storage::storage_is_initialized());
 
@@ -897,6 +916,27 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     Ok((storage.clone(), raft_storage))
 }
 
+/// Get the storage access wrapper structs for the already initialized picodata
+/// storage.
+///
+/// This function is called in the following scenarios:
+/// - an instance which has already joined the cluster is restarting after being
+///   shut down temporarily calls this function because the storage is restored
+///   from disk from a previous execution
+/// - a new instance is joining a cluster as a read-only replica in an
+///   existing replicaset calls this function because it receives the schema
+///   definitions from the master replica via tarantool replication
+/// - a new instance is in the "discovery" phase and has been shut down
+///   prematurely calls this function to restore the state and proceed with the
+///   discovery algorithm
+///
+/// Note that this function is also called when a newer version of picodata
+/// is restarting on older snapshots (with older `system_catalog_version`). In
+/// this case this function **does not** upgrade the system schema (no new
+/// tables, stored procedures, etc. are created). Upgrading the schema is the
+/// responsibility of the [governor].
+///
+/// **No storage modifications are performed by this function.**
 fn get_initialized_storage() -> Result<Option<(Catalog, RaftSpaceAccess)>> {
     // Make sure picodata system table definitions are created in `_space`, `_index`, etc.
     if !storage::storage_is_initialized() {
