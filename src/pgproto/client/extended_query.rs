@@ -153,7 +153,7 @@ pub fn process_close_message(
     Ok(())
 }
 
-pub fn process_sync_mesage(backend: &Backend) {
+pub fn process_sync_message(backend: &Backend) {
     // By default, PG runs in autocommit mode, which means that every statement is ran inside its own transaction.
     // In simple query statement means the query inside a Query message.
     // In extended query statement means everything before a Sync message.

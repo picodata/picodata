@@ -182,7 +182,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             FeMessage::Sync(_) => {
                 tlog!(Debug, "syncing");
                 self.loop_state = MessageLoopState::ReadyForQuery;
-                extended_query::process_sync_mesage(&self.backend);
+                extended_query::process_sync_message(&self.backend);
             }
             FeMessage::Terminate(_) => {
                 tlog!(Info, "terminating the session");
@@ -210,7 +210,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             loop {
                 if let FeMessage::Sync(_) = self.stream.read_message()? {
                     self.loop_state = MessageLoopState::ReadyForQuery;
-                    extended_query::process_sync_mesage(&self.backend);
+                    extended_query::process_sync_message(&self.backend);
                     break;
                 }
             }
