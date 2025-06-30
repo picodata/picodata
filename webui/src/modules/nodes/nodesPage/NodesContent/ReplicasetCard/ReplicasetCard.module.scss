@@ -52,7 +52,7 @@ $column-item-horizontal-padding: 8px;
 }
 
 .chevronColumn {
-  flex: 1 64px;
+  flex-basis: 64px;
   justify-content: center;
 }
 
