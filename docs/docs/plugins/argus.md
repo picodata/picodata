@@ -29,18 +29,14 @@ Picodata, для которой перед этим была настроена 
 
 ```
 └── argus
-    └── 1.0.0
+    └── 2.1.2
         ├── libargus.so
-        ├── manifest.yaml
-        └── migrations
+        └── manifest.yaml
 ```
 
 Основная логика плагина обеспечивается разделяемой библиотекой
 `libargus.so`. Исходная конфигурация плагина задается в файле манифеста
-(`manifest.yaml`). Директория `migrations` зарезервирована для файлов
-[миграций].
-
-[миграций]: ../overview/glossary.md#migration
+(`manifest.yaml`).
 
 ## Предварительные настройки в Picodata {: #configure_picodata }
 
@@ -79,10 +75,13 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN argus 1.0.0;
-ALTER PLUGIN argus 1.0.0 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN argus 1.0.0 ENABLE;
+CREATE PLUGIN argus 2.1.2;
+ALTER PLUGIN argus 2.1.2 ADD SERVICE argus TO TIER default;
+ALTER PLUGIN argus 2.1.2 ENABLE;
 ```
+
+!!! note "Примечание"
+	  После запуска плагин Argus будет работать только на мастер-репликах кластераs
 
 Для диагностики работы плагина обратитесь к [отладочному журналу] инстанса Picodata.
 
@@ -139,7 +138,7 @@ all:
 
     plugins:
       argus:
-        path: "argus_1.0.0.tar.gz"
+        path: "argus_2.1.2.tar.gz"
         tiers:
           - default
         config: "argus-config.yml"
