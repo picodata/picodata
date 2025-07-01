@@ -49,7 +49,7 @@ JDBC-драйвер для Picodata использует протокол PGPROT
 
 Полный список поддерживаемых возможностей приведен в документации API JDBC-драйвера:
 
-- [параметры PicodataProperty](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html)
+- [Все поддерживаемые опции драйвера](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html)
 - [настройка источника данных PicodataClusterAwareDataSource](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/datasource/PicodataClusterAwareDataSource.html)
 
 ## Проверка работы {: #testing }
