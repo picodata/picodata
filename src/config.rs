@@ -618,6 +618,7 @@ Using configuration file '{args_path}'.");
             return Ok(());
         };
 
+        let mut has_votable_tier = false;
         for (name, info) in tiers {
             if let Some(explicit_name) = &info.name {
                 return Err(Error::InvalidConfiguration(format!(
@@ -626,6 +627,16 @@ Using configuration file '{args_path}'.");
                      Tier name is always derived from the outer dictionary's key"
                 )));
             }
+
+            if info.can_vote {
+                has_votable_tier = true;
+            }
+        }
+
+        if !has_votable_tier {
+            return Err(Error::InvalidConfiguration(
+                "at least one trier must be votable (`can_vote = true`)".into(),
+            ));
         }
 
         Ok(())

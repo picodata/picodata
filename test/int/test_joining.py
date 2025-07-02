@@ -93,7 +93,7 @@ def test_discovery(cluster3: Cluster):
     Retriable(timeout=5, rps=4).call(i1.assert_raft_status, "Follower", i2.raft_id)
 
     def req_discover(instance: Instance) -> dict:
-        request = dict(tmp_id="unused", peers=["test:3301"])
+        request = dict(tmp_id="unused", peers=["test:3301"], can_vote=True, votable_peers=[])
         request_to = instance.iproto_listen
         return instance.call(".proc_discover", request, request_to)
 

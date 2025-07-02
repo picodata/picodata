@@ -987,7 +987,20 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     let cfg = tarantool::Cfg::for_discovery(config)?;
     init_common(config, &cfg, false)?;
-    discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
+    let can_vote = {
+        let tiers = config.cluster.tiers();
+        let my_tier_name = config.instance.tier();
+        let Some(tier) = tiers.get(my_tier_name) else {
+            return Err(Error::other(format!(
+            "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
+        )));
+        };
+        tier.can_vote
+    };
+    discovery::init_global(
+        config.instance.peers().iter().map(|a| a.to_host_port()),
+        can_vote,
+    );
 
     if let Some((storage, raft_storage)) = get_initialized_storage()? {
         if let Some(raft_id) = raft_storage.raft_id()? {
@@ -1088,12 +1101,10 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         picodata_version: PICODATA_VERSION.to_string(),
     };
 
-    if !tier.can_vote {
-        return Err(Error::invalid_configuration(format!(
-            "instance with instance_name '{instance_name}' from tier '{my_tier_name}' with `can_vote = false` \
-             cannot be a bootstrap leader"
-        )));
-    }
+    assert!(
+        tier.can_vote,
+        "instance with instance_name '{instance_name}' from tier '{my_tier_name}' with `can_vote = false` cannot be a bootstrap leader"
+    );
 
     luamod::setup();
     assert!(!tarantool::is_box_configured());

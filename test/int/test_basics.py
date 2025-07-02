@@ -121,7 +121,21 @@ def test_graceful_stop(instance: Instance):
         assert f.read()[-4:] == b"\xd5\x10\xad\xed"
 
 
-def test_config_storage_conflicts_on_restart(instance: Instance):
+def test_config_storage_conflicts_on_restart(cluster: Cluster):
+    # Add `new-tier` so we can change persisted `default` tier.
+    # Note: If we set nonexistent tier we will fail while attempting to
+    # read `can_vote` parameter for that tier during discovery.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    tier:
+        default:
+        new-tier:
+"""
+    )
+    instance = cluster.add_instance()
+
     instance.terminate()
 
     #

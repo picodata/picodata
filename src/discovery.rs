@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use crate::proc_name;
 use crate::static_ref;
 use crate::traft;
+use std::sync::{LazyLock, Mutex as StdMutex};
 
 type Address = String;
 
@@ -42,7 +43,11 @@ impl Role {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LeaderElection {
     tmp_id: String,
+    // `can_vote` from config
+    can_vote: bool,
     peers: BTreeSet<Address>,
+    // subset of `peers` with `can_vote = true`
+    votable_peers: BTreeSet<Address>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -63,7 +68,11 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    fn new(tmp_id: impl Into<String>, peers: impl IntoIterator<Item = impl Into<Address>>) -> Self {
+    fn new(
+        tmp_id: impl Into<String>,
+        peers: impl IntoIterator<Item = impl Into<Address>>,
+        can_vote: bool,
+    ) -> Self {
         // BTree and sorting for deterministic results and simpler asserts tests.
         let peers: BTreeSet<Address> = peers.into_iter().map(Into::into).collect();
         assert!(!peers.is_empty(), "peers should not be empty");
@@ -73,6 +82,8 @@ impl Discovery {
             state: State::LeaderElection(LeaderElection {
                 tmp_id: tmp_id.into(),
                 peers,
+                votable_peers: [].into(),
+                can_vote,
             }),
         }
     }
@@ -80,12 +91,21 @@ impl Discovery {
     fn handle_request(&mut self, request: Request, to: Address) -> &Response {
         match &mut self.state {
             State::Done(_) => {} // done we are
-            State::LeaderElection(LeaderElection { tmp_id, peers }) => {
+            State::LeaderElection(LeaderElection {
+                tmp_id,
+                can_vote,
+                peers,
+                votable_peers,
+            }) => {
                 if !request.peers.is_subset(peers) {
                     // found a new peer
                     self.visited.clear()
                 }
                 peers.extend(request.peers);
+
+                if *can_vote {
+                    votable_peers.insert(to.clone());
+                }
 
                 if tmp_id == &request.tmp_id {
                     match &self.address {
@@ -94,7 +114,7 @@ impl Discovery {
                         }
                         Some(_) => {}
                         None => self.address = Some(to),
-                    };
+                    }
                 }
             }
         }
@@ -102,10 +122,14 @@ impl Discovery {
     }
 
     fn handle_response(&mut self, from: Address, response: Response) {
-        self.visited.insert(from);
+        self.visited.insert(from.clone());
         match (&mut self.state, response) {
             (
-                State::LeaderElection(LeaderElection { peers, .. }),
+                State::LeaderElection(LeaderElection {
+                    peers,
+                    votable_peers,
+                    ..
+                }),
                 Response::LeaderElection(response),
             ) => {
                 if !response.peers.is_subset(peers) {
@@ -113,14 +137,11 @@ impl Discovery {
                     self.visited.clear()
                 }
                 peers.extend(response.peers);
+                votable_peers.extend(response.votable_peers);
 
                 if let Some(address) = &self.address {
                     if peers.is_subset(&self.visited)
-                        && peers
-                            .iter()
-                            .next()
-                            .expect("not expected peer_addresses to be empty")
-                            == address
+                        && votable_peers.iter().next() == Some(address)
                     {
                         self.state = State::Done(Role::Leader {
                             address: address.clone(),
@@ -150,7 +171,26 @@ impl Discovery {
                     .cloned()
                     .collect::<Vec<_>>();
                 if next_peers.is_empty() {
-                    next_peers.extend(election.peers.iter().next().cloned())
+                    if election.votable_peers.is_empty() {
+                        // Time of the last time we printed the following warning.
+                        static LAST_LOG: LazyLock<StdMutex<Instant>> =
+                            LazyLock::new(|| StdMutex::new(Instant::now()));
+
+                        // Wait for 5 secs before first warn and then print one warn in 5 secs.
+                        if LAST_LOG.lock().unwrap().elapsed() > Duration::from_secs(5) {
+                            // This isn't necessary an error as votable peers can arrive later,
+                            // but this warning can help in case of invalid configuration with no
+                            // votable instances.
+                            crate::tlog!(
+                                Warning,
+                                "all visited peers are non-votable (`can_vote = false`) thus cannot become a leader"
+                            );
+
+                            *LAST_LOG.lock().unwrap() = Instant::now();
+                        }
+                    }
+                    // visit all peers again to check if some peer became a leader
+                    next_peers.extend(election.peers.iter().cloned())
                 }
                 assert!(!next_peers.is_empty());
                 Left((election.clone(), next_peers))
@@ -170,8 +210,8 @@ fn discovery() -> Option<MutexGuard<'static, Discovery>> {
         .map(|d| d.lock())
 }
 
-pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
-    let d = Discovery::new(Uuid::random().to_string(), peers);
+pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>, can_vote: bool) {
+    let d = Discovery::new(Uuid::random().to_string(), peers, can_vote);
     // SAFETY:
     // - only called from main thread
     // - never mutated after initialization
@@ -309,9 +349,9 @@ mod tests {
     fn test_discovery_1() {
         for _ in 0..999 {
             let instances = [
-                ("host1:1", Discovery::new("1", ["host1:1"])),
-                ("host2:2", Discovery::new("2", ["host1:1"])),
-                ("host3:3", Discovery::new("3", ["host1:1"])),
+                ("host1:1", Discovery::new("1", ["host1:1"], true)),
+                ("host2:2", Discovery::new("2", ["host1:1"], true)),
+                ("host3:3", Discovery::new("3", ["host1:1"], true)),
             ];
             let res = run(instances);
             let first = res.values().next().unwrap().leader_address();
@@ -327,9 +367,9 @@ mod tests {
     fn test_discovery_2() {
         for _ in 0..999 {
             let instances = [
-                ("host1:1", Discovery::new("1", ["host2:2"])),
-                ("host2:2", Discovery::new("2", ["host2:2"])),
-                ("host3:3", Discovery::new("3", ["host2:2"])),
+                ("host1:1", Discovery::new("1", ["host2:2"], true)),
+                ("host2:2", Discovery::new("2", ["host2:2"], true)),
+                ("host3:3", Discovery::new("3", ["host2:2"], true)),
             ];
             let res = run(instances);
             let first = res.values().next().unwrap().leader_address();
@@ -347,10 +387,38 @@ mod tests {
             let instances = [
                 (
                     "host1:1",
-                    Discovery::new("1", ["host1:1", "host2:2", "host3:3"]),
+                    Discovery::new("1", ["host1:1", "host2:2", "host3:3"], true),
                 ),
-                ("host2:2", Discovery::new("2", ["host2:2", "host3:3"])),
-                ("host3:3", Discovery::new("3", ["host3:3"])),
+                ("host2:2", Discovery::new("2", ["host2:2", "host3:3"], true)),
+                ("host3:3", Discovery::new("3", ["host3:3"], true)),
+            ];
+            let res = run(instances);
+            let first = res.values().next().unwrap().leader_address();
+            assert!(
+                res.values().map(Role::leader_address).all(|la| la == first),
+                "multiple leaders: {:#?}",
+                res
+            );
+        }
+    }
+
+    #[test]
+    fn test_discovery_4() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..999 {
+            // at least one peer must be votable
+            let mut can_vote = vec![true, rng.gen_bool(0.5), rng.gen_bool(0.5)];
+            can_vote.shuffle(&mut rng);
+            let instances = [
+                (
+                    "host1:1",
+                    Discovery::new("1", ["host1:1", "host2:2", "host3:3"], can_vote[0]),
+                ),
+                (
+                    "host2:2",
+                    Discovery::new("2", ["host2:2", "host3:3"], can_vote[1]),
+                ),
+                ("host3:3", Discovery::new("3", ["host3:3"], can_vote[2])),
             ];
             let res = run(instances);
             let first = res.values().next().unwrap().leader_address();

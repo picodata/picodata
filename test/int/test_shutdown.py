@@ -148,11 +148,7 @@ instance:
 
     i1 = cluster.add_instance(wait_online=False, tier="storage")
 
-    c1 = log_crawler(
-        i1,
-        "CRITICAL: invalid configuration: instance with instance_name 'storage_1_1' from tier "
-        "'storage' with `can_vote = false` cannot be a bootstrap leader",
-    )
+    c1 = log_crawler(i1, "CRITICAL: invalid configuration: at least one trier must be votable (`can_vote = true`)")
 
     i1.fail_to_start()
 

@@ -564,6 +564,8 @@ to 2 and 3.
 
 - Fixed bucket rebalancing for sharded tables
 - Fixed panic when applying snapshot with the same index
+- Fixed a bug when a non-voting instance would sometimes be chosen as
+  a bootstrap leader which would always lead to failure.
 
 
 ## [24.5.1] - 2024-09-04
