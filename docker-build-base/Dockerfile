@@ -9,7 +9,7 @@ ARG RUST_VERSION
 RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && dnf -y install dnf-plugins-core \
     && dnf config-manager --set-enabled powertools \
-    && dnf module -y enable nodejs:20 \
+    && dnf module -y enable nodejs:20 postgresql:16 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
     && dnf install -y --nobest \
@@ -43,6 +43,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            readline-devel \
            yarn \
            zlib-devel \
+           postgresql \
     && ln -fs /usr/bin/python3 /usr/bin/python \
     && dnf clean all && \
     mkdir -p $(go env GOPATH)/bin && \
