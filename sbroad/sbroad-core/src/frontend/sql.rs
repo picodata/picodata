@@ -6637,3 +6637,14 @@ fn parse_plugin_opts<T: Default>(
 
     Ok(opts)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_rfc_3339_parsing() {
+        // https://git.picodata.io/core/picodata/-/issues/1945
+        // test that parsing RFC 3339 with non-default separator (` ` instead of `T`) works
+        let datetime = super::try_parse_datetime("2025-10-18 02:59:59Z").unwrap();
+        assert_eq!(datetime.to_string(), "2025-10-18 2:59:59.0 +00:00:00");
+    }
+}

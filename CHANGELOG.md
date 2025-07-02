@@ -31,6 +31,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixes unnecessary vshard router and storage config updates.
 
+- Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T`
+  resulted in an error.
+
 ### Lua API
 
 ## [25.2.2] - 2025-06-25
