@@ -49,6 +49,9 @@ with the `YY.MINOR.MICRO` scheme.
   could implicitly change from VARCHAR to TEXT, causing various problems
   to client drivers.
 
+- Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T` 
+  resulted in an error.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.
