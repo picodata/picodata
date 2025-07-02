@@ -873,12 +873,12 @@ impl RaftSnapshot {
 
         debug_assert!(!persisted_messages.is_empty());
         for message in persisted_messages {
-            if message.get_msg_type() != raft::MessageType::MsgAppendResponse {
+            if message.msg_type() != raft::MessageType::MsgAppendResponse {
                 continue;
             }
             found_message_append_response = true;
-            debug_assert_eq!(message.get_from(), raft_status.id);
-            debug_assert_eq!(message.get_index(), metadata.index);
+            debug_assert_eq!(message.from(), raft_status.id);
+            debug_assert_eq!(message.index(), metadata.index);
             // Note: it's theoretically possible that we've received a snapshot
             // from someone who's not currently our leader (leader changed at an
             // unfortunate moment).
@@ -905,7 +905,7 @@ impl RaftSnapshot {
             }
         }
 
-        if response_message.get_to() == 0 {
+        if response_message.to() == 0 {
             warn_or_panic!("MsgAppendResponse receiver should be known at this point");
         }
 
