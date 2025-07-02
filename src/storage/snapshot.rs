@@ -890,6 +890,11 @@ impl RaftSnapshot {
             // MsgAppendResponse when we receive a raft snapshot, but I don't
             // have any hard proof and don't want to have a random panic in
             // production, so here's a fallback branch.
+            tlog!(Warning, "We were expecting a MsgAppendResponse in the same batch of raft updates as the snapshot, but it's not here, which is pretty weird.");
+            tlog!(
+                Warning,
+                "Creating an ad-hoc MsgAppendResponse as a fallback."
+            );
             response_message.set_msg_type(raft::MessageType::MsgAppendResponse);
             response_message.set_from(raft_status.id);
             response_message.set_index(metadata.index);
