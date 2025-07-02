@@ -38,6 +38,11 @@
 
 # Change Log
 
+# [8.0.1] Unreleased
+
+### Fixed
+- Unpinned the version of `time` crate from a two-year old `0.3.17`
+
 # [8.0.0] Jun 24 2025
 
 ### Changed
