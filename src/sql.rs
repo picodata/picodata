@@ -61,7 +61,7 @@ use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::Value;
-use sbroad::ir::{Options, Plan as IrPlan};
+use sbroad::ir::Plan as IrPlan;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -616,9 +616,7 @@ pub fn sql_dispatch(
     let node = node::global()?;
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
-        let sql_vdbe_opcode_max = node.storage.db_config.sql_vdbe_opcode_max()?;
-        let sql_motion_row_max = node.storage.db_config.sql_motion_row_max()?;
-        let default_options = Some(Options::new(sql_motion_row_max, sql_vdbe_opcode_max));
+        let default_options = Some(node.storage.db_config.sql_query_options()?);
         Query::with_options(&runtime, pattern, params, default_options)
     })??;
 

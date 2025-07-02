@@ -16,6 +16,7 @@ use crate::{
 use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
+use sbroad::ir::{OptionParamValue, Options};
 use sbroad::{
     executor::{
         engine::{query_id, QueryCache, Router, TableVersionMap},
@@ -93,31 +94,42 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
 /// Set values from default_options for unspecified options in query_options.
 fn apply_default_options(
     query_options: &[OptionSpec],
-    default_options: &[OptionSpec],
+    connection_options: &[OptionSpec],
+    system_options: &Options,
 ) -> Vec<OptionSpec> {
     // First, set query options, as they have higher priority.
     let (mut max_steps, mut max_rows) = (None, None);
     for opt in query_options {
         match opt.kind {
-            OptionKind::VdbeOpcodeMax => max_steps = Some(opt),
-            OptionKind::MotionRowMax => max_rows = Some(opt),
-        }
+            OptionKind::VdbeOpcodeMax => max_steps.get_or_insert_with(|| opt.clone()),
+            OptionKind::MotionRowMax => max_rows.get_or_insert_with(|| opt.clone()),
+        };
     }
 
-    // Then, apply defaults for unspecified options.
-    for opt in default_options {
+    // Then, apply connection defaults for unspecified options.
+    for opt in connection_options {
         match opt.kind {
-            OptionKind::VdbeOpcodeMax if max_steps.is_none() => max_steps = Some(opt),
-            OptionKind::MotionRowMax if max_rows.is_none() => max_rows = Some(opt),
-            _ => {}
-        }
+            OptionKind::VdbeOpcodeMax => max_steps.get_or_insert_with(|| opt.clone()),
+            OptionKind::MotionRowMax => max_rows.get_or_insert_with(|| opt.clone()),
+        };
     }
+
+    // If all of those are missing, apply cluster-wide defaults.
+    max_steps.get_or_insert_with(|| OptionSpec {
+        kind: OptionKind::VdbeOpcodeMax,
+        val: OptionParamValue::Value {
+            val: system_options.sql_vdbe_opcode_max.into(),
+        },
+    });
+    max_rows.get_or_insert_with(|| OptionSpec {
+        kind: OptionKind::MotionRowMax,
+        val: OptionParamValue::Value {
+            val: system_options.sql_motion_row_max.into(),
+        },
+    });
 
     // Keep only Some variants.
-    [max_steps, max_rows]
-        .into_iter()
-        .filter_map(|x| x.cloned())
-        .collect()
+    [max_steps, max_rows].into_iter().flatten().collect()
 }
 
 pub fn bind(
@@ -126,17 +138,21 @@ pub fn bind(
     portal_name: String,
     params: Vec<SbroadValue>,
     result_format: Vec<FieldFormat>,
-    default_options: Vec<OptionSpec>,
+    connection_options: Vec<OptionSpec>,
 ) -> PgResult<()> {
     let key = storage::Key(id, stmt_name.into());
     let statement: Statement = PG_STATEMENTS
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
 
+    let storage = crate::storage::Catalog::try_get(false).expect("storage should be initialized");
+    let system_options = with_su(ADMIN_ID, || storage.db_config.sql_query_options())??;
+
     let mut plan = statement.plan().clone();
     let is_dql = matches!(statement.describe().query_type(), QueryType::Dql);
-    if is_dql && !default_options.is_empty() {
-        plan.raw_options = apply_default_options(&plan.raw_options, &default_options);
+    if is_dql {
+        plan.raw_options =
+            apply_default_options(&plan.raw_options, &connection_options, &system_options);
     }
 
     if plan.is_empty() {

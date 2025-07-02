@@ -63,6 +63,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug which could sometimes lead to unconstrained stream of requests
   from a failed instance (implemented expontential backoff for sentinel requests).
 
+- Fixed a bug where cluster-wide settings for options `sql_vdbe_opcode_max` and `sql_motion_row_max`
+  were not applied to queries made through pgproto.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.

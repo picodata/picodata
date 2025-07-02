@@ -3300,6 +3300,17 @@ impl DbConfig {
         )
     }
 
+    /// Gets `sql_vdbe_opcode_max` and `sql_motion_row_max` options as [`sbroad::ir::Options`] struct
+    #[inline]
+    pub fn sql_query_options(&self) -> tarantool::Result<sbroad::ir::Options> {
+        let sql_vdbe_opcode_max = self.sql_vdbe_opcode_max()?;
+        let sql_motion_row_max = self.sql_motion_row_max()?;
+        Ok(sbroad::ir::Options::new(
+            sql_motion_row_max,
+            sql_vdbe_opcode_max,
+        ))
+    }
+
     /// `tier` argument should be from set of existing tiers.
     pub fn sql_storage_cache_count_max(&self, tier: &str) -> tarantool::Result<usize> {
         self.get_or_default(system_parameter_name!(sql_storage_cache_count_max), tier)

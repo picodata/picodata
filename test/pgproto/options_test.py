@@ -93,6 +93,25 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
     ):
         conn.execute("SELECT * FROM (VALUES (1), (2))")
 
+    # Check that system options are actually applied
+    conn = psycopg.connect(
+        f"postgres://admin:{admin_password}@{host}:{port}",
+        autocommit=True,
+    )
+    conn.execute("ALTER SYSTEM SET sql_motion_row_max = 1;")
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
+    ):
+        conn.execute("SELECT * FROM (VALUES (1), (2))")
+    conn.execute("ALTER SYSTEM SET sql_motion_row_max = 10;")
+    conn.execute("ALTER SYSTEM SET sql_vdbe_opcode_max = 1;")
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
+    ):
+        conn.execute("SELECT * FROM (VALUES (1), (2))")
+
 
 def test_repeating_options(postgres: Postgres):
     user = "postgres"
