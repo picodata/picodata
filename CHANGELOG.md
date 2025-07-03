@@ -26,6 +26,9 @@ with the `YY.MINOR.MICRO` scheme.
   could implicitly change from VARCHAR to TEXT, causing various problems
   to client drivers.
 
+- Fixed a bug which could sometimes lead to unconstrained stream of requests
+  from a failed instance (implemented expontential backoff for sentinel requests).
+
 ### Lua API
 
 ## [25.2.2] - 2025-06-25

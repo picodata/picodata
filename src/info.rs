@@ -2,6 +2,8 @@ use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
 use crate::instance::State;
 use crate::replicaset::ReplicasetName;
+use crate::sentinel::ActionKind;
+use crate::sentinel::FailStreakInfo;
 use crate::tlua;
 use crate::traft;
 use crate::traft::error::Error;
@@ -11,6 +13,8 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::vshard::VshardConfig;
 use std::borrow::Cow;
+use tarantool::error::BoxError;
+use tarantool::fiber;
 use tarantool::proc;
 use tarantool::tuple::RawByteBuf;
 
@@ -256,11 +260,27 @@ pub fn proc_instance_uuid() -> Result<String, Error> {
 // InternalInfo
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Default, Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct InternalInfo<'a> {
     pub main_loop_status: Cow<'a, str>,
     pub governor_loop_status: Cow<'a, str>,
     pub governor_step_counter: u64,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentinel_last_action: Option<ActionKind>,
+
+    /// Applied index at the moment of last successful action by sentinel.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentinel_index_of_last_success: Option<RaftIndex>,
+
+    /// Number of seconds elapsed since the last successful action.
+    /// Note that we return the duration since instead of a timestamp because
+    /// we only store the monotonic timestamp which is not very human-friendly
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentinel_time_since_last_success: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentinel_fail_streak: Option<SerializableFailStreakInfo>,
 }
 
 impl tarantool::tuple::Encode for InternalInfo<'_> {}
@@ -268,10 +288,73 @@ impl tarantool::tuple::Encode for InternalInfo<'_> {}
 impl InternalInfo<'static> {
     pub fn get(node: &node::Node) -> Self {
         let governor = node.governor_loop.status.get();
-        InternalInfo {
+
+        let mut info = InternalInfo {
             main_loop_status: node.status().main_loop_status.into(),
             governor_loop_status: governor.governor_loop_status.into(),
             governor_step_counter: governor.step_counter,
+            ..Default::default()
+        };
+
+        let sentinel = node.sentinel_loop.stats.borrow();
+        info.sentinel_last_action = sentinel.last_action_kind;
+
+        if let Some((index, time)) = sentinel.last_successful_attempt {
+            info.sentinel_index_of_last_success = Some(index);
+            let elapsed = fiber::clock().duration_since(time).as_secs_f64();
+            info.sentinel_time_since_last_success = Some(elapsed);
+        }
+
+        if let Some(fail_streak) = &sentinel.fail_streak {
+            info.sentinel_fail_streak = Some(SerializableFailStreakInfo::new(fail_streak));
+        }
+
+        info
+    }
+}
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct SerializableFailStreakInfo {
+    /// Number of consequitive failures with the same error.
+    pub count: u32,
+    /// Seconds since the first failure in the fail streak.
+    pub time_since_start: f64,
+    /// Seconds since the last failure in the fail streak.
+    pub time_since_last_try: f64,
+    /// The error value of the fail streak.
+    /// If the error code changes the fail streak is reset.
+    pub error: SerializableErrorInfo,
+}
+
+impl SerializableFailStreakInfo {
+    #[inline(always)]
+    fn new(info: &FailStreakInfo) -> Self {
+        let now = fiber::clock();
+        Self {
+            count: info.count,
+            time_since_start: now.duration_since(info.start).as_secs_f64(),
+            time_since_last_try: now.duration_since(info.last_try).as_secs_f64(),
+            error: SerializableErrorInfo::new(&info.error),
+        }
+    }
+}
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct SerializableErrorInfo {
+    code: u32,
+    message: String,
+    file: Option<String>,
+    line: Option<u32>,
+}
+
+impl SerializableErrorInfo {
+    #[inline(always)]
+    fn new(e: &BoxError) -> Self {
+        Self {
+            code: e.error_code(),
+            message: e.message().into(),
+            file: e.file().map(String::from),
+            line: e.line(),
         }
     }
 }
