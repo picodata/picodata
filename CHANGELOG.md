@@ -75,6 +75,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug where cluster-wide settings for options `sql_vdbe_opcode_max` and `sql_motion_row_max`
   were not applied to queries made through pgproto.
 
+- Fixed a bug where picodata would sometimes indefinitely block when applying
+  DDL operations which could result in full replicaset failure.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.
