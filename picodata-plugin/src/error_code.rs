@@ -144,6 +144,15 @@ impl ErrorCode {
     }
 }
 
+#[inline]
+pub fn error_code_is_retriable_for_cas(code: u32) -> bool {
+    let Ok(error_code) = ErrorCode::try_from(code) else {
+        return false;
+    };
+
+    error_code.is_retriable_for_cas()
+}
+
 impl From<ErrorCode> for u32 {
     #[inline(always)]
     fn from(code: ErrorCode) -> u32 {

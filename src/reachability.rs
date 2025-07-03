@@ -153,7 +153,7 @@ impl InstanceReachabilityManager {
             .last_attempt
             .expect("this should be set if info was reported");
 
-        // Expontential decay.
+        // Expontential backoff.
         // time: -----*---------*---------*-------------------*---------------->
         //            ^         ^         ^                   ^
         // last_success         attempt1  attempt2            attempt3   ...

@@ -205,6 +205,12 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
     leader = cluster.leader()
     assert leader != i1
 
+    runtime_info = leader.call(".proc_runtime_info")
+    internal = runtime_info["internal"]
+    assert internal["sentinel_last_action"] == "auto offline by leader"
+    assert internal["sentinel_index_of_last_success"] < leader.raft_get_index()
+    assert internal["sentinel_time_since_last_success"] > 0
+
 
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
