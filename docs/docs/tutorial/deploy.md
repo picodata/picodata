@@ -426,7 +426,7 @@ ALTER PLUGIN <plugin_name> <plugin_version> ENABLE;
 
 - [Управление плагинами](plugins.md)
 
-## Зоны доступности (failure domains) {: #failure_domains }
+## Зоны доступности (домены отказа) {: #failure_domains }
 
 ### Использование зон доступности {: #setting_failure_domain}
 
