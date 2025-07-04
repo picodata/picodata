@@ -255,7 +255,6 @@ impl Node {
             sentinel::Loop::start(
                 pool.clone(),
                 status.clone(),
-                storage.clone(),
                 raft_storage.clone(),
                 instance_reachability.clone(),
             )
