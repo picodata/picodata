@@ -154,7 +154,7 @@ impl Display for Arithmetic {
 }
 
 /// Unary operator returning Bool expression.
-#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Unary {
     /// `not`

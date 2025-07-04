@@ -187,6 +187,7 @@ where
             plan.apply_options()?;
             plan.update_timestamps()?;
             plan.cast_constants()?;
+            plan.fold_boolean_tree()?;
         }
 
         let query = Query {

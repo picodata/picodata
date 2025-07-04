@@ -11,7 +11,7 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    BoolExpr, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
+    BoolExpr, Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
     NamedWindows, Node, NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
@@ -571,7 +571,18 @@ where
                     let output_id = *output;
                     let filter_id = *filter;
 
-                    let filter_buckets = self.get_expression_tree_buckets(filter_id, children)?;
+                    let filter_buckets = if let Expression::Constant(Constant {
+                        value: Value::Boolean(false) | Value::Null,
+                    }) = self
+                        .get_exec_plan()
+                        .get_ir_plan()
+                        .get_expression_node(filter_id)?
+                    {
+                        Buckets::new_empty()
+                    } else {
+                        self.get_expression_tree_buckets(filter_id, children)?
+                    };
+
                     self.bucket_map
                         .insert(output_id, child_buckets.conjuct(&filter_buckets)?);
                 }

@@ -2239,7 +2239,7 @@ impl<'p> SyntaxPlan<'p> {
         let Expression::Unary(UnaryExpr { child, op }) = expr else {
             panic!("Expected unary expression node");
         };
-        let (child_id, op) = (*child, op.clone());
+        let (child_id, op) = (*child, *op);
         let operator_node_id = self
             .nodes
             .push_sn_non_plan(SyntaxNode::new_operator(&format!("{op}")));

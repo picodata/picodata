@@ -2819,7 +2819,7 @@ impl ParseExpression {
             }
             ParseExpression::Prefix { op, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
-                plan.add_unary(op.clone(), child_plan_id)?
+                plan.add_unary(*op, child_plan_id)?
             }
             ParseExpression::Function {
                 name,
