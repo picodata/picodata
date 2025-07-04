@@ -102,7 +102,7 @@ where
 
         // Try to collect buckets from expression of type `sharding_key = value`
         if let Expression::Bool(BoolExpr {
-            op: Bool::Eq | Bool::In,
+            op: op @ (Bool::Eq | Bool::In),
             left,
             right,
             ..
@@ -165,15 +165,33 @@ where
                     // In the end (when `conjuct` function is called) we will leave buckets
                     // which satisfy `(a, b) = (0, 1)`.
                     for key in keys.iter() {
+                        // For cases with composite keys, we check that the condition fields
+                        // are at least the size of the composite key.
+                        // E.g. t1 sharded by (a, b), and we have query, with single value of
+                        // the condition:
+                        // `SELECT * FROM t1 JOIN t1 AS t ON 1 IN (t.a, t.b)`
+                        // Since in this case it is not possible to calculate the buckets,
+                        // therefore there is no need for further action.
+                        if key.positions.len() > right_columns.len() {
+                            continue;
+                        }
                         let mut values: Vec<&Value> = Vec::new();
                         for position in &key.positions {
-                            let right_column_id =
-                                *right_columns.get(*position).ok_or_else(|| {
-                                    SbroadError::NotFound(
-                                        Entity::Column,
-                                        format_smolstr!("at position {position} for right row"),
-                                    )
-                                })?;
+                            // Since the sides in the "In" query can be of different lengths,
+                            // we need to find a suitable position, as if they were the
+                            // same length.
+                            let pos = if *op == Bool::In {
+                                *position % right_columns.len()
+                            } else {
+                                *position
+                            };
+                            let right_column_id = *right_columns.get(pos).ok_or_else(|| {
+                                SbroadError::NotFound(
+                                    Entity::Column,
+                                    format_smolstr!("at position {position} for right row"),
+                                )
+                            })?;
+
                             let right_column_expr = ir_plan.get_expression_node(right_column_id)?;
                             if let Expression::Constant(_) = right_column_expr {
                                 values.push(ir_plan.as_const_value_ref(right_column_id)?);

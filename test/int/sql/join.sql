@@ -1,7 +1,9 @@
 -- TEST: test_join
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
+DROP TABLE IF EXISTS t;
 CREATE TABLE testing_space ("id" int primary key, "name" string, "product_units" int);
+CREATE TABLE t ("a" INT PRIMARY KEY, "b" INT, "c" INT);
 insert into "testing_space" ("id", "name", "product_units") values
     (1, 'a', 1),
     (2, 'a', 1),
@@ -10,6 +12,10 @@ insert into "testing_space" ("id", "name", "product_units") values
     (5, 'b', 2),
     (6, 'b', 3),
     (7, 'c', 4);
+INSERT INTO t ("a", "b", "c") VALUES
+    (1, 2, 3),
+    (4, 5, 6),
+    (7, 8, 9);
 
 -- TEST: join1
 -- SQL:
@@ -34,6 +40,27 @@ select *
 6, 'b', 3, 6, 6,
 7, 'c', 4, 7, 7
 
+-- TEST: test_join2
+-- SQL:
+SELECT * FROM t JOIN t AS t1 ON 1 IN (t1.b, t1.a, t1.c) ORDER BY 1
+-- EXPECTED:
+1, 2, 3, 1, 2, 3,
+4, 5, 6, 1, 2, 3, 
+7, 8, 9, 1, 2, 3
+
+-- TEST: test_join3
+-- SQL:
+SELECT * FROM t JOIN t AS t1 ON t1.a IN (t1.b, t1.a) ORDER BY 1
+-- EXPECTED:
+1, 2, 3, 1, 2, 3,
+1, 2, 3, 4, 5, 6,
+1, 2, 3, 7, 8, 9,
+4, 5, 6, 1, 2, 3,
+4, 5, 6, 4, 5, 6,
+4, 5, 6, 7, 8, 9,
+7, 8, 9, 1, 2, 3,
+7, 8, 9, 4, 5, 6,
+7, 8, 9, 7, 8, 9
 
 -- TEST: test-check-condition-types-1
 -- SQL:
