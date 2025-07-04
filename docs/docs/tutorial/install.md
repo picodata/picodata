@@ -8,7 +8,7 @@
 Picodata поставляется для поддерживаемых операционных систем и
 предназначена для архитектуры x86_64 (в случае с macOS также
 поддерживается Apple Silicon). Для Linux мы поддерживаем собственные
-репозитории с готовыми пакетами для Fedora 39-41, RHEL 8, РЕД ОС 7.3
+репозитории с готовыми пакетами для Fedora 40-42, RHEL 8, РЕД ОС 7.3
 "Муром", Astra Linux 1.7 и 1.8 SE, Debian 11 и 12, Ubuntu 20.04, 22.04 и
 24.04, Alt Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится
 статически слинкованная версия исполняемого файла `picodata`. Более
@@ -30,7 +30,7 @@ https://git.picodata.io/core/picodata/-/blob/master/Cargo.toml#L6
 - gcc, g++
 - libstdc++-static
 - openssl
-- NodeJS и Yarn (для сборки с веб-интерфейсом)
+- NodeJS и Yarn (требуются для работы веб-интерфейса Picodata)
 
 Установка Rust и Cargo универсальна для всех поддерживаемых ОС:
 
@@ -41,7 +41,7 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### RHEL 8/9 и деривативы, Fedora 39-41 {: #rhel_fedora }
+#### RHEL 8/9 и деривативы, Fedora 40-42 {: #rhel_fedora }
 
 Только для ОС, основанных на RHEL 8/9:
 
@@ -55,7 +55,7 @@ sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make perl automake libtool cmake git patch libstdc++-static openssl-devel
 ```
 
-Установка NodeJS и Yarn (для веб-интерфейса):
+Установка NodeJS и Yarn:
 
 ```bash
 curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
@@ -71,7 +71,7 @@ sudo dnf install yarn nodejs
 sudo apt-get install build-essential git cmake autoconf libtool curl libssl-dev pkg-config -y
 ```
 
-Установка NodeJS и Yarn (для веб-интерфейса):
+Установка NodeJS и Yarn:
 
 ```bash
 curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
@@ -90,7 +90,7 @@ apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-de
 ```
 
 
-Установка NodeJS и Yarn (для веб-интерфейса):
+Установка NodeJS и Yarn:
 
 ```bash
 su -
@@ -122,9 +122,8 @@ macOS 10.15 Catalina, либо более новая версия (11+).
 Для начала следует установить актуальные версии [Rust и
 Cargo](https://rustup.rs).
 
-Если планируется сборка Picodata c веб-интерфейсом, то нужно будет
-установить дополнительно NodeJS и Yarn при помощи пакетного менеджера
-[Brew](https://brew.sh).
+Для работы веб-интерфейса Picodata следует установить дополнительно
+NodeJS и Yarn при помощи пакетного менеджера [Brew](https://brew.sh).
 
 Установка Brew:
 
@@ -154,21 +153,23 @@ git clone https://github.com/picodata/picodata.git --recursive
 
 ### Сборка {: #building }
 
-Сборка Picodata только c консольным интерфейсом:
+Используйте приведенные ниже команды для сборки Picodata. Для получения
+debug-версии:
 
 ```bash
-cargo build --release
+make build
 ```
 
-Сборка Picodata c консольным и веб-интерфейсом:
+Для получения release-версии:
 
 ```bash
-cargo build --release --features webui
+make build-release-pkg
 ```
 
-Исполняемый файл `picodata` появится в `target/release`. Далее его
-следует скопировать в директорию, входящую в `$PATH`, например в
-`/usr/bin` или `/usr/local/bin`.
+Исполняемый файл `picodata` появится в директории `target/debug` или
+`target/release` соответственно. Далее его следует скопировать в
+директорию, входящую в `$PATH`, например в `/usr/bin` или
+`/usr/local/bin`.
 
 ### Проверка установки {: #post_install_check }
 
