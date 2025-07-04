@@ -6,7 +6,7 @@ use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
-use crate::vshard::VshardConfig;
+use crate::vshard::{ReplicasetSpec, VshardConfig};
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::fiber;
@@ -71,33 +71,60 @@ crate::define_rpc_request! {
             config.listen = Some(lua.eval("return box.info.listen")?);
             config.set_password_in_uris();
 
+            // We do not want to configure the vshard router and storage each time
+            // because these actions call box.cfg internally.
+            // Therefore, we check for differences between the current and
+            // new configurations before calling router:cfg() or storage:cfg().
             if current_instance_tier == tier.name {
-                lua.exec_with(
+                let current_sharding_param: Option<HashMap<String, ReplicasetSpec>> = lua.eval(
                     "vshard = require('vshard')
-                    vshard.storage.cfg(..., box.info.uuid)",
-                    &config,
-                )
-                .map_err(tlua::LuaError::from)?;
+                    if vshard.storage.internal.current_cfg ~= nil then
+                        return vshard.storage.internal.current_cfg.sharding
+                    else
+                        return nil
+                    end",
+                )?;
+                if current_sharding_param.is_none() || current_sharding_param.unwrap() != config.sharding {
+                    lua.exec_with(
+                        "vshard = require('vshard')
+                        vshard.storage.cfg(..., box.info.uuid)",
+                        &config,
+                    )
+                    .map_err(tlua::LuaError::from)?;
 
-                // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
-                // in the `config` above, but just to make it explicit here we
-                // add an assert.
-                let space = space_by_name("_bucket")?;
-                assert_eq!(space.id(), TABLE_ID_BUCKET);
+                    // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
+                    // in the `config` above, but just to make it explicit here we
+                    // add an assert.
+                    let space = space_by_name("_bucket")?;
+                    assert_eq!(space.id(), TABLE_ID_BUCKET);
+                }
             }
 
-            lua.exec_with(
+            let current_sharding_param: Option<HashMap<String, ReplicasetSpec>> = lua.eval_with(
                 "vshard = require('vshard')
                 local tier_name, cfg = ...
                 local router = pico.router[tier_name]
                 if router ~= nil then
-                    router:cfg(cfg)
+                    return router.current_cfg.sharding
                 else
                     pico.router[tier_name] = vshard.router.new(tier_name, cfg)
+                    return nil
                 end",
                 (&tier.name, &config),
             )
             .map_err(tlua::LuaError::from)?;
+
+            if let Some(param) = current_sharding_param {
+                if param != config.sharding {
+                    lua.exec_with(
+                        "vshard = require('vshard')
+                        local tier_name, cfg = ...
+                        pico.router[tier_name]:cfg(cfg)",
+                        (&tier.name, &config),
+                    )
+                    .map_err(tlua::LuaError::from)?;
+                }
+            }
         }
 
         // After reconfiguring vshard leaves behind net.box.connection objects,
