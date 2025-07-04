@@ -4,7 +4,6 @@ use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::rpc::update_instance::proc_update_instance;
-use crate::storage::Catalog;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
@@ -44,7 +43,6 @@ impl Loop {
 
     async fn iter_fn(state: &mut State) -> ControlFlow<()> {
         let pool = &state.pool;
-        let storage = &state.storage;
         let raft_storage = &state.raft_storage;
         let raft_status = &state.raft_status;
         let status = &mut state.status;
@@ -67,21 +65,14 @@ impl Loop {
         if status.get() == SentinelStatus::ShuttingDown {
             set_action_kind(&mut stats.borrow_mut(), ActionKind::Shutdown);
 
-            let raft_id = node.raft_id();
-            let Ok(instance) = storage.instances.get(&raft_id) else {
-                // This can happen if for example a snapshot arrives
-                // and we truncate _pico_instance (read uncommitted btw).
-                // In this case we also just wait some more.
-                _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-                return ControlFlow::Continue(());
-            };
-
-            if has_states!(instance, * -> Expelled) {
+            let my_target_state = node.topology_cache.my_target_state();
+            if my_target_state.variant == Expelled {
                 tlog!(Debug, "instance has been expelled, sentinel out");
                 return ControlFlow::Break(());
             }
 
-            let req = rpc::update_instance::Request::new(instance.name, cluster_name, cluster_uuid)
+            let instance_name = node.topology_cache.my_instance_name().into();
+            let req = rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
                 .with_target_state(Offline);
 
             let mut attempt_number = 0;
@@ -131,27 +122,29 @@ impl Loop {
         // When running on leader, find any unreachable instances which need to
         // have their state automatically changed.
         if raft_status.get().raft_state.is_leader() {
-            let instances = storage
-                .instances
-                .all_instances()
-                .expect("storage shouldn't fail");
+            let topology_ref = node.topology_cache.get();
+            let instances = topology_ref.all_instances();
             let unreachables = instance_reachability.borrow().get_unreachables();
             let mut instance_to_downgrade = None;
-            for instance in &instances {
+            for instance in instances {
                 if has_states!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {
-                    instance_to_downgrade = Some(instance);
+                    instance_to_downgrade = Some(instance.name.clone());
+                    break;
                 }
             }
-            let Some(instance) = instance_to_downgrade else {
+            // Must not hold across yields
+            drop(topology_ref);
+
+            let Some(instance_name) = instance_to_downgrade else {
                 _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
                 return ControlFlow::Continue(());
             };
 
             set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOfflineByLeader);
 
-            tlog!(Info, "setting target state Offline"; "instance_name" => %instance.name);
+            tlog!(Info, "setting target state Offline"; "instance_name" => %instance_name);
             let req = rpc::update_instance::Request::new(
-                instance.name.clone(),
+                instance_name.clone(),
                 cluster_name,
                 cluster_uuid,
             )
@@ -160,6 +153,7 @@ impl Loop {
             // else could have changed this particular instance's target state.
             .with_dont_retry(true)
             .with_target_state(Offline);
+
             let res = rpc::update_instance::handle_update_instance_request_and_wait(
                 req,
                 Self::UPDATE_INSTANCE_TIMEOUT,
@@ -167,7 +161,7 @@ impl Loop {
             if let Err(e) = res {
                 tlog!(Warning,
                     "failed setting target state Offline: {e}";
-                    "instance_name" => %instance.name,
+                    "instance_name" => %instance_name,
                 );
                 // NOTE: we only track failures in this case for debuggin purposes,
                 // we don't do exponential backoff when running on leader because
@@ -188,16 +182,8 @@ impl Loop {
         ////////////////////////////////////////////////////////////////////////
         // When running not on leader, check if own target has automatically
         // changed to Offline and try to update it to Online.
-        let raft_id = node.raft_id();
-        let Ok(instance) = storage.instances.get(&raft_id) else {
-            // This can happen if for example a snapshot arrives
-            // and we truncate _pico_instance (read uncommitted btw).
-            // In this case we also just wait some more.
-            _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-            return ControlFlow::Continue(());
-        };
-
-        if has_states!(instance, * -> Offline) {
+        let my_target_state = node.topology_cache.my_target_state();
+        if my_target_state.variant == Offline {
             set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOnlineBySelf);
 
             if exponential_backoff_before_retry(&stats.borrow(), Self::SENTINEL_SHORT_RETRY)
@@ -205,7 +191,7 @@ impl Loop {
             {
                 tlog!(Info, "setting own target state Online");
                 let req = rpc::update_instance::Request::new(
-                    instance.name.clone(),
+                    node.topology_cache.my_instance_name().into(),
                     cluster_name,
                     cluster_uuid,
                 )
@@ -264,7 +250,6 @@ impl Loop {
     pub fn start(
         pool: Rc<ConnectionPool>,
         raft_status: watch::Receiver<node::Status>,
-        storage: Catalog,
         raft_storage: RaftSpaceAccess,
         instance_reachability: InstanceReachabilityManagerRef,
     ) -> Self {
@@ -275,7 +260,6 @@ impl Loop {
 
         let state = State {
             pool,
-            storage,
             raft_storage,
             raft_status,
             status: status_rx,
@@ -341,7 +325,6 @@ enum SentinelStatus {
 
 struct State {
     pool: Rc<ConnectionPool>,
-    storage: Catalog,
     raft_storage: RaftSpaceAccess,
     raft_status: watch::Receiver<node::Status>,
     status: watch::Receiver<SentinelStatus>,

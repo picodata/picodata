@@ -1,5 +1,6 @@
 #![allow(unused_parens)]
 use crate::instance::Instance;
+use crate::instance::State;
 use crate::replicaset::Replicaset;
 use crate::schema::ServiceRouteItem;
 use crate::storage::Catalog;
@@ -133,6 +134,24 @@ impl TopologyCache {
             .get()
             .expect("don't call this until it's known")
             .clone()
+    }
+
+    #[inline(always)]
+    pub fn my_current_state(&self) -> State {
+        self.get()
+            .this_instance
+            .get()
+            .expect("don't call this until it's known")
+            .current_state
+    }
+
+    #[inline(always)]
+    pub fn my_target_state(&self) -> State {
+        self.get()
+            .this_instance
+            .get()
+            .expect("don't call this until it's known")
+            .target_state
     }
 
     #[inline(always)]
