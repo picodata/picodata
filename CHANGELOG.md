@@ -52,6 +52,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T` 
   resulted in an error.
 
+- Fixes unnecessary vshard router and storage config updates.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.

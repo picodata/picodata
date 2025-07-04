@@ -182,7 +182,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
-    sharding: HashMap<String, ReplicasetSpec>,
+    pub sharding: HashMap<String, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 
     /// Id of system table `_bucket`.
@@ -202,7 +202,7 @@ pub struct VshardConfig {
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
-struct ReplicasetSpec {
+pub struct ReplicasetSpec {
     replicas: HashMap<String, ReplicaSpec>,
     weight: Option<Weight>,
 }
