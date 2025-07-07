@@ -38,9 +38,7 @@ $leader-height: 16px;
 .nameColumn {
   align-items: flex-start;
   justify-content: center;
-  min-width: 10px;
   max-width: fit-content;
-  flex: 1 143px;
 
   .label {
     text-align: left;
@@ -48,8 +46,7 @@ $leader-height: 16px;
 }
 
 .failureDomainColumn {
-  flex: 1 198px;
-  min-width: 86px;
+  flex: 1;
   max-width: fit-content;
   overflow: hidden;
 }
@@ -63,13 +60,15 @@ $leader-height: 16px;
 }
 
 .versionColumn {
-  flex: 1 60px;
+  width: auto !important;
 }
 
-.endColumn {
-  display: flex;
-  column-gap: 16px;
-  overflow: hidden;
+.joinedColumn {
+  display: grid;
+  align-items: start;
+  grid-template-columns: auto auto;
+  column-gap: 8px;
+  max-width: max-content;
 }
 
 .label {

@@ -77,48 +77,48 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
                 <FailureDomainLabel failureDomain={instance.failureDomain} />
               </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.targetStateColumn)}>
-              <div className={styles.label}>
-                {instanceTranslations.targetState.label}
+            <div className={styles.joinedColumn}>
+              <div className={cn(styles.infoColumn, styles.targetStateColumn)}>
+                <div className={styles.label}>
+                  {instanceTranslations.targetState.label}
+                </div>
+                <div className={cn(styles.value, styles.targetStateValue)}>
+                  <NetworkState state={instance.targetState} />
+                </div>
               </div>
-              <div className={cn(styles.value, styles.targetStateValue)}>
-                <NetworkState state={instance.targetState} />
+              <div className={cn(styles.infoColumn, styles.currentStateColumn)}>
+                <div className={styles.label}>
+                  {instanceTranslations.currentState.label}
+                </div>
+                <div className={cn(styles.value, styles.currentStateValue)}>
+                  <NetworkState state={instance.currentState} />
+                </div>
               </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.currentStateColumn)}>
-              <div className={styles.label}>
-                {instanceTranslations.currentState.label}
-              </div>
-              <div className={cn(styles.value, styles.currentStateValue)}>
-                <NetworkState state={instance.currentState} />
-              </div>
-            </div>
-            <div className={styles.endColumn}>
-              <AddressBlock
-                addresses={[
-                  {
-                    title: instanceTranslations.binaryAddress.label,
-                    value: instance.binaryAddress,
-                  },
-                  {
-                    title: instanceTranslations.httpAddress.label,
-                    value: instance.httpAddress ?? "",
-                  },
-                  {
-                    title: instanceTranslations.pgAddress.label,
-                    value: instance.pgAddress,
-                  },
-                ]}
-              />
-              <VersionBlock
-                className={cn(styles.infoColumn, styles.hiddenValue)}
-                label={instanceTranslations.version.label}
-                version={instance.version}
-                noData={
-                  <InfoNoData text={translation.components.infoNoData.label} />
-                }
-              />
-            </div>
+            <AddressBlock
+              addresses={[
+                {
+                  title: instanceTranslations.binaryAddress.label,
+                  value: instance.binaryAddress,
+                },
+                {
+                  title: instanceTranslations.httpAddress.label,
+                  value: instance.httpAddress ?? "",
+                },
+                {
+                  title: instanceTranslations.pgAddress.label,
+                  value: instance.pgAddress,
+                },
+              ]}
+            />
+            <VersionBlock
+              className={cn(styles.infoColumn, styles.hiddenValue)}
+              label={instanceTranslations.version.label}
+              version={instance.version}
+              noData={
+                <InfoNoData text={translation.components.infoNoData.label} />
+              }
+            />
           </div>
         </div>
         {/* <InstanceModal
