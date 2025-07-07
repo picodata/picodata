@@ -237,3 +237,92 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
 
     # Wait until governor finishes with all the needed changes.
     i1.wait_governor_status("idle")
+
+
+def test_sentinel_backoff(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    # Make it so the instance stops receiving raft log updates right after it
+    # finds out that cluster thinks it's Offline
+    raft_failure = "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE"
+    i3.call("pico._inject_error", raft_failure, True)
+
+    # Also break the sentinel's ability to communicate to check how often it retries
+    connection_failure = "SENTINEL_CONNECTION_POOL_CALL_FAILURE"
+    i3.call("pico._inject_error", connection_failure, True)
+
+    # Make it so everybody thinks `i3` if Offline
+    i1.call(".proc_update_instance", i3.name, i3.cluster_name, i3.cluster_uuid, None, "Offline", None, False, None)
+
+    def check_sentinel_failed_with_injection():
+        info = i3.call(".proc_runtime_info")
+        internal = info["internal"]
+        # Sentinel is trying to change the instance's state to Online
+        assert internal["sentinel_last_action"] == "auto online by self"
+        assert internal["sentinel_fail_streak"]["count"] > 0
+        assert internal["sentinel_fail_streak"]["error"]["code"] == ErrorCode.Other
+        assert internal["sentinel_fail_streak"]["error"]["message"] == "injected error"
+
+    Retriable().call(check_sentinel_failed_with_injection)
+
+    old_counter = i1.wait_governor_status("idle")
+    # Everybody thinks `i3` is Offline
+    i1.wait_has_states("Offline", "Offline", target=i3)
+
+    # Restore the sentinel's ability to send requests, but it will still not see
+    # the result of it's requests because it's raft log update is broken, so it
+    # will now block while waiting for the raft log to advance
+    i3.call("pico._inject_error", connection_failure, False)
+
+    def check_sentinel_succeeded_and_is_waiting():
+        info = i3.call(".proc_runtime_info")
+        internal = info["internal"]
+        # Sentinel is trying to change the instance's state to Online
+        assert internal["sentinel_last_action"] == "auto online by self"
+        # No failures are registered, because technically the request was handled
+        assert "sentinel_fail_streak" not in internal
+        # This is important, this means that since last sentinel request was sent
+        # no raft log entries have been applied. This is the criteria for the
+        # sentinel backoff
+        index_of_attempt = internal["sentinel_index_of_last_success"]
+        assert index_of_attempt == info["raft"]["applied"]
+        return index_of_attempt
+
+    old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
+
+    counter = i1.wait_governor_status("update current sharding configuration")
+    # Governor has performed 2 steps (updated sharding config and updated
+    # instance's current state). This is important, because it shows that there
+    # weren't a bunch of redundant state updates (regression test for the
+    # original bug report)
+    assert counter - old_counter == 2
+    old_counter = counter
+
+    # Now `i3` is trying to go back Online, but cannot yet, because it's raft loop is broken
+    i1.wait_has_states("Offline", "Online", target=i3)
+
+    # Fix `i3`'s raft loop
+    i3.call("pico._inject_error", raft_failure, False)
+
+    # It's finally online
+    i1.wait_has_states("Online", "Online", target=i3)
+
+    counter = i1.wait_governor_status("idle")
+    # Also just 2 steps, no spam
+    assert counter - old_counter == 2
+    old_counter = counter
+
+    info = i3.call(".proc_runtime_info")
+    internal = info["internal"]
+    # Last action by sentinel is recorded for debugging purposes
+    assert internal["sentinel_last_action"] == "auto online by self"
+    # There's no fail streak, because the last action was a success
+    assert "sentinel_fail_streak" not in internal
+    index_of_attempt = internal["sentinel_index_of_last_success"]
+    # Applied index at the moment of last request is less than the most recent
+    # applied index, which means that the request was handled and instance is
+    # aware of the results
+    assert index_of_attempt < info["raft"]["applied"]
+    # And this is important, because it means that there was only this one
+    # request to update target state (no spam)
+    assert old_index_of_attempt == index_of_attempt

@@ -209,6 +209,8 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
+                    crate::error_injection!("SENTINEL_CONNECTION_POOL_CALL_FAILURE" =>
+                        return Err(BoxError::new(crate::error_code::ErrorCode::Other, "injected error").into()));
                     pool.call(
                         &leader_id,
                         proc_name!(proc_update_instance),

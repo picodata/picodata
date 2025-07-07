@@ -765,6 +765,12 @@ impl NodeImpl {
                 self.applied
                     .send(new_applied)
                     .expect("applied shouldn't ever be borrowed across yields");
+
+                crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
+                    if self.topology_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
+                        crate::error_injection!(block "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE");
+                    }
+                });
             }
 
             match apply_entry_result {

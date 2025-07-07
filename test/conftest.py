@@ -626,6 +626,7 @@ class Instance:
     init_replication_factor: int | None = None
     config_path: str | None = None
     name: str | None = None
+    cluster_uuid: str | None = None
     replicaset_name: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     _service_password: str | None = None
@@ -1404,6 +1405,12 @@ class Instance:
 
         assert isinstance(info["replicaset_name"], str)
         target.replicaset_name = info["replicaset_name"]
+
+        assert isinstance(info["cluster_name"], str)
+        target.cluster_name = info["cluster_name"]
+
+        assert isinstance(info["cluster_uuid"], str)
+        target.cluster_uuid = info["cluster_uuid"]
 
         return info
 
