@@ -62,6 +62,11 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Remove `pico.exit` function as it is no longer used.
 
+### Plugin API
+
+- Added `cluster_uuid()` API and corresponding `pico_ffi_cluster_uuid`
+  FFI binding to retrieve the cluster UUID of the current instance.
+
 ## [25.2.1] - 2025-05-26
 
 ### CLI
