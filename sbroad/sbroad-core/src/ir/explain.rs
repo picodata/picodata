@@ -169,6 +169,7 @@ impl Default for ColExpr {
 
 /// Helper struct for constructing ColExpr out of
 /// given plan expression node.
+#[derive(Debug)]
 struct ColExprStack<'st> {
     /// Vec of (col_expr, corresponding_plan_id).
     inner: Vec<(ColExpr, NodeId)>,
@@ -199,10 +200,6 @@ impl<'st> ColExprStack<'st> {
             None => expr,
             Some(top_plan_id) => expr.covered_with_parentheses(self.plan, top_plan_id, plan_id),
         }
-    }
-
-    fn pop_expr_optional(&mut self) -> Option<ColExpr> {
-        self.inner.pop().map(|(expr, _)| expr)
     }
 }
 
@@ -378,9 +375,9 @@ impl ColExpr {
                         ColExpr::Column(value.to_string(), current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
-                Expression::Trim(Trim { kind, .. }) => {
+                Expression::Trim(Trim { kind, pattern, .. }) => {
                     let target = stack.pop_expr(Some(id));
-                    let pattern = stack.pop_expr_optional().map(Box::new);
+                    let pattern = pattern.map(|_| Box::new(stack.pop_expr(Some(id))));
                     let trim_expr = ColExpr::Trim(kind.clone(), pattern, Box::new(target));
                     stack.push((trim_expr, id));
                 }

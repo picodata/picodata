@@ -6,8 +6,8 @@ use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
     Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, TimeParameters, UnaryExpr,
-    Update, ValuesRow,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, TimeParameters, Trim,
+    UnaryExpr, Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -251,7 +251,19 @@ impl Plan {
                     }
                 }
                 Expression::Cast(_) => writeln!(buf, "Cast")?,
-                Expression::Trim(_) => writeln!(buf, "Trim")?,
+                Expression::Trim(Trim {
+                    kind,
+                    pattern,
+                    target,
+                }) => {
+                    writeln!(buf, "Trim [kind: {kind:?}]")?;
+                    if let Some(pattern) = pattern {
+                        writeln_with_tabulation(buf, tabulation_number + 1, "Pattern")?;
+                        self.formatted_arena_node(buf, tabulation_number + 1, *pattern)?;
+                    }
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Target")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *target)?;
+                }
                 Expression::Concat(_) => writeln!(buf, "Concat")?,
                 Expression::Like(Like {
                     left,

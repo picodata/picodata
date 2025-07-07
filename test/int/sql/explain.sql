@@ -242,3 +242,29 @@ execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
 buckets = [1-3000]
+
+-- TEST: test_explain_trim-1
+-- SQL:
+EXPLAIN WITH t(a) AS (SELECT '1') SELECT * FROM t t1 WHERE t1.a = trim('');
+-- EXPECTED:
+projection ("t1"."a"::string -> "a")
+    selection "t1"."a"::string = TRIM(''::string)
+        scan cte t1($0)
+subquery $0:
+projection ("t"."col_1"::string -> "a")
+                scan "t"
+                    projection ('1'::string -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: test_explain_trim-2
+-- SQL:
+EXPLAIN SELECT CASE WHEN TRUE THEN '1' ELSE TRIM('2') END;
+-- EXPECTED:
+projection (case when true::boolean then '1'::string else TRIM('2'::string) end -> "col_1")
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = any
