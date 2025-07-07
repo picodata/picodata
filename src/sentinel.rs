@@ -71,6 +71,8 @@ impl Loop {
                 return ControlFlow::Break(());
             }
 
+            // Topology cache state corresponds to this applied index.
+            let index = node.get_index();
             let instance_name = node.topology_cache.my_instance_name().into();
             let req = rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
                 .with_target_state(Offline);
@@ -103,7 +105,7 @@ impl Loop {
                         // it confirms that the instance's target_state has been
                         // changed to Offline. But we still register the result
                         // for consistency
-                        register_successful_connection(&mut stats.borrow_mut(), node);
+                        register_successful_connection(&mut stats.borrow_mut(), index);
                         return ControlFlow::Break(());
                     }
                     Err(e) => {
@@ -140,6 +142,8 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
+            // Topology cache state corresponds to this applied index.
+            let index = node.get_index();
             set_action_kind(&mut stats.borrow_mut(), ActionKind::AutoOfflineByLeader);
 
             tlog!(Info, "setting target state Offline"; "instance_name" => %instance_name);
@@ -172,7 +176,7 @@ impl Loop {
                 // the future this may change...
                 register_failed_attempt(&mut stats.borrow_mut(), e.into_box_error());
             } else {
-                register_successful_connection(&mut stats.borrow_mut(), node);
+                register_successful_connection(&mut stats.borrow_mut(), index);
             }
 
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
@@ -189,17 +193,18 @@ impl Loop {
             if exponential_backoff_before_retry(&stats.borrow(), Self::SENTINEL_SHORT_RETRY)
                 && raft_log_barrier_is_passed(&stats.borrow(), node)
             {
+                // Topology cache state corresponds to this applied index.
+                let index = node.get_index();
+                let instance_name = node.topology_cache.my_instance_name().into();
+
                 tlog!(Info, "setting own target state Online");
-                let req = rpc::update_instance::Request::new(
-                    node.topology_cache.my_instance_name().into(),
-                    cluster_name,
-                    cluster_uuid,
-                )
-                // We only try setting the state once and if a CaS conflict
-                // happens we should reassess the situation, because somebody
-                // else could have changed this particular instance's target state.
-                .with_dont_retry(true)
-                .with_target_state(Online);
+                let req =
+                    rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
+                        // We only try setting the state once and if a CaS conflict
+                        // happens we should reassess the situation, because somebody
+                        // else could have changed this particular instance's target state.
+                        .with_dont_retry(true)
+                        .with_target_state(Online);
                 let res = async {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
@@ -217,7 +222,7 @@ impl Loop {
 
                 match res {
                     Ok(()) => {
-                        register_successful_connection(&mut stats.borrow_mut(), node);
+                        register_successful_connection(&mut stats.borrow_mut(), index);
                     }
                     Err(e) => {
                         tlog!(Warning, "failed setting own target state Online: {e}");
@@ -231,7 +236,7 @@ impl Loop {
                             // request, so it should be reconstructed after
                             // synchronizing with the raft log. For this reason
                             // we say the connection was successful
-                            register_successful_connection(&mut stats.borrow_mut(), node);
+                            register_successful_connection(&mut stats.borrow_mut(), index);
                         } else {
                             register_failed_attempt(&mut stats.borrow_mut(), e);
                         }
@@ -369,10 +374,10 @@ fn set_action_kind(stats: &mut ContinuityTracker, kind: ActionKind) {
     // Last action was of the same kind, nothing to change
 }
 
-fn register_successful_connection(stats: &mut ContinuityTracker, node: &node::Node) {
+fn register_successful_connection(stats: &mut ContinuityTracker, index: RaftIndex) {
     stats.fail_streak = None;
 
-    stats.last_successful_attempt = Some((node.get_index(), fiber::clock()));
+    stats.last_successful_attempt = Some((index, fiber::clock()));
 }
 
 fn register_failed_attempt(stats: &mut ContinuityTracker, error: BoxError) {
