@@ -4,6 +4,7 @@
 
 pub mod bool_in;
 pub mod cast_constants;
+pub mod constant_folding;
 pub mod dnf;
 pub mod equality_propagation;
 pub mod merge_tuples;

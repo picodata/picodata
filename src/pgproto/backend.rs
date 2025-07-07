@@ -150,6 +150,7 @@ pub fn bind(
         plan.bind_params(params)?;
         plan.apply_options()?;
         plan.optimize()?;
+        plan.fold_boolean_tree()?;
     }
 
     let key = storage::Key(id, portal_name.into());

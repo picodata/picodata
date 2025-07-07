@@ -171,6 +171,7 @@ where
             plan.bind_params(params)?;
             plan.apply_options()?;
             plan.optimize()?;
+            plan.fold_boolean_tree()?;
         }
         let query = Query {
             is_explain: plan.is_explain(),

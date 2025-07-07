@@ -444,7 +444,7 @@ impl ColExpr {
                 }
                 Expression::Unary(UnaryExpr { op, .. }) => {
                     let child_expr = stack.pop_expr(Some(id));
-                    let alias_expr = ColExpr::Unary(op.clone(), Box::new(child_expr));
+                    let alias_expr = ColExpr::Unary(*op, Box::new(child_expr));
                     stack.push((alias_expr, id));
                 }
                 Expression::LocalTimestamp(_) => {
