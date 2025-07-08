@@ -40,8 +40,7 @@ nav:
       - tutorial/deploy.md
       - tutorial/node_add.md
       - tutorial/node_expel.md
-      - tutorial/deploy_ansible.md
-      - tutorial/deploy_kubernetes.md
+
     - Начало работы:
       - tutorial/connecting.md
       - tutorial/dbeaver.md
@@ -56,6 +55,9 @@ nav:
         - tutorial/connectors/jdbc.md
         - tutorial/connectors/go.md
   - Администрирование кластера:
+      - admin/deploy_ansible.md
+      - admin/deploy_kubernetes.md
+      - admin/cluster_mgmt.md
       - admin/configure.md
       - admin/monitoring.md
       - admin/backup.md
@@ -134,6 +136,7 @@ nav:
     - reference/config.md
     - reference/audit_events.md
     - reference/db_config.md
+    - reference/ansible_variables.md
     - reference/metrics.md
     - reference/settings.md
     - reference/limitations.md

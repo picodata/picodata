@@ -94,7 +94,7 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 Однако, для полноценной использования плагина рекомендуется запустить кластер с помощью [роли Ansible].
 
 [командной строки]: ../reference/cli.md
-[роли Ansible]: ../tutorial/deploy_ansible.md
+[роли Ansible]: ../admin/deploy_ansible.md
 
 После запуска Picodata с поддержкой плагинов в заданной директории подключитесь к [административной
 консоли] инстанса Picodata.
@@ -128,7 +128,7 @@ ALTER PLUGIN synapse 1.0.0 ENABLE;
 ### Установка окружения {: #setting_env }
 
 Создайте файл с описанием кластера согласно [руководству по
-развертыванию кластера](../tutorial/deploy_ansible.md). Например,
+развертыванию кластера](../admin/deploy_ansible.md). Например,
 `synapse.yml`.
 
 ```yaml
@@ -308,7 +308,7 @@ DC1: # Датацентр (failure_domain)
         name: picodata-ansible
 ```
 
-В результате в рабочем каталоге должно быть 4 файла:
+В результате в рабочей директории должно быть 4 файла:
 
 - synapse.yml
 - picodata.yml

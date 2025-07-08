@@ -340,4 +340,4 @@ DROP PLUGIN weather_cache 0.1.0 WITH DATA;
 См. также:
 
 - [Разработка плагина с помощью Pike](create_plugin.md#using_pike)
-- [Управление плагинами с помощью роли Ansible](deploy_ansible.md#plugin_management)
+- [Управление плагинами с помощью роли Ansible](../admin/deploy_ansible.md#plugin_management)

@@ -9,7 +9,7 @@
 
 Структура чарта Picodata:
 
-```bash
+```shell
 picodata/
   Chart.yaml            # >>> Файл с информацией о чарте
   values.yaml           # >>> Файл конфигурации чарта с параметрами по умолчанию
@@ -71,7 +71,7 @@ picodata/
 
 Запустите кластер Kubernetes — например, с помощью пакета [Minikube]:
 
-```bash
+```shell
 minikube start
 ```
 
@@ -79,7 +79,7 @@ minikube start
 
 Склонируйте репозиторий [`picodata-chart`]:
 
-```bash
+```shell
 git clone https://git.picodata.io/core/picodata-chart.git
 ```
 
@@ -87,20 +87,20 @@ git clone https://git.picodata.io/core/picodata-chart.git
 
 Перейдите в директорию, содержащую чарт Picodata:
 
-```bash
+```shell
 cd picodata-chart/picodata/
 ```
 
 С помощью менеджера пакетов [Helm] установите чарт Picodata в кластер
 Kubernetes:
 
-```bash
+```shell
 helm upgrade --install picodata -n picodata . --create-namespace
 ```
 
 Проверьте статус подов `default-picodata-*` в кластере Kubernetes:
 
-```bash
+```shell
 $ kubectl get pods -n picodata
 NAME                 READY   STATUS    RESTARTS     AGE
 default-picodata-0   1/1     Running   1 (9h ago)   9h
@@ -113,16 +113,16 @@ default-picodata-1   1/1     Running   1 (9h ago)   9h
 
 Пробросьте локальный порт 4327 к тому же порту пода `default-picodata-0`:
 
-```bash
+```shell
 $ kubectl port-forward -n picodata default-picodata-0 4327
 Forwarding from 127.0.0.1:4327 -> 4327
 Forwarding from [::1]:4327 -> 4327
 ```
 
-Откройте еще один терминал и [подключитесь](connecting.md#postgresql) к
+Откройте еще один терминал и [подключитесь](../tutorial/connecting.md#postgresql) к
 инстансу Picodata в поде `default-picodata-0`:
 
-```bash
+```shell
 psql postgres://admin:T0psecret@127.0.0.1:4327
 ```
 
@@ -135,7 +135,7 @@ Picodata [`templates/picodata.yml`].
 Проверьте статус инстансов в кластере Picodata, прочитав системную таблицу
 [`_pico_instance`]:
 
-```bash
+```shell
 admin=> SELECT name, replicaset_name, current_state, tier
         FROM _pico_instance;
     name     | replicaset_name | current_state |  tier
@@ -151,7 +151,7 @@ admin=> SELECT name, replicaset_name, current_state, tier
 
 Пробросьте локальный порт 8081 к тому же порту пода `default-picodata-0`:
 
-```bash
+```shell
 $ kubectl port-forward -n picodata default-picodata-0 8081
 Forwarding from 127.0.0.1:8081 -> 8081
 Forwarding from [::1]:8081 -> 8081
@@ -164,22 +164,22 @@ Forwarding from [::1]:8081 -> 8081
 
 См. также:
 
-* [Инструкции и руководства ~ Работа в веб-интерфейсе](webui.md)
+* [Инструкции и руководства ~ Работа в веб-интерфейсе](../tutorial/webui.md)
 
 ### Командная оболочка (Bash) {: #check_picodata_cluster_via_shell }
 
 Подключитесь к командной оболочке Bash пода `default-picodata-0`:
 
-```bash
+```shell
 kubectl exec -it default-picodata-0 -n picodata -- bash
 ```
 
 Подключитесь [к консоли администратора] Picodata:
 
-```bash
+```shell
 picodata admin admin.sock
 ```
-[к консоли администратора]: connecting.md#admin_console
+[к консоли администратора]: ../tutorial/connecting.md#admin_console
 
 Проверьте статус инстансов в кластере Picodata, прочитав системную
 таблицу [`_pico_instance`]:
@@ -202,36 +202,36 @@ picodata admin admin.sock
     Удалить чарт `picodata` и связанные с ним поды из пространства имен
     `picodata` в кластере Kubernetes:
 
-    ```bash
+    ```shell
     helm uninstall picodata -n picodata
     ```
 
     Вывести отладочный журнал для пода `default-picodata-0`:
 
-    ```bash
+    ```shell
     kubectl logs -n picodata default-picodata-0
     ```
 
     Вывести перечень событий для подов из пространства имен `picodata`:
 
-    ```bash
+    ```shell
     kubectl events -n picodata
     ```
 
     Вывести отладочный журнал для локального кластера Kubernetes:
 
-    ```bash
+    ```shell
     minikube logs
     ```
 
     Остановить локальный кластер Kubernetes:
 
-    ```bash
+    ```shell
     minikube stop
     ```
 
     Удалить локальный кластер Kubernetes:
 
-    ```bash
+    ```shell
     minikube delete
     ```

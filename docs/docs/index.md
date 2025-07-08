@@ -35,8 +35,6 @@ Picodata — это распределенная система промышле
 * [Создание кластера](tutorial/deploy.md)
 * [Добавление узлов](tutorial/node_add.md)
 * [Удаление узлов](tutorial/node_expel.md)
-* [Развертывание кластера через Ansible](tutorial/deploy_ansible.md)
-* [Picodata в Kubernetes](tutorial/deploy_kubernetes.md)
 
 #### Начало работы {: #getting_started }
 
@@ -53,6 +51,9 @@ Picodata — это распределенная система промышле
 
 ### Администрирование кластера {: #administration }
 
+* [Развертывание кластера через Ansible](admin/deploy_ansible.md)
+* [Picodata в Kubernetes](admin/deploy_kubernetes.md)
+* [Управление кластером в промышленной среде с ограниченными привилегиями](admin/cluster_mgmt.md)
 * [Конфигурирование](admin/configure.md)
 * [Мониторинг](admin/monitoring.md)
 * [Резервное копирование](admin/backup.md)
@@ -71,6 +72,7 @@ Picodata — это распределенная система промышле
 * [Файл конфигурации](reference/config.md)
 * [Регистрируемые события безопасности](reference/audit_events.md)
 * [Параметры конфигурации СУБД](reference/db_config.md)
+* [Переменные, используемые в роли Ansible](reference/ansible_variables.md)
 * [Справочник метрик](reference/metrics.md)
 * [Справочник настроек](reference/settings.md)
 * [Ограничения](reference/limitations.md)

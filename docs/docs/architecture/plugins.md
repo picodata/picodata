@@ -301,7 +301,7 @@ OPTION(timeout=...);
 [`.proc_load_plugin_dry_run`]: rpc_api.md#proc_load_plugin_dry_run
 [CaS]: ../overview/glossary.md#cas
 [migration]: ../overview/glossary.md#migration
-[ansible]: ../tutorial/deploy_ansible.md
+[ansible]: ../admin/deploy_ansible.md
 
 
 ### Включение {: #plugin_enable }

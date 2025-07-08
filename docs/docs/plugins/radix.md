@@ -123,7 +123,7 @@ cluster_mode: true # какой флаг отдавать в команде `inf
 ```
 
 [Picodata Pike]: ../tutorial/create_plugin.md#pike_plugin_config_apply
-[инвентарного файла Ansible]: ../tutorial/deploy_ansible.md#plugin_management
+[инвентарного файла Ansible]: ../admin/deploy_ansible.md#plugin_management
 
 Для изменения доступны следующие параметры:
 
