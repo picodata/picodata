@@ -689,6 +689,7 @@ pub(super) fn action_plan<'i>(
     // install plugin
     if let Some(PluginOp::CreatePlugin {
         manifest,
+        inherit_entities,
         inherit_topology,
     }) = plugin_op
     {
@@ -733,6 +734,15 @@ pub(super) fn action_plan<'i>(
             let config_records =
                 PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
 
+            for config_rec in config_records {
+                let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
+                ranges.push(cas::Range::for_dml(&dml)?);
+                ops.push(dml);
+            }
+        }
+
+        for (entity, config) in inherit_entities {
+            let config_records = PluginConfigRecord::from_config(&ident, entity, config.clone())?;
             for config_rec in config_records {
                 let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
                 ranges.push(cas::Range::for_dml(&dml)?);
@@ -1034,6 +1044,7 @@ macro_rules! define_plan {
     }
 }
 
+use crate::storage::Properties;
 use stage::*;
 
 pub mod stage {

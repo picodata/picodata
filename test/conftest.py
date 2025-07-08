@@ -2457,6 +2457,8 @@ def binary_path() -> str:
     destinations = [
         f"{test_dir}/testplug/testplug/0.1.0",
         f"{test_dir}/testplug/testplug/0.2.0",
+        f"{test_dir}/testplug/testplug/0.3.0",
+        f"{test_dir}/testplug/testplug/0.4.0",
         f"{test_dir}/testplug/testplug_small/0.1.0",
         f"{test_dir}/testplug/testplug_small_svc2/0.1.0",
         f"{test_dir}/testplug/testplug_w_migration/0.1.0",

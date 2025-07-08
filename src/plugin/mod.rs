@@ -518,6 +518,34 @@ pub struct InheritOpts {
     pub topology: bool,
 }
 
+/// This function implements config inheritance logic during config upgrades.
+///
+/// The inheritance strategy is as follows:
+/// - For keys that present in both configs, use the value from the current one
+/// - Keep new keys from the new config
+/// - Add keys that exist only in the current config to the new one
+fn inherit_config_inplace(new: &mut Value, cur: Value) {
+    match (new, cur) {
+        (Value::Map(new_kvs), Value::Map(mut cur_kvs)) => {
+            // Inherit current config values for common keys
+            for (k, v) in new_kvs.iter_mut() {
+                let cur_kv = cur_kvs
+                    .iter_mut()
+                    .find(|(k2, _)| k == k2)
+                    .map(|kv| std::mem::replace(kv, (Value::Nil, Value::Nil)));
+                if let Some((_, cur_v)) = cur_kv {
+                    inherit_config_inplace(v, cur_v);
+                }
+            }
+
+            // Inherit keys that are missed in the new confing
+            let cur_kvs = cur_kvs.into_iter().filter(|kv| !kv.0.is_nil());
+            new_kvs.extend(cur_kvs);
+        }
+        (new, cur) => *new = cur,
+    }
+}
+
 /// Create plugin:
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
@@ -562,6 +590,7 @@ pub fn create_plugin(
 
         let mut inherit_topology = HashMap::new();
         let mut manifest = manifest.clone();
+        let mut inherit_entities = HashMap::new();
         if (inherit_opts.topology || inherit_opts.config) && !existing_plugins.is_empty() {
             let existed_plugin = existing_plugins.pop().expect("infallible");
             let existed_identity = existed_plugin.into_identifier();
@@ -571,9 +600,10 @@ pub fn create_plugin(
 
                 manifest.services.iter_mut().for_each(|svc_manifest| {
                     if let Some(cfg) = entities.remove(&svc_manifest.name) {
-                        svc_manifest.default_configuration = cfg;
+                        inherit_config_inplace(&mut svc_manifest.default_configuration, cfg);
                     }
                 });
+                inherit_entities.extend(entities);
             }
             if inherit_opts.topology {
                 node.storage
@@ -588,6 +618,7 @@ pub fn create_plugin(
 
         let op = PluginOp::CreatePlugin {
             manifest,
+            inherit_entities,
             inherit_topology,
         };
         let dml = Dml::replace(
@@ -1002,6 +1033,7 @@ pub fn drop_plugin(
 pub enum PluginOp {
     CreatePlugin {
         manifest: Manifest,
+        inherit_entities: HashMap<String, Value>,
         inherit_topology: HashMap<String, Vec<String>>,
     },
     EnablePlugin {
@@ -1206,4 +1238,92 @@ pub fn change_config_atom(
     };
 
     reenterable_plugin_cas_request(node, make_op, deadline).map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plugin::inherit_config_inplace;
+    use rmpv::Value;
+
+    fn map<'a>(entries: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
+        Value::Map(
+            entries
+                .into_iter()
+                .map(|(k, v)| (Value::from(k), v))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn config_inhertance_simple() {
+        let mut new = map([("port", Value::from(9090))]);
+        let cur = map([
+            ("host", Value::from("localhost")),
+            ("port", Value::from(8080)),
+        ]);
+
+        inherit_config_inplace(&mut new, cur);
+
+        let expected = map([
+            ("port", Value::from(8080)),
+            ("host", Value::from("localhost")),
+        ]);
+        assert_eq!(new, expected);
+    }
+
+    #[test]
+    fn config_inhertance_nested() {
+        let mut new = map([("features", map([("b", Value::from(true))]))]);
+        let cur = map([(
+            "features",
+            map([("a", Value::from(false)), ("b", Value::from(false))]),
+        )]);
+
+        inherit_config_inplace(&mut new, cur);
+
+        let expected = map([(
+            "features",
+            map([("b", Value::from(false)), ("a", Value::from(false))]),
+        )]);
+        assert_eq!(new, expected);
+    }
+
+    #[test]
+    fn config_inhertance_radix_gl_1874() {
+        let mut new = map(vec![
+            ("addr", Value::from("0.0.0.0:7379")),
+            (
+                "clients",
+                map([
+                    ("max_clients", Value::from(10000)),
+                    ("max_input_buffer_size", Value::from(1073741824)),
+                    ("max_output_buffer_size", Value::from(1073741824)),
+                ]),
+            ),
+            ("cluster_mode", Value::from(true)),
+            (
+                "redis_compatibility",
+                map([("enabled_deprecated_commands", Value::Array(vec![]))]),
+            ),
+        ]);
+
+        let cur = map(vec![
+            ("addr", Value::from("0.0.0.0:7379")),
+            (
+                "clients",
+                map([
+                    ("max_clients", Value::from(10000)),
+                    ("max_input_buffer_size", Value::from(1073741824)),
+                    ("max_output_buffer_size", Value::from(1073741824)),
+                ]),
+            ),
+            ("cluster_mode", Value::from(true)),
+        ]);
+
+        let expected = new.clone();
+
+        inherit_config_inplace(&mut new, cur);
+
+        assert_eq!(new, expected);
+    }
 }

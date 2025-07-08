@@ -1,0 +1,9 @@
+description: plugin for test purposes
+name: testplug
+version: 0.3.0
+services:
+  - name: testservice_4
+    description: testservice_4 descr
+    default_configuration:
+      a: 0
+

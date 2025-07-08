@@ -3322,3 +3322,62 @@ DROP TABLE author;
     )
 
     i1.sql(f'DROP PLUGIN "{plugin}" 0.1.0 WITH DATA')
+
+
+def test_config_inheritance_during_upgrades_gl_1874(instance: Instance):
+    """
+    Ensure that we correctly inherit config when installing another version of the same plugin
+    https://git.picodata.io/core/picodata/-/issues/1874
+    """
+
+    plugin = _PLUGIN
+    service = "testservice_4"
+
+    # Install and enable plugin version 0.3.0
+    instance.sql(f"CREATE PLUGIN {plugin} 0.3.0")
+    instance.sql(f"ALTER PLUGIN {plugin} 0.3.0 ADD SERVICE {service} TO TIER default")
+    instance.sql(f"ALTER PLUGIN {plugin} 0.3.0 ENABLE")
+
+    cfg = instance.sql("select * from _pico_plugin_config where version = '0.3.0'")
+    assert cfg == [["testplug", "0.3.0", "testservice_4", "a", 0]]
+
+    # Install plugin version 0.4.0
+    instance.sql(f"CREATE PLUGIN {plugin} 0.4.0")
+
+    # Ensure the new key `b` is there (#1874)
+    cfg = instance.sql("select * from _pico_plugin_config where version = '0.4.0'")
+    assert sorted(cfg) == [
+        ["testplug", "0.4.0", "testservice_4", "a", 0],
+        ["testplug", "0.4.0", "testservice_4", "b", 1],
+    ]
+
+    instance.sql(f"DROP PLUGIN {plugin} 0.4.0")
+
+    # Alter key `a` to check if it's value is inherited later
+    instance.sql(f"ALTER PLUGIN {plugin} 0.3.0 SET {service}.a = '1'")
+
+    # Install plugin version 0.4.0
+    instance.sql(f"CREATE PLUGIN {plugin} 0.4.0")
+
+    # Ensure value of `a` is inherited
+    cfg = instance.sql("select * from _pico_plugin_config where version = '0.4.0'")
+    assert sorted(cfg) == [
+        ["testplug", "0.4.0", "testservice_4", "a", 1],
+        ["testplug", "0.4.0", "testservice_4", "b", 1],
+    ]
+
+    instance.sql(f"DROP PLUGIN {plugin} 0.4.0")
+
+    # Add `migration_context` to test plugin level config inheritance
+    instance.sql(f"ALTER PLUGIN {plugin} 0.3.0 SET migration_context.tier_0 = 'default'")
+
+    # Install plugin version 0.4.0
+    instance.sql(f"CREATE PLUGIN {plugin} 0.4.0")
+
+    # Ensure `migration_context` is inherited
+    cfg = instance.sql("select * from _pico_plugin_config where version = '0.4.0'")
+    assert sorted(cfg) == [
+        ["testplug", "0.4.0", "migration_context", "tier_0", "default"],
+        ["testplug", "0.4.0", "testservice_4", "a", 1],
+        ["testplug", "0.4.0", "testservice_4", "b", 1],
+    ]

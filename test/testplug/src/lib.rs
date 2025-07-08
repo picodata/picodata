@@ -495,6 +495,43 @@ impl Service for Service3 {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct Service4Config {
+    a: i64,
+}
+
+struct Service4 {}
+
+impl Service for Service4 {
+    type Config = Service4Config;
+}
+
+impl Service4 {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct Service4ConfigExtended {
+    a: i64,
+    b: i64,
+}
+
+struct Service4WithExtendedConfig {}
+
+impl Service for Service4WithExtendedConfig {
+    type Config = Service4ConfigExtended;
+}
+
+impl Service4WithExtendedConfig {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
 mod background_tests {
     use picodata_plugin::background;
     use picodata_plugin::plugin::interface::ServiceId;
@@ -870,4 +907,7 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     });
 
     reg.add("test_panic_in_plugin", "0.1.0", || TestPanicInPlugin);
+
+    reg.add("testservice_4", "0.3.0", Service4::new);
+    reg.add("testservice_4", "0.4.0", Service4WithExtendedConfig::new);
 }

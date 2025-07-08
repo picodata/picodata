@@ -623,6 +623,11 @@ to 2 and 3.
   procedure body in CREATE PROCEDURE queries.
 - Fixed a bug when pgproto failed to execute CALL queries with the following error:
   `sbroad: invalid node: node is not Relational type: Block(Procedure(Procedure { name: "proc1", values: [NodeId { offset: 0, arena_type: Arena32 }] }))`.
+- Fixed a bug when config inheritance during plugin upgrades
+  lead to loss of new config keys. Config inheritance was reworked and now we:
+  - Inherit keys that present in both configs
+  - Keep new keys untouched
+  - Preserve missing keys and plugin-level config
 
 ## [24.5.1] - 2024-09-04
 
