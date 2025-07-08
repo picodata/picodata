@@ -2778,7 +2778,7 @@ impl Plan {
         // Our plan is a DAG, we must not add the same motion twice
         // to slices.
         let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
-        for LevelNode(_, id) in dfs_tree.iter(top_id) {
+        for LevelNode(_, id) in dfs_tree.into_iter(top_id) {
             let rel = self.get_relation_node(id)?;
 
             let mut max_motions_in_path = 0;

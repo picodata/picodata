@@ -78,7 +78,7 @@ impl ReferredMap {
         let mut referred = ReferredMap::with_capacity(EXPR_CAPACITY);
         let mut expr_tree =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
-        for LevelNode(_, node_id) in expr_tree.iter(condition_id) {
+        for LevelNode(_, node_id) in expr_tree.into_iter(condition_id) {
             let expr = plan.get_expression_node(node_id)?;
             let res = match expr {
                 Expression::Window(_) => {
@@ -526,7 +526,7 @@ impl EqualityCols {
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        for level_node in expr_tree.iter(condition_id) {
+        for level_node in expr_tree.into_iter(condition_id) {
             let node_id = level_node.1;
             let bool_op = BoolOp::from_expr(plan, node_id)?;
             let left_expr = plan.get_expression_node(bool_op.left)?;

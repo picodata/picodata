@@ -2518,7 +2518,7 @@ impl Plan {
             Box::new(filter),
         );
 
-        for LevelNode(_, node_id) in dfs.iter(group_expr) {
+        for LevelNode(_, node_id) in dfs.into_iter(group_expr) {
             let node = self.get_expression_node(node_id)?;
             if let Expression::ScalarFunction(ScalarFunction {
                 name, is_window, ..
@@ -5126,7 +5126,7 @@ impl AbstractSyntaxTree {
                         let mut expr_tree =
                             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
-                        for LevelNode(_, node_id) in expr_tree.iter(expr_plan_node_id) {
+                        for LevelNode(_, node_id) in expr_tree.into_iter(expr_plan_node_id) {
                             if let Expression::Reference(Reference { target, .. }) = plan.get_expression_node(node_id)? {
                                 if !target.is_leaf() {
                                     // Subquery reference met.
@@ -5449,7 +5449,7 @@ impl AbstractSyntaxTree {
         // Unresolved table names are handled in picodata depending in IF EXISTS options.
         let resolve_table_names = self.nodes.get_node(top)?.rule != Rule::DropTable;
 
-        for level_node in dft_post.iter(top) {
+        for level_node in dft_post.into_iter(top) {
             let id = level_node.1;
             let node = self.nodes.get_node(id)?;
             match &node.rule {

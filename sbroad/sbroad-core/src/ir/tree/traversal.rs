@@ -24,8 +24,8 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
-        self.inner.iter(root)
+    pub fn into_iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+        self.inner.into_iter(root)
     }
 
     pub fn new(iter_children: F, nodes: Vec<LevelNode<T>>) -> Self {
@@ -68,9 +68,15 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn into_iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
         self.populate_nodes(root);
         self.take_nodes().into_iter()
+    }
+
+    /// Iter inner nodes without taking them.
+    /// Note that `populate_nodes` must be called before this function.
+    pub fn iter(&self) -> impl Iterator<Item = &LevelNode<T>> {
+        self.nodes.iter()
     }
 
     pub fn new(

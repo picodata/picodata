@@ -253,7 +253,7 @@ impl Plan {
             REL_CAPACITY,
             Box::new(filter),
         );
-        Ok(rel_tree.iter(top_id).next().is_some())
+        Ok(rel_tree.into_iter(top_id).next().is_some())
     }
 }
 

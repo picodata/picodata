@@ -1169,7 +1169,7 @@ impl Plan {
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        for level_node in dfs.iter(expr_id) {
+        for level_node in dfs.into_iter(expr_id) {
             let id = level_node.1;
             if !check_top && id == expr_id {
                 continue;
@@ -2192,7 +2192,7 @@ impl ShardColumnsMap {
 
     fn update_subtree(&mut self, node_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
         let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.iter(node_id) {
+        for LevelNode(_, id) in dfs.into_iter(node_id) {
             self.update_node(id, plan)?;
             self.invalid_ids.remove(&id);
         }

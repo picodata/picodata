@@ -325,7 +325,7 @@ where
             Box::new(filter),
         );
 
-        for LevelNode(_, node_id) in tree.iter(top_id) {
+        for LevelNode(_, node_id) in tree.into_iter(top_id) {
             if self.bucket_map.contains_key(&node_id) {
                 continue;
             }

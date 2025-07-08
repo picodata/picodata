@@ -78,7 +78,7 @@ fn check_join_motions(
     let plan = sql_to_optimized_ir(sql, vec![]);
     let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
     let level_node = dfs
-        .iter(plan.get_top().unwrap())
+        .into_iter(plan.get_top().unwrap())
         .find(|level_node| -> bool {
             let rel = plan.get_relation_node(level_node.1).unwrap();
             matches!(rel, Relational::Join(_))

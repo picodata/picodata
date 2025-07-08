@@ -82,7 +82,7 @@ impl Plan {
 
         let mut set = HashSet::new();
         let mut vec = Vec::new();
-        for LevelNode(_, node_id) in tree.iter(top_id) {
+        for LevelNode(_, node_id) in tree.into_iter(top_id) {
             if !set.contains(&node_id) {
                 vec.push(node_id);
                 set.insert(node_id);

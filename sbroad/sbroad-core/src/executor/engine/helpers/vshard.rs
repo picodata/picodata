@@ -759,7 +759,7 @@ impl Plan {
         let filter = |node_id: NodeId| -> bool { self.is_serialize_as_empty_motion(node_id, true) };
         let mut dfs = PostOrderWithFilter::with_capacity(iter_children, 4, Box::new(filter));
 
-        Ok(dfs.iter(self.get_top()?).map(|id| id.1).collect())
+        Ok(dfs.into_iter(self.get_top()?).map(|id| id.1).collect())
     }
 
     fn serialize_as_empty_info(&self) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
@@ -774,7 +774,7 @@ impl Plan {
         };
         let mut dfs =
             PostOrderWithFilter::with_capacity(|x| self.nodes.rel_iter(x), 0, Box::new(filter));
-        for LevelNode(_, motion_id) in dfs.iter(self.get_top()?) {
+        for LevelNode(_, motion_id) in dfs.into_iter(self.get_top()?) {
             motions_ref_count
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
@@ -801,7 +801,7 @@ impl Plan {
                     REL_CAPACITY,
                     Box::new(is_motion),
                 );
-                all_motions.extend(dfs.iter(*top_id).map(|id| id.1));
+                all_motions.extend(dfs.into_iter(*top_id).map(|id| id.1));
             }
             all_motions
         };

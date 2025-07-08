@@ -92,7 +92,7 @@ impl BucketsInfo {
         // some children have such motions in their subtrees, then
         // such children are to be used for buckets estimation.
         let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
-        for LevelNode(_, id) in dfs_tree.iter(top_id) {
+        for LevelNode(_, id) in dfs_tree.into_iter(top_id) {
             let rel = ir.get_relation_node(id)?;
 
             // true if this subtree has non-local motion

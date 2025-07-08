@@ -1007,7 +1007,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.iter(top) {
+    for level_node in dfs.into_iter(top) {
         let node_id = level_node.1;
         let node = plan.get_relation_node(node_id).unwrap();
         match node {
@@ -1029,7 +1029,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.iter(top) {
+    for level_node in dfs.into_iter(top) {
         let node_id = level_node.1;
         let node = plan.get_relation_node(node_id).unwrap();
         if let Relational::Join(_) = node {
@@ -1052,7 +1052,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.iter(top) {
+    for level_node in dfs.into_iter(top) {
         let node_id = level_node.1;
         let node = plan.get_relation_node(node_id).unwrap();
         if let Relational::Join(_) = node {
