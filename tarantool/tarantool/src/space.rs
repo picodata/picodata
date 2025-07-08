@@ -6,13 +6,13 @@
 //! See also:
 //! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
-use crate::error::{Error, TarantoolError};
+use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
-use crate::unwrap_or;
 use crate::util::Value;
 use crate::{msgpack, tuple_from_box_api};
+use crate::{set_error, unwrap_or};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use std::borrow::Cow;
@@ -745,7 +745,16 @@ impl Space {
     /// excluding index keys. For a measure of index size, see [index.bsize()](../index/struct.Index.html#method.bsize).
     #[inline(always)]
     pub fn bsize(&self) -> Result<usize, Error> {
-        self.primary_key().bsize()
+        let space = unsafe { ffi::space_by_id(self.id) };
+        if space.is_null() {
+            set_error!(
+                TarantoolErrorCode::NoSuchSpace,
+                "Space {} does not exist",
+                self.id
+            );
+            return Err(TarantoolError::last().into());
+        }
+        Ok(unsafe { ffi::space_bsize(space) })
     }
 
     /// Search for a tuple in the given space.

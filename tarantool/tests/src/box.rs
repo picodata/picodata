@@ -1,6 +1,7 @@
 use rand::Rng;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use tarantool::error::{IntoBoxError, TarantoolErrorCode};
 
 use tarantool::index::{self, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
@@ -1097,4 +1098,37 @@ pub fn fully_temporary_space() {
     space_4.drop().unwrap();
     space_5.drop().unwrap();
     space_6.drop().unwrap();
+}
+
+pub fn space_bsize() {
+    let space_name = "space_bsize_test";
+    let space = Space::builder(space_name).create().unwrap();
+    space
+        .index_builder("pk")
+        .parts([(1, index::FieldType::String), (2, index::FieldType::String)])
+        .create()
+        .unwrap();
+
+    let bsize = space.bsize().expect("space should exist");
+    assert_eq!(bsize, 0);
+
+    space.insert(&("Hello", "world")).unwrap();
+
+    let bsize = space.bsize().expect("space should exist");
+    assert_eq!(bsize, 13); //? Hello + \0 + next_item_char + world + \0
+
+    let lua = tarantool::lua_state();
+    lua.exec(&format!("box.space.{}:drop()", space_name))
+        .expect("lua exec failed");
+
+    let bsize = space.bsize();
+    assert!(
+        bsize.is_err(),
+        "space.bsize should return an error, because the space does not exist anymore"
+    );
+    assert_eq!(
+        bsize.err().unwrap().error_code(),
+        TarantoolErrorCode::NoSuchSpace as u32,
+        "the error is not equal to box.error.NO_SUCH_SPACE"
+    )
 }

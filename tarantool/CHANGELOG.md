@@ -42,6 +42,8 @@
 
 ### Fixed
 - Unpinned the version of `time` crate from a two-year old `0.3.17`
+- `space::Space::bsize` now returns `box.space.<space_name>:bsize()` instead of `box.space.<space_name>.index[0]:bsize()`
+
 
 # [8.0.0] Jun 24 2025
 

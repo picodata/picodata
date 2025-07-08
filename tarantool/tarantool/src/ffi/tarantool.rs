@@ -795,6 +795,27 @@ extern "C" {
     pub fn box_truncate(space_id: u32) -> c_int;
 }
 
+extern "C" {
+    /// Try to look up a space by space number in the space cache.
+    /// FFI-friendly no-exception-thrown space lookup function.
+    ///
+    /// Return NULL if space not found, otherwise space object.
+    ///
+    /// # Safety
+    /// The caller must make sure not to hold on to the pointer for too
+    /// long as the space object may get deleted at some point after which
+    /// the derefencing the pointer will be **undefined behavior**.
+    pub(crate) fn space_by_id(id: u32) -> *mut space;
+
+    /// Returns number of bytes used in memory by tuples in the space.
+    pub(crate) fn space_bsize(space: *mut space) -> usize;
+}
+
+#[repr(C)]
+pub(crate) struct space {
+    unused: [u8; 0],
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
