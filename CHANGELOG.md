@@ -36,6 +36,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
 
 - Fixed sorting in WebUI - it's now consistent across reloads
+- Fixed WebUI dependency on internet access for displaying fonts
 
 - Fixed a bug which broke intra-replicaset replication when upgrading from 25.1.* to 25.2.*.
   Note that clusters broken by this bug require some manual actions in addition
@@ -49,7 +50,7 @@ with the `YY.MINOR.MICRO` scheme.
   could implicitly change from VARCHAR to TEXT, causing various problems
   to client drivers.
 
-- Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T` 
+- Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T`
   resulted in an error.
 
 - Fixes unnecessary vshard router and storage config updates.
