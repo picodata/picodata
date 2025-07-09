@@ -7,7 +7,6 @@ pub mod op;
 pub(crate) mod raft_storage;
 
 use crate::instance::Instance;
-use crate::stringify_debug;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::Encode;
 use error::to_error_other;
@@ -627,39 +626,6 @@ impl tarantool::tuple::ToTupleBuffer for RaftMessageExt {
 #[track_caller]
 fn invalid_msgpack(error: impl ToString) -> BoxError {
     BoxError::new(TarantoolErrorCode::InvalidMsgpack, error.to_string())
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/// A wrapper for `raft::prelude::Message` already serialized with a protobuf.
-///
-/// This struct is used for passing `raft::prelude::Message`
-/// over Tarantool binary protocol (`net_box`).
-#[derive(Clone, Deserialize, Serialize)]
-struct MessagePb(#[serde(with = "serde_bytes")] Vec<u8>);
-impl Encode for MessagePb {}
-
-impl ::std::fmt::Debug for MessagePb {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        f.debug_tuple(stringify_debug!(MessagePb))
-            .field(&self.0)
-            .finish()
-    }
-}
-
-impl From<raft::Message> for self::MessagePb {
-    fn from(m: raft::Message) -> Self {
-        Self(m.write_to_bytes().expect("that's a bug"))
-    }
-}
-
-impl TryFrom<self::MessagePb> for raft::Message {
-    type Error = protobuf::Error;
-
-    fn try_from(pb: self::MessagePb) -> StdResult<raft::Message, Self::Error> {
-        let mut ret = raft::Message::default();
-        ret.merge_from_bytes(&pb.0)?;
-        Ok(ret)
-    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
