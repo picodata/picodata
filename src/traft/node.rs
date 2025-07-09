@@ -54,6 +54,7 @@ use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
+use crate::traft::RaftMessageExt;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::unwrap_ok_or;
@@ -79,6 +80,7 @@ use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
+use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
 use protobuf::Message as _;
 use std::collections::HashMap;
@@ -2066,6 +2068,8 @@ impl NodeImpl {
         let mut sent_count = 0;
         let mut skip_count = 0;
 
+        let applied = self.applied.get();
+
         for msg in messages {
             if msg.msg_type() == raft::MessageType::MsgHeartbeat {
                 let instance_reachability = self.instance_reachability.borrow();
@@ -2074,7 +2078,10 @@ impl NodeImpl {
                     continue;
                 }
             }
+
             sent_count += 1;
+
+            let msg = RaftMessageExt::new(msg, applied);
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
@@ -2921,15 +2928,17 @@ pub fn global() -> Result<&'static Node, BoxError> {
 }
 
 #[proc(packed_args)]
-fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
+fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
     let node = global()?;
-    for pb in pbs {
-        let msg = raft::Message::try_from(pb).map_err(Error::other)?;
-        node.instance_reachability
-            .borrow_mut()
-            .report_result(msg.from, true);
-        node.step_and_yield(msg);
-    }
+
+    let msg = RaftMessageExt::decode(&data)?;
+
+    node.instance_reachability
+        .borrow_mut()
+        .report_result(msg.inner.from, true);
+
+    node.step_and_yield(msg.inner);
+
     Ok(())
 }
 
