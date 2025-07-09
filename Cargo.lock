@@ -2835,6 +2835,7 @@ version = "25.3.0"
 dependencies = [
  "abi_stable",
  "ahash 0.8.12",
+ "bitflags 2.9.1",
  "build-rs-helpers",
  "bytes",
  "chrono",

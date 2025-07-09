@@ -54,6 +54,7 @@ thiserror = "1.0"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
 uuid = { version = "0.8", features = ["v4"] } # TODO: update to 1.0
 va_list = ">=0.1.4"
+bitflags = "2.9.1"
 
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
