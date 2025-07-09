@@ -3286,30 +3286,21 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn sql_motion_row_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(
-            system_parameter_name!(sql_motion_row_max),
-            Self::GLOBAL_SCOPE,
-        )
+    pub fn sql_motion_row_max(&self) -> u64 {
+        config::DYNAMIC_CONFIG.sql_motion_row_max.current_value()
     }
 
     #[inline]
-    pub fn sql_vdbe_opcode_max(&self) -> tarantool::Result<u64> {
-        self.get_or_default(
-            system_parameter_name!(sql_vdbe_opcode_max),
-            Self::GLOBAL_SCOPE,
-        )
+    pub fn sql_vdbe_opcode_max(&self) -> u64 {
+        config::DYNAMIC_CONFIG.sql_vdbe_opcode_max.current_value()
     }
 
     /// Gets `sql_vdbe_opcode_max` and `sql_motion_row_max` options as [`sbroad::ir::Options`] struct
     #[inline]
-    pub fn sql_query_options(&self) -> tarantool::Result<sbroad::ir::Options> {
-        let sql_vdbe_opcode_max = self.sql_vdbe_opcode_max()?;
-        let sql_motion_row_max = self.sql_motion_row_max()?;
-        Ok(sbroad::ir::Options::new(
-            sql_motion_row_max,
-            sql_vdbe_opcode_max,
-        ))
+    pub fn sql_query_options(&self) -> sbroad::ir::Options {
+        let sql_vdbe_opcode_max = self.sql_vdbe_opcode_max();
+        let sql_motion_row_max = self.sql_motion_row_max();
+        sbroad::ir::Options::new(sql_motion_row_max, sql_vdbe_opcode_max)
     }
 
     /// `tier` argument should be from set of existing tiers.

@@ -1844,10 +1844,13 @@ macro_rules! system_parameter_name {
 
 pub const SHREDDING_PARAM_NAME: &str = "shredding";
 
-/// Stores atomic
+/// Stores atomic observer providers for some frequently-accessed config options
+#[derive(Default)]
 pub struct DynamicConfigProviders {
     pub pg_statement_max: AtomicObserverProvider<usize>,
     pub pg_portal_max: AtomicObserverProvider<usize>,
+    pub sql_vdbe_opcode_max: AtomicObserverProvider<u64>,
+    pub sql_motion_row_max: AtomicObserverProvider<u64>,
 }
 
 impl DynamicConfigProviders {
@@ -1855,6 +1858,8 @@ impl DynamicConfigProviders {
         Self {
             pg_statement_max: AtomicObserverProvider::new(),
             pg_portal_max: AtomicObserverProvider::new(),
+            sql_vdbe_opcode_max: AtomicObserverProvider::new(),
+            sql_motion_row_max: AtomicObserverProvider::new(),
         }
     }
 }
@@ -2115,6 +2120,14 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
         DYNAMIC_CONFIG.pg_statement_max.update(value);
+    } else if name == system_parameter_name!(sql_vdbe_opcode_max) {
+        let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_vdbe_opcode_max.update(value);
+    } else if name == system_parameter_name!(sql_motion_row_max) {
+        let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        // Cache the value.
+        DYNAMIC_CONFIG.sql_motion_row_max.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
 

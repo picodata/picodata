@@ -614,10 +614,12 @@ pub fn sql_dispatch(
 
     let runtime = RouterRuntime::new()?;
     let node = node::global()?;
+
+    let default_options = node.storage.db_config.sql_query_options();
+
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
-        let default_options = Some(node.storage.db_config.sql_query_options()?);
-        Query::with_options(&runtime, pattern, params, default_options)
+        Query::with_options(&runtime, pattern, params, Some(default_options))
     })??;
 
     let result = dispatch(query, override_deadline);

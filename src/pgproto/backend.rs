@@ -146,7 +146,7 @@ pub fn bind(
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
 
     let storage = crate::storage::Catalog::try_get(false).expect("storage should be initialized");
-    let system_options = with_su(ADMIN_ID, || storage.db_config.sql_query_options())??;
+    let system_options = storage.db_config.sql_query_options();
 
     let mut plan = statement.plan().clone();
     let is_dql = matches!(statement.describe().query_type(), QueryType::Dql);
