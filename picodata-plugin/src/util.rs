@@ -1,5 +1,6 @@
 use crate::error_code::ErrorCode;
 use abi_stable::StableAbi;
+use std::io::Cursor;
 use std::ptr::NonNull;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
@@ -394,6 +395,97 @@ impl std::fmt::Display for DisplayAsHexBytesLimitted<'_> {
             tarantool::util::DisplayAsHexBytes(self.0).fmt(f)
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// msgpack
+////////////////////////////////////////////////////////////////////////////////
+
+/// Decode a utf-8 string from the provided msgpack.
+/// Advances the cursor to the first byte after the encoded string.
+#[track_caller]
+#[inline]
+pub fn msgpack_decode_str<'a>(data: &'a [u8]) -> Result<&'a str, BoxError> {
+    let mut cursor = Cursor::new(data);
+    let length = rmp::decode::read_str_len(&mut cursor).map_err(invalid_msgpack)? as usize;
+
+    let res = str_from_cursor(length, &mut cursor)?;
+    let (_, tail) = cursor_split(&cursor);
+    if !tail.is_empty() {
+        return Err(invalid_msgpack(format!(
+            "unexpected data after msgpack value: {}",
+            DisplayAsHexBytesLimitted(tail)
+        )));
+    }
+
+    Ok(res)
+}
+
+/// Decode a utf-8 string from the provided msgpack.
+/// Advances the cursor to the first byte after the encoded string.
+#[track_caller]
+pub fn msgpack_read_str<'a>(cursor: &mut Cursor<&'a [u8]>) -> Result<&'a str, BoxError> {
+    let length = rmp::decode::read_str_len(cursor).map_err(invalid_msgpack)? as usize;
+
+    str_from_cursor(length, cursor)
+}
+
+/// Continues decoding a utf-8 string from the provided msgpack after `marker`
+/// which must have been decode from the same `buffer`. The `buffer` cursor
+/// must be set to the first byte after the decoded `marker`.
+/// Advances the cursor to the first byte after the encoded string.
+///
+/// Returns `Ok(None)` if `marker` doesn't correspond to a msgpack string.
+/// Returns errors in other failure cases:
+/// - if there's not enough data in stream
+/// - if string is not valid utf-8
+#[track_caller]
+pub fn msgpack_read_rest_of_str<'a>(
+    marker: rmp::Marker,
+    cursor: &mut Cursor<&'a [u8]>,
+) -> Result<Option<&'a str>, BoxError> {
+    use rmp::decode::RmpRead as _;
+
+    let length = match marker {
+        rmp::Marker::FixStr(v) => v as usize,
+        rmp::Marker::Str8 => cursor.read_data_u8().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Str16 => cursor.read_data_u16().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Str32 => cursor.read_data_u32().map_err(invalid_msgpack)? as usize,
+        _ => return Ok(None),
+    };
+
+    str_from_cursor(length, cursor).map(Some)
+}
+
+#[inline]
+#[track_caller]
+fn str_from_cursor<'a>(length: usize, cursor: &mut Cursor<&'a [u8]>) -> Result<&'a str, BoxError> {
+    let start_index = cursor.position() as usize;
+    let data = *cursor.get_ref();
+    let remaining_length = data.len() - start_index;
+    if remaining_length < length {
+        return Err(invalid_msgpack(format!(
+            "expected a string of length {length}, got {remaining_length}"
+        )));
+    }
+
+    let end_index = start_index + length;
+    let res = std::str::from_utf8(&data[start_index..end_index]).map_err(invalid_msgpack)?;
+    cursor.set_position(end_index as _);
+    Ok(res)
+}
+
+// TODO Remove when [`std::io::Cursor::split`] is stabilized.
+fn cursor_split<'a>(cursor: &Cursor<&'a [u8]>) -> (&'a [u8], &'a [u8]) {
+    let slice = cursor.get_ref();
+    let pos = cursor.position().min(slice.len() as u64);
+    slice.split_at(pos as usize)
+}
+
+#[inline(always)]
+#[track_caller]
+fn invalid_msgpack(error: impl ToString) -> BoxError {
+    BoxError::new(TarantoolErrorCode::InvalidMsgpack, error.to_string())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,3 +1,5 @@
+use crate::util::msgpack_read_rest_of_str;
+use crate::util::msgpack_read_str;
 use crate::util::DisplayAsHexBytesLimitted;
 use crate::util::DisplayErrorLocation;
 use crate::util::FfiSafeBytes;
@@ -180,7 +182,7 @@ fn decode_msgpack_string_fields_impl(raw: &[u8]) -> Result<ContextNamedFields<'_
             // Integer field id
             // Skip as it should've already been handled the first time around
             skip_value(&mut buffer).map_err(invalid_msgpack)?;
-        } else if let Some(field_name) = read_rest_of_str(marker, &mut buffer)? {
+        } else if let Some(field_name) = msgpack_read_rest_of_str(marker, &mut buffer)? {
             // String field name
             let value = rmp_serde::decode::from_read(&mut buffer)
                 .map_err(|e| decoding_field(field_name, invalid_msgpack(e)))?;
@@ -412,17 +414,17 @@ impl FfiSafeContext {
                     }
                     Ok(field @ ContextFieldId::PluginName) => {
                         #[rustfmt::skip]
-                        let v = read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
+                        let v = msgpack_read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
                         plugin_name = Some(v);
                     }
                     Ok(field @ ContextFieldId::ServiceName) => {
                         #[rustfmt::skip]
-                        let v = read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
+                        let v = msgpack_read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
                         service_name = Some(v);
                     }
                     Ok(field @ ContextFieldId::PluginVersion) => {
                         #[rustfmt::skip]
-                        let v = read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
+                        let v = msgpack_read_str(&mut buffer).map_err(|e| decoding_field(&field, e))?;
                         plugin_version = Some(v);
                     }
                     Err(unknown_field_id) => {
@@ -431,7 +433,7 @@ impl FfiSafeContext {
                         skip_value(&mut buffer).map_err(invalid_msgpack)?;
                     }
                 }
-            } else if let Some(_field_name) = read_rest_of_str(marker, &mut buffer)? {
+            } else if let Some(_field_name) = msgpack_read_rest_of_str(marker, &mut buffer)? {
                 // String field name
                 // Skip for now, will be handled later if user requests it
                 skip_value(&mut buffer).map_err(invalid_msgpack)?;
@@ -497,47 +499,6 @@ impl std::fmt::Debug for FfiSafeContext {
 ////////////////////////////////////////////////////////////////////////////////
 // miscellaneous
 ////////////////////////////////////////////////////////////////////////////////
-
-fn read_str<'a>(buffer: &mut Cursor<&'a [u8]>) -> Result<&'a str, BoxError> {
-    let length = rmp::decode::read_str_len(buffer).map_err(invalid_msgpack)? as usize;
-
-    str_from_cursor(length, buffer)
-}
-
-fn read_rest_of_str<'a>(
-    marker: rmp::Marker,
-    buffer: &mut Cursor<&'a [u8]>,
-) -> Result<Option<&'a str>, BoxError> {
-    use rmp::decode::RmpRead as _;
-
-    let length = match marker {
-        rmp::Marker::FixStr(v) => v as usize,
-        rmp::Marker::Str8 => buffer.read_data_u8().map_err(invalid_msgpack)? as usize,
-        rmp::Marker::Str16 => buffer.read_data_u16().map_err(invalid_msgpack)? as usize,
-        rmp::Marker::Str32 => buffer.read_data_u32().map_err(invalid_msgpack)? as usize,
-        _ => return Ok(None),
-    };
-
-    str_from_cursor(length, buffer).map(Some)
-}
-
-#[inline]
-fn str_from_cursor<'a>(length: usize, buffer: &mut Cursor<&'a [u8]>) -> Result<&'a str, BoxError> {
-    let start_index = buffer.position() as usize;
-    let data = *buffer.get_ref();
-    let remaining_length = data.len() - start_index;
-    if remaining_length < length {
-        return Err(BoxError::new(
-            TarantoolErrorCode::InvalidMsgpack,
-            format!("expected a string of length {length}, got {remaining_length}"),
-        ));
-    }
-
-    let end_index = start_index + length;
-    let res = std::str::from_utf8(&data[start_index..end_index]).map_err(invalid_msgpack)?;
-    buffer.set_position(end_index as _);
-    Ok(res)
-}
 
 fn read_rest_of_uint(
     marker: rmp::Marker,
