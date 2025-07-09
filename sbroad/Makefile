@@ -38,7 +38,7 @@ lint:
 	./.rocks/bin/luacheck .
 
 test:
-	cargo test --features mock -vv
+	cargo test --features mock
 
 test_all: test bench_check test_integration
 
