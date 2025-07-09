@@ -13,14 +13,14 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
-    GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node, Node136, NodeId, NodeOwned,
-    OrderBy, Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte,
-    ScanRelation, Selection, Trim, UnaryExpr, Update, ValuesRow, Window,
+    GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node136, NodeId, NodeOwned, OrderBy,
+    Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
+    Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
-use crate::ir::tree::traversal::{LevelNode, PostOrder};
+use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
 
@@ -99,6 +99,9 @@ impl SubtreeMap {
         self.inner.insert(old_id, new_id);
     }
 }
+
+/// Expected number of plan nodes which are part of Subquery/CTE subtrees.
+const SQ_IDS_CAPACITY: usize = 100;
 
 impl ExecutionPlan {
     #[must_use]
@@ -376,93 +379,57 @@ impl ExecutionPlan {
     /// # Panics
     /// - Plan is in invalid state
     #[allow(clippy::too_many_lines)]
-    pub fn take_subtree(&mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn take_subtree(&mut self, subtree_id: NodeId) -> Result<Self, SbroadError> {
         // Get the subtree nodes indexes.
         let plan = self.get_ir_plan();
-        let top = plan.get_top()?;
+        let top_id = plan.get_top()?;
+
+        // We don't cut CTE and subquery subtrees during plan traversal
+        // as they can be reused in other slices of the plan.
+        // So, we collect such subtree nodes into the set to avoid their removal.
+        //
+        // E.g. look at `one-sharded-one-global-filter-subquery` test to see an
+        // example of a subquery which is referenced by several nodes (one
+        // below Motion and one above it). Such a situation is caused by our
+        // EXCEPT implementation logic.
+        let nodes_to_save = {
+            let filter = |node_id: NodeId| -> bool {
+                if let Ok(Relational::ScanCte(_) | Relational::ScanSubQuery(_)) =
+                    plan.get_relation_node(node_id)
+                {
+                    return true;
+                }
+                false
+            };
+            let mut rel_tree = PostOrderWithFilter::with_capacity(
+                |node| plan.nodes.rel_iter(node),
+                REL_CAPACITY,
+                Box::new(filter),
+            );
+            rel_tree.populate_nodes(top_id);
+
+            // Preallocate memory for all subqueries and CTE subtrees.
+            let mut nodes_to_save: AHashSet<NodeId> = AHashSet::with_capacity(SQ_IDS_CAPACITY * 2);
+
+            for LevelNode(_, node_id) in rel_tree.iter() {
+                let mut subtree = PostOrder::with_capacity(
+                    |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
+                    REL_CAPACITY,
+                );
+                for LevelNode(_, id) in subtree.into_iter(*node_id) {
+                    nodes_to_save.insert(id);
+                }
+            }
+
+            nodes_to_save
+        };
+
         let mut subtree = PostOrder::with_capacity(
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             plan.nodes.len(),
         );
-        subtree.populate_nodes(top_id);
+        subtree.populate_nodes(subtree_id);
         let nodes = subtree.take_nodes();
-
-        // We can't replace CTE subtree as it can be reused in other slices of the plan.
-        // So, collect all CTE nodes and their subtree nodes (relational and expression)
-        // as a set to avoid their removal.
-        let cte_scans = nodes
-            .iter()
-            .map(|LevelNode(_, id)| *id)
-            .filter(|id| {
-                matches!(
-                    plan.get_node(*id),
-                    Ok(Node::Relational(Relational::ScanCte(_)))
-                )
-            })
-            .collect::<Vec<_>>();
-
-        // Get the capacity of the CTE nodes. We expect that CTE subtree nodes are located
-        // in the beginning of the plan arena (while CTE scans can be located anywhere).
-        // So, we get the biggest child id of the CTE nodes and add 1 to get the capacity.
-        let mut all_cte_nodes_capacity = 0;
-        let mut cte_amount = 0;
-        for cte_id in &cte_scans {
-            let cte_node = plan.get_relation_node(*cte_id)?;
-            let Relational::ScanCte(ScanCte { child, .. }) = cte_node else {
-                unreachable!("Expected CTE scan node.");
-            };
-            let child_id = *child;
-            if all_cte_nodes_capacity < child_id.offset as usize {
-                all_cte_nodes_capacity = child_id.offset as usize;
-            }
-            cte_amount += 1;
-        }
-        all_cte_nodes_capacity += 1;
-        let single_cte_capacity = if cte_amount <= 1 {
-            all_cte_nodes_capacity
-        } else {
-            all_cte_nodes_capacity / cte_amount * 2
-        };
-
-        let mut cte_ids: AHashSet<NodeId> = AHashSet::new();
-        let mut is_reserved = false;
-        for cte_id in cte_scans {
-            if !is_reserved {
-                is_reserved = true;
-                cte_ids.reserve(all_cte_nodes_capacity);
-            }
-            let mut cte_subtree = PostOrder::with_capacity(
-                |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-                single_cte_capacity,
-            );
-            for LevelNode(_, id) in cte_subtree.iter(cte_id) {
-                cte_ids.insert(id);
-            }
-        }
-
-        // TODO: See note in `add_local_projection` function about SubQueries
-        //       to understand why we don't want to replace SubQueries with stubs sometimes.
-        //       The reason is that several relational nodes may point to it as a child.
-        let sqs = nodes
-            .iter()
-            .map(|LevelNode(_, id)| *id)
-            .filter(|id| {
-                matches!(
-                    plan.get_node(*id),
-                    Ok(Node::Relational(Relational::ScanSubQuery(_)))
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut sq_ids: AHashSet<NodeId> = AHashSet::new();
-        for sq_id in sqs {
-            let mut sq_subtree = PostOrder::with_capacity(
-                |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-                plan.nodes.len(),
-            );
-            for LevelNode(_, id) in sq_subtree.iter(sq_id) {
-                sq_ids.insert(id);
-            }
-        }
 
         let mut subtree_map = SubtreeMap::with_capacity(nodes.len());
         let vtables_capacity = self.get_vtables().map_or_else(|| 1, HashMap::len);
@@ -494,7 +461,7 @@ impl ExecutionPlan {
 
             // Replace the node with some invalid value.
             let node = mut_plan.get_node(node_id)?;
-            let mut node: NodeOwned = if cte_ids.contains(&node_id) || sq_ids.contains(&node_id) {
+            let mut node: NodeOwned = if nodes_to_save.contains(&node_id) {
                 node.into_owned()
             } else {
                 mut_plan.replace_with_stub(node_id)
@@ -564,7 +531,7 @@ impl ExecutionPlan {
                                 let output_list: Vec<NodeId> =
                                     new_plan.get_row_list(subtree_map.get_id(*output))?.to_vec();
 
-                                if node_id != top {
+                                if node_id != top_id {
                                     // We should rename Motion aliases only in case it's not a
                                     // top node. Otherwise, it has no effect as soon as `to_sql`
                                     // will use column names of vtable and ignore motion aliases.
@@ -933,7 +900,7 @@ impl ExecutionPlan {
             }
 
             subtree_map.insert(node_id, id);
-            if top_id == node_id {
+            if subtree_id == node_id {
                 new_plan.set_top(id)?;
             }
         }

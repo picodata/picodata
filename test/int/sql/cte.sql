@@ -151,3 +151,30 @@ cte2(a) as (
 SELECT * FROM cte2
 -- EXPECTED:
 1, 1, 1
+
+-- TEST: init
+-- SQL:
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t1(a INT PRIMARY KEY, b INT, c INT);
+CREATE TABLE t2(a INT PRIMARY KEY, b INT, c INT);
+
+-- TEST: cte-direct-child-of-motion-is-not-removed-on-take-subtree-1
+-- SQL:
+WITH d AS (
+    SELECT e.a f, g.c , h.a
+    FROM t2 h JOIN t1 g ON g.b = h.a
+    JOIN t2 e ON e.c >= e.c
+    ORDER BY 2
+)
+SELECT i.f  FROM t1 h
+JOIN t2 g ON h.a = g.c
+JOIN d  ON g.c = 2 JOIN d i ON i.a >= i.f;
+-- EXPECTED:
+
+
+-- TEST: cte-direct-child-of-motion-is-not-removed-on-take-subtree-2
+-- SQL:
+WITH a AS (SELECT 1) SELECT 2 FROM a UNION SELECT 3 FROM a LEFT JOIN t1 ON TRUE;
+-- EXPECTED:
+2, 3
