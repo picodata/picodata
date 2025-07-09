@@ -3,7 +3,7 @@ use super::{
     describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
     result::{ExecuteResult, Rows},
 };
-use crate::config::UsizeObserver;
+use crate::config::observer::AtomicObserver;
 use crate::{
     pgproto::{
         client::ClientId,
@@ -57,7 +57,7 @@ impl std::fmt::Display for Key {
 struct StorageContext {
     value_kind: &'static str,
     capacity_parameter: &'static str,
-    capacity: UsizeObserver,
+    capacity: AtomicObserver<usize>,
     dublicate_key_error_code: PgErrorCode,
 }
 

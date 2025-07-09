@@ -1,3 +1,5 @@
+pub mod observer;
+
 use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
@@ -25,6 +27,7 @@ use crate::util::edit_distance;
 use crate::util::file_exists;
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
+use observer::AtomicObserverProvider;
 use sbroad::ir::relation::DerivedType;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
@@ -35,8 +38,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, OnceLock};
 use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
@@ -1843,70 +1844,22 @@ macro_rules! system_parameter_name {
 
 pub const SHREDDING_PARAM_NAME: &str = "shredding";
 
-/// A synchronization primitive that can be used to broadcast value to any amount of observers. Usable as a static.
-pub struct UsizeObserverProvider {
-    shared: OnceLock<Arc<AtomicUsize>>,
+/// Stores atomic
+pub struct DynamicConfigProviders {
+    pub pg_statement_max: AtomicObserverProvider<usize>,
+    pub pg_portal_max: AtomicObserverProvider<usize>,
 }
 
-impl UsizeObserverProvider {
-    /// Creates a new uninitialized observer provider
+impl DynamicConfigProviders {
     pub const fn new() -> Self {
         Self {
-            shared: OnceLock::new(),
+            pg_statement_max: AtomicObserverProvider::new(),
+            pg_portal_max: AtomicObserverProvider::new(),
         }
     }
-
-    fn get_or_init(&self) -> &Arc<AtomicUsize> {
-        self.shared.get_or_init(|| Arc::new(AtomicUsize::new(0)))
-    }
-
-    fn get_noinit(&self) -> &Arc<AtomicUsize> {
-        self.shared
-            .get()
-            .expect("Attempt to access an uninitialized UsizeObserverProvider")
-    }
-
-    /// Gets the current value stored in the provider. Panics if the provider is not initialized.
-    pub fn current_value(&self) -> usize {
-        self.get_noinit().load(Ordering::Relaxed)
-    }
-
-    /// Makes an observer that can be used to get the value stored in the provider. Panics if the provider is not initialized.
-    pub fn make_observer(&self) -> UsizeObserver {
-        UsizeObserver {
-            shared: self.get_noinit().clone(),
-        }
-    }
-
-    /// Initialized the observer (if needed) and updates the stored value.
-    pub fn update(&self, new_value: usize) {
-        self.get_or_init().store(new_value, Ordering::Relaxed)
-    }
 }
 
-impl Default for UsizeObserverProvider {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// A receiver counterpart to [`UsizeObserverProvider`]. Can be used to receive value stored in the provider.
-pub struct UsizeObserver {
-    shared: Arc<AtomicUsize>,
-}
-
-impl UsizeObserver {
-    /// Get the current value stored in the provider.
-    pub fn current_value(&self) -> usize {
-        self.shared.load(Ordering::Relaxed)
-    }
-}
-
-/// Dynamic value provider mirroring "pg_max_statements" option from "_pico_property".
-pub static PG_STATEMENT_MAX_PROVIDER: UsizeObserverProvider = UsizeObserverProvider::new();
-
-/// Dynamic value provider mirroring "pg_max_portals" option from "_pico_property".
-pub static PG_PORTAL_MAX_PROVIDER: UsizeObserverProvider = UsizeObserverProvider::new();
+pub static DYNAMIC_CONFIG: DynamicConfigProviders = DynamicConfigProviders::new();
 
 pub fn validate_alter_system_parameter_value<'v>(
     name: &str,
@@ -2157,11 +2110,11 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
     } else if name == system_parameter_name!(pg_portal_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
-        PG_PORTAL_MAX_PROVIDER.update(value);
+        DYNAMIC_CONFIG.pg_portal_max.update(value);
     } else if name == system_parameter_name!(pg_statement_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
         // Cache the value.
-        PG_STATEMENT_MAX_PROVIDER.update(value);
+        DYNAMIC_CONFIG.pg_statement_max.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
         let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
 

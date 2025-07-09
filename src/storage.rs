@@ -13,7 +13,7 @@ use tarantool::tlua;
 use tarantool::tuple::{DecodeOwned, KeyDef, ToTupleBuffer};
 use tarantool::tuple::{RawBytes, Tuple};
 
-use crate::config::{self, AlterSystemParameters, UsizeObserver};
+use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
 use crate::info::PICODATA_VERSION;
 use crate::instance::{self, Instance};
@@ -44,6 +44,7 @@ use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::util::Uppercase;
 
+use crate::config::observer::AtomicObserver;
 use rmpv::Utf8String;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -3244,22 +3245,22 @@ impl DbConfig {
     // instead they are relying on `config::apply_parameter` putting up-to-date values into the static variables
     #[inline]
     pub fn pg_statement_max(&self) -> usize {
-        config::PG_STATEMENT_MAX_PROVIDER.current_value()
+        config::DYNAMIC_CONFIG.pg_statement_max.current_value()
     }
 
     #[inline]
-    pub fn observe_pg_statement_max(&self) -> UsizeObserver {
-        config::PG_STATEMENT_MAX_PROVIDER.make_observer()
+    pub fn observe_pg_statement_max(&self) -> AtomicObserver<usize> {
+        config::DYNAMIC_CONFIG.pg_statement_max.make_observer()
     }
 
     #[inline]
     pub fn pg_portal_max(&self) -> usize {
-        config::PG_PORTAL_MAX_PROVIDER.current_value()
+        config::DYNAMIC_CONFIG.pg_statement_max.current_value()
     }
 
     #[inline]
-    pub fn observe_pg_portal_max(&self) -> UsizeObserver {
-        config::PG_PORTAL_MAX_PROVIDER.make_observer()
+    pub fn observe_pg_portal_max(&self) -> AtomicObserver<usize> {
+        config::DYNAMIC_CONFIG.pg_statement_max.make_observer()
     }
 
     #[inline]
