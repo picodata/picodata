@@ -8,6 +8,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::RaftId;
+use crate::traft::RaftMessageExt;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
 use crate::util::relay_connection_config;
@@ -263,10 +264,16 @@ impl PoolWorker {
                                 cb(result.map_err(Error::from));
                             }
                             OnRequestResult::ReportUnreachable => {
-                                if let Err(e) = result {
-                                    tlog!(Warning, "error when sending message to peer: {e}";
-                                        "raft_id" => raft_id,
-                                    );
+                                match result {
+                                    Err(TOError::Failed(ClientError::ErrorResponse(e))) => {
+                                        tlog!(Warning, "error when sending message to peer: {}{e}", picodata_plugin::util::DisplayErrorLocation(&e);
+                                            "raft_id" => raft_id,
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tlog!(Warning, "error when sending message to peer: {e}"; "raft_id" => raft_id,);
+                                    }
+                                    Ok(_) => {}
                                 }
                                 instance_reachability
                                     .borrow_mut()
@@ -302,10 +309,9 @@ impl PoolWorker {
         }
     }
 
-    pub fn send(&self, msg: raft::Message) -> Result<()> {
-        let raft_id = msg.to;
-        let msg = traft::MessagePb::from(msg);
-        let args = [msg].to_tuple_buffer()?;
+    pub fn send(&self, msg: RaftMessageExt) -> Result<()> {
+        let raft_id = msg.inner.to;
+        let args = msg.to_tuple_buffer()?;
         self.inbox
             .send(Request::raft_msg(self.raft_msg_handler, args));
         if self.inbox_ready.send(()).is_err() {
@@ -507,8 +513,8 @@ impl ConnectionPool {
     /// it's not appropriate for use inside a transaction. Anyway,
     /// sending a message inside a transaction is always a bad idea.
     #[inline]
-    pub fn send(&self, msg: raft::Message) -> Result<()> {
-        self.get_or_create_by_raft_id(msg.to)?.send(msg)
+    pub fn send(&self, msg: RaftMessageExt) -> Result<()> {
+        self.get_or_create_by_raft_id(msg.inner.to)?.send(msg)
     }
 
     /// Send a request to instance with `id` (see `IdOfInstance`) returning a
@@ -627,12 +633,13 @@ mod tests {
     use tarantool::fiber;
     use tarantool::tlua;
 
-    fn heartbeat_to_from(to: RaftId, from: RaftId) -> raft::Message {
+    fn heartbeat_to_from(to: RaftId, from: RaftId) -> RaftMessageExt {
         let mut msg = raft::Message::new();
         msg.set_msg_type(raft::MessageType::MsgHeartbeat);
         msg.to = to;
         msg.from = from;
-        msg
+        // NOTE: applied_index doesn't matter here because we don't check it in these tests
+        RaftMessageExt::new(msg, 1)
     }
 
     #[::tarantool::test]

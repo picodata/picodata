@@ -405,7 +405,7 @@ impl std::fmt::Display for DisplayAsHexBytesLimitted<'_> {
 /// Advances the cursor to the first byte after the encoded string.
 #[track_caller]
 #[inline]
-pub fn msgpack_decode_str<'a>(data: &'a [u8]) -> Result<&'a str, BoxError> {
+pub fn msgpack_decode_str(data: &[u8]) -> Result<&str, BoxError> {
     let mut cursor = Cursor::new(data);
     let length = rmp::decode::read_str_len(&mut cursor).map_err(invalid_msgpack)? as usize;
 
@@ -471,6 +471,76 @@ fn str_from_cursor<'a>(length: usize, cursor: &mut Cursor<&'a [u8]>) -> Result<&
 
     let end_index = start_index + length;
     let res = std::str::from_utf8(&data[start_index..end_index]).map_err(invalid_msgpack)?;
+    cursor.set_position(end_index as _);
+    Ok(res)
+}
+
+/// Decode binary data from the provided msgpack.
+#[track_caller]
+pub fn msgpack_decode_bin(data: &[u8]) -> Result<&[u8], BoxError> {
+    let mut cursor = Cursor::new(data);
+    let length = rmp::decode::read_bin_len(&mut cursor).map_err(invalid_msgpack)? as usize;
+
+    let res = bin_from_cursor(length, &mut cursor)?;
+    let (_, tail) = cursor_split(&cursor);
+    if !tail.is_empty() {
+        return Err(invalid_msgpack(format!(
+            "unexpected data after msgpack value: {}",
+            DisplayAsHexBytesLimitted(tail)
+        )));
+    }
+
+    Ok(res)
+}
+
+/// Decode binary data from the provided msgpack.
+/// Advances the cursor to the first byte after the encoded binary data.
+#[track_caller]
+pub fn msgpack_read_bin<'a>(cursor: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], BoxError> {
+    let length = rmp::decode::read_bin_len(cursor).map_err(invalid_msgpack)? as usize;
+
+    bin_from_cursor(length, cursor)
+}
+
+/// Continues decoding a binary data from the provided msgpack after `marker`
+/// which must have been decode from the same `cursor`. The `cursor` cursor
+/// must be set to the first byte after the decoded `marker`.
+/// Advances the cursor to the first byte after the encoded binary data.
+///
+/// Returns `Ok(None)` if `marker` doesn't correspond to msgpack binary data.
+/// Returns errors in other failure cases:
+/// - if there's not enough data in stream
+#[track_caller]
+pub fn msgpack_read_rest_of_bin<'a>(
+    marker: rmp::Marker,
+    cursor: &mut Cursor<&'a [u8]>,
+) -> Result<Option<&'a [u8]>, BoxError> {
+    use rmp::decode::RmpRead as _;
+
+    let length = match marker {
+        rmp::Marker::Bin8 => cursor.read_data_u8().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Bin16 => cursor.read_data_u16().map_err(invalid_msgpack)? as usize,
+        rmp::Marker::Bin32 => cursor.read_data_u32().map_err(invalid_msgpack)? as usize,
+        _ => return Ok(None),
+    };
+
+    bin_from_cursor(length, cursor).map(Some)
+}
+
+#[inline]
+#[track_caller]
+fn bin_from_cursor<'a>(length: usize, cursor: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], BoxError> {
+    let start_index = cursor.position() as usize;
+    let data = *cursor.get_ref();
+    let remaining_length = data.len() - start_index;
+    if remaining_length < length {
+        return Err(invalid_msgpack(format!(
+            "expected binary data of length {length}, got {remaining_length}"
+        )));
+    }
+
+    let end_index = start_index + length;
+    let res = &data[start_index..end_index];
     cursor.set_position(end_index as _);
     Ok(res)
 }

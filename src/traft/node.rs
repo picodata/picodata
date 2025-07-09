@@ -56,6 +56,7 @@ use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
+use crate::traft::RaftMessageExt;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::unwrap_ok_or;
@@ -81,6 +82,7 @@ use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
+use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
 use protobuf::Message as _;
 use std::collections::HashMap;
@@ -423,7 +425,7 @@ impl Node {
     }
 
     /// **This function yields**
-    pub fn step_and_yield(&self, msg: raft::Message) {
+    pub fn step_and_yield(&self, msg: RaftMessageExt) {
         self.raw_operation(|node_impl| node_impl.step(msg))
             .map_err(|e| tlog!(Error, "{e}"))
             .ok();
@@ -663,14 +665,14 @@ impl NodeImpl {
         self.raw_node.campaign()
     }
 
-    pub fn step(&mut self, msg: raft::Message) -> Result<(), RaftError> {
-        if msg.to != self.raft_id() {
+    pub fn step(&mut self, msg: RaftMessageExt) -> Result<(), RaftError> {
+        if msg.inner.to != self.raft_id() {
             return Ok(());
         }
 
         // TODO check it's not a MsgPropose with op::Dml for updating _pico_instance.
         // TODO check it's not a MsgPropose with ConfChange.
-        self.raw_node.step(msg)
+        self.raw_node.step(msg.inner)
     }
 
     pub fn tick(&mut self, n_times: u32) {
@@ -2110,6 +2112,8 @@ impl NodeImpl {
         let mut sent_count = 0;
         let mut skip_count = 0;
 
+        let applied = self.applied.get();
+
         for msg in messages {
             if msg.msg_type() == raft::MessageType::MsgHeartbeat {
                 let instance_reachability = self.instance_reachability.borrow();
@@ -2118,10 +2122,13 @@ impl NodeImpl {
                     continue;
                 }
             }
-            sent_count += 1;
+
+            let msg = RaftMessageExt::new(msg, applied);
+
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
+            sent_count += 1;
         }
 
         tlog!(
@@ -2965,15 +2972,17 @@ pub fn global() -> Result<&'static Node, BoxError> {
 }
 
 #[proc(packed_args)]
-fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
+fn proc_raft_interact(data: RawByteBuf) -> traft::Result<()> {
     let node = global()?;
-    for pb in pbs {
-        let msg = raft::Message::try_from(pb).map_err(Error::other)?;
-        node.instance_reachability
-            .borrow_mut()
-            .report_result(msg.from, true);
-        node.step_and_yield(msg);
-    }
+
+    let msg = RaftMessageExt::decode(&data)?;
+
+    node.instance_reachability
+        .borrow_mut()
+        .report_result(msg.inner.from, true);
+
+    node.step_and_yield(msg);
+
     Ok(())
 }
 

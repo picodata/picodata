@@ -11,6 +11,7 @@ license-file = "LICENSE"
 [dependencies]
 abi_stable = "0.11"
 ahash = "0.8"
+bitflags = "2.9.1"
 bytes = "1.8"
 chrono = "0.4"
 clap = { version = "3.0", features = ["derive", "env"] }
@@ -45,7 +46,7 @@ serde_json = "1.0"
 serde_repr = "0.1"
 serde_yaml = "0.9"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
-smallvec = "1.13"
+smallvec = { version = "1.13", features = ["write"] }
 smol_str = "0.2"
 socket2 = "0.5"
 sqlparser = { version = "0.40", features = ["visitor"] }

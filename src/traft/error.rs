@@ -241,6 +241,12 @@ impl Error {
     }
 }
 
+#[inline(always)]
+#[track_caller]
+pub fn to_error_other(message: impl ToString) -> BoxError {
+    BoxError::new(ErrorCode::Other, message.to_string())
+}
+
 impl From<std::io::Error> for Error {
     #[inline(always)]
     fn from(e: std::io::Error) -> Error {
