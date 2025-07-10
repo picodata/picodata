@@ -14,7 +14,7 @@ use ::tarantool::tlua::ffi::lua_State;
 /// Result alias using tarantool error type.
 pub type Result<T> = std::result::Result<T, ::tarantool::error::Error>;
 
-struct ObufWriter(*mut Obuf);
+pub(crate) struct ObufWriter(pub *mut Obuf);
 
 impl Write for ObufWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {

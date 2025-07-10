@@ -86,6 +86,7 @@ pub mod dump;
 pub mod router;
 pub mod router_port;
 pub mod storage;
+pub mod storage_port;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use serde::Serialize;
