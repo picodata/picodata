@@ -71,7 +71,7 @@ pretty_assertions = "1.4"
 [build-dependencies]
 git-version = "0.3"
 quote = "1.0"
-syn = { version = "1.0", features = ["full", "extra-traits", "printing"] }
+syn = { version = "2.0", features = ["full", "extra-traits", "printing"] }
 
 build-rs-helpers = { path = "build-rs-helpers" }
 tarantool-build = { path = "tarantool-build" }

@@ -36,6 +36,8 @@ with the `YY.MINOR.MICRO` scheme.
 - `EXPLAIN` queries now support `OPTION` (e.g. `EXPLAIN SELECT 1 OPTION (SQL_VDBE_OPCODE_MAX = 6)`)
 - Fixed joining a replica after expel with the same instance name as the
   expelled one (see also https://git.picodata.io/core/picodata/-/issues/2173).
+- Fixed an out-of-memory crash when using Response::encode_rmp with large
+  collections in plugin API (see also https://git.picodata.io/core/picodata/-/issues/2028).
 
 ### CLI
 

@@ -85,3 +85,29 @@ extern "C" {
     /// See [`crate::internal::authenticate`] wrapper for more information.
     pub fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes) -> i32;
 }
+
+#[inline(always)]
+pub fn has_box_region_join() -> bool {
+    static CACHED_ANSWER: std::sync::LazyLock<bool> = std::sync::LazyLock::new(||
+        // SAFETY: I'm pretty sure this is always safe
+        unsafe { tarantool::ffi::helper::has_dyn_symbol(c"box_region_join") });
+
+    *CACHED_ANSWER
+}
+
+tarantool::define_dlsym_reloc! {
+    /// Return a contiguous allocation of the most recently allocated `size`
+    /// bytes.
+    ///
+    /// If the `size` worth of most recent allocations are already contiguous,
+    /// then the pointer into that allocation is returned. Otherwise a new allocation
+    /// is made and data from previous allocations is copied into it.
+    /// See also `box_region_alloc`.
+    ///
+    /// `size` must be non zero.
+    /// `size` must be less then or equal to value returned by `box_region_used`.
+    ///
+    /// In case of a memory error set a diag and return NULL.
+    /// See also `box_error_last`.
+    pub fn box_region_join(size: usize) -> *mut std::ffi::c_void;
+}
