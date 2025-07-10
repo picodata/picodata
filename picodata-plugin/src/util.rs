@@ -191,12 +191,20 @@ impl<'a> From<&'a str> for FfiSafeStr {
 ////////////////////////////////////////////////////////////////////////////////
 
 // TODO: move to tarantool-module https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/210
+/// A helper struct for automatically resetting the current fiber's region
+/// allocator.
+#[derive(Debug)]
 pub struct RegionGuard {
     save_point: usize,
 }
 
 impl RegionGuard {
-    /// TODO
+    /// Creates a `RegionGuard` capturing the current fiber's region allocator
+    /// state.
+    ///
+    /// When dropped this guard will reset the region allocator to the original
+    /// state. This will automatically free all the memory allocated during the
+    /// lifetime of this `RegionGuard`.
     #[inline(always)]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
@@ -206,7 +214,10 @@ impl RegionGuard {
         Self { save_point }
     }
 
-    /// TODO
+    /// Returns the number of bytes used on the fiber's region allocator at the
+    /// moment of `self`'s creation.
+    ///
+    /// This value is used internally to reset the region allocator.
     #[inline(always)]
     pub fn used_at_creation(&self) -> usize {
         self.save_point
@@ -259,8 +270,16 @@ pub fn copy_to_region(data: &[u8]) -> Result<&'static [u8], BoxError> {
 // RegionBuffer
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO: move to tarantool module https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/210
-/// TODO
+/// A low-level helper struct for writing data onto the current fiber's region
+/// allocator.
+///
+/// Users of the picodata plugin API should use the higher-level constructs
+/// instead. For example see [`crate::transport::rpc::Response`].
+///
+/// May be useful for passing data across the ABI boundary.
+///
+/// Is used in the plugin RPC API.
+#[derive(Debug)]
 pub struct RegionBuffer {
     guard: RegionGuard,
 
@@ -269,22 +288,30 @@ pub struct RegionBuffer {
 }
 
 impl RegionBuffer {
+    /// Construct the region buffer capturing the current state of the region
+    /// allocator. The region will be automatically truncated when this struct
+    /// is dropped.
     #[inline(always)]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             guard: RegionGuard::new(),
-            start: NonNull::dangling().as_ptr(),
+            start: std::ptr::null_mut(),
             count: 0,
         }
     }
 
+    /// Append the data onto the region allocator.
+    ///
+    /// Note that the data may or may not be non-contiguous with the previous
+    /// allocation. Use [`Self::into_raw_parts`] to get the guaranteed contiguous
+    /// result.
+    ///
+    /// Returns an error if the region allocation fails.
     #[track_caller]
     pub fn push(&mut self, data: &[u8]) -> Result<(), BoxError> {
         let added_count = data.len();
-        let new_count = self.count + added_count;
         unsafe {
-            let save_point = ffi::box_region_used();
             let pointer: *mut u8 = ffi::box_region_alloc(added_count) as _;
 
             if pointer.is_null() {
@@ -292,49 +319,119 @@ impl RegionBuffer {
                 return Err(BoxError::new(TarantoolErrorCode::MemoryIssue, format!("failed to allocate {added_count} bytes on the region allocator")));
             }
 
-            if self.start.is_null() || pointer == self.start.add(self.count) {
-                // New allocation is contiguous with the previous one
-                memcpy(pointer, data.as_ptr(), added_count);
-                self.count = new_count;
-                if self.start.is_null() {
-                    self.start = pointer;
-                }
-            } else {
-                // New allocation is in a different slab, need to reallocate
-                ffi::box_region_truncate(save_point);
-
-                let new_count = self.count + added_count;
-                let pointer: *mut u8 = ffi::box_region_alloc(new_count) as _;
-                memcpy(pointer, self.start, self.count);
-                memcpy(pointer.add(self.count), data.as_ptr(), added_count);
+            memcpy(pointer, data.as_ptr(), added_count);
+            self.count += added_count;
+            if self.start.is_null() {
                 self.start = pointer;
-                self.count = new_count;
             }
         }
 
         Ok(())
     }
 
+    #[deprecated = "no longer supported, consider using RegionBuffer::into_raw_parts instead"]
     #[inline(always)]
     pub fn get(&self) -> &[u8] {
-        if self.start.is_null() {
-            // Cannot construct a slice from a null pointer even if len is 0
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(self.start, self.count) }
-        }
+        unimplemented!("RegionBuffer::get is no longer supported")
     }
 
+    /// Consumes the slice of the region memory containing the written data
+    /// contiguously. The second return values is the save point for the region
+    /// allocator.
+    ///
+    /// The caller is responsible for truncating the region afterwards.
+    /// Also the caller must make sure data is not used after the region is
+    /// truncated.
+    ///
+    /// Note that if the code is executed in the context of a stored procedure
+    /// call, then the region is automatically truncated after the handler
+    /// returns, so no explicit truncation is required.
+    ///
+    /// # Panicking
+    /// Will panic if the region allocation fails. Consider using
+    /// [`Self::try_into_raw_parts`] if this is an issue.
     #[inline]
     pub fn into_raw_parts(self) -> (&'static [u8], usize) {
+        self.try_into_raw_parts().unwrap()
+    }
+
+    /// Consumes the slice of the region memory containing the written data
+    /// contiguously. The second return values is the save point for the region
+    /// allocator.
+    ///
+    /// The caller is responsible for truncating the region afterwards.
+    /// Also the caller must make sure data is not used after the region is
+    /// truncated.
+    ///
+    /// Note that if the code is executed in the context of a stored procedure
+    /// call, then the region is automatically truncated after the handler
+    /// returns, so no explicit truncation is required.
+    ///
+    /// Returns an error if the region allocation fails.
+    pub fn try_into_raw_parts(self) -> Result<(&'static [u8], usize), (BoxError, Self)> {
+        // SAFETY: the caller is responsible for making sure region is not
+        // truncated while the reference is live
+        let res = unsafe { self.join() };
+        let slice = match res {
+            Ok(v) => v,
+            Err(e) => {
+                return Err((e, self));
+            }
+        };
+
         let save_point = self.guard.used_at_creation();
         std::mem::forget(self.guard);
-        if self.start.is_null() {
-            // Cannot construct a slice from a null pointer even if len is 0
-            return (&[], save_point);
+        Ok((slice, save_point))
+    }
+
+    /// # Safety
+    /// Returns a slice of memory guarded by the region guard, so `self` must
+    /// not be dropped while this reference is live.
+    #[inline]
+    unsafe fn join(&self) -> Result<&'static [u8], BoxError> {
+        use crate::internal::ffi;
+
+        if self.count == 0 {
+            return Ok(&[]);
         }
-        let slice = unsafe { std::slice::from_raw_parts(self.start, self.count) };
-        (slice, save_point)
+
+        if !ffi::has_box_region_join() {
+            return Err(BoxError::new(
+                TarantoolErrorCode::Unsupported,
+                "box_region_join is not supported in this version of picodata",
+            ));
+        }
+
+        // SAFETY: safe because `self.count` is guaranteed to be less then
+        // `box_region_used` and `size` is greater than 0
+        let start = unsafe { ffi::box_region_join(self.count) };
+        if start.is_null() {
+            return Err(BoxError::last());
+        }
+        // SAFETY: tarantool guarantees the pointer is valid for `self.count` bytes
+        let slice = unsafe { std::slice::from_raw_parts(start.cast(), self.count) };
+        Ok(slice)
+    }
+
+    /// Copies the data from region buffer to rust allocated `Vec`. The region
+    /// is automatically truncated to the point before `self` was created.
+    pub fn try_into_vec(self) -> Result<Vec<u8>, BoxError> {
+        // SAFETY: safe because the data is copied onto the rust allocator
+        // before the region is truncated
+        let res = unsafe { self.join() };
+        let slice = match res {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
+        let res = Vec::from(slice);
+
+        // This automatically resets the region allocator
+        drop(self);
+
+        Ok(res)
     }
 }
 
@@ -607,6 +704,91 @@ mod test {
         let vec = rmp_serde::to_vec(&s).unwrap();
         let mut buffer = RegionBuffer::new();
         rmp_serde::encode::write(&mut buffer, &s).unwrap();
-        assert_eq!(vec, buffer.get());
+        let data = buffer.try_into_vec().unwrap();
+        assert_eq!(vec, data);
+    }
+
+    #[tarantool::test]
+    fn region_buffer_tiny_allocation() {
+        // Needed because we forget the RegionBuffer at the end of the function
+        let _guard = RegionGuard::new();
+
+        let mut buffer = RegionBuffer::new();
+        buffer.push(&[1, 2, 3]).unwrap();
+        let data = unsafe { buffer.join().unwrap() };
+        assert_eq!(data, &[1, 2, 3]);
+        // A single allocation is always guaranteed to be contiguous, hence
+        // box_region_join will always work for free
+        assert_eq!(data.as_ptr(), buffer.start);
+
+        // Any subsequent calls to box_region_join always return the same
+        // pointer if no new allocations were made
+        let data2 = unsafe { buffer.join().unwrap() };
+        assert_eq!(data2, data);
+        assert_eq!(data2.as_ptr(), buffer.start);
+
+        // into_raw_parts just calls box_region_join inside
+        let (data3, _) = buffer.into_raw_parts();
+        assert_eq!(data3, data);
+        assert_eq!(data3.as_ptr(), data.as_ptr());
+    }
+
+    #[tarantool::test]
+    fn region_buffer_big_allocation() {
+        const N: usize = 4923;
+        const M: usize = 85;
+        const K: usize = 10;
+
+        const {
+            // The test is checking the case when one slab is not enough
+            const SLAB_SIZE: usize = u16::MAX as usize + 1;
+            assert!(N * M * K > SLAB_SIZE);
+        };
+
+        let t0 = std::time::Instant::now();
+
+        // Make a big nested data structure
+        let mut input = Vec::with_capacity(N);
+        for i in 0..N {
+            let mut row = Vec::with_capacity(M);
+            for j in 0..M {
+                let mut col = Vec::with_capacity(K);
+                for k in 0..K {
+                    // Random-ish value
+                    let v = (1 + i + j) * (1 + k);
+                    col.push(v as u8);
+                }
+                row.push(col);
+            }
+            input.push(row);
+        }
+
+        tarantool::say_info!("generating data took {:?}", t0.elapsed());
+
+        let t0 = std::time::Instant::now();
+
+        let mut buffer = RegionBuffer::new();
+        // This call will result in a large number of `RegionBuffer::push` calls
+        // because this is how rmp_serde works.
+        rmp_serde::encode::write(&mut buffer, &input).unwrap();
+        let data = unsafe { buffer.join().unwrap() };
+
+        tarantool::say_info!(
+            "serializing data to region allocator took {:?}",
+            t0.elapsed()
+        );
+
+        // Make sure the allocation was big enough so that box_region_join had
+        // to make a new allocation. This is what we're checking in this test
+        assert_ne!(data.as_ptr(), buffer.start);
+
+        let t0 = std::time::Instant::now();
+
+        // Make sure the data got copied correctly
+        let control = rmp_serde::to_vec(&input).unwrap();
+
+        tarantool::say_info!("serializing data to rust allocator took {:?}", t0.elapsed());
+
+        assert_eq!(control, data);
     }
 }

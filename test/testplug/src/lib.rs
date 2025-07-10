@@ -832,6 +832,39 @@ impl Service for ServiceWithRpcTests {
             })
             .unwrap();
 
+        rpc::RouteBuilder::from(context)
+            .path("/test_huge_response")
+            .register(move |input, _context| {
+                #[derive(serde::Deserialize, Debug)]
+                struct Request {
+                    n: u64,
+                    m: u64,
+                    k: usize,
+                }
+
+                let Request { n, m, k } = input.decode_rmp()?;
+
+                tarantool::say_info!("generating data {n} vecs of {m} vecs of {k} bytes");
+
+                let mut res = vec![];
+                for _ in 0..n {
+                    let mut row = vec![];
+                    for _ in 0..m {
+                        row.push(vec![0u8; k]);
+                    }
+                    res.push(row);
+                }
+
+                tarantool::say_info!("encoding the response");
+
+                let response = rpc::Response::encode_rmp(&res)?;
+
+                tarantool::say_info!("response size: {} bytes", response.as_bytes().len());
+
+                Ok(response)
+            })
+            .unwrap();
+
         Ok(())
     }
 }

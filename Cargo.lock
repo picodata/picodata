@@ -2844,7 +2844,7 @@ dependencies = [
  "smol_str",
  "socket2 0.5.10",
  "sqlparser",
- "syn 1.0.109",
+ "syn 2.0.106",
  "tarantool",
  "tarantool-build",
  "tempfile",
