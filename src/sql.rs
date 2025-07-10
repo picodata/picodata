@@ -1722,11 +1722,15 @@ fn ddl_ir_node_to_op_or_result(
 }
 
 /// Check if operation is applied to the storage.
+/// There three possible outcomes:
+/// - `Ok(true)` - operation was applied successfully.
+/// - `Ok(false)` - operation was not applied, but it is still pending.
+/// - `Err(_)` - operation was not applied due to some error.
 fn check_ddl_applied(
     storage: &Catalog,
-    ddl: traft::op::Ddl,
+    ddl: &traft::op::Ddl,
     schema_version: u64,
-) -> traft::Result<()> {
+) -> traft::Result<bool> {
     let error = |reason: &str| {
         Err(BoxError::new(
             ErrorCode::RaftLogCompacted,
@@ -1735,188 +1739,310 @@ fn check_ddl_applied(
         .into())
     };
 
+    let pending_schema_version = storage.properties.pending_schema_version()?;
     match ddl {
         OpDdl::CreateTable { name, .. } => {
-            let Some(table_def) = storage.tables.by_name(&name)? else {
-                tlog!(Warning, "Table `{name}` was already dropped");
-                return error("Table does not exist: either operation was aborted or table was dropped afterwards.");
+            let Some(table_def) = storage.tables.by_name(name)? else {
+                tlog!(Warning, "Table `{name}` has already been dropped.");
+                return error(
+                    "Table does not exist: either operation was aborted \
+                    or table was dropped afterwards.",
+                );
             };
 
             if table_def.schema_version != schema_version {
-                #[rustfmt::skip]
-                tlog!(Warning, "Table `{name}` has changed, schema version: {}", table_def.schema_version);
-                #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but table was changed afterwards.");
+                tlog!(
+                    Warning,
+                    "Table `{name}` has changed, schema version: {}.",
+                    table_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but table was changed afterwards.",
+                );
             }
 
             if !table_def.operable {
-                tlog!(Warning, "Table `{name}` is not operable. Try to found it's definition in _pico_table with schema_version={schema_version}. \
-                            If it's found there with operable=true, then operation was ended successfully, otherwise operation still in progress.");
-                return error("Table creation is in progress.");
+                debug_assert_eq!(pending_schema_version, Some(schema_version),);
+                return Ok(false);
             }
 
-            Ok(())
+            Ok(true)
         }
         OpDdl::DropTable { id, .. } => {
-            let Some(table_def) = storage.tables.get(id)? else {
-                tlog!(Warning, "Table with id `{id}` was already dropped, probably not by current DropTable with schema_version={schema_version}");
-                return Ok(());
+            let Some(table_def) = storage.tables.get(*id)? else {
+                return Ok(true);
             };
+
+            if table_def.schema_version > schema_version {
+                tlog!(
+                    Warning,
+                    "Table with id `{id}` has changed, schema version: {}",
+                    table_def.schema_version,
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but table was recreated afterwards.",
+                );
+            }
 
             if table_def.operable {
-                #[rustfmt::skip]
-                tlog!(Warning, "Table with id `{id}` is operable while awaiting for result of DropTable");
-                return error("Operation was aborted or table was recreated afterwards.");
+                tlog!(Warning, "Table with id `{id}`: deletion was aborted.");
+                return error("Operation was aborted.");
             }
 
-            tlog!(Warning, "Table with id `{id}` is not operable");
-            error("DropTable is not yet applied or another DDL on this table is in progress.")
+            debug_assert_eq!(pending_schema_version, Some(schema_version),);
+            Ok(false)
         }
         OpDdl::RenameTable {
-            old_name, new_name, ..
+            old_name,
+            new_name,
+            schema_version,
+            table_id,
+            ..
         } => {
-            // New name should exists
-            let Some(new_table_def) = storage.tables.by_name(&new_name)? else {
-                #[rustfmt::skip]
-                tlog!(Warning, "While renaming table `{old_name}` to `{new_name}` can't find it in _pico_table");
-                return error("RenameTable aborted or renamed table manually deleted after successfull operation.");
+            let Some(table_def) = storage.tables.get(*table_id)? else {
+                tlog!(
+                    Warning,
+                    "Table with id `{table_id}` was dropped while renaming \
+                    `{old_name}` to `{new_name}`"
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but table was dropped afterwards.",
+                );
             };
 
-            if !new_table_def.operable {
-                #[rustfmt::skip]
-                tlog!(Warning, "Table `{new_name}` is not operable");
-                #[rustfmt::skip]
-                return error("RenameTable still in progress or other operation on this routine in progress.");
+            if table_def.schema_version > *schema_version {
+                tlog!(
+                    Warning,
+                    "Table `{old_name}` has changed, schema version: {} vs {}",
+                    table_def.schema_version,
+                    schema_version,
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but table was changed afterwards.",
+                );
             }
 
-            // Can't guarantee that result of our operation anyway.
-            error("Table with new name is found, but not sure that it's result of our operation.")
+            if !table_def.operable {
+                debug_assert_eq!(pending_schema_version, Some(*schema_version),);
+                return Ok(false);
+            }
+
+            debug_assert_eq!(&table_def.name, new_name);
+            Ok(true)
         }
-        OpDdl::CreateIndex { name, .. } => {
-            let Some(index_def) = storage.indexes.by_name(&name)? else {
-                tlog!(Warning, "Index `{name}` was already dropped");
+        OpDdl::CreateIndex {
+            space_id,
+            index_id,
+            name,
+            ..
+        } => {
+            let Some(index_def) = storage.indexes.get(*space_id, *index_id)? else {
+                tlog!(
+                    Warning,
+                    "Index `{name}` ({index_id} for space {space_id}) has already been dropped"
+                );
                 return error("Index does not exist: either operation was aborted or index was dropped afterwards.");
             };
 
             if index_def.schema_version != schema_version {
-                #[rustfmt::skip]
-                tlog!(Warning, "Index `{name}` has changed, schema version: {}", index_def.schema_version);
-                #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but index was changed afterwards.");
+                tlog!(
+                    Warning,
+                    "Index `{name}` has changed, schema version: {}",
+                    index_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but index was changed afterwards.",
+                );
             }
 
             if !index_def.operable {
-                tlog!(Warning, "Index `{name}` is not operable. Try to found it's definition in _pico_index with schema_version={schema_version}. \
-                    If it's found there with operable=true, then operation was ended successfully, otherwise operation still in progress.");
-                return error("Index creation is in progress.");
+                debug_assert_eq!(pending_schema_version, Some(schema_version),);
+                return Ok(false);
             }
 
-            Ok(())
+            debug_assert_eq!(&index_def.name, name);
+            Ok(true)
         }
         OpDdl::DropIndex {
             space_id, index_id, ..
         } => {
-            let Some(index_def) = storage.indexes.get(space_id, index_id)? else {
-                tlog!(Warning, "Index with id `{index_id}` on space with space_id `{space_id}` was already dropped, \
-                probably not by current DropTable with schema_version={schema_version}");
-                return Ok(());
+            let Some(index_def) = storage.indexes.get(*space_id, *index_id)? else {
+                tlog!(
+                    Warning,
+                    "{} {} {}",
+                    "Index with id `{index_id}` on space with space_id `{space_id}`",
+                    "was already dropped, probably not by current DropTable with",
+                    "schema_version={schema_version}"
+                );
+                return Ok(true);
             };
 
-            if index_def.operable {
-                #[rustfmt::skip]
-                tlog!(Warning, "Index with id `{index_id}` on space with id `{space_id}` is operable while awaiting for result of DropIndex");
-                return error("Operation was aborted or after successfull operation was recreated");
+            if index_def.schema_version > schema_version {
+                tlog!(
+                    Warning,
+                    "Index with id `{index_id}` on space with space_id `{space_id}` \
+                    has changed, schema version: {}",
+                    index_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but index was changed afterwards.",
+                );
             }
 
-            #[rustfmt::skip]
-            tlog!(Warning, "Index with id `{index_id}` on space with space_id `{space_id}` is not operable");
-            error("DropIndex not yet applied or another DropIndex on this index is in progress.")
+            if index_def.operable {
+                tlog!(
+                    Warning,
+                    "Index with id `{index_id}` on space with id `{space_id}`: \
+                    deletion was aborted."
+                );
+                return error("Operation was aborted");
+            }
+
+            debug_assert_eq!(pending_schema_version, Some(schema_version));
+            Ok(false)
         }
-        OpDdl::CreateProcedure { name, .. } => {
-            let Some(routine_def) = storage.routines.by_name(&name)? else {
-                tlog!(Warning, "Routine `{name}` was already dropped");
-                return error("Routine does not exist: either operation was aborted or routine was dropped afterwards.");
+        OpDdl::CreateProcedure { id, name, .. } => {
+            let Some(routine_def) = storage.routines.by_id(*id)? else {
+                tlog!(
+                    Warning,
+                    "Routine `{name}` with id {id} has already been dropped"
+                );
+                return error(
+                    "Routine does not exist: either operation was aborted \
+                    or routine was dropped afterwards.",
+                );
             };
 
             if routine_def.schema_version != schema_version {
-                #[rustfmt::skip]
-                tlog!(Warning, "Routine `{name}` has changed, schema version: {}", routine_def.schema_version);
-                #[rustfmt::skip]
-                return error("Can't find out the result of the operation, but routine was changed afterwards.");
+                tlog!(
+                    Warning,
+                    "Routine `{name}` has changed, schema version: {}",
+                    routine_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but routine was changed afterwards.",
+                );
             }
 
             if !routine_def.operable {
-                tlog!(Warning, "Routine `{name}` is not operable. Try to found it's definition in _pico_routine with schema_version={schema_version}. \
-                    If it's found there with operable=true, then operation was ended successfully, otherwise operation still in progress.");
-                return error("Routine creation is in progress.");
+                debug_assert_eq!(pending_schema_version, Some(schema_version));
+                return Ok(false);
             }
 
-            Ok(())
+            Ok(true)
         }
         OpDdl::DropProcedure { id, .. } => {
-            let Some(routine_def) = storage.routines.by_id(id)? else {
-                tlog!(Warning, "Routine with id `{id}` was already dropped, probably not by current DDL with schema_version={schema_version}");
-                return Ok(());
+            let Some(routine_def) = storage.routines.by_id(*id)? else {
+                return Ok(true);
             };
+
+            if routine_def.schema_version > schema_version {
+                tlog!(
+                    Warning,
+                    "Routine with id `{id}` has changed, schema version: {}",
+                    routine_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but routine was changed afterwards.",
+                );
+            }
 
             if routine_def.operable {
-                #[rustfmt::skip]
-                tlog!(Warning, "Routine with id `{id}` is operable while awaiting for result of DropTable");
-                return error("Operation was aborted or after successfull operation was recreated");
+                tlog!(Warning, "Routine with id `{id}`: deletion was aborted.");
+                return error("Operation was aborted.");
             }
 
-            #[rustfmt::skip]
-            tlog!(Warning, "Routine with id `{id}` is not operable");
-            error("DropRoutine not yet applied or another DropRoutine on this routine is in progress.")
+            debug_assert_eq!(pending_schema_version, Some(schema_version));
+            Ok(false)
         }
         OpDdl::RenameProcedure {
-            old_name, new_name, ..
+            routine_id,
+            old_name,
+            new_name,
+            ..
         } => {
             // New name should exists
-            let Some(new_routine_def) = storage.routines.by_name(&new_name)? else {
-                #[rustfmt::skip]
-                tlog!(Warning, "While renaming routine `{old_name}` to `{new_name}` can't find it in _pico_routine");
-                return error("RenameRoutine aborted or renamed routine manually deleted after successfull operation.");
+            let Some(routine_def) = storage.routines.by_id(*routine_id)? else {
+                tlog!(
+                    Warning,
+                    "Routine {routine_id} was deleted while renaming \
+                    from `{old_name}` to `{new_name}`"
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but routine was deleted afterwards.",
+                );
             };
 
-            if !new_routine_def.operable {
-                #[rustfmt::skip]
-                tlog!(Warning, "Routine `{new_name}` is not operable");
-                return error("RenameRoutine still in progress or other operation on this routine in progress.");
+            if routine_def.schema_version > schema_version {
+                tlog!(
+                    Warning,
+                    "Routine with id {routine_id} has changed, schema version: {}",
+                    routine_def.schema_version
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but routine was changed afterwards.",
+                );
             }
 
-            // Can't guarantee that result of our operation anyway.
-            error("Routine with new name is found, but not sure that it's result of our operation.")
+            if !routine_def.operable {
+                debug_assert_eq!(pending_schema_version, Some(schema_version));
+                return Ok(false);
+            }
+
+            debug_assert_eq!(&routine_def.name, new_name);
+            Ok(true)
         }
         OpDdl::ChangeFormat {
             table_id,
             new_format,
             ..
         } => {
-            let Some(table_def) = storage.tables.get(table_id)? else {
-                tlog!(Warning, "Table with id `{table_id}` not found");
-                return error("ChangeFormat could have been automaticaly aborted or table dropped afterwards.");
+            let Some(table_def) = storage.tables.get(*table_id)? else {
+                tlog!(
+                    Warning,
+                    "Table with id `{table_id}` has already been dropped."
+                );
+                return error("Table {table_id} has been dropped while changing format.");
             };
 
-            if new_format != table_def.format {
-                #[rustfmt::skip]
-                tlog!(Warning, "Table `{}` has old format `{:?}`", table_def.name, table_def.format);
-                return error("ChangeFormat could have been automaticaly aborted or after successfull execution format manually changed back.");
+            if table_def.schema_version > schema_version {
+                tlog!(
+                    Warning,
+                    "Table `{}` has changed, schema version: {}",
+                    table_def.name,
+                    table_def.schema_version,
+                );
+                return error(
+                    "Can't find out the result of the operation, \
+                    but table was changed afterwards.",
+                );
             }
 
             if !table_def.operable {
-                tlog!(Warning, "Table `{}` is not operable. Try to found your table definition in _pico_table. \
-                    If it's found there with operable=true and changed schema, then operation was ended successfully.", table_def.name);
-                return error("Most probably this operation still in progress, but maybe another DDL on this table in progress");
+                debug_assert_eq!(pending_schema_version, Some(schema_version));
+                return Ok(false);
             }
 
-            // Can't guarantee that result of our operation anyway.
-            error("Table format changed, but not sure that it's result of our operation.")
+            debug_assert_eq!(&table_def.format, new_format);
+            Ok(true)
         }
-        OpDdl::TruncateTable { .. } => {
-            tlog!(Warning, "DdlPrepare for Truncate was compacted.");
-            // Governor should deal with it anyway.
-            Ok(())
+        OpDdl::TruncateTable { id, .. } => {
+            if storage.tables.get(*id)?.is_none() {
+                tlog!(Warning, "Table with id `{id}` has already been dropped.");
+                return error("Table has been dropped while truncating.");
+            };
+
+            Ok(true)
         }
     }
 }
@@ -2054,22 +2180,36 @@ pub(crate) fn reenterable_schema_change_request(
             schema_version,
         } = op
         {
-            let res = wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()));
+            let commit_index = loop {
+                let res = wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()));
 
-            let commit_index = match res {
-                Ok(index) => index,
-                Err(err) => {
-                    if err.error_code() != ErrorCode::RaftLogCompacted as u32 {
-                        return Err(err);
+                let compacted_index = match res {
+                    Ok(index) => index,
+                    Err(err) => {
+                        if err.error_code() != ErrorCode::RaftLogCompacted as u32 {
+                            return Err(err);
+                        }
+
+                        // If we will find our DDL result in metadata with corresponding version, then our DdlCommit was compacted,
+                        // otherwise it may be aborted, not yet applied, recreated(schema_version will be higher than ours).
+                        match check_ddl_applied(storage, &ddl, schema_version) {
+                            // !!! commit index used only to wait for it applied globally,
+                            // so we can use compacted_index.
+                            Ok(true) => node.raft_storage.compacted_index()?,
+                            Ok(false) => {
+                                let applied_index = node.get_index();
+                                node.wait_index(
+                                    applied_index + 1,
+                                    deadline.duration_since(Instant::now_fiber()),
+                                )?;
+                                continue;
+                            }
+                            Err(e) => return Err(e),
+                        }
                     }
+                };
 
-                    // If we will find our DDL result in metadata with corresponding version, then our DdlCommit was compacted,
-                    // otherwise it may be aborted, not yet applied, recreated(schema_version will be higher than ours).
-                    check_ddl_applied(storage, ddl, schema_version)?;
-
-                    // !!! commit index used only to wait for it applied globally, so we can use compacted_index.
-                    node.raft_storage.compacted_index()?
-                }
+                break compacted_index;
             };
 
             if wait_applied_globally {
@@ -2078,7 +2218,14 @@ pub(crate) fn reenterable_schema_change_request(
                     Rc::clone(&node.pool),
                     commit_index,
                     deadline,
-                ).map_err(|_| Error::Other("ddl operation committed, but failed to receive acknowledgements from all instances".into()))?;
+                )
+                .map_err(|_| {
+                    Error::Other(
+                        "ddl operation committed, but failed to receive \
+                         acknowledgements from all instances"
+                            .into(),
+                    )
+                })?;
             }
         }
 

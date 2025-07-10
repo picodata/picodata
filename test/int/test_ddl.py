@@ -2180,17 +2180,49 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     # Trigger log compaction on each raft op
     leader.sql("ALTER SYSTEM SET raft_wal_count_max TO 0")
 
+    # Test that all other DDL operations work fine during truncation.
+    i2.sql(
+        """
+        CREATE TABLE t1 (id INT PRIMARY KEY)
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" TRUNCATE TABLE t1 OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" ALTER TABLE t1 RENAME TO t2 OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" CREATE INDEX t2_index ON t2 (id) OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" DROP INDEX t2_index OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(
+        """
+        CREATE PROCEDURE proc() AS $$ INSERT INTO t2 VALUES (1) $$
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" DROP PROCEDURE proc OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    i2.sql(""" DROP TABLE t2 OPTION (TIMEOUT = 3) """)
+    Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
+
+    # Test CREATE TABLE (commit and abort cases)
     # actually it's `not yet applied` case
-    with pytest.raises(
-        TarantoolError,
-        match="Log compaction happened during DDL execution. Table creation is in progress.",
-    ):
-        i2.sql(
-            """
-            CREATE TABLE t1 (id INT PRIMARY KEY)
-            OPTION (TIMEOUT = 3)
-            """
-        )
+    i2.sql(
+        """
+        CREATE TABLE t1 (id INT PRIMARY KEY)
+        OPTION (TIMEOUT = 3)
+        """
+    )
 
     # Wait until the schema change is finalized
     Retriable(timeout=10, rps=2).call(check_no_pending_schema_change, leader)
@@ -2210,10 +2242,12 @@ def test_wait_for_ddl_commit_is_reliable(cluster: Cluster):
     i2.eval("box.schema.space.create(...)", conflict_table_name)
 
     # actually it's `abort` case
-    with pytest.raises(
-        TarantoolError,
-        match="Log compaction happened during DDL execution. Table creation is in progress.",
-    ):
+    msg = (
+        "Log compaction happened during DDL execution. "
+        "Table does not exist: either operation was aborted "
+        "or table was dropped afterwards."
+    )
+    with pytest.raises(TarantoolError, match=msg):
         leader.sql(
             f"""
             CREATE TABLE {conflict_table_name} (id INT PRIMARY KEY)

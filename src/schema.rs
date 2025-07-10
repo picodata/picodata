@@ -2455,11 +2455,11 @@ pub fn wait_for_ddl_commit(
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let deadline = fiber::clock().saturating_add(timeout);
-    let compacted_index = raft_storage.compacted_index()?;
 
     loop {
         // If DdlPrepare compacted, then it's finalizer maybe too.
         // Even if we find in raft log ddl finalizer, we can't be sure that it's ours.
+        let compacted_index = raft_storage.compacted_index()?;
         if ddl_prepare_index <= compacted_index {
             tlog!(Warning, "DDL finalizer raft op probably was compacted");
 
