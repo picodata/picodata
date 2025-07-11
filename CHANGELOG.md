@@ -28,6 +28,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Config supports `instance.pg.advertise` option for pgproto server advertise address,
   which defaults to `instance.pg.listen`. It also can be set in the CLI via `--pg-advertise` option.
 
+### WebUI
+
+- Display cluster ID and instance PG address
+
 ### Fixes
 
 - Fixed numerous panics when setting invalid values for alter system parameters
