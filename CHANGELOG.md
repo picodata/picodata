@@ -42,7 +42,8 @@ with the `YY.MINOR.MICRO` scheme.
   Note that clusters broken by this bug require some manual actions in addition
   to this fix, but newer version should upgrade fine. Note also that this fix
   does not include the actual schema upgrade procedure, so the cluster will
-  still have a schema of the older version of picodata.
+  still have a schema of the older version of picodata. For details see
+  https://git.picodata.io/core/picodata/-/issues/1946#note_157146
 
 - Preserve parameter types provided by client.
   Previously, we'd completely replace parameter types array with the one
@@ -66,6 +67,51 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Added `cluster_uuid()` API and corresponding `pico_ffi_cluster_uuid`
   FFI binding to retrieve the cluster UUID of the current instance.
+
+## [25.2.3] - 2025-07-07
+
+### Fixes
+
+- Fixed a bug which broke intra-replicaset replication when upgrading from 25.1.* to 25.2.*.
+  Note that clusters broken by this bug require some manual actions in addition
+  to this fix, but newer version should upgrade fine. Note also that this fix
+  does not include the actual schema upgrade procedure, so the cluster will
+  still have a schema of the older version of picodata. For details see
+  https://git.picodata.io/core/picodata/-/issues/1946#note_157146
+
+- Fixed incorrect validation check for max number of users.
+
+- Preserve parameter types provided by client.
+  Previously, we'd completely replace parameter types array with the one
+  derived by the Sbroad's type system. As a result, sometimes the type
+  could implicitly change from VARCHAR to TEXT, causing various problems
+  to client drivers.
+
+- Fixed a bug which could sometimes lead to unconstrained stream of requests
+  from a failed instance (implemented expontential backoff for sentinel requests).
+
+- Fixes unnecessary vshard router and storage config updates.
+
+- Fixed a bug when parsing RFC 3339 timestamps with a date-time delimiter other than `T`
+  resulted in an error.
+
+## [25.2.2] - 2025-06-25
+
+### Features
+
+- Increase max number of users to 128
+- Support LDAP with TLS (StartTLS)
+
+### Fixes
+
+- Fixed a performance issue with global table DML which resulted in an up to 95x performance increase!
+- Used to fail to start when raft election was in progress
+- row_number marked as non-deterministic function
+- Re-enable basic auth for credentials in URL
+
+### Plugin API
+
+- The `authentication` function has been introduced, which determines the authentication method automatically.
 
 ## [25.2.1] - 2025-05-26
 
