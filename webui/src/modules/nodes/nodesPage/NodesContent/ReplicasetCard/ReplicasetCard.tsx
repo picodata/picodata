@@ -76,6 +76,7 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
               <NetworkState state={replicaset.state} />
             </div>
           </div>
+          <div className={styles.stateColumn} />
           <div className={cn(styles.infoColumn, styles.capacityColumn)}>
             <CapacityProgress
               percent={replicaset.capacityUsage}

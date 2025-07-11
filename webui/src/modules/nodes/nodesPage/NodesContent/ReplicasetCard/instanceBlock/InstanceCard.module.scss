@@ -67,8 +67,14 @@ $leader-height: 16px;
   display: grid;
   align-items: start;
   grid-template-columns: auto auto;
-  column-gap: 8px;
+  column-gap: 16px;
   max-width: max-content;
+}
+
+@media screen and (min-width: 1920px) {
+  .joinedColumn {
+    column-gap: 32px;
+  }
 }
 
 .label {
