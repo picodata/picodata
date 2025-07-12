@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_write_dml() {
         // { "dml": [567] }
-        let buf = b"\x81\xA3dml\x91\xCD\x02\x37";
+        let buf = b"\x81\xA3dml\xCD\x02\x37";
         let mut vtable = VirtualTable::new();
         let mut writer = VTableWriter::new(&mut vtable);
         let mut dml_count = 0;
@@ -253,7 +253,7 @@ mod tarantool_tests {
     #[tarantool::test]
     fn test_write_dml_to_port() {
         // { "dml": [567] }
-        let buf = b"\x81\xA3dml\x91\xCD\x02\x37";
+        let buf = b"\x81\xA3dml\xCD\x02\x37";
         let mut port = Port::new_port_c();
         let port_c = unsafe { port.as_mut_port_c() };
 

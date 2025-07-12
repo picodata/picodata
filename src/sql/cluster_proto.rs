@@ -228,14 +228,6 @@ pub fn decode_msgpack_res(buf: &[u8]) -> Result<DecodeResult, SbroadError> {
     } else if response_type == "miss" {
         Ok(DecodeResult::Miss)
     } else if response_type == "dml" {
-        let _ = rmp::decode::read_array_len(&mut stream).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Decode,
-                Some(Entity::MsgPack),
-                format_smolstr!("optional array length: {e:?}"),
-            )
-        })?;
-
         let row_cnt = rmp::decode::read_int(&mut stream).map_err(|e| {
             SbroadError::FailedTo(
                 Action::Decode,
@@ -369,9 +361,9 @@ mod tests {
     #[tarantool::test]
     fn test_deserialize_dml() {
         // {
-        //     "dml": [567]
+        //     "dml": 567
         // }
-        let msgpack_bytes = b"\x81\xA3dml\x91\xCD\x02\x37";
+        let msgpack_bytes = b"\x81\xA3dml\xCD\x02\x37";
         let res = decode_msgpack_res(msgpack_bytes).unwrap();
         match res {
             DecodeResult::RowCnt(row_count) => {
@@ -386,9 +378,9 @@ mod tests {
     #[tarantool::test]
     fn test_deserialize_miss() {
         // {
-        //     "miss": []
+        //     "miss": null
         // }
-        let msgpack_bytes = b"\x81\xA4miss\x91\x05";
+        let msgpack_bytes = b"\x81\xA4miss\xC0";
         let res = decode_msgpack_res(msgpack_bytes).unwrap();
         match res {
             DecodeResult::Miss => {}
