@@ -54,6 +54,7 @@ nav:
         - Оглавление: connectors_index.md
         - tutorial/connectors/java.md
         - tutorial/connectors/jdbc.md
+        - tutorial/connectors/go.md
   - Администрирование кластера:
       - admin/configure.md
       - admin/monitoring.md

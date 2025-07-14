@@ -6,6 +6,7 @@
 
 - [picodata-java](tutorial/connectors/java.md)
 - [picodata-jdbc](tutorial/connectors/jdbc.md)
+- [picodata-go](tutorial/connectors/go.md)
 
 См. также:
 
