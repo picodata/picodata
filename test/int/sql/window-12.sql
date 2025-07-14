@@ -30,13 +30,13 @@ SELECT (sum(x) OVER (ORDER BY x))::int * (count(y) OVER (ORDER BY x))::int FROM 
 -- SQL:
 select count(x) over (partition by 1 + false) from t6;
 -- ERROR:
-sbroad: could not resolve operator overload for +(unsigned, bool)
+sbroad: could not resolve operator overload for \+\(unsigned, bool\)
 
 -- TEST: window12-2.2
 -- SQL:
 SELECT count(x) OVER (PARTITION BY 'hello'::text - 3) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for -(text, unsigned)
+sbroad: could not resolve operator overload for -\(text, unsigned\)
 
 -- TEST: window12-2.3
 -- SQL:
@@ -48,19 +48,19 @@ sbroad: could not resolve operator overload for ||(datetime, unsigned)
 -- SQL:
 SELECT count(*) OVER (ORDER BY '2025‑01‑01'::datetime - 'abc') FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for -(datetime, text)
+sbroad: could not resolve operator overload for -\(datetime, text\)
 
 -- TEST: window12-2.5
 -- SQL:
 SELECT avg(x) FILTER (WHERE x > '2025‑01‑01'::datetime) OVER () FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for >(int, datetime)
+sbroad: could not resolve operator overload for >\(int, datetime\)
 
 -- TEST: window12-2.6
 -- SQL:
 SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6
 -- ERROR:
-sbroad: could not resolve operator overload for +(unsigned, bool)
+sbroad: could not resolve operator overload for \+\(unsigned, bool\)
 
 -- TEST: window12-3.1
 -- SQL:

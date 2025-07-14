@@ -53,7 +53,7 @@ ALTER TABLE test_table ADD COLUMN required_field INT NOT NULL;
 -
 -
 -
-Tuple field 4 (required_field) required by space format is missing
+Tuple field 4 \(required_field\) required by space format is missing
 
 -- TEST: add_multiple_columns_with_null_constraints
 -- SQL:

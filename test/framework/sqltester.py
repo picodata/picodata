@@ -9,6 +9,9 @@ import re
 from conftest import Cluster, TarantoolError
 
 
+NOT_AN_ERROR = "-"
+
+
 def init_cluster(cluster: Cluster, instance_count: int) -> Cluster:
     cluster.deploy(instance_count=instance_count)
     for i in cluster.instances:
@@ -63,9 +66,8 @@ def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
     assert len(queries) == len(expected), f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
 
     for query, exp_err in zip(queries, expected):
-        if exp_err and exp_err != "-":
-            msg = re.escape(exp_err.strip())
-            with pytest.raises(TarantoolError, match=msg):
+        if exp_err and exp_err != NOT_AN_ERROR:
+            with pytest.raises(TarantoolError, match=exp_err):
                 instance.sql(query)
         else:
             instance.sql(query)

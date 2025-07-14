@@ -124,7 +124,7 @@ false
 -- SQL:
 SELECT 1 + (2 < 3)
 -- ERROR:
-could not resolve operator overload for +(unsigned, bool)
+could not resolve operator overload for \+\(unsigned, bool\)
 
 -- TEST: parentheses-under-arithmetic-with-not
 -- SQL:
@@ -136,7 +136,7 @@ argument of NOT must be type boolean, not type unsigned
 -- SQL:
 SELECT 1 + (1 BETWEEN 1 AND 1)
 -- ERROR:
-could not resolve operator overload for +(unsigned, bool)
+could not resolve operator overload for \+\(unsigned, bool\)
 
 -- TEST: parentheses-under-concat
 -- SQL:
@@ -166,13 +166,13 @@ SELECT 2 * (3 + 5)
 -- SQL:
 SELECT 1 = (2 = FALSE)
 -- ERROR:
-could not resolve operator overload for =(unsigned, bool)
+could not resolve operator overload for =\(unsigned, bool\)
 
 -- TEST: parentheses-under-like
 -- SQL:
 SELECT (NOT NULL) LIKE 'a'
 -- ERROR:
-could not resolve function overload for like(bool, text, text)
+could not resolve function overload for like\(bool, text, text\)
 
 -- TEST: parentheses-under-not-with-and
 -- SQL:
@@ -239,7 +239,7 @@ INSERT INTO s VALUES (1, '{
     }
 }');
 -- ERROR:
-as a value of type map, consider using explicit type casts
+failed to parse .* as a value of type map, consider using explicit type casts
 
 -- TEST: test-json-is-not-keyword-1
 -- SQL:

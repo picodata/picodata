@@ -31,7 +31,7 @@ rule parsing error
 -- SQL:
 select "a" + "b" and true from "arithmetic_space"
 -- ERROR:
-could not resolve operator overload for and(int, bool)
+could not resolve operator overload for and\(int, bool\)
 
 -- TEST: test_arbitrary_invalid-4
 -- SQL:

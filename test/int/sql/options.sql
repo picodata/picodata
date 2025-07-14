@@ -80,7 +80,7 @@ expected VdbeOpcodeMax or MotionRowMax
 -- SQL:
 insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space" option(sql_motion_row_max = 1)
 -- ERROR:
-Exceeded maximum number of rows (1) in virtual table: 6
+Exceeded maximum number of rows \(1\) in virtual table: 6
 
 -- TEST: test_sql_motion_row_max_on_storage-2
 -- SQL:
@@ -101,13 +101,13 @@ INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
 -- SQL:
 insert into "cola_accounts_history" values (2, 2, 2, 1, 1), (3, 2, 2, 1, 1), (4, 2, 2, 1, 1) option(sql_motion_row_max = 1)
 -- ERROR:
-Exceeded maximum number of rows (1) in virtual table: 3
+Exceeded maximum number of rows \(1\) in virtual table: 3
 
 -- TEST: test_sql_motion_row_max_on_router-1
 -- SQL:
 select "id" from "testing_space" group by "id" option(sql_motion_row_max = 5)
 -- ERROR:
-Exceeded maximum number of rows (5) in virtual table: 6
+Exceeded maximum number of rows \(5\) in virtual table: 6
 
 -- TEST: test_sql_motion_row_max_on_router-2
 -- SQL:

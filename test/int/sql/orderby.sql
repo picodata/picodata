@@ -83,7 +83,7 @@ select * from "null_t" order by 1, 2
 -- SQL:
 select * from "null_t" order by 4
 -- ERROR:
-invalid expression: Ordering index (4) is bigger than child projection output length (3)
+invalid expression: Ordering index \(4\) is bigger than child projection output length \(3\)
 
 -- TEST: orderby7
 -- SQL:

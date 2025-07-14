@@ -88,13 +88,13 @@ rule parsing error
 -- SQL:
 select "id" from "arithmetic_space" where "boolean_col" + "boolean_col" > 0
 -- ERROR:
-could not resolve operator overload for +(bool, bool)
+could not resolve operator overload for \+\(bool, bool\)
 
 -- TEST: test_arithmetic_invalid1-10
 -- SQL:
 select "id" from "arithmetic_space" where "string_col" + "string_col" > 0
 -- ERROR:
-could not resolve operator overload for +(text, text)
+could not resolve operator overload for \+\(text, text\)
 
 -- TEST: test_arithmetic_invalid2-1
 -- SQL:
@@ -154,13 +154,13 @@ rule parsing error
 -- SQL:
 select "boolean_col" + "boolean_col" from "arithmetic_space"
 -- ERROR:
-could not resolve operator overload for +(bool, bool)
+could not resolve operator overload for \+\(bool, bool\)
 
 -- TEST: test_arithmetic_invalid2-12
 -- SQL:
 select "string_col" + "string_col" from "arithmetic_space"
 -- ERROR:
-could not resolve operator overload for +(text, text)
+could not resolve operator overload for \+\(text, text\)
 
 -- TEST: test_arithmetic_valid-1
 -- SQL:
@@ -873,16 +873,16 @@ SELECT 7 % 3
 -- SQL:
 SELECT 7.0 % 3
 -- ERROR:
-could not resolve operator overload for %(numeric, unsigned)
+could not resolve operator overload for %\(numeric, unsigned\)
 
 -- TEST: modulo-numeric-2
 -- SQL:
 SELECT 7 % 3.0
 -- ERROR:
-could not resolve operator overload for %(unsigned, numeric)
+could not resolve operator overload for %\(unsigned, numeric\)
 
 -- TEST: modulo-numeric-3
 -- SQL:
 SELECT 7.0 % 3.0
 -- ERROR:
-could not resolve operator overload for %(numeric, numeric)
+could not resolve operator overload for %\(numeric, numeric\)
