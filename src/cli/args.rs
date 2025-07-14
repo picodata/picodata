@@ -167,8 +167,7 @@ pub struct Run {
     #[clap(
         long = "peer",
         value_name = "HOST:PORT",
-        require_value_delimiter = true,
-        use_value_delimiter = true,
+        value_delimiter = ',',
         env = "PICODATA_PEER"
     )]
     /// A comma-separated list of network addresses of other instances.
@@ -184,9 +183,8 @@ pub struct Run {
     #[clap(
         long = "failure-domain",
         value_name = "KEY=VALUE",
-        require_value_delimiter = true,
-        use_value_delimiter = true,
-        parse(try_from_str = try_parse_kv_uppercase),
+        value_delimiter = ',',
+        value_parser = try_parse_kv_uppercase,
         env = "PICODATA_FAILURE_DOMAIN"
     )]
     /// Comma-separated list describing physical location of the server.
@@ -207,7 +205,7 @@ pub struct Run {
     /// failure domain settings.
     pub replicaset_name: Option<String>,
 
-    #[clap(long, arg_enum, env = "PICODATA_LOG_LEVEL")]
+    #[clap(long, value_enum, env = "PICODATA_LOG_LEVEL")]
     /// Log level.
     ///
     /// By default "info" is used.
@@ -267,7 +265,7 @@ pub struct Run {
         env = "PICODATA_INIT_CFG",
         group = "init_cfg"
     )]
-    pub init_cfg: Option<String>,
+    pub init_config: Option<String>,
 
     #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     // As it's not always a path the value type is left as `String`.
@@ -335,7 +333,7 @@ pub struct Run {
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
 tarantool::define_str_enum! {
-    #[derive(clap::ArgEnum)]
+    #[derive(clap::ValueEnum)]
     #[clap(rename_all = "lower")]
     pub enum LogLevel {
         Fatal = "fatal",
@@ -388,7 +386,12 @@ impl Run {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Run tarantool")]
 pub struct Tarantool {
-    #[clap(raw = true, parse(try_from_str = CString::new))]
+    #[clap(
+        raw = true,
+        // to understand why this is a closure, see:
+        // <https://github.com/rust-lang/rust/issues/119045>
+        value_parser = |a: &str| CString::new(a)
+    )]
     pub args: Vec<CString>,
 }
 

@@ -775,7 +775,7 @@ def test_proc_runtime_info(instance: Instance):
 
 def test_file_shredding(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
-    i1.env["PICODATA_SHREDDING"] = "1"
+    i1.env["PICODATA_SHREDDING"] = "true"
     i1.start()
     i1.wait_online()
 

@@ -265,7 +265,7 @@ def test_connect_auth_type_unknown(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact('Invalid value "deadbeef"')
+    cli.expect_exact("invalid value 'deadbeef'")
     cli.expect_exact(pexpect.EOF)
 
 

@@ -71,7 +71,7 @@ pub struct PicodataConfig {
 }
 
 fn validate_args(args: &args::Run) -> Result<(), Error> {
-    if args.init_cfg.is_some() {
+    if args.init_config.is_some() {
         return Err(Error::other(
             "error: option `--init-cfg` is removed, use `--config` instead",
         ));

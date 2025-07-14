@@ -1,10 +1,8 @@
 //! Cartridge configuration cache module.
 
-extern crate yaml_rust;
-
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
-use yaml_rust::{Yaml, YamlLoader};
+use yaml_rust2::{Yaml, YamlLoader};
 
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::engine::helpers::normalize_name_from_sql;

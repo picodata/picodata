@@ -18,9 +18,9 @@ sbroad-core = { path = "../sbroad-core", version = "0.1" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 rand = "0.8"
 rmp = "0.8"
-rmp-serde = "0.14"
+rmp-serde = "1.3"
 uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
-yaml-rust = "0.4"
+yaml-rust2 = "0.10"
 anyhow = "1"
 smol_str = "0.2.1"
 

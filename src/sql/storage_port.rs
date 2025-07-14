@@ -1,5 +1,6 @@
 use ::tarantool::ffi::sql::{Obuf, Port, PortC, PortVTable};
 use std::io::Write;
+use std::os::raw::c_int;
 use std::ptr::NonNull;
 use tarantool::tlua::ffi::lua_State;
 
@@ -49,7 +50,7 @@ pub fn serialize_res<'tuple>(
     Ok(())
 }
 
-unsafe extern "C" fn dump_dql_msgpack(port: *mut Port, out: *mut Obuf) {
+unsafe extern "C" fn dump_dql_msgpack(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
 
@@ -60,9 +61,11 @@ unsafe extern "C" fn dump_dql_msgpack(port: *mut Port, out: *mut Obuf) {
         ResultType::DQL,
     )
     .expect("dump_dql failed!");
+
+    port_c.size()
 }
 
-unsafe extern "C" fn dump_dml_msgpack(port: *mut Port, out: *mut Obuf) {
+unsafe extern "C" fn dump_dml_msgpack(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
 
@@ -73,9 +76,11 @@ unsafe extern "C" fn dump_dml_msgpack(port: *mut Port, out: *mut Obuf) {
         ResultType::DML,
     )
     .expect("dump_dml failed!");
+
+    port_c.size()
 }
 
-unsafe extern "C" fn dump_miss_msgpack(port: *mut Port, out: *mut Obuf) {
+unsafe extern "C" fn dump_miss_msgpack(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
 
@@ -86,6 +91,8 @@ unsafe extern "C" fn dump_miss_msgpack(port: *mut Port, out: *mut Obuf) {
         ResultType::MISS,
     )
     .expect("dump_miss failed!");
+
+    port_c.size()
 }
 
 /// # Safety
