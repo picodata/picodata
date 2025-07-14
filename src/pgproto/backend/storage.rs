@@ -186,8 +186,6 @@ type StatementStorage = PgStorage<StatementHolder>;
 impl StatementStorage {
     fn new() -> Self {
         let context = StorageContext::statements();
-        let capacity = context.get_capacity();
-        tlog!(Info, "creating statement storage with capacity {capacity}");
         PgStorage::with_context(context)
     }
 }
@@ -197,8 +195,6 @@ type PortalStorage = PgStorage<Portal>;
 impl PortalStorage {
     pub fn new() -> Self {
         let context = StorageContext::portals();
-        let capacity = context.get_capacity();
-        tlog!(Info, "creating portal storage with capacity {capacity}");
         PgStorage::with_context(context)
     }
 
