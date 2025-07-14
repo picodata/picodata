@@ -434,3 +434,38 @@ def test_drop_schema(postgres: Postgres):
     assert cur.pgresult is not None
     assert cur.pgresult.status == ExecStatus.COMMAND_OK
     assert cur.statusmessage == "DROP SCHEMA"
+
+
+def test_procedures(postgres: Postgres):
+    user = "postgres"
+    password = "Passw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+    postgres.instance.sql(f'GRANT CREATE PROCEDURE TO "{user}"', sudo=True)
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    # Create table
+    conn.execute("CREATE TABLE t (a int primary key)")
+
+    # Create proc and run it
+    conn.execute("CREATE PROCEDURE proc(int) AS $$INSERT INTO t VALUES($1)$$;")
+    conn.execute("CALL proc(1)")
+
+    # Ensure procedure's been executed
+    cur = conn.execute("SELECT * FROM t")
+    assert cur.fetchall() == [(1,)]
+
+    # Alter proc name and call it
+    conn.execute("ALTER PROCEDURE proc RENAME TO proc2;")
+    conn.execute("CALL proc2(2)")
+
+    # Ensure procedure's been executed
+    cur = conn.execute("SELECT * FROM t")
+    assert sorted(cur.fetchall()) == [(1,), (2,)]
+
+    # Test procedure dropping
+    conn.execute("DROP PROCEDURE proc2")

@@ -1388,6 +1388,20 @@ impl Plan {
         Ok(matches!(self.get_node(top_id)?, Node::Deallocate(_)))
     }
 
+    /// Checks that plan is a DQL or DML query.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_dql_or_dml(&self) -> Result<bool, SbroadError> {
+        Ok(!self.is_empty()
+            && !self.is_ddl()?
+            && !self.is_acl()?
+            && !self.is_plugin()?
+            && !self.is_deallocate()?
+            && !self.is_tcl()?
+            && !self.is_block()?)
+    }
+
     /// Set top node of plan
     /// # Errors
     /// - top node doesn't exist in the plan.
@@ -1996,11 +2010,21 @@ impl Plan {
 }
 
 impl Plan {
-    /// Traverse parameter nodes and collect their types.
+    /// Collect parameter types for DQL or DML queries.
+    ///
+    /// Note that procedures can have parameters too, but they have special semantics so this
+    /// function ignores them and returns an empty result.
     ///
     /// # Panics
     /// - If there are parameters with unknown types.
     pub fn collect_parameter_types(&self) -> Vec<Type> {
+        if !self
+            .is_dql_or_dml()
+            .expect("top must be valid when collecting parameter types")
+        {
+            return Vec::new();
+        }
+
         let params_count = self
             .nodes
             .iter32()

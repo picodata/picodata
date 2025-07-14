@@ -612,7 +612,10 @@ to 2 and 3.
 - Fixed panic when applying snapshot with the same index
 - Fixed a bug when a non-voting instance would sometimes be chosen as
   a bootstrap leader which would always lead to failure.
-
+- Fixed a bug when pgproto expected users to pass parameters from the
+  procedure body in CREATE PROCEDURE queries.
+- Fixed a bug when pgproto failed to execute CALL queries with the following error:
+  `sbroad: invalid node: node is not Relational type: Block(Procedure(Procedure { name: "proc1", values: [NodeId { offset: 0, arena_type: Arena32 }] }))`.
 
 ## [24.5.1] - 2024-09-04
 

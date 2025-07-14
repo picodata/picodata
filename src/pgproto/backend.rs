@@ -139,14 +139,13 @@ pub fn bind(
         plan.raw_options = apply_default_options(&plan.raw_options, &default_options);
     }
 
-    if !plan.is_empty()
-        && !plan.is_ddl()?
-        && !plan.is_acl()?
-        && !plan.is_plugin()?
-        && !plan.is_deallocate()?
-        && !plan.is_tcl()?
-        && !plan.is_plugin()?
-    {
+    if plan.is_empty() {
+        // Empty query, do nothing
+    } else if plan.is_block()? {
+        // Handle block in the same was as in `Query::with_options`
+        // TODO: can we reuse `Query::with_options` here?
+        plan.bind_params(&params)?;
+    } else if plan.is_dql_or_dml()? {
         plan.bind_params(&params)?;
         plan.apply_options()?;
         plan.optimize()?;

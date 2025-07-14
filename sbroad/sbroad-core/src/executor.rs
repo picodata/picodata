@@ -177,12 +177,7 @@ where
 
         if plan.is_block()? {
             plan.bind_params(&params)?;
-        } else if !plan.is_ddl()?
-            && !plan.is_acl()?
-            && !plan.is_plugin()?
-            && !plan.is_deallocate()?
-            && !plan.is_tcl()?
-        {
+        } else if plan.is_dql_or_dml()? {
             plan.bind_params(&params)?;
             plan.apply_options()?;
             plan.update_timestamps()?;
