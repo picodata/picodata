@@ -8,6 +8,17 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.2.4]
+
+### Fixes
+
+- In the case where an instance joining a cluster was unable to process the
+  response (for example, an abnormal termination after sending a request to
+  join the cluster), then this instance didn't have an ability to rejoin, since
+  the cluster has already remembered its UUID and will consider it correctly
+  joined. Now, instance UUID is generated on the instance side and persisted
+  automatically, preventing such bug from happenning again.
+
 ## [25.2.3] - 2025-07-07
 
 ### Fixes
