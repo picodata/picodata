@@ -111,6 +111,7 @@ members = [
     "pico_proc_macro",
     "tarantool-build",
     "test/testplug",
+    "temp",
 ]
 
 # For releases, we prioritize performance over compilation time.
