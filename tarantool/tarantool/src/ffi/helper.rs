@@ -1,8 +1,10 @@
-use dlopen::symbor::Library;
+use crate::error::{BoxError, TarantoolErrorCode};
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr::NonNull;
+
+use libloading::os::unix::Library;
 
 ////////////////////////////////////////////////////////////////////////////////
 // c_str!
@@ -167,8 +169,9 @@ pub unsafe fn tnt_internal_symbol<T>(name: &CStr) -> Option<T> {
     static mut RELOC_FN: Option<SymType> = Some(init);
 
     unsafe fn init(name: *const c_char) -> Option<NonNull<()>> {
-        let lib = Library::open_self().ok()?;
-        match lib.symbol_cstr(c_str!("tnt_internal_symbol")) {
+        let current_library = Library::this();
+        let internal_symbol = c_str!("tnt_internal_symbol").to_bytes();
+        match current_library.get(internal_symbol) {
             Ok(sym) => {
                 RELOC_FN = Some(*sym);
                 (RELOC_FN.unwrap())(name)
@@ -189,20 +192,30 @@ pub unsafe fn has_dyn_symbol(name: &CStr) -> bool {
 
 /// Find a sybmol in the current executable using dlsym.
 #[inline]
-pub unsafe fn get_dyn_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
-    let lib = Library::open_self()?;
-    let sym = lib.symbol_cstr(name)?;
-    Ok(*sym)
+pub unsafe fn get_dyn_symbol<T: Copy>(name: &CStr) -> Result<T, BoxError> {
+    let current_library = Library::this();
+    let symbol_name = name.to_bytes_with_nul();
+    let symbol_pointer = current_library.get::<T>(symbol_name).map_err(|e| {
+        let code = TarantoolErrorCode::NoSuchProc;
+        let message = format!("symbol '{name:?}' not found: {e}");
+        BoxError::new(code, message)
+    })?;
+    Ok(*symbol_pointer)
 }
 
 /// Find a symbol either using the `tnt_internal_symbol` api or using dlsym as a
 /// fallback.
 #[inline]
-pub unsafe fn get_any_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
+pub unsafe fn get_any_symbol<T: Copy>(name: &CStr) -> Result<T, BoxError> {
     if let Some(sym) = tnt_internal_symbol(name) {
         return Ok(sym);
     }
-    let lib = Library::open_self()?;
-    let sym = lib.symbol_cstr(name)?;
-    Ok(*sym)
+    let current_library = Library::this();
+    let symbol_name = name.to_bytes_with_nul();
+    let symbol_pointer = current_library.get::<T>(symbol_name).map_err(|e| {
+        let code = TarantoolErrorCode::NoSuchProc;
+        let message = format!("symbol '{name:?}' not found: {e}");
+        BoxError::new(code, message)
+    })?;
+    Ok(*symbol_pointer)
 }

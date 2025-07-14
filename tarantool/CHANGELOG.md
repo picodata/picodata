@@ -40,6 +40,14 @@
 
 # [8.0.1] Unreleased
 
+### Changed
+
+- Unpinned the version of `linkme` crate (`0.3.29` -> `0.3`).
+
+- Replaced dependency from unmaintained `dlopen` crate to `libloading` of version `0.3`.
+
+- Replaced dependency from unmaintained `proc-macro-error` crate to `proc-macro-error2` of version `2`.
+
 ### Fixed
 - Unpinned the version of `time` crate from a two-year old `0.3.17`
 - `space::Space::bsize` now returns `box.space.<space_name>:bsize()` instead of `box.space.<space_name>.index[0]:bsize()`

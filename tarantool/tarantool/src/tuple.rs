@@ -331,14 +331,13 @@ impl TupleIndex for &str {
     {
         use once_cell::sync::Lazy;
         use std::io::{Error as IOError, ErrorKind};
-        static API: Lazy<std::result::Result<Api, dlopen::Error>> = Lazy::new(|| unsafe {
-            let c_str = std::ffi::CStr::from_bytes_with_nul_unchecked;
-            let lib = dlopen::symbor::Library::open_self()?;
-            let err = match lib.symbol_cstr(c_str(ffi::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes())) {
+        static API: Lazy<std::result::Result<Api, libloading::Error>> = Lazy::new(|| unsafe {
+            let lib = libloading::os::unix::Library::this();
+            let err = match lib.get(ffi::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes()) {
                 Ok(api) => return Ok(Api::New(*api)),
                 Err(e) => e,
             };
-            if let Ok(api) = lib.symbol_cstr(c_str(ffi::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes())) {
+            if let Ok(api) = lib.get(ffi::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()) {
                 return Ok(Api::Old(*api));
             }
             Err(err)
