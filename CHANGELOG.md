@@ -31,6 +31,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### WebUI
 
 - Display cluster ID and instance PG address
+- Cluster info and other data refreshes automatically every 10 seconds if the window is focused
 
 ### Fixes
 
