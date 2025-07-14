@@ -45,7 +45,7 @@ fn shift_pos(rd: &mut Cursor<&[u8]>, len: u64) -> Result<(), SbroadError> {
     Ok(())
 }
 
-fn read_value_inner(rd: &mut Cursor<&[u8]>) -> Result<(), SbroadError> {
+pub(crate) fn read_value_inner(rd: &mut Cursor<&[u8]>) -> Result<(), SbroadError> {
     match rmp::decode::read_marker(rd).map_err(|e| {
         SbroadError::FailedTo(
             Action::Decode,

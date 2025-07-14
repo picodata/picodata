@@ -82,6 +82,7 @@ use std::time::Duration;
 use tarantool::{msgpack, session, set_error};
 
 pub mod cluster_proto;
+pub mod dump;
 pub mod router;
 pub mod router_port;
 pub mod storage;
