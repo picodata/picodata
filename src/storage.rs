@@ -3403,13 +3403,6 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn governor_auto_offline_timeout(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_default(system_parameter_name!(governor_auto_offline_timeout), Self::GLOBAL_SCOPE)?;
-        Ok(Duration::from_secs_f64(res))
-    }
-
-    #[inline]
     pub fn sql_motion_row_max(&self) -> i64 {
         config::DYNAMIC_CONFIG.sql_motion_row_max.current_value()
     }

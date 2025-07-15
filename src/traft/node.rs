@@ -237,7 +237,7 @@ impl Node {
             ..Default::default()
         };
         let mut pool = ConnectionPool::new(storage.clone(), opts);
-        let instance_reachability = instance_reachability_manager(storage.clone());
+        let instance_reachability = instance_reachability_manager(alter_system_parameters.clone());
         pool.instance_reachability = Some(instance_reachability.clone());
         let pool = Rc::new(pool);
         let plugin_manager = Rc::new(PluginManager::new(storage.clone(), tls_connector.cloned()));

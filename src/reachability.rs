@@ -1,8 +1,7 @@
-use crate::storage::Catalog;
+use crate::config::AlterSystemParametersRef;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -18,33 +17,27 @@ use tarantool::time::Instant;
 /// all known instances.
 #[derive(Debug)]
 pub struct InstanceReachabilityManager {
-    storage: Catalog,
-    // TODO: we should cache the whole db_config in a static variable and update
-    // it from raft_main_loop the same way we handle TopologyCache.
-    auto_offline_timeout: Cell<Duration>,
+    parameters: AlterSystemParametersRef,
     infos: HashMap<RaftId, InstanceReachabilityInfo>,
 }
 
 pub type InstanceReachabilityManagerRef = Rc<NoYieldsRefCell<InstanceReachabilityManager>>;
 
 #[inline(always)]
-pub fn instance_reachability_manager(storage: Catalog) -> InstanceReachabilityManagerRef {
+pub fn instance_reachability_manager(
+    parameters: AlterSystemParametersRef,
+) -> InstanceReachabilityManagerRef {
     Rc::new(NoYieldsRefCell::new(InstanceReachabilityManager::new(
-        storage,
+        parameters,
     )))
 }
 
 impl InstanceReachabilityManager {
     const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
 
-    pub fn new(storage: Catalog) -> Self {
-        let auto_offline_timeout = storage
-            .db_config
-            .governor_auto_offline_timeout()
-            .expect("storage aint gonna fail");
+    pub fn new(parameters: AlterSystemParametersRef) -> Self {
         Self {
-            storage,
-            auto_offline_timeout: Cell::new(auto_offline_timeout),
+            parameters,
             infos: Default::default(),
         }
     }
@@ -102,7 +95,7 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn take_unreachables_to_report(&mut self, applied: RaftIndex) -> Vec<RaftId> {
-        let auto_offline_timeout = self.auto_offline_timeout.get();
+        let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
         let mut res = Vec::new();
         for (&raft_id, info) in &mut self.infos {
@@ -124,7 +117,7 @@ impl InstanceReachabilityManager {
     ///
     /// `applied` is the index of the last applied raft log entry of the current instance.
     pub fn get_unreachables(&self, applied: RaftIndex) -> HashSet<RaftId> {
-        let auto_offline_timeout = self.auto_offline_timeout.get();
+        let auto_offline_timeout = self.parameters.borrow().governor_auto_offline_timeout();
 
         let mut res = HashSet::new();
         for (&raft_id, info) in &self.infos {
@@ -217,8 +210,6 @@ impl InstanceReachabilityManager {
     /// It will also limit the frequency of heartbeats to online learners to approximately
     ///  three times per `auto_offline_timeout`
     pub fn should_send_heartbeat_this_tick(&self, to: RaftId, is_learner: bool) -> bool {
-        self.update_auto_offline_timeout();
-
         let Some(info) = self.infos.get(&to) else {
             // No attempts were registered yet.
             return true;
@@ -234,7 +225,9 @@ impl InstanceReachabilityManager {
                 }
 
                 if is_learner {
-                    let learner_heartbeat_period = self.auto_offline_timeout.get() / 3;
+                    let auto_offline_timeout =
+                        self.parameters.borrow().governor_auto_offline_timeout();
+                    let learner_heartbeat_period = auto_offline_timeout / 3;
 
                     let now = fiber::clock();
                     return now > last_attempt + learner_heartbeat_period;
@@ -276,15 +269,6 @@ impl InstanceReachabilityManager {
         }
 
         return false;
-    }
-
-    fn update_auto_offline_timeout(&self) {
-        let new_value = self
-            .storage
-            .db_config
-            .governor_auto_offline_timeout()
-            .expect("storage aint gonna fail");
-        self.auto_offline_timeout.set(new_value);
     }
 }
 

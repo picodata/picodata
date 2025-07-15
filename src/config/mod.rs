@@ -1943,6 +1943,11 @@ impl AlterSystemParameters {
     pub fn has_scope_tier(parameter_name: &str) -> Result<bool, Error> {
         Self::has_scope(parameter_name, "tier")
     }
+
+    #[inline]
+    pub fn governor_auto_offline_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.governor_auto_offline_timeout)
+    }
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout
