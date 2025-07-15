@@ -14,5 +14,10 @@ override_dh_auto_build:
 
 override_dh_auto_test: ;
 
+# Turn off strip'ng of binaries
+.PHONY: override_dh_strip
+override_dh_strip:
+	dh_strip --exclude=picodata --exclude=gostech-audit-log
+
 %:
 	dh $@

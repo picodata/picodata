@@ -1,5 +1,14 @@
 %global _lto_cflags %{_lto_cflags} -Wno-lto-type-mismatch
 
+# Turn off strip'ng of binaries
+%if "%{?_build_vendor}" == "alt"
+%global __find_debuginfo_files %nil
+%brp_strip_none %_bindir/*
+%else
+%define debug_package %{nil}
+%global __strip /bin/true
+%endif
+
 %if 0%{?fedora} >= 33
 %global build_ldflags -Wl,-z,relro -Wl,--as-needed  -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1  -Wl,--build-id=sha1   -Wa,--noexecstack -Wa,--generate-missing-build-notes=yes -DPURIFY
 %endif
