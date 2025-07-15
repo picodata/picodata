@@ -10,6 +10,7 @@ use crate::access_control::UserMetadata;
 use crate::catalog;
 use crate::catalog::governor_queue::GovernorOpStatus;
 use crate::config::apply_parameter;
+use crate::config::AlterSystemParametersRef;
 use crate::config::PicodataConfig;
 use crate::error_code::ErrorCode;
 use crate::governor;
@@ -189,6 +190,7 @@ pub struct Node {
     /// Manage plugins loaded or must be loaded at this node.
     pub plugin_manager: Rc<PluginManager>,
     pub(crate) instance_reachability: InstanceReachabilityManagerRef,
+    pub alter_system_parameters: AlterSystemParametersRef,
 }
 
 impl std::fmt::Debug for Node {
@@ -213,6 +215,7 @@ impl Node {
     pub fn init(
         storage: Catalog,
         raft_storage: RaftSpaceAccess,
+        alter_system_parameters: AlterSystemParametersRef,
         for_tests: bool,
     ) -> Result<&'static Self, Error> {
         // SAFETY: only accessed from main thread, and never mutated after
@@ -226,6 +229,7 @@ impl Node {
         } else {
             crate::iproto::get_tls_connector()
         };
+
         let opts = WorkerOptions {
             raft_msg_handler: proc_name!(proc_raft_interact),
             call_timeout: MainLoop::TICK.saturating_mul(4),
@@ -244,6 +248,7 @@ impl Node {
             pool.clone(),
             storage.clone(),
             raft_storage.clone(),
+            alter_system_parameters.clone(),
             plugin_manager.clone(),
             instance_reachability.clone(),
             main_loop_info.clone(),
@@ -304,6 +309,7 @@ impl Node {
             instances_update: Mutex::new(()),
             plugin_manager,
             instance_reachability,
+            alter_system_parameters,
         };
 
         // SAFETY: only accessed from main thread, and never mutated after this
@@ -321,7 +327,8 @@ impl Node {
     pub fn for_tests() -> &'static Self {
         let storage = Catalog::for_tests();
         let raft_storage = RaftSpaceAccess::for_tests();
-        Self::init(storage.clone(), raft_storage, true).unwrap()
+        let alter_system_parameters = Default::default();
+        Self::init(storage.clone(), raft_storage, alter_system_parameters, true).unwrap()
     }
 
     #[inline(always)]
@@ -517,6 +524,7 @@ pub(crate) struct NodeImpl {
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Catalog,
     topology_cache: Rc<TopologyCache>,
+    alter_system_parameters: AlterSystemParametersRef,
     raft_storage: RaftSpaceAccess,
     pool: Rc<ConnectionPool>,
     lc: LogicalClock,
@@ -556,6 +564,7 @@ impl NodeImpl {
         pool: Rc<ConnectionPool>,
         storage: Catalog,
         raft_storage: RaftSpaceAccess,
+        alter_system_parameters: AlterSystemParametersRef,
         plugin_manager: Rc<PluginManager>,
         instance_reachability: InstanceReachabilityManagerRef,
         main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
@@ -606,6 +615,7 @@ impl NodeImpl {
             joint_state_latch: KVCell::new(),
             storage,
             topology_cache,
+            alter_system_parameters,
             raft_storage,
             instance_reachability,
             pool,
@@ -917,7 +927,7 @@ impl NodeImpl {
             // currently only parameters from _pico_db_config processed outside of transaction (here)
             for AppliedDml { table, new_tuple } in dmls {
                 debug_assert!(table == DbConfig::TABLE_ID);
-                apply_parameter(new_tuple, current_tier)?;
+                apply_parameter(&self.alter_system_parameters, new_tuple, current_tier)?;
             }
 
             // Update node's applied index
@@ -2932,7 +2942,11 @@ impl NodeImpl {
 
                 // apply changed dynamic parameters
                 for changed_parameter in changed_parameters {
-                    apply_parameter(Tuple::try_from_slice(&changed_parameter)?, current_tier)?;
+                    apply_parameter(
+                        &self.alter_system_parameters,
+                        Tuple::try_from_slice(&changed_parameter)?,
+                        current_tier,
+                    )?;
                 }
             }
 

@@ -15,7 +15,7 @@ use crate::sql::value_type_str;
 use crate::static_ref;
 use crate::storage::{self, DbConfig, SystemTable};
 use crate::system_parameter_name;
-use crate::tarantool::set_cfg_field;
+use crate::tarantool::set_cfg_field_from_rmpv;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tier::DEFAULT_TIER;
@@ -24,6 +24,7 @@ use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftSpaceAccess;
 use crate::util::file_exists;
+use crate::util::NoYieldsRefCell;
 use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
@@ -38,6 +39,7 @@ use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::path::PathBuf;
 use std::path::{Component, Path};
+use std::rc::Rc;
 use std::str::FromStr;
 use std::{env, fs};
 use tarantool::log::SayLevel;
@@ -1913,6 +1915,8 @@ fn generate_secure_token() -> String {
         .collect()
 }
 
+pub type AlterSystemParametersRef = Rc<NoYieldsRefCell<AlterSystemParameters>>;
+
 impl AlterSystemParameters {
     pub const FIELD_NAME: u32 = 0;
     pub const FIELD_SCOPE: u32 = 1;
@@ -2190,7 +2194,11 @@ pub fn get_defaults_for_all_alter_system_parameters(
 /// Panic in following cases:
 /// - invalid format tuple, format suppossed to be equal to _pico_db_config schema
 /// - unknown parameter name
-pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Result<(), Error> {
+pub fn apply_parameter(
+    parameters: &AlterSystemParametersRef,
+    pico_db_config_tuple: Tuple,
+    current_tier: &str,
+) -> Result<(), Error> {
     fn get_field<'a, T>(tuple: &'a Tuple, field_index: u32) -> T
     where
         T: serde::Deserialize<'a>,
@@ -2203,6 +2211,10 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
 
     let name = get_field::<&str>(&pico_db_config_tuple, AlterSystemParameters::FIELD_NAME);
 
+    // NOTE: even though value for `shredding` parameter is stored alongside
+    // ALTER SYSTEM parameters in `_pico_db_config`, it is in fact not possible
+    // to change `shredding` via ALTER SYSTEM, only via the configuration file
+    // at cluster bootstrap.
     if name == SHREDDING_PARAM_NAME {
         // shredding is set up in init_common
         return Ok(());
@@ -2219,42 +2231,47 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
         if target_tier_name != current_tier {
             return Ok(());
         }
+    }
 
-        if name == system_parameter_name!(memtx_checkpoint_count) {
-            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
-            set_cfg_field("checkpoint_count", value)?;
-        } else if name == system_parameter_name!(memtx_checkpoint_interval) {
-            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
-            set_cfg_field("checkpoint_interval", value)?;
-        } else if name == system_parameter_name!(iproto_net_msg_max) {
-            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
-            set_cfg_field("net_msg_max", value)?;
-        } else if name == system_parameter_name!(sql_storage_cache_size_max) {
-            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
-            set_cfg_field("sql_cache_size", value)?;
-        }
+    let v: rmpv::Value = get_field(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+    parameters
+        .borrow_mut()
+        .set_field_from_rmpv(name, &v)
+        .expect("apply_parameter called only with existing names");
+
+    /// Mapping from ALTER SYSTEM parameter name to how it's named in tarantool's box.cfg
+    #[rustfmt::skip]
+    const MAPPING: &[(&str, &str)] = &[
+        (system_parameter_name!(memtx_checkpoint_count),        "checkpoint_count"),
+        (system_parameter_name!(memtx_checkpoint_interval),     "checkpoint_interval"),
+        (system_parameter_name!(iproto_net_msg_max),            "net_msg_max"),
+        (system_parameter_name!(sql_storage_cache_size_max),    "sql_cache_size"),
+    ];
+
+    if let Some((_, cfg_parameter)) = MAPPING.iter().find(|(n, _)| *n == name) {
+        set_cfg_field_from_rmpv(cfg_parameter, v)?;
     } else if name == system_parameter_name!(pg_portal_max) {
-        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        let value = v.as_u64().expect("type is already checked") as _;
         // Cache the value.
         DYNAMIC_CONFIG.pg_portal_max.update(value);
     } else if name == system_parameter_name!(pg_statement_max) {
-        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        let value = v.as_u64().expect("type is already checked") as _;
         // Cache the value.
         DYNAMIC_CONFIG.pg_statement_max.update(value);
     } else if name == system_parameter_name!(sql_vdbe_opcode_max) {
-        let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        let value = v.as_u64().expect("type is already checked");
         // The only way for this value to get into the table is via SQL and it will be checked to fit into i64, so cast is safe.
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_vdbe_opcode_max.update(value);
     } else if name == system_parameter_name!(sql_motion_row_max) {
-        let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        let value = v.as_u64().expect("type is already checked");
         // The only way for this value to get into the table is via SQL and it will be checked to fit into i64, so cast is safe.
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {
-        let value = get_field::<usize>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        let value = v.as_u64().expect("type is already checked") as _;
 
         STATEMENT_CACHE.with(|cache| {
             // Yield might happen, but apply_parameter is not called from transaction.

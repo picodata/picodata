@@ -17,6 +17,7 @@ use ::raft::Storage;
 use ::sql::frontend::sql::transform_to_regex_pattern;
 use ::sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
 use config::apply_parameter;
+use config::AlterSystemParametersRef;
 use info::PICODATA_VERSION;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -832,9 +833,13 @@ fn set_on_access_denied_audit_trigger() {
 }
 
 /// Apply all dynamic parameters from `_pico_db_config` via box.cfg
-fn reapply_dynamic_parameters(storage: &Catalog, current_tier: &str) -> Result<()> {
+fn reapply_dynamic_parameters(
+    parameters: &AlterSystemParametersRef,
+    storage: &Catalog,
+    current_tier: &str,
+) -> Result<()> {
     for parameter in storage.db_config.iter()? {
-        apply_parameter(parameter, current_tier)?;
+        apply_parameter(parameters, parameter, current_tier)?;
     }
 
     Ok(())
@@ -1156,9 +1161,10 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     let enable_shredding = get_shredding_marker_path(config).exists();
 
     init_common(config, &cfg, enable_shredding)?;
+
+    let my_tier_name = config.instance.tier();
     let can_vote = {
         let tiers = config.cluster.tiers();
-        let my_tier_name = config.instance.tier();
         let Some(tier) = tiers.get(my_tier_name) else {
             return Err(Error::other(format!(
                 "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
@@ -1179,10 +1185,17 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             tarantool::init_cluster_uuid(cluster_uuid);
             // This is a restart, go to postjoin immediately.
             tarantool::set_cfg_field("read_only", true)?;
+
+            let alter_system_parameters = AlterSystemParametersRef::default();
+            // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
+            // apply the values using `box.cfg` if needed, cache the values in the
+            // global struct for efficient and type-safe access.
+            reapply_dynamic_parameters(&alter_system_parameters, &storage, my_tier_name)?;
+
             let instance_name = raft_storage
                 .instance_name()?
                 .expect("instance_name should be already set");
-            postjoin(config, storage, raft_storage)?;
+            postjoin(config, storage, raft_storage, alter_system_parameters)?;
 
             crate::audit!(
                 message: "local database recovered on `{instance_name}`",
@@ -1369,7 +1382,14 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "replicaset uuid: {}", instance.replicaset_uuid);
     tlog!(Info, "tier name: {}", instance.tier);
 
-    postjoin(config, storage, raft_storage)?;
+    let alter_system_parameters = AlterSystemParametersRef::default();
+    // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
+    // apply the values using `box.cfg` if needed, cache the values in the
+    // global struct for efficient and type-safe access.
+    let current_tier_name = config.instance.tier();
+    reapply_dynamic_parameters(&alter_system_parameters, &storage, current_tier_name)?;
+
+    postjoin(config, storage, raft_storage, alter_system_parameters)?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
         message: "local database connected on `{instance_name}`",
@@ -1707,14 +1727,11 @@ fn postjoin(
     config: &PicodataConfig,
     storage: Catalog,
     raft_storage: RaftSpaceAccess,
+    alter_system_parameters: AlterSystemParametersRef,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
 
     config.validate_storage(&storage, &raft_storage)?;
-
-    let current_tier_name = raft_storage
-        .tier()?
-        .expect("tier for instance should exists");
 
     if let Some(config) = &config.instance.audit {
         let raft_id = raft_storage
@@ -1747,10 +1764,13 @@ fn postjoin(
     tarantool::set_cfg_field("replication_connect_quorum", 0)
         .expect("changing replication_connect_quorum shouldn't fail");
 
-    let node = traft::node::Node::init(storage.clone(), raft_storage.clone(), false);
+    let node = traft::node::Node::init(
+        storage.clone(),
+        raft_storage.clone(),
+        alter_system_parameters,
+        false,
+    );
     let node = node.expect("failed initializing raft node");
-
-    reapply_dynamic_parameters(&storage, &current_tier_name)?;
 
     let pg_config = &config.instance.pg;
     let instance_dir = config.instance.instance_dir();
@@ -2067,6 +2087,9 @@ fn start_join(
         .cluster_uuid()
         .expect("storage should never fail");
 
+    let my_tier_name = config.instance.tier();
+    debug_assert_eq!(resp.instance.tier, my_tier_name);
+
     tlog!(Info, "cluster_uuid {}", cluster_uuid);
     tlog!(Info, "joined cluster {}", config.cluster_name());
     tlog!(Info, "raft_id: {}", resp.instance.raft_id);
@@ -2080,8 +2103,14 @@ fn start_join(
     tlog!(Info, "enabling replication via box.cfg.replication");
     tarantool::set_cfg(&cfg)?;
 
+    let alter_system_parameters = AlterSystemParametersRef::default();
+    // Read all ALTER SYSTEM parameters from `_pico_db_config` system table,
+    // apply the values using `box.cfg` if needed, cache the values in the
+    // global struct for efficient and type-safe access.
+    reapply_dynamic_parameters(&alter_system_parameters, &storage, my_tier_name)?;
+
     let instance_name = resp.instance.name.clone();
-    postjoin(config, storage, raft_storage)?;
+    postjoin(config, storage, raft_storage, alter_system_parameters)?;
     crate::audit!(
         message: "local database created on `{instance_name}`",
         title: "create_local_db",

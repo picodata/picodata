@@ -536,6 +536,51 @@ where
     cfg.into_get(field).ok()
 }
 
+pub fn set_cfg_field_from_rmpv(field: &str, value: rmpv::Value) -> Result<(), tlua::LuaError> {
+    match value {
+        rmpv::Value::Nil => {
+            set_cfg_field(field, tlua::Null)?;
+        }
+        rmpv::Value::Boolean(v) => {
+            set_cfg_field(field, v)?;
+        }
+        rmpv::Value::Integer(v) => {
+            if let Some(v) = v.as_i64() {
+                set_cfg_field(field, v)?;
+            } else if let Some(v) = v.as_u64() {
+                set_cfg_field(field, v)?;
+            } else {
+                unreachable!()
+            }
+        }
+        rmpv::Value::F32(v) => {
+            set_cfg_field(field, v)?;
+        }
+        rmpv::Value::F64(v) => {
+            set_cfg_field(field, v)?;
+        }
+        rmpv::Value::String(v) => {
+            let s = tlua::AnyLuaString(v.into_bytes());
+            set_cfg_field(field, s)?;
+        }
+        rmpv::Value::Binary(v) => {
+            let s = tlua::AnyLuaString(v);
+            set_cfg_field(field, s)?;
+        }
+        rmpv::Value::Array { .. } => {
+            unimplemented!("we don't need this for now");
+        }
+        rmpv::Value::Map { .. } => {
+            unimplemented!("we don't need this for now");
+        }
+        rmpv::Value::Ext { .. } => {
+            unimplemented!("we don't need this for now");
+        }
+    }
+
+    Ok(())
+}
+
 #[inline]
 pub fn set_cfg_field<T>(field: &str, value: T) -> Result<(), tlua::LuaError>
 where
