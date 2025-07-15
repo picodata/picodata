@@ -46,7 +46,7 @@ column with name "NotFoundColumn" not found
 -- SQL:
 SELECT * FROM "testing_space" where "id" = ?
 -- ERROR:
-invalid query
+(invalid query|protocol violation: bind message supplies 0 parameters, but prepared statement "" requires 1)
 
 -- TEST: test_simple_shard_key_query-1
 -- SQL:

@@ -239,7 +239,7 @@ INSERT INTO s VALUES (1, '{
     }
 }');
 -- ERROR:
-failed to parse .* as a value of type map, consider using explicit type casts
+(?s)sbroad: failed to parse .* as a value of type map, consider using explicit type casts
 
 -- TEST: test-json-is-not-keyword-1
 -- SQL:

@@ -7,6 +7,7 @@ import pytest
 from decimal import Decimal
 import re
 from conftest import Cluster, TarantoolError
+import psycopg
 
 
 NOT_AN_ERROR = "-"
@@ -39,44 +40,101 @@ def compare_results(expected, actual):
         raise AssertionError("\n".join(message))
 
 
-def do_execsql(cluster: Cluster, query: str, expected: list):
-    instance = cluster.leader()
-    result = instance.sql(query)
-    result_len = len(result[0]) if len(result) > 0 else 0
-    new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
-    compare_results(new_expected, result)
+class IprotoRunner:
+    def __init__(self, cluster: Cluster):
+        self.cluster = cluster
 
+    def do_execsql(self, query: str, expected: list):
+        result = self.cluster.leader().sql(query)
+        result_len = len(result[0]) if len(result) > 0 else 0
+        new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
+        compare_results(new_expected, result)
 
-def do_execsql_exact(cluster: Cluster, query: str, expected: list):
-    instance = cluster.leader()
-    result = instance.sql(query)
-    data = [col for row in result for col in row]
-    assert data == expected
+    def do_execsql_exact(self, query: str, expected: list):
+        result = self.cluster.leader().sql(query)
+        data = [col for row in result for col in row]
+        assert data == expected
 
+    def do_explain_sql(self, query: str, expected: list):
+        instance = self.cluster.leader()
+        result = instance.sql(query)
+        assert result == expected
 
-def do_catchsql(cluster: Cluster, sql: str, expected: str | list):
-    instance = cluster.leader()
-    queries = [q.strip() for q in sql.split(";") if q.strip()]
+    def do_catchsql(self, sql: str, expected: str | list):
+        cluster = self.cluster
+        instance = cluster.leader()
+        queries = [q.strip() for q in sql.split(";") if q.strip()]
 
-    if isinstance(expected, str):
-        expected = [expected]
-    elif expected is None:
-        expected = [None] * len(queries)
+        if isinstance(expected, str):
+            expected = [expected]
+        elif expected is None:
+            expected = [None] * len(queries)
 
-    assert len(queries) == len(expected), f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
+        assert len(queries) == len(expected), (
+            f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
+        )
 
-    for query, exp_err in zip(queries, expected):
-        if exp_err and exp_err != NOT_AN_ERROR:
-            with pytest.raises(TarantoolError, match=exp_err):
+        for query, exp_err in zip(queries, expected):
+            if exp_err and exp_err != NOT_AN_ERROR:
+                with pytest.raises(TarantoolError, match=exp_err):
+                    instance.sql(query)
+            else:
                 instance.sql(query)
-        else:
-            instance.sql(query)
 
 
-def do_explain_sql(cluster: Cluster, query: str, expected: list):
-    instance = cluster.leader()
-    result = instance.sql(query)
-    assert result == expected
+class PgprotoRunner:
+    def __init__(self, cluster: Cluster):
+        # Setup pgproto user
+        leader = cluster.leader()
+        leader.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
+        leader.sql("GRANT CREATE TABLE TO postgres", sudo=True)
+        leader.sql("GRANT READ TABLE TO postgres", sudo=True)
+        leader.sql("GRANT WRITE TABLE TO postgres", sudo=True)
+        leader.sql("GRANT DROP TABLE TO postgres", sudo=True)
+        leader.sql("GRANT CREATE PROCEDURE TO postgres", sudo=True)
+        leader.sql("GRANT DROP PROCEDURE TO postgres", sudo=True)
+
+        # Connect via psycopg
+        host, port = leader.pg_host, leader.pg_port
+        conn = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
+
+        self.cluster = cluster
+        self.conn = conn
+
+    def do_execsql(self, query: str, expected: list):
+        result = self.conn.execute(query).fetchall()
+        result_len = len(result[0]) if len(result) > 0 else 0
+        new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
+        compare_results(new_expected, result)
+
+    def do_execsql_exact(self, query: str, expected: list):
+        result = self.conn.execute(query).fetchall()
+        data = [col for row in result for col in row]
+        assert data == expected
+
+    def do_explain_sql(self, query: str, expected: list):
+        result = self.conn.execute(query)
+        explain = [row[0] for row in result]
+        assert explain == expected
+
+    def do_catchsql(self, sql: str, expected: str | list):
+        queries = [q.strip() for q in sql.split(";") if q.strip()]
+
+        if isinstance(expected, str):
+            expected = [expected]
+        elif expected is None:
+            expected = [None] * len(queries)
+
+        assert len(queries) == len(expected), (
+            f"Mismatch: {len(queries)} SQL queries but {len(expected)} expected errors."
+        )
+
+        for query, exp_err in zip(queries, expected):
+            if exp_err and exp_err != NOT_AN_ERROR:
+                with pytest.raises(psycopg.Error, match=exp_err):
+                    self.conn.execute(query)
+            else:
+                self.conn.execute(query)
 
 
 def _parse_line(input_string, lead_sym: Any, split_by: str):
@@ -184,49 +242,57 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize(["query", "expected", "is_exact", "error"], metafunc.cls.params)
 
 
-@pytest.fixture(scope="class")
-def cluster_1(cluster: Cluster):
-    init_cluster(cluster, 1)
-    assert len(cluster.instances) == 1
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 3000)
-    yield cluster
-    cluster.kill()
-
-
+@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
 class ClusterSingleInstance:
     params: list = []
 
-    def test_sql(self, cluster_1: Cluster, query: str, is_exact: bool, expected: list, error: str):
+    @pytest.fixture(scope="class")
+    def runner(self, runner_cls, cluster_factory):
+        cluster = cluster_factory()
+        init_cluster(cluster, 1)
+        assert len(cluster.instances) == 1
+        for i in cluster.instances:
+            cluster.wait_until_instance_has_this_many_active_buckets(i, 3000)
+
+        yield runner_cls(cluster)
+
+        cluster.kill()
+
+    def test_sql(self, runner, query: str, is_exact: bool, expected: list, error: str):
         if query.lower().startswith("explain") and not error:
-            do_explain_sql(cluster_1, query, expected)
+            runner.do_explain_sql(query, expected)
         elif expected and not is_exact:
-            do_execsql(cluster_1, query, expected)
+            runner.do_execsql(query, expected)
         elif expected and is_exact:
-            do_execsql_exact(cluster_1, query, expected)
+            runner.do_execsql_exact(query, expected)
         else:
-            do_catchsql(cluster_1, query, error)
+            runner.do_catchsql(query, error)
 
 
-@pytest.fixture(scope="class")
-def cluster_2(cluster: Cluster):
-    init_cluster(cluster, 2)
-    assert len(cluster.instances) == 2
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
-    yield cluster
-    cluster.kill()
-
-
+# TODO: Add instance_count parameter to the class above and remove this class.
+# Note that doing this before fixing vshard rebalancing will introduce more flaky tests.
+@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
 class ClusterTwoInstances:
     params: list = []
 
-    def test_sql(self, cluster_2: Cluster, query: str, expected: list, is_exact: bool, error: str):
+    @pytest.fixture(scope="class")
+    def runner(self, runner_cls, cluster_factory):
+        cluster = cluster_factory()
+        init_cluster(cluster, 2)
+        assert len(cluster.instances) == 2
+        for i in cluster.instances:
+            cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+
+        yield runner_cls(cluster)
+
+        cluster.kill()
+
+    def test_sql(self, runner, query: str, expected: list, is_exact: bool, error: str):
         if query.lower().startswith("explain") and not error:
-            do_explain_sql(cluster_2, query, expected)
+            runner.do_explain_sql(query, expected)
         elif expected and not is_exact:
-            do_execsql(cluster_2, query, expected)
+            runner.do_execsql(query, expected)
         elif expected and is_exact:
-            do_execsql_exact(cluster_2, query, expected)
+            runner.do_execsql_exact(query, expected)
         else:
-            do_catchsql(cluster_2, query, error)
+            runner.do_catchsql(query, error)

@@ -18,13 +18,13 @@ SELECT * FROM "t";
 -- SQL:
 INSERT INTO "t" VALUES (1, 3);
 -- ERROR:
-ER_TUPLE_FOUND
+Duplicate key exists in unique index
 
 -- TEST: insert-global-table-4
 -- SQL:
 INSERT INTO "t" VALUES (2, 1) ON CONFLICT DO FAIL;
 -- ERROR:
-ER_TUPLE_FOUND
+Duplicate key exists in unique index
 
 -- TEST: insert-global-table-5
 -- SQL:

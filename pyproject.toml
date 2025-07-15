@@ -16,7 +16,8 @@ pexpect = "^4.9.0"
 pg8000 = "^1.31.2"
 prettytable = "^3.12.0"
 psycopg = { version = "^3.2.3", extras = ["binary"] }
-pytest = "^8.3.3"
+# TODO: unpin (https://git.picodata.io/core/picodata/-/issues/2051)
+pytest = "8.3.5"
 pytest-clarity = "^1.0.1"
 pytest-repeat = "^0.9.3"
 pytest-xdist = "^3.6.1"

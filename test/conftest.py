@@ -2554,21 +2554,29 @@ def class_tmp_dir(tmpdir_factory):
 
 
 @pytest.fixture(scope="class")
-def cluster(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor) -> Generator[Cluster, None, None]:
-    """Return a `Cluster` object capable of deploying test clusters."""
-    # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
-    # see how it's done in def binary_path()
-    share_dir = os.getcwd() + "/test/testplug"
-    cluster = Cluster(
-        binary_path=binary_path_fixt,
-        id=next(cluster_names),
-        data_dir=class_tmp_dir,
-        share_dir=share_dir,
-        base_host=BASE_HOST,
-        port_distributor=port_distributor,
-    )
-    cluster.set_service_password("password")
+def cluster_factory(binary_path_fixt, class_tmp_dir, cluster_names, port_distributor):
+    def cluster_factory_():
+        # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
+        # see how it's done in def binary_path()
+        share_dir = os.getcwd() + "/test/testplug"
+        cluster = Cluster(
+            binary_path=binary_path_fixt,
+            id=next(cluster_names),
+            data_dir=class_tmp_dir,
+            share_dir=share_dir,
+            base_host=BASE_HOST,
+            port_distributor=port_distributor,
+        )
+        cluster.set_service_password("password")
+        return cluster
 
+    yield cluster_factory_
+
+
+@pytest.fixture(scope="class")
+def cluster(cluster_factory) -> Generator[Cluster, None, None]:
+    """Return a `Cluster` object capable of deploying test clusters."""
+    cluster = cluster_factory()
     yield cluster
     cluster.kill()
 
