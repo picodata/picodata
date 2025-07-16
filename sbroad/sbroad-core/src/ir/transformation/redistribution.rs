@@ -17,8 +17,8 @@ use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
-    BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId, OrderBy,
-    Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
+    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId,
+    OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
@@ -1401,40 +1401,24 @@ impl Plan {
             (inner, outer)
         };
 
-        let mut inner_map: HashMap<NodeId, MotionPolicy> = HashMap::new();
+        let mut policy_map: AHashMap<NodeId, MotionPolicy> = AHashMap::new();
         let mut new_inner_policy = MotionPolicy::Full;
         let filter = |node_id: NodeId| -> bool {
             matches!(
                 self.get_node(node_id),
-                Ok(Node::Expression(
-                    Expression::Bool(_) | Expression::Unary(UnaryExpr { op: Unary::Not, .. })
-                ))
+                Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
             )
         };
-        let mut expr_tree = PostOrderWithFilter::with_capacity(
+        let expr_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, true),
             EXPR_CAPACITY,
             Box::new(filter),
         );
-        expr_tree.populate_nodes(cond_id);
-        let nodes = expr_tree.take_nodes();
-        drop(expr_tree);
-        for level_node in nodes {
-            let node_id = level_node.1;
+        for LevelNode(_, node_id) in expr_tree.into_iter(cond_id) {
             let expr = self.get_expression_node(node_id)?;
-
-            // Under `not ... in ...` we should change the policy to `Full`
-            if let Expression::Unary(UnaryExpr {
-                op: Unary::Not,
-                child,
-            }) = expr
-            {
-                let child_expr = self.get_expression_node(*child)?;
-                if let Expression::Bool(BoolExpr { op: Bool::In, .. }) = child_expr {
-                    new_inner_policy = MotionPolicy::Full;
-                    inner_map.insert(node_id, new_inner_policy.clone());
-                    continue;
-                }
+            if matches!(expr, Expression::Unary(_)) {
+                new_inner_policy = MotionPolicy::Full;
+                continue;
             }
 
             let Expression::Bool(BoolExpr { left, right, .. }) = expr else {
@@ -1466,71 +1450,59 @@ impl Plan {
 
             // Ok, we don't have any sub-queries.
             // Lets try to improve the motion policy for the inner join child.
-            let left_id = self.get_child_under_cast(bool_op.left)?;
-            let right_id = self.get_child_under_cast(bool_op.right)?;
-            let left_expr = self.get_expression_node(left_id)?;
-            let right_expr = self.get_expression_node(right_id)?;
-            new_inner_policy = match (&left_expr, &right_expr) {
-                (Expression::Arithmetic(_), _) | (_, Expression::Arithmetic(_)) => {
-                    MotionPolicy::Full
-                }
-                (
-                    Expression::Reference(_) | Expression::Row(_),
-                    Expression::Reference(_) | Expression::Row(_),
-                ) => match bool_op.op {
-                    Bool::Between => {
-                        unreachable!("Between in redistribution")
-                    }
-                    Bool::Eq | Bool::In => self.join_policy_for_eq(rel_id, left_id, right_id)?,
-                    Bool::Gt
-                    | Bool::GtEq
-                    | Bool::Lt
-                    | Bool::LtEq
-                    | Bool::NotEq
-                    | Bool::And
-                    | Bool::Or => MotionPolicy::Full,
-                },
-                (
-                    Expression::Bool(_) | Expression::Unary(_) | Expression::Row(_),
-                    Expression::Bool(_) | Expression::Unary(_) | Expression::Row(_),
-                ) => {
-                    let left_policy = inner_map
-                        .get(&bool_op.left)
-                        .cloned()
-                        .unwrap_or(MotionPolicy::Full);
-                    let right_policy = inner_map
-                        .get(&bool_op.right)
-                        .cloned()
-                        .unwrap_or(MotionPolicy::Full);
-                    match bool_op.op {
-                        Bool::And => join_policy_for_and(&left_policy, &right_policy)?,
-                        Bool::Or => join_policy_for_or(&left_policy, &right_policy)?,
-                        _ => {
-                            return Err(SbroadError::Unsupported(
-                                Entity::Operator,
-                                Some("unsupported boolean operation, expected And or Or".into()),
-                            ));
+            new_inner_policy = match bool_op.op {
+                Bool::Eq | Bool::In => {
+                    let left_id = self.get_child_under_cast(bool_op.left)?;
+                    let right_id = self.get_child_under_cast(bool_op.right)?;
+                    let left_expr = self.get_expression_node(left_id)?;
+                    let right_expr = self.get_expression_node(right_id)?;
+
+                    if matches!(left_expr, Expression::Reference(_) | Expression::Row(_))
+                        && matches!(right_expr, Expression::Reference(_) | Expression::Row(_))
+                    {
+                        self.join_policy_for_eq(rel_id, left_id, right_id)?
+                    } else {
+                        let const_true = Expression::Constant(&Constant {
+                            value: Value::Boolean(true),
+                        });
+                        if left_expr == const_true {
+                            // `true = (t1.a = t2.b)` is equivalent to `t1.a = t2.b`.
+                            let right_policy = policy_map
+                                .get(&right_id)
+                                .cloned()
+                                .unwrap_or(MotionPolicy::Full);
+                            right_policy
+                        } else if right_expr == const_true {
+                            // `(t1.a = t2.b) = true` is equivalent to `t1.a = t2.b`.
+                            let left_policy = policy_map
+                                .get(&left_id)
+                                .cloned()
+                                .unwrap_or(MotionPolicy::Full);
+                            left_policy
+                        } else {
+                            MotionPolicy::Full
                         }
                     }
                 }
-                (Expression::Constant(_), Expression::Bool(_) | Expression::Unary(_)) => inner_map
-                    .get(&bool_op.right)
-                    .cloned()
-                    .unwrap_or(MotionPolicy::Full),
-                (Expression::Bool(_) | Expression::Unary(_), Expression::Constant(_)) => inner_map
-                    .get(&bool_op.left)
-                    .cloned()
-                    .unwrap_or(MotionPolicy::Full),
-                // we cannot make better with constant from left or right
-                (Expression::Constant(_), _) | (_, Expression::Constant(_)) => MotionPolicy::Full,
-                _ => {
-                    return Err(SbroadError::Invalid(
-                        Entity::Expression,
-                        Some(format_smolstr!("Unable to resolve join conflict for left ({left_expr:?}) and right ({right_expr:?}) expressions.")),
-                    ));
+                Bool::And => {
+                    let left_policy = policy_map.get(&bool_op.left).unwrap_or(&MotionPolicy::Full);
+                    let right_policy = policy_map
+                        .get(&bool_op.right)
+                        .unwrap_or(&MotionPolicy::Full);
+                    join_policy_for_and(left_policy, right_policy)?
                 }
+                Bool::Or => {
+                    let left_policy = policy_map.get(&bool_op.left).unwrap_or(&MotionPolicy::Full);
+                    let right_policy = policy_map
+                        .get(&bool_op.right)
+                        .unwrap_or(&MotionPolicy::Full);
+                    join_policy_for_or(left_policy, right_policy)?
+                }
+                _ => MotionPolicy::Full,
             };
-            inner_map.insert(node_id, new_inner_policy.clone());
+            if new_inner_policy != MotionPolicy::Full {
+                policy_map.insert(node_id, new_inner_policy.clone());
+            }
         }
         strategy.add_child(inner_child, new_inner_policy, Program::default());
 

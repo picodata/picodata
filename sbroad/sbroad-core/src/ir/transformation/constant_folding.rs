@@ -1,26 +1,14 @@
-use std::collections::HashMap;
-
-use smol_str::format_smolstr;
-
-use crate::ir::node::expression::MutExpression;
-use crate::ir::node::relational::MutRelational;
-use crate::ir::node::{ArenaType, UnaryExpr};
+use crate::errors::{Entity, SbroadError};
+use crate::ir::node::expression::{Expression, MutExpression};
+use crate::ir::node::relational::{MutRelational, Relational};
+use crate::ir::node::{ArenaType, BoolExpr, Constant, Join, Node, NodeId, Selection, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::Snapshot;
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
-use crate::{
-    errors::{Entity, SbroadError},
-    ir::{
-        node::{
-            expression::Expression, relational::Relational, BoolExpr, Constant, Node, NodeId,
-            Selection,
-        },
-        tree::{
-            traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY},
-            Snapshot,
-        },
-        Plan,
-    },
-};
+use crate::ir::Plan;
+use smol_str::format_smolstr;
+use std::collections::HashMap;
 
 type OldId = NodeId;
 type NewId = NodeId;
@@ -179,7 +167,9 @@ impl Plan {
         let selection_filter = |id: NodeId| -> bool {
             matches!(
                 self.get_node(id),
-                Ok(Node::Relational(Relational::Selection(_)))
+                Ok(Node::Relational(
+                    Relational::Selection(_) | Relational::Join(_)
+                ))
             )
         };
 
@@ -196,10 +186,11 @@ impl Plan {
 
         for LevelNode(_, id) in nodes.iter() {
             let rel_node = self.get_relation_node(*id)?;
-            let Relational::Selection(Selection { filter, .. }) = rel_node else {
-                unreachable!("expected Selection node");
+            let filter = match rel_node {
+                Relational::Selection(Selection { filter, .. }) => *filter,
+                Relational::Join(Join { condition, .. }) => *condition,
+                _ => unreachable!("expected Selection or Join node"),
             };
-            let filter = *filter;
 
             let bool_filter = |id: NodeId| -> bool {
                 matches!(
@@ -267,14 +258,20 @@ impl Plan {
             }
 
             if let Some(new_filter) = const_map.get(&filter) {
-                let MutRelational::Selection(Selection {
-                    filter: mut_filter, ..
-                }) = self.get_mut_relation_node(*id)?
-                else {
-                    unreachable!("expected Selection node");
+                match self.get_mut_relation_node(*id)? {
+                    MutRelational::Join(Join {
+                        condition: mut_condition,
+                        ..
+                    }) => {
+                        *mut_condition = *new_filter;
+                    }
+                    MutRelational::Selection(Selection {
+                        filter: mut_filter, ..
+                    }) => {
+                        *mut_filter = *new_filter;
+                    }
+                    _ => unreachable!("expected Selection or Join node"),
                 };
-
-                *mut_filter = *new_filter;
             }
         }
 

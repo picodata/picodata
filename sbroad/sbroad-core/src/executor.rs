@@ -57,6 +57,13 @@ impl Plan {
     pub fn optimize(&mut self) -> Result<(), SbroadError> {
         self.replace_in_operator()?;
         self.push_down_not()?;
+
+        // In the case if the query was not fully parameterized
+        // and contains some constants, lets apply constant folding.
+        self.update_timestamps()?;
+        self.cast_constants()?;
+        self.fold_boolean_tree()?;
+
         self.split_columns()?;
         self.set_dnf()?;
         self.derive_equalities()?;
@@ -154,13 +161,7 @@ where
                 plan.options = options;
             }
 
-            if !plan.is_block()?
-                && !plan.is_ddl()?
-                && !plan.is_acl()?
-                && !plan.is_plugin()?
-                && !plan.is_deallocate()?
-                && !plan.is_tcl()?
-            {
+            if plan.is_dql_or_dml()? {
                 let raw_options_clone = plan.raw_options.clone();
                 plan.bind_option_params(&params);
                 plan.check_options()?;

@@ -513,7 +513,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection not (not ((false::boolean >= false::boolean) and (false::boolean <= true::boolean)))
+        selection true::boolean
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -531,7 +531,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."id"::unsigned -> "id")
-        selection ((false::boolean and true::boolean) and (false::boolean >= false::boolean)) and (false::boolean <= true::boolean)
+        selection false::boolean
             scan "test_space" -> "t"
     execution options:
         sql_vdbe_opcode_max = 45000
@@ -3383,7 +3383,7 @@ fn front_sql_not_equal() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not (true::boolean = true::boolean)
+        selection false::boolean
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3399,7 +3399,7 @@ fn front_sql_not_cast() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not true::boolean
+        selection false::boolean
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3431,7 +3431,7 @@ fn front_sql_not_or() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection (not true::boolean) or true::boolean
+        selection true::boolean
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3462,7 +3462,7 @@ fn front_sql_not_or_with_parentheses() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-        selection not (true::boolean or true::boolean)
+        selection false::boolean
             scan
                 values
                     value row (data=ROW(1::unsigned))
@@ -3532,7 +3532,7 @@ fn front_sql_not_complex_query() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (not ((not true::boolean) and ((1::unsigned + 1::integer) <> 1::unsigned)) -> "col_1")
         selection not exists ROW($0)
-            join on (not "ts"."nid"::boolean) or (false::boolean <> (not (not true::boolean))::bool)
+            join on (not "ts"."nid"::boolean) or (false::boolean <> (not false::boolean)::bool)
                 scan "ts"
                     projection (not ("test_space"."id"::unsigned <> 2::unsigned) -> "nid")
                         scan "test_space"
@@ -3543,7 +3543,7 @@ fn front_sql_not_complex_query() {
     subquery $0:
     scan
                 projection ("COLUMN_1"::unsigned -> "COLUMN_1")
-                    selection not (true::boolean = true::boolean)
+                    selection false::boolean
                         scan
                             values
                                 value row (data=ROW(1::unsigned))
