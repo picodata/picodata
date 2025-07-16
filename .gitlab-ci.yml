@@ -260,7 +260,8 @@ clone:
       variables:
         RELEASE_PROFILE: &release-profile "release"
         RELEASE_TARGET: &release-target "release"
-        CACHE_POLICY: pull-push
+        # if the cache policy is pull-push, then the cache is layered on the previous version of the cache, and it takes up more and more space
+        CACHE_POLICY: push
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
