@@ -76,13 +76,9 @@ test-rust *ARGS:
 
 alias tp := test-python
 [group("test")]
-[doc("`tp`: python tests, use PYTEST_PATTERN env to pass parameters to `-k` flag")]
-test-python:
-  if [ -z "${PYTEST_PATTERN:-}" ]; then \
-    poetry run pytest {{PYTEST_JOBS}}; \
-  else \
-    poetry run pytest -k "${PYTEST_PATTERN}" {{PYTEST_JOBS}}; \
-  fi
+[doc("`tp`: python tests")]
+test-python PATTERN="test":
+	poetry run pytest -k {{ PATTERN }}
 
 #*************#
 # group: LINT #
@@ -168,7 +164,7 @@ k6:
 
 [group("misc")]
 [doc("remove cargo and python cache, clean submodules")]
-[confirm("Do you really want to clear all cache and submodules? (y/n)")]
+[confirm("Do you really want to clear all cache and submodules? (y/n):")]
 clean:
 	cargo clean || true
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
@@ -194,10 +190,10 @@ reset-submodules:
 
 [group("misc")]
 [doc("patch tarantool version")]
-tarantool-patch:
-	@echo "${VER_TNT}" > tarantool-sys/VERSION
+tarantool-patch VERSION=env_var("VER_TNT"):
+	echo {{ VERSION }} > tarantool-sys/VERSION
 
 [group("misc")]
 [doc("patch tarantool version")]
 generate-snapshot:
-	@poetry run python3 test/generate_snapshot.py
+	poetry run python3 test/generate_snapshot.py
