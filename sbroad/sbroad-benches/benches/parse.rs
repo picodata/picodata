@@ -353,6 +353,40 @@ fn bench_full_parsing(crit: &mut Criterion) {
     }
 }
 
+fn bench_large_insert_parsing(crit: &mut Criterion) {
+    fn generate_large_insert() -> String {
+        const TOTAL_PARAMETERS: usize = 4000;
+        const COLUMNS: usize = 4;
+        const ROWS: usize = TOTAL_PARAMETERS / COLUMNS;
+
+        let mut sql = String::with_capacity(ROWS * 30); // Pre-allocate space
+        sql.push_str("INSERT INTO t2 VALUES ");
+
+        for row in 0..ROWS {
+            if row > 0 {
+                sql.push_str(", ");
+            }
+            let base_param = row * COLUMNS + 1;
+            sql.push_str(&format!(
+                "(${}, ${}, ${}, ${})",
+                base_param,
+                base_param + 1,
+                base_param + 2,
+                base_param + 3
+            ));
+        }
+
+        sql.push(';');
+        sql
+    }
+
+    let insert = generate_large_insert();
+
+    crit.bench_function("bench_large_insert_parsing", |b| {
+        b.iter_with_large_drop(|| black_box(parse(&insert)))
+    });
+}
+
 fn bench_take_subtree(crit: &mut Criterion) {
     let engine = RouterRuntimeMock::new();
     let param: u64 = 42;
@@ -432,6 +466,7 @@ criterion_group!(
     benches,
     bench_pure_pest_parsing,
     bench_full_parsing,
-    bench_serde_clone
+    bench_serde_clone,
+    bench_large_insert_parsing
 );
 criterion_main!(benches);
