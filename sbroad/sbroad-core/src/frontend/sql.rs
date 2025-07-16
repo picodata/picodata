@@ -1983,16 +1983,25 @@ fn parse_option<M: Metadata>(
     Ok(value)
 }
 
-fn try_get_param_index(pair: Pair<'_, Rule>) -> Result<Option<usize>, SbroadError> {
-    let inner_param = pair
+fn get_param_index(
+    pair: Pair<'_, Rule>,
+    tnt_parameters_positions: &[Pair<'_, Rule>],
+) -> Result<usize, SbroadError> {
+    let param_pair = pair
         .clone()
         .into_inner()
         .next()
         .expect("Concrete param expected under Parameter node");
-    match inner_param.as_rule() {
-        Rule::TntParameter => Ok(None),
+    match param_pair.as_rule() {
+        Rule::TntParameter => {
+            let pos = tnt_parameters_positions
+                .iter()
+                .position(|p| p == &param_pair)
+                .expect("Couldn't find tnt parameter pair in a vec of tnt parameters pairs");
+            Ok(pos + 1)
+        }
         Rule::PgParameter => {
-            let inner_unsigned = inner_param
+            let inner_unsigned = param_pair
                 .into_inner()
                 .next()
                 .expect("Unsigned not found under PgParameter");
@@ -2010,7 +2019,7 @@ fn try_get_param_index(pair: Pair<'_, Rule>) -> Result<Option<usize>, SbroadErro
                     Some("$n parameters are indexed from 1!".into()),
                 ));
             }
-            Ok(Some(value_idx))
+            Ok(value_idx)
         }
         _ => unreachable!("Unexpected Rule met under Parameter"),
     }
@@ -2022,28 +2031,7 @@ fn parse_param<M: Metadata>(
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
-    let position = worker
-        .parameters_positions
-        .iter()
-        .position(|p| p == &pair)
-        .expect("Couldn't find parameter pair in a vec of parameters pairs");
-
-    let index = if let Some(index) = try_get_param_index(pair)? {
-        // Postgres parameter.
-        if worker.met_tnt_param {
-            return Err(SbroadError::UseOfBothParamsStyles);
-        }
-        worker.met_pg_param = true;
-        index
-    } else {
-        // Tarantool parameter.
-        if worker.met_pg_param {
-            return Err(SbroadError::UseOfBothParamsStyles);
-        }
-        worker.met_tnt_param = true;
-        position + 1
-    };
-
+    let index = get_param_index(pair, &worker.tnt_parameters_positions)?;
     if index > MAX_PARAMETER_INDEX {
         return Err(SbroadError::Other(format_smolstr!(
             "parameter index {} is too big (max: {})",
@@ -2161,19 +2149,14 @@ where
     /// queue till it's not empty and:
     /// * Add subqueries to the list of relational children
     sub_queries_to_fix_queue: VecDeque<NodeId>,
-    // Parametes pairs positions in the query. This map is used to index tnt parameters.
+    // Tnt parameter pairs positions in the query. This map is used to index tnt parameters.
     // For example, for query `select ? + ?` this vector will contain 2 pairs for `?`, and the pair
     // on the left will be the first, while the right pair will be the second.
-    parameters_positions: Vec<Pair<'worker, Rule>>,
+    tnt_parameters_positions: Vec<Pair<'worker, Rule>>,
     metadata: &'worker M,
     /// Map of { reference plan_id -> it's column name}
     /// We have to save column name in order to use it later for alias creation.
     pub reference_to_name_map: HashMap<NodeId, SmolStr>,
-    /// Flag indicating whether parameter in Tarantool (? mark) style was met.
-    met_tnt_param: bool,
-    #[allow(rustdoc::invalid_html_tags)]
-    /// Flag indicating whether parameter in Postgres ($<index>) style was met.
-    met_pg_param: bool,
     /// Map of (relational_node_id, columns_position_map).
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
@@ -2195,7 +2178,7 @@ where
     fn new<'plan: 'worker, 'meta: 'worker>(
         metadata: &'meta M,
         sq_pair_to_ast_ids: &'worker PairToAstIdTranslation,
-        parameters_positions: Vec<Pair<'worker, Rule>>,
+        tnt_parameters_positions: Vec<Pair<'worker, Rule>>,
     ) -> Self {
         Self {
             sq_pair_to_ast_ids,
@@ -2203,11 +2186,9 @@ where
             subquery_replaces: AHashMap::new(),
             sub_queries_to_fix_queue: VecDeque::new(),
             metadata,
-            parameters_positions,
+            tnt_parameters_positions,
             betweens: Vec::new(),
             reference_to_name_map: HashMap::with_capacity(REFERENCES_MAP_CAPACITY),
-            met_tnt_param: false,
-            met_pg_param: false,
             column_positions_cache: HashMap::with_capacity(COLUMN_POSITIONS_CACHE_CAPACITY),
             named_windows_map: HashMap::new(),
             windows: Vec::new(),
@@ -4657,7 +4638,7 @@ impl AbstractSyntaxTree {
         pairs_map: &mut ParsingPairsMap<'query>,
         pos_to_ast_id: &mut SelectChildPairTranslation,
         pairs_to_ast_id: &mut PairToAstIdTranslation<'query>,
-        parameters_ordered: &mut Vec<Pair<'query, Rule>>,
+        tnt_parameters_ordered: &mut Vec<Pair<'query, Rule>>,
     ) -> Result<(), SbroadError> {
         let mut command_pair = match ParseTree::parse(Rule::Command, query) {
             Ok(p) => p,
@@ -4679,7 +4660,9 @@ impl AbstractSyntaxTree {
 
         let top = StackParseNode::new(top_pair, None);
 
-        let mut parameters = Vec::new();
+        let mut has_tnt_params = false;
+        let mut has_pg_params = false;
+        let mut tnt_parameters = Vec::new();
         let mut stack: Vec<StackParseNode> = vec![top];
         while !stack.is_empty() {
             let stack_node: StackParseNode = match stack.pop() {
@@ -4727,9 +4710,13 @@ impl AbstractSyntaxTree {
                     //   ALTER SYSTEM which should not contain all possible `Expr`s.
                     // * `SelectWithOptionalContinuation` is also parsed using Pratt parser
                     pairs_map.insert(arena_node_id, stack_node.pair.clone());
-                    if let Rule::Parameter = stack_node.pair.as_rule() {
-                        parameters.push(stack_node.pair.clone());
-                    }
+                }
+                Rule::TntParameter => {
+                    tnt_parameters.push(stack_node.pair.clone());
+                    has_tnt_params = true;
+                }
+                Rule::PgParameter => {
+                    has_pg_params = true;
                 }
                 Rule::Projection | Rule::OrderBy => {
                     pos_to_ast_id.insert(stack_node.pair.line_col(), arena_node_id);
@@ -4740,15 +4727,19 @@ impl AbstractSyntaxTree {
                 _ => {}
             }
 
+            if has_tnt_params && has_pg_params {
+                return Err(SbroadError::UseOfBothParamsStyles);
+            }
+
             for parse_child in stack_node.pair.into_inner() {
                 stack.push(StackParseNode::new(parse_child, Some(arena_node_id)));
             }
         }
 
-        // Sort parameters pairs in their appearance order.
+        // Sort tnt parameters pairs in their appearance order.
         // This allows to enumerate tnt parameters: `select ?, ?` -> `select $1, $2`
-        parameters.sort_by_key(|p| p.line_col());
-        *parameters_ordered = parameters;
+        tnt_parameters.sort_by_key(|p| p.line_col());
+        *tnt_parameters_ordered = tnt_parameters;
 
         self.set_top(0)?;
 
@@ -5423,7 +5414,7 @@ impl AbstractSyntaxTree {
         pairs_map: &mut ParsingPairsMap,
         pos_to_ast_id: &mut SelectChildPairTranslation,
         sq_pair_to_ast_ids: &PairToAstIdTranslation,
-        parameters_positions: Vec<Pair<'_, Rule>>,
+        tnt_parameters_positions: Vec<Pair<'_, Rule>>,
     ) -> Result<Plan, SbroadError>
     where
         M: Metadata,
@@ -5442,7 +5433,8 @@ impl AbstractSyntaxTree {
         // Counter for `Expression::ValuesRow` output column name aliases ("COLUMN_<`col_idx`>").
         // Is it global for every `ValuesRow` met in the AST.
         let mut col_idx: usize = 0;
-        let mut worker = ExpressionsWorker::new(metadata, sq_pair_to_ast_ids, parameters_positions);
+        let mut worker =
+            ExpressionsWorker::new(metadata, sq_pair_to_ast_ids, tnt_parameters_positions);
         let mut ctes = CTEs::new();
         // This flag disables resolving of table names for DROP TABLE queries,
         // as it can be used with tables that are not presented in metadata.
@@ -6506,13 +6498,13 @@ impl Ast for AbstractSyntaxTree {
         let mut sq_pair_to_ast_ids: PairToAstIdTranslation = HashMap::new();
 
         let mut ast = AbstractSyntaxTree::empty();
-        let mut parameters_positions = Vec::new();
+        let mut tnt_parameters_positions = Vec::new();
         ast.fill(
             query,
             &mut ast_id_to_pairs_map,
             &mut pos_to_ast_id,
             &mut sq_pair_to_ast_ids,
-            &mut parameters_positions,
+            &mut tnt_parameters_positions,
         )?;
 
         // Empty query.
@@ -6526,7 +6518,7 @@ impl Ast for AbstractSyntaxTree {
             &mut ast_id_to_pairs_map,
             &mut pos_to_ast_id,
             &sq_pair_to_ast_ids,
-            parameters_positions,
+            tnt_parameters_positions,
         )
     }
 }
