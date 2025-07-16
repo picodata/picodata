@@ -757,7 +757,7 @@ impl Plan {
             self.nodes.rel_iter(node_id)
         };
         let filter = |node_id: NodeId| -> bool { self.is_serialize_as_empty_motion(node_id, true) };
-        let mut dfs = PostOrderWithFilter::with_capacity(iter_children, 4, Box::new(filter));
+        let dfs = PostOrderWithFilter::with_capacity(iter_children, 4, Box::new(filter));
 
         Ok(dfs.into_iter(self.get_top()?).map(|id| id.1).collect())
     }
@@ -772,7 +772,7 @@ impl Plan {
                 Ok(Node::Relational(Relational::Motion(_)))
             )
         };
-        let mut dfs =
+        let dfs =
             PostOrderWithFilter::with_capacity(|x| self.nodes.rel_iter(x), 0, Box::new(filter));
         for LevelNode(_, motion_id) in dfs.into_iter(self.get_top()?) {
             motions_ref_count
@@ -796,7 +796,7 @@ impl Plan {
             };
             let mut all_motions = Vec::new();
             for top_id in &top_ids {
-                let mut dfs = PostOrderWithFilter::with_capacity(
+                let dfs = PostOrderWithFilter::with_capacity(
                     |x| self.nodes.rel_iter(x),
                     REL_CAPACITY,
                     Box::new(is_motion),

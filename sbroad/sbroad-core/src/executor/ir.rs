@@ -412,7 +412,7 @@ impl ExecutionPlan {
             let mut nodes_to_save: AHashSet<NodeId> = AHashSet::with_capacity(SQ_IDS_CAPACITY * 2);
 
             for LevelNode(_, node_id) in rel_tree.iter() {
-                let mut subtree = PostOrder::with_capacity(
+                let subtree = PostOrder::with_capacity(
                     |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
                     REL_CAPACITY,
                 );

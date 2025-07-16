@@ -2771,7 +2771,7 @@ impl Plan {
         // to some leaf node. For motion node this number
         // is the slice index.
         let mut slices: Vec<Vec<NodeId>> = Vec::new();
-        let mut dfs_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let dfs_tree = PostOrder::with_capacity(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         // When visiting new node this stack stores
         // all the children of the current node.
         let mut stack = Vec::new();

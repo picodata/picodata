@@ -25,6 +25,7 @@ use smol_str::format_smolstr;
 use std::sync::LazyLock;
 
 #[cfg(test)]
+#[cfg(feature = "mock")]
 mod tests;
 
 pub type TypeExpr = GenericExpr<NodeId>;

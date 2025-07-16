@@ -2391,7 +2391,7 @@ impl<'p> SyntaxPlan<'p> {
         let capacity = ir_plan.nodes.len();
         match snapshot {
             Snapshot::Latest => {
-                let mut dft_post =
+                let dft_post =
                     PostOrder::with_capacity(|node| ir_plan.subtree_iter(node, false), capacity);
                 for level_node in dft_post.into_iter(top) {
                     let id = level_node.1;
@@ -2404,7 +2404,7 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let mut dft_post =
+                let dft_post =
                     PostOrder::with_capacity(|node| ir_plan.flashback_subtree_iter(node), capacity);
                 for level_node in dft_post.into_iter(top) {
                     let id = level_node.1;

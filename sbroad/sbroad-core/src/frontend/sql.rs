@@ -2493,7 +2493,7 @@ impl Plan {
                 Ok(Node::Expression(Expression::ScalarFunction(_)))
             )
         };
-        let mut dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::with_capacity(
             |x| self.nodes.expr_iter(x, false),
             EXPR_CAPACITY,
             Box::new(filter),
@@ -5114,7 +5114,7 @@ impl AbstractSyntaxTree {
                     } else {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.
-                        let mut expr_tree =
+                        let expr_tree =
                             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
                         for LevelNode(_, node_id) in expr_tree.into_iter(expr_plan_node_id) {
@@ -5427,7 +5427,7 @@ impl AbstractSyntaxTree {
             return Err(SbroadError::Invalid(Entity::AST, None));
         };
         let capacity = self.nodes.arena.len();
-        let mut dft_post = PostOrder::with_capacity(|node| self.nodes.ast_iter(node), capacity);
+        let dft_post = PostOrder::with_capacity(|node| self.nodes.ast_iter(node), capacity);
         // Map of { ast `ParseNode` id -> plan `Node` id }.
         let mut map = Translation::with_capacity(self.nodes.next_id());
         // Counter for `Expression::ValuesRow` output column name aliases ("COLUMN_<`col_idx`>").

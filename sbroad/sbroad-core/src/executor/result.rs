@@ -248,7 +248,7 @@ impl Plan {
             }
             false
         };
-        let mut rel_tree = PostOrderWithFilter::with_capacity(
+        let rel_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.rel_iter(node),
             REL_CAPACITY,
             Box::new(filter),

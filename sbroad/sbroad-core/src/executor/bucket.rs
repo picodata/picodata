@@ -334,7 +334,7 @@ where
         };
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
-        let mut tree = PostOrderWithFilter::with_capacity(
+        let tree = PostOrderWithFilter::with_capacity(
             |node| ir_plan.exec_plan_subtree_iter(node, Snapshot::Latest),
             REL_CAPACITY,
             Box::new(filter),

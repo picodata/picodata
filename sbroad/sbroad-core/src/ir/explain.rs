@@ -227,7 +227,7 @@ impl ColExpr {
         sq_ref_map: &SubQueryRefMap,
     ) -> Result<Self, SbroadError> {
         let mut stack: ColExprStack = ColExprStack::new(plan);
-        let mut dft_post =
+        let dft_post =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
 
         for LevelNode(_, id) in dft_post.into_iter(subtree_top) {
@@ -1423,7 +1423,7 @@ impl FullExplain {
             Value::Unsigned(ir.options.sql_motion_row_max),
         ));
 
-        let mut dft_post = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
+        let dft_post = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
         for LevelNode(level, id) in dft_post.into_iter(top_id) {
             let mut current_node = ExplainTreePart::with_level(level);
             let node = ir.get_relation_node(id)?;

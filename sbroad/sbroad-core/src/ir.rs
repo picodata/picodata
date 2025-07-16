@@ -1164,7 +1164,7 @@ impl Plan {
                 Ok(Node::Expression(Expression::ScalarFunction(_)))
             )
         };
-        let mut dfs = PostOrderWithFilter::with_capacity(
+        let dfs = PostOrderWithFilter::with_capacity(
             |x| self.nodes.expr_iter(x, false),
             EXPR_CAPACITY,
             Box::new(filter),
@@ -2215,7 +2215,7 @@ impl ShardColumnsMap {
     }
 
     fn update_subtree(&mut self, node_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
-        let mut dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
+        let dfs = PostOrder::with_capacity(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
         for LevelNode(_, id) in dfs.into_iter(node_id) {
             self.update_node(id, plan)?;
             self.invalid_ids.remove(&id);

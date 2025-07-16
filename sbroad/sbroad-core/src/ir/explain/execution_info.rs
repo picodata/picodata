@@ -63,7 +63,7 @@ impl BucketsInfo {
 
         let top_id = ir.get_top()?;
 
-        let mut dfs_tree = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
+        let dfs_tree = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
         // Stores previously computed results for each
         // child of the current node: weather the child
         // has non-local motion in its subtree.

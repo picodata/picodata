@@ -89,7 +89,7 @@ fn relational_post() {
     let top = plan.get_top().unwrap();
 
     // Traverse the tree
-    let mut dft_post = PostOrder::with_capacity(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
+    let dft_post = PostOrder::with_capacity(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
     let mut iter = dft_post.into_iter(top);
     assert_eq!(iter.next(), Some(LevelNode(1, scan_t1_id)));
     assert_eq!(iter.next(), Some(LevelNode(2, scan_t2_id)));
@@ -164,7 +164,7 @@ fn selection_subquery_dfs_post() {
     let top = plan.get_top().unwrap();
 
     // Traverse relational nodes in the plan tree
-    let mut dft_post = PostOrder::with_capacity(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
+    let dft_post = PostOrder::with_capacity(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
     let mut iter = dft_post.into_iter(top);
     assert_eq!(iter.next(), Some(LevelNode(1, scan_t1_id)));
     assert_eq!(iter.next(), Some(LevelNode(4, scan_t2_id)));
@@ -175,8 +175,7 @@ fn selection_subquery_dfs_post() {
     assert_eq!(iter.next(), None);
 
     // Traverse expression nodes in the selection t2 filter
-    let mut dft_post =
-        PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
+    let dft_post = PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
     let mut iter = dft_post.into_iter(eq_op);
     assert_eq!(iter.next(), Some(LevelNode(1, b)));
     assert_eq!(iter.next(), Some(LevelNode(1, const1)));
@@ -184,8 +183,7 @@ fn selection_subquery_dfs_post() {
     assert_eq!(iter.next(), None);
 
     // Traverse expression nodes in the selection t1 filter
-    let mut dft_post =
-        PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
+    let dft_post = PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
     let mut iter = dft_post.into_iter(in_op);
     assert_eq!(iter.next(), Some(LevelNode(1, a)));
     assert_eq!(iter.next(), Some(LevelNode(1, c)));
@@ -250,7 +248,7 @@ fn subtree_dfs_post() {
     };
 
     // Traverse relational nodes in the plan tree
-    let mut dft_post =
+    let dft_post =
         PostOrder::with_capacity(|node| plan.subtree_iter(node, false), plan.nodes.len());
     let mut iter = dft_post.into_iter(top);
     assert_eq!(iter.next(), Some(LevelNode(3, *c_ref_id)));

@@ -76,7 +76,7 @@ impl ReferredMap {
         let outer_child = plan.get_relational_child(join_id, 0)?;
         let inner_child = plan.get_relational_child(join_id, 1)?;
         let mut referred = ReferredMap::with_capacity(EXPR_CAPACITY);
-        let mut expr_tree =
+        let expr_tree =
             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
         for LevelNode(_, node_id) in expr_tree.into_iter(condition_id) {
             let expr = plan.get_expression_node(node_id)?;
@@ -521,7 +521,7 @@ impl EqualityCols {
             }
             false
         };
-        let mut expr_tree = PostOrderWithFilter::with_capacity(
+        let expr_tree = PostOrderWithFilter::with_capacity(
             |node| plan.nodes.expr_iter(node, true),
             EXPR_CAPACITY,
             Box::new(filter),

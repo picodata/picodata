@@ -22,9 +22,9 @@ impl<F, I, T> PostOrder<F, I, T>
 where
     F: FnMut(T) -> I,
     I: Iterator<Item = T>,
-    T: Copy,
+    T: Copy + 'static,
 {
-    pub fn into_iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
         self.inner.into_iter(root)
     }
 
@@ -66,11 +66,12 @@ impl<'filter, F, I, T> PostOrderWithFilter<'filter, F, I, T>
 where
     F: FnMut(T) -> I,
     I: Iterator<Item = T>,
-    T: Copy,
+    T: Copy + 'filter,
 {
-    pub fn into_iter(&mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn into_iter(mut self, root: T) -> impl Iterator<Item = LevelNode<T>> {
         self.populate_nodes(root);
-        self.take_nodes().into_iter()
+        let nodes = self.take_nodes();
+        nodes.into_iter()
     }
 
     /// Iter inner nodes without taking them.

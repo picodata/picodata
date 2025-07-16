@@ -1044,7 +1044,6 @@ macro_rules! define_plan {
     }
 }
 
-use crate::storage::Properties;
 use stage::*;
 
 pub mod stage {
