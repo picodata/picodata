@@ -108,7 +108,7 @@ where
             ..
         }) = expr
         {
-            let pairs = vec![(*left, *right), (*right, *left)];
+            let pairs = [(*left, *right), (*right, *left)];
             for (left_id, right_id) in pairs {
                 let left_expr = ir_plan.get_expression_node(left_id)?;
                 if !matches!(left_expr, Expression::Row(_) | Expression::Reference(_)) {
@@ -116,15 +116,10 @@ where
                 }
 
                 let right_expr = ir_plan.get_expression_node(right_id)?;
-                let right_columns = if let Expression::Row(Row { list, .. }) = right_expr {
-                    list.clone()
-                } else if let Expression::Constant(_) = right_expr {
-                    vec![right_id]
-                } else if let Expression::Reference(_) = right_expr {
-                    // Can be by motion node
-                    vec![right_id]
-                } else {
-                    continue;
+                let right_columns = match right_expr {
+                    Expression::Row(_) => right_expr.get_row_list()?.as_slice(),
+                    Expression::Constant(_) | Expression::Reference(_) => &[right_id],
+                    _ => continue,
                 };
 
                 // Get the distribution of the left row.
@@ -151,6 +146,7 @@ where
                         }
                     }
 
+                    let mut values: Vec<&Value> = Vec::new();
                     // The right side is a regular row or subquery which distribution
                     // didn't result in Motion creation (e.g. `"a" in (select "a" from t)`).
                     // So we have a case of `Eq` operator.
@@ -175,7 +171,8 @@ where
                         if key.positions.len() > right_columns.len() {
                             continue;
                         }
-                        let mut values: Vec<&Value> = Vec::new();
+                        values.clear();
+                        values.reserve(key.positions.len());
                         for position in &key.positions {
                             // Since the sides in the "In" query can be of different lengths,
                             // we need to find a suitable position, as if they were the
@@ -197,7 +194,7 @@ where
                                 values.push(ir_plan.as_const_value_ref(right_column_id)?);
                             } else {
                                 // One of the columns is not a constant. Skip this key.
-                                values = Vec::new();
+                                values.clear();
                                 break;
                             }
                         }
