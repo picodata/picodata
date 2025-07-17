@@ -13,7 +13,7 @@ if [ -d "$CI_PROJECT_DIR/.git" ]; then
   git clean -fdx
   git branch -D $CI_COMMIT_REF_NAME || echo "$CI_COMMIT_REF_NAME doesn't exist"
   git fetch -uf origin $CI_COMMIT_REF_NAME:$CI_COMMIT_REF_NAME
-  git checkout $CI_COMMIT_REF_NAME
+  git checkout $CI_COMMIT_REF_NAME --force
   git submodule update --init --recursive
 else
   # do full clone

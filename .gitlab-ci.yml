@@ -222,7 +222,13 @@ clone:
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       variables:
-        CACHE_POLICY: pull-push
+     # $MAIN_BRANCH should use a push cache policy so that master doesn't pull
+     # the previous master. This is important because there may be uncommitted
+     # changes when using git fetch -uf
+        CACHE_POLICY: push
+     # dev branches should use a pull-push cache policy so that tests have the
+     # corresponding dev branch that we fetched during the clone step. This is
+     # important because tests should check the dev branch, not the master.
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -230,7 +236,6 @@ clone:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   variables:
     GIT_STRATEGY: none
-    CACHE_POLICY: pull
     # slow is as fast as the fastest level, but the cache takes up 40% less space
     CACHE_COMPRESSION_LEVEL: "slow"
   script:
