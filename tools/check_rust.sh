@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/sh
 
 # Check rust version consistency
 exec 3>&1 # duplicate stdout fd
