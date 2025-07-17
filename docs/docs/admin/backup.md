@@ -3,7 +3,6 @@
 Данный раздел описывает способы резервного копирования и восстановления
 из резервной копии в Picodata.
 
-
 ## Копирование данных локальной БД {: #local_backup }
 
 На уровне локального экземпляра Picodata объектами резервного копирования
@@ -35,6 +34,15 @@ rsync -r <instance_dir> <backup_dir>
 
 [`picodata run --instance-dir`]: ../reference/cli.md#run_instance_dir
 
+При эксплуатации кластера Picodata, развернутого с помощью роли Ansible,
+используйте следующую команду для создания резервной копии:
+
+```shell
+ansible-playbook -i hosts.yml picodata.yml -t backup
+```
+
+Подробнее см. в разделе [Развертывание кластера через Ansible](deploy_ansible.md)
+
 ## Восстановление из резервной копии {: #local_restore }
 
 Восстановление данных инстанса из резервной копии выполняется той же
@@ -55,3 +63,12 @@ rsync -r <backup_dir> <instance_dir>
     примера см. [Руководство по комплексу средств защиты ОС Альт 8
     СП](https://www.basealt.ru/fileadmin/user_upload/manual/lknv.11100-01-99-03-rukovodstvo-po-ksz.pdf),
     п. 3.6.5. «Пример настройки системы резервного копирования данных».
+
+При эксплуатации кластера Picodata, развернутого с помощью роли Ansible,
+используйте следующую команду для восстановления из резервной копии:
+
+```shell
+ansible-playbook -i hosts.yml picodata.yml -t restore
+```
+
+Подробнее см. в разделе [Развертывание кластера через Ansible](deploy_ansible.md)
