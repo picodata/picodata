@@ -172,8 +172,7 @@ pub fn validate_password(
     {
         return Err(Error::Other(
             format!(
-                "invalid password: password should contains at least one special character - {:?}",
-                SPECIAL_CHARACTERS
+                "invalid password: password should contain at least one special character - {SPECIAL_CHARACTERS:?}",
             )
             .into(),
         ));
@@ -190,7 +189,7 @@ fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::R
     let table_name = storage
         .tables
         .get(space_id)?
-        .map_or_else(|| format!("id={}", space_id), |table| table.name);
+        .map_or_else(|| format!("id={space_id}"), |table| table.name);
 
     return Err(BoxError::new(
         TarantoolErrorCode::AccessDenied,
@@ -228,14 +227,11 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
         let table_name = storage
             .tables
             .get(space_id)?
-            .map_or_else(|| format!("id={}", space_id), |table| table.name);
+            .map_or_else(|| format!("id={space_id}"), |table| table.name);
 
         return Err(tarantool::error::BoxError::new(
             TarantoolErrorCode::AccessDenied,
-            format!(
-                "Write access to table '{}' is denied for all users",
-                table_name
-            ),
+            format!("Write access to table '{table_name}' is denied for all users"),
         )
         .into());
     }

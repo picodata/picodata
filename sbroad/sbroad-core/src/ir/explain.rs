@@ -506,9 +506,9 @@ impl Display for BoundTypeExplain {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             BoundTypeExplain::PrecedingUnbounded => String::from("unbounded preceding"),
-            BoundTypeExplain::PrecedingOffset(expr) => format!("{} preceding", expr),
+            BoundTypeExplain::PrecedingOffset(expr) => format!("{expr} preceding"),
             BoundTypeExplain::CurrentRow => String::from("current row"),
-            BoundTypeExplain::FollowingOffset(expr) => format!("{} following", expr),
+            BoundTypeExplain::FollowingOffset(expr) => format!("{expr} following"),
             BoundTypeExplain::FollowingUnbounded => String::from("unbounded following"),
         };
 

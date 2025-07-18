@@ -651,7 +651,7 @@ pub fn apply_up_migrations(
                 &(
                     &plugin_ident.name,
                     &migration.filename_from_manifest,
-                    &format!("{:x}", hash),
+                    &format!("{hash:x}"),
                 ),
                 ADMIN_ID,
             )?;

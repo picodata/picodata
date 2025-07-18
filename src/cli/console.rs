@@ -165,8 +165,7 @@ impl<T: Helper> Console<T> {
 
         if !status.success() {
             self.write(&format!(
-                "{:?} returned non-zero exit status: {}",
-                editor, status
+                "{editor:?} returned non-zero exit status: {status}",
             ));
             return Ok(ControlFlow::Continue(()));
         }
@@ -341,7 +340,7 @@ impl<T: Helper> Console<T> {
     }
 
     pub fn write(&self, line: &str) {
-        println!("{}", line)
+        println!("{line}")
     }
 
     fn editor_with_history() -> Result<(Editor<T, FileHistory>, PathBuf)> {

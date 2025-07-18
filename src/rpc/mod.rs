@@ -155,7 +155,7 @@ where
     let (address, port) = address.rsplit_once(':').ok_or_else(|| {
         ::tarantool::error::Error::IO(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("invalid address: {}", address),
+            format!("invalid address: {address}"),
         ))
     })?;
     let port: u16 = port.parse().map_err(|err| {

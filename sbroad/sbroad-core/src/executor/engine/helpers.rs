@@ -2222,8 +2222,8 @@ pub fn sharding_key_from_map<'rec, S: ::std::hash::BuildHasher>(
 ) -> Result<Vec<&'rec Value>, SbroadError> {
     let sharding_key = conf.sharding_key_by_space(space)?;
     let quoted_map = map
-        .iter()
-        .map(|(k, _)| (k.to_smolstr(), k.as_str()))
+        .keys()
+        .map(|k| (k.to_smolstr(), k.as_str()))
         .collect::<HashMap<SmolStr, &str>>();
     let mut tuple = Vec::with_capacity(sharding_key.len());
     for quoted_column in &sharding_key {

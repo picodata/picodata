@@ -706,7 +706,7 @@ pub fn migration_up(
 
         let migration = MigrationInfo::new_unparsed(ident, migration_file);
         let hash = migration::calculate_migration_hash_async(&migration)?;
-        let hash_string = format!("{:x}", hash);
+        let hash_string = format!("{hash:x}");
 
         if hash_string != already_applied_migrations[i].hash() {
             let details = format!("mismatched hash checksum for {}", migration.shortname());

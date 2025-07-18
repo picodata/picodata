@@ -19,8 +19,7 @@ pub(crate) struct ObufWriter(pub *mut Obuf);
 impl Write for ObufWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         unsafe {
-            obuf_append(self.0, buf)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            obuf_append(self.0, buf).map_err(|e| std::io::Error::other(e.to_string()))?;
         }
         Ok(buf.len())
     }
@@ -253,7 +252,7 @@ unsafe fn push_mp_value_to_lua(l: *mut lua_State, cur: &mut Cursor<&[u8]>) -> Re
         _ => {
             return Err(TarantoolError::new(
                 TarantoolErrorCode::IllegalParams,
-                format!("Unsupported MessagePack type: {:?}", marker),
+                format!("Unsupported MessagePack type: {marker:?}"),
             )
             .into());
         }

@@ -39,7 +39,7 @@ impl Completer for LuaCompleter {
         let completions = match res {
             Ok(completions) => completions,
             Err(err) => {
-                println!("Getting completions failed: {}", err);
+                println!("Getting completions failed: {err}");
                 Vec::new()
             }
         };
@@ -180,8 +180,7 @@ impl UnixClient {
         }
 
         self.write(&format!(
-            "return require(\"console\").completion_handler(\"{}\", {}, {})",
-            line, left, right
+            "return require(\"console\").completion_handler(\"{line}\", {left}, {right})",
         ))?;
 
         let response = self.read()?;
@@ -286,8 +285,7 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                     ConsoleLanguage::Sql => serde_yaml::from_str::<ResultSet>(&raw_response)
                         .map_err(|err| {
                             ReplError::Other(format!(
-                                "Error occurred while processing output: {}",
-                                err
+                                "Error occurred while processing output: {err}",
                             ))
                         })?
                         .to_string(),
@@ -307,7 +305,7 @@ pub fn main(args: args::Admin) -> ! {
     // (read timeouts don't work, SIGINT and SIGTERM are not handled correctly)
     // See https://git.picodata.io/core/picodata/-/merge_requests/1939 and https://git.picodata.io/core/picodata/-/issues/1206 for more context
     if let Err(err) = admin_repl(args) {
-        eprintln!("{}", err);
+        eprintln!("{err}");
         std::process::exit(1);
     }
     std::process::exit(0)

@@ -312,8 +312,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
     )
     .map_err(|err| {
         Error::other(format!(
-            "failed to start http server on {}:{}: {}",
-            host, port, err
+            "failed to start http server on {host}:{port}: {err}",
         ))
     })?;
 
@@ -325,8 +324,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
     )
     .map_err(|err| {
         Error::other(format!(
-            "failed to add route `/api/v1/tiers` to http server: {}",
-            err
+            "failed to add route `/api/v1/tiers` to http server: {err}",
         ))
     })?;
 
@@ -338,8 +336,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
     )
     .map_err(|err| {
         Error::other(format!(
-            "failed to add route `/api/v1/cluster` to http server: {}",
-            err
+            "failed to add route `/api/v1/cluster` to http server: {err}",
         ))
     })?;
 
@@ -358,7 +355,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
             tlua::Function::new(crate::metrics::collect_metrics),
         ),
     )
-    .map_err(|err| Error::other(format!("failed to add route `/metrics`: {}", err)))?;
+    .map_err(|err| Error::other(format!("failed to add route `/metrics`: {err}")))?;
 
     Ok(())
 }

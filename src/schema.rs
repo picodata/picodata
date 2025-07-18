@@ -1559,7 +1559,7 @@ impl Display for RoutineParamDef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "mode: {}, type: {}", self.mode, self.r#type)?;
         if let Some(default) = &self.default {
-            write!(f, ", default: {}", default)?;
+            write!(f, ", default: {default}")?;
         }
         Ok(())
     }

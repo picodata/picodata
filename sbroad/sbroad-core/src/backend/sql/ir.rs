@@ -78,8 +78,7 @@ impl<'de> msgpack::Decode<'de> for EncodedPatternWithParams {
         let len = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)?;
         if len != 2 {
             return Err(DecodeError::new::<Self>(format!(
-                "unexpected length. expected 2, actual {:?}",
-                len
+                "unexpected length. expected 2, actual {len:?}",
             )));
         }
 
@@ -536,7 +535,7 @@ impl ExecutionPlan {
                         Ok(Node::Expression(Expression::Constant(Constant { value }))) => {
                             value.get_type()
                         }
-                        node => panic!("parameter node points to {:?}", node),
+                        node => panic!("parameter node points to {node:?}"),
                     };
 
                     match param_type.get() {

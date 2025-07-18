@@ -1755,7 +1755,7 @@ impl NodeImpl {
                 let primary_key_def = IndexDef {
                     table_id: id,
                     id: 0,
-                    name: format!("{}_pkey", name),
+                    name: format!("{name}_pkey"),
                     ty: IndexType::Tree,
                     opts: vec![IndexOption::Unique(true)],
                     parts: primary_key,

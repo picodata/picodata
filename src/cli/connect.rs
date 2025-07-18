@@ -101,7 +101,7 @@ pub struct ExplainResult {
 impl Display for ExplainResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for i in self.explain_result.iter() {
-            f.write_fmt(format_args!("{}\n", i))?
+            f.write_fmt(format_args!("{i}\n"))?
         }
 
         Ok(())
@@ -270,8 +270,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
                     Ok(tuple) => {
                         let res = tuple.decode::<Vec<ResultSet>>().map_err(|err| {
                             ReplError::Other(format!(
-                                "Error occurred while decoding response: {}",
-                                err
+                                "Error occurred while decoding response: {err}",
                             ))
                         })?;
 
@@ -311,7 +310,7 @@ pub fn main(args: args::Connect) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
         if let Err(error) = sql_repl(args) {
-            eprintln!("{}", error);
+            eprintln!("{error}");
             std::process::exit(1);
         }
         std::process::exit(0)

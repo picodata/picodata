@@ -499,7 +499,7 @@ fn current_exe() -> Result<CString, String> {
 fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
     let (key, value) = s
         .split_once('=')
-        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
     Ok((key.into(), value.into()))
 }
 

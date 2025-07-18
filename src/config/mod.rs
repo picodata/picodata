@@ -1811,8 +1811,7 @@ impl AlterSystemParameters {
         }
 
         Err(Error::other(format!(
-            "No such parameter with name '{}'",
-            parameter_name
+            "No such parameter with name '{parameter_name}'",
         )))
     }
 
@@ -1951,8 +1950,7 @@ pub fn validate_alter_system_parameter_value<'v>(
 
         if cache_size < current_cache_size {
             return Err(Error::other(format!(
-                "invalid value for '{name}': value must be greater than the current cache size {}",
-                current_cache_size
+                "invalid value for '{name}': value must be greater than the current cache size {current_cache_size}",
             )));
         }
     }

@@ -22,7 +22,7 @@ impl Display for FunctionKind {
             FunctionKind::Scalar | FunctionKind::Aggregate => "function",
             FunctionKind::Window => "window function",
         };
-        write!(f, "{}", kind)
+        write!(f, "{kind}")
     }
 }
 

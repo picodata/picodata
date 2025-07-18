@@ -347,17 +347,17 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
             Ddl::RenameTable {
                 old_name, new_name, ..
             } => {
-                operations.push(("ddl_rename_table", format!("{}→{}", old_name, new_name)));
+                operations.push(("ddl_rename_table", format!("{old_name}→{new_name}")));
             }
             Ddl::CreateIndex {
                 space_id, index_id, ..
             } => {
-                operations.push(("ddl_create_index", format!("{}:{}", space_id, index_id)));
+                operations.push(("ddl_create_index", format!("{space_id}:{index_id}")));
             }
             Ddl::DropIndex {
                 space_id, index_id, ..
             } => {
-                operations.push(("ddl_drop_index", format!("{}:{}", space_id, index_id)));
+                operations.push(("ddl_drop_index", format!("{space_id}:{index_id}")));
             }
             Ddl::CreateProcedure { name, .. } => {
                 operations.push(("ddl_create_procedure", name.clone()));
@@ -368,10 +368,7 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
             Ddl::RenameProcedure {
                 old_name, new_name, ..
             } => {
-                operations.push((
-                    "ddl_rename_procedure",
-                    format!("{} -> {}", old_name, new_name),
-                ));
+                operations.push(("ddl_rename_procedure", format!("{old_name} -> {new_name}")));
             }
         },
         Op::Acl(acl) => match acl {

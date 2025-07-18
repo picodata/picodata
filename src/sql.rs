@@ -891,11 +891,7 @@ fn ensure_parameters_match(routine: &RoutineDef, params: &[ParamDef]) -> traft::
     );
 
     Err(Error::Other(
-        format!(
-            "routine exists but with a different signature: {}",
-            actual_signature
-        )
-        .into(),
+        format!("routine exists but with a different signature: {actual_signature}").into(),
     ))
 }
 

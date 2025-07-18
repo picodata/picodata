@@ -46,12 +46,8 @@ impl<'v> VTableWriter<'v> {
 impl Write for VTableWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // Decode a single tuple encoded as msgpack array and append to the virtual table
-        let tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("failed to decode msgpack: {e:?}"),
-            )
-        })?;
+        let tuple: Vec<Value> = tarantool::msgpack::decode(buf)
+            .map_err(|e| io::Error::other(format!("failed to decode msgpack: {e:?}")))?;
         self.vtable.add_tuple(tuple);
         Ok(buf.len())
     }
@@ -101,11 +97,9 @@ pub fn write_from_slice<W: Write>(
 pub fn flush_dml<W: Write>(writer: &mut W, total: u64) -> io::Result<()> {
     let mut tmp = Vec::new();
     // array len = 1
-    rmp::encode::write_array_len(&mut tmp, 1)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    rmp::encode::write_array_len(&mut tmp, 1).map_err(io::Error::other)?;
     // the integer
-    rmp::encode::write_uint(&mut tmp, total)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    rmp::encode::write_uint(&mut tmp, total).map_err(io::Error::other)?;
     writer.write_all(&tmp)?;
     Ok(())
 }

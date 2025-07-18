@@ -301,7 +301,7 @@ impl std::fmt::Display for EntryPayload<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             EntryPayload::NormalEmpty => f.write_str("-"),
-            EntryPayload::Normal(op) => write!(f, "{}", op),
+            EntryPayload::Normal(op) => write!(f, "{op}"),
             EntryPayload::ConfChange(cc) => {
                 write!(f, "{}({})", change_type(cc.change_type()), cc.node_id)
             }

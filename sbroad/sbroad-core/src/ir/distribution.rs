@@ -571,11 +571,7 @@ impl Plan {
             })
         });
 
-        assert!(
-            all_found,
-            "Broken reference in scan relation ({}).",
-            scan_id
-        );
+        assert!(all_found, "Broken reference in scan relation ({scan_id}).");
 
         let keys: HashSet<Key, RepeatableState> = collection! { new_key };
         Ok(Distribution::Segment { keys: keys.into() })

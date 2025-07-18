@@ -274,8 +274,7 @@ pub fn build_instance(
         if let Some(requested_name) = requested_instance_name {
             if requested_name != &instance.name {
                 return Err(Error::other(format!(
-                    "instance with UUID {} already exists but with different name",
-                    uuid
+                    "instance with UUID {uuid} already exists but with different name",
                 )));
             }
         }
@@ -283,37 +282,32 @@ pub fn build_instance(
         if let Some(name) = requested_replicaset_name {
             if name != &instance.replicaset_name {
                 return Err(Error::other(format!(
-                    "instance with UUID {} already exists but with different replicaset name",
-                    uuid
+                    "instance with UUID {uuid} already exists but with different replicaset name",
                 )));
             }
         }
 
         if tier != instance.tier {
             return Err(Error::other(format!(
-                "instance with UUID {} already exists but with different tier",
-                uuid
+                "instance with UUID {uuid} already exists but with different tier",
             )));
         }
 
         if failure_domain != &instance.failure_domain {
             return Err(Error::other(format!(
-                "instance with UUID {} already exists but with different failure domain",
-                uuid
+                "instance with UUID {uuid} already exists but with different failure domain",
             )));
         }
 
         if picodata_version != instance.picodata_version {
             return Err(Error::other(format!(
-                "instance with UUID {} already exists but with different picodata version",
-                uuid
+                "instance with UUID {uuid} already exists but with different picodata version",
             )));
         }
 
         if !has_states!(instance, Offline -> Offline) {
             return Err(Error::other(format!(
-                "instance with UUID {} is not in Offline state",
-                uuid
+                "instance with UUID {uuid} is not in Offline state",
             )));
         }
 
@@ -444,10 +438,8 @@ fn choose_instance_name(storage: &Catalog, replicaset_name: ReplicasetName) -> I
     let mut instance_number_in_replicaset = 1;
     loop {
         // tier name is already included in replicaset name
-        let instance_name = InstanceName(format!(
-            "{}_{}",
-            replicaset_name, instance_number_in_replicaset
-        ));
+        let instance_name =
+            InstanceName(format!("{replicaset_name}_{instance_number_in_replicaset}"));
 
         match storage.instances.get(&instance_name) {
             Ok(instance) => {
