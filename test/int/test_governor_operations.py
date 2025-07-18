@@ -50,6 +50,7 @@ def test_catalog_upgrade(compat_instance: Instance):
         "proc_instance_uuid",
         "proc_raft_leader_uuid",
         "proc_raft_leader_id",
+        "proc_picodata_version",
     ]
     # NOTE: will uncomment these lines when we can test with
     # specific version of Picodata

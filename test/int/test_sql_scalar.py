@@ -1,3 +1,7 @@
+import pathlib
+import os
+
+import git
 import pytest
 
 from conftest import (
@@ -800,3 +804,14 @@ def test_scalar_function_raft_leader_id(cluster: Cluster):
         TEST_USER_PASS,
     )
     assert query == [[raft_leader_id]]
+
+
+def test_scalar_function_version(cluster: Cluster):
+    current_path = pathlib.Path(os.getcwd())
+    git_version = git.Git(current_path).describe()
+
+    i1 = cluster.add_instance()
+    i2 = cluster.add_instance()
+
+    assert i1.sql("SELECT version()") == [[git_version]]
+    assert i2.sql("SELECT VERSION()") == [[git_version]]

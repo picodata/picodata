@@ -43,6 +43,7 @@ proc_pg_execute
 proc_pg_parse
 proc_pg_portals
 proc_pg_statements
+proc_picodata_version
 proc_raft_info
 proc_raft_interact
 proc_raft_join

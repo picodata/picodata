@@ -47,6 +47,7 @@ static UPGRADE_OPERATIONS_MAP: LazyLock<HashMap<&'static str, Vec<(&'static str,
                 ("proc_name", "proc_instance_uuid"),
                 ("proc_name", "proc_raft_leader_uuid"),
                 ("proc_name", "proc_raft_leader_id"),
+                ("proc_name", "proc_picodata_version"),
             ],
         )])
     });

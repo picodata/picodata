@@ -129,6 +129,11 @@ pub struct FunctionNameMapping {
 
 /// Stores all identifiers mappings for the functions.
 pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
+    FunctionNameMapping {
+        sql: "version",
+        rust_procedure: "proc_picodata_version",
+        tarantool_symbol: ".proc_picodata_version",
+    },
     // TODO:
     // Deprecated, remove in the future version.
     // Consider using `pico_instance_uuid` instead.

@@ -82,6 +82,13 @@ pub fn get_builtin_functions() -> &'static [Function] {
     BUILTINS.get_or_init(|| {
         vec![
             // stable functions
+            Function::new_stable(
+                get_real_function_name("version")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(Type::String),
+                false,
+            ),
             Function::new_stable("to_date".into(), DerivedType::new(Type::Datetime), false),
             Function::new_stable("to_char".into(), DerivedType::new(Type::String), false),
             Function::new_stable("substring".into(), DerivedType::new(Type::String), false),

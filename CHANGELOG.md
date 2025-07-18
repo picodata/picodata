@@ -25,6 +25,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports window function `last_value()`.
 - SQL supports new volatile scalar functions `pico_raft_leader_id()` and `pico_raft_leader_uuid()`.
 - SQL scalar function `instance_uuid` is now marked as deprecated, consider using `pico_instance_uuid`.
+- SQL supports new stable scalar function `version()`, that returns version of the current instance.
 
 ### Pgproto
 
