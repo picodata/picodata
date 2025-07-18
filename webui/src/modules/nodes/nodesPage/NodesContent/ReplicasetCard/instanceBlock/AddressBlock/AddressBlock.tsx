@@ -1,4 +1,5 @@
 import cn from "classnames";
+import { Fragment } from "react/jsx-runtime";
 
 import { useTranslation } from "shared/intl";
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
@@ -27,16 +28,16 @@ export const AddressBlock: React.FC<AddressBlockProps> = (props) => {
   return (
     <div className={cn(styles.addressBlock, props.className)}>
       {addresses.map((a) => (
-        <>
-          <span className={styles.addressLabel} key={a.value}>
+        <Fragment key={a.title}>
+          <span className={styles.addressLabel} key={`label-for-${a.title}`}>
             {a.title}
           </span>
           <IpAddressLabel
-            key={a.value}
+            key={`value-for-${a.title}`}
             className={styles.addressValue}
             address={a.value}
           />
-        </>
+        </Fragment>
       ))}
     </div>
   );
