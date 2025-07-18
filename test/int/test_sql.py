@@ -3981,7 +3981,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contains at least one uppercase letter",
+        match="invalid password: password should contain at least one uppercase letter",
     ):
         i1.sql(
             """
@@ -3992,7 +3992,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contains at least one lowercase letter",
+        match="invalid password: password should contain at least one lowercase letter",
     ):
         i1.sql(
             """
@@ -4003,7 +4003,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contains at least one digit",
+        match="invalid password: password should contain at least one digit",
     ):
         i1.sql(
             """
@@ -4037,7 +4037,7 @@ def test_sql_user_password_checks(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="invalid password: password should contains at least one special character",
+        match="invalid password: password should contain at least one special character",
     ):
         i1.sql(
             """

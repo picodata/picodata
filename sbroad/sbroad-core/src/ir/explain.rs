@@ -504,15 +504,13 @@ impl BoundTypeExplain {
 
 impl Display for BoundTypeExplain {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            BoundTypeExplain::PrecedingUnbounded => String::from("unbounded preceding"),
-            BoundTypeExplain::PrecedingOffset(expr) => format!("{expr} preceding"),
-            BoundTypeExplain::CurrentRow => String::from("current row"),
-            BoundTypeExplain::FollowingOffset(expr) => format!("{expr} following"),
-            BoundTypeExplain::FollowingUnbounded => String::from("unbounded following"),
-        };
-
-        write!(f, "{s}")
+        match self {
+            BoundTypeExplain::PrecedingUnbounded => write!(f, "unbounded preceding"),
+            BoundTypeExplain::PrecedingOffset(expr) => write!(f, "{expr} preceding"),
+            BoundTypeExplain::CurrentRow => write!(f, "current row"),
+            BoundTypeExplain::FollowingOffset(expr) => write!(f, "{expr} following"),
+            BoundTypeExplain::FollowingUnbounded => write!(f, "unbounded following"),
+        }
     }
 }
 
@@ -537,12 +535,10 @@ impl BoundExplain {
 
 impl Display for BoundExplain {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            BoundExplain::Single(bound) => format!("{bound}"),
-            BoundExplain::Between(lower, upper) => format!("between {lower} and {upper}"),
-        };
-
-        write!(f, "{s}")
+        match self {
+            BoundExplain::Single(bound) => write!(f, "{bound}"),
+            BoundExplain::Between(lower, upper) => write!(f, "between {lower} and {upper}"),
+        }
     }
 }
 
@@ -629,8 +625,6 @@ impl Projection {
 
 impl Display for Projection {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::from("projection ");
-
         let cols = &self
             .cols
             .iter()
@@ -638,8 +632,7 @@ impl Display for Projection {
             .collect::<Vec<String>>()
             .join(", ");
 
-        write!(s, "({cols})")?;
-        write!(f, "{s}")
+        write!(f, "projection ({cols})")
     }
 }
 

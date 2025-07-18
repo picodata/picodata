@@ -143,7 +143,7 @@ pub fn validate_password(
     })??;
     if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
         return Err(Error::Other(
-            "invalid password: password should contains at least one uppercase letter".into(),
+            "invalid password: password should contain at least one uppercase letter".into(),
         ));
     }
 
@@ -152,7 +152,7 @@ pub fn validate_password(
     })??;
     if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
         return Err(Error::Other(
-            "invalid password: password should contains at least one lowercase letter".into(),
+            "invalid password: password should contain at least one lowercase letter".into(),
         ));
     }
 
@@ -161,7 +161,7 @@ pub fn validate_password(
     })??;
     if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
         return Err(Error::Other(
-            "invalid password: password should contains at least one digit".into(),
+            "invalid password: password should contain at least one digit".into(),
         ));
     }
 
