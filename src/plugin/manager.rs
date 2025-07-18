@@ -60,13 +60,25 @@ fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
     let picodata = Version::try_from(PICODATA_VERSION).expect("correct picodata version");
     let picoplugin = Version::try_from(picoplugin_version).expect("correct picoplugin version");
 
+    // it is ok to run plugin with different patch version
     picodata
-        .cmp_up_to_patch(&picoplugin)
+        .cmp_up_to_minor(&picoplugin)
         .is_eq()
         .then_some(())
         .ok_or(PluginError::IncompatiblePicopluginVersion(
             picoplugin_version.to_string(),
-        ))
+        ))?;
+
+    // it is ok to run another patch version
+    // but we still ought to warn user
+    if !picodata.cmp_up_to_patch(&picoplugin).is_eq() {
+        tlog!(
+            Warning,
+            "Plugin version {picoplugin} does not match picodata version {picodata}"
+        );
+    }
+
+    Ok(())
 }
 
 type PluginServices = Vec<Rc<ServiceState>>;
@@ -979,5 +991,62 @@ fn plugin_manager_async_event_loop(event_chan: fiber::channel::Channel<PluginAsy
         if let Err(e) = node.plugin_manager.handle_async_event(event) {
             tlog!(Error, "plugin async event handler error: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_versions_match_exactly() {
+        // we just try the exact same version
+        let plugin_version = Version::try_from(PICODATA_VERSION)
+            .expect("correct picodata version")
+            .to_string();
+
+        assert!(ensure_picodata_version_compatible(plugin_version.as_str()).is_ok());
+    }
+
+    #[test]
+    fn test_versions_match_minor_different_patch() {
+        // try X.Y.Z+1
+        let plugin_version = Version::try_from(PICODATA_VERSION)
+            .expect("correct picodata version")
+            .next_by_patch()
+            .to_string();
+
+        // Same major and minor, different patch
+        assert!(ensure_picodata_version_compatible(plugin_version.as_str()).is_ok());
+    }
+
+    #[test]
+    fn test_versions_different_minor() {
+        // try X.Y+1.Z
+        let plugin_version = Version::try_from(PICODATA_VERSION)
+            .expect("correct picodata version")
+            .next_by_minor()
+            .to_string();
+
+        let result = ensure_picodata_version_compatible(plugin_version.as_str());
+        assert!(matches!(
+            result,
+            Err(PluginError::IncompatiblePicopluginVersion(_))
+        ));
+    }
+
+    #[test]
+    fn test_versions_different_major() {
+        // try X+1.Y.Z
+        let plugin_version = Version::try_from(PICODATA_VERSION)
+            .expect("correct picodata version")
+            .next_by_major()
+            .to_string();
+
+        let result = ensure_picodata_version_compatible(plugin_version.as_str());
+        assert!(matches!(
+            result,
+            Err(PluginError::IncompatiblePicopluginVersion(_))
+        ));
     }
 }

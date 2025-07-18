@@ -72,6 +72,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### Plugin API
 
+- Allowed to use different patch level versions of SDK (ex. allow to run plugin built with 25.3.1 to run on Picodata 25.3.2)
 - Added `cluster_uuid()` API and corresponding `pico_ffi_cluster_uuid`
   FFI binding to retrieve the cluster UUID of the current instance.
 
