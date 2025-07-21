@@ -394,27 +394,27 @@ def test_params_inference_in_complex_queries(postgres: Postgres):
     conn.run("INSERT INTO t(i, f, t) VALUES (1, 1.5, 't')")
 
     # Infer type in the left UNION query and use it in the right query
-    rows = conn.run("WITH t(a) AS (SELECT :p + 1 UNION SELECT :p) SELECT $1", p=1)
+    rows = conn.run("WITH t(a) AS (SELECT :p + 1 UNION SELECT :p) SELECT :p", p=1)
     assert rows == [[1]]
     assert cols_oids(conn) == [type_oid("int8")]
 
     # Infer parameter type in accordance with COALESCE type.
-    rows = conn.run("WITH t(a) AS (SELECT COALESCE(:p + 1, 1 + 1.5)) SELECT $1", p=1)
+    rows = conn.run("WITH t(a) AS (SELECT COALESCE(:p + 1, 1 + 1.5)) SELECT :p", p=1)
     assert rows == [[Decimal(1)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
     # Complicate the previous test.
-    rows = conn.run("WITH t AS (SELECT COALESCE(:p + 1, (COALESCE(1, 1 + 1.5)) + 1, :p)) SELECT $1", p=1)
+    rows = conn.run("WITH t AS (SELECT COALESCE(:p + 1, (COALESCE(1, 1 + 1.5)) + 1, :p)) SELECT :p", p=1)
     assert rows == [[Decimal(1)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
     # Resolve ambiguous function overload with neighbor.
-    rows = conn.run("WITH t(a) AS (SELECT max(:p) + 1) SELECT $1", p=1)
+    rows = conn.run("WITH t(a) AS (SELECT max(:p) + 1) SELECT :p", p=1)
     assert rows == [[1]]
     assert cols_oids(conn) == [type_oid("int8")]
 
     # Complicate the previous test by making neighbor dependent on parameter type.
-    rows = conn.run("WITH t(a) AS (SELECT max(:p) + (1.5 + :p)) SELECT $1", p=1)
+    rows = conn.run("WITH t(a) AS (SELECT max(:p) + (1.5 + :p)) SELECT :p", p=1)
     assert rows == [[Decimal(1)]]
     assert cols_oids(conn) == [type_oid("numeric")]
 
