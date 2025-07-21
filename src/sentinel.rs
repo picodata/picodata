@@ -398,7 +398,7 @@ fn register_failed_attempt(stats: &mut ContinuityTracker, error: BoxError) {
 
     // The same fail streak is continuing
     fail_streak.count += 1;
-    fail_streak.mult *= 2;
+    fail_streak.mult = fail_streak.mult.saturating_mul(2);
     fail_streak.last_try = fiber::clock();
     // Update the error anyway, because we didn't check the error message
     // and it could change and it's a good idea to keep up with the latest info
@@ -456,7 +456,7 @@ fn current_fail_streak_timeout(stats: &ContinuityTracker, base_timeout: Duration
         return base_timeout;
     };
 
-    Loop::SENTINEL_BACKOFF_MAX_DURATION.min(base_timeout * fail_streak.mult)
+    Loop::SENTINEL_BACKOFF_MAX_DURATION.min(base_timeout.saturating_mul(fail_streak.mult))
 }
 
 tarantool::define_str_enum! {
