@@ -40,7 +40,7 @@ def test_gl_1991(postgres: Postgres):
     assert "    selection false::boolean" in plan[1]
     assert '        scan "t"' in plan[2]
     assert "execution options:" in plan[3]
-    assert "    sql_vdbe_opcode_max = 45000" in plan[4]
+    assert "    sql_vdbe_opcode_max = 1" in plan[4]
     assert "    sql_motion_row_max = 5000" in plan[5]
     assert "buckets = []" in plan[6]
 

@@ -149,11 +149,6 @@ pub fn bind(
     let system_options = storage.db_config.sql_query_options();
 
     let mut plan = statement.plan().clone();
-    let is_dql = matches!(statement.describe().query_type(), QueryType::Dql);
-    if is_dql {
-        plan.raw_options =
-            apply_default_options(&plan.raw_options, &connection_options, &system_options);
-    }
 
     if plan.is_empty() {
         // Empty query, do nothing
@@ -163,6 +158,8 @@ pub fn bind(
         plan.bind_params(&params)?;
     } else if plan.is_dql_or_dml()? {
         plan.bind_params(&params)?;
+        plan.raw_options =
+            apply_default_options(&plan.raw_options, &connection_options, &system_options);
         plan.apply_options()?;
         plan.optimize()?;
     }
@@ -217,6 +214,9 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
                 table_version_map.insert(table.clone(), version);
             }
             plan.version_map = table_version_map;
+        }
+        if plan.is_dql_or_dml()? {
+            plan.check_options()?;
         }
         Ok(plan)
     })??;
