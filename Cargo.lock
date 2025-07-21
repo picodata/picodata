@@ -2870,6 +2870,7 @@ dependencies = [
  "rustyline",
  "rustyline-derive",
  "sbroad-core",
+ "scopeguard",
  "serde",
  "serde_bytes",
  "serde_json",

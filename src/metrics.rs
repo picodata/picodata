@@ -1,7 +1,7 @@
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use prometheus::{
     Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts,
-    Registry, TextEncoder,
+    TextEncoder,
 };
 use std::sync::LazyLock;
 
@@ -250,55 +250,25 @@ pub fn record_raft_leader_id(leader_id: Option<u64>) {
     RAFT_LEADER_ID.set(leader_id.unwrap_or(0) as f64);
 }
 
-pub fn register_metrics(registry: &Registry) {
-    registry
-        .register(Box::new(GOVERNOR_CHANGE_COUNTER.clone()))
-        .expect("Failed to register pico_governor_changes_total counter");
-    registry
-        .register(Box::new(SQL_QUERY_TOTAL.clone()))
-        .expect("Failed to register pico_sql_query_total counter");
-    registry
-        .register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))
-        .expect("Failed to register pico_sql_query_errors_total counter");
-    registry
-        .register(Box::new(SQL_QUERY_DURATION.clone()))
-        .expect("Failed to register pico_sql_query_duration histogram");
-    registry
-        .register(Box::new(RPC_REQUEST_TOTAL.clone()))
-        .expect("Failed to register pico_rpc_request_total");
-    registry
-        .register(Box::new(RPC_REQUEST_ERRORS_TOTAL.clone()))
-        .expect("Failed to register pico_rpc_request_errors_total");
-    registry
-        .register(Box::new(RPC_REQUEST_DURATION.clone()))
-        .expect("Failed to register pico_rpc_request_duration histogram");
-    registry
-        .register(Box::new(CAS_RECORDS_TOTAL.clone()))
-        .expect("Failed to register pico_cas_records_total");
-    registry
-        .register(Box::new(CAS_ERRORS_TOTAL.clone()))
-        .expect("Failed to register pico_cas_errors_total");
-    registry
-        .register(Box::new(CAS_OPS_DURATION.clone()))
-        .expect("Failed to register pico_cas_ops_duration");
-    registry
-        .register(Box::new(INSTANCE_STATE.clone()))
-        .expect("Failed to register pico_instance_state gauge");
-    registry
-        .register(Box::new(RAFT_APPLIED_INDEX.clone()))
-        .expect("Failed to register pico_raft_applied_index gauge");
-    registry
-        .register(Box::new(RAFT_COMMIT_INDEX.clone()))
-        .expect("Failed to register pico_raft_commit_index gauge");
-    registry
-        .register(Box::new(RAFT_TERM.clone()))
-        .expect("Failed to register pico_raft_term gauge");
-    registry
-        .register(Box::new(RAFT_STATE.clone()))
-        .expect("Failed to register pico_raft_state gauge");
-    registry
-        .register(Box::new(RAFT_LEADER_ID.clone()))
-        .expect("Failed to register pico_raft_leader_id gauge");
+pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<()> {
+    registry.register(Box::new(CAS_ERRORS_TOTAL.clone()))?;
+    registry.register(Box::new(CAS_OPS_DURATION.clone()))?;
+    registry.register(Box::new(CAS_RECORDS_TOTAL.clone()))?;
+    registry.register(Box::new(GOVERNOR_CHANGE_COUNTER.clone()))?;
+    registry.register(Box::new(INSTANCE_STATE.clone()))?;
+    registry.register(Box::new(RAFT_APPLIED_INDEX.clone()))?;
+    registry.register(Box::new(RAFT_COMMIT_INDEX.clone()))?;
+    registry.register(Box::new(RAFT_LEADER_ID.clone()))?;
+    registry.register(Box::new(RAFT_STATE.clone()))?;
+    registry.register(Box::new(RAFT_TERM.clone()))?;
+    registry.register(Box::new(RPC_REQUEST_DURATION.clone()))?;
+    registry.register(Box::new(RPC_REQUEST_ERRORS_TOTAL.clone()))?;
+    registry.register(Box::new(RPC_REQUEST_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_QUERY_DURATION.clone()))?;
+    registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
+    registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
+
+    Ok(())
 }
 
 pub fn collect_metrics() -> String {

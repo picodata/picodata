@@ -340,7 +340,14 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
         ))
     })?;
 
-    metrics::register_metrics(prometheus::default_registry());
+    // Initialize all of the metrics here!
+    let register_metrics = || {
+        let registry = prometheus::default_registry();
+        metrics::register_metrics(registry)?;
+        pgproto::register_metrics(registry)?;
+        prometheus::Result::Ok(())
+    };
+    register_metrics().expect("failed to register metrics");
 
     lua.exec_with(
         r#"

@@ -38,6 +38,7 @@ rmpv = { version = "1.0", features = ["with-serde"] }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
 rustyline = "14.0"
 rustyline-derive = "0.10"
+scopeguard = "1.2"
 serde = "1.0"
 serde_bytes = "0.11"
 serde_json = "1.0"

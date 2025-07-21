@@ -5,10 +5,14 @@ use crate::{
     address::PgprotoAddress, introspection::Introspection, static_ref, storage::Catalog, tlog,
     traft::error::Error,
 };
+use prometheus::IntCounter;
 use std::{
     os::fd::{AsRawFd, BorrowedFd},
     path::Path,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock,
+    },
 };
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
@@ -22,8 +26,41 @@ mod stream;
 mod tls;
 mod value;
 
-/// Used to provide idempotency to enabling a PostgreSQL protocol.
-static IS_RUNNING: AtomicBool = AtomicBool::new(false);
+static PGPROTO_CONNECTIONS_OPENED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_connections_opened_total",
+        "Total number of opened connections since startup",
+    ))
+    .unwrap()
+});
+
+static PGPROTO_CONNECTIONS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_connections_closed_total",
+        "Total number of closed connections since startup",
+    ))
+    .unwrap()
+});
+
+/// Register all of pgproto's metrics.
+pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<()> {
+    registry.register(Box::new(PGPROTO_CONNECTIONS_CLOSED_TOTAL.clone()))?;
+    registry.register(Box::new(PGPROTO_CONNECTIONS_OPENED_TOTAL.clone()))?;
+    registry.register(Box::new(
+        backend::storage::PGPROTO_PORTALS_CLOSED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::storage::PGPROTO_PORTALS_OPENED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::storage::PGPROTO_STATEMENTS_CLOSED_TOTAL.clone(),
+    ))?;
+    registry.register(Box::new(
+        backend::storage::PGPROTO_STATEMENTS_OPENED_TOTAL.clone(),
+    ))?;
+
+    Ok(())
+}
 
 /// Initialized to enable PostgreSQL server protocol.
 /// WARNING: if it is initialized, it does not directly mean
@@ -121,6 +158,14 @@ fn do_handle_client(
 ) -> PgResult<()> {
     let mut client = PgClient::accept(stream, tls_acceptor, storage)?;
 
+    // Having two distinct counters lets us have both the number
+    // of active connections and the rate at which connections
+    // are opened or closed.
+    PGPROTO_CONNECTIONS_OPENED_TOTAL.inc();
+    scopeguard::defer! {
+        PGPROTO_CONNECTIONS_CLOSED_TOTAL.inc();
+    }
+
     // Send important parameters to the client.
     client
         .send_parameter("server_version", "15.0")?
@@ -199,6 +244,9 @@ pub fn init_once(
 /// This function should only be called after [`init_once`],
 /// **otherwise it will panic!**
 pub fn start_once() -> Result<(), Error> {
+    // Used to provide idempotency to enabling a PostgreSQL protocol.
+    static IS_RUNNING: AtomicBool = AtomicBool::new(false);
+
     if !IS_RUNNING.load(Ordering::Relaxed) {
         // SAFETY: safe as long as only called from tx thread.
         let context = unsafe { static_ref!(const CONTEXT) }

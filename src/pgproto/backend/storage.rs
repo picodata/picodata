@@ -15,6 +15,7 @@ use crate::{
     traft::node,
 };
 use postgres_types::{Oid, Type as PgType};
+use prometheus::IntCounter;
 use rmpv::Value;
 use sbroad::{
     executor::{ir::ExecutionPlan, Query},
@@ -32,6 +33,7 @@ use std::{
     ops::Bound,
     os::raw::c_int,
     rc::{Rc, Weak},
+    sync::LazyLock,
     vec::IntoIter,
 };
 use tarantool::{
@@ -216,6 +218,22 @@ pub fn force_init_portals_and_statements() {
     PG_PORTALS.with(|_| {});
 }
 
+pub static PGPROTO_STATEMENTS_OPENED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_statements_opened_total",
+        "Total number of opened prepared statements since startup",
+    ))
+    .unwrap()
+});
+
+pub static PGPROTO_STATEMENTS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_statements_closed_total",
+        "Total number of closed prepared statements since startup",
+    ))
+    .unwrap()
+});
+
 #[derive(Debug)]
 pub struct StatementInner {
     key: Key,
@@ -225,6 +243,7 @@ pub struct StatementInner {
 
 impl Drop for StatementInner {
     fn drop(&mut self) {
+        PGPROTO_STATEMENTS_CLOSED_TOTAL.inc();
         tlog!(
             Debug,
             "dropped statement {} of type {:?}",
@@ -247,6 +266,7 @@ impl Statement {
             describe,
         };
 
+        PGPROTO_STATEMENTS_OPENED_TOTAL.inc();
         tlog!(
             Debug,
             "created new statement {} of type {:?}",
@@ -455,6 +475,22 @@ impl std::fmt::Display for PortalState {
     }
 }
 
+pub static PGPROTO_PORTALS_OPENED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_portals_opened_total",
+        "Total number of opened query execution portals since startup",
+    ))
+    .unwrap()
+});
+
+pub static PGPROTO_PORTALS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_pgproto_portals_closed_total",
+        "Total number of closed query execution portals since startup",
+    ))
+    .unwrap()
+});
+
 #[derive(Debug)]
 struct PortalInner {
     key: Key,
@@ -465,6 +501,7 @@ struct PortalInner {
 
 impl Drop for PortalInner {
     fn drop(&mut self) {
+        PGPROTO_PORTALS_CLOSED_TOTAL.inc();
         tlog!(
             Debug,
             "dropped portal {} in state {}",
@@ -591,6 +628,7 @@ impl Portal {
             state,
         };
 
+        PGPROTO_PORTALS_OPENED_TOTAL.inc();
         tlog!(Debug, "created new portal {}", inner.key);
 
         Ok(Self(inner.into()))
