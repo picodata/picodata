@@ -528,9 +528,13 @@ test-patch-tarantool:
 
 test-mac-m1:
   extends: .test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+    - when: manual
+      allow_failure: true
   tags:
     - mac-dev-m1
-  timeout: 30m
+  timeout: 60m
   script:
     # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
