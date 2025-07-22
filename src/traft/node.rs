@@ -536,6 +536,10 @@ impl NodeImpl {
             id: raft_id,
             applied,
             pre_vote: true,
+            // Send heartbeat every 10 raft main loop ticks (see MainLoop::TICK).
+            heartbeat_tick: 10,
+            // Raft-rs suggests this to be 10 * heartbeat_tick.
+            election_tick: 100,
             // XXX: this value is pretty random, we should really do some
             // testing to determine the best value for it.
             max_size_per_msg: 64,
