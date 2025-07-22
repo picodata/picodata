@@ -542,8 +542,10 @@ test-mac-m1:
     - export CARGO_HOME=$HOME/.cargo
     - ./tools/get_tags.py
     - cargo +$RUST_VERSION -V
-    - cargo +$RUST_VERSION build --locked
-    - cargo +$RUST_VERSION build --features webui --locked
+    - cargo +$RUST_VERSION build --locked --timings
+    - cp target/cargo-timings/cargo-timing.html cargo-timing-without-webui.html
+    - cargo +$RUST_VERSION build --features webui --locked --timings
+    - cp target/cargo-timings/cargo-timing.html cargo-timing-with-webui.html
     # There are no Rust tests for `webui` feature.
     # It will be checked during integration tests.
     - cargo +$RUST_VERSION test --locked
@@ -555,6 +557,12 @@ test-mac-m1:
     # - poetry run pytest --numprocesses auto -v
     # - make lint
     # - |
+  artifacts:
+    when: always
+    paths:
+      - cargo-timing-without-webui.html
+      - cargo-timing-with-webui.html
+      - target/debug/picodata
 
 .helm:
   stage: test
