@@ -440,6 +440,19 @@ pub struct RaftMessageExt {
 bitflags::bitflags! {
     #[derive(Debug, Default, PartialEq, Eq)]
     struct RaftMessageFlags: u64 {
+        /// This flag is set in a message if the sender is expecting the
+        /// receiver to report the status of applying the raft snapshot.
+        const EXPECTING_SNAPSHOT_STATUS = 1 << 0;
+
+        /// Snapshot was successfully received and applied.
+        const SNAPSHOT_STATUS_SUCCESS = 1 << 1;
+
+        /// Snapshot was never received or we failed to apply it.
+        const SNAPSHOT_STATUS_FAILURE = 1 << 2;
+
+        /// This raft message doesn't need to be handled by raft-rs.
+        const SKIP_RAW_NODE_STEP = 1 << 3;
+
         /// A magic field required by bitflags! for future compatibility
         const _ = !0;
     }
@@ -460,6 +473,24 @@ impl RaftMessageExt {
             flags: RaftMessageFlags::empty(),
             applied,
         }
+    }
+
+    fn snapshot_report(
+        applied: RaftIndex,
+        from: RaftId,
+        to: RaftId,
+        status: RaftMessageFlags,
+    ) -> Self {
+        debug_assert!(
+            status == Flags::SNAPSHOT_STATUS_SUCCESS || status == Flags::SNAPSHOT_STATUS_FAILURE
+        );
+        let mut res = Self::default();
+        res.inner.to = to;
+        res.inner.from = from;
+        res.version = Self::LATEST_ENCODING_VERSION;
+        res.flags = Flags::SKIP_RAW_NODE_STEP | status;
+        res.applied = applied;
+        res
     }
 
     fn decode(data: &[u8]) -> Result<Self> {

@@ -52,6 +52,7 @@ use crate::traft::network::WorkerOptions;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::ConnectionPool;
+use crate::traft::Flags;
 use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
@@ -65,6 +66,7 @@ use crate::warn_or_panic;
 use ::raft::prelude as raft;
 use ::raft::storage::Storage as _;
 use ::raft::Error as RaftError;
+use ::raft::ProgressState;
 use ::raft::StateRole as RaftStateRole;
 use ::raft::INVALID_ID;
 use ::tarantool::error::BoxError;
@@ -507,6 +509,10 @@ pub(crate) struct NodeImpl {
 
     /// Stores the first snapshot chunk while snapshot application is blocked.
     pending_raft_snapshot: Option<RaftSnapshot>,
+
+    /// This is set to raft id of last instance which sent us a raft message with
+    /// [`Flags::EXPECTING_SNAPSHOT_STATUS`] flag set in it.
+    report_snapshot_status_to: Option<RaftId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -577,6 +583,7 @@ impl NodeImpl {
             commit,
             plugin_manager,
             pending_raft_snapshot: None,
+            report_snapshot_status_to: None,
         })
     }
 
@@ -667,6 +674,26 @@ impl NodeImpl {
 
     pub fn step(&mut self, msg: RaftMessageExt) -> Result<(), RaftError> {
         if msg.inner.to != self.raft_id() {
+            return Ok(());
+        }
+
+        // This happens on instance which received the snapshot
+        if msg.flags.contains(Flags::EXPECTING_SNAPSHOT_STATUS)
+            || msg.inner.msg_type() == raft::MessageType::MsgSnapshot
+        {
+            self.report_snapshot_status_to = Some(msg.inner.from);
+        }
+
+        // This happens on instance which sent out the snapshot
+        if msg.flags.contains(Flags::SNAPSHOT_STATUS_SUCCESS) {
+            self.raw_node
+                .report_snapshot(msg.inner.from, raft::SnapshotStatus::Finish)
+        } else if msg.flags.contains(Flags::SNAPSHOT_STATUS_FAILURE) {
+            self.raw_node
+                .report_snapshot(msg.inner.from, raft::SnapshotStatus::Failure)
+        }
+
+        if msg.flags.contains(Flags::SKIP_RAW_NODE_STEP) {
             return Ok(());
         }
 
@@ -2123,7 +2150,13 @@ impl NodeImpl {
                 }
             }
 
-            let msg = RaftMessageExt::new(msg, applied);
+            let mut msg = RaftMessageExt::new(msg, applied);
+
+            if let Some(progress) = self.raw_node.raft.prs().get(msg.inner.to) {
+                if progress.state == ProgressState::Snapshot {
+                    msg.flags.insert(Flags::EXPECTING_SNAPSHOT_STATUS);
+                }
+            }
 
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
@@ -2135,6 +2168,43 @@ impl NodeImpl {
             Debug,
             "done sending messages, sent: {sent_count}, skipped: {skip_count}"
         );
+    }
+
+    fn maybe_send_snapshot_report(&mut self, snapshot_was_handled: bool) {
+        let applied = self.applied.get();
+        let from = self.raw_node.raft.id;
+
+        if self.pending_raft_snapshot.is_some() {
+            // We have received a raft snapshot but we can't apply it yet
+            // because we're probably blocked waiting for tarantool replication
+            // to progress. Snapshot status is not ready to report
+            return;
+        }
+
+        let msg;
+        if snapshot_was_handled {
+            // We received the snapshot and successfully applied it.
+            debug_assert!(self.report_snapshot_status_to.is_some());
+            let to = self.report_snapshot_status_to.take();
+            let to = to.unwrap_or(self.raw_node.raft.leader_id);
+            msg =
+                RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_SUCCESS);
+        } else if let Some(to) = self.report_snapshot_status_to.take() {
+            // We didn't apply a snapshot but somebody is expecting a report
+            // from us. This can sometimes happen for example if somebody
+            // sends us a raft snapshot but we crash before applying it. In this
+            // case we report failure to apply snapshot. This is needed because
+            // of how raft-rs works under the hood...
+            msg =
+                RaftMessageExt::snapshot_report(applied, from, to, Flags::SNAPSHOT_STATUS_FAILURE);
+        } else {
+            // We didn't receive a snapshot and nobody expects a status report.
+            return;
+        }
+
+        if let Err(e) = self.pool.send(msg) {
+            tlog!(Error, "{e}");
+        }
     }
 
     fn fetch_chunkwise_snapshot(
@@ -2604,23 +2674,13 @@ impl NodeImpl {
             }
         });
 
-        if let Some(snapshot) = snapshot {
-            // After applying the raft snapshot we send only the special
-            // response MsgAppendResponse message which will notify the leader
-            // that we are ready to receive the normal log append messages.
-            self.handle_messages(vec![snapshot.response_message]);
-            if !persisted_messages.is_empty() {
-                tlog!(
-                    Warning,
-                    "ignoring persisted_messages which came from `Ready`: {persisted_messages:?}"
-                );
-            }
-        } else {
-            // These messages are only available on followers. They must be sent only
-            // AFTER the HardState, Entries and Snapshot are persisted
-            // to the stable storage.
-            self.handle_messages(persisted_messages);
-        }
+        // Send a snapshot status report if snapshot was applied and or somebody is expecting a report
+        self.maybe_send_snapshot_report(snapshot.is_some());
+
+        // These messages are only available on followers. They must be sent only
+        // AFTER the HardState, Entries and Snapshot are persisted
+        // to the stable storage.
+        self.handle_messages(persisted_messages);
 
         let committed_entries = ready.take_committed_entries();
 

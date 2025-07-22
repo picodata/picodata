@@ -85,6 +85,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed a bug where picodata would sometimes indefinitely block when applying
   DDL operations which could result in full replicaset failure.
 
+- Fixed a bug where picodata would sometimes indefinitely block after a
+  restart and/or network failure when receiving a raft snapshot.
+
 ### Lua API
 
 - Remove `pico.exit` function as it is no longer used.
