@@ -29,10 +29,8 @@ clean:
 	rm -rf $(TARGET_ROOT)/debug/deps/libsbroad*
 	rm -rf $(TARGET_ROOT)/debug/incremental/libsbroad*
 
-lint:
-	cargo fmt --all -- --check
-	cargo clippy -- --deny clippy::all
-	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+check:
+        # "fmt", "clippy", "doc" are done in the root Makefile
 	cargo audit -f audit.toml
 	./deps.sh
 	./.rocks/bin/luacheck .

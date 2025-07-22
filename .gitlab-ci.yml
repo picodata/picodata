@@ -363,7 +363,7 @@ lint:
     - *poetry-install
     - make lint
     - pushd webui && yarn lint; popd
-    - pushd sbroad && make lint
+    - pushd sbroad && make check
 
 lint-docs:
   image:
