@@ -2209,12 +2209,8 @@ impl NodeImpl {
             };
 
             let persisted_messages = std::mem::take(persisted_messages);
-            let pending_raft_snapshot = RaftSnapshot::new(
-                new_snapshot.metadata().clone(),
-                data,
-                persisted_messages,
-                self.status.get(),
-            );
+            let pending_raft_snapshot =
+                RaftSnapshot::new(new_snapshot.metadata().clone(), data, self.status.get());
             self.pending_raft_snapshot = Some(pending_raft_snapshot);
         }
 

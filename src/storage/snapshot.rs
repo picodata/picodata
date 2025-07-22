@@ -858,7 +858,6 @@ impl RaftSnapshot {
     pub fn new(
         metadata: raft::SnapshotMetadata,
         data: SnapshotData,
-        persisted_messages: Vec<raft::Message>,
         raft_status: crate::traft::node::Status,
     ) -> Self {
         // Sending a MsgAppendResponse in response to a snapshot makes it so
@@ -869,40 +868,17 @@ impl RaftSnapshot {
         // snapshot implementation has always relied on.
         // See also <https://www.hyrumslaw.com/>
         let mut response_message = raft::Message::new();
-        let mut found_message_append_response = false;
-
-        debug_assert!(!persisted_messages.is_empty());
-        for message in persisted_messages {
-            if message.msg_type() != raft::MessageType::MsgAppendResponse {
-                continue;
-            }
-            found_message_append_response = true;
-            debug_assert_eq!(message.from(), raft_status.id);
-            debug_assert_eq!(message.index(), metadata.index);
-            // Note: it's theoretically possible that we've received a snapshot
-            // from someone who's not currently our leader (leader changed at an
-            // unfortunate moment).
-            response_message = message;
-        }
-
-        if !found_message_append_response {
-            // I'm expecting that there will always be that persisted
-            // MsgAppendResponse when we receive a raft snapshot, but I don't
-            // have any hard proof and don't want to have a random panic in
-            // production, so here's a fallback branch.
-            tlog!(Warning, "We were expecting a MsgAppendResponse in the same batch of raft updates as the snapshot, but it's not here, which is pretty weird.");
+        response_message.set_msg_type(raft::MessageType::MsgAppendResponse);
+        response_message.set_from(raft_status.id);
+        response_message.set_index(metadata.index);
+        if let Some(leader_id) = raft_status.leader_id {
+            response_message.set_to(leader_id);
+        } else {
+            // This is highly unlikely
             tlog!(
                 Warning,
-                "Creating an ad-hoc MsgAppendResponse as a fallback."
+                "raft leader unknown, unable to choose snapshot status message receiver"
             );
-            response_message.set_msg_type(raft::MessageType::MsgAppendResponse);
-            response_message.set_from(raft_status.id);
-            response_message.set_index(metadata.index);
-            if let Some(leader_id) = raft_status.leader_id {
-                response_message.set_to(leader_id);
-            } else {
-                // This is highly unlikely
-            }
         }
 
         if response_message.to() == 0 {
