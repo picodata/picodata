@@ -849,47 +849,12 @@ pub struct SnapshotReadView {
 pub struct RaftSnapshot {
     pub metadata: raft::SnapshotMetadata,
     pub data: SnapshotData,
-    /// This is a message which should be sent out after the snapshot is applied.
-    pub response_message: raft::Message,
 }
 
 impl RaftSnapshot {
     #[inline]
-    pub fn new(
-        metadata: raft::SnapshotMetadata,
-        data: SnapshotData,
-        raft_status: crate::traft::node::Status,
-    ) -> Self {
-        // Sending a MsgAppendResponse in response to a snapshot makes it so
-        // raft-rs automatically resets our status from Snapshot to Replicate
-        // which is needed because otherwise raft leader will stop sending
-        // MsgAppend messages to us. Note that strictly speaking this is not the
-        // intended behavior of raft-rs, but that is the mechanism our raft
-        // snapshot implementation has always relied on.
-        // See also <https://www.hyrumslaw.com/>
-        let mut response_message = raft::Message::new();
-        response_message.set_msg_type(raft::MessageType::MsgAppendResponse);
-        response_message.set_from(raft_status.id);
-        response_message.set_index(metadata.index);
-        if let Some(leader_id) = raft_status.leader_id {
-            response_message.set_to(leader_id);
-        } else {
-            // This is highly unlikely
-            tlog!(
-                Warning,
-                "raft leader unknown, unable to choose snapshot status message receiver"
-            );
-        }
-
-        if response_message.to() == 0 {
-            warn_or_panic!("MsgAppendResponse receiver should be known at this point");
-        }
-
-        Self {
-            metadata,
-            data,
-            response_message,
-        }
+    pub fn new(metadata: raft::SnapshotMetadata, data: SnapshotData) -> Self {
+        Self { metadata, data }
     }
 
     #[inline]

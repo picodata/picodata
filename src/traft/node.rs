@@ -2306,7 +2306,6 @@ impl NodeImpl {
     fn prepare_for_snapshot(
         &mut self,
         new_snapshot: &raft::Snapshot,
-        persisted_messages: &mut Vec<raft::Message>,
     ) -> traft::Result<Option<RaftSnapshot>> {
         let mut update_pending_snapshot = false;
         if !new_snapshot.is_empty() {
@@ -2331,9 +2330,7 @@ impl NodeImpl {
 
             crate::error_injection!(exit "EXIT_BEFORE_APPLYING_RAFT_SNAPSHOT");
 
-            let persisted_messages = std::mem::take(persisted_messages);
-            let pending_raft_snapshot =
-                RaftSnapshot::new(new_snapshot.metadata().clone(), data, self.status.get());
+            let pending_raft_snapshot = RaftSnapshot::new(new_snapshot.metadata().clone(), data);
             self.pending_raft_snapshot = Some(pending_raft_snapshot);
         }
 
@@ -2516,9 +2513,8 @@ impl NodeImpl {
         self.handle_read_states(ready.read_states());
 
         // Raft snapshot has arrived, check if we need to apply it.
-        let mut persisted_messages = ready.take_persisted_messages();
         let raw_snapshot = ready.snapshot();
-        let res = self.prepare_for_snapshot(raw_snapshot, &mut persisted_messages);
+        let res = self.prepare_for_snapshot(raw_snapshot);
         let snapshot = match res {
             Ok(v) => v,
             Err(e) => {
@@ -2680,7 +2676,7 @@ impl NodeImpl {
         // These messages are only available on followers. They must be sent only
         // AFTER the HardState, Entries and Snapshot are persisted
         // to the stable storage.
-        self.handle_messages(persisted_messages);
+        self.handle_messages(ready.take_persisted_messages());
 
         let committed_entries = ready.take_committed_entries();
 
