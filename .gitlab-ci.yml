@@ -528,6 +528,8 @@ test-patch-tarantool:
 
 test-mac-m1:
   extends: .test
+  variables:
+    GIT_STRATEGY: fetch
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     - when: manual
@@ -538,6 +540,7 @@ test-mac-m1:
   script:
     # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
+    - ./tools/get_tags.py
     - cargo +$RUST_VERSION -V
     - cargo +$RUST_VERSION build --locked
     - cargo +$RUST_VERSION build --features webui --locked
