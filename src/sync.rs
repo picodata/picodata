@@ -239,6 +239,7 @@ pub fn wait_for_index_globally(
     fiber::block_on(async {
         let mut confirmed = HashSet::new();
 
+        let mut start = Instant::now_fiber();
         loop {
             let confirmed_copy = confirmed.clone();
             let unconfirmed: Vec<_> = instances.difference(&confirmed_copy).collect();
@@ -270,6 +271,13 @@ pub fn wait_for_index_globally(
                     }
                 }
             }
+
+            const WAIT_INDEX_RETRY_TIMEOUT: Duration = Duration::from_millis(300);
+            // Make sure we yield for some time to avoid infinite looping
+            fiber::sleep(
+                WAIT_INDEX_RETRY_TIMEOUT.saturating_sub(Instant::now_fiber().duration_since(start)),
+            );
+            start = Instant::now_fiber();
         }
     })?;
 
