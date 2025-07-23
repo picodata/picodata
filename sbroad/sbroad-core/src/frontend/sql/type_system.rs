@@ -447,9 +447,27 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("||", [Text, Text], Text),
         // Functions.
         Function::new_scalar(
+            // TODO:
+            // Deprecated, remove in the future version.
+            // Consider using `pico_instance_uuid` instead.
             get_real_function_name("instance_uuid").expect("shouldn't fail"),
             [],
             Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_instance_uuid").expect("shouldn't fail"),
+            [],
+            Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_raft_leader_uuid").expect("shouldn't fail"),
+            [],
+            Uuid,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_raft_leader_id").expect("shouldn't fail"),
+            [],
+            Integer,
         ),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),

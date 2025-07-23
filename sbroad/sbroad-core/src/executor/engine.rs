@@ -92,10 +92,34 @@ pub fn get_builtin_functions() -> &'static [Function] {
             Function::new_stable("coalesce".into(), DerivedType::new(Type::Any), true),
             // volatile functions
             Function::new_volatile(
+                // TODO: deprecated, remove in future version
                 get_real_function_name("instance_uuid")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(Type::String),
+                // TODO: use `Type::UUID`, to learn more see
+                // <https://git.picodata.io/core/picodata/-/issues/2027>
+                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_raft_leader_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(Type::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_raft_leader_id")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(Type::Integer),
                 false,
             ),
         ]

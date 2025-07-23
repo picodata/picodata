@@ -23,6 +23,8 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `INSERT INTO ... ON CONFLICT DO FAIL/REPLACE/NOTHING` operation for globally distributed tables.
 - SQL supports modulo operator `%` for integers.
 - SQL supports window function `last_value()`.
+- SQL supports new volatile scalar functions `pico_raft_leader_id()` and `pico_raft_leader_uuid()`.
+- SQL scalar function `instance_uuid` is now marked as deprecated, consider using `pico_instance_uuid`.
 
 ### Pgproto
 

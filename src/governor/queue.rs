@@ -38,9 +38,15 @@ static UPGRADE_OPERATIONS_MAP: LazyLock<HashMap<&'static str, Vec<(&'static str,
                 //     "sql",
                 //     "ALTER TABLE _pico_tier ADD COLUMN is_default boolean",
                 // ),
-                ("proc_name", "proc_instance_uuid"),
+                //
+                // NOTE: some of our SQL scalar functions use exported
+                // procedures, so don't forget to check if all needed procedures
+                // are passed for the appropriate version.
                 ("proc_name", "proc_before_online"),
                 ("proc_name", "proc_cas_v2"),
+                ("proc_name", "proc_instance_uuid"),
+                ("proc_name", "proc_raft_leader_uuid"),
+                ("proc_name", "proc_raft_leader_id"),
             ],
         )])
     });

@@ -44,7 +44,13 @@ def test_catalog_upgrade(compat_instance: Instance):
 
     compat_instance.wait_governor_status("idle")
     res = compat_instance.sql("SELECT * FROM _pico_governor_queue")
-    tt_procs = ["proc_instance_uuid", "proc_before_online", "proc_cas_v2"]
+    tt_procs = [
+        "proc_before_online",
+        "proc_cas_v2",
+        "proc_instance_uuid",
+        "proc_raft_leader_uuid",
+        "proc_raft_leader_id",
+    ]
     # NOTE: will uncomment these lines when we can test with
     # specific version of Picodata
     # assert res == [

@@ -17,7 +17,7 @@ use config::apply_parameter;
 use info::PICODATA_VERSION;
 use regex::Regex;
 use sbroad::frontend::sql::transform_to_regex_pattern;
-use sbroad::frontend::sql::NAMES_OF_FUNCTIONS_IN_SOURCES;
+use sbroad::frontend::sql::FUNCTION_NAME_MAPPINGS;
 use serde::{Deserialize, Serialize};
 use storage::ToEntryIter;
 
@@ -445,7 +445,10 @@ fn init_stored_procedures() {
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         let proc_name = proc.name();
-        if NAMES_OF_FUNCTIONS_IN_SOURCES.contains(&proc_name) {
+        if FUNCTION_NAME_MAPPINGS
+            .iter()
+            .any(|name| name.rust_procedure == proc_name)
+        {
             lua.exec_with(
                 "local name, is_public = ...
                 local proc_name = '.' .. name

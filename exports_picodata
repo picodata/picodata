@@ -46,6 +46,8 @@ proc_pg_statements
 proc_raft_info
 proc_raft_interact
 proc_raft_join
+proc_raft_leader_id
+proc_raft_leader_uuid
 proc_raft_promote
 proc_raft_snapshot_next_chunk
 proc_read_index

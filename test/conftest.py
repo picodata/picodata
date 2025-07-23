@@ -1560,6 +1560,12 @@ class Instance:
         assert index is not None
         return index
 
+    def raft_leader_id(self):
+        return self.call(".proc_raft_leader_id")
+
+    def raft_leader_uuid(self):
+        return self.call(".proc_raft_leader_uuid")
+
     def get_vclock(self) -> int:
         """Get current vclock"""
 
@@ -2148,6 +2154,20 @@ class Cluster:
                 return instance
 
         raise RuntimeError(f"no instance listenning on {host}:{port}")
+
+    def wait_until_buckets_balanced(self, max_retries: int = 10):
+        """
+        Waits until all instances get the same amount of buckets.
+        Raises if no instances are running in the current cluster.
+        Total amount of buckets is taken from tiers configuration.
+        """
+
+        total_instances = len(self.instances)
+        total_buckets = self.instances[0].sql("SELECT bucket_count FROM _pico_tier")
+        uniform_buckets = total_buckets[0][0] / total_instances
+
+        for instance in self.instances:
+            self.wait_until_instance_has_this_many_active_buckets(instance, uniform_buckets)
 
     def wait_until_instance_has_this_many_active_buckets(
         self,

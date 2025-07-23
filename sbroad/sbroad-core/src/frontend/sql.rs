@@ -108,36 +108,60 @@ fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
     }
 }
 
-const NUM_OF_VOLATILE_FUNCTIONS: usize = 1;
+/// Holds naming metadata for SQL function.
+/// Used mostly for correct mapping between identifiers across different subsystems.
+pub struct FunctionNameMapping {
+    /// Function name in SQL as exposed to the users (e.g., in queries).
+    pub sql: &'static str,
+    /// Rust function in the source code, exposed using `#[tarantool::proc]`.
+    pub rust_procedure: &'static str,
+    /// Used when calling it via Tarantool, composed as '.' + name in sources.
+    ///
+    /// # Background
+    /// - Tarantool looks for `lib<name>` when using plain names (exported by Picodata).
+    /// - With `.<name>`, Tarantool searches the current executable instead.
+    /// - This is needed for `box.func['proc_name']:call()` and `box.execute("select proc_name()")`.
+    ///
+    /// Using `.proc_name` makes Tarantool look for `proc_name` in the current executable,
+    /// while `proc_name` would make it search for `libproc_name.so` containing `proc_name`.
+    pub tarantool_symbol: &'static str,
+}
 
-/// Names used by the user in SQL.
-static USER_FACING_NAMES_OF_FUNCTIONS: [&str; NUM_OF_VOLATILE_FUNCTIONS] = ["instance_uuid"];
-
-/// Names of functions in picodata .rs files, which annotated with `#[tarantool::proc]` and exposed to SQL.
-pub static NAMES_OF_FUNCTIONS_IN_SOURCES: [&str; NUM_OF_VOLATILE_FUNCTIONS] =
-    ["proc_instance_uuid"];
-
-/// '.' + name in sources. Plain name in sources (which is exported by picodata) doesn't work, because
-/// when tarantool executing box.func['proc_name']:call(..) (box.execute("select proc_name()")
-/// it try to find dynlib under the 'libproc_name' name with defined `proc_name` in it.
-/// With . as first symbol tarantool try to find proc symbol in current executable.
-static NAMES_OF_FUNCTIONS_IN_TARANTOOL: [&str; NUM_OF_VOLATILE_FUNCTIONS] = [".proc_instance_uuid"];
-
-// Kind of map from `user-facing names` to names in sources and names
-// in `_func` space.
-#[rustfmt::skip]
-static VOLATILE_FUNCTIONS_NAMINGS: [(&str, &str, &str); NUM_OF_VOLATILE_FUNCTIONS] = [
-    (USER_FACING_NAMES_OF_FUNCTIONS[0], NAMES_OF_FUNCTIONS_IN_SOURCES[0], NAMES_OF_FUNCTIONS_IN_TARANTOOL[0]),
+/// Stores all identifiers mappings for the functions.
+pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
+    // TODO:
+    // Deprecated, remove in the future version.
+    // Consider using `pico_instance_uuid` instead.
+    FunctionNameMapping {
+        sql: "instance_uuid",
+        rust_procedure: "proc_instance_uuid",
+        tarantool_symbol: ".proc_instance_uuid",
+    },
+    FunctionNameMapping {
+        sql: "pico_instance_uuid",
+        rust_procedure: "proc_instance_uuid",
+        tarantool_symbol: ".proc_instance_uuid",
+    },
+    FunctionNameMapping {
+        sql: "pico_raft_leader_uuid",
+        rust_procedure: "proc_raft_leader_uuid",
+        tarantool_symbol: ".proc_raft_leader_uuid",
+    },
+    FunctionNameMapping {
+        sql: "pico_raft_leader_id",
+        rust_procedure: "proc_raft_leader_id",
+        tarantool_symbol: ".proc_raft_leader_id",
+    },
 ];
 
 /// Maps (maybe quoted or uppercased) name from user to real procedure name in tarantool.
 /// Real name stands for name in _func space.
 pub fn get_real_function_name(name_from_sql: &str) -> Option<&'static str> {
     let normalized_name = normalize_name_from_sql(name_from_sql);
-    VOLATILE_FUNCTIONS_NAMINGS
+    FUNCTION_NAME_MAPPINGS
         .iter()
-        .find(|(key, _, _)| *key == normalized_name)
-        .map(|(_, _, value)| *value)
+        .find(|&mapping| mapping.sql == normalized_name)
+        .map(|mapping| mapping.tarantool_symbol)
 }
 
 // Helper map to store CTE node ids by their names.
