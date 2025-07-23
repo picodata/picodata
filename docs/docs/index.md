@@ -23,6 +23,7 @@ Picodata — это распределенная система промышле
 * [Преимущества использования Picodata](overview/benefits.md)
 * [Глоссарий](overview/glossary.md)
 * [Обратная связь и получение помощи](overview/feedback.md)
+* [Лицензирование](overview/licensing.md)
 * [Политика версионирования](overview/versioning.md)
 
 ### Инструкции и руководства {: #tutorial }
