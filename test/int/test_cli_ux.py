@@ -538,6 +538,23 @@ def test_input_with_delimiter(cluster: Cluster):
 
     cli.expect_exact("sql>")
 
+    # formatting remains correct when copying and pasting a large piece of code
+    # empty symbols after delimiter should be skipped
+    cli.sendline("SELECT 1 AS id;     \t\t       SELECT 2   AS id  ;   \t  ")
+    cli.expect_exact("+----+")
+    cli.expect_exact("| id |")
+    cli.expect_exact("+====+")
+    cli.expect_exact("| 1  |")
+    cli.expect_exact("+----+")
+    cli.expect_exact("(1 rows)")
+    cli.expect_exact("+----+")
+    cli.expect_exact("| id |")
+    cli.expect_exact("+====+")
+    cli.expect_exact("| 2  |")
+    cli.expect_exact("+----+")
+    cli.expect_exact("(1 rows)")
+    cli.expect_exact("sql>")
+
     # test enter delimiter
     cli.sendline("\\set delimiter enter")
     cli.expect_exact("Delimiter changed to 'enter'")

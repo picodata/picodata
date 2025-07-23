@@ -242,7 +242,7 @@ impl<T: Helper> Console<T> {
             ConsoleLanguage::Sql => {
                 if let Some(ref delimiter) = self.delimiter {
                     while let Some((separated_part, tail)) =
-                        self.uncompleted_statement.split_once(delimiter)
+                        self.uncompleted_statement.trim().split_once(delimiter)
                     {
                         self.separated_statements.push_back(separated_part.into());
                         self.uncompleted_statement = tail.into();
