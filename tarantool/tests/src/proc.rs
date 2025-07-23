@@ -105,6 +105,7 @@ pub fn return_port() {
 #[cfg(feature = "picodata")]
 pub fn dump_port_to_lua() {
     use core::ffi::c_char;
+    use std::os::raw::c_int;
     use std::ptr::NonNull;
     use tarantool::ffi::sql::{Obuf, Port, PortVTable};
     use tarantool::ffi::tarantool::luaT_pushtuple;
@@ -114,7 +115,7 @@ pub fn dump_port_to_lua() {
     const VTAB_LUA: PortVTable = PortVTable::new(dump_msgpack_with_panic, dump_lua_with_header);
 
     #[no_mangle]
-    unsafe extern "C" fn dump_msgpack_with_panic(_port: *mut Port, _out: *mut Obuf) {
+    unsafe extern "C" fn dump_msgpack_with_panic(_port: *mut Port, _out: *mut Obuf) -> c_int {
         unimplemented!();
     }
 

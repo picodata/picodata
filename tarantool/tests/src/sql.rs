@@ -3,6 +3,7 @@
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
+use std::os::raw::c_int;
 use std::ptr::NonNull;
 use tarantool::error::{Error, TarantoolError};
 use tarantool::ffi::lua::lua_State;
@@ -450,7 +451,7 @@ pub fn port_c() {
 
 pub fn port_c_vtab() {
     #[no_mangle]
-    unsafe extern "C" fn dump_msgpack_with_header(port: *mut Port, out: *mut Obuf) {
+    unsafe extern "C" fn dump_msgpack_with_header(port: *mut Port, out: *mut Obuf) -> c_int {
         // When we write data from the port to the out buffer we treat
         // the first msgpack as a header. All the other ones are treated
         // as an array of data. So, the algorithm:
@@ -463,7 +464,7 @@ pub fn port_c_vtab() {
         let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
         if port_c.size() == 0 {
             obuf_append(out, b"\xC0").expect("Failed to append MP_NULL");
-            return;
+            return port_c.size();
         }
 
         // Write the first msgpack from the port.
@@ -485,6 +486,8 @@ pub fn port_c_vtab() {
             }
             obuf_append(out, mp_bytes).expect("Failed to append msgpack");
         }
+
+        port_c.size()
     }
 
     #[no_mangle]

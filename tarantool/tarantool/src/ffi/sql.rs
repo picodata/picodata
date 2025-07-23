@@ -219,8 +219,8 @@ pub struct SqlValue {
 
 #[repr(C)]
 pub struct PortVTable {
-    pub dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
-    pub dump_msgpack_16: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
+    pub dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf) -> c_int,
+    pub dump_msgpack_16: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf) -> c_int,
     pub dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut lua_State, is_flat: bool),
     pub dump_plain: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
     pub get_msgpack: unsafe extern "C" fn(port: *mut Port, size: *mut u32) -> *const c_char,
@@ -230,7 +230,7 @@ pub struct PortVTable {
 
 impl PortVTable {
     pub const fn new(
-        dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf),
+        dump_msgpack: unsafe extern "C" fn(port: *mut Port, out: *mut Obuf) -> c_int,
         dump_lua: unsafe extern "C" fn(port: *mut Port, l: *mut lua_State, is_flat: bool),
     ) -> Self {
         Self {
@@ -246,7 +246,7 @@ impl PortVTable {
 }
 
 #[no_mangle]
-unsafe extern "C" fn dump_msgpack_16(_port: *mut Port, _out: *mut Obuf) {
+unsafe extern "C" fn dump_msgpack_16(_port: *mut Port, _out: *mut Obuf) -> c_int {
     unimplemented!();
 }
 
