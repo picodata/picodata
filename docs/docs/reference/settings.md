@@ -362,6 +362,14 @@ table.legend {
             <td>PICODATA_MEMTX_MEMORY</td>
         </tr>
         <tr>
+            <td><span class="instance">memtx.max_tuple_size</span></td>
+            <td>Максимальный размер кортежа в байтах для движка хранения memtx</td>
+            <td>1048576</td>
+            <td>[picodata run -c instance.memtx.max_tuple_size=2M](cli.md#run_config_parameter)</td>
+            <td>[instance.memtx.max_tuple_size](config.md#instance_memtx_max_tuple_size)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="instance">password-file</span></td>
             <td>Путь к файлу с паролем указанного пользователя</td>
             <td>null</td>

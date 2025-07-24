@@ -87,40 +87,41 @@ cluster:
   shredding: false # (4)!
 instance:
   instance_dir: . # (14)!
-  name: null # (20)!
-  replicaset_name: null # (26)!
-  tier: default # (27)!
+  name: null # (21)!
+  replicaset_name: null # (27)!
+  tier: default # (28)!
   failure_domain: {} # (12)!
-  peer: # (21)!
+  peer: # (22)!
   - 127.0.0.1:3301
   iproto_listen: 127.0.0.1:3301 # (15)!
   iproto_advertise: 127.0.0.1:3301 # (9)!
   http_listen: null # (13)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (25)!
+  share_dir: null # (26)!
   audit: null # (10)!
   log:
     level: info # (18)!
     destination: null # (16)!
     format: plain # (17)!
   memtx:
-    memory: 64M # (19)!
+    memory: 64M # (20)!
+    max_tuple_size: 1M # (19)!
   vinyl:
-    memory: 128M # (29)!
-    cache: 128M # (28)!
-    bloom_fpr: 0.05 # (30)!
-    max_tuple_size: 1M # (31)!
-    page_size: 8K # (32)!
-    range_size: 1G # (33)!
-    run_count_per_level: 2 # (34)!
-    run_size_ratio: 3.5 # (35)!
-    read_threads: 1 # (36)!
-    write_threads: 4 # (37)!
-    timeout: 60.0 # (38)!
+    memory: 128M # (30)!
+    cache: 128M # (29)!
+    bloom_fpr: 0.05 # (31)!
+    max_tuple_size: 1M # (32)!
+    page_size: 8K # (33)!
+    range_size: 1G # (34)!
+    run_count_per_level: 2 # (35)!
+    run_size_ratio: 3.5 # (36)!
+    read_threads: 1 # (37)!
+    write_threads: 4 # (38)!
+    timeout: 60.0 # (39)!
   pg:
-    listen: 127.0.0.1:4327 # (23)!
-    advertise: 127.0.0.1:4327 # (22)!
-    ssl: false # (24)!
+    listen: 127.0.0.1:4327 # (24)!
+    advertise: 127.0.0.1:4327 # (23)!
+    ssl: false # (25)!
   boot_timeout: 7200 # (11)!
 ```
 
@@ -142,26 +143,27 @@ instance:
 16. [instance.log.destination](#instance_log_destination)
 17. [instance.log.format](#instance_log_format)
 18. [instance.log.level](#instance_log_level)
-19. [instance.memtx.memory](#instance_memtx_memory)
-20. [instance.name](#instance_name)
-21. [instance.peer](#instance_peer)
-22. [instance.pg.advertise](#instance_pg_advertise)
-23. [instance.pg.listen](#instance_pg_listen)
-24. [instance.pg.ssl](#instance_pg_ssl)
-25. [instance.share_dir](#instance_share_dir)
-26. [instance.replicaset_name](#instance_replicaset_name)
-27. [instance.tier](#instance_tier)
-28. [instance.vinyl.cache](#instance_vinyl_cache)
-29. [instance.vinyl.memory](#instance_vinyl_memory)
-30. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-31. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-32. [instance.vinyl.page_size](#instance_vinyl_page_size)
-33. [instance.vinyl.range_size](#instance_vinyl_range_size)
-34. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-35. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-36. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-37. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-38. [instance.vinyl.timeout](#instance_vinyl_timeout)
+19. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+20. [instance.memtx.memory](#instance_memtx_memory)
+21. [instance.name](#instance_name)
+22. [instance.peer](#instance_peer)
+23. [instance.pg.advertise](#instance_pg_advertise)
+24. [instance.pg.listen](#instance_pg_listen)
+25. [instance.pg.ssl](#instance_pg_ssl)
+26. [instance.share_dir](#instance_share_dir)
+27. [instance.replicaset_name](#instance_replicaset_name)
+28. [instance.tier](#instance_tier)
+29. [instance.vinyl.cache](#instance_vinyl_cache)
+30. [instance.vinyl.memory](#instance_vinyl_memory)
+31. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+32. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+33. [instance.vinyl.page_size](#instance_vinyl_page_size)
+34. [instance.vinyl.range_size](#instance_vinyl_range_size)
+35. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+36. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+37. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+38. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+39. [instance.vinyl.timeout](#instance_vinyl_timeout)
 
 См. также:
 
@@ -502,6 +504,29 @@ picodata run -c instance.log.format=json
 
 [`picodata run --log-level`]: cli.md#run_log_level
 
+### instance.memtx.max_tuple_size {: #instance_memtx_max_tuple_size }
+
+Максимальный размер кортежа *в байтах* для движка хранения `memtx`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `1M` (1048576 Б)
+
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.memtx.max_tuple_size=2M
+```
+
+Аналогичная переменная окружения: `PICODATA_MEMTX_MAX_TUPLE_SIZE`<br>
+Аналогичная команда: [`picodata run --memtx-max-tuple-size`]
+
+[`picodata run --memtx-max-tuple-size`]: cli.md#run_memtx_max_tuple_size
+
 ### instance.memtx.memory {: #instance_memtx_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
 
@@ -518,7 +543,7 @@ picodata run -c instance.log.format=json
 * Тип: *int*
 * Значение по умолчанию: `64M` (67108864 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Пример:
@@ -712,7 +737,7 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 * Тип: *int*
 * Значение по умолчанию: `128M` (134217728 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
@@ -731,7 +756,7 @@ picodata run -c instance.vinyl.cache=256M
 * Тип: *int*
 * Значение по умолчанию: `1M` (1048576 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
@@ -751,7 +776,7 @@ picodata run -c instance.vinyl.max_tuple_size=2M
 * Тип: *int*
 * Значение по умолчанию: `128M` (134217728 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
@@ -771,7 +796,7 @@ picodata run -c instance.vinyl.memory=256M
 * Тип: *int*
 * Значение по умолчанию: `8K` (8192 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
@@ -791,7 +816,7 @@ picodata run -c instance.vinyl.page_size=16M
 * Тип: *int*
 * Значение по умолчанию: `1G` (1073741824 Б)
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
