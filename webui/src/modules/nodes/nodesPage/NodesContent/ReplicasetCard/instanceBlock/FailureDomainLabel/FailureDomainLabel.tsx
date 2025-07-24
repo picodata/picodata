@@ -1,9 +1,9 @@
 import React from "react";
 import cn from "classnames";
 
-import { LinkSystemIcon } from "shared/icons/LinkSystemIcon";
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 import { sortByString } from "shared/utils/string/sort";
+import { Clippable } from "shared/ui/Clippable/Clippable";
 
 import { formatFailDomain } from "../../../utils";
 
@@ -32,11 +32,12 @@ export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
 
           return (
             <React.Fragment key={index}>
-              <LinkSystemIcon width={16} height={16} className={styles.icon} />
-              <span className={styles.text}>
-                {domain}
-                {isLastItem ? "" : ";"}
-              </span>
+              <Clippable text={domain} inline>
+                <span className={styles.text}>
+                  {domain}
+                  {isLastItem ? "" : ";"}
+                </span>
+              </Clippable>
             </React.Fragment>
           );
         })}

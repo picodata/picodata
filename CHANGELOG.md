@@ -85,6 +85,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fixed sorting in WebUI - it's now consistent across reloads
 - Fixed WebUI dependency on internet access for displaying fonts
+- Fixed WebUI copy icons: now they copy related text on-click
 
 - Fixed a bug which broke intra-replicaset replication when upgrading from 25.1.* to 25.2.*.
   Note that clusters broken by this bug require some manual actions in addition
