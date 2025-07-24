@@ -154,6 +154,7 @@ nav:
     - architecture/plugins.md
   - Плагины:
     - plugins/argus.md
+    - plugins/kirovets.md
     - plugins/radix.md
     - plugins/silver.md
     - plugins/synapse.md
