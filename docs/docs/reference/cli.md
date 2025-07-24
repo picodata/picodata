@@ -277,6 +277,23 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 
 [`instance.log.level`]: config.md#instance_log_level
 
+### --memtx-max-tuple-size {: #run_memtx_max_tuple_size }
+
+`--memtx-max-tuple-size <MEMTX_MEMORY>`
+
+Максимальный размер кортежа *в байтах* для движка хранения
+[memtx](../overview/glossary.md#db_engine).
+
+По умолчанию используется 1 МБ (1048576 Б).
+
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная переменная окружения: `PICODATA_MEMTX_MAX_TUPLE_SIZE`<br>
+Аналогичный параметр файла конфигурации: [`instance.memtx.max_tuple_size`]
+
+[`instance.memtx.max_tuple_size`]: config.md#instance_memtx_max_tuple_size
+
 ### --memtx-memory {: #run_memtx_memory }
 
 `--memtx-memory <MEMTX_MEMORY>`
@@ -286,7 +303,7 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 
 По умолчанию используется 64 МБ.
 
-Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
 (Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
 
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
