@@ -85,6 +85,7 @@ variables:
     changes:
       paths: &build-base-changes-paths
         - docker-build-base/**
+        - tools/clone.sh
         - .gitlab-ci.yml
 
   - &if-build-base-changes-on-dev-branch
@@ -105,7 +106,6 @@ variables:
 
   - &if-no-docs
     if: ($CI_PIPELINE_SOURCE != "schedule") && ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_COMMIT_BRANCH !~ /^docs/)
-
 
 .cache_git: &cache_git
   paths:
@@ -307,6 +307,7 @@ test-linux:
     - <<: *base_node
       policy: $CACHE_POLICY
   script:
+    - git rev-parse HEAD
     - tools/check_rust.sh
     - cargo -V
 
