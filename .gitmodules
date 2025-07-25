@@ -1,13 +1,17 @@
 [submodule "tarantool"]
 	path = tarantool
 	url = ../tarantool-module.git
+	branch = picodata-25.3
 [submodule "tarantool-sys"]
 	path = tarantool-sys
 	url = ../tarantool.git
 	ignore = dirty
+	branch = picodata-25.3
 [submodule "vshard"]
 	path = vshard
 	url = ../vshard.git
+	branch = picodata-25.3
 [submodule "http"]
 	path = http
 	url = ../http.git
+	branch = picodata-25.3
