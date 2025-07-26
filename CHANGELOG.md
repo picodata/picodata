@@ -75,6 +75,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Display cluster ID and instance PG address
 - Cluster info and other data refreshes automatically every 10 seconds if the window is focused
+- Offline instances are now marked with a contrasting indicator
 
 ### Fixes
 

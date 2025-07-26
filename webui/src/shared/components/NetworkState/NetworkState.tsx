@@ -1,10 +1,22 @@
-import React from "react";
+import React, { useMemo } from "react";
 
-import { useTranslation } from "shared/intl";
+import { TIntlContext, useTranslation } from "shared/intl";
 import { TextInFrame } from "shared/ui/typography/TextInFrame/TextInFrame";
+
+import styles from "./NetworkState.module.scss";
 
 type NetworkStateProps = {
   state: "Online" | "Offline" | "Expelled";
+};
+
+/** Which label to show for what state */
+const translationLabel = {
+  Online: "online",
+  Offline: "offline",
+  Expelled: "unknown",
+} satisfies {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  [_ in NetworkStateProps["state"]]: keyof TIntlContext["translation"]["components"]["networkState"]["label"];
 };
 
 export const NetworkState: React.FC<NetworkStateProps> = (props) => {
@@ -12,17 +24,15 @@ export const NetworkState: React.FC<NetworkStateProps> = (props) => {
 
   const { translation } = useTranslation();
   const networkStateTranslations = translation.components.networkState;
+  const isOffline = useMemo(() => state === "Offline", [state]);
 
-  const getLabel = () => {
-    if (state === "Online") {
-      return networkStateTranslations.label.online;
-    }
-    if (state === "Offline") {
-      return networkStateTranslations.label.offline;
-    }
+  const getLabel = () =>
+    networkStateTranslations.label[translationLabel[state]];
 
-    return networkStateTranslations.label.unknown;
-  };
-
-  return <TextInFrame>{getLabel()}</TextInFrame>;
+  return (
+    <TextInFrame>
+      {isOffline && <div className={styles.asideIndicator} />}
+      {getLabel()}
+    </TextInFrame>
+  );
 };

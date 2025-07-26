@@ -1,0 +1,12 @@
+@import 'styles/vars';
+
+.asideIndicator {
+  position: absolute;
+  width: 6px;
+  height: 100%;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background-color: $colorBgRed;
+  border-radius: 4px;
+}

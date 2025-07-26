@@ -1,6 +1,7 @@
 @import 'styles/vars';
 
 .container {
+  position: relative;
   background-color: $colorBgTabs;
   padding: 4px 24px;
   box-shadow: 1px 1px 3px 0px #9d99ac;
