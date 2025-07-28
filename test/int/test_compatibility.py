@@ -37,7 +37,6 @@ def test_upgrade_minor(compat_instance: Instance):
 
 
 @pytest.mark.xdist_group(name="compat")
-@pytest.mark.skip(reason="temporary skip, see https://git.picodata.io/core/picodata/-/jobs/566329")
 def test_upgrade_patch(compat_instance: Instance):
     """
     Tests backward compatibility with the previous PATCH version.
