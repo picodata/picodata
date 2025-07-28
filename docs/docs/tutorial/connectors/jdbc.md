@@ -52,12 +52,169 @@ JDBC-драйвер для Picodata использует протокол PGPROT
 - [Все поддерживаемые опции драйвера](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html)
 - [настройка источника данных PicodataClusterAwareDataSource](https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/datasource/PicodataClusterAwareDataSource.html)
 
+## Использование шифрования {: #enable_tls }
+
+JDBC-драйвер для Picodata и источник данных
+`PicodataClusterAwareDataSource` поддерживают безопасный режим работы и
+могут быть настроены на использование шифрования mTLS в рамках всего
+кластера Picodata. Поддерживаемые варианты SSL и хранилища сертификатов:
+
+- `PKCS#8` (контейнер с одним ключом и одним сертификатом)
+- `PKCS#12 `(контейнер с поддержкой нескольких ключей и сертификатов)
+- глобальное хранилище, используемое в `sslFactory=io.picodata.jdbc.ssl.DefaultJavaSSLSocketFactory`
+
+### Создание сертификатов и ключей {: #create_certs_and_keys}
+
+Ниже показаны примеры команд для генерации самоподписанного сертификата
+(публичного ключа) и закрытого ключа как для сервера (Picodata), так и
+для клиентов, которые хотят подключиться к серверу. Для этих команд
+используется консольное приложение `openssl` из одноименного пакета.
+Серверный и клиентский сертификаты должны быть подписаны одним и тем же
+корневым сертификатом (CA).
+
+```bash title="Шаг 1. Создание директории для сертификатов для пользователя picouser"
+mkdir -p /home/picouser/certs && cd /home/picouser/certs && \
+```
+
+```bash title="Шаг 2. Создание корневого сертификата (CA)"
+openssl genrsa -out ca.key 2048
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 -out ca.crt -subj "/CN=RootCA"
+```
+
+```bash title="Шаг 3. Создание серверного закрытого ключа"
+openssl genrsa -out server.key 2048
+```
+
+```bash title="Шаг 4. Создание запроса на подпись серверного сертификата (CSR)"
+openssl req -new -key server.key -out server.csr -subj "/CN=Server"
+```
+
+```bash title="Шаг 5. Подпись серверного сертификата с помощью корневого сертификата (CA)"
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256
+```
+
+```bash title="Шаг 6. Создание клиентского закрытого ключа"
+openssl genrsa -out client.key 2048
+```
+
+```bash title="Шаг 7. Создание запроса на подпись клиентского сертификата (CSR)"
+openssl req -new -key client.key -out client.csr -subj "/CN=Client"
+```
+
+```bash title="Шаг 8. Подпись клиентского сертификата с помощью корневого сертификата (CA)"
+ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -sha256
+```
+
+```bash title="Шаг 9. Конвертация клиентского ключа в формат PKCS#8"
+openssl pkcs8 -topk8 -inform PEM -outform DER -in client.key -out client.pk8 -nocrypt
+```
+
+```bash title="Шаг 10. Установка прав на файлы"
+chmod 640 ca.key server.key client.key client.pk8
+```
+
+Если требуется использовать хранилище в формате `PKCS#12`, то следует:
+
+- объединить сертификат и ключ клиента в один файл (`cat client.key client.csr > store.txt`)
+- конвертировать получившийся файл в формат `PKCS#12` (`openssl pkcs12 -export -in store.txt -out store.pkcs12
+-name myAlias -noiter -nomaciter`)
+
+### Параметры подключения {: #connection_params}
+
+Для безопасного подключения используйте класс `PicodataSSLSocketFactory`:
+
+```
+java.lang.Object
+    javax.net.SocketFactory
+        javax.net.ssl.SSLSocketFactory
+            io.picodata.jdbc.ssl.PicodataSSLSocketFactory
+```
+
+Основные параметры подключения:
+
+- `user` — имя пользователя
+- `password` — пароль пользователя
+- `sslMode` — режим подключения (см. [ниже](#sslModes)). По умолчанию
+  используется режим `require`
+- `sslPassword` — единый пароль для всех хранилищ в том случае, если
+  хотя бы одно из них защищено паролем
+- `sslCert` — полный путь к клиентскому сертификату или хранилищу. Если
+  параметр не указан, будет использовано значение [SSL_CERT] из класса
+  PicodataProperty
+- `sslKey` — полный путь к клиентскому закрытому ключу или хранилищу.
+  Если параметр не указан, будет использовано значение [SSL_KEY] из
+  класса PicodataProperty
+- `sslRootCert` — полный путь к корневому сертификата или хранилищу для
+  проверки серверного сертификата
+
+[SSL_CERT]: https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html#SSL_CERT
+[SSL_KEY]: https://docs.picodata.io/apidocs/jdbc/latest/io/picodata/jdbc/PicodataProperty.html#SSL_KEY
+
+Дополнительные параметры подключения:
+
+- `sslPasswordCallback` — полное имя класса собственной реализации
+  CallbackHandler. Если хотя бы одно из хранилищ защищено паролем и при
+  этом пароль и класс callback не предоставлены, то пароль будет
+  запрошен в интерактивном режиме (при использовании в скриптах это может заблокировать работу
+  приложения)
+- `sslHostnameVerifier` — полное имя класса собственной реализации
+  HostnameVerifier, используемой для проверки сетевого имени хоста в
+  режиме `verify-full`. По умолчанию проверка сетевого имени производится
+  средствами JDBC-драйвера
+
+### Режимы SslMode {: #sslModes }
+
+- `allow` — сначала попробовать незашифрованное соединение, затем
+  зашифрованное
+- `disable` — не использовать зашифрованное соединение
+- `prefer` — сначала попробовать зашифрованное соединение, при неудаче
+  откатиться к незашифрованному
+- `require` — требовать зашифрованное соединение
+- `verify-ca` — убедиться, что соединение зашифровано и клиент доверяет
+  сертификату, выданному сервером
+- `verify-full` — то же, что `verify-ca`, но с проверкой того, что
+  сетевое имя сервера указано в сертификате, выданном сервером
+
+### Пример подключения {: #connect_example }
+
+Ниже показан пример подключения по JDBC с принудительной проверкой безопасного режима (`verify-ca`):
+
+```java
+public class PicoJdbc {
+    public void checkConnectionSsl(String url, String username, String password, Map<String, String> extraProps) {
+        Properties props = new Properties();
+        props.putAll(extraProps);
+        props.put("user", "your_username");
+        props.put("password", "your_password");
+        props.put("sslMode", "verify-ca");
+        props.put("sslPassword", "your_ssl_password");
+        props.put("sslCert", "/path/to/sslcert");
+        props.put("rootCert", "/path/to/rootcert");
+
+        try (Connection connection = DriverManager.getConnection(url, props)) {
+            if (!connection.isClosed()) {
+                connection.close();
+            }
+            System.out.println("Connection was successful");
+        } catch (SQLException e) {
+            System.out.println("Connection failed");
+        }
+    }
+
+    // ...
+}
+```
+
+!!! note title "Примечание"
+    Если пароль для расшифровки SSL-ключа не был задан, то при
+    подключении следует передать пустое значение (`("sslPassword", "")`)
+
 ## Проверка работы {: #testing }
 
 Мы предоставляем [тестовое Java-приложение][example], которое создает и
 заполняет таблицу в Picodata посредством коннектора [picodata-jdbc].
 
-Для проверки работы тестового приложения потребуются JDK (например,
+Для проверки работы тестового приложения потребуется JDK (например,
 [OpenJDK](https://openjdk.org)) версии 11 или новее, и Docker.
 
 !!! note "Примечание"
