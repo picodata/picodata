@@ -43,14 +43,17 @@ def test_upgrade_patch(compat_instance: Instance):
     Tests backward compatibility with the previous PATCH version.
 
     This test verifies that the current version can properly start from recovery
-    files of the previous PATCH version `X.Y.(Z-1)`. It only runs when:
-    - The current version has a PATCH number > 0 (e.g., `25.3.1` would test against `25.3.0`).
-    - There exists a recovery files of previous PATCH version to test against.
+    files of the previous PATCH version `X.Y.(Z-1)`. Here is a test comparison:
+    - `25.3.0` will not be tested: this is not a real version. Source-wise it is
+    equivalent to the first release of the previous minor (25.2.1), so there is no point in testing it.
+    - `25.3.1` will not be tested: first version after minor bump, will be tested
+    in `test_upgrade_minor` against latest release of the previous series, e.g. `25.2.4`.
+    - `25.3.2+` will be tested against `25.3.1+` as we know a previous patch version exists in the same minor.
     """
     compatibility = Compatibility()
 
     current_version = compatibility.current_tag_version
-    if current_version.micro == 0:
+    if current_version.micro in [0, 1]:
         pytest.skip("newly released minor versions are not testable against previous patch versions")
 
     backup_files = compatibility.previous_patch_path
