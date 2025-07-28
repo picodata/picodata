@@ -260,6 +260,12 @@ ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 ```
 
+!!! note "Примечание"
+	Необходимо, чтобы плагин был собран в той же
+	версии Picodata, на которой вы его запускаете. Допускается
+	расхождение на уровне patch-версий (например, плагин, собранный в
+	Picodata 25.3.2, совместим с Picodata 25.3.1)
+
 После успешного включения в колонке `enabled` в системной таблице
 [`_pico_plugin`] установится значение `true`:
 
