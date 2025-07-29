@@ -133,6 +133,7 @@ article.md-typeset.md-typeset ul {
 
 <b>P</b>
 
+* [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
 * [plugin](architecture/plugins.md)
 * [procedure](admin/access_control.md#proc_access)
 * [projection](reference/sql/explain.md#plan_structure)
