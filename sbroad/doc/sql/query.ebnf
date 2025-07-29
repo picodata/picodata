@@ -32,6 +32,7 @@ expression  ::= ('NOT'* (
                     | localtimestamp
                     | ilike
                     | instance_uuid
+                    | pico_instance_uuid
                     | substr
                     | substring
                     | to_char
@@ -86,6 +87,7 @@ like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
 instance_uuid    ::= 'INSTANCE_UUID' '(' ')'
+pico_instance_uuid    ::= 'PICO_INSTANCE_UUID' '(' ')'
 to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
 to_date     ::= 'TO_DATE' '(' expression ',' format ')'
 trim        ::= 'TRIM' '('

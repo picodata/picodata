@@ -105,7 +105,6 @@ nav:
         - reference/sql/explain.md
         - reference/sql/grant.md
         - reference/sql/insert.md
-        - reference/sql/instance_uuid.md
         - reference/sql/revoke.md
         - reference/sql/select.md
         - reference/sql/truncate_table.md
@@ -133,6 +132,9 @@ nav:
           - reference/sql/localtimestamp.md
           - reference/sql/to_char.md
           - reference/sql/to_date.md
+        - Системные функции:
+          - reference/sql/instance_uuid.md
+          - reference/sql/pico_instance_uuid.md
     - reference/cli.md
     - reference/config.md
     - reference/audit_events.md
