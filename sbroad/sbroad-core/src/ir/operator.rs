@@ -498,6 +498,7 @@ impl Plan {
                 output_pos,
                 col_type,
                 None,
+                false,
             );
             Ok(id)
         }
@@ -737,7 +738,7 @@ impl Plan {
         for (pos, col) in rel.columns.iter().enumerate() {
             let r_id = self
                 .nodes
-                .add_ref(ReferenceTarget::Leaf, pos, col.r#type, None);
+                .add_ref(ReferenceTarget::Leaf, pos, col.r#type, None, false);
             let col_alias_id = self.nodes.add_alias(&col.name, r_id)?;
             refs.push(col_alias_id);
         }
@@ -772,7 +773,13 @@ impl Plan {
         if let Some(rel) = self.relations.get(table) {
             let mut refs: Vec<NodeId> = Vec::with_capacity(rel.columns.len());
             for (pos, col) in rel.columns.iter().enumerate() {
-                let r_id = nodes.add_ref(ReferenceTarget::Leaf, pos, col.r#type, None);
+                let r_id = nodes.add_ref(
+                    ReferenceTarget::Leaf,
+                    pos,
+                    col.r#type,
+                    None,
+                    col.role == ColumnRole::Sharding,
+                );
                 let col_alias_id = nodes.add_alias(&col.name, r_id)?;
                 refs.push(col_alias_id);
             }
@@ -1463,6 +1470,7 @@ impl Plan {
                 pos,
                 unified_type,
                 None,
+                false,
             );
             let alias_id = self.nodes.add_alias(name, ref_id)?;
             aliases.push(alias_id);

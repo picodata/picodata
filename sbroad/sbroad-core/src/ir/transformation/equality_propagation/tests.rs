@@ -102,7 +102,7 @@ fn equality_propagation5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS int)) and ("t"."c" = CAST($2 AS int))) and ("t"."a" = CAST($3 AS int))) and ("t"."b" = CAST($4 AS int))) and ("t"."a" = "t"."b")) and ("t"."b" = "t"."d")) and ("t"."d" = "t"."c")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (((((("t"."d" = CAST($1 AS int)) and ("t"."c" = CAST($2 AS int))) and ("t"."a" = CAST($3 AS int))) and ("t"."b" = CAST($4 AS int))) and ("t"."d" = "t"."c")) and ("t"."c" = "t"."a")) and ("t"."a" = "t"."b")"#
     );
 }
 
@@ -127,6 +127,7 @@ impl ColumnBuilder {
             position,
             col_type: DerivedType::new(Type::Integer),
             asterisk_source: None,
+            is_system: false,
         })
     }
 }

@@ -165,3 +165,52 @@ fn limit_null() {
         sql_motion_row_max = 5000
     "#);
 }
+
+#[test]
+fn explicit_select_bucket_id_from_subquery_under_limit() {
+    let input = r#"select * from (
+                            select "test_space"."bucket_id" as "bucket_id",
+                                   "test_space"."id" as "id"
+                            from "test_space"
+                        ) x limit 1;"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        motion [policy: full]
+            limit 1
+                projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
+                    scan "x"
+                        projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
+                            scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn explicit_select_bucket_id_from_cte_under_limit() {
+    let input = r#"with x as (
+                            select "test_space"."bucket_id" as "bucket_id",
+                                   "test_space"."id" as "id"
+                            from "test_space"
+                        )
+                        select * from x limit 1;"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
+            scan cte x($0)
+    subquery $0:
+    motion [policy: full]
+                    projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
+                        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}

@@ -248,9 +248,13 @@ impl Aggregate {
         let fun_expr = plan.get_expression_node(self.fun_id)?;
         let col_type = fun_expr.calculate_type(plan)?;
         let child_id = plan.get_relational_child(self.parent_rel, 0)?;
-        let ref_id =
-            plan.nodes
-                .add_ref(ReferenceTarget::Single(child_id), position, col_type, None);
+        let ref_id = plan.nodes.add_ref(
+            ReferenceTarget::Single(child_id),
+            position,
+            col_type,
+            None,
+            false,
+        );
         let children: Vec<NodeId> = match self.kind {
             AggregateKind::AVG => vec![plan.add_cast(ref_id, CastType::Double)?],
             AggregateKind::GRCONCAT => {

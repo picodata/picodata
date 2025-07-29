@@ -853,6 +853,7 @@ impl Plan {
                 target: ReferenceTarget::Single(child_id),
                 col_type,
                 asterisk_source: None,
+                is_system: false,
             };
             nodes.push(new_col);
         }
@@ -950,6 +951,7 @@ impl Plan {
                     position,
                     col_type,
                     asterisk_source: None,
+                    is_system: false,
                 };
                 nodes.push((parent_expr_id, expr_id, new_ref));
             }

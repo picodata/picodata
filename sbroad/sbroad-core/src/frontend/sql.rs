@@ -2594,6 +2594,7 @@ impl Plan {
                     *position,
                     *col_type,
                     None,
+                    false,
                 );
 
                 *expr = ref_id;
@@ -3831,7 +3832,7 @@ where
                         let col_type = plan
                             .get_expression_node(*child_alias_id)?
                             .calculate_type(plan)?;
-                        plan.nodes.add_ref(ReferenceTarget::Single(*plan_left_id), col_position, col_type, None)
+                        plan.nodes.add_ref(ReferenceTarget::Single(*plan_left_id), col_position, col_type, None, false)
                     };
                     worker.reference_to_name_map.insert(ref_id, col_name);
                     ParseExpression::PlanId { plan_id: ref_id }

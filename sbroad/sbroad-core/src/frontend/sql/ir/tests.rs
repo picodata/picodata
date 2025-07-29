@@ -1113,7 +1113,7 @@ fn front_sql_join_on_bucket_id1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t_mv"."bucket_id"::int -> "bucket_id")
         join on "t_mv"."bucket_id"::int = "t2"."bucket_id"::int
             scan "t2"
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
@@ -1139,7 +1139,7 @@ fn front_sql_join_on_bucket_id2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t_mv"."bucket_id"::int -> "bucket_id")
         join on ("t_mv"."bucket_id"::int = "t2"."bucket_id"::int) or ("t2"."e"::int = "t2"."f"::int)
             scan "t2"
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
@@ -1409,6 +1409,21 @@ fn front_sql_groupby_join_1() {
                                 scan "t"
                                     projection ("test_space"."id"::int -> "id")
                                         scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn front_sql_groupby_bucket_id() {
+    let input = r#"SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+        group by ("t"."a"::int, "t"."b"::int, "t"."c"::int, "t"."d"::int, "t"."bucket_id"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            scan "t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

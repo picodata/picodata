@@ -111,6 +111,7 @@ struct EqClassRef {
     position: usize,
     col_type: DerivedType,
     asterisk_source: Option<ReferenceAsteriskSource>,
+    is_system: bool,
 }
 
 impl EqClassRef {
@@ -120,6 +121,7 @@ impl EqClassRef {
             position: expr_pos,
             col_type: expr_type,
             asterisk_source: expr_asterisk_source,
+            is_system: expr_is_system,
         }) = expr
         {
             return Ok(EqClassRef {
@@ -127,6 +129,7 @@ impl EqClassRef {
                 position: *expr_pos,
                 col_type: *expr_type,
                 asterisk_source: expr_asterisk_source.clone(),
+                is_system: *expr_is_system,
             });
         }
         Err(SbroadError::Invalid(Entity::Expression, None))
@@ -138,6 +141,7 @@ impl EqClassRef {
             self.position,
             self.col_type,
             self.asterisk_source.clone(),
+            self.is_system,
         )
     }
 }

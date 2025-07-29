@@ -32,7 +32,7 @@ use crate::ir::node::{Parameter, ReferenceAsteriskSource};
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
-use crate::ir::{Nodes, Plan, Positions as Targets};
+use crate::ir::{Nodes, Plan};
 
 pub mod cast;
 pub mod concat;
@@ -160,12 +160,14 @@ impl Nodes {
         position: usize,
         col_type: DerivedType,
         asterisk_source: Option<ReferenceAsteriskSource>,
+        is_system: bool,
     ) -> NodeId {
         let r = Reference {
             target,
             position,
             col_type,
             asterisk_source,
+            is_system,
         };
         self.push(r.into())
     }
@@ -859,6 +861,7 @@ impl<'plan> Comparator<'plan> {
                 target: _,
                 col_type,
                 asterisk_source: is_asterisk,
+                is_system: _,
             }) => {
                 position.hash(state);
                 col_type.hash(state);
@@ -1247,20 +1250,18 @@ impl Plan {
         need_sharding_column: bool,
     ) -> Result<Vec<NodeId>, SbroadError> {
         // Vec of (column position in child output, column plan id, new_targets).
-        let mut filtered_children_row_list: Vec<(usize, NodeId, ReferenceTarget)> = Vec::new();
+        let mut filtered_children_row_list: Vec<(usize, NodeId, ReferenceTarget, bool)> =
+            Vec::new();
 
-        // Helper lambda to retrieve column positions we need to exclude from child `rel_id`.
-        let column_positions_to_exclude = |rel_id| -> Result<Targets, SbroadError> {
-            let positions = if need_sharding_column {
-                [None, None]
+        let is_system_column = |expr_id: NodeId| -> Result<bool, SbroadError> {
+            let expr_id = self.get_child_under_alias(expr_id)?;
+            let expr = self.get_expression_node(expr_id)?;
+            let is_system = if let Expression::Reference(Reference { is_system, .. }) = expr {
+                *is_system
             } else {
-                let mut context = self.context_mut();
-                context
-                    .get_shard_columns_positions(rel_id, self)?
-                    .copied()
-                    .unwrap_or_default()
+                false
             };
-            Ok(positions)
+            Ok(is_system)
         };
 
         if let Some(columns_spec) = source.get_columns_spec() {
@@ -1290,19 +1291,20 @@ impl Plan {
                 ColumnsRetrievalSpec::Indices(idx) => indices.clone_from(&idx),
             };
 
-            let exclude_positions = column_positions_to_exclude(rel_child)?;
-
             for index in indices {
                 let col_id = *child_node_row_list
                     .get(index)
                     .expect("Column id not found under relational child output");
-                if exclude_positions[0] == Some(index) || exclude_positions[1] == Some(index) {
+
+                let is_system = is_system_column(col_id)?;
+                if !need_sharding_column && is_system {
                     continue;
                 }
                 filtered_children_row_list.push((
                     index,
                     col_id,
                     ReferenceTarget::Single(rel_child),
+                    is_system,
                 ));
             }
         } else {
@@ -1327,26 +1329,25 @@ impl Plan {
 
                 let rel_node = self.get_relation_node(child_node_id)?;
                 let child_row_list = self.get_row_list(rel_node.output())?;
-                if need_sharding_column {
-                    child_row_list.iter().enumerate().for_each(|(pos, id)| {
-                        filtered_children_row_list.push((pos, *id, new_targets.clone()));
-                    });
-                } else {
-                    let exclude_positions = column_positions_to_exclude(child_node_id)?;
 
-                    for (pos, expr_id) in child_row_list.iter().enumerate() {
-                        if exclude_positions[0] == Some(pos) || exclude_positions[1] == Some(pos) {
-                            continue;
-                        }
-                        filtered_children_row_list.push((pos, *expr_id, new_targets.clone()));
+                for (pos, expr_id) in child_row_list.iter().enumerate() {
+                    let is_system = is_system_column(*expr_id)?;
+                    if !need_sharding_column && is_system {
+                        continue;
                     }
+                    filtered_children_row_list.push((
+                        pos,
+                        *expr_id,
+                        new_targets.clone(),
+                        is_system,
+                    ));
                 }
             }
         };
 
         // List of columns to be passed into `Expression::Row`.
         let mut result_row_list: Vec<NodeId> = Vec::with_capacity(filtered_children_row_list.len());
-        for (pos, alias_node_id, new_targets) in filtered_children_row_list {
+        for (pos, alias_node_id, new_targets, is_system) in filtered_children_row_list {
             let alias_expr = self.get_expression_node(alias_node_id)?;
             let asterisk_source = source.get_asterisk_source();
             let alias_name = SmolStr::from(alias_expr.get_alias_name()?);
@@ -1354,7 +1355,7 @@ impl Plan {
 
             let r_id = self
                 .nodes
-                .add_ref(new_targets, pos, col_type, asterisk_source);
+                .add_ref(new_targets, pos, col_type, asterisk_source, is_system);
             if need_aliases {
                 let a_id = self.nodes.add_alias(&alias_name, r_id)?;
                 result_row_list.push(a_id);
@@ -1519,9 +1520,9 @@ impl Plan {
                 .get(pos)
                 .expect("subquery output row already checked");
             let alias_type = self.get_expression_node(alias_id)?.calculate_type(self)?;
-            let ref_id = self
-                .nodes
-                .add_ref(ReferenceTarget::Single(sq_id), pos, alias_type, None);
+            let ref_id =
+                self.nodes
+                    .add_ref(ReferenceTarget::Single(sq_id), pos, alias_type, None, false);
             new_refs.push(ref_id);
         }
         let row_id = self.nodes.add_row(new_refs.clone(), None);

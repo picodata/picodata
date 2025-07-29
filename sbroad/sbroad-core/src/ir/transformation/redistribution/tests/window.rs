@@ -15,6 +15,7 @@ fn window_simple_partition_by() {
         0,
         DerivedType::new(Type::Boolean),
         None,
+        false,
     );
     let window = Window {
         name: None,
@@ -43,12 +44,14 @@ fn window_complex_partition_by() {
         0,
         DerivedType::new(Type::Boolean),
         None,
+        false,
     );
     let b_ref = plan.nodes.add_ref(
         ReferenceTarget::Single(id),
         1,
         DerivedType::new(Type::Boolean),
         None,
+        false,
     );
     let sum = plan.nodes.add_bool(a_ref, Bool::And, b_ref).unwrap();
     let window = Window {

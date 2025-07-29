@@ -1435,6 +1435,7 @@ fn take_subtree_projection_windows_transfer() {
                     *n,
                     DerivedType::new(Type::Integer),
                     None,
+                    false,
                 );
                 OrderByElement {
                     entity: OrderByEntity::Expression { expr_id: new_ref },
@@ -1456,6 +1457,7 @@ fn take_subtree_projection_windows_transfer() {
             1,
             DerivedType::new(Type::Integer),
             None,
+            false,
         );
         let cast = plan.add_cast(r#ref, CastType::String).unwrap();
         let r#const = plan.nodes.add_const(".".into());
@@ -1500,6 +1502,7 @@ fn take_subtree_projection_windows_transfer() {
                     *n,
                     DerivedType::new(Type::Integer),
                     None,
+                    false,
                 );
                 plan.nodes
                     .add_alias(format!("col_{n}").as_str(), new_ref)

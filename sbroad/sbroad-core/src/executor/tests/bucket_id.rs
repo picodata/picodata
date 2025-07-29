@@ -3,6 +3,7 @@ use pretty_assertions::assert_eq;
 use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::executor::result::ProducerResult;
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
 
 use super::*;
@@ -99,4 +100,68 @@ fn sharding_key_from_tuple1() {
         .extract_sharding_key_from_tuple("t1".into(), &tuple)
         .unwrap();
     assert_eq!(sharding_key, vec![&Value::from("123"), &Value::from(1_u64)]);
+}
+
+#[test]
+fn explicit_select_bucket_id_from_subquery_under_limit() {
+    let input = r#"select * from (
+                            select "test_space"."bucket_id" as "bucket_id",
+                                   "test_space"."id" as "id"
+                            from "test_space"
+                        ) x limit 1;"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        motion [policy: full]
+            limit 1
+                projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
+                    scan "x"
+                        projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
+                            scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn explicit_select_bucket_id_from_cte_under_limit() {
+    let input = r#"with x as (
+                            select "test_space"."bucket_id" as "bucket_id",
+                                   "test_space"."id" as "id"
+                            from "test_space"
+                        )
+                        select * from x limit 1;"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    limit 1
+        projection ("x"."bucket_id"::int -> "bucket_id", "x"."id"::int -> "id")
+            scan cte x($0)
+    subquery $0:
+    motion [policy: full]
+                    projection ("test_space"."bucket_id"::int -> "bucket_id", "test_space"."id"::int -> "id")
+                        scan "test_space"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn groupby_bucket_id() {
+    let input = r#"SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+        group by ("t"."a"::int, "t"."b"::int, "t"."c"::int, "t"."d"::int, "t"."bucket_id"::int) output: ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+            scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
 }

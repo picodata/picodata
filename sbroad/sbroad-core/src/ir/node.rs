@@ -334,6 +334,8 @@ pub struct Reference {
     /// Field indicating whether this reference resulted
     /// from an asterisk "*" under projection.
     pub asterisk_source: Option<ReferenceAsteriskSource>,
+    /// Used to distinguish explicit references to system columns (like bucket_id)
+    pub is_system: bool,
 }
 
 impl From<Reference> for NodeAligned {
