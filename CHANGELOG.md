@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.4.0] - Unreleased
+
+### Fixes
+- Fixed "instance is already joined" error if picodata crashes during reboostrap
+  (see also https://git.picodata.io/core/picodata/-/issues/2077).
+
 ## [25.3.1] - 2025-07-25
 
 ### Features
