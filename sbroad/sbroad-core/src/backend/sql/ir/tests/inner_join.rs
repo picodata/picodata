@@ -10,13 +10,10 @@ fn inner_join1_latest() {
 
     let expected = PatternWithParams::new(
         format!(
-            "{} {} {} {} {} {} {} {}",
+            "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code""#,
-            r#"FROM (SELECT "hash_testing"."identification_number","#,
-            r#""hash_testing"."product_code","#,
-            r#""hash_testing"."product_units","#,
-            r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
-            r#"INNER JOIN (SELECT "history"."id" FROM "history") as "history""#,
+            r#"FROM "hash_testing""#,
+            r#"INNER JOIN "history""#,
             r#"ON "hash_testing"."identification_number" = "history"."id""#,
             r#"WHERE "hash_testing"."product_code" = CAST($1 AS string)"#,
         ),
@@ -33,13 +30,10 @@ fn inner_join1_oldest() {
 
     let expected = PatternWithParams::new(
         format!(
-            "{} {} {} {} {} {} {} {}",
+            "{} {} {} {} {}",
             r#"SELECT "hash_testing"."product_code""#,
-            r#"FROM (SELECT "hash_testing"."identification_number","#,
-            r#""hash_testing"."product_code","#,
-            r#""hash_testing"."product_units","#,
-            r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
-            r#"INNER JOIN (SELECT "history"."id" FROM "history") as "history""#,
+            r#"FROM "hash_testing""#,
+            r#"INNER JOIN "history""#,
             r#"ON "hash_testing"."identification_number" = "history"."id""#,
             r#"WHERE "hash_testing"."product_code" = CAST($1 AS string)"#,
         ),
@@ -57,12 +51,8 @@ fn inner_join2_latest() {
 
     let expected = PatternWithParams::new(
         format!(
-            "{} {} {} {} {} {} {} {} {}",
-            r#"SELECT "hash_testing"."product_code" FROM (SELECT"#,
-            r#""hash_testing"."identification_number","#,
-            r#""hash_testing"."product_code","#,
-            r#""hash_testing"."product_units","#,
-            r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
+            "{} {} {} {} {}",
+            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
             r#"INNER JOIN"#,
             r#"(SELECT "history"."id" FROM "history" WHERE "history"."id" = CAST($1 AS int)) as "t""#,
             r#"ON "hash_testing"."identification_number" = "t"."id""#,
@@ -82,12 +72,8 @@ fn inner_join2_oldest() {
 
     let expected = PatternWithParams::new(
         format!(
-            "{} {} {} {} {} {} {} {} {}",
-            r#"SELECT "hash_testing"."product_code" FROM (SELECT"#,
-            r#""hash_testing"."identification_number","#,
-            r#""hash_testing"."product_code","#,
-            r#""hash_testing"."product_units","#,
-            r#""hash_testing"."sys_op" FROM "hash_testing") as "hash_testing""#,
+            "{} {} {} {} {}",
+            r#"SELECT "hash_testing"."product_code" FROM "hash_testing""#,
             r#"INNER JOIN"#,
             r#"(SELECT "history"."id" FROM "history" WHERE "history"."id" = CAST($1 AS int)) as "t""#,
             r#"ON "hash_testing"."identification_number" = "t"."id""#,

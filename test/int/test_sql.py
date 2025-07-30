@@ -6400,12 +6400,9 @@ buckets = []"""
     expected_explain = """projection ("t"."a"::int -> "a")
     join on "t"."a"::int = "t2"."b"::int
         scan "t"
-            projection ("t"."a"::int -> "a", "t"."b"::int -> "b")
-                scan "t"
         motion [policy: segment([ref("b")])]
-            scan "t2"
-                projection ("t2"."a"::int -> "a", "t2"."b"::int -> "b")
-                    scan "t" -> "t2"
+            projection ("t2"."a"::int -> "a", "t2"."bucket_id"::int -> "bucket_id", "t2"."b"::int -> "b")
+                scan "t" -> "t2"
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000

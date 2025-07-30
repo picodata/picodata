@@ -454,7 +454,7 @@ fn tbl_join_single_constant_condition1() {
     let query = r#"
     select * from "t5"
     inner join "t5" as "jt5"
-    on 1 in ("jt5"."b", "jt5"."a")
+    on 1 in ("t5"."a")
 "#;
 
     let coordinator = RouterRuntimeMock::new();
@@ -475,7 +475,7 @@ fn tbl_join_single_constant_condition2() {
     let query = r#"
     select * from "t5"
     inner join "t5" as "jt5"
-    on 1 in ("jt5"."a", "jt5"."a")
+    on 1 in ("t5"."a", "t5"."a")
 "#;
 
     let coordinator = RouterRuntimeMock::new();
@@ -496,7 +496,7 @@ fn tbl_join_single_constant_condition3() {
     let query = r#"
     select * from "t5"
     inner join "t5" as "jt5"
-    on 1 in ("jt5"."a", "jt5"."b", "jt5"."a")
+    on 1 in ("t5"."a", "t5"."b", "t5"."a")
 "#;
 
     let coordinator = RouterRuntimeMock::new();
@@ -504,11 +504,8 @@ fn tbl_join_single_constant_condition3() {
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
-    let param = Value::from(1_u64);
-    let bucket = query.coordinator.determine_bucket_id(&[&param]).unwrap();
-    let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
-
-    assert_eq!(Buckets::new_filtered(bucket_set), buckets);
+    // b = 1 can be anywhere
+    assert_eq!(Buckets::All, buckets);
 }
 
 #[test]

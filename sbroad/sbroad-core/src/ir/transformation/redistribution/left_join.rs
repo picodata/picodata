@@ -45,11 +45,6 @@ impl Plan {
                 Some(format_smolstr!("join ({join_id:?}) has no parent!")),
             ));
         };
-        let projection_id = create_projection(self, join_id)?;
-
-        self.set_rel_output_distribution(projection_id)?;
-        self.change_child(parent_id, join_id, projection_id)?;
-        self.replace_target_in_relational(parent_id, join_id, projection_id)?;
 
         let outer_id = self.get_relational_child(join_id, 0)?;
 
@@ -86,14 +81,8 @@ impl Plan {
         };
         let mut strategy = Strategy::new(parent_id);
 
-        strategy.add_child(projection_id, MotionPolicy::Full, Program(vec![motion_op]));
+        strategy.add_child(join_id, MotionPolicy::Full, Program(vec![motion_op]));
 
         Ok(Some(strategy))
     }
-}
-
-fn create_projection(plan: &mut Plan, join_id: NodeId) -> Result<NodeId, SbroadError> {
-    let proj_id = plan.add_proj(join_id, vec![], &[], false, false)?;
-    plan.set_rel_output_distribution(proj_id)?;
-    Ok(proj_id)
 }

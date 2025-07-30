@@ -421,7 +421,7 @@ impl ExecutionPlan {
                             Relational::Projection { .. }
                             | Relational::SelectWithoutScan { .. } => sql.push_str("SELECT"),
                             Relational::ScanRelation(ScanRelation { relation, .. }) => {
-                                push_identifier(&mut sql, relation);
+                                push_identifier(&mut sql, relation)
                             }
                             Relational::ScanSubQuery { .. }
                             | Relational::NamedWindows { .. }
@@ -601,6 +601,7 @@ impl ExecutionPlan {
                 }
             }
         }
+
         // MUST be constructed out of the `syntax.ordered.sql` context scope.
         Ok((PatternWithParams::new(sql, params), guard))
     }

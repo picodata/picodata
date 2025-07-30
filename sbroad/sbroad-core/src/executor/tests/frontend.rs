@@ -124,9 +124,7 @@ fn front_explain_select_sql3() {
         insta::assert_snapshot!(*actual_explain, @r#"
         projection ("q1"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a2"::string
-                scan "q1"
-                    projection ("q1"."a"::string -> "a", "q1"."b"::int -> "b")
-                        scan "t3" -> "q1"
+                scan "t3" -> "q1"
                 scan "q2"
                     projection ("t3"."a"::string -> "a2", "t3"."b"::int -> "b2")
                         scan "t3"
@@ -153,12 +151,8 @@ fn front_explain_select_sql4() {
         insta::assert_snapshot!(*actual_explain, @r#"
         projection ("q2"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a"::string
-                scan "q1"
-                    projection ("q1"."a"::string -> "a", "q1"."b"::int -> "b")
-                        scan "t3" -> "q1"
-                scan "q2"
-                    projection ("q2"."a"::string -> "a", "q2"."b"::int -> "b")
-                        scan "t3" -> "q2"
+                scan "t3" -> "q1"
+                scan "t3" -> "q2"
         execution options:
             sql_vdbe_opcode_max = 45000
             sql_motion_row_max = 5000

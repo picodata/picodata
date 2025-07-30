@@ -1072,13 +1072,13 @@ pub fn materialize_motion(
     buckets: &Buckets,
 ) -> Result<VirtualTable, SbroadError> {
     let top_id = plan.get_motion_subtree_root(motion_node_id)?;
-    {
-        let ir = plan.get_ir_plan();
-        assert!(
-            !ir.get_relation_node(top_id)?.is_dml(),
-            "materialize motion can be called only for DQL queries"
-        );
-    }
+
+    let ir = plan.get_ir_plan();
+    let top_node = ir.get_relation_node(top_id)?;
+    assert!(
+        !top_node.is_dml(),
+        "materialize motion can be called only for DQL queries"
+    );
 
     // We should get a motion alias name before we take the subtree in `dispatch` method.
     let motion_node = plan.get_ir_plan().get_relation_node(motion_node_id)?;

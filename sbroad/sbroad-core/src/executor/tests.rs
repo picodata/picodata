@@ -409,10 +409,8 @@ fn join_linker2_test() {
         Value::String(format!("Execute query on a bucket [{bucket1}]")),
         Value::String(String::from(PatternWithParams::new(
             format!(
-                "{} {} {} {} {} {}",
-                r#"SELECT "t1"."id" FROM (SELECT"#,
-                r#""t1"."id", "t1"."sysFrom", "t1"."FIRST_NAME", "t1"."sys_op""#,
-                r#"FROM "test_space" as "t1") as "t1""#,
+                "{} {} {} {}",
+                r#"SELECT "t1"."id" FROM "test_space" as "t1""#,
                 r#"INNER JOIN"#,
                 r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
                 r#"as "t2" ON "t1"."id" = CAST($1 AS int)"#
@@ -532,10 +530,8 @@ fn join_linker4_test() {
             Value::String(format!("Execute query on a bucket [{bucket2}]")),
             Value::String(String::from(PatternWithParams::new(
                 format!(
-                    "{} {} {} {} {} {} {}",
-                    r#"SELECT "T1"."id" FROM (SELECT"#,
-                    r#""T1"."id", "T1"."sysFrom", "T1"."FIRST_NAME", "T1"."sys_op""#,
-                    r#"FROM "test_space" as "T1") as "T1""#,
+                    "{} {} {} {} {}",
+                    r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
                     r#"INNER JOIN"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
                     r#"ON ("T1"."id" = "T2"."COL_1")"#,
@@ -548,10 +544,8 @@ fn join_linker4_test() {
             Value::String(format!("Execute query on a bucket [{bucket1}]")),
             Value::String(String::from(PatternWithParams::new(
                 format!(
-                    "{} {} {} {} {} {} {}",
-                    r#"SELECT "T1"."id" FROM (SELECT"#,
-                    r#""T1"."id", "T1"."sysFrom", "T1"."FIRST_NAME", "T1"."sys_op""#,
-                    r#"FROM "test_space" as "T1") as "T1""#,
+                    "{} {} {} {} {}",
+                    r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
                     r#"INNER JOIN"#,
                     r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
                     r#"ON ("T1"."id" = "T2"."COL_1")"#,
@@ -615,8 +609,8 @@ on q."f" = "t1"."b""#;
         Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {}",
-                r#"SELECT * FROM"#,
-                r#"(SELECT "t1"."a", "t1"."b" FROM "t1") as "t1""#,
+                r#"SELECT "t1"."a", "t1"."b", "q"."COL_1", "q"."COL_2" FROM"#,
+                r#""t1""#,
                 r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
                 r#"as "q" ON "q"."COL_1" = "t1"."b""#,
             ),

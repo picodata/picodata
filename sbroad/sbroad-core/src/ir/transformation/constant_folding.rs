@@ -421,12 +421,9 @@ mod tests {
             selection true::bool
                 join on true::bool
                     scan "t"
-                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                            scan "t"
                     motion [policy: full]
-                        scan "t"
-                            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                                scan "t"
+                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                            scan "t"
         execution options:
             sql_vdbe_opcode_max = 45000
             sql_motion_row_max = 5000

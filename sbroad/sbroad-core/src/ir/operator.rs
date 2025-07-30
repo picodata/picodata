@@ -30,7 +30,6 @@ use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
 use super::node::{ArenaType, Limit, NamedWindows, Node, NodeAligned, SelectWithoutScan};
 use super::transformation::redistribution::{MotionPolicy, Program};
-use super::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
 use super::types::DerivedType;
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::helpers::RepeatableState;
@@ -819,105 +818,15 @@ impl Plan {
             ));
         }
 
-        // For any child in a relational scan, we need to
-        // remove a sharding column from its output with a
-        // projection node and wrap the result with a sub-query
-        // scan.
-        // As a side effect, we also need to update the references
-        // to the child's output in the condition expression as
-        // we have filtered out the sharding column.
-        let mut children: Vec<NodeId> = Vec::with_capacity(2);
-        for child in &[left, right] {
-            let child_node = self.get_relation_node(*child)?;
-            if let Relational::ScanRelation(ScanRelation {
-                relation, alias, ..
-            }) = child_node
-            {
-                // We'll need it later to update the condition expression (borrow checker).
-                let table = self.get_relation_or_error(relation)?;
-                let sharding_column_pos = table.get_bucket_id_position()?;
-                let mut needs_bucket_id_column = false;
+        let output = self.add_row_for_join(left, right)?;
+        let join = Join {
+            children: vec![left, right],
+            condition,
+            output,
+            kind,
+        };
 
-                // Update references to the sub-query's output in the condition.
-                let condition_nodes = {
-                    let filter = |id| -> bool {
-                        matches!(self.get_expression_node(id), Ok(Expression::Reference(_)))
-                    };
-                    let mut condition_tree = PostOrderWithFilter::with_capacity(
-                        |node| self.nodes.expr_iter(node, false),
-                        EXPR_CAPACITY,
-                        Box::new(filter),
-                    );
-                    condition_tree.populate_nodes(condition);
-                    condition_tree.take_nodes()
-                };
-                let mut refs = Vec::with_capacity(condition_nodes.len());
-                for LevelNode(_, id) in condition_nodes {
-                    let expr = self.get_expression_node(id)?;
-                    if let Expression::Reference(Reference {
-                        position, target, ..
-                    }) = expr
-                    {
-                        // We should update ONLY references that refer to current child (left, right)
-                        if *target == ReferenceTarget::Single(*child) {
-                            if Some(*position) == sharding_column_pos {
-                                needs_bucket_id_column = true;
-                            }
-                            refs.push(id);
-                        }
-                    }
-                }
-
-                // Wrap relation with sub-query scan.
-                let scan_name = if let Some(alias_name) = alias {
-                    alias_name.clone()
-                } else {
-                    relation.clone()
-                };
-                let proj_id = self.add_proj(*child, vec![], &[], false, needs_bucket_id_column)?;
-                let sq_id = self.add_sub_query(proj_id, Some(&scan_name))?;
-                children.push(sq_id);
-
-                if !needs_bucket_id_column {
-                    if let Some(sharding_column_pos) = sharding_column_pos {
-                        for ref_id in refs.iter() {
-                            let expr = self.get_mut_expression_node(*ref_id)?;
-                            if let MutExpression::Reference(Reference {
-                                position, target, ..
-                            }) = expr
-                            {
-                                if ReferenceTarget::Single(*child) == *target
-                                    && *position > sharding_column_pos
-                                {
-                                    *position -= 1;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                for ref_id in refs {
-                    self.replace_target_in_subtree(ref_id, *child, sq_id)?;
-                }
-            } else {
-                children.push(*child);
-            }
-        }
-        if let (Some(left_id), Some(right_id)) = (children.first(), children.get(1)) {
-            let output = self.add_row_for_join(*left_id, *right_id)?;
-            let join = Join {
-                children: vec![*left_id, *right_id],
-                condition,
-                output,
-                kind,
-            };
-
-            return self.add_relational(join.into());
-        }
-        Err(SbroadError::Invalid(
-            Entity::Expression,
-            Some("invalid children for join".to_smolstr()),
-        ))
+        self.add_relational(join.into())
     }
 
     /// Adds motion node.
@@ -934,14 +843,6 @@ impl Plan {
         policy: &MotionPolicy,
         program: Program,
     ) -> Result<NodeId, SbroadError> {
-        let child_rel_node = self.get_relation_node(child_id)?;
-        let alias = match child_rel_node {
-            Relational::ScanSubQuery(ScanSubQuery { alias, .. })
-            | Relational::ScanRelation(ScanRelation { alias, .. }) => alias.clone(),
-            Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
-            _ => None,
-        };
-
         // If child is a motion, we can squash multiple motions into one
         let mut_child_node = self.get_mut_relation_node(child_id)?;
         if let MutRelational::Motion(Motion {
@@ -954,6 +855,25 @@ impl Plan {
             new_program.0.extend_from_slice(&program.0);
             return Ok(child_id);
         }
+
+        let child_rel_node = self.get_relation_node(child_id)?;
+        let alias = match child_rel_node {
+            Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => alias.clone(),
+            Relational::ScanRelation(ScanRelation {
+                alias, relation, ..
+            }) => alias.clone().or(Some(relation.clone())),
+            Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
+            _ => None,
+        };
+
+        let child_id = if matches!(
+            child_rel_node,
+            Relational::ScanRelation(_) | Relational::Join(_)
+        ) {
+            self.add_proj(child_id, vec![], &[], false, true)?
+        } else {
+            child_id
+        };
 
         let output = self.add_row_for_output(child_id, &[], true, None)?;
         match policy {

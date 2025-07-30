@@ -734,10 +734,7 @@ fn global_table_scan() {
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(
         sql,
-        PatternWithParams::new(
-            r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t""#.to_string(),
-            vec![]
-        )
+        PatternWithParams::new(r#"SELECT * FROM "global_t""#.to_string(), vec![])
     );
 }
 

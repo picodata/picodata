@@ -93,6 +93,24 @@ fn bucket3_test() {
 }
 
 #[test]
+fn bucket_id_from_join() {
+    let input = r#"select t1.bucket_id from t t1 join t on true"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("t1"."bucket_id"::int -> "bucket_id")
+        join on true::bool
+            scan "t" -> "t1"
+            motion [policy: full]
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d", "t"."bucket_id"::int -> "bucket_id")
+                    scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
 fn sharding_key_from_tuple1() {
     let coordinator = RouterRuntimeMock::new();
     let tuple = vec![Value::from("123"), Value::from(1_u64)];

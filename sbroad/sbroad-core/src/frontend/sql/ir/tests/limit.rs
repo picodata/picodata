@@ -118,20 +118,15 @@ fn join() {
                         join on "t1"."a"::string = "t3"."a"::string
                             left join on "t1"."b"::int = "t2"."e"::int
                                 scan "t1"
-                                    projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
-                                        scan "t1"
                                 motion [policy: full]
-                                    scan "t2"
-                                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                                            scan "t2"
+                                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
+                                        scan "t2"
                             motion [policy: full]
-                                scan "t3"
-                                    projection ("t3"."a"::string -> "a", "t3"."b"::int -> "b")
-                                        scan "t3"
+                                projection ("t3"."bucket_id"::int -> "bucket_id", "t3"."a"::string -> "a", "t3"."b"::int -> "b")
+                                    scan "t3"
                         motion [policy: full]
-                            scan "t4"
-                                projection ("t4"."c"::string -> "c", "t4"."d"::int -> "d")
-                                    scan "t4"
+                            projection ("t4"."bucket_id"::int -> "bucket_id", "t4"."c"::string -> "c", "t4"."d"::int -> "d")
+                                scan "t4"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

@@ -123,7 +123,7 @@ fn merge_tuples7() {
     assert_eq!(actual_pattern_params.params, vec![]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a", "t2"."f" FROM (SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "t" INNER JOIN (SELECT "t2"."e", "t2"."f", "t2"."g", "t2"."h" FROM "t2") as "t2" ON ("t"."a", "t"."b") = ("t2"."e", "t2"."f")"#
+        @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON ("t"."a", "t"."b") = ("t2"."e", "t2"."f")"#
     );
 }
 
@@ -138,5 +138,5 @@ fn merge_tuples8() {
     let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
 
     assert_eq!(actual_pattern_params.params, vec![]);
-    insta::assert_snapshot!(actual_pattern_params.pattern, @r#"SELECT "t"."a", "t2"."f" FROM (SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "t" INNER JOIN (SELECT "t2"."e", "t2"."f", "t2"."g", "t2"."h" FROM "t2") as "t2" ON (("t"."b", "t"."a") = ("t2"."f", "t2"."e")) and (("t2"."f", "t"."a") = ("t2"."e", "t"."b"))"#);
+    insta::assert_snapshot!(actual_pattern_params.pattern, @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON (("t"."b", "t"."a") = ("t2"."f", "t2"."e")) and (("t2"."f", "t"."a") = ("t2"."e", "t"."b"))"#);
 }

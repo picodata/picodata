@@ -252,14 +252,14 @@ def test_cache_capacity(cluster: Cluster):
     i1.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 1")
 
     cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["size"] == 2442
+    assert cache_info["cache"]["size"] == 2208
 
     i1.sql("SELECT * FROM _pico_tier")
 
     # if size doesn't changed, then query was in cache, and it's true,
     # because of LRU
     cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["size"] == 2442
+    assert cache_info["cache"]["size"] == 2208
 
 
 def test_alter_system_iproto_net_msg_max(cluster: Cluster):

@@ -174,8 +174,6 @@ fn front_sql6() {
         selection ("hash_testing"."identification_number"::int = 5::int) and ("hash_testing"."product_code"::string = '123'::string)
             join on "hash_testing"."identification_number"::int = "t"."id"::int
                 scan "hash_testing"
-                    projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
-                        scan "hash_testing"
                 motion [policy: full]
                     scan "t"
                         projection ("test_space"."id"::int -> "id")
@@ -668,12 +666,9 @@ fn front_projection_with_scan_specification_under_join() {
     projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
         join on true::bool
             scan "hash_testing"
-                projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
-                    scan "hash_testing"
             motion [policy: full]
-                scan "test_space"
-                    projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op")
-                        scan "test_space"
+                projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "test_space"."bucket_id"::int -> "bucket_id")
+                    scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -690,9 +685,7 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("ts_sq"."id"::int -> "id", "ts_sq"."sysFrom"::int -> "sysFrom", "ts_sq"."FIRST_NAME"::string -> "FIRST_NAME", "ts_sq"."sys_op"::int -> "sys_op", "hs"."identification_number"::int -> "identification_number", "hs"."product_code"::string -> "product_code", "hs"."product_units"::bool -> "product_units", "hs"."sys_op"::int -> "sys_op")
         join on true::bool
-            scan "hs"
-                projection ("hs"."identification_number"::int -> "identification_number", "hs"."product_code"::string -> "product_code", "hs"."product_units"::bool -> "product_units", "hs"."sys_op"::int -> "sys_op")
-                    scan "hash_testing" -> "hs"
+            scan "hash_testing" -> "hs"
             motion [policy: full]
                 scan "ts_sq"
                     projection ("ts"."id"::int -> "id", "ts"."sysFrom"::int -> "sysFrom", "ts"."FIRST_NAME"::string -> "FIRST_NAME", "ts"."sys_op"::int -> "sys_op")
@@ -889,8 +882,6 @@ fn front_join_with_vtable_ambiguous_column_name() {
     projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "id"::int -> "id", "id"::int -> "id")
         join on true::bool
             scan "test_space"
-                projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op")
-                    scan "test_space"
             motion [policy: full]
                 scan
                     projection ("t1"."id"::int -> "id", "t2"."id"::int -> "id")
@@ -1116,8 +1107,6 @@ fn front_sql_join_on_bucket_id1() {
     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t_mv"."bucket_id"::int -> "bucket_id")
         join on "t_mv"."bucket_id"::int = "t2"."bucket_id"::int
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
-                    scan "t2"
             scan "t_mv"
                 projection ("test_space"."bucket_id"::int -> "bucket_id")
                     selection "test_space"."id"::int = 1::int
@@ -1142,8 +1131,6 @@ fn front_sql_join_on_bucket_id2() {
     projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t_mv"."bucket_id"::int -> "bucket_id")
         join on ("t_mv"."bucket_id"::int = "t2"."bucket_id"::int) or ("t2"."e"::int = "t2"."f"::int)
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
-                    scan "t2"
             motion [policy: full]
                 scan "t_mv"
                     projection ("test_space"."bucket_id"::int -> "bucket_id")
@@ -2892,15 +2879,11 @@ ON "t3"."a" = "ij"."id"
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t3"."a"::int -> "a", "t3"."b"::int -> "b", "ij"."identification_number"::int -> "identification_number", "ij"."product_code"::string -> "product_code", "ij"."product_units"::bool -> "product_units", "ij"."sys_op"::int -> "sys_op", "ij"."id"::int -> "id")
         join on "t3"."a"::int = "ij"."id"::int
-            scan "t3"
-                projection ("t3"."a"::int -> "a", "t3"."b"::int -> "b")
-                    scan "t5" -> "t3"
+            scan "t5" -> "t3"
             scan "ij"
                 projection ("hash_single_testing"."identification_number"::int -> "identification_number", "hash_single_testing"."product_code"::string -> "product_code", "hash_single_testing"."product_units"::bool -> "product_units", "hash_single_testing"."sys_op"::int -> "sys_op", "ts"."id"::int -> "id")
                     join on "hash_single_testing"."identification_number"::int = "ts"."id"::int
                         scan "hash_single_testing"
-                            projection ("hash_single_testing"."identification_number"::int -> "identification_number", "hash_single_testing"."product_code"::string -> "product_code", "hash_single_testing"."product_units"::bool -> "product_units", "hash_single_testing"."sys_op"::int -> "sys_op")
-                                scan "hash_single_testing"
                         scan "ts"
                             projection ("test_space"."id"::int -> "id")
                                 scan "test_space"
@@ -3276,8 +3259,6 @@ fn front_sql_update4() {
             projection ("b1"::int * 2::int -> "col_0", "t"."b"::int -> "col_1")
                 join on "t"."c"::int = "b1"::int
                     scan "t"
-                        projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                            scan "t"
                     motion [policy: full]
                         scan
                             projection ("t1"."a"::string -> "a1", "t1"."b"::int -> "b1")
@@ -3303,11 +3284,7 @@ fn front_sql_update5() {
             projection ("test_space"."id"::int -> "col_0", "t3_2"."a"::int -> "col_1")
                 join on "t3_2"."a"::int = "test_space"."id"::int
                     scan "t3_2"
-                        projection ("t3_2"."a"::int -> "a", "t3_2"."b"::int -> "b")
-                            scan "t3_2"
                     scan "test_space"
-                        projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op")
-                            scan "test_space"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000

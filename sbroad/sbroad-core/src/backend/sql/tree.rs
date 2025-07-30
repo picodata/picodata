@@ -17,7 +17,7 @@ use crate::ir::tree::Snapshot;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::take;
 
 /// Payload of the syntax tree node.
@@ -2001,6 +2001,7 @@ impl<'p> SyntaxPlan<'p> {
         // an asterisk we want to generate that asterisk only once.
         let mut already_handled_asterisk_sources = HashSet::new();
         let mut last_handled_asterisk_id: Option<usize> = None;
+        let mut has_system_columns = HashMap::<NodeId, bool>::new();
 
         // Children number + the same number of commas + parentheses.
         let mut children = Vec::with_capacity(list.len() * 2 + 2);
@@ -2042,16 +2043,47 @@ impl<'p> SyntaxPlan<'p> {
                     ..
                 }) = expr_node
                 {
-                    // If we reference ScanNode, we don't want to transform asterisks
-                    // in order not to select "bucket_id". That's why we save them as a
-                    // sequence of references.
+                    // We don't want to transform asterisks in order not to select "bucket_id"
+                    // implicitly. That's why we save them as a sequence of references, if system
+                    // columns are involved.
                     let ref_source_node_id = ir_plan
                         .get_reference_source_relation(expr_id)
                         .expect("Reference must have a source relation");
-                    let ref_source_node = ir_plan
-                        .get_relation_node(ref_source_node_id)
-                        .expect("Node must be a relational");
-                    if let Relational::ScanRelation { .. } = ref_source_node {
+
+                    let leave_as_sequence = has_system_columns
+                        .entry(ref_source_node_id)
+                        .or_insert_with(|| {
+                            let Ok(output) = ir_plan.get_relational_output(ref_source_node_id)
+                            else {
+                                // TODO[2081]: don't hide an error
+                                return false;
+                            };
+
+                            let Ok(row_list) = ir_plan.get_row_list(output) else {
+                                // TODO[2081]: don't hide an error
+                                return false;
+                            };
+
+                            row_list.iter().any(|node| {
+                                let Ok(node) = ir_plan.get_child_under_alias(*node) else {
+                                    // TODO[2081]: don't hide an error
+                                    return false;
+                                };
+                                let Ok(node) = ir_plan.get_expression_node(node) else {
+                                    // TODO[2081]: don't hide an error
+                                    return false;
+                                };
+                                matches!(
+                                    node,
+                                    Expression::Reference(Reference {
+                                        is_system: true,
+                                        ..
+                                    })
+                                )
+                            })
+                        });
+
+                    if *leave_as_sequence {
                         return non_asterisk_nodes();
                     }
 

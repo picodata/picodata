@@ -169,9 +169,7 @@ fn join_cte() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."FIRST_NAME"::string -> "FIRST_NAME")
         join on "t"."FIRST_NAME"::string = "cte"."a"::string
-            scan "t"
-                projection ("t"."id"::int -> "id", "t"."sysFrom"::int -> "sysFrom", "t"."FIRST_NAME"::string -> "FIRST_NAME", "t"."sys_op"::int -> "sys_op")
-                    scan "test_space" -> "t"
+            scan "test_space" -> "t"
             scan cte cte($0)
     subquery $0:
     motion [policy: full]
@@ -303,13 +301,10 @@ fn join_in_cte() {
     motion [policy: full]
                 projection ("t1"."FIRST_NAME"::string -> "FIRST_NAME")
                     join on "t1"."FIRST_NAME"::string = "t2"."id"::int::string
-                        scan "t1"
-                            projection ("t1"."id"::int -> "id", "t1"."sysFrom"::int -> "sysFrom", "t1"."FIRST_NAME"::string -> "FIRST_NAME", "t1"."sys_op"::int -> "sys_op")
-                                scan "test_space" -> "t1"
+                        scan "test_space" -> "t1"
                         motion [policy: full]
-                            scan "t2"
-                                projection ("t2"."id"::int -> "id", "t2"."sysFrom"::int -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::int -> "sys_op")
-                                    scan "test_space" -> "t2"
+                            projection ("t2"."id"::int -> "id", "t2"."sysFrom"::int -> "sysFrom", "t2"."FIRST_NAME"::string -> "FIRST_NAME", "t2"."sys_op"::int -> "sys_op", "t2"."bucket_id"::int -> "bucket_id")
+                                scan "test_space" -> "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -410,12 +405,10 @@ fn cte_with_left_join() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("E"::int -> "E")
         motion [policy: full]
-            projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+            projection ("cte"."E"::int -> "E", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
                     scan cte cte($0)
                     scan "t2"
-                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                            scan "t2"
     subquery $0:
     motion [policy: full]
                             projection ("t2"."e"::int -> "E")

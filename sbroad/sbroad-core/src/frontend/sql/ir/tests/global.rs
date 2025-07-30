@@ -242,12 +242,9 @@ fn front_sql_global_tbl_sq4() {
     projection ("hash_testing"."product_code"::string -> "product_code")
         join on ("t"."a"::int = "hash_testing"."identification_number"::int) and ("hash_testing"."product_code"::string in ROW($0))
             scan "t"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
             motion [policy: full]
-                scan "hash_testing"
-                    projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
-                        scan "hash_testing"
+                projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op", "hash_testing"."bucket_id"::int -> "bucket_id")
+                    scan "hash_testing"
     subquery $0:
     scan
                 projection ("global_t"."a"::int::string -> "a1")
@@ -272,11 +269,7 @@ fn front_sql_global_tbl_sq5() {
     projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
         join on (ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) and ("t"."c"::int in ROW($0))
             scan "t"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                    scan "t2"
     subquery $0:
     scan
                 projection ("global_t"."a"::int -> "a1")
@@ -306,12 +299,9 @@ fn front_sql_global_tbl_sq6() {
         selection "t2"."e"::int in ROW($3)
             join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($2))) or (exists ROW($0) and (not ("t"."d"::int in ROW($1))))
                 scan "t"
-                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                        scan "t"
                 motion [policy: full]
-                    scan "t2"
-                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                            scan "t2"
+                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
+                        scan "t2"
     subquery $0:
     scan
                     projection ("global_t"."a"::int * 20::int -> "a1")
@@ -350,12 +340,9 @@ fn front_sql_global_tbl_sq7() {
     projection ("t"."a"::int -> "a", "t2"."f"::int -> "f")
         join on ((ROW("t"."a"::int, "t"."b"::int) = ROW("t2"."e"::int, "t2"."f"::int)) or ("t"."c"::int in ROW($1))) or (not ("t"."d"::int in ROW($0)))
             scan "t"
-                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
-                    scan "t"
             motion [policy: full]
-                scan "t2"
-                    projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                        scan "t2"
+                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
+                    scan "t2"
     subquery $0:
     scan
                 projection ("global_t"."a"::int -> "a1")
@@ -392,11 +379,7 @@ fn front_sql_global_join1() {
     projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
         join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                    scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -419,11 +402,7 @@ fn front_sql_global_join2() {
     projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
         join on ("t2"."e"::int = "global_t"."a"::int) or ("global_t"."b"::int = "t2"."f"::int)
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                    scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -445,11 +424,7 @@ fn front_sql_global_join3() {
     projection ("t2"."e"::int -> "e", "global_t"."a"::int -> "a")
         left join on ("t2"."e"::int = "global_t"."a"::int) or ("global_t"."b"::int = "t2"."f"::int)
             scan "t2"
-                projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                    scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -476,8 +451,6 @@ fn front_sql_global_join4() {
                         projection (sum(("t2"."e"::int))::decimal -> "sum_1")
                             scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -499,8 +472,6 @@ fn front_sql_global_join5() {
     projection ("s"."e"::decimal -> "e")
         left join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
             scan "s"
                 projection (sum(("sum_1"::decimal))::decimal -> "e")
                     motion [policy: full]
@@ -527,8 +498,6 @@ fn front_sql_global_join6() {
     projection ("s"."e"::int -> "e")
         join on true::bool
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
             scan "s"
                 projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
@@ -556,8 +525,6 @@ fn front_sql_global_join7() {
                 projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -582,8 +549,6 @@ fn front_sql_global_join8() {
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -608,8 +573,6 @@ fn front_sql_global_join9() {
                 projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -634,8 +597,6 @@ fn front_sql_global_join10() {
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
@@ -665,8 +626,6 @@ fn front_sql_global_join11() {
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                    scan "global_t"
     subquery $0:
     motion [policy: full]
                 scan
@@ -792,15 +751,12 @@ fn front_sql_global_left_join1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
                     motion [policy: full]
-                        scan "global_t"
-                            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                                scan "global_t"
+                        projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+                            scan "global_t"
                     scan "t2"
-                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                            scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -819,17 +775,14 @@ fn front_sql_global_left_join2() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", sum(("b"::int))::decimal -> "col_1")
-        group by ("e"::int) output: ("a"::int -> "a", "b"::int -> "b", "e"::int -> "e", "f"::int -> "f", "g"::int -> "g", "h"::int -> "h")
+        group by ("e"::int) output: ("a"::int -> "a", "b"::int -> "b", "e"::int -> "e", "f"::int -> "f", "g"::int -> "g", "h"::int -> "h", "bucket_id"::int -> "bucket_id")
             motion [policy: full]
-                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                     join on true::bool
                         motion [policy: full]
-                            scan "global_t"
-                                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                                    scan "global_t"
+                            projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
+                                scan "global_t"
                         scan "t2"
-                            projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                                scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -849,15 +802,13 @@ fn front_sql_global_left_join3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
+            projection ("b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
                     motion [policy: full]
                         scan
                             projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
                     scan "t2"
-                        projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h")
-                            scan "t2"
     execution options:
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
@@ -1330,8 +1281,6 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
             selection "global_t"."a"::int = 1::int
                 left join on "global_t"."a"::int = "B"::int
                     scan "global_t"
-                        projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                            scan "global_t"
                     scan
                         projection ("global_t"."b"::int -> "B")
                             scan "global_t"
@@ -1343,8 +1292,6 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                     selection "global_t"."a"::int = 1::int
                         left join on "global_t"."a"::int = "B"::int
                             scan "global_t"
-                                projection ("global_t"."a"::int -> "a", "global_t"."b"::int -> "b")
-                                    scan "global_t"
                             scan
                                 projection ("global_t"."b"::int -> "B")
                                     scan "global_t"

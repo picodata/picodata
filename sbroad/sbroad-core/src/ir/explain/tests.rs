@@ -283,9 +283,8 @@ FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
                     selection "test_space"."id"::int = 3::int
                         scan "test_space"
             motion [policy: full]
-                scan "hash_testing"
-                    projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op")
-                        scan "hash_testing"
+                projection ("hash_testing"."identification_number"::int -> "identification_number", "hash_testing"."product_code"::string -> "product_code", "hash_testing"."product_units"::bool -> "product_units", "hash_testing"."sys_op"::int -> "sys_op", "hash_testing"."bucket_id"::int -> "bucket_id")
+                    scan "hash_testing"
     subquery $0:
     motion [policy: segment([ref("identification_number")])]
                 scan
