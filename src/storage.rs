@@ -147,7 +147,7 @@ pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_
 /// If this version of the executable bootstraps a new picodata cluster this
 /// will be the value of 'system_catalog_version' field in `_pico_property`.
 /// Otherwise this will be the version the cluster is going to be upgrading to.
-pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.3.1";
+pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.3.3";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Catalog

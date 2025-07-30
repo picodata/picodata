@@ -7,6 +7,10 @@ export const instances = {
       label: "Capacity Usage",
       valueLabel: "Useful capacity",
     },
+    systemCapacityProgress: {
+      label: "System Capacity Usage",
+      valueLabel: "Useful capacity",
+    },
     replicasets: {
       label: "Replicasets",
       description: "total replicasets",

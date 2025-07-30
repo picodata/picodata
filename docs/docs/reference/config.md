@@ -557,6 +557,36 @@ picodata run -c instance.memtx.memory=128M
 
 [`picodata run --memtx-memory`]: cli.md#run_memtx_memory
 
+### instance.memtx.system_memory {: #instance_memtx_system_memory }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
+
+Объем памяти *в байтах*, выделяемый для хранения кортежей и индексов системных таблиц. Когда
+достигается лимит использования памяти, запросы команд [INSERT](./sql/insert.md)
+и [UPDATE](./sql/update.md) начинают отклоняться с ошибкой *ER_MEMORY_ISSUE*.
+Сервер хранит в выделяемом объеме памяти только кортежи — для хранения индексов
+и информации о соединениях используется дополнительная память.
+
+Минимальное значение — 33,554,432 байтов (32 МБ)
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `256M` (268435456 Б)
+
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Пример:
+
+```bash
+picodata run -c instance.memtx.system_memory=128M
+```
+
+Аналогичная переменная окружения: `PICODATA_MEMTX_SYSTEM_MEMORY`<br>
+Аналогичная команда: [`picodata run --memtx-system-memory`]
+
+[`picodata run --memtx-system-memory`]: cli.md#run_memtx_system_memory
+
 ### instance.name {: #instance_name }
 
 Имя инстанса. При отсутствии параметра значение будет автоматически

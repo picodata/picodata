@@ -362,6 +362,14 @@ table.legend {
             <td>PICODATA_MEMTX_MEMORY</td>
         </tr>
         <tr>
+            <td><span class="instance">memtx-system-memory</span></td>
+            <td>Объем оперативной памяти в байтах, используемый движком хранения memtx для системных таблиц</td>
+            <td>268435456</td>
+            <td>[picodata run --memtx-memory](cli.md#run_memtx_memory)</td>
+            <td>[instance.memtx.system_memory](config.md#instance_memtx_system_memory)</td>
+            <td>PICODATA_MEMTX_SYSTEM_MEMORY</td>
+        </tr>
+        <tr>
             <td><span class="instance">memtx.max_tuple_size</span></td>
             <td>Максимальный размер кортежа в байтах для движка хранения memtx</td>
             <td>1048576</td>

@@ -46,6 +46,7 @@ where
     // gonna do that for you
     let argv: Vec<_> = args.iter().map(|a| a.as_ref().as_ptr()).collect();
 
+    crate::tarantool::set_use_system_alloc();
     unsafe {
         crate::tarantool::main(
             argv.len() as _,

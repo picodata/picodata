@@ -1,7 +1,12 @@
 export type ServerClusterInfoType = {
   clusterName: string;
   capacityUsage: number;
+  systemCapacityUsage: number;
   memory: {
+    used: number;
+    usable: number;
+  };
+  systemMemory: {
     used: number;
     usable: number;
   };

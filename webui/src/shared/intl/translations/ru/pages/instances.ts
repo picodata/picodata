@@ -9,6 +9,10 @@ export const instances: TPages["instances"] = {
       label: "Потребление памяти",
       valueLabel: "Использовано",
     },
+    systemCapacityProgress: {
+      label: "Потребление системной памяти",
+      valueLabel: "Использовано",
+    },
     replicasets: {
       label: "Репликасеты",
       description: "общее количество",

@@ -311,6 +311,24 @@ picodata run --iproto-listen 0.0.0.0:3301 --iproto-advertise 192.168.0.1:3301
 
 [`instance.memtx.memory`]: config.md#instance_memtx_memory
 
+### --memtx-system-memory {: #run_memtx_system_memory }
+
+`--memtx-system-memory <MEMTX_SYSTEM_MEMORY>`
+
+Объем оперативной памяти в байтах, используемый движком хранения
+[memtx](../overview/glossary.md#db_engine) для системных таблиц.
+То есть это независимая от `memtx_memory` квота.
+
+По умолчанию используется 256 МБ.
+
+Для удобства при указании значения можно использовать суффиксы (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Аналогичная переменная окружения: `PICODATA_MEMTX_SYSTEM_MEMORY`<br>
+Аналогичный параметр файла конфигурации: [`instance.memtx.system_memory`]
+
+[`instance.memtx.system_memory`]: config.md#instance_memtx_system_memory
+
 ### --peer {: #run_peer }
 
 `--peer <HOST:PORT>`

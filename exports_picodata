@@ -57,6 +57,7 @@ proc_replication_demote
 proc_replication_sync
 proc_rpc_dispatch
 proc_runtime_info
+proc_runtime_info_v2
 proc_sharding
 proc_sharding_bootstrap
 proc_sql_dispatch

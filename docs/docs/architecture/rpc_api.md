@@ -750,8 +750,13 @@ fn proc_rpc_dispatch(..) -> Result
 
 ### .proc_runtime_info {: #proc_runtime_info }
 
+Процедура устарела, и будет удалена в следующем мажорном обновлении.
+Вместо нее следует использовать [`proc_runtime_info_v2`](#proc_runtime_info_v2).
+
+### .proc_runtime_info_v2 {: #proc_runtime_info_v2 }
+
 ```rust
-fn proc_runtime_info() -> RuntimeInfo
+fn proc_runtime_info_v2() -> RuntimeInfo
 ```
 
 Возвращает служебную информацию.
@@ -769,6 +774,9 @@ fn proc_runtime_info() -> RuntimeInfo
       [`picodata run --http-listen`](../reference/cli.md#run_http_listen)
     - `version_info`: (MP_MAP [`VersionInfo`](#proc_version_info))
     - `slab_info`: (MP_MAP `SlabInfo`)
+      <br>аллокатор для пользовательских таблиц
+    - `slab_system_info`: (MP_MAP `SlabInfo`)
+      <br>аллокатор для системных таблиц
 
 ### .proc_sharding {: #proc_sharding }
 

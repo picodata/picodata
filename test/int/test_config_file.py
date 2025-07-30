@@ -106,6 +106,7 @@ instance:
             peer=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
                 memory=dict(value="64M", source="default"),
+                system_memory=dict(value="256M", source="default"),
                 max_tuple_size=dict(value="1M", source="default"),
             ),
             vinyl=dict(

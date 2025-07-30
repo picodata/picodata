@@ -29,27 +29,30 @@ const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
 
 static UPGRADE_OPERATIONS_MAP: LazyLock<HashMap<&'static str, Vec<(&'static str, &'static str)>>> =
     LazyLock::new(|| {
-        HashMap::from([(
-            "25.3.1",
-            vec![
-                // NOTE: see https://git.picodata.io/core/picodata/-/merge_requests/1867#note_158803
-                // a DDL on _pico_tier is risky, avoid it for now.
-                // (
-                //     "sql",
-                //     "ALTER TABLE _pico_tier ADD COLUMN is_default boolean",
-                // ),
-                //
-                // NOTE: some of our SQL scalar functions use exported
-                // procedures, so don't forget to check if all needed procedures
-                // are passed for the appropriate version.
-                ("proc_name", "proc_before_online"),
-                ("proc_name", "proc_cas_v2"),
-                ("proc_name", "proc_instance_uuid"),
-                ("proc_name", "proc_raft_leader_uuid"),
-                ("proc_name", "proc_raft_leader_id"),
-                ("proc_name", "proc_picodata_version"),
-            ],
-        )])
+        HashMap::from([
+            (
+                "25.3.1",
+                vec![
+                    // NOTE: see https://git.picodata.io/core/picodata/-/merge_requests/1867#note_158803
+                    // a DDL on _pico_tier is risky, avoid it for now.
+                    // (
+                    //     "sql",
+                    //     "ALTER TABLE _pico_tier ADD COLUMN is_default boolean",
+                    // ),
+                    //
+                    // NOTE: some of our SQL scalar functions use exported
+                    // procedures, so don't forget to check if all needed procedures
+                    // are passed for the appropriate version.
+                    ("proc_name", "proc_before_online"),
+                    ("proc_name", "proc_cas_v2"),
+                    ("proc_name", "proc_instance_uuid"),
+                    ("proc_name", "proc_raft_leader_uuid"),
+                    ("proc_name", "proc_raft_leader_id"),
+                    ("proc_name", "proc_picodata_version"),
+                ],
+            ),
+            ("25.3.3", vec![("proc_name", "proc_runtime_info_v2")]),
+        ])
     });
 
 /// Handles operations from `_pico_governor_queue` table.

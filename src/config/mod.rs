@@ -357,6 +357,10 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.memtx.memory = Some(memtx_memory);
         }
 
+        if let Some(memtx_system_memory) = args.memtx_system_memory {
+            config_from_args.instance.memtx.system_memory = Some(memtx_system_memory);
+        }
+
         if let Some(memtx_max_tuple_size) = args.memtx_max_tuple_size {
             config_from_args.instance.memtx.max_tuple_size = Some(memtx_max_tuple_size);
         }
@@ -1462,6 +1466,18 @@ pub struct MemtxSection {
     /// Corresponds to `box.cfg.memtx_memory`.
     #[introspection(config_default = "64M")]
     pub memory: Option<ByteSize>,
+
+    /// How much memory is allocated to store tuples and indexes
+    /// for system spaces. When the limit is reached, All operations on system
+    /// spaces begin failing with error ER_MEMORY_ISSUE.
+    /// The server does not go beyond the system_memtx_memory.
+    ///
+    /// Minimum is 32MB (32 * 1024 * 1024).
+    /// Default is 256MB (256 * 1024 * 1024)
+    ///
+    /// Corresponds to `box.cfg.memtx_system_memory`.
+    #[introspection(config_default = "256M")]
+    pub system_memory: Option<ByteSize>,
 
     /// Memory limit for one tuple.
     ///
@@ -2828,12 +2844,14 @@ instance:
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.log .level =debug  ",
                 "--config-parameter", "instance. memtx . memory=  999",
+                "--config-parameter", "instance. memtx . system_memory=  666",
                 "--config-parameter", "instance. memtx . max_tuple_size=  998",
             ]).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.name.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx.memory.unwrap().to_string(), String::from("999B"));
+            assert_eq!(config.instance.memtx.system_memory.unwrap().to_string(), String::from("666B"));
             assert_eq!(config.instance.memtx.max_tuple_size.unwrap().to_string(), String::from("998B"));
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
             assert_eq!(config.instance.instance_dir.unwrap(), PathBuf::from("."));

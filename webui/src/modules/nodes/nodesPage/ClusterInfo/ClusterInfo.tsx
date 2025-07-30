@@ -39,6 +39,21 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           />
         </div>
       </div>
+      <div className={cn(styles.left, styles.capacityInfoColumn)}>
+        <div className={styles.columnName}>
+          {clusterTranslations.systemCapacityProgress.label}
+        </div>
+        <div className={styles.capacityWrapper}>
+          <CapacityProgress
+            percent={clusterInfoData.systemCapacityUsage}
+            currentValue={clusterInfoData.systemMemory.used}
+            limit={clusterInfoData.systemMemory.usable}
+            currentValueLabel={
+              clusterTranslations.systemCapacityProgress.valueLabel
+            }
+          />
+        </div>
+      </div>
       <div className={styles.right}>
         <div className={cn(styles.rightColumn)}>
           <div className={styles.columnName}>

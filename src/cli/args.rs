@@ -317,6 +317,12 @@ pub struct Run {
     /// By default, 64 MiB is used.
     pub memtx_memory: Option<ByteSize>,
 
+    #[clap(long = "memtx-system-memory", env = "PICODATA_MEMTX_SYSTEM_MEMORY")]
+    /// The amount of memory in bytes to allocate for system spaces.
+    ///
+    /// By default, 256 MiB is used.
+    pub memtx_system_memory: Option<ByteSize>,
+
     #[clap(long = "memtx-max-tuple-size", env = "PICODATA_MEMTX_MAX_TUPLE_SIZE")]
     /// Size of the largest allocation unit, for the memtx storage engine
     ///

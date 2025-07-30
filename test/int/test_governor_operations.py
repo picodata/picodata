@@ -38,7 +38,13 @@ def insert_operations(cluster: Cluster, ops: list[str]) -> int:
 
 def test_catalog_upgrade(compat_instance: Instance):
     compat = Compatibility()
-    copy_dir(compat.previous_minor_path, compat_instance.instance_dir)
+    try:
+        backup_dir = compat.previous_patch_path
+    except ValueError:
+        backup_dir = compat.previous_minor_path
+
+    copy_dir(backup_dir, compat_instance.instance_dir)
+
     compat_instance.start()
     compat_instance.wait_online()
 
@@ -51,6 +57,7 @@ def test_catalog_upgrade(compat_instance: Instance):
         "proc_raft_leader_uuid",
         "proc_raft_leader_id",
         "proc_picodata_version",
+        "proc_runtime_info_v2",
     ]
     # NOTE: will uncomment these lines when we can test with
     # specific version of Picodata
@@ -88,7 +95,7 @@ def test_catalog_upgrade(compat_instance: Instance):
         assert res[0][2] == f".{proc_name}"
 
     res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-    assert res == [["25.3.1"]]
+    assert res == [["25.3.3"]]
 
 
 def test_ddl_ok(cluster: Cluster):

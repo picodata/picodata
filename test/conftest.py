@@ -3027,7 +3027,7 @@ class Compatibility:
                 return
 
         missing_previous_minor_version = f"{self.current_tag.major}.ANY<{self.current_tag.minor}.ANY"
-        pytest.fail(
+        raise ValueError(
             f"no previous minor version ({missing_previous_minor_version}) to current ({self.current_tag}) was found"
         )
 
@@ -3045,7 +3045,7 @@ class Compatibility:
         try:
             current_index = self.all_tags.index(self.current_tag)
         except ValueError:
-            pytest.fail(f"could not find current tag ({self.current_tag}) in list of tags")
+            raise ValueError(f"could not find current tag ({self.current_tag}) in list of tags")
 
         # iterate backwards until we find a tag with the same minor and a lower patch version
         for i in reversed(range(current_index)):
@@ -3057,7 +3057,7 @@ class Compatibility:
         missing_previous_patch_version = (
             f"{self.current_tag.major}.{self.current_tag.minor}.ANY<{self.current_tag.micro}"
         )
-        pytest.fail(
+        raise ValueError(
             f"no previous patch version ({missing_previous_patch_version}) to current ({self.current_tag}) was found"
         )
 

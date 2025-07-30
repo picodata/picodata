@@ -353,6 +353,7 @@ impl Cfg {
         #[rustfmt::skip]
         const BYTESIZE_FIELDS: &[(&str, &str)] = &[
             ("memtx_memory",                config_parameter_path!(instance.memtx.memory)),
+            ("memtx_system_memory",         config_parameter_path!(instance.memtx.system_memory)),
             ("memtx_max_tuple_size",        config_parameter_path!(instance.memtx.max_tuple_size)),
             ("vinyl_memory",                config_parameter_path!(instance.vinyl.memory)),
             ("vinyl_cache",                 config_parameter_path!(instance.vinyl.cache)),
@@ -982,4 +983,16 @@ pub extern "C" fn iproto_override_cb_redirect_execute(
         unwrap_or_report_and_propagate_err!(codec::Header::decode(&mut Cursor::new(header)));
 
     iproto_execute_handle_valid_internal_response(&mut header, &response_tuple)
+}
+
+extern "C" {
+    pub static mut use_system_alloc: extern "C" fn(space_id: u32) -> bool;
+}
+
+pub fn set_use_system_alloc() {
+    unsafe { use_system_alloc = use_system_alloc_cb };
+}
+
+extern "C" fn use_system_alloc_cb(space_id: u32) -> bool {
+    space_id <= crate::storage::SPACE_ID_INTERNAL_MAX
 }
