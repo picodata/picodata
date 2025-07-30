@@ -46,6 +46,9 @@ use crate::traft::op;
 use crate::traft::Result;
 use crate::util::effective_user_id;
 use config::PicodataConfig;
+use instance_uuid_file::dump_instance_uuid_file;
+use instance_uuid_file::read_instance_uuid_file;
+use instance_uuid_file::remove_instance_uuid_file;
 
 mod access_control;
 pub mod address;
@@ -65,6 +68,7 @@ pub mod governor;
 pub mod http_server;
 pub mod info;
 pub mod instance;
+pub mod instance_uuid_file;
 pub mod introspection;
 pub mod ipc;
 pub mod kvcell;
@@ -1079,6 +1083,25 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
                 }
             }
         }
+    } else if let Some(instance_uuid) = read_instance_uuid_file(config)? {
+        // This can happen in a rare case when picodata exits after reboostrap
+        // where the snapshot files have already been removed, but before
+        // box.cfg() successfully created the new snapshots. In this case after
+        // restart we just go to the StartPreJoin entrypoint again with the same
+        // instance_uuid which should be properly handled by leader.
+        let role = discovery::wait_global();
+        match role {
+            discovery::Role::Leader { .. } => {
+                unreachable!("we cannot be a leader when joining to the cluster after membership inconsistency");
+            }
+            discovery::Role::NonLeader { leader } => {
+                let next_entrypoint = Entrypoint::StartPreJoin {
+                    leader_address: leader,
+                    instance_uuid: Some(instance_uuid),
+                };
+                return Ok(Some(next_entrypoint));
+            }
+        }
     } else {
         // When going into the discovery procedure we don't need the whole storage
         // initialized but it's simpler to just call this instead of picking just
@@ -1256,6 +1279,12 @@ fn start_pre_join(
 
         let uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
         tlog!(Info, "generated instance uuid: {uuid}");
+
+        // Note that we persist instance_uuid to the storage, but that is not
+        // enough in some rare cases when picodata crashes in a short period of
+        // time after the rebootstrap and before the subsequent box.cfg() call.
+        // For that reason we also persist instance_uuid to a regular old file.
+        dump_instance_uuid_file(&uuid, config)?;
 
         let tnt_cfg = tarantool::Cfg::for_instance_pre_join(config, uuid.clone())?;
         // shredding=false because the Tarantool configuration is temporary
@@ -1605,6 +1634,8 @@ fn start_join(
 
     let cfg = tarantool::Cfg::for_instance_join(config, resp)?;
 
+    crate::error_injection!(exit "EXIT_AFTER_REBOOTSTRAP_BEFORE_STORAGE_INIT_IN_START_JOIN");
+
     let is_master = !cfg.read_only;
     init_common(config, &cfg, resp.shredding)?;
 
@@ -1636,6 +1667,9 @@ fn start_join(
             .persist_instance_name(&resp.instance.name)
             .unwrap();
         raft_storage
+            .persist_instance_uuid(&resp.instance.uuid)
+            .unwrap();
+        raft_storage
             .persist_cluster_name(config.cluster_name())
             .unwrap();
         raft_storage
@@ -1648,6 +1682,10 @@ fn start_join(
         Ok(())
     })
     .expect("transactions should not fail as it introduces unrecoverable state");
+
+    // At this point it's safe to remove the instance_uuid file, because it's
+    // persisted in the final storage and we don't rebootstrap after this point.
+    remove_instance_uuid_file(config)?;
 
     let cluster_uuid = raft_storage
         .cluster_uuid()

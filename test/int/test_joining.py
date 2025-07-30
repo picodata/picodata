@@ -668,12 +668,14 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
     follower_candidate_instance_name = "i_am_candidate"
     follower_candidate = cluster.add_instance(name=follower_candidate_instance_name, wait_online=False)
 
-    error_injection_prefix = "PICODATA_ERROR_INJECTION"
-    error_injection_value = "EXIT_AFTER_RPC_PROC_RAFT_JOIN"
-    error_injection = error_injection_prefix + "_" + error_injection_value
+    error_injection = "EXIT_AFTER_RPC_PROC_RAFT_JOIN"
+    lc = log_crawler(follower_candidate, error_injection)
 
-    follower_candidate.env[error_injection] = "1"
+    follower_candidate.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
     follower_candidate.fail_to_start()
+
+    # Make sure the error injection was triggered
+    lc.wait_matched()
 
     current_cluster_members = leader_member.sql(
         """
@@ -703,8 +705,26 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
     follower_candidate_instance_uuid = instance_uuid_select_result[0][0]
     assert follower_candidate_instance_uuid
 
-    del follower_candidate.env[error_injection]
-    follower_candidate.restart(kill=True)
+    del follower_candidate.env[f"PICODATA_ERROR_INJECTION_{error_injection}"]
+
+    # A corner case from https://git.picodata.io/core/picodata/-/issues/2077
+    error_injection = "EXIT_AFTER_REBOOTSTRAP_BEFORE_STORAGE_INIT_IN_START_JOIN"
+    lc = log_crawler(follower_candidate, error_injection)
+
+    follower_candidate.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    follower_candidate.fail_to_start()
+
+    # Instance uuid was saved to the file
+    instance_uuid_filepath = follower_candidate.instance_dir / "instance_uuid"
+    instance_uuid_from_file = instance_uuid_filepath.open().read()
+    assert follower_candidate_instance_uuid == instance_uuid_from_file
+
+    # Make sure the error injection was triggered
+    lc.wait_matched()
+
+    # Remove all error injections, now the instance should successfully join
+    del follower_candidate.env[f"PICODATA_ERROR_INJECTION_{error_injection}"]
+    follower_candidate.start()
     follower_candidate.wait_online()
 
     current_cluster_members = leader_member.sql(
@@ -730,3 +750,6 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
         """
     )
     assert current_joining_raft_state == "confirm"
+
+    # Instance uuid was removed automatically after successful boot
+    assert not instance_uuid_filepath.exists()
