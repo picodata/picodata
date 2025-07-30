@@ -88,8 +88,8 @@ cluster:
 instance:
   instance_dir: . # (14)!
   name: null # (20)!
-  replicaset_name: null # (25)!
-  tier: default # (26)!
+  replicaset_name: null # (26)!
+  tier: default # (27)!
   failure_domain: {} # (12)!
   peer: # (21)!
   - 127.0.0.1:3301
@@ -97,7 +97,7 @@ instance:
   iproto_advertise: 127.0.0.1:3301 # (9)!
   http_listen: null # (13)!
   admin_socket: ./admin.sock # (8)!
-  share_dir: null # (24)!
+  share_dir: null # (25)!
   audit: null # (10)!
   log:
     level: info # (18)!
@@ -106,20 +106,21 @@ instance:
   memtx:
     memory: 64M # (19)!
   vinyl:
-    memory: 128M # (28)!
-    cache: 128M # (27)!
-    bloom_fpr: 0.05 # (29)!
-    max_tuple_size: 1M # (30)!
-    page_size: 8K # (31)!
-    range_size: 1G # (32)!
-    run_count_per_level: 2 # (33)!
-    run_size_ratio: 3.5 # (34)!
-    read_threads: 1 # (35)!
-    write_threads: 4 # (36)!
-    timeout: 60.0 # (37)!
+    memory: 128M # (29)!
+    cache: 128M # (28)!
+    bloom_fpr: 0.05 # (30)!
+    max_tuple_size: 1M # (31)!
+    page_size: 8K # (32)!
+    range_size: 1G # (33)!
+    run_count_per_level: 2 # (34)!
+    run_size_ratio: 3.5 # (35)!
+    read_threads: 1 # (36)!
+    write_threads: 4 # (37)!
+    timeout: 60.0 # (38)!
   pg:
-    listen: 127.0.0.1:4327 # (22)!
-    ssl: false # (23)!
+    listen: 127.0.0.1:4327 # (23)!
+    advertise: 127.0.0.1:4327 # (22)!
+    ssl: false # (24)!
   boot_timeout: 7200 # (11)!
 ```
 
