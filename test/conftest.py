@@ -2960,8 +2960,10 @@ class Compatibility:
         version = self.current_tag
         return self.version_to_dir_path(version)
 
-    def version_to_dir_path(self, version: Version) -> Path | NoReturn:
+    def version_to_dir_path(self, version: Version, skip_checks: bool = False) -> Path | NoReturn:
         backup_path = Path(self.root) / "test" / "compat" / str(version)
+        if skip_checks:
+            return backup_path
 
         if not backup_path.exists():
             try:

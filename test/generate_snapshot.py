@@ -40,7 +40,7 @@ if __name__ == "__main__":
         version = compat.current_tag
 
         src_dir = Path(inst.instance_dir)
-        dest_dir = compat.version_to_dir_path(version)
+        dest_dir = compat.version_to_dir_path(version, skip_checks=True)
         conftest.copy_dir(src_dir, dest_dir)
         print(f'Success! Auto-generated snapshot of {version} copied into "{dest_dir}".')
     finally:
