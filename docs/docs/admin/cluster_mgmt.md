@@ -28,7 +28,7 @@
 На серверах кластера должны быть выполнены действия:
 
 - установлен пакет `picodata` необходимой версии (его
-  можно установить на шаге "Первоначальная настройка серверов")
+  можно установить на шаге [Первоначальная настройка серверов](#server_setup))
 - должна присутствовать утилита `setfacl` (обычно находится в пакете
   `acl`)
 - создана учетная записи для Администратора ОС (с полными
@@ -39,7 +39,7 @@
   переключения на эту учетную запись без запроса пароля (`sudo -su
   picodata`)
 
-Параметры создания учетной записи, указанной в параметре `user`:
+Параметры создания учетной записи, указанной для `user`:
 
 ```
 create_home=yes
@@ -47,18 +47,18 @@ shell=/sbin/nologin
 ```
 
 Для примера, настройка правил sudo для возможности переключения на
-учетную запись `picodata` из под пользователя `dbadm`:
+учетную запись `picodata` из-под пользователя `dbadm`:
 
-```
+```shell
 Cmnd_Alias SHELL = /bin/sh, /bin/bash"
 dbadm ALL = (picodata) NOPASSWD: SHELL
 ```
 
 В инвентарном файле:
 
-- определить директории: `conf_dir`, `data_dir`, `run_dir`, `log_dir`,
+- определите директории: `conf_dir`, `data_dir`, `run_dir`, `log_dir`,
   `share_dir`
-- выставить переменные:
+- выставите переменные:
     ```
     user: picodata
     group: picodata
@@ -104,7 +104,7 @@ dbadm ALL = (picodata) NOPASSWD: SHELL
       name: picodata-ansible
 ```
 
-Выполните следующую команду для подготовки серверов:
+Выполните команду для подготовки серверов:
 
 ```shell
 ansible-playbook -i <inventory> picodata.yml -t deploy_become -u sysadm -k
@@ -114,7 +114,7 @@ ansible-playbook -i <inventory> picodata.yml -t deploy_become -u sysadm -k
 
 Выполняется под учетной записью Администратора БД, например `dbadm`.
 
-Установка кластера выполняется командой:
+Установите кластер командой:
 
 ```shell
 ansible-playbook -i <inventory> picodata.yml -u dbadm --become-user=picodata -k
@@ -128,7 +128,7 @@ ansible-playbook -i <inventory> picodata.yml -u dbadm --become-user=picodata -k
 ### Управление кластером без повышения привилегий {: #systemd_user_mgmt }
 
 Администратор БД может работать с процессами инстансов при переключении
-на пользователя, указанного в параметре `user`
+на пользователя, указанного в параметре `user`.
 
 После переключения на пользователя `user` для работы `systemctl`
 выставите переменную окружения `XDG_RUNTIME_DIR` командой:
@@ -171,7 +171,7 @@ ansible-playbook -i <inventory> picodata.yml -t remove -u dbadm --become-user=pi
 
 Для очистки серверов выполните команду:
 
-```bash
+```shell
 ansible-playbook -i <inventory> picodata.yml -t remove_become -u sysadm -k
 ```
 
@@ -183,15 +183,15 @@ ansible-playbook -i <inventory> picodata.yml -t remove_become -u sysadm -k
 
 На серверах:
 
-- установлен пакет `supervisor`
+- установите пакет `supervisor`
 
 В инвентарном файле:
 
-- при необходимости определить директории: `supervisord_dir`
-- выставить значение переменной `init_system` в `supervisord`
+- при необходимости определите директории: `supervisord_dir`
+- выставите значение переменной `init_system` в `supervisord`
 
 Первоначальная настройка серверов, инсталляция и удаление кластера
-проводятся теми же командами, как и для `supervisord`
+проводятся теми же командами, как и для `supervisord`.
 
 ### Работа с кластером через Supervisord {: #supervisord_cluster_mgmt }
 
@@ -211,7 +211,7 @@ supervisorctl -c /data/picodata/supervisord/test.conf stop all
 - `cluster_name` = `test`
 - `default-1000`, `router-1001` — названия инстансов
 
-Для удобства администратотра можно установить псевдоним (alias) в shell-оболочке:
+Для удобства администратора можно установить псевдоним (alias) в командной оболочке:
 
 ```shell
 picosuper='supervisorctl -c /data/picodata/supervisord/test.conf'
