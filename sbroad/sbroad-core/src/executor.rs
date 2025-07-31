@@ -54,7 +54,7 @@ impl Plan {
     ///
     /// # Errors
     /// - Failed to optimize the plan.
-    pub fn optimize(mut self) -> Result<Self, SbroadError> {
+    pub fn optimize(self) -> Result<Self, SbroadError> {
         self.replace_in_operator()?
             .push_down_not()?
             // In the case if the query was not fully parameterized

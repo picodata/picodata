@@ -1,5 +1,5 @@
 use self::{
-    describe::{PortalDescribe, QueryType, StatementDescribe},
+    describe::{PortalDescribe, StatementDescribe},
     result::ExecuteResult,
     storage::{Portal, Statement, PG_PORTALS, PG_STATEMENTS},
 };
