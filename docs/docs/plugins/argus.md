@@ -29,7 +29,7 @@ Picodata, для которой перед этим была настроена 
 
 ```
 └── argus
-    └── 2.1.2
+    └── 2.1.3
         ├── libargus.so
         └── manifest.yaml
 ```
@@ -71,13 +71,13 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 После запуска Picodata с поддержкой плагинов в заданной директории подключитесь к [административной
 консоли] инстанса Picodata.
 
-Установите плагин, добавьте его к тиру и включите его с помощью
+Установите плагин, добавьте его сервис к тиру и включите его с помощью
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN argus 2.1.2;
-ALTER PLUGIN argus 2.1.2 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN argus 2.1.2 ENABLE;
+CREATE PLUGIN argus 2.1.3;
+ALTER PLUGIN argus 2.1.3 ADD SERVICE argus TO TIER default;
+ALTER PLUGIN argus 2.1.3 ENABLE;
 ```
 
 !!! note "Примечание"
@@ -138,7 +138,7 @@ all:
 
     plugins:
       argus:
-        path: "argus_2.1.2.tar.gz"
+        path: "argus_2.1.3.tar.gz"
         tiers:
           - default
         config: "argus-config.yml"
