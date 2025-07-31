@@ -63,7 +63,7 @@ crate::define_rpc_request! {
         let lock = LOCK.with(Rc::clone);
         let _guard = lock.lock();
 
-        if crate::tarantool::eval("return box.info.ro")? {
+        if node.is_readonly() {
             let e = BoxError::new(
                 TarantoolErrorCode::Readonly,
                 "cannot apply schema change on a read only instance"

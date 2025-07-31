@@ -76,6 +76,13 @@ crate::define_rpc_request! {
         // requestee. And if the new request has index less then the one in our
         // _schema, then we ignore it.
 
+        if is_replication_broken()? {
+            // reset replication if it is broken
+            tlog!(Error, "replication is broken, trying to restart it");
+            let replication_cfg: Vec<String> = vec![];
+            set_cfg_field("replication", &replication_cfg)?;
+        }
+
         let mut replication_cfg = Vec::with_capacity(req.replicaset_peers.len());
         let password = pico_service_password();
         for address in &req.replicaset_peers {
@@ -96,7 +103,7 @@ crate::define_rpc_request! {
             // because cleaning up _cluster is not critical and we can do
             // it later.
             if let Err(e) = update_sys_cluster() {
-                tlog!(Error, "failed to update sys_cluster: {e}");
+                tlog!(Error, "failed to update _cluster: {e}");
             }
         } else {
             // Everybody else should be read-only
@@ -131,7 +138,7 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        debug_assert!(is_read_only()?);
+        debug_assert!(node.is_readonly());
 
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
 
@@ -156,10 +163,26 @@ crate::define_rpc_request! {
     pub struct ReplicationSyncResponse {}
 }
 
-fn is_read_only() -> Result<bool> {
+fn is_replication_broken() -> Result<bool> {
     let lua = tarantool::lua_state();
-    let ro = lua.eval("return box.info.ro")?;
-    Ok(ro)
+    let result: bool = lua.eval(
+        "for k, v in pairs(box.info.replication) do
+                if v.upstream ~= nil then
+                    if v.upstream.status == 'stopped' or v.upstream.status == 'disconnected' then
+                        return true
+                    end
+                end
+                if v.downstream ~= nil then
+                    if v.downstream.status == 'stopped' then
+                        return true
+                    end
+                end
+            end
+
+            return false",
+    )?;
+
+    Ok(result)
 }
 
 // Updates space._cluster to remove expelled or non-existing instances.
@@ -238,7 +261,7 @@ fn promote_to_master() -> Result<()> {
     // instance but at some point we will implement support for
     // tarantool synchronous transactions then this operation will probably
     // become more involved.
-    let was_read_only = is_read_only()?;
+    let was_read_only = node.is_readonly();
 
     let lua = tarantool::lua_state();
     let ro_reason: Option<tlua::StringInLua<_>> = lua.eval(
@@ -276,7 +299,7 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        let was_read_only = is_read_only()?;
+        let was_read_only = node.is_readonly();
 
         crate::tarantool::exec("box.cfg { read_only = true }")?;
 

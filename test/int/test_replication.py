@@ -535,3 +535,48 @@ def test_stale_governor_replication_requests(cluster: Cluster):
         i2.assert_raft_status("Leader")
 
     Retriable(timeout=10).call(check_replication)
+
+
+def test_fixing_broken_replication(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_name="default_1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="default_1", wait_online=True)
+
+    assert not i1.eval("return box.info.ro"), "i1 should be master initially"
+    assert i2.eval("return box.info.ro"), "i2 should be read-only initially"
+
+    # break replication
+    i2.eval("box.cfg { read_only = false, replication = {} }")
+    i1.eval("box.cfg { replication = {} }")
+    # make conflicting records in _func
+    i2.eval("box.schema.func.create('.my_func')")
+    i1.eval("box.schema.func.create('.my_func')")
+
+    info_replication = i1.eval("return box.info.replication")
+    assert info_replication[2]["downstream"]["status"] == "stopped"
+    assert info_replication[2]["downstream"]["system_message"] == "Broken pipe"
+
+    # reconfigure replication
+    i1.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE name = 'default_1'")
+    i2.raft_wait_index(i1.raft_get_index())
+    i1.wait_governor_status("idle")
+
+    # got "duplicate key" conflict, replication is stopped
+    info_replication = i1.eval("return box.info.replication")
+    assert info_replication[2]["upstream"]["status"] == "stopped"
+    assert "Duplicate key exists" in info_replication[2]["upstream"]["message"]
+
+    # fix the conflict
+    i1.eval("box.schema.func.drop('.my_func')")
+    i2.eval(
+        "box.begin() box.cfg { read_only = false } box.schema.func.drop('.my_func') box.cfg { read_only = true } box.commit()"
+    )
+
+    # repaire replication
+    i1.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE name = 'default_1'")
+    i2.raft_wait_index(i1.raft_get_index())
+    i1.wait_governor_status("idle")
+
+    # it is OK now
+    info_replication = i1.eval("return box.info.replication")
+    assert info_replication[2]["upstream"]["status"] == "follow"
+    assert info_replication[2]["downstream"]["status"] == "follow"

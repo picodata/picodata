@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Fixes
 - Fixed "instance is already joined" error if picodata crashes during reboostrap
   (see also https://git.picodata.io/core/picodata/-/issues/2077).
+- Supported detecting and fixing broken replication.
 
 ## [25.3.1] - 2025-07-25
 
