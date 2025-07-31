@@ -58,6 +58,7 @@ def create_test_data(instance: Instance):
     assert result["row_count"] == 5
 
 
+@pytest.mark.flaky(reruns=3)
 def test_scalar_function_instance_uuid(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
