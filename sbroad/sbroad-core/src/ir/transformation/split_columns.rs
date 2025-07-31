@@ -110,8 +110,9 @@ impl Plan {
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn split_columns(&mut self) -> Result<(), SbroadError> {
+    pub fn split_columns(mut self) -> Result<Self, SbroadError> {
         self.transform_expr_trees(&call_expr_tree_split_columns)
+            .map(|_| self)
     }
 }
 

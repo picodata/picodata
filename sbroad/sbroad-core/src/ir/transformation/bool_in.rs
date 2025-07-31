@@ -77,8 +77,9 @@ impl Plan {
     }
 
     /// Replace all IN operators with the OR-ed chain of equalities.
-    pub fn replace_in_operator(&mut self) -> Result<(), SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_replace_in)
+    pub fn replace_in_operator(mut self) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(&call_expr_tree_replace_in)?;
+        Ok(self)
     }
 }
 

@@ -486,8 +486,9 @@ impl Plan {
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn derive_equalities(&mut self) -> Result<(), SbroadError> {
+    pub fn derive_equalities(mut self) -> Result<Self, SbroadError> {
         self.transform_expr_trees(&call_expr_tree_derive_equalities)
+            .map(|_| self)
     }
 }
 

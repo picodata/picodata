@@ -19,11 +19,13 @@ use crate::ir::Plan;
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
-    let mut plan = sql_to_ir(query, params);
-    plan.optimize().unwrap();
-    plan.update_timestamps().unwrap();
-    plan.cast_constants().unwrap();
-    plan
+    sql_to_ir(query, params)
+        .optimize()
+        .unwrap()
+        .update_timestamps()
+        .unwrap()
+        .cast_constants()
+        .unwrap()
 }
 
 /// Compiles an SQL query to IR plan.
@@ -52,10 +54,10 @@ pub fn sql_to_ir_without_bind(query: &str, params_types: &[DerivedType]) -> Plan
 pub fn check_transformation(
     query: &str,
     params: Vec<Value>,
-    f_transform: &dyn Fn(&mut Plan),
+    f_transform: &dyn Fn(Plan) -> Plan,
 ) -> PatternWithParams {
     let mut plan = sql_to_ir(query, params);
-    f_transform(&mut plan);
+    plan = f_transform(plan);
     let mut ex_plan = ExecutionPlan::from(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 

@@ -270,8 +270,9 @@ impl Plan {
         Ok(new_expr_id)
     }
 
-    pub fn push_down_not(&mut self) -> Result<(), SbroadError> {
-        self.transform_expr_trees(&call_expr_tree_not_push_down)
+    pub fn push_down_not(mut self) -> Result<Self, SbroadError> {
+        self.transform_expr_trees(&call_expr_tree_not_push_down)?;
+        Ok(self)
     }
 }
 

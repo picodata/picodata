@@ -17,14 +17,22 @@ use std::collections::HashMap;
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(query, &[], metadata).unwrap();
-    plan.replace_in_operator().unwrap();
-    plan.push_down_not().unwrap();
-    plan.split_columns().unwrap();
-    plan.set_dnf().unwrap();
-    plan.derive_equalities().unwrap();
-    plan.merge_tuples().unwrap();
-    plan.add_motions().unwrap_err()
+    AbstractSyntaxTree::transform_into_plan(query, &[], metadata)
+        .unwrap()
+        .replace_in_operator()
+        .unwrap()
+        .push_down_not()
+        .unwrap()
+        .split_columns()
+        .unwrap()
+        .set_dnf()
+        .unwrap()
+        .derive_equalities()
+        .unwrap()
+        .merge_tuples()
+        .unwrap()
+        .add_motions()
+        .unwrap_err()
 }
 
 #[test]
@@ -1508,7 +1516,7 @@ fn front_sql_groupby_invalid() {
     let input = r#"select "b", "a" from "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
+    let plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
     let res = plan.optimize();
 
     assert_eq!(true, res.is_err());

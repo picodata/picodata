@@ -36,7 +36,7 @@ impl Plan {
     ///
     /// This function focuses on simplifying the plan by eliminating unnecessary casts in selection
     /// expressions, enabling bucket filtering and in value rows, enabling local materialization.
-    pub fn cast_constants(&mut self) -> Result<(), SbroadError> {
+    pub fn cast_constants(mut self) -> Result<Self, SbroadError> {
         let cast_filter = |node_id| {
             matches!(
                 self.get_node(node_id),
@@ -60,7 +60,8 @@ impl Plan {
                 to,
             }) = self.get_expression_node(cast_id)?
             {
-                apply_cast(self, *cast_child, *to).map(|value| Node32::Constant(Constant { value }))
+                apply_cast(&self, *cast_child, *to)
+                    .map(|value| Node32::Constant(Constant { value }))
             } else {
                 None
             };
@@ -70,6 +71,6 @@ impl Plan {
             }
         }
 
-        Ok(())
+        Ok(self)
     }
 }

@@ -161,7 +161,7 @@ pub fn bind(
         plan.raw_options =
             apply_default_options(&plan.raw_options, &connection_options, &system_options);
         plan.apply_options()?;
-        plan.optimize()?;
+        plan = plan.optimize()?;
     }
 
     let key = storage::Key(id, portal_name.into());

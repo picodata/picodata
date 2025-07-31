@@ -54,23 +54,20 @@ impl Plan {
     ///
     /// # Errors
     /// - Failed to optimize the plan.
-    pub fn optimize(&mut self) -> Result<(), SbroadError> {
-        self.replace_in_operator()?;
-        self.push_down_not()?;
-
-        // In the case if the query was not fully parameterized
-        // and contains some constants, lets apply constant folding.
-        self.update_timestamps()?;
-        self.cast_constants()?;
-        self.fold_boolean_tree()?;
-
-        self.split_columns()?;
-        self.set_dnf()?;
-        self.derive_equalities()?;
-        self.merge_tuples()?;
-        self.add_motions()?;
-        self.update_substring()?;
-        Ok(())
+    pub fn optimize(mut self) -> Result<Self, SbroadError> {
+        self.replace_in_operator()?
+            .push_down_not()?
+            // In the case if the query was not fully parameterized
+            // and contains some constants, lets apply constant folding.
+            .update_timestamps()?
+            .cast_constants()?
+            .fold_boolean_tree()?
+            .split_columns()?
+            .set_dnf()?
+            .derive_equalities()?
+            .merge_tuples()?
+            .add_motions()?
+            .update_substring()
     }
 }
 
@@ -166,7 +163,7 @@ where
                 plan.bind_option_params(&params);
                 plan.check_options()?;
                 plan.raw_options = raw_options_clone;
-                plan.optimize()?;
+                plan = plan.optimize()?;
             }
 
             if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
@@ -181,9 +178,10 @@ where
         } else if plan.is_dql_or_dml()? {
             plan.bind_params(&params)?;
             plan.apply_options()?;
-            plan.update_timestamps()?;
-            plan.cast_constants()?;
-            plan.fold_boolean_tree()?;
+            plan = plan
+                .update_timestamps()?
+                .cast_constants()?
+                .fold_boolean_tree()?;
         }
 
         let query = Query {

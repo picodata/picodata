@@ -163,7 +163,7 @@ impl Plan {
         Ok(res)
     }
 
-    pub fn fold_boolean_tree(&mut self) -> Result<(), SbroadError> {
+    pub fn fold_boolean_tree(mut self) -> Result<Self, SbroadError> {
         let selection_filter = |id: NodeId| -> bool {
             matches!(
                 self.get_node(id),
@@ -275,7 +275,7 @@ impl Plan {
             }
         }
 
-        Ok(())
+        Ok(self)
     }
 }
 

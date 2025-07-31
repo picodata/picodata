@@ -2411,7 +2411,7 @@ impl Plan {
     /// - failed to get relational nodes (plan is invalid?)
     /// - failed to resolve distribution conflicts
     /// - failed to set distribution
-    pub fn add_motions(&mut self) -> Result<(), SbroadError> {
+    pub fn add_motions(mut self) -> Result<Self, SbroadError> {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
@@ -2730,7 +2730,7 @@ impl Plan {
         let top_id = self.get_top()?;
         let slices = self.calculate_slices(top_id)?;
         self.set_slices(slices);
-        Ok(())
+        Ok(self)
     }
 
     /// Calculate slices for given subtree

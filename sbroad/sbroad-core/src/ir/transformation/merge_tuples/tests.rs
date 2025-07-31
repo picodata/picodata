@@ -3,8 +3,8 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 
-fn merge_tuples(plan: &mut Plan) {
-    plan.merge_tuples().unwrap();
+fn merge_tuples(plan: Plan) -> Plan {
+    plan.merge_tuples().unwrap()
 }
 
 #[test]

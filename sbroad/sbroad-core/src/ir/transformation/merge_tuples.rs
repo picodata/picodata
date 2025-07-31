@@ -619,8 +619,9 @@ impl Plan {
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn merge_tuples(&mut self) -> Result<(), SbroadError> {
+    pub fn merge_tuples(mut self) -> Result<Self, SbroadError> {
         self.transform_expr_trees(&call_expr_tree_merge_tuples)
+            .map(|_| self)
     }
 }
 

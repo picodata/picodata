@@ -21,8 +21,7 @@ fn union_all_in_sq() {
             WHERE "sys_op" > 1) AS "t3"
         WHERE "identification_number" = 1"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -32,55 +31,70 @@ fn inner_join_eq_for_keys() {
         INNER JOIN "t"
         ON ("t1"."identification_number", "t1"."product_code") = ("t"."a", "t"."b")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
 #[test]
 fn inner_join_eq_chain() {
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON true = true = true = (t1.a = t2.a)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.cast_constants().unwrap();
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .cast_constants()
+        .unwrap()
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) = true = true = true"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) in (true)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.replace_in_operator().unwrap();
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .replace_in_operator()
+        .unwrap()
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON true = (t1.a = t2.a)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) is true is true"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) = (1 = 1)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON true = (t1.a != t2.a)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![])
+        .fold_boolean_tree()
+        .unwrap()
+        .add_motions()
+        .unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -94,23 +108,19 @@ fn inner_join_eq_chain() {
 fn inner_join_condition() {
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2
     ON t1.a::text::datetime = to_date('2000-01-01', '%F')"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
+    sql_to_ir(query, vec![]).fold_boolean_tree().unwrap();
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2
     ON t1.a::text = trim('hello')"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
+    sql_to_ir(query, vec![]).fold_boolean_tree().unwrap();
 
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2
     ON t1.a = case when t2.a = 1 then 42 else 666 end"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
+    sql_to_ir(query, vec![]).fold_boolean_tree().unwrap();
 
     let query = r#"SELECT * FROM (SELECT 1) AS t1
     JOIN (SELECT 1) AS t2 ON (98 <> 1)"#;
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.fold_boolean_tree().unwrap();
+    sql_to_ir(query, vec![]).fold_boolean_tree().unwrap();
 }
 
 #[test]
@@ -120,8 +130,7 @@ fn join_inner_sq_eq_for_keys() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -132,8 +141,7 @@ fn join_inner_sq_eq_for_keys_with_const() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", 1, "t1"."product_code") = ("t2"."id", 1, "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -144,8 +152,7 @@ fn join_inner_sq_less_for_keys() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") < ("t2"."id", "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -162,8 +169,7 @@ fn join_inner_sq_eq_no_keys() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."product_code", '1') = ('1', "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -180,8 +186,7 @@ fn join_inner_sq_eq_no_outer_keys() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", '1') = ("t2"."id", "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -199,8 +204,7 @@ fn inner_join_full_policy_sq_in_filter() {
         AND ("t"."a", "t"."b") >=
         (SELECT "hash_testing"."sys_op", "hash_testing"."bucket_id" FROM "hash_testing")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -218,8 +222,7 @@ fn inner_join_local_policy_sq_in_filter() {
         AND ("t"."a", "t"."b") =
         (SELECT "hash_testing2"."identification_number", "hash_testing2"."product_code" FROM "hash_testing2")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -233,8 +236,7 @@ fn inner_join_local_policy_sq_with_union_all_in_filter() {
         UNION ALL
         SELECT "hash_testing_hist2"."identification_number", "hash_testing_hist2"."product_code" FROM "hash_testing_hist2")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -247,8 +249,7 @@ fn join_inner_and_local_full_policies() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -260,8 +261,7 @@ fn join_inner_or_local_full_policies() {
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."id", "t2"."pc")
         OR "t1"."identification_number"::text = "t2"."pc""#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {

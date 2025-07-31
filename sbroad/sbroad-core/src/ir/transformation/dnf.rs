@@ -266,8 +266,9 @@ impl Plan {
 
     /// Convert an expression tree of trivalent nodes to a conjunctive
     /// normal form (CNF) for the whole plan.
-    pub fn set_dnf(&mut self) -> Result<(), SbroadError> {
+    pub fn set_dnf(mut self) -> Result<Self, SbroadError> {
         self.transform_expr_trees(&call_expr_tree_to_dnf)
+            .map(|_| self)
     }
 }
 

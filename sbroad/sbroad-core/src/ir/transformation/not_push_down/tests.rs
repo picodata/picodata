@@ -3,8 +3,8 @@ use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
-fn push_down_not(plan: &mut Plan) {
-    plan.push_down_not().unwrap();
+fn push_down_not(plan: Plan) -> Plan {
+    plan.push_down_not().unwrap()
 }
 
 #[test]

@@ -6,8 +6,8 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 
-fn split_columns(plan: &mut Plan) {
-    plan.split_columns().unwrap();
+fn split_columns(plan: Plan) -> Plan {
+    plan.split_columns().unwrap()
 }
 
 #[test]

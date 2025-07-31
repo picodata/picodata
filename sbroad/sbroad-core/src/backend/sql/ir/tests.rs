@@ -17,13 +17,19 @@ fn check_sql_with_snapshot(
     expected: PatternWithParams,
     snapshot: Snapshot,
 ) {
-    let mut plan = sql_to_ir(query, params);
-    plan.replace_in_operator().unwrap();
-    plan.push_down_not().unwrap();
-    plan.split_columns().unwrap();
-    plan.set_dnf().unwrap();
-    plan.derive_equalities().unwrap();
-    plan.merge_tuples().unwrap();
+    let plan = sql_to_ir(query, params)
+        .replace_in_operator()
+        .unwrap()
+        .push_down_not()
+        .unwrap()
+        .split_columns()
+        .unwrap()
+        .set_dnf()
+        .unwrap()
+        .derive_equalities()
+        .unwrap()
+        .merge_tuples()
+        .unwrap();
     let mut ex_plan = ExecutionPlan::from(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 

@@ -10,8 +10,8 @@ use pretty_assertions::assert_eq;
 
 use super::{EqClass, EqClassChain, EqClassConst, EqClassExpr, EqClassRef};
 
-fn derive_equalities(plan: &mut Plan) {
-    plan.derive_equalities().unwrap();
+fn derive_equalities(plan: Plan) -> Plan {
+    plan.derive_equalities().unwrap()
 }
 
 #[test]

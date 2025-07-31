@@ -3,8 +3,8 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 
-fn replace_in_operator(plan: &mut Plan) {
-    plan.replace_in_operator().unwrap();
+fn replace_in_operator(plan: Plan) -> Plan {
+    plan.replace_in_operator().unwrap()
 }
 
 #[test]

@@ -12,8 +12,7 @@ fn except1() {
         EXCEPT DISTINCT
         SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist""#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -29,8 +28,7 @@ fn except2() {
         EXCEPT DISTINCT
         SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist" AS "t""#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     assert_eq!(Slices::empty(), plan.slices);
 }
 
@@ -40,8 +38,7 @@ fn except3() {
         EXCEPT
         SELECT 1, 2 FROM "hash_testing_hist""#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -69,8 +66,7 @@ fn except4() {
             SELECT 1, 2 FROM "hash_testing_hist"
         ) as t"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -98,8 +94,7 @@ fn except5() {
             SELECT 1, 2 FROM "hash_testing_hist"
         ) as t"#;
 
-    let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
