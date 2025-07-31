@@ -3,7 +3,6 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::rc::Rc;
 use std::str::from_utf8;
-use std::time::Duration;
 
 use nix::unistd::isatty;
 use rustyline::completion::{extract_word, Completer};
@@ -74,16 +73,14 @@ pub enum UnixClientError {
 impl UnixClient {
     const SERVER_DELIM: &'static str = "$EOF$\n";
     const CLIENT_DELIM: &'static [u8] = b"\n...\n";
-    const WAIT_TIMEOUT: u64 = 10;
     const INITIAL_BUFFER_SIZE: usize = 1024;
 
-    fn from_stream(socket: UnixStream) -> Result<Self, UnixClientError> {
-        socket.set_read_timeout(Some(Duration::from_secs(Self::WAIT_TIMEOUT)))?;
-        Ok(UnixClient {
+    fn from_stream(socket: UnixStream) -> Self {
+        UnixClient {
             socket,
             current_language: ConsoleLanguage::Lua,
             buffer: vec![0; Self::INITIAL_BUFFER_SIZE],
-        })
+        }
     }
 
     /// Creates struct object using `path` for raw unix socket.
@@ -91,7 +88,7 @@ impl UnixClient {
     /// Setup delimiter, default language and ignore tarantool prompt.
     fn new(path: &str) -> Result<Self, UnixClientError> {
         let socket = UnixStream::connect(path)?;
-        let mut client = Self::from_stream(socket)?;
+        let mut client = Self::from_stream(socket);
 
         // set delimiter
         let prelude: &str = "require(\"console\").delimiter(\"$EOF$\")\n";
@@ -314,7 +311,7 @@ pub fn main(args: args::Admin) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::net::UnixStream;
+    use std::{os::unix::net::UnixStream, time::Duration};
 
     use rmp::encode::RmpWrite;
 
@@ -322,13 +319,19 @@ mod tests {
 
     fn setup_client_server() -> (UnixClient, UnixStream) {
         let (client, server) = UnixStream::pair().unwrap();
-        let unix_client = UnixClient::from_stream(client).unwrap();
+        let unix_client = UnixClient::from_stream(client);
         (unix_client, server)
     }
 
     #[test]
     fn delimiter_timeout() {
         let (mut client, mut server) = setup_client_server();
+        // Since the server doesn't respond until it encounters a delimiter, and
+        // the socket was created without a read timeout, we explicitly set it here for testing purposes.
+        client
+            .socket
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
         server.write_bytes(b"output without delim").unwrap();
         let output = client.read();
         assert!(output.is_err());
