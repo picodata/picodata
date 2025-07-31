@@ -15,7 +15,7 @@ Picodata предоставляет обособленный [JDBC-драйве�
 
 [DBeaver]: https://dbeaver.io
 [JDBC-драйвер]: https://git.picodata.io/picodata/picodata/picodata-jdbc
-[отдельно]: connectors/jdbc.md
+[отдельно]: ../dev/connectors/jdbc.md
 
 ## Требования {: #prerequisites }
 

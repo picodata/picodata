@@ -44,11 +44,12 @@ Picodata — это распределенная система промышле
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
 
-#### Разработка приложений {: #app_development }
+### Разработка приложений {: #development }
 
-* [Создание плагина](tutorial/create_plugin.md)
-* [Управление плагинами](tutorial/plugins.md)
-* [Внешние коннекторы](connectors_index.md)
+* [Инструментарий разработчика](dev/developer_tools.md)
+* [Внешние коннекторы](dev/connectors_index.md)
+* [Создание плагина](dev/plugin_create.md)
+* [Управление плагинами](dev/plugin_mgmt.md)
 
 ### Администрирование кластера {: #administration }
 
@@ -91,7 +92,7 @@ Picodata — это распределенная система промышле
 * [Файберы, потоки и многозадачность](architecture/fibers.md)
 * [Механизм плагинов](architecture/plugins.md)
 
-### Плагины {: #plugins }
+#### Плагины  {: #available_plugins }
 
 * [Argus](plugins/argus.md)
 * [Kirovets](plugins/kirovets.md)

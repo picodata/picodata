@@ -24,11 +24,9 @@
     `postgresql` (RHEL/Fedora). В macOS установите пакет `libpq` через
     Homebrew.
 
-
 См. также:
 
 - [Справочник psql](https://www.postgresql.org/docs/current/app-psql.html)
-- [Использование внешних коннекторов к Picodata](../connectors_index.md)
 - [Работа с данными SQL](sql_examples.md)
 
 ## Консоль администратора {: #admin_console }
@@ -39,7 +37,7 @@
 [Администратора СУБД](../admin/access_control.md#admin) (`admin`). Для запуска
 консоли используйте следующую команду с указанием файла unix-сокета:
 
-```
+```shell
 picodata admin ./admin.sock
 ```
 
@@ -52,7 +50,7 @@ picodata admin ./admin.sock
 
 При успешном подключении отобразится приглашение:
 
-```
+```shell
 $ picodata admin ./admin.sock
 Connected to admin console by socket path "./admin.sock"
 type '\help' for interactive help

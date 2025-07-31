@@ -383,7 +383,7 @@ ansible-playbook -i ouroboros.yml picodata.yml
 
 См. также:
 
-- [Управление плагинами](../tutorial/plugins.md)
+- [Управление плагинами](../dev/plugin_mgmt.md)
 
 <!--
 ## Сборка и подготовка файлов плагина {: #local_build }
@@ -422,7 +422,7 @@ cp manifest.yml ./plugins/uroboros/<версия>/manifest.yaml
 cp -r migrations/* plugins/uroboros/<версия>
 ```
 
-Запустите плагин согласно руководству [Управление плагинами](../tutorial/plugins.md)
+Запустите плагин согласно руководству [Управление плагинами](../dev/plugin_mgmt.md)
 
 ## Проверка в локальном тестовом окружении {: #docker_test }
 

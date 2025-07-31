@@ -155,7 +155,7 @@ authorization_mode:
     state: Off
 ```
 
-[Picodata Pike]: ../tutorial/create_plugin.md#pike_plugin_config_apply
+[Picodata Pike]: ../dev/plugin_create.md#pike_plugin_config_apply
 [инвентарного файла Ansible]: ../admin/deploy_ansible.md#plugin_management
 
 ### Сетевые настройки {: #network_settings }

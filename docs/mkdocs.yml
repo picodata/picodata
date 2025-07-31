@@ -19,6 +19,7 @@ not_in_nav: |
   index.md
   reference/api.md
   architecture/clusterwide_schema.md
+  dev/connectors_index.md
   plugins/argus.md
   plugins/svarog.md
   plugins/task.md
@@ -41,20 +42,11 @@ nav:
       - tutorial/deploy.md
       - tutorial/node_add.md
       - tutorial/node_expel.md
-
     - Начало работы:
       - tutorial/connecting.md
       - tutorial/dbeaver.md
       - tutorial/sql_examples.md
       - tutorial/webui.md
-    - Разработка приложений:
-      - tutorial/create_plugin.md
-      - tutorial/plugins.md
-      - Внешние коннекторы:
-        - Список коннекторов: connectors_index.md
-        - tutorial/connectors/java.md
-        - tutorial/connectors/jdbc.md
-        - tutorial/connectors/go.md
   - Администрирование кластера:
       - admin/deploy_ansible.md
       - admin/deploy_kubernetes.md
@@ -159,15 +151,24 @@ nav:
     - architecture/rpc_api.md
     - architecture/fibers.md
     - architecture/plugins.md
-  - Плагины:
-    - plugins/argus.md
-    - plugins/kirovets.md
-    - plugins/radix.md
-    - plugins/silver.md
-    - plugins/sirin.md
-    - plugins/synapse.md
-    - plugins/ouroboros.md
-    - plugins/gostech_audit_log.md
+  - Разработка:
+    - dev/developer_tools.md
+    - Внешние коннекторы:
+      - dev/connectors/java.md
+      - dev/connectors/jdbc.md
+      - dev/connectors/go.md
+    - Работа с плагинами:
+      - dev/plugin_create.md
+      - dev/plugin_mgmt.md
+    - Доступные плагины:
+      - plugins/argus.md
+      - plugins/kirovets.md
+      - plugins/radix.md
+      - plugins/silver.md
+      - plugins/sirin.md
+      - plugins/synapse.md
+      - plugins/ouroboros.md
+      - plugins/gostech_audit_log.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md

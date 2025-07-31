@@ -38,7 +38,7 @@ PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK=1
 Отключение проверки совместимости может негативно повлиять на работу
 плагина и Picodata, поэтому должно быть хорошо обдумано.
 
-[разработки плагинов]: ../tutorial/create_plugin.md#develop_plugin
+[разработки плагинов]: ../dev/plugin_create.md#develop_plugin
 [`picodata-plugin`]: https://crates.io/crates/picodata-plugin
 [установке]: #plugin_install
 
@@ -264,7 +264,7 @@ OPTION(timeout=...);
 
 Ниже приведены подробности реализации этих этапов. Примеры SQL-команд
 для работы с плагинами содержатся в руководстве [Управление
-плагинами](../tutorial/plugins.md).
+плагинами](../dev/plugin_mgmt.md).
 
 ### Установка {: #plugin_install }
 

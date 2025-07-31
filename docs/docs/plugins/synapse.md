@@ -349,4 +349,4 @@ ansible-playbook -i synapse.yml picodata.yml
 
 См. также:
 
-- [Управление плагинами](../tutorial/plugins.md)
+- [Управление плагинами](../dev/plugin_mgmt.md)
