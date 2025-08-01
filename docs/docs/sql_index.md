@@ -134,6 +134,8 @@ article.md-typeset.md-typeset ul {
 <b>P</b>
 
 * [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
+* [PICO_RAFT_LEADER_ID](reference/sql/pico_raft_leader_id.md)
+* [PICO_RAFT_LEADER_UUID](reference/sql/pico_raft_leader_uuid.md)
 * [plugin](architecture/plugins.md)
 * [procedure](admin/access_control.md#proc_access)
 * [projection](reference/sql/explain.md#plan_structure)
@@ -178,7 +180,7 @@ article.md-typeset.md-typeset ul {
 
 * [VALUES](reference/sql/values.md)
 * [VARCHAR](reference/sql_types.md#varchar)
-* [version](overview/versioning.md)
+* [version](reference/sql/version.md)
 
 <b>W</b>
 
