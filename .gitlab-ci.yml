@@ -106,7 +106,7 @@ variables:
       paths:
         - docs/**/*
       compare_to: *main-branch
-  
+
   - &if-changes-on-docs-base-image
     if: $CI_PIPELINE_SOURCE != "schedule"
     changes:
@@ -313,6 +313,7 @@ test-linux:
     - <<: *base_node
       policy: $CACHE_POLICY
   script:
+    - tools/ensure_checkout.sh
     - git rev-parse HEAD
     - tools/check_rust.sh
     - cargo -V
@@ -379,6 +380,7 @@ lint:
     - <<: *base_node
       policy: pull
   script:
+    - tools/ensure_checkout.sh
     # Setup sccache
     - |
       ci-log-section start "sccache-setup" Setting up sccache ...
