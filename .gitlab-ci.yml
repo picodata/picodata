@@ -573,6 +573,7 @@ test-mac-m1:
   extends: .test
   variables:
     GIT_STRATEGY: fetch
+    GIT_SUBMODULE_STRATEGY: recursive
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     - when: manual
