@@ -136,6 +136,9 @@ nav:
         - Системные функции:
           - reference/sql/instance_uuid.md
           - reference/sql/pico_instance_uuid.md
+          - reference/sql/pico_raft_leader_id.md
+          - reference/sql/pico_raft_leader_uuid.md
+          - reference/sql/version.md
     - reference/cli.md
     - reference/config.md
     - reference/audit_events.md

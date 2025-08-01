@@ -35,12 +35,15 @@ expression  ::= ('NOT'* (
                     | localtimestamp
                     | lower
                     | pico_instance_uuid
+                    | pico_raft_leader_id
+                    | pico_raft_leader_uuid
                     | substr
                     | substring
                     | to_char
                     | to_date
                     | trim
                     | upper
+                    | version
                     | 'NOT'? 'EXISTS' '(' dql ')'
                     | '(' dql ')'
                     | '(' expression (',' expression)* ')'
