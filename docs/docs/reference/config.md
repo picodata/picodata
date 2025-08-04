@@ -87,15 +87,9 @@ cluster:
   shredding: false # (4)!
 instance:
   instance_dir: . # (14)!
-<<<<<<< HEAD
-  name: null # (20)!
-  replicaset_name: null # (25)!
-  tier: default # (26)!
-=======
   name: null # (21)!
   replicaset_name: null # (27)!
   tier: default # (28)!
->>>>>>> 69f85b0ee (doc: add memtx.max_tuple_size description)
   failure_domain: {} # (12)!
   peer: # (22)!
   - 127.0.0.1:3301
@@ -103,11 +97,7 @@ instance:
   iproto_advertise: 127.0.0.1:3301 # (9)!
   http_listen: null # (13)!
   admin_socket: ./admin.sock # (8)!
-<<<<<<< HEAD
-  share_dir: null # (24)!
-=======
   share_dir: null # (26)!
->>>>>>> 69f85b0ee (doc: add memtx.max_tuple_size description)
   audit: null # (10)!
   log:
     level: info # (18)!
@@ -117,22 +107,6 @@ instance:
     memory: 64M # (20)!
     max_tuple_size: 1M # (19)!
   vinyl:
-<<<<<<< HEAD
-    memory: 128M # (28)!
-    cache: 128M # (27)!
-    bloom_fpr: 0.05 # (29)!
-    max_tuple_size: 1M # (30)!
-    page_size: 8K # (31)!
-    range_size: 1G # (32)!
-    run_count_per_level: 2 # (33)!
-    run_size_ratio: 3.5 # (34)!
-    read_threads: 1 # (35)!
-    write_threads: 4 # (36)!
-    timeout: 60.0 # (37)!
-  pg:
-    listen: 127.0.0.1:4327 # (22)!
-    ssl: false # (23)!
-=======
     memory: 128M # (30)!
     cache: 128M # (29)!
     bloom_fpr: 0.05 # (31)!
@@ -148,7 +122,6 @@ instance:
     listen: 127.0.0.1:4327 # (24)!
     advertise: 127.0.0.1:4327 # (23)!
     ssl: false # (25)!
->>>>>>> 69f85b0ee (doc: add memtx.max_tuple_size description)
   boot_timeout: 7200 # (11)!
 ```
 
