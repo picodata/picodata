@@ -657,9 +657,16 @@ pub fn build_insert_args<'t>(
                 insert_tuple.push(EncodedValue::Ref(MsgPackValue::from(value)));
             }
             TupleBuilderCommand::CalculateBucketId(_) => {
-                insert_tuple.push(EncodedValue::Ref(MsgPackValue::Unsigned(
-                    bucket_id.unwrap(),
-                )));
+                let bucket_id = i64::try_from(*bucket_id.unwrap()).map_err(|_| {
+                    SbroadError::Invalid(
+                        Entity::Value,
+                        Some(format_smolstr!(
+                            "value for column 'bucket_id' is too large to fit in integer type range"
+                        )),
+                    )
+                })?;
+
+                insert_tuple.push(EncodedValue::Owned(Value::Integer(bucket_id)));
             }
             _ => {
                 return Err(SbroadError::Invalid(
@@ -1295,11 +1302,11 @@ impl RequiredPlanInfo for QueryInfo<'_> {
     }
 
     fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.required.options.sql_vdbe_opcode_max
+        self.required.options.sql_vdbe_opcode_max as u64
     }
 
     fn sql_motion_row_max(&self) -> u64 {
-        self.required.options.sql_motion_row_max
+        self.required.options.sql_motion_row_max as u64
     }
 
     fn extract_data(&mut self) -> EncodedVTables {
@@ -1343,11 +1350,11 @@ impl RequiredPlanInfo for EncodedQueryInfo<'_> {
     }
 
     fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.required.options.sql_vdbe_opcode_max
+        self.required.options.sql_vdbe_opcode_max as u64
     }
 
     fn sql_motion_row_max(&self) -> u64 {
-        self.required.options.sql_motion_row_max
+        self.required.options.sql_motion_row_max as u64
     }
 
     fn extract_data(&mut self) -> EncodedVTables {
@@ -1719,7 +1726,16 @@ fn execute_sharded_update(
                             insert_tuple.push(value.cast_and_encode(table_type)?);
                         }
                         TupleBuilderCommand::CalculateBucketId(_) => {
-                            insert_tuple.push(EncodedValue::Ref(MsgPackValue::Unsigned(bucket_id)));
+                            let bucket_id = i64::try_from(*bucket_id).map_err(|_| {
+                                SbroadError::Invalid(
+                                    Entity::Value,
+                                    Some(format_smolstr!(
+                                        "value for column 'bucket_id' is too large to fit in integer type range"
+                                    )),
+                                )
+                            })?;
+
+                            insert_tuple.push(EncodedValue::Owned(Value::Integer(bucket_id)));
                         }
                         _ => {
                             return Err(SbroadError::Invalid(
@@ -1782,7 +1798,8 @@ pub fn build_update_args<'t>(
                 })?;
                 let op = [
                     EncodedValue::Ref(MsgPackValue::from(eq_op())),
-                    EncodedValue::Owned(Value::Unsigned(*table_col as u64)),
+                    // Use `as i64` quite safe here.
+                    EncodedValue::Owned(Value::Integer(*table_col as i64)),
                     EncodedValue::Ref(MsgPackValue::from(value)),
                 ];
                 ops.push(op);
@@ -1820,7 +1837,8 @@ pub fn build_update_args<'t>(
                 })?;
                 let op = [
                     EncodedValue::Ref(MsgPackValue::from(eq_op())),
-                    EncodedValue::Owned(Value::Unsigned(*table_col as u64)),
+                    // Use `as i64` quite safe here.
+                    EncodedValue::Owned(Value::Integer(*table_col as i64)),
                     value.cast_and_encode(table_type)?,
                 ];
                 ops.push(op);

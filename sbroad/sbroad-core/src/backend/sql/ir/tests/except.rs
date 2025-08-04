@@ -21,7 +21,7 @@ fn except1_latest() {
             r#"SELECT "test_space"."id" FROM "test_space""#,
             r#"WHERE "test_space"."FIRST_NAME" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -45,7 +45,7 @@ fn except1_oldest() {
             r#"SELECT "test_space"."id" FROM "test_space""#,
             r#"WHERE "test_space"."FIRST_NAME" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

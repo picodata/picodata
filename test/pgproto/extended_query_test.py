@@ -388,3 +388,86 @@ def test_wrong_number_of_params(postgres: Postgres):
                 match="bind message supplies 3 parameters, but prepared statement .* requires 2",
             ):
                 cur.execute("SELECT $1, $2", [2, 1, 4], prepare=True)
+
+
+def test_large_literals_cant_fit_into_target_type(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    max_value = 9223372036854775807
+    value_above_max = 9223372036854775808
+
+    params = (max_value,)
+    # text parameters
+    cur = conn.execute(
+        """
+        SELECT %t::int;
+        """,
+        params,
+    )
+    assert cur.fetchall() == [params]
+
+    # binary parameters
+    cur = conn.execute(
+        """
+        SELECT %b::int;
+        """,
+        params,
+    )
+    assert cur.fetchall() == [params]
+
+    # large literals without cast will be interpreted as numeric
+    params = (value_above_max,)
+    # text parameters
+    cur = conn.execute(
+        """
+        SELECT %t;
+        """,
+        params,
+    )
+
+    assert cur.description is not None
+    type_oid = cur.description[0].type_code
+    assert type_oid == 1700
+    assert cur.fetchall() == [params]
+
+    # binary parameters
+    cur = conn.execute(
+        """
+        SELECT %b;
+        """,
+        params,
+    )
+
+    assert cur.description is not None
+    type_oid = cur.description[0].type_code
+    assert type_oid == 1700
+    assert cur.fetchall() == [params]
+
+    with pytest.raises(
+        psycopg.errors.InternalError_, match="encoding error: out of range integral type conversion attempted"
+    ):
+        cur.execute(""" SELECT %t::int """, params)
+
+    with pytest.raises(
+        psycopg.errors.InternalError_, match="encoding error: out of range integral type conversion attempted"
+    ):
+        cur.execute(""" SELECT %b::int """, params)
+
+    with RawCursor(conn) as cur:
+        with pytest.raises(
+            psycopg.errors.InternalError_, match="encoding error: out of range integral type conversion attempted"
+        ):
+            cur.execute("SELECT $1::int", [value_above_max], prepare=True)
+
+        with pytest.raises(
+            psycopg.errors.InternalError_, match="encoding error: out of range integral type conversion attempted"
+        ):
+            cur.execute("SELECT $1::int * 2", [max_value], prepare=True)

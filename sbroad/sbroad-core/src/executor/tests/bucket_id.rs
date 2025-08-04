@@ -47,7 +47,7 @@ fn bucket2_test() {
 
     let mut expected = ProducerResult::new();
     let param1 = Value::from("1");
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket = query
         .coordinator
         .determine_bucket_id(&[&param1, &param2])
@@ -113,11 +113,11 @@ fn bucket_id_from_join() {
 #[test]
 fn sharding_key_from_tuple1() {
     let coordinator = RouterRuntimeMock::new();
-    let tuple = vec![Value::from("123"), Value::from(1_u64)];
+    let tuple = vec![Value::from("123"), Value::from(1)];
     let sharding_key = coordinator
         .extract_sharding_key_from_tuple("t1".into(), &tuple)
         .unwrap();
-    assert_eq!(sharding_key, vec![&Value::from("123"), &Value::from(1_u64)]);
+    assert_eq!(sharding_key, vec![&Value::from("123"), &Value::from(1)]);
 }
 
 #[test]

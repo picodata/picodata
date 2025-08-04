@@ -22,17 +22,17 @@ pub struct Options {
     /// Note: this limit allows the out of memory error for query execution in the following
     /// scenario: if already received vtable has `X` rows and `X + a` causes the OOM, then
     /// if one of the storages returns `a` or more rows, the OOM will occur.
-    pub sql_motion_row_max: u64,
+    pub sql_motion_row_max: i64,
     /// Options passed to `box.execute` function on storages. Currently there is only one option
     /// `sql_vdbe_opcode_max`.
-    pub sql_vdbe_opcode_max: u64,
+    pub sql_vdbe_opcode_max: i64,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
-            sql_motion_row_max: DEFAULT_SQL_MOTION_ROW_MAX,
-            sql_vdbe_opcode_max: DEFAULT_SQL_VDBE_OPCODE_MAX,
+            sql_motion_row_max: DEFAULT_SQL_MOTION_ROW_MAX as i64,
+            sql_vdbe_opcode_max: DEFAULT_SQL_VDBE_OPCODE_MAX as i64,
         }
     }
 }
@@ -40,8 +40,8 @@ impl Default for Options {
 /// Like [`Options`], but with some values unspecified.
 #[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PartialOptions {
-    pub sql_motion_row_max: Option<u64>,
-    pub sql_vdbe_opcode_max: Option<u64>,
+    pub sql_motion_row_max: Option<i64>,
+    pub sql_vdbe_opcode_max: Option<i64>,
 }
 
 impl PartialOptions {
@@ -159,8 +159,8 @@ impl<T> LoweredOptionValue<T> {
 /// before the parameter values are supplied.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub(super) struct LoweredOptions {
-    sql_motion_row_max: LoweredOptionValue<u64>,
-    sql_vdbe_opcode_max: LoweredOptionValue<u64>,
+    sql_motion_row_max: LoweredOptionValue<i64>,
+    sql_vdbe_opcode_max: LoweredOptionValue<i64>,
 }
 
 impl LoweredOptions {
@@ -181,19 +181,16 @@ pub(super) fn lower_options(
     // TODO: if we pass a type in absence of a value, we will be able to fail more invalid queries earlier
     resolved_options: &[OptionSpec<Option<Value>>],
 ) -> Result<LoweredOptions, SbroadError> {
-    fn lower_unsigned(kind: OptionKind, val: &Value) -> Result<u64, SbroadError> {
+    fn lower_unsigned(kind: OptionKind, val: &Value) -> Result<i64, SbroadError> {
         match *val {
-            Value::Unsigned(num) => Ok(num),
             // Supporting conversion from integer is important for parametrized options via pgproto:
             // pgproto requires parameter types to be inferred. Since there is no longer an
             // `Unsigned` type in the typesystem exposed to the user, we get the next best thing and use an integer.
-            Value::Integer(num) if num >= 0 => {
-                Ok(num as u64)
-            }
+            Value::Integer(num) if num >= 0 => Ok(num),
             ref val => Err(SbroadError::Invalid(
                 Entity::OptionSpec,
                 Some(format_smolstr!(
-                    "expected option {} to be either an unsigned or non-negative integer got: {val:?}",
+                    "expected option {} to be a non-negative integer, got: {val:?}",
                     kind
                 )),
             )),
@@ -262,7 +259,7 @@ impl Plan {
         if let (Some(values_count), Some(limit)) =
             (values_count, lowered.sql_motion_row_max.try_get_value())
         {
-            if limit < values_count as u64 {
+            if limit < values_count as i64 {
                 return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                     "Exceeded maximum number of rows ({}) in virtual table: {}",
                     limit,

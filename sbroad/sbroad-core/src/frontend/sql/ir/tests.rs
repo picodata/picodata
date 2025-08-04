@@ -1903,7 +1903,7 @@ fn front_sql_option_basic() {
 fn front_sql_option_with_param() {
     let input = r#"select * from "t" option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#;
 
-    let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(1000), Value::Unsigned(10)]);
+    let plan = sql_to_optimized_ir(input, vec![Value::Integer(1000), Value::Integer(10)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
         scan "t"
@@ -1937,7 +1937,7 @@ fn front_sql_pg_style_params2() {
 
     let plan = sql_to_optimized_ir(
         input,
-        vec![Value::Unsigned(1000), Value::String("hi".into())],
+        vec![Value::Integer(1000), Value::String("hi".into())],
     );
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (1000::int -> "col_1", 'hi'::string -> "col_2", 1000::int -> "col_3")
@@ -1956,7 +1956,7 @@ fn front_sql_pg_style_params3() {
         having count("b") > $1
         option(sql_vdbe_opcode_max = $1, sql_motion_row_max = $1)"#;
 
-    let plan = sql_to_optimized_ir(input, vec![Value::Unsigned(42)]);
+    let plan = sql_to_optimized_ir(input, vec![Value::Integer(42)]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("gr_expr_1"::int -> "col_1")
@@ -3164,7 +3164,7 @@ fn front_sql_insert_8() {
 fn front_sql_insert_9() {
     let input = r#"insert into "t" ("a", "b") values (?, ?)"#;
 
-    let plan = sql_to_optimized_ir(input, vec![Value::from(1_u64), Value::from(2_u64)]);
+    let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(2)]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     insert "t" on conflict: fail
         motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]

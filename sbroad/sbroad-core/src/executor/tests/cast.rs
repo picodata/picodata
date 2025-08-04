@@ -72,7 +72,7 @@ fn cast8_test() {
     broadcast_check(
         r#"SELECT CAST(1 as string) FROM "t1""#,
         r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
 }
 
@@ -81,7 +81,7 @@ fn cast9_test() {
     broadcast_check(
         r#"SELECT CAST(1 as text) FROM "t1""#,
         r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
 }
 
@@ -99,7 +99,7 @@ fn cast11_test() {
     broadcast_check(
         r#"SELECT CAST(1 as varchar(10)) FROM "t1""#,
         r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
 }
 
@@ -171,7 +171,7 @@ fn pgcast7_test() {
     broadcast_check(
         r#"SELECT 1::string FROM "t1""#,
         r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
 }
 
@@ -180,6 +180,6 @@ fn pgcast8_test() {
     broadcast_check(
         r#"SELECT 1::text FROM "t1""#,
         r#"SELECT CAST (CAST($1 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
 }

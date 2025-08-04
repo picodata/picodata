@@ -43,7 +43,7 @@ fn not_eq1_test() {
                 r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
                 r#"WHERE ("t"."identification_number" <> CAST($1 AS int)) and ("t"."product_code" <> CAST($2 AS string))"#,
             ),
-            vec![Value::from(1_u64), Value::from("2")],
+            vec![Value::from(1), Value::from("2")],
         ))),
     ]]);
     assert_eq!(expected, result);
@@ -72,7 +72,7 @@ fn not_eq2_test() {
     // Mock a virtual table.
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(3_u64)]);
+    virtual_table.add_tuple(vec![Value::from(3)]);
     query
         .coordinator
         .add_virtual_table(motion_id, virtual_table);

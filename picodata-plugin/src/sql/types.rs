@@ -89,6 +89,7 @@ pub enum SqlValueInner {
     /// String type.
     String(RString),
     /// Unsigned integer type.
+    #[deprecated]
     Unsigned(u64),
     /// Tuple type
     Array(RVec<SqlValue>),
@@ -143,6 +144,7 @@ impl SqlValue {
     }
 
     /// Create SQL value of an unsigned integer type.
+    #[deprecated]
     pub fn unsigned(u: u64) -> Self {
         SqlValue(SqlValueInner::Unsigned(u))
     }
@@ -206,6 +208,13 @@ impl_int!(i64);
 impl_int!(isize);
 impl_int!(i128);
 
+impl_int!(u8);
+impl_int!(u16);
+impl_int!(u32);
+impl_int!(u64);
+impl_int!(usize);
+impl_int!(u128);
+
 impl<T: Into<SqlValue>> From<Option<T>> for SqlValue {
     fn from(opt: Option<T>) -> Self {
         match opt {
@@ -226,23 +235,6 @@ impl From<&str> for SqlValue {
         SqlValue::string(s)
     }
 }
-
-macro_rules! impl_uint {
-    ($t:ty) => {
-        impl From<$t> for SqlValue {
-            fn from(u: $t) -> Self {
-                SqlValue::unsigned(u as u64)
-            }
-        }
-    };
-}
-
-impl_uint!(u8);
-impl_uint!(u16);
-impl_uint!(u32);
-impl_uint!(u64);
-impl_uint!(usize);
-impl_uint!(u128);
 
 impl<T: Into<SqlValue>> From<Vec<T>> for SqlValue {
     fn from(vec: Vec<T>) -> Self {

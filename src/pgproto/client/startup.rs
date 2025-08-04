@@ -26,6 +26,22 @@ pub struct ClientParams {
 
 impl ClientParams {
     fn new(mut parameters: BTreeMap<String, String>) -> PgResult<Self> {
+        fn validate_value_for_option(raw_value: &str, option_name: &str) -> PgResult<i64> {
+            let value = raw_value.parse().map_err(|error| {
+                PgError::other(format!(
+                    "value for option {option_name} is too large: {error}"
+                ))
+            })?;
+
+            if value < 0 {
+                return Err(PgError::other(format!(
+                    "value for option {option_name} should be positive"
+                )));
+            }
+
+            Ok(value)
+        }
+
         let Some(username) = parameters.remove("user") else {
             return Err(PgError::ProtocolViolation(format_smolstr!(
                 "parameter 'user' is missing"
@@ -43,13 +59,13 @@ impl ClientParams {
                     .next()
                     .ok_or_else(|| PgError::other("option without value"))?;
                 match name {
-                    "sql_motion_row_max" => {
-                        options_accumulator.sql_motion_row_max =
-                            Some(val.parse().map_err(PgError::other)?)
+                    option_name @ "sql_motion_row_max" => {
+                        let value = validate_value_for_option(val, option_name)?;
+                        options_accumulator.sql_motion_row_max = Some(value)
                     }
-                    "sql_vdbe_opcode_max" => {
-                        options_accumulator.sql_vdbe_opcode_max =
-                            Some(val.parse().map_err(PgError::other)?)
+                    option_name @ "sql_vdbe_opcode_max" => {
+                        let value = validate_value_for_option(val, option_name)?;
+                        options_accumulator.sql_vdbe_opcode_max = Some(value)
                     }
                     _ => {
                         // We prefer using warnings instead of errors for these reasons:

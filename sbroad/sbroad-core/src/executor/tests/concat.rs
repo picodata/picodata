@@ -14,7 +14,7 @@ fn concat2_test() {
     broadcast_check(
         r#"SELECT trim('hello') || CAST(42 as string) FROM "t1""#,
         r#"SELECT TRIM (CAST($1 AS string)) || CAST (CAST($2 AS int) as string) as "col_1" FROM "t1""#,
-        vec![Value::from("hello"), Value::from(42_u64)],
+        vec![Value::from("hello"), Value::from(42)],
     );
 }
 
@@ -34,7 +34,7 @@ fn concat4_test() {
         r#"SELECT "t1"."a" FROM "t1" WHERE ("t1"."a" || CAST($1 AS string)) = ((CAST (CAST($2 AS int) as string) || TRIM (CAST($3 AS string))) || CAST($4 AS string))"#,
         vec![
             Value::from("a"),
-            Value::from(42_u64),
+            Value::from(42),
             Value::from("b"),
             Value::from("a"),
         ],

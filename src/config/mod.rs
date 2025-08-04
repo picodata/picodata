@@ -1864,8 +1864,8 @@ pub const SHREDDING_PARAM_NAME: &str = "shredding";
 pub struct DynamicConfigProviders {
     pub pg_statement_max: AtomicObserverProvider<usize>,
     pub pg_portal_max: AtomicObserverProvider<usize>,
-    pub sql_vdbe_opcode_max: AtomicObserverProvider<u64>,
-    pub sql_motion_row_max: AtomicObserverProvider<u64>,
+    pub sql_vdbe_opcode_max: AtomicObserverProvider<i64>,
+    pub sql_motion_row_max: AtomicObserverProvider<i64>,
 }
 
 impl DynamicConfigProviders {
@@ -1896,7 +1896,7 @@ pub fn validate_alter_system_parameter_value<'v>(
         return Err(Error::other(format!("unknown parameter: '{name}'")));
     };
 
-    let Ok(casted_value) = cast_and_encode(value, &expected_type) else {
+    let Some(casted_value) = cast_and_encode(value, &expected_type) else {
         let actual_type = value_type_str(value);
         #[rustfmt::skip]
         return Err(Error::other(format!("invalid value for '{name}': expected {expected_type}, got {actual_type}",)));
@@ -1915,7 +1915,7 @@ pub fn validate_alter_system_parameter_value<'v>(
 
     if name == system_parameter_name!(iproto_net_msg_max) {
         let net_msg_value = casted_value
-            .unsigned()
+            .integer()
             .expect("invalid value for iproto_net_msg_max");
 
         i32::try_from(net_msg_value)
@@ -1949,7 +1949,7 @@ pub fn validate_alter_system_parameter_value<'v>(
 
     if name == system_parameter_name!(sql_storage_cache_size_max) {
         let cache_size = casted_value
-            .unsigned()
+            .integer()
             .expect("invalid value for sql_storage_cache_size_max");
 
         let cache_size = i32::try_from(cache_size)
@@ -1979,7 +1979,7 @@ pub fn validate_alter_system_parameter_value<'v>(
 
     if name == system_parameter_name!(sql_storage_cache_count_max) {
         let cache_count = casted_value
-            .unsigned()
+            .integer()
             .expect("invalid value for sql_storage_cache_count_max");
 
         if cache_count < 1 {
@@ -2123,7 +2123,7 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
             let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
             set_cfg_field("checkpoint_count", value)?;
         } else if name == system_parameter_name!(memtx_checkpoint_interval) {
-            let value = get_field::<f64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+            let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
             set_cfg_field("checkpoint_interval", value)?;
         } else if name == system_parameter_name!(iproto_net_msg_max) {
             let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
@@ -2142,10 +2142,14 @@ pub fn apply_parameter(pico_db_config_tuple: Tuple, current_tier: &str) -> Resul
         DYNAMIC_CONFIG.pg_statement_max.update(value);
     } else if name == system_parameter_name!(sql_vdbe_opcode_max) {
         let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        // The only way for this value to get into the table is via SQL and it will be checked to fit into i64, so cast is safe.
+        let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_vdbe_opcode_max.update(value);
     } else if name == system_parameter_name!(sql_motion_row_max) {
         let value = get_field::<u64>(&pico_db_config_tuple, AlterSystemParameters::FIELD_VALUE);
+        // The only way for this value to get into the table is via SQL and it will be checked to fit into i64, so cast is safe.
+        let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
     } else if name == system_parameter_name!(sql_storage_cache_count_max) {

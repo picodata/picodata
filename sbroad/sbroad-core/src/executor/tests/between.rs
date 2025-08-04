@@ -33,7 +33,7 @@ fn between1_test() {
     // Mock a virtual table.
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(2_u64)]);
+    virtual_table.add_tuple(vec![Value::from(2)]);
     query
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
@@ -56,7 +56,7 @@ fn between1_test() {
                 r#"WHERE ("t"."identification_number" >= CAST($1 AS int))"#,
                 r#"and ("t"."identification_number" <= (SELECT "COL_1" FROM "TMP_test_0136"))"#,
             ),
-            vec![Value::from(1_u64)],
+            vec![Value::from(1)],
         ))),
     ]]);
     assert_eq!(expected, result);
@@ -85,7 +85,7 @@ fn between2_test() {
     // Mock a virtual table.
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(2_u64)]);
+    virtual_table.add_tuple(vec![Value::from(2)]);
 
     // Bind the virtual table to both motions.
     query
@@ -110,7 +110,7 @@ fn between2_test() {
                 r#"WHERE ((SELECT "COL_1" FROM "TMP_test_0136") >= CAST($1 AS int))"#,
                 r#"and ((SELECT "COL_1" FROM "TMP_test_0136") <= CAST($2 AS int))"#,
             ),
-            vec![Value::from(1_u64), Value::from(3_u64)],
+            vec![Value::from(1), Value::from(3)],
         ))),
     ]]);
     assert_eq!(expected, result);

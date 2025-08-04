@@ -2490,7 +2490,6 @@ pub(crate) fn value_type_str(value: &Value) -> &'static str {
         Value::Integer { .. } => "integer",
         Value::Null => "null",
         Value::String { .. } => "string",
-        Value::Unsigned { .. } => "unsigned",
         Value::Tuple { .. } => "tuple",
         Value::Uuid { .. } => "uuid",
     }

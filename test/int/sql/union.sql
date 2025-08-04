@@ -24,14 +24,14 @@ VALUES (1, 1, 1, 1, 1, 2, 2, true, 'a', 3.14),
         (4, 2, 3, 1, 1, 2, 2, true, 'c', 2.14);
 INSERT INTO "arithmetic_space2"
 ("id", "a", "b", "c", "d", "e", "f", "boolean_col", "string_col", "number_col")
-VALUES 
+VALUES
     (1, 2, 1, 1, 1, 2, 2, true, 'a', 3.1415),
     (2, 2, 2, 1, 3, 2, 2, false, 'a', 3.1415),
     (3, 1, 1, 1, 1, 2, 2, false, 'b', 2.718),
     (4, 1, 1, 1, 1, 2, 2, true, 'b', 2.717);
 INSERT INTO "null_t"
 ("na", "nb", "nc")
-VALUES 
+VALUES
     (1, null, 1),
     (2, null, null),
     (3, null, 3),
@@ -99,7 +99,7 @@ from "arithmetic_space"
 union
 select sum("a") / 3 from "arithmetic_space"
 -- EXPECTED:
-2, 1
+1, 2
 
 -- TEST: test_union_seg_vs_any
 -- SQL:

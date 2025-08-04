@@ -135,19 +135,19 @@ def test_invalid_parametrized_sql_options(instance: Instance):
     # NOTE: these errors are only triggerable when using parameters, because literals are limited to be unsigned at parse time
     with pytest.raises(
         TarantoolError,
-        match=r"""sbroad: invalid OptionSpec: expected option sql_motion_row_max to be either an unsigned or non-negative integer got: String\("1"\)""",
+        match=r"""sbroad: invalid OptionSpec: expected option sql_motion_row_max to be a non-negative integer, got: String\("1"\)""",
     ):
         # passing a string for an integer doesn't work, even if it's a valid textual representation
         instance.sql(q1, "1")
     with pytest.raises(
         TarantoolError,
-        match=r"""sbroad: invalid OptionSpec: expected option sql_motion_row_max to be either an unsigned or non-negative integer got: String\("много"\)""",
+        match=r"""sbroad: invalid OptionSpec: expected option sql_motion_row_max to be a non-negative integer, got: String\("много"\)""",
     ):
         # a string straight up also doesn't work
         instance.sql(q1, "много")
     with pytest.raises(
         TarantoolError,
-        match=r"sbroad: invalid OptionSpec: expected option sql_motion_row_max to be either an unsigned or non-negative integer got: Integer\(-1\)",
+        match=r"sbroad: invalid OptionSpec: expected option sql_motion_row_max to be a non-negative integer, got: Integer\(-1\)",
     ):
         # negative integers do not work
         instance.sql(q1, -1)

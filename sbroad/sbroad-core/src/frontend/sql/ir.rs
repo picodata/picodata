@@ -7,6 +7,7 @@ use tarantool::decimal::Decimal;
 
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::Rule;
+use crate::frontend::sql::parse_trimmed_unsigned_from_str;
 use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
@@ -65,15 +66,11 @@ impl Value {
                     )
                 })?
                 .into()),
-            Rule::Unsigned => Ok(pair_string
-                .parse::<u64>()
-                .map_err(|e| {
-                    SbroadError::ParsingError(
-                        Entity::Value,
-                        format_smolstr!("u64 parsing error {e}"),
-                    )
-                })?
-                .into()),
+            Rule::Unsigned => {
+                let unsigned = parse_trimmed_unsigned_from_str(pair_string)?;
+                let value = unsigned.into();
+                Ok(value)
+            }
             Rule::SingleQuotedString => {
                 let pair_str = pair.as_str();
                 let inner = &pair_str[1..pair_str.len() - 1];

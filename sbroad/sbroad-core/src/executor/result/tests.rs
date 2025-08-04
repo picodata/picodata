@@ -13,7 +13,7 @@ fn box_execute_result_serialize() {
         rows: vec![vec![
             Value::Integer(1),
             Value::String("тест".into()),
-            Value::Unsigned(1),
+            Value::Integer(1),
         ]],
     };
 

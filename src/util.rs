@@ -10,9 +10,7 @@ use std::panic::Location;
 use std::path::Path;
 use std::time::Duration;
 
-use sbroad::errors::{Entity, SbroadError};
-use sbroad::ir::value::Value;
-use smol_str::{format_smolstr, ToSmolStr};
+use sbroad::ir::value::{EncodedValue, Value};
 use tarantool::network::Config;
 use tarantool::session::{self, UserId};
 
@@ -817,62 +815,62 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
     }
 }
 
-// This is extended version of similiar function from sbroad.
-pub fn cast_and_encode<'a>(
-    value: &'a Value,
-    column_type: &SbroadType,
-) -> Result<sbroad::ir::value::EncodedValue<'a>, SbroadError> {
+/// Attempts to cast and encode a Value into a specified SbroadType.
+///
+/// This is an extended version of a similar function from sbroad that performs additional
+/// validation for unsigned types, since `Unsigned` isn't in Sbroad types anymore. The function
+/// checks if the value matches the target type
+/// and performs necessary conversions where applicable.
+///
+/// For unsigned types (SbroadType::Unsigned), additional validation is performed:
+/// - For Decimal, Double, Integer values: checks if non-negative
+///
+/// Returns:
+/// - Some(EncodedValue) if the value matches or can be safely converted to the target type
+/// - None if:
+///   - The value is Null
+///   - The value cannot be converted to the target type
+///   - For unsigned types, if the value is negative
+///
+/// Note: It's the caller's responsibility to handle the None case appropriately (e.g. by
+/// returning pretty error to the user).
+pub fn cast_and_encode<'a>(value: &'a Value, column_type: &SbroadType) -> Option<EncodedValue<'a>> {
+    if matches!(value, Value::Null) {
+        return None;
+    }
+
     match (column_type, value) {
-        (SbroadType::Any, value) => return Ok(value.into()),
-        (SbroadType::Boolean, Value::Boolean(_)) => return Ok(value.into()),
-        (SbroadType::Datetime, Value::Datetime(_)) => return Ok(value.into()),
-        (SbroadType::Decimal, Value::Decimal(_)) => return Ok(value.into()),
-        (SbroadType::Double, Value::Double(_)) => return Ok(value.into()),
-        (SbroadType::Integer, Value::Integer(_)) => return Ok(value.into()),
-        (SbroadType::String, Value::String(_)) => return Ok(value.into()),
-        (SbroadType::Uuid, Value::Uuid(_)) => return Ok(value.into()),
-        (SbroadType::Unsigned, Value::Unsigned(_)) => return Ok(value.into()),
+        (SbroadType::Any, value) => return Some(value.into()),
+        (SbroadType::Boolean, Value::Boolean(_)) => return Some(value.into()),
+        (SbroadType::Datetime, Value::Datetime(_)) => return Some(value.into()),
+        (SbroadType::Decimal, Value::Decimal(_)) => return Some(value.into()),
+        (SbroadType::Double, Value::Double(_)) => return Some(value.into()),
+        (SbroadType::Integer, Value::Integer(_)) => return Some(value.into()),
+        (SbroadType::String, Value::String(_)) => return Some(value.into()),
+        (SbroadType::Uuid, Value::Uuid(_)) => return Some(value.into()),
+        // Manually check for non-negativeness of underlying value if possible.
+        (SbroadType::Unsigned, Value::Decimal(decimal)) => {
+            // Return None in case of bad value, otherwise try to cast.
+            let _ = decimal.to_i64().filter(|x| *x >= 0)?;
+        }
+        (SbroadType::Unsigned, Value::Double(double)) => {
+            if double.value < 0.0 {
+                return None;
+            }
+        }
+        (SbroadType::Unsigned, Value::Integer(integer)) => {
+            if *integer < 0 {
+                return None;
+            }
+
+            // Cast is unnecessary since upper bound already checked by sbroad
+            // and lower checked above.
+            return Some(value.into());
+        }
         _ => (),
     }
 
-    if matches!(value, Value::Null) {
-        return Err(SbroadError::Other(
-            "cannot cast NULL to a non-nullable type".to_smolstr(),
-        ));
-    }
-
-    if matches!(column_type, SbroadType::Unsigned) {
-        fn cast_error(value: &Value) -> SbroadError {
-            SbroadError::Invalid(
-                Entity::Value,
-                Some(format_smolstr!(
-                    "Failed to cast {value} to {}.",
-                    SbroadType::Unsigned
-                )),
-            )
-        }
-
-        let result = match value {
-            Value::Unsigned(_) => Ok(value.clone()),
-            Value::Integer(v) => Ok(Value::Unsigned(
-                u64::try_from(*v).map_err(|_| cast_error(value))?,
-            )),
-            Value::Decimal(v) => Ok(Value::Unsigned(
-                v.to_u64().ok_or_else(|| cast_error(value))?,
-            )),
-            Value::Double(ref v) => v
-                .to_string()
-                .parse::<u64>()
-                .map(Value::Unsigned)
-                .map_err(|_| cast_error(value)),
-            Value::Null => Ok(Value::Null),
-            _ => Err(cast_error(value)),
-        };
-
-        return result.map(Into::into);
-    }
-
-    value.clone().cast(column_type.into()).map(Into::into)
+    value.clone().cast(column_type.into()).map(Into::into).ok()
 }
 
 // TODO: this should be in sbroad

@@ -21,7 +21,7 @@ fn union_all1_latest() {
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -45,7 +45,7 @@ fn union_all1_oldest() {
             r#"SELECT "hash_testing_hist"."product_code" FROM "hash_testing_hist""#,
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports scalar function `abs()`.
 - Multiple `OPTIONS` specified in an SQL query no longer result in an error.
   Instead, the rightmost option takes precedence.
+- Maximum value for `Integer` and `Unsigned` type is ***9223372036854775807***.
 
 ### Fixes
 - Fixed "instance is already joined" error if picodata crashes during reboostrap
@@ -25,9 +26,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Supported detecting and fixing broken replication.
 - Remove unnecessary timeout on local Unix domain sockets in `picodata admin` command.
   Unlike network sockets, local sockets don't silently hang - a server crash
-  immediately breaks the connection, making timeouts redundant. This fixes an issue 
-  where long-running plugin commands could be incorrectly aborted due to the 
-  artificial timeout. 
+  immediately breaks the connection, making timeouts redundant. This fixes an issue
+  where long-running plugin commands could be incorrectly aborted due to the
+  artificial timeout.
 - Supported backoff strategies when configuring vshard from the governor.
 - Fixed restart the whole cluster at once taking too long.
 - Fixed an issue where `cluster.shredding` option does not get applied on instance restart.
@@ -84,7 +85,7 @@ with the `YY.MINOR.MICRO` scheme.
   - pico_pgproto_portals_opened_total
   - pico_pgproto_statements_closed_total
   - pico_pgproto_statements_opened_total
-- Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics 
+- Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics
   for queries executed through pgproto
 
 ### Config

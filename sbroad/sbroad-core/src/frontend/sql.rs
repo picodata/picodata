@@ -1416,7 +1416,8 @@ fn parse_select_statement<M: Metadata>(
     }
     let top_id = top_id.expect("SelectStatement must have at least one child");
     if let Some(limit) = limit {
-        return plan.add_limit(top_id, limit);
+        // It's guaranteed from `parse_unsigned` that limit > 0, so cast is safe.
+        return plan.add_limit(top_id, limit as u64);
     }
     Ok(top_id)
 }
@@ -1964,17 +1965,38 @@ fn parse_trim<M: Metadata>(
     Ok(trim)
 }
 
-fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
+fn parse_trimmed_unsigned_from_str(value: &str) -> Result<i64, SbroadError> {
+    let result = value.parse::<i64>().map_err(|_| {
+        SbroadError::Invalid(
+            Entity::Query,
+            Some(format_smolstr!(
+                "value doesn't fit into integer range: {value}"
+            )),
+        )
+    })?;
+
+    if result < 0 {
+        return Err(SbroadError::Invalid(
+            Entity::Value,
+            Some("value is negative while type of value is unsigned".into()),
+        ));
+    }
+
+    Ok(result)
+}
+
+/// Parses an unsigned integer value from a parsed AST node.
+///
+/// This function expects a node matching `Rule::Unsigned` and will attempt to parse
+/// its string value into a 64-bit integer (`i64`) with guarantee that value is positive.
+///
+/// # Guarantees
+/// - On success, the returned value is guaranteed to fit in `i64` (64-bit signed integer)
+fn parse_unsigned(ast_node: &ParseNode) -> Result<i64, SbroadError> {
     assert!(matches!(ast_node.rule, Rule::Unsigned));
     if let Some(str_value) = ast_node.value.as_ref() {
-        str_value.parse::<u64>().map_err(|_| {
-            SbroadError::Invalid(
-                Entity::Query,
-                Some(format_smolstr!(
-                    "option value is not unsigned integer: {str_value}"
-                )),
-            )
-        })
+        let result = parse_trimmed_unsigned_from_str(str_value)?;
+        Ok(result)
     } else {
         Err(SbroadError::Invalid(
             AST,
@@ -2019,7 +2041,7 @@ fn parse_option<M: Metadata>(
         Rule::Unsigned => {
             let v = parse_unsigned(ast_node)?;
             OptionParamValue::Value {
-                val: Value::Unsigned(v),
+                val: Value::Integer(v),
             }
         }
         _ => {
@@ -2519,18 +2541,18 @@ impl Plan {
             match self.get_expression_node(*expr)? {
                 Expression::Constant(Constant { value, .. }) => {
                     let pos = match value {
-                        Value::Unsigned(val) => *val as usize,
-                        Value::Integer(_) => {
-                            return Err(SbroadError::Invalid(
-                                Entity::Query,
-                                Some(format_smolstr!(
-                                    "GROUP BY position {value} is not in select list"
-                                )),
-                            ));
+                        Value::Integer(val) => {
+                            if *val < 0 {
+                                return Err(SbroadError::Invalid(
+                                    Entity::Query,
+                                    Some(format_smolstr!(
+                                        "GROUP BY position {value} should be positive"
+                                    )),
+                                ));
+                            }
+                            *val as usize
                         }
-                        _ => {
-                            continue;
-                        }
+                        _ => continue,
                     };
 
                     self.replace_const_with_reference(&final_proj_cols, upper, expr, pos)?;
@@ -3516,7 +3538,7 @@ fn parse_substring<M: Metadata>(
             )?;
 
             let string_id = string_expr.populate_plan(plan, worker)?;
-            let one_literal = plan.add_const(Value::Unsigned(1));
+            let one_literal = plan.add_const(Value::Integer(1));
             let for_id = for_expr.populate_plan(plan, worker)?;
 
             Ok(ParseExpression::Function {
@@ -5131,7 +5153,7 @@ impl AbstractSyntaxTree {
                         }
                     }
 
-                    if let Expression::Constant(Constant {value: Value::Unsigned(index)}) = expr {
+                    if let Expression::Constant(Constant {value: Value::Integer(index)}) = expr {
                         let index_usize = usize::try_from(*index).map_err(|_| {
                             SbroadError::Invalid(
                                 Entity::Expression,

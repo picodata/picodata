@@ -18,7 +18,7 @@ fn sub_query1_latest() {
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)) as "t1""#,
             r#"WHERE "t1"."product_code" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -39,7 +39,7 @@ fn sub_query1_oldest() {
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)) as "T1""#,
             r#"WHERE "T1"."product_code" = CAST($2 AS string)"#
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }
@@ -67,7 +67,7 @@ fn sub_query2_latest() {
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
             r#"WHERE "t1"."product_code" = CAST($3 AS string)"#,
         ),
-        vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
+        vec![Value::from(1), Value::from("a"), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -95,7 +95,7 @@ fn sub_query2_oldest() {
             r#"WHERE "hash_testing_hist"."product_code" = CAST($2 AS string)) as "t1""#,
             r#"WHERE "t1"."product_code" = CAST($3 AS string)"#,
         ),
-        vec![Value::from(1_u64), Value::from("a"), Value::from("a")],
+        vec![Value::from(1), Value::from("a"), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }
@@ -111,7 +111,7 @@ fn sub_query_exists() {
             r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
             r#"WHERE exists (SELECT CAST($1 AS int) as "col_1" FROM "hash_testing")"#
         ),
-        vec![Value::from(0_u64)],
+        vec![Value::from(0)],
     );
     check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);

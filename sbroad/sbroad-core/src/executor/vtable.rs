@@ -686,7 +686,7 @@ impl<'t> TupleIterator<'t> {
     }
 
     fn next<'a>(&'a mut self) -> Option<&'a [EncodedValue<'t>]> {
-        let pk = self.row_id as u64;
+        let pk = self.row_id as i64;
 
         let row_id = self.row_id;
 
@@ -696,7 +696,7 @@ impl<'t> TupleIterator<'t> {
         for value in vt_tuple {
             self.buf.push(MsgPackValue::from(value).into());
         }
-        self.buf.push(Value::Unsigned(pk).into());
+        self.buf.push(Value::Integer(pk).into());
 
         self.row_id += 1;
         Some(&self.buf)

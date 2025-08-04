@@ -65,7 +65,7 @@ fn empty_motion1_test() {
                 r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
                 r#"WHERE "t"."a" = CAST($2 AS int)) as "Q""#,
             ),
-            vec![Value::from(0_u64), Value::from(1_u64)],
+            vec![Value::from(0), Value::from(1)],
         ))),
     ]]);
 

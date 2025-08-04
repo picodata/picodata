@@ -168,22 +168,22 @@ mod tests {
         assert_eq!(tuples.len(), 2);
         let expected = vec![
             vec![
-                Value::Unsigned(5),
+                Value::Integer(5),
                 Value::String("foo".into()),
                 Value::Boolean(true),
                 Value::Datetime(dt.into()),
                 Value::Uuid(Uuid::nil()),
                 Value::Decimal(Box::new(Decimal::from(666))),
-                Value::Unsigned(7),
+                Value::Integer(7),
             ],
             vec![
-                Value::Unsigned(8),
+                Value::Integer(8),
                 Value::String("bar".into()),
                 Value::Boolean(false),
                 Value::Datetime(dt.into()),
                 Value::Uuid(Uuid::nil()),
                 Value::Decimal(Box::new(Decimal::from(666))),
-                Value::Unsigned(9),
+                Value::Integer(9),
             ],
         ];
 
@@ -206,7 +206,7 @@ mod tests {
         flush_dml(&mut writer, dml_count).unwrap();
         let tuples = vtable.get_tuples();
         assert_eq!(tuples.len(), 1);
-        assert_eq!(tuples[0], vec![Value::Unsigned(567)]);
+        assert_eq!(tuples[0], vec![Value::Integer(567)]);
     }
 
     #[test]

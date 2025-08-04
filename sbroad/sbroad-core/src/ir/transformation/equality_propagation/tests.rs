@@ -23,10 +23,10 @@ fn equality_propagation1() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(1_u64),
-            Value::from(2_u64),
-            Value::from(1_u64),
+            Value::from(1),
+            Value::from(1),
+            Value::from(2),
+            Value::from(1),
         ]
     );
     insta::assert_snapshot!(
@@ -56,7 +56,7 @@ fn equality_propagation3() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::Null, Value::from(1_u64), Value::Null]
+        vec![Value::Null, Value::from(1), Value::Null]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -72,12 +72,7 @@ fn equality_propagation4() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![
-            Value::from(1_u64),
-            Value::Null,
-            Value::from(1_u64),
-            Value::Null,
-        ]
+        vec![Value::from(1), Value::Null, Value::from(1), Value::Null,]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -94,10 +89,10 @@ fn equality_propagation5() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(1_u64),
-            Value::from(1_u64),
-            Value::from(1_u64),
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
+            Value::from(1),
         ]
     );
     insta::assert_snapshot!(
@@ -134,7 +129,7 @@ impl ColumnBuilder {
 
 fn make_const(value: usize) -> EqClassExpr {
     EqClassExpr::EqClassConst(EqClassConst {
-        value: Value::Unsigned(value as u64),
+        value: Value::Integer(value as i64),
     })
 }
 

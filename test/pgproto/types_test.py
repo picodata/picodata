@@ -231,7 +231,7 @@ def test_unsigned(postgres: Postgres):
     )
 
     u = 1
-    u64_max = 18_446_744_073_709_551_615
+    u64_above_max = 9223372036854775808
 
     conn.execute(""" INSERT INTO T VALUES(%t); """, (u,))
 
@@ -251,27 +251,13 @@ def test_unsigned(postgres: Postgres):
 
     # Note: u64::MAX can be sent, despite the fact, that PostgreSQL supports only
     # signed integers, because psycopg sends it as numeric. Also it explicitly sets
-    # parameter type, so cast is needed to make type system happy,
-    #
-    # This works with "SELECT %t::int" because we're working directly with the Value
-    # structure which can handle values larger than INT_MAX, but would fail with
-    # "VALUES (%t::int)" since that would materialize to a virtual table where the
-    # cast to int would enforce rust integer limits.
-    conn.execute(""" INSERT INTO T select %t::int; """, (u64_max,))
-
-    # text encoding fails as u64::MAX can't be encoded as i64
+    # parameter type, so cast is needed to make type system happy. As a matter of fact
+    # it will fail, because sbroad can't handle values that are bigger than i64::MAX anymore.
     with pytest.raises(
         psycopg.InternalError,
-        match="encoding error: out of range integral type conversion attempted",
+        match="failed decoding i64: out of range integral type conversion attempted",
     ):
-        cur = conn.execute(""" SELECT * FROM T; """, binary=False)
-
-    # binary encoding fails as u64::MAX can't be encoded as i64
-    with pytest.raises(
-        psycopg.InternalError,
-        match="encoding error: out of range integral type conversion attempted",
-    ):
-        cur = conn.execute(""" SELECT * FROM T; """, binary=True)
+        conn.execute(""" INSERT INTO T select %t::int; """, (u64_above_max,))
 
 
 def test_arrays(postgres: Postgres):

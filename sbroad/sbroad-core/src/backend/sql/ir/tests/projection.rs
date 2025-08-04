@@ -16,7 +16,7 @@ fn projection1_latest() {
             r#"FROM "hash_testing""#,
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
         ),
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -35,7 +35,7 @@ fn projection1_oldest() {
             r#"FROM "hash_testing""#,
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#,
         ),
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }
@@ -54,7 +54,7 @@ fn projection2_latest() {
             r#"FROM "hash_testing""#,
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#
         ),
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -73,7 +73,7 @@ fn projection2_oldest() {
             r#"FROM "hash_testing""#,
             r#"WHERE "hash_testing"."identification_number" = CAST($1 AS int)"#
         ),
-        vec![Value::from(1_u64)],
+        vec![Value::from(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }
@@ -88,7 +88,7 @@ fn select_without_scan() {
             r#"(VALUES (CAST($2 AS int))) as "col_1","#,
             r#"(SELECT "global_t"."a" FROM "global_t") as "col_2""#,
         ),
-        vec![Value::from(1_u64), Value::from(1_u64)],
+        vec![Value::from(1), Value::from(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

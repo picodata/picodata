@@ -17,13 +17,13 @@ fn virtual_table_1() {
 
     vtable.add_column(vcolumn_integer_user_non_null());
 
-    vtable.add_tuple(vec![Value::from(1_u64)]);
+    vtable.add_tuple(vec![Value::from(1)]);
 
     vtable.set_alias("test");
 
     let expected = VirtualTable {
         columns: vec![column_integer_user_non_null(SmolStr::from("COL_1"))],
-        tuples: vec![vec![Value::from(1_u64)]],
+        tuples: vec![vec![Value::from(1)]],
         name: Some(SmolStr::from("test")),
         primary_key: None,
         bucket_index: VTableIndex::new(),
@@ -39,8 +39,8 @@ fn virtual_table_2() {
     let mut vtable = VirtualTable::new();
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
-    let tuple1 = vec![Value::from(1_u64), Value::from(2_u64)];
-    let tuple2 = vec![Value::from(3_u64), Value::from(4_u64)];
+    let tuple1 = vec![Value::from(1), Value::from(2)];
+    let tuple2 = vec![Value::from(3), Value::from(4)];
     vtable.add_tuple(tuple1.clone());
     vtable.add_tuple(tuple2.clone());
     vtable.set_alias("t");
@@ -74,8 +74,8 @@ fn virtual_table_3() {
     let mut vtable = VirtualTable::new();
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
-    let tuple1 = vec![Value::from(1_u64), Value::from(2_u64)];
-    let tuple2 = vec![Value::from(3_u64), Value::from(4_u64)];
+    let tuple1 = vec![Value::from(1), Value::from(2)];
+    let tuple2 = vec![Value::from(3), Value::from(4)];
     vtable.add_tuple(tuple1.clone());
     vtable.add_tuple(tuple2.clone());
     vtable.set_alias("t");
@@ -109,9 +109,9 @@ fn vtable_rearrange_for_update() {
     let mut vtable = VirtualTable::new();
 
     // t: a (pk) b (shard key)
-    let pk_value = Value::from(1_u64);
-    let new_sh_key_value = Value::from(1_u64);
-    let old_sh_key_value = Value::from(2_u64);
+    let pk_value = Value::from(1);
+    let new_sh_key_value = Value::from(1);
+    let old_sh_key_value = Value::from(2);
     let tuple = vec![
         pk_value.clone(),
         new_sh_key_value.clone(),
@@ -160,18 +160,18 @@ fn vtable_add_missing_from1() {
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.set_alias("t");
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(3_u64)]);
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(4_u64)]);
-    vtable.add_tuple(vec![Value::from(2_u64), Value::from(5_u64)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(3)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(4)]);
+    vtable.add_tuple(vec![Value::from(2), Value::from(5)]);
 
     vtable.set_primary_key(&[0]).unwrap();
 
     let mut from_vtable = VirtualTable::new();
     from_vtable.add_column(vcolumn_integer_user_non_null());
     from_vtable.set_alias("s");
-    from_vtable.add_tuple(vec![Value::from(1_u64)]);
-    from_vtable.add_tuple(vec![Value::from(1_u64)]);
-    from_vtable.add_tuple(vec![Value::from(3_u64)]);
+    from_vtable.add_tuple(vec![Value::from(1)]);
+    from_vtable.add_tuple(vec![Value::from(1)]);
+    from_vtable.add_tuple(vec![Value::from(3)]);
 
     vtable.add_missing_rows(&Rc::new(from_vtable)).unwrap();
 
@@ -183,10 +183,10 @@ fn vtable_add_missing_from1() {
             column_integer_user_non_null(SmolStr::from("COL_2")),
         ],
         tuples: vec![
-            vec![Value::from(1_u64), Value::from(3_u64)],
-            vec![Value::from(1_u64), Value::from(4_u64)],
-            vec![Value::from(2_u64), Value::from(5_u64)],
-            vec![Value::from(3_u64), Value::Null],
+            vec![Value::from(1), Value::from(3)],
+            vec![Value::from(1), Value::from(4)],
+            vec![Value::from(2), Value::from(5)],
+            vec![Value::from(3), Value::Null],
         ],
         name: Some(SmolStr::from("t")),
         primary_key: Some(vec![0]),
@@ -204,19 +204,19 @@ fn vtable_add_missing_from2() {
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.set_alias("t");
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(3_u64)]);
-    vtable.add_tuple(vec![Value::from(2_u64), Value::from(4_u64)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(3)]);
+    vtable.add_tuple(vec![Value::from(2), Value::from(4)]);
 
     vtable.set_primary_key(&[0]).unwrap();
 
     let mut from_vtable = VirtualTable::new();
     from_vtable.add_column(vcolumn_integer_user_non_null());
     from_vtable.set_alias("s");
-    from_vtable.add_tuple(vec![Value::from(1_u64)]);
-    from_vtable.add_tuple(vec![Value::from(2_u64)]);
-    from_vtable.add_tuple(vec![Value::from(3_u64)]);
-    from_vtable.add_tuple(vec![Value::from(3_u64)]);
-    from_vtable.add_tuple(vec![Value::from(3_u64)]);
+    from_vtable.add_tuple(vec![Value::from(1)]);
+    from_vtable.add_tuple(vec![Value::from(2)]);
+    from_vtable.add_tuple(vec![Value::from(3)]);
+    from_vtable.add_tuple(vec![Value::from(3)]);
+    from_vtable.add_tuple(vec![Value::from(3)]);
 
     vtable.add_missing_rows(&Rc::new(from_vtable)).unwrap();
 
@@ -228,11 +228,11 @@ fn vtable_add_missing_from2() {
             column_integer_user_non_null(SmolStr::from("COL_2")),
         ],
         tuples: vec![
-            vec![Value::from(1_u64), Value::from(3_u64)],
-            vec![Value::from(2_u64), Value::from(4_u64)],
-            vec![Value::from(3_u64), Value::Null],
-            vec![Value::from(3_u64), Value::Null],
-            vec![Value::from(3_u64), Value::Null],
+            vec![Value::from(1), Value::from(3)],
+            vec![Value::from(2), Value::from(4)],
+            vec![Value::from(3), Value::Null],
+            vec![Value::from(3), Value::Null],
+            vec![Value::from(3), Value::Null],
         ],
         name: Some(SmolStr::from("t")),
         primary_key: Some(vec![0]),
@@ -250,8 +250,8 @@ fn vtable_remove_duplicates1() {
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.set_alias("t");
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(2_u64)]);
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(2_u64)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(2)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(2)]);
 
     vtable.set_primary_key(&[0]).unwrap();
 
@@ -264,7 +264,7 @@ fn vtable_remove_duplicates1() {
             column_integer_user_non_null(SmolStr::from("COL_1")),
             column_integer_user_non_null(SmolStr::from("COL_2")),
         ],
-        tuples: vec![vec![Value::from(1_u64), Value::from(2_u64)]],
+        tuples: vec![vec![Value::from(1), Value::from(2)]],
         name: Some(SmolStr::from("t")),
         primary_key: Some(vec![0]),
         bucket_index: expected_index,
@@ -310,9 +310,9 @@ fn vtable_remove_duplicates3() {
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.add_column(vcolumn_integer_user_non_null());
     vtable.set_alias("t");
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(2_u64)]);
-    vtable.add_tuple(vec![Value::from(1_u64), Value::Null]);
-    vtable.add_tuple(vec![Value::from(1_u64), Value::from(2_u64)]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(2)]);
+    vtable.add_tuple(vec![Value::from(1), Value::Null]);
+    vtable.add_tuple(vec![Value::from(1), Value::from(2)]);
 
     vtable.set_primary_key(&[0]).unwrap();
 
@@ -326,8 +326,8 @@ fn vtable_remove_duplicates3() {
             column_integer_user_non_null(SmolStr::from("COL_2")),
         ],
         tuples: vec![
-            vec![Value::from(1_u64), Value::Null],
-            vec![Value::from(1_u64), Value::from(2_u64)],
+            vec![Value::from(1), Value::from(2)],
+            vec![Value::from(1), Value::Null],
         ],
         name: Some(SmolStr::from("t")),
         primary_key: Some(vec![0]),
@@ -342,7 +342,7 @@ fn vtable_values_types_casting_single_tuple() {
     let mut actual_vtable = VirtualTable::new();
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
@@ -363,7 +363,7 @@ fn vtable_values_types_casting_two_tuples() {
     let mut actual_vtable = VirtualTable::new();
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
@@ -386,7 +386,7 @@ fn vtable_values_types_casting_two_tuples_err() {
     let mut actual_vtable = VirtualTable::new();
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::String("name".into())]);
     let vtable_types = actual_vtable.get_types();
     let err = calculate_unified_types(&vtable_types).unwrap_err();
@@ -403,7 +403,7 @@ fn vtable_values_types_casting_two_columns() {
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Integer(1)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
     actual_vtable.cast_values(&unified_types).unwrap();
@@ -430,7 +430,7 @@ fn vtable_values_types_casting_two_columns_two_tuples() {
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Integer(1)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
     actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Integer(1)]);
     let vtable_types = actual_vtable.get_types();
     let unified_types = calculate_unified_types(&vtable_types).unwrap();
@@ -459,7 +459,7 @@ fn vtable_values_types_casting_two_columns_with_nulls() {
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Null]);
+    actual_vtable.add_tuple(vec![Value::Integer(1), Value::Null]);
     actual_vtable.add_tuple(vec![Value::Null, Value::Null]);
     actual_vtable.add_tuple(vec![Value::from(Decimal::from(2)), Value::Null]);
     let vtable_types = actual_vtable.get_types();
@@ -490,8 +490,8 @@ fn vtable_values_types_casting_two_columns_numerical() {
 
     actual_vtable.add_column(vcolumn_integer_user_non_null());
     actual_vtable.add_column(vcolumn_integer_user_non_null());
-    actual_vtable.add_tuple(vec![Value::Unsigned(1), Value::Integer(1)]);
-    actual_vtable.add_tuple(vec![Value::Null, Value::Unsigned(5)]);
+    actual_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(1)]);
+    actual_vtable.add_tuple(vec![Value::Null, Value::Integer(5)]);
     actual_vtable.add_tuple(vec![Value::Integer(1), Value::Null]);
     actual_vtable.add_tuple(vec![
         Value::Double(4.2_f64.into()),

@@ -131,8 +131,8 @@ fn selection() {
     let scan_id = plan.add_scan("t", None).unwrap();
 
     let ref_row = plan.add_row_from_child(scan_id, &["a", "b"]).unwrap();
-    let const_1 = plan.nodes.add_const(Value::from(1_u64));
-    let const_10 = plan.nodes.add_const(Value::from(10_u64));
+    let const_1 = plan.nodes.add_const(Value::from(1));
+    let const_10 = plan.nodes.add_const(Value::from(10));
     let const_row = plan.nodes.add_row(vec![const_1, const_10], None);
     let gt_id = plan.nodes.add_bool(ref_row, Bool::Gt, const_row).unwrap();
 

@@ -16,10 +16,10 @@ fn dnf1() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(2_u64),
-            Value::from(4_u64),
-            Value::from(3_u64),
+            Value::from(1),
+            Value::from(2),
+            Value::from(4),
+            Value::from(3),
         ]
     );
     insta::assert_snapshot!(
@@ -37,10 +37,10 @@ fn dnf2() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(3_u64),
-            Value::from(1_u64),
-            Value::from(4_u64),
-            Value::from(2_u64),
+            Value::from(3),
+            Value::from(1),
+            Value::from(4),
+            Value::from(2),
         ]
     );
     insta::assert_snapshot!(
@@ -57,7 +57,7 @@ fn dnf3() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::Null, Value::from(2_u64),]
+        vec![Value::from(1), Value::Null, Value::from(2),]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -73,7 +73,7 @@ fn dnf4() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::Boolean(true), Value::from(2_u64),]
+        vec![Value::from(1), Value::Boolean(true), Value::from(2),]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -89,11 +89,7 @@ fn dnf5() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![
-            Value::from(1_u64),
-            Value::Boolean(false),
-            Value::from(2_u64),
-        ]
+        vec![Value::from(1), Value::Boolean(false), Value::from(2),]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -109,7 +105,7 @@ fn dnf6() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(1_u64), Value::from(2_u64)]
+        vec![Value::from(1), Value::from(1), Value::from(2)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,

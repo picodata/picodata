@@ -511,7 +511,7 @@ def test_pg_params(cluster: Cluster):
     data = i1.sql(
         """
         SELECT avg(x) FILTER (WHERE x > 1) OVER (
-                   PARTITION BY 
+                   PARTITION BY
                        CASE WHEN x - 2 = 0 THEN 'even' ELSE 'odd' END,
                        y LIKE '%a%'
                    ORDER BY x
@@ -1802,7 +1802,7 @@ def test_substring(instance: Instance):
     data = instance.sql("SELECT SUBSTRING('string' FROM 2 FOR 2147483646)")
     assert data[0] == ["tring"]
 
-    with pytest.raises(TarantoolError, match="u64 parsing error number too large to fit in target"):
+    with pytest.raises(TarantoolError, match="value doesn't fit into integer range"):
         instance.sql("SELECT SUBSTRING('string' FROM 2 FOR 99999999999999999999)")
 
     # regular expression substring (with SQL's regex syntax)
@@ -2707,7 +2707,7 @@ def test_insert_on_conflict(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table "t" ("a" integer not null, "b" int not null, primary key ("a")) 
+        create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
         distributed globally
         option (timeout = 3)
     """
@@ -5932,7 +5932,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     # property expects different value type
     with pytest.raises(
         TarantoolError,
-        match="invalid value for 'auth_password_enforce_digits': expected bool, got unsigned.",
+        match="invalid value for 'auth_password_enforce_digits': expected bool, got integer.",
     ):
         dml = i1.sql(
             """
@@ -6540,15 +6540,16 @@ def test_extreme_integer_values(cluster: Cluster):
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
 
     U64_MIN = 0
-    U64_MAX = 18446744073709551615
+    U64_MAX = 9223372036854775807
     I64_MIN = -9223372036854775808
     I64_MAX = 9223372036854775807
+    RUST_U64_MAX = 18446744073709551615
 
     data = i1.sql(f"SELECT * FROM (VALUES ({I64_MAX}, {U64_MAX}), ({U64_MAX}, {I64_MAX}))")
     assert sorted(data) == [[I64_MAX, U64_MAX], [U64_MAX, I64_MAX]]
 
     data = i1.sql(f"SELECT {I64_MAX}, {U64_MAX} UNION SELECT {U64_MAX}, {I64_MAX}")
-    assert sorted(data) == [[I64_MAX, U64_MAX], [U64_MAX, I64_MAX]]
+    assert sorted(data) == [[I64_MAX, U64_MAX]]
 
     data = i1.sql(f"SELECT {U64_MAX} UNION ALL SELECT {U64_MAX}")
     assert sorted(data) == [[U64_MAX], [U64_MAX]]
@@ -6577,9 +6578,6 @@ def test_extreme_integer_values(cluster: Cluster):
     data = i1.sql(f"SELECT uid FROM T WHERE uid = {U64_MIN}")
     assert data == [[U64_MIN]]
 
-    data = i1.sql(f"SELECT uid FROM T WHERE uid = {U64_MAX}")
-    assert data == [[U64_MAX]]
-
     data = i1.sql(f"SELECT iid FROM T WHERE iid = {I64_MIN}")
     assert data == [[I64_MIN]]
 
@@ -6592,14 +6590,14 @@ def test_extreme_integer_values(cluster: Cluster):
     data = i1.sql(f"SELECT * FROM T WHERE iid = {I64_MIN} LIMIT 1")
     assert sorted(data) == [[U64_MIN, I64_MIN]]
 
-    data = i1.sql(f"SELECT * FROM T WHERE uid = {U64_MAX} LIMIT 1")
-    assert sorted(data) == [[U64_MAX, I64_MAX]]
-
     data = i1.sql(f"SELECT * FROM T WHERE iid = {I64_MAX} LIMIT 1")
     assert sorted(data) == [[U64_MAX, I64_MAX]]
 
-    with pytest.raises(TarantoolError, match="integer is overflowed"):
-        i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {U64_MAX} LIMIT 1")
+    with pytest.raises(TarantoolError, match="value doesn't fit into integer range"):
+        i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {I64_MAX + 1} LIMIT 1")
+
+    with pytest.raises(TarantoolError, match="value doesn't fit into integer range"):
+        i1.sql(f"SELECT uid + 1 FROM T WHERE uid = {RUST_U64_MAX} LIMIT 1")
 
 
 def test_vdbe_steps_and_vtable_rows(cluster: Cluster):
@@ -6838,6 +6836,12 @@ def test_groupby_with_column_positions(cluster: Cluster):
         [7, 8, 6, 5],
         [7, 8, 8, 7],
     ]
+
+    with pytest.raises(
+        TarantoolError,
+        match="GROUP BY position -1 should be positive",
+    ):
+        i1.sql("""SELECT * FROM t GROUP BY -1""")
 
 
 def test_cte_with_tmp_space(cluster: Cluster):

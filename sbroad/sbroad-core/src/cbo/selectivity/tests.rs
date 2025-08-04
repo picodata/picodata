@@ -13,7 +13,7 @@ fn numeric_filter_eq_selectivity() {
     let table_name = SmolStr::from("test_space");
     let column_index = 0;
 
-    let constant = Value::from(4u64);
+    let constant = Value::from(4);
     let selectivity = calculate_filter_selectivity(
         &runtime,
         &TableColumnPair(table_name, column_index),

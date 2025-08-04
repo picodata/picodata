@@ -186,7 +186,7 @@ fn test_query_explain_11() {
     (select e, f from t2 where (e, f) = (10, 10))
     join
     (select a, b from t1 where (a, b) = ('20', 20))
-    on e = b 
+    on e = b
     group by a
 "#;
 
@@ -307,7 +307,7 @@ fn test_query_explain_16() {
     let mut query = ExecutingQuery::from_text_and_params(
         metadata,
         sql,
-        vec![Value::Unsigned(14), Value::Unsigned(88)],
+        vec![Value::Integer(14), Value::Integer(88)],
     )
     .unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"

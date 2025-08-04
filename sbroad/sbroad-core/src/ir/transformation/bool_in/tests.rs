@@ -14,7 +14,7 @@ fn bool_in1() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+        vec![Value::from(1), Value::from(2), Value::from(3)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -29,7 +29,7 @@ fn bool_in3() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+        vec![Value::from(1), Value::from(2), Value::from(3)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -46,10 +46,10 @@ fn bool_in4() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(2_u64),
-            Value::from(1_u64),
-            Value::from(0_u64),
+            Value::from(1),
+            Value::from(2),
+            Value::from(1),
+            Value::from(0),
         ]
     );
     insta::assert_snapshot!(
@@ -66,7 +66,7 @@ fn bool_in5() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from("1")]
+        vec![Value::from(1), Value::from(2), Value::from("1")]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,

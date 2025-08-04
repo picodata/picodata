@@ -140,8 +140,6 @@ pub enum Value {
     Null,
     /// String type.
     String(String),
-    /// Unsigned integer type.
-    Unsigned(u64),
     /// Tuple type
     Tuple(Tuple),
     /// Uuid type
@@ -166,16 +164,19 @@ impl<'de> Decode<'de> for Value {
             }
             Marker::FixPos(val) => {
                 rmp::decode::read_pfix(r).map_err(DecodeError::from_vre::<Self>)?;
-                Ok(Value::from(val as u64))
+                Ok(Value::from(val as i64))
             }
             Marker::FixNeg(val) => {
                 rmp::decode::read_nfix(r).map_err(DecodeError::from_vre::<Self>)?;
                 Ok(Value::from(val as i64))
             }
-            Marker::U8 => Ok(Value::from(u8::decode(r, context)? as u64)),
-            Marker::U16 => Ok(Value::from(u16::decode(r, context)? as u64)),
-            Marker::U32 => Ok(Value::from(u32::decode(r, context)? as u64)),
-            Marker::U64 => Ok(Value::from(u64::decode(r, context)?)),
+            Marker::U8 => Ok(Value::from(u8::decode(r, context)? as i64)),
+            Marker::U16 => Ok(Value::from(u16::decode(r, context)? as i64)),
+            Marker::U32 => Ok(Value::from(u32::decode(r, context)? as i64)),
+            Marker::U64 => Ok(Value::from(
+                i64::try_from(u64::decode(r, context)?)
+                    .map_err(|err| DecodeError::new::<i64>(err.to_string()))?,
+            )),
             Marker::I8 => Ok(Value::from(i8::decode(r, context)? as i64)),
             Marker::I16 => Ok(Value::from(i16::decode(r, context)? as i64)),
             Marker::I32 => Ok(Value::from(i32::decode(r, context)? as i64)),
@@ -243,7 +244,6 @@ impl Encode for Value {
             Value::Integer(v) => v.encode(w, context),
             Value::Null => ().encode(w, context),
             Value::String(v) => v.encode(w, context),
-            Value::Unsigned(v) => v.encode(w, context),
             Value::Tuple(v) => v.encode(w, context),
             Value::Uuid(v) => v.encode(w, context),
         }
@@ -297,7 +297,6 @@ impl fmt::Display for Value {
         match self {
             Value::Boolean(v) => write!(f, "{v}"),
             Value::Null => write!(f, "NULL"),
-            Value::Unsigned(v) => write!(f, "{v}"),
             Value::Integer(v) => write!(f, "{v}"),
             Value::Datetime(v) => write!(f, "{v}"),
             Value::Double(v) => fmt::Display::fmt(&v, f),
@@ -321,21 +320,9 @@ impl From<i64> for Value {
     }
 }
 
-impl From<u64> for Value {
-    fn from(v: u64) -> Self {
-        Value::Unsigned(v)
-    }
-}
-
 impl From<i32> for Value {
     fn from(v: i32) -> Self {
         Value::Integer(i64::from(v))
-    }
-}
-
-impl From<u32> for Value {
-    fn from(v: u32) -> Self {
-        Value::Unsigned(u64::from(v))
     }
 }
 
@@ -425,7 +412,6 @@ impl From<Uuid> for Value {
 pub(crate) fn value_to_decimal_or_error(value: &Value) -> Result<Decimal, SbroadError> {
     match value {
         Value::Integer(s) => Ok(Decimal::from(*s)),
-        Value::Unsigned(s) => Ok(Decimal::from(*s)),
         Value::Double(s) => {
             let from_string_cast = Decimal::from_str(&format!("{s}"));
             if let Ok(d) = from_string_cast {
@@ -577,8 +563,7 @@ impl Value {
             Value::Boolean(s) => match other {
                 Value::Boolean(o) => (s == o).into(),
                 Value::Null => Trivalent::Unknown,
-                Value::Unsigned(_)
-                | Value::Integer(_)
+                Value::Integer(_)
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
@@ -600,7 +585,6 @@ impl Value {
                 Value::Double(o) => (Decimal::from_str(&format!("{s}"))
                     == Decimal::from_str(&format!("{o}")))
                 .into(),
-                Value::Unsigned(o) => (&Decimal::from(*s) == o).into(),
             },
             Value::Double(s) => match other {
                 Value::Boolean(_)
@@ -614,9 +598,6 @@ impl Value {
                 Value::Decimal(o) => (Decimal::from_str(&format!("{s}")) == Ok(**o)).into(),
                 Value::Double(o) => (s == o).into(),
                 // If double can't be converted to decimal without error then it is not equal to unsigned.
-                Value::Unsigned(o) => {
-                    (Decimal::from_str(&format!("{s}")) == Ok(Decimal::from(*o))).into()
-                }
             },
             Value::Decimal(s) => match other {
                 Value::Boolean(_)
@@ -629,22 +610,6 @@ impl Value {
                 Value::Decimal(o) => (s == o).into(),
                 // If double can't be converted to decimal without error then it is not equal to decimal.
                 Value::Double(o) => (Ok(**s) == Decimal::from_str(&format!("{o}"))).into(),
-                Value::Unsigned(o) => (**s == Decimal::from(*o)).into(),
-            },
-            Value::Unsigned(s) => match other {
-                Value::Boolean(_)
-                | Value::String(_)
-                | Value::Uuid(_)
-                | Value::Tuple(_)
-                | Value::Datetime(_) => Trivalent::False,
-                Value::Null => Trivalent::Unknown,
-                Value::Integer(o) => (Decimal::from(*s) == *o).into(),
-                Value::Decimal(o) => (Decimal::from(*s) == **o).into(),
-                // If double can't be converted to decimal without error then it is not equal to unsigned.
-                Value::Double(o) => {
-                    (Ok(Decimal::from(*s)) == Decimal::from_str(&format!("{o}"))).into()
-                }
-                Value::Unsigned(o) => (s == o).into(),
             },
             Value::String(s) => match other {
                 Value::Boolean(_)
@@ -652,7 +617,6 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
@@ -664,7 +628,6 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::String(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_) => Trivalent::False,
@@ -677,7 +640,6 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::String(_)
-                | Value::Unsigned(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Uuid(o) => s.eq(o).into(),
@@ -688,7 +650,6 @@ impl Value {
                 | Value::String(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
@@ -705,7 +666,6 @@ impl Value {
             Value::Datetime(_) => FieldType::Datetime,
             Value::Decimal(_) => FieldType::Decimal,
             Value::Double(_) => FieldType::Double,
-            Value::Unsigned(_) => FieldType::Integer,
             Value::String(_) => FieldType::String,
             Value::Tuple(_) => FieldType::Array,
             Value::Uuid(_) => FieldType::Uuid,
@@ -734,8 +694,7 @@ impl Value {
             Value::Boolean(s) => match other {
                 Value::Boolean(o) => TrivalentOrdering::from(s.cmp(o)).into(),
                 Value::Null => TrivalentOrdering::Unknown.into(),
-                Value::Unsigned(_)
-                | Value::Integer(_)
+                Value::Integer(_)
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
@@ -762,16 +721,12 @@ impl Value {
                         _ => None,
                     }
                 }
-                Value::Unsigned(o) => {
-                    TrivalentOrdering::from(Decimal::from(*s).cmp(&Decimal::from(*o))).into()
-                }
             },
             Value::Datetime(s) => match other {
                 Value::Boolean(_)
                 | Value::Integer(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::Uuid(_)
                 | Value::String(_)
                 | Value::Tuple(_) => None,
@@ -807,14 +762,6 @@ impl Value {
                         None
                     }
                 }
-                // If double can't be converted to decimal without error then it is not equal to unsigned.
-                Value::Unsigned(o) => {
-                    if let Ok(d) = Decimal::from_str(&format!("{s}")) {
-                        TrivalentOrdering::from(d.cmp(&Decimal::from(*o))).into()
-                    } else {
-                        None
-                    }
-                }
             },
             Value::Decimal(s) => match other {
                 Value::Boolean(_)
@@ -833,28 +780,6 @@ impl Value {
                         None
                     }
                 }
-                Value::Unsigned(o) => TrivalentOrdering::from((**s).cmp(&Decimal::from(*o))).into(),
-            },
-            Value::Unsigned(s) => match other {
-                Value::Boolean(_)
-                | Value::Datetime(_)
-                | Value::String(_)
-                | Value::Uuid(_)
-                | Value::Tuple(_) => None,
-                Value::Null => TrivalentOrdering::Unknown.into(),
-                Value::Integer(o) => {
-                    TrivalentOrdering::from(Decimal::from(*s).cmp(&Decimal::from(*o))).into()
-                }
-                Value::Decimal(o) => TrivalentOrdering::from(Decimal::from(*s).cmp(o)).into(),
-                // If double can't be converted to decimal without error then it is not equal to unsigned.
-                Value::Double(o) => {
-                    if let Ok(d) = Decimal::from_str(&format!("{o}")) {
-                        TrivalentOrdering::from(Decimal::from(*s).cmp(&d)).into()
-                    } else {
-                        None
-                    }
-                }
-                Value::Unsigned(o) => TrivalentOrdering::from(s.cmp(o)).into(),
             },
             Value::String(s) => match other {
                 Value::Boolean(_)
@@ -862,7 +787,6 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
@@ -874,7 +798,6 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::String(_)
                 | Value::Tuple(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
@@ -886,7 +809,6 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::Decimal(_)
                 | Value::Double(_)
-                | Value::Unsigned(_)
                 | Value::String(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_) => None,
@@ -935,7 +857,6 @@ impl Value {
                         .into(),
                 )),
                 Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v).into())),
-                Value::Unsigned(v) => Ok(Value::Decimal(Decimal::from(v).into())),
                 Value::String(ref v) => Ok(Value::Decimal(
                     Decimal::from_str(v)
                         .map_err(|_| cast_error(&self, column_type))?
@@ -948,7 +869,6 @@ impl Value {
                 Value::Double(_) => Ok(self),
                 Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
-                Value::Unsigned(v) => Ok(Value::Double(Double::from(v))),
                 Value::String(v) => Ok(Value::Double(Double::from_str(&v)?)),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
@@ -956,11 +876,7 @@ impl Value {
             UnrestrictedType::Integer => match self {
                 Value::Integer(_) => Ok(self),
                 Value::Decimal(ref v) => {
-                    let Some(int) = v.to_i64() else {
-                        let unsigned = v.to_u64().ok_or_else(|| cast_error(&self, column_type))?;
-                        return Ok(Value::Unsigned(unsigned));
-                    };
-
+                    let int = v.to_i64().ok_or_else(|| cast_error(&self, column_type))?;
                     Ok(Value::Integer(int))
                 }
                 Value::Double(ref v) => v
@@ -968,9 +884,6 @@ impl Value {
                     .parse::<i64>()
                     .map(Value::Integer)
                     .map_err(|_| cast_error(&self, column_type)),
-                Value::Unsigned(v) => Ok(Value::Integer(
-                    i64::try_from(v).map_err(|_| cast_error(&self, column_type))?,
-                )),
                 Value::String(ref v) => v
                     .parse::<i64>()
                     .map(Value::Integer)
@@ -1029,7 +942,7 @@ impl Value {
     #[must_use]
     pub fn get_type(&self) -> DerivedType {
         let ty = match self {
-            Value::Integer(_) | Value::Unsigned(_) => UnrestrictedType::Integer,
+            Value::Integer(_) => UnrestrictedType::Integer,
             Value::Datetime(_) => UnrestrictedType::Datetime,
             Value::Decimal(_) => UnrestrictedType::Decimal,
             Value::Double(_) => UnrestrictedType::Double,
@@ -1046,7 +959,6 @@ impl Value {
 impl ToHashString for Value {
     fn to_hash_string(&self) -> String {
         match self {
-            Value::Unsigned(v) => v.to_string(),
             Value::Integer(v) => v.to_string(),
             Value::Datetime(v) => v.to_string(),
             // It is important to trim trailing zeros when converting to string.
@@ -1087,7 +999,6 @@ impl Serialize for EncodedValue<'_> {
             EncodedValue::Owned(Value::Integer(v)) => v.serialize(serializer),
             EncodedValue::Owned(Value::Null) => ().serialize(serializer),
             EncodedValue::Owned(Value::String(v)) => v.serialize(serializer),
-            EncodedValue::Owned(Value::Unsigned(v)) => v.serialize(serializer),
             EncodedValue::Owned(Value::Tuple(v)) => v.serialize(serializer),
             EncodedValue::Owned(Value::Uuid(v)) => v.serialize(serializer),
         }
@@ -1100,14 +1011,6 @@ impl EncodedValue<'_> {
         match &self {
             EncodedValue::Ref(MsgPackValue::Double(value)) => Some(**value),
             EncodedValue::Owned(Value::Double(value)) => Some(value.value),
-            _ => None,
-        }
-    }
-
-    pub fn unsigned(&self) -> Option<u64> {
-        match &self {
-            EncodedValue::Ref(MsgPackValue::Unsigned(value)) => Some(**value),
-            EncodedValue::Owned(Value::Unsigned(value)) => Some(*value),
             _ => None,
         }
     }
@@ -1148,7 +1051,6 @@ pub enum MsgPackValue<'v> {
     Decimal(&'v Decimal),
     Double(&'v f64),
     Integer(&'v i64),
-    Unsigned(&'v u64),
     String(&'v String),
     Tuple(&'v Tuple),
     Uuid(&'v Uuid),
@@ -1167,25 +1069,6 @@ impl<'v> From<&'v Value> for MsgPackValue<'v> {
             Value::String(v) => MsgPackValue::String(v),
             Value::Tuple(v) => MsgPackValue::Tuple(v),
             Value::Uuid(v) => MsgPackValue::Uuid(v),
-            Value::Unsigned(v) => MsgPackValue::Unsigned(v),
-        }
-    }
-}
-
-impl<'v> From<EncodedValue<'v>> for Value {
-    fn from(value: EncodedValue<'v>) -> Self {
-        match value {
-            EncodedValue::Ref(MsgPackValue::Boolean(v)) => Value::Boolean(*v),
-            EncodedValue::Ref(MsgPackValue::Datetime(v)) => Value::Datetime(*v),
-            EncodedValue::Ref(MsgPackValue::Decimal(v)) => Value::Decimal((*v).into()),
-            EncodedValue::Ref(MsgPackValue::Double(v)) => Value::Double(Double::from(*v)),
-            EncodedValue::Ref(MsgPackValue::Integer(v)) => Value::Integer(*v),
-            EncodedValue::Ref(MsgPackValue::Unsigned(v)) => Value::Unsigned(*v),
-            EncodedValue::Ref(MsgPackValue::String(v)) => Value::String(v.clone()),
-            EncodedValue::Ref(MsgPackValue::Tuple(v)) => Value::Tuple(v.clone()),
-            EncodedValue::Ref(MsgPackValue::Uuid(v)) => Value::Uuid(*v),
-            EncodedValue::Ref(MsgPackValue::Null(())) => Value::Null,
-            EncodedValue::Owned(v) => v,
         }
     }
 }
@@ -1193,7 +1076,6 @@ impl<'v> From<EncodedValue<'v>> for Value {
 impl From<Value> for String {
     fn from(v: Value) -> Self {
         match v {
-            Value::Unsigned(v) => v.to_string(),
             Value::Integer(v) => v.to_string(),
             Value::Datetime(v) => v.to_string(),
             Value::Decimal(v) => v.to_string(),
@@ -1212,7 +1094,6 @@ impl<L: tlua::AsLua> tlua::Push<L> for Value {
 
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         match self {
-            Value::Unsigned(v) => v.push_to_lua(lua),
             Value::Integer(v) => v.push_to_lua(lua),
             Value::Datetime(v) => v.push_to_lua(lua),
             Value::Decimal(v) => v.push_to_lua(lua),
@@ -1234,7 +1115,6 @@ where
 
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         match self {
-            Value::Unsigned(v) => v.push_into_lua(lua),
             Value::Integer(v) => v.push_into_lua(lua),
             Value::Datetime(v) => v.push_into_lua(lua),
             Value::Decimal(v) => v.push_into_lua(lua),
@@ -1266,10 +1146,6 @@ where
                 return Ok(Value::Double(Double::from(v)));
             }
         }
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::Unsigned(v)),
-            Err((lua, _)) => lua,
-        };
         let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
             Ok(v) => return Ok(Self::Integer(v)),
             Err((lua, _)) => lua,

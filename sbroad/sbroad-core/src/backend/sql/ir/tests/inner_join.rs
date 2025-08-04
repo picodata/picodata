@@ -58,7 +58,7 @@ fn inner_join2_latest() {
             r#"ON "hash_testing"."identification_number" = "t"."id""#,
             r#"WHERE "hash_testing"."product_code" = CAST($2 AS string)"#,
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -79,7 +79,7 @@ fn inner_join2_oldest() {
             r#"ON "hash_testing"."identification_number" = "t"."id""#,
             r#"WHERE "hash_testing"."product_code" = CAST($2 AS string)"#,
         ),
-        vec![Value::from(1_u64), Value::from("a")],
+        vec![Value::from(1), Value::from("a")],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

@@ -67,7 +67,7 @@ fn exec_plan_subtree_test() {
     // Check sub-query
     let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
 
-    assert_eq!(sql.params, vec![Value::from(1_u64)]);
+    assert_eq!(sql.params, vec![Value::from(1)]);
     insta::assert_snapshot!(
         sql.pattern,
         @r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE "hash_testing"."identification_number" > CAST($1 AS int)"#,
@@ -228,7 +228,7 @@ fn exec_plan_subtree_aggregates() {
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
-    assert_eq!(sql.params, vec![Value::Unsigned(2), Value::from("o")]);
+    assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
     insta::assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", ("COL_1" * CAST($1 AS int)) + sum ("COL_8") as "col_2", sum ("COL_9") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_9" as double)) / sum (CAST ("COL_4" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_5") as "col_8", max ("COL_6") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_test_0136") GROUP BY "COL_1""#);
 }
 
@@ -480,7 +480,7 @@ fn exec_plan_subtree_having() {
                 r#"count ("T1"."sys_op" * CAST($2 AS int)) as "count_1" FROM "test_space" as "T1""#,
                 r#"GROUP BY "T1"."sys_op", "T1"."sys_op" * CAST($3 AS int)"#,
             ),
-            vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
+            vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
         )
     );
 
@@ -496,7 +496,7 @@ fn exec_plan_subtree_having() {
                 r#"(SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
                 r#"GROUP BY "COL_1" HAVING sum (DISTINCT "COL_2") > CAST($1 AS int)"#
             ),
-            vec![Value::Unsigned(1u64)]
+            vec![Value::Integer(1)]
         )
     );
 }
@@ -544,7 +544,7 @@ fn exec_plan_subtree_having_without_groupby() {
                 r#"count ("T1"."sys_op" * CAST($2 AS int)) as "count_1" FROM "test_space" as "T1""#,
                 r#"GROUP BY "T1"."sys_op" * CAST($3 AS int)"#,
             ),
-            vec![Value::Unsigned(2), Value::Unsigned(2), Value::Unsigned(2)]
+            vec![Value::Integer(2), Value::Integer(2), Value::Integer(2)]
         )
     );
 
@@ -559,7 +559,7 @@ fn exec_plan_subtree_having_without_groupby() {
                 r#"FROM (SELECT "COL_1","COL_2","COL_3" FROM "TMP_test_0136")"#,
                 r#"HAVING sum (DISTINCT "COL_1") > CAST($1 AS int)"#,
             ),
-            vec![Value::Unsigned(1u64)]
+            vec![Value::Integer(1)]
         )
     );
 }
@@ -578,7 +578,7 @@ fn exec_plan_subquery_as_expression_under_projection() {
         sql,
         PatternWithParams::new(
             r#"SELECT (VALUES (CAST($1 AS int))) as "col_1" FROM "test_space""#.to_string(),
-            vec![Value::Unsigned(1u64)]
+            vec![Value::Integer(1)]
         )
     );
 }
@@ -598,7 +598,7 @@ fn exec_plan_subquery_as_expression_under_projection_several() {
         PatternWithParams::new(
             r#"SELECT (VALUES (CAST($1 AS int))) as "col_1", (VALUES (CAST($2 AS int))) as "col_2" FROM "test_space""#
                 .to_string(),
-            vec![Value::Unsigned(1u64), Value::Unsigned(2u64)]
+            vec![Value::Integer(1), Value::Integer(2)]
         )
     );
 }
@@ -657,7 +657,7 @@ fn exec_plan_subquery_as_expression_under_order_by() {
         sql,
         PatternWithParams::new(
             r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "COL_1" + (VALUES (CAST($1 AS int)))"#.to_string(),
-            vec![Value::Unsigned(1)]
+            vec![Value::Integer(1)]
         )
     );
 }
@@ -677,7 +677,7 @@ fn exec_plan_subquery_as_expression_under_projection_nested() {
         PatternWithParams::new(
             r#"SELECT (VALUES ((VALUES (CAST($1 AS int))))) as "col_1" FROM "test_space""#
                 .to_string(),
-            vec![Value::Unsigned(1)]
+            vec![Value::Integer(1)]
         )
     );
 }
@@ -706,7 +706,7 @@ fn exec_plan_subquery_as_expression_under_group_by() {
         sql,
         PatternWithParams::new(
             r#"SELECT "test_space"."id" + (VALUES (CAST($1 AS int))) as "gr_expr_1", count (*) as "count_1" FROM "test_space" GROUP BY "test_space"."id" + (VALUES (CAST($1 AS int)))"#.to_string(),
-            vec![Value::Unsigned(1u64)]
+            vec![Value::Integer(1)]
         )
     );
 
@@ -1300,9 +1300,9 @@ fn check_subtree_hashes_are_equal_2(
 fn subtree_hash1() {
     check_subtree_hashes_are_equal(
         r#"select ?, ? from "t""#,
-        vec![Value::Unsigned(1), Value::Unsigned(1)],
+        vec![Value::Integer(1), Value::Integer(1)],
         r#"select $1, $2 from "t""#,
-        vec![Value::Unsigned(1), Value::Unsigned(1)],
+        vec![Value::Integer(1), Value::Integer(1)],
     );
 }
 
@@ -1312,18 +1312,18 @@ fn subtree_hash2() {
         r#"select ?, ? from "t"
         option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#,
         vec![
-            Value::Unsigned(1),
-            Value::Unsigned(11),
-            Value::Unsigned(3),
-            Value::Unsigned(10),
+            Value::Integer(1),
+            Value::Integer(11),
+            Value::Integer(3),
+            Value::Integer(10),
         ],
         r#"select $1, $2 from "t"
         option(sql_vdbe_opcode_max = $3, sql_motion_row_max = $4)"#,
         vec![
-            Value::Unsigned(1),
-            Value::Unsigned(11),
-            Value::Unsigned(3),
-            Value::Unsigned(10),
+            Value::Integer(1),
+            Value::Integer(11),
+            Value::Integer(3),
+            Value::Integer(10),
         ],
     );
 }
@@ -1339,7 +1339,7 @@ fn check_parentheses() {
 
     let expected = PatternWithParams::new(
         r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sysFrom" = ((CAST($1 AS int) + CAST($2 AS int)) + CAST($3 AS int))"#.to_string(),
-        vec![Value::from(1_u64), Value::from(3_u64), Value::from(2_u64)],
+        vec![Value::from(1), Value::from(3), Value::from(2)],
     );
 
     assert_eq!(
@@ -1359,9 +1359,9 @@ fn subtree_hash3() {
     check_subtree_hashes_are_equal(
         r#"select ?, ? from "t"
         option(sql_vdbe_opcode_max = ?)"#,
-        vec![Value::Unsigned(1), Value::Unsigned(11), Value::Unsigned(10)],
+        vec![Value::Integer(1), Value::Integer(11), Value::Integer(10)],
         r#"select ?, ? from "t""#,
-        vec![Value::Unsigned(1), Value::Unsigned(1)],
+        vec![Value::Integer(1), Value::Integer(1)],
     );
 }
 */
@@ -1372,7 +1372,7 @@ fn subtree_hash4() {
         r#"VALUES (1)"#,
         vec![],
         r#"VALUES (?)"#,
-        vec![Value::Unsigned(1)],
+        vec![Value::Integer(1)],
     );
 }
 
@@ -1403,7 +1403,7 @@ fn subtree_hash7() {
         vec![],
         r#"VALUES ($1, $2, $3)"#,
         vec![
-            Value::Unsigned(0),
+            Value::Integer(0),
             Value::Boolean(true),
             Value::String("abc".to_string()),
         ],

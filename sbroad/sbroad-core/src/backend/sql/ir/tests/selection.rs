@@ -11,7 +11,7 @@ fn selection_column_from_values() {
 
     let expected = PatternWithParams::new(
         r#"SELECT "unnamed_subquery"."COLUMN_1" FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery""#.to_string(),
-        vec![Value::Unsigned(1)],
+        vec![Value::Integer(1)],
     );
     check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
@@ -73,7 +73,7 @@ and "hash_testing"."product_units")
 or ((("hash_testing"."product_units", "hash_testing"."identification_number") = (CAST($1 AS bool), CAST($2 AS int)))
 and ("hash_testing"."product_units" is null))"#,
         ),
-        vec![Value::Boolean(true), Value::Unsigned(1)],
+        vec![Value::Boolean(true), Value::Integer(1)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Latest);
 }
@@ -91,7 +91,7 @@ fn selection2_oldest() {
             r#"WHERE (("hash_testing"."identification_number" in (CAST($1 AS int))) and ("hash_testing"."product_units" = CAST($2 AS bool)))"#,
             r#"and ("hash_testing"."product_units" or ("hash_testing"."product_units" is null))"#,
         ].join(" "),
-        vec![Value::Unsigned(1), Value::Boolean(true)],
+        vec![Value::Integer(1), Value::Boolean(true)],
     );
     check_sql_with_snapshot(query, vec![], expected, Snapshot::Oldest);
 }

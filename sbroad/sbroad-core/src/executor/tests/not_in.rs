@@ -34,7 +34,7 @@ fn not_in1_test() {
     // Mock a virtual table.
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(3_u64)]);
+    virtual_table.add_tuple(vec![Value::from(3)]);
     query
         .coordinator
         .add_virtual_table(motion_id, virtual_table);

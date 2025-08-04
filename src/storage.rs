@@ -3340,12 +3340,12 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn sql_motion_row_max(&self) -> u64 {
+    pub fn sql_motion_row_max(&self) -> i64 {
         config::DYNAMIC_CONFIG.sql_motion_row_max.current_value()
     }
 
     #[inline]
-    pub fn sql_vdbe_opcode_max(&self) -> u64 {
+    pub fn sql_vdbe_opcode_max(&self) -> i64 {
         config::DYNAMIC_CONFIG.sql_vdbe_opcode_max.current_value()
     }
 

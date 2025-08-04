@@ -27,7 +27,7 @@ fn equivalence() {
         "9223372036854775807".parse::<Double>().unwrap()
     );
     assert_eq!(
-        Double::from(18_446_744_073_709_551_615_u64),
+        Double::from(18_446_744_073_709_551_615_f64),
         "18446744073709551615".parse::<Double>().unwrap()
     );
     assert_eq!(

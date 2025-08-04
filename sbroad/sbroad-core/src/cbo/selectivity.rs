@@ -281,7 +281,6 @@ pub fn calculate_filter_selectivity(
             let downcasted_column_stats = downcast_column_stats::<Decimal>(&column_stats, column)?;
             let casted_constant = match constant {
                 Value::Decimal(d) => **d,
-                Value::Unsigned(u) => Decimal::from(*u),
                 Value::Integer(i) => Decimal::from(*i),
                 Value::Double(d) => decimal_from_str(d)?,
                 _ => return types_mismatch_error,
@@ -292,7 +291,6 @@ pub fn calculate_filter_selectivity(
             let downcasted_column_stats = downcast_column_stats::<Double>(&column_stats, column)?;
             let casted_constant = match constant {
                 Value::Decimal(d) => double_from_str(d)?,
-                Value::Unsigned(u) => Double::from(*u),
                 Value::Integer(i) => Double::from(*i),
                 Value::Double(d) => d.clone(),
                 _ => return types_mismatch_error,
@@ -303,7 +301,6 @@ pub fn calculate_filter_selectivity(
             Ok(downcasted_column_stats) => {
                 let casted_constant = match constant {
                     Value::Decimal(d) => (**d).try_into()?,
-                    Value::Unsigned(u) => (*u).try_into()?,
                     Value::Integer(i) => *i,
                     Value::Double(d) => {
                         let decimal: Decimal = decimal_from_str(&d)?;
@@ -317,7 +314,6 @@ pub fn calculate_filter_selectivity(
                 let downcasted_column_stats = downcast_column_stats::<u64>(&column_stats, column)?;
                 let casted_constant = match constant {
                     Value::Decimal(d) => (**d).try_into()?,
-                    Value::Unsigned(u) => *u,
                     Value::Integer(i) => (*i).try_into()?,
                     Value::Double(d) => {
                         let decimal: Decimal = decimal_from_str(&d)?;

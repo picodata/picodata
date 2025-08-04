@@ -286,7 +286,7 @@ impl From<SqlValue> for SBroadValue {
             SqlValueInner::Integer(i) => SBroadValue(Value::Integer(i)),
             SqlValueInner::Null => SBroadValue(Value::Null),
             SqlValueInner::String(s) => SBroadValue(Value::String(s.to_string())),
-            SqlValueInner::Unsigned(u) => SBroadValue(Value::Unsigned(u)),
+            SqlValueInner::Unsigned(u) => SBroadValue(Value::Integer(u as i64)),
             SqlValueInner::Array(arr) => SBroadValue(Value::Tuple(Tuple::from(
                 arr.into_iter()
                     .map(|v| SBroadValue::from(v).0)

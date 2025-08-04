@@ -15,10 +15,10 @@ fn merge_tuples1() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(2_u64),
-            Value::from(3_u64),
-            Value::from(4_u64),
+            Value::from(1),
+            Value::from(2),
+            Value::from(3),
+            Value::from(4),
         ]
     );
     insta::assert_snapshot!(
@@ -37,12 +37,12 @@ fn merge_tuples2() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(2_u64),
-            Value::from(1_u64),
+            Value::from(2),
+            Value::from(1),
             Value::Null,
-            Value::from(3_u64),
+            Value::from(3),
             Value::Boolean(true),
-            Value::from(4_u64),
+            Value::from(4),
         ]
     );
     insta::assert_snapshot!(
@@ -70,7 +70,7 @@ fn merge_tuples4() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+        vec![Value::from(1), Value::from(2), Value::from(3)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -85,7 +85,7 @@ fn merge_tuples5() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(3_u64)]
+        vec![Value::from(1), Value::from(2), Value::from(3)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -100,7 +100,7 @@ fn merge_tuples6() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(2_u64), Value::from(1_u64)]
+        vec![Value::from(2), Value::from(1)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,

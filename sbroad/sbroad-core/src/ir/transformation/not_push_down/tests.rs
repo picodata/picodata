@@ -12,7 +12,7 @@ fn not_true() {
     let input = r#"SELECT * FROM (values (1)) where not true"#;
     let actual = check_transformation(input, vec![], &push_down_not);
 
-    assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(false)],);
+    assert_eq!(actual.params, vec![Value::Integer(1), Value::from(false)],);
     insta::assert_snapshot!(
         actual.pattern,
         @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool)"#
@@ -24,7 +24,7 @@ fn not_double() {
     let input = r#"SELECT * FROM (values (1)) where not not true"#;
     let actual = check_transformation(input, vec![], &push_down_not);
 
-    assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(true)],);
+    assert_eq!(actual.params, vec![Value::Integer(1), Value::from(true)],);
     insta::assert_snapshot!(
         actual.pattern,
         @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool)"#
@@ -36,7 +36,7 @@ fn not_null() {
     let input = r#"SELECT * FROM (values (1)) where not null"#;
     let actual = check_transformation(input, vec![], &push_down_not);
 
-    assert_eq!(actual.params, vec![Value::Unsigned(1), Value::Null]);
+    assert_eq!(actual.params, vec![Value::Integer(1), Value::Null]);
     insta::assert_snapshot!(
         actual.pattern,
         @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE not $2"#,
@@ -50,7 +50,7 @@ fn not_and() {
 
     assert_eq!(
         actual.params,
-        vec![Value::Unsigned(1), Value::from(false), Value::from(true)],
+        vec![Value::Integer(1), Value::from(false), Value::from(true)],
     );
     insta::assert_snapshot!(
         actual.pattern,
@@ -65,7 +65,7 @@ fn not_or() {
 
     assert_eq!(
         actual.params,
-        vec![Value::Unsigned(1), Value::from(true), Value::from(false)],
+        vec![Value::Integer(1), Value::from(true), Value::from(false)],
     );
     insta::assert_snapshot!(
         actual.pattern,
@@ -83,10 +83,10 @@ fn not_dnf() {
     assert_eq!(
         actual_after_dnf.params,
         vec![
-            Value::Unsigned(1),
-            Value::Unsigned(3),
-            Value::Unsigned(2),
-            Value::Unsigned(4),
+            Value::Integer(1),
+            Value::Integer(3),
+            Value::Integer(2),
+            Value::Integer(4),
         ],
     );
 
@@ -107,10 +107,10 @@ fn not_nothing_to_push_down() {
     assert_eq!(
         actual_pattern_params.params,
         vec![
-            Value::from(1_u64),
-            Value::from(2_u64),
-            Value::from(3_u64),
-            Value::from(4_u64),
+            Value::from(1),
+            Value::from(2),
+            Value::from(3),
+            Value::from(4),
         ]
     );
     insta::assert_snapshot!(

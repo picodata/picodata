@@ -17,7 +17,7 @@ fn split_columns1() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64)]
+        vec![Value::from(1), Value::from(2)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -30,7 +30,7 @@ fn split_columns2() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" = 1"#;
     let actual_pattern_params = check_transformation(input, vec![], &split_columns);
 
-    assert_eq!(actual_pattern_params.params, vec![Value::from(1_u64)]);
+    assert_eq!(actual_pattern_params.params, vec![Value::from(1)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
         @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int)"#
@@ -56,7 +56,7 @@ fn split_columns4() {
 
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64)]
+        vec![Value::from(1), Value::from(2)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
@@ -71,7 +71,7 @@ fn split_columns5() {
     let actual_pattern_params = check_transformation(input, vec![], &split_columns);
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1_u64), Value::from(2_u64), Value::from(2_u64)]
+        vec![Value::from(1), Value::from(2), Value::from(2)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,

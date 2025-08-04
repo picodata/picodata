@@ -1367,11 +1367,11 @@ impl FullExplain {
         let mut result = FullExplain::empty();
         result.exec_options.push((
             OptionKind::VdbeOpcodeMax,
-            Value::Unsigned(ir.effective_options.sql_vdbe_opcode_max),
+            Value::Integer(ir.effective_options.sql_vdbe_opcode_max),
         ));
         result.exec_options.push((
             OptionKind::MotionRowMax,
-            Value::Unsigned(ir.effective_options.sql_motion_row_max),
+            Value::Integer(ir.effective_options.sql_motion_row_max),
         ));
 
         let dft_post = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);

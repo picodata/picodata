@@ -111,7 +111,7 @@ impl ExecutionPlan {
 
     #[must_use]
     pub fn get_sql_motion_row_max(&self) -> u64 {
-        self.plan.effective_options.sql_motion_row_max
+        self.plan.effective_options.sql_motion_row_max as u64
     }
 
     #[allow(dead_code)]

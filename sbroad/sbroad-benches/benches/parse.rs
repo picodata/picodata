@@ -389,7 +389,7 @@ fn bench_large_insert_parsing(crit: &mut Criterion) {
 
 fn bench_take_subtree(crit: &mut Criterion) {
     let engine = RouterRuntimeMock::new();
-    let param: u64 = 42;
+    let param: i64 = 42;
     let params = vec![Value::from(param)];
 
     let target_query = get_query_with_many_references();
@@ -410,7 +410,7 @@ fn bench_take_subtree(crit: &mut Criterion) {
 
 fn bench_serde_clone(crit: &mut Criterion) {
     let engine = RouterRuntimeMock::new();
-    let param: u64 = 42;
+    let param: i64 = 42;
     let params = vec![Value::from(param)];
 
     let target_query = get_query_with_many_references();
@@ -445,7 +445,7 @@ fn build_ir(pattern: &str, params: Vec<Value>, engine: &mut RouterRuntimeMock) {
 /// Note: it's disabled, because currently one of target queries fails on execution.
 fn bench_ir_build(crit: &mut Criterion) {
     let mut engine = RouterRuntimeMock::new();
-    let mut param: u64 = 42;
+    let mut param: i64 = 42;
 
     let target_queries = get_target_queries();
     let mut group = crit.benchmark_group("build_ir");

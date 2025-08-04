@@ -25,7 +25,7 @@ fn simple_union_query() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
 
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1].into_iter().collect();
@@ -50,10 +50,10 @@ fn simple_disjunction_in_union_query() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
-    let param100 = Value::from(100_u64);
+    let param100 = Value::from(100);
     let bucket100 = query.coordinator.determine_bucket_id(&[&param100]).unwrap();
 
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1, bucket100].into_iter().collect();
@@ -81,7 +81,7 @@ fn complex_shard_key_union_query() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let param222 = Value::from("222");
 
     let bucket = query
@@ -118,9 +118,9 @@ fn union_complex_cond_query() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
-    let param100 = Value::from(100_u64);
-    let param1000 = Value::from(1000_u64);
+    let param1 = Value::from(1);
+    let param100 = Value::from(100);
+    let param1000 = Value::from(1000);
     let param222 = Value::from("222");
     let param111 = Value::from("111");
 
@@ -179,10 +179,10 @@ fn union_query_conjunction() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1, bucket2].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
@@ -206,7 +206,7 @@ fn simple_except_query() {
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket1].into_iter().collect();
     let expected = Buckets::new_filtered(bucket_set);
@@ -309,7 +309,7 @@ fn global_tbl_sq4() {
     // sq will have no motion, because
     // it has distribution Segment .
     let query = r#"
-    select * from "global_t" 
+    select * from "global_t"
     where ("a", "b") in (select "a" as a, "b" as b from "t")
 "#;
 
@@ -328,7 +328,7 @@ fn global_tbl_sq5() {
     // it has distribution Any. So the
     // whole query will be executed on one node.
     let query = r#"
-    select * from "global_t" 
+    select * from "global_t"
     where "a" in (select "a" as a from "t")
 "#;
 
@@ -344,7 +344,7 @@ fn global_tbl_sq5() {
 #[test]
 fn global_tbl_join1() {
     let query = r#"
-    select * from "global_t" 
+    select * from "global_t"
     inner join (select "a" as a from "global_t")
     on true
 "#;
@@ -381,7 +381,7 @@ fn global_tbl_join2() {
 #[test]
 fn global_tbl_join3() {
     let query = r#"
-    select * from "t2" 
+    select * from "t2"
     inner join "global_t"
     on ("e", "f") = (1, 1)
 "#;
@@ -391,7 +391,7 @@ fn global_tbl_join3() {
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
-    let param = Value::from(1_u64);
+    let param = Value::from(1);
     let bucket = query
         .coordinator
         .determine_bucket_id(&[&param, &param])
@@ -404,7 +404,7 @@ fn global_tbl_join3() {
 #[test]
 fn global_tbl_join4() {
     let query = r#"
-    select * from "t2" 
+    select * from "t2"
     left join "global_t"
     on ("e", "f") = (1, 1)
 "#;
@@ -462,7 +462,7 @@ fn tbl_join_single_constant_condition1() {
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
-    let param = Value::from(1_u64);
+    let param = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param]).unwrap();
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
 
@@ -483,7 +483,7 @@ fn tbl_join_single_constant_condition2() {
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
-    let param = Value::from(1_u64);
+    let param = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param]).unwrap();
     let bucket_set: HashSet<u64, RepeatableState> = vec![bucket].into_iter().collect();
 
@@ -541,9 +541,9 @@ fn tbl_join_tuple_constant_condition1() {
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
-    let param1 = Value::from(1_u64);
-    let param2 = Value::from(2_u64);
-    let param3 = Value::from(3_u64);
+    let param1 = Value::from(1);
+    let param2 = Value::from(2);
+    let param3 = Value::from(3);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();

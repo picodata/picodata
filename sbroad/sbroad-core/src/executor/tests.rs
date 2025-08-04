@@ -37,7 +37,7 @@ fn shard_query() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket = coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
         Value::String(format!("Execute query on a bucket [{bucket}]")),
@@ -76,7 +76,7 @@ fn shard_union_query() {
         .unwrap();
 
     let mut expected = ProducerResult::new();
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
         Value::String(format!("Execute query on a bucket [{bucket}]")),
@@ -91,7 +91,7 @@ fn shard_union_query() {
                 r#") as "t3""#,
                 r#"WHERE "t3"."id" = CAST($3 AS int)"#,
             ),
-            vec![Value::from(1_u64), Value::from(1_u64), Value::from(1_u64)],
+            vec![Value::from(1), Value::from(1), Value::from(1)],
         ))),
     ]);
 
@@ -112,7 +112,7 @@ fn map_reduce_query() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let param457 = Value::from("457");
 
     let bucket = query
@@ -164,10 +164,10 @@ fn linker_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
-    let param3 = Value::from(3_u64);
+    let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
 
     expected.rows.extend(vec![
@@ -235,10 +235,10 @@ fn union_linker_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
-    let param3 = Value::from(3_u64);
+    let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
 
     expected.rows.extend(vec![
@@ -259,7 +259,7 @@ fn union_linker_test() {
                     r#") as "t1""#,
                     r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
-                vec![Value::from(0_u64), Value::from(0_u64)],
+                vec![Value::from(0), Value::from(0)],
             ))),
         ],
         vec![
@@ -279,7 +279,7 @@ fn union_linker_test() {
                     r#") as "t1""#,
                     r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
                 ),
-                vec![Value::from(0_u64), Value::from(0_u64)],
+                vec![Value::from(0), Value::from(0)],
             ))),
         ],
     ]);
@@ -331,7 +331,7 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
 
     let mut expected = ProducerResult::new();
 
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
     expected.rows.extend(vec![vec![
@@ -356,11 +356,11 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
                 r#"WHERE ("t3"."id" = CAST($4 AS int)) and ("t8"."COL_1" = CAST($5 AS int))"#
             ),
             vec![
-                Value::from(0_u64),
-                Value::from(0_u64),
-                Value::from(0_u64),
-                Value::from(2_u64),
-                Value::from(2_u64),
+                Value::from(0),
+                Value::from(0),
+                Value::from(0),
+                Value::from(2),
+                Value::from(2),
             ],
         ))),
     ]]);
@@ -382,8 +382,8 @@ fn join_linker2_test() {
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(1_u64), Value::from(1_u64)]);
-    virtual_table.add_tuple(vec![Value::from(2_u64), Value::from(2_u64)]);
+    virtual_table.add_tuple(vec![Value::from(1), Value::from(1)]);
+    virtual_table.add_tuple(vec![Value::from(2), Value::from(2)]);
     virtual_table.set_alias("t2");
     if let MotionPolicy::Segment(key) = get_motion_policy(query.exec_plan.get_ir_plan(), motion_id)
     {
@@ -402,7 +402,7 @@ fn join_linker2_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
     expected.rows.extend(vec![vec![
@@ -415,7 +415,7 @@ fn join_linker2_test() {
                 r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
                 r#"as "t2" ON "t1"."id" = CAST($1 AS int)"#
             ),
-            vec![Value::from(1_u64)],
+            vec![Value::from(1)],
         ))),
     ]]);
     assert_eq!(expected, result);
@@ -437,8 +437,8 @@ fn join_linker3_test() {
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
     virtual_table.add_column(vcolumn_integer_user_non_null());
-    virtual_table.add_tuple(vec![Value::from(1_u64), Value::from(1_u64)]);
-    virtual_table.add_tuple(vec![Value::from(2_u64), Value::from(2_u64)]);
+    virtual_table.add_tuple(vec![Value::from(1), Value::from(1)]);
+    virtual_table.add_tuple(vec![Value::from(2), Value::from(2)]);
     virtual_table.set_alias("t2");
 
     query
@@ -464,7 +464,7 @@ fn join_linker3_test() {
                 r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
                 r#"ON "t2"."COL_1" = CAST($1 AS int)"#,
             ),
-            vec![Value::from(1_u64)],
+            vec![Value::from(1)],
         ))),
     ]]);
     assert_eq!(expected, result);
@@ -485,8 +485,8 @@ fn join_linker4_test() {
     let motion_t2_id = query.get_motion_id(0, 0);
     let mut virtual_t2 = VirtualTable::new();
     virtual_t2.add_column(vcolumn_integer_user_non_null());
-    virtual_t2.add_tuple(vec![Value::from(1_u64)]);
-    virtual_t2.add_tuple(vec![Value::from(2_u64)]);
+    virtual_t2.add_tuple(vec![Value::from(1)]);
+    virtual_t2.add_tuple(vec![Value::from(2)]);
     virtual_t2.set_alias("T2");
     if let MotionPolicy::Segment(key) =
         get_motion_policy(query.exec_plan.get_ir_plan(), motion_t2_id)
@@ -500,8 +500,8 @@ fn join_linker4_test() {
     let motion_sq_id = query.get_motion_id(0, 1);
     let mut virtual_sq = VirtualTable::new();
     virtual_sq.add_column(vcolumn_integer_user_non_null());
-    virtual_sq.add_tuple(vec![Value::from(2_u64)]);
-    virtual_sq.add_tuple(vec![Value::from(3_u64)]);
+    virtual_sq.add_tuple(vec![Value::from(2)]);
+    virtual_sq.add_tuple(vec![Value::from(3)]);
     if let MotionPolicy::Segment(key) =
         get_motion_policy(query.exec_plan.get_ir_plan(), motion_sq_id)
     {
@@ -519,10 +519,10 @@ fn join_linker4_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
 
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
     expected.rows.extend(vec![
@@ -689,10 +689,10 @@ fn anonymous_col_index_test() {
         .unwrap();
 
     let mut expected = ProducerResult::new();
-    let param2 = Value::from(2_u64);
+    let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
 
-    let param3 = Value::from(3_u64);
+    let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
     expected.rows.extend(vec![
         vec![
@@ -743,7 +743,7 @@ fn sharding_column1_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
         Value::String(format!("Execute query on a bucket [{bucket}]")),
@@ -753,7 +753,7 @@ fn sharding_column1_test() {
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
                 r#"FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
             ),
-            vec![Value::from(1_u64)],
+            vec![Value::from(1)],
         ))),
     ]);
     assert_eq!(expected, result);
@@ -773,7 +773,7 @@ fn sharding_column2_test() {
 
     let mut expected = ProducerResult::new();
 
-    let param1 = Value::from(1_u64);
+    let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     expected.rows.push(vec![
         Value::String(format!("Execute query on a bucket [{bucket}]")),
@@ -783,7 +783,7 @@ fn sharding_column2_test() {
                 r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op","#,
                 r#""test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
             ),
-            vec![Value::from(1_u64)],
+            vec![Value::from(1)],
         ))),
     ]);
     assert_eq!(expected, result);
@@ -796,8 +796,8 @@ fn virtual_table_23(alias: Option<&str>) -> VirtualTable {
 
     virtual_table.add_column(vcolumn_integer_user_non_null());
 
-    virtual_table.add_tuple(vec![Value::from(2_u64)]);
-    virtual_table.add_tuple(vec![Value::from(3_u64)]);
+    virtual_table.add_tuple(vec![Value::from(2)]);
+    virtual_table.add_tuple(vec![Value::from(3)]);
 
     if let Some(alias) = alias {
         virtual_table.set_alias(alias);
@@ -856,7 +856,7 @@ fn groupby_linker_test() {
     virtual_t1.add_column(vcolumn_integer_user_non_null());
 
     let mut buckets: Vec<u64> = vec![];
-    let tuples: Vec<Vec<Value>> = vec![vec![Value::from(1_u64)], vec![Value::from(2_u64)]];
+    let tuples: Vec<Vec<Value>> = vec![vec![Value::from(1)], vec![Value::from(2)]];
 
     for tuple in &tuples {
         virtual_t1.add_tuple(tuple.clone());

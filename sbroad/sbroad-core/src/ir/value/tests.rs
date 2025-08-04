@@ -57,9 +57,9 @@ fn uuid_negative() {
 
 #[test]
 fn decimal() {
-    assert_eq!(Value::from(decimal!(0)), Value::from(Decimal::from(0_u64)));
+    assert_eq!(Value::from(decimal!(0)), Value::from(Decimal::from(0)));
     assert_eq!(
-        Value::from(Decimal::from(0_u64)),
+        Value::from(Decimal::from(0)),
         Value::from(Decimal::from_str("0.0").unwrap())
     );
     assert_eq!(
@@ -68,7 +68,7 @@ fn decimal() {
     );
     assert_eq!(
         Value::from(Decimal::from_str("9223372036854775807").unwrap()),
-        Value::from(Decimal::from(9_223_372_036_854_775_807_u64))
+        Value::from(Decimal::from(9_223_372_036_854_775_807_i64))
     );
     assert_ne!(
         Value::from(decimal!(1)),
@@ -126,21 +126,11 @@ fn string() {
 }
 
 #[test]
-fn unsigned() {
-    assert_eq!(Value::Unsigned(0), Value::from(0_u64));
-    assert_eq!(
-        Value::Unsigned(u64::MAX),
-        Value::from(18_446_744_073_709_551_615_u64)
-    );
-    assert_ne!(Value::Unsigned(0_u64), Value::from(1_u64));
-}
-
-#[test]
 fn tuple() {
-    let t = Tuple::from(vec![Value::Unsigned(0), Value::String("hello".to_string())]);
+    let t = Tuple::from(vec![Value::Integer(0), Value::String("hello".to_string())]);
     assert_eq!(
         Value::Tuple(t),
-        Value::from(vec![Value::from(0_u64), Value::from("hello")])
+        Value::from(vec![Value::from(0), Value::from("hello")])
     );
 }
 
@@ -160,10 +150,7 @@ fn equivalence() {
         Trivalent::False,
         Value::Boolean(true).eq(&Value::from(decimal!(1e0)))
     );
-    assert_eq!(
-        Trivalent::False,
-        Value::Boolean(false).eq(&Value::from(0_u64))
-    );
+    assert_eq!(Trivalent::False, Value::Boolean(false).eq(&Value::from(0)));
     assert_eq!(
         Trivalent::False,
         Value::Boolean(true).eq(&Value::from(1_i64))
@@ -182,7 +169,7 @@ fn equivalence() {
     // Decimal
     assert_eq!(
         Trivalent::True,
-        Value::from(decimal!(0.000)).eq(&Value::from(0_u64))
+        Value::from(decimal!(0.000)).eq(&Value::from(0))
     );
     assert_eq!(
         Trivalent::True,
@@ -190,7 +177,7 @@ fn equivalence() {
     );
     assert_eq!(
         Trivalent::True,
-        Value::from(decimal!(0.000)).eq(&Value::from(0_u64))
+        Value::from(decimal!(0.000)).eq(&Value::from(0))
     );
     assert_eq!(
         Trivalent::True,
@@ -212,7 +199,7 @@ fn equivalence() {
     // Double
     assert_eq!(
         Trivalent::True,
-        Value::Double(Double::from(0.000_f64)).eq(&Value::from(0_u64))
+        Value::Double(Double::from(0.000_f64)).eq(&Value::from(0))
     );
     assert_eq!(
         Trivalent::True,
@@ -313,17 +300,17 @@ fn arithmetic() {
     );
     assert_eq!(
         Value::from(decimal!(555)),
-        Value::from(5.0).mult(&Value::Unsigned(111)).unwrap()
+        Value::from(5.0).mult(&Value::Integer(111)).unwrap()
     );
 
     // Div
     assert_eq!(
         Value::from(decimal!(3)),
-        Value::from(9.0).div(&Value::Unsigned(3)).unwrap()
+        Value::from(9.0).div(&Value::Integer(3)).unwrap()
     );
     assert_eq!(
         Value::from(decimal!(1)),
-        Value::Integer(2).div(&Value::Unsigned(2)).unwrap()
+        Value::Integer(2).div(&Value::Integer(2)).unwrap()
     );
     assert_eq!(
         Err(SbroadError::Invalid(
@@ -332,7 +319,7 @@ fn arithmetic() {
                 "Only numerical values can be casted to Decimal. String(\"\") was met".to_smolstr()
             )
         )),
-        Value::from("").div(&Value::Unsigned(2))
+        Value::from("").div(&Value::Integer(2))
     );
     assert_eq!(
         Err(SbroadError::Invalid(
