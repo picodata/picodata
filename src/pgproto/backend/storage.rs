@@ -5,6 +5,7 @@ use super::{
 };
 use crate::config::observer::AtomicObserver;
 use crate::{
+    metrics,
     pgproto::{
         client::ClientId,
         error::{PedanticError, PgError, PgErrorCode, PgResult},
@@ -36,6 +37,7 @@ use std::{
     sync::LazyLock,
     vec::IntoIter,
 };
+use tarantool::time::Instant;
 use tarantool::{
     proc::{Return, ReturnMsgpack},
     tuple::{FunctionCtx, Tuple},
@@ -520,7 +522,34 @@ impl PortalInner {
             &runtime,
             HashMap::new(),
         );
-        let tuple = dispatch(query, None, None)?;
+
+        let start = Instant::now_fiber();
+        let result = dispatch(query, None, None);
+
+        // collect metrics, making the errors non-fatal
+        let collect_metrics = || -> crate::traft::Result<()> {
+            let node = node::global()?;
+            let tier = node.raft_storage.tier()?;
+            let tier = tier.as_deref().unwrap_or("<unknown>");
+            let raft_id = node.raft_id;
+            let inst = node.storage.instances.get(&raft_id)?;
+            let replicaset_name = inst.replicaset_name.as_ref();
+
+            if result.is_err() {
+                metrics::record_sql_query_errors_total(tier, replicaset_name);
+            }
+            let duration = Instant::now_fiber().duration_since(start).as_millis();
+            metrics::observe_sql_query_duration(tier, replicaset_name, duration as f64);
+            metrics::record_sql_query_total(tier, replicaset_name);
+
+            Ok(())
+        };
+        let collect_metrics_result = collect_metrics();
+        if let Err(e) = collect_metrics_result {
+            tlog!(Warning, "Collecting metrics failed: {:?}", e);
+        }
+
+        let tuple = result?;
 
         let state = match self.describe.query_type() {
             QueryType::Acl | QueryType::Ddl => {

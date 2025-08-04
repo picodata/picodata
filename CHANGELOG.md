@@ -56,6 +56,8 @@ with the `YY.MINOR.MICRO` scheme.
   - pico_pgproto_portals_opened_total
   - pico_pgproto_statements_closed_total
   - pico_pgproto_statements_opened_total
+- Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics 
+  for queries executed through pgproto
 
 ### Config
 - Config supports `instance.pg.advertise` option for pgproto server advertise address,
