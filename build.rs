@@ -172,7 +172,7 @@ fn check_plugins_ffi() {
     for (name, decl) in &declarations {
         let Some(def) = definitions.get(name) else {
             let line = decl.sig.ident.span().start().line;
-            println!("cargo:warning={declarations_filename}:{line}: found a declaration for `fn {name}` which is not defined in file {definitions_filename}");
+            cargo::warning(format!("{declarations_filename}:{line}: found a declaration for `fn {name}` which is not defined in file {definitions_filename}"));
             std::process::exit(1);
         };
 
@@ -188,7 +188,7 @@ fn check_plugins_ffi() {
             let decl_sig = &decl.sig;
             let decl_line = decl.sig.ident.span().start().line;
             let decl_sig = quote::quote! { #decl_sig }.to_string();
-            println!("cargo:warning=Signature mismatch for `fn {name}`");
+            cargo::warning(format!("Signature mismatch for `fn {name}`"));
             println!(
                 "
 --> {definitions_filename}:{def_line}

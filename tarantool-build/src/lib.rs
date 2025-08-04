@@ -82,13 +82,23 @@ impl TarantoolBuildRoot {
         let tarantool_prefix = self.tarantool_prefix_dir();
         let http_prefix = self.http_prefix_dir();
 
-        Command::new("cmake")
+        let mut configure_cmd = Command::new("cmake");
+        configure_cmd
             .env("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // >= 3.5 is required since 4.0
             .args(["-S", "http"])
             .arg("-B")
             .arg(&http_prefix)
-            .arg(format!("-DTARANTOOL_DIR={}", tarantool_prefix.display()))
-            .run();
+            .arg(format!("-DTARANTOOL_DIR={}", tarantool_prefix.display()));
+
+        if let Ok(name) = std::env::var("COMPILER_LAUNCHER") {
+            configure_cmd.args([
+                format!("-DCMAKE_C_COMPILER_LAUNCHER={}", name),
+                format!("-DCMAKE_CXX_COMPILER_LAUNCHER={}", name),
+            ]);
+            cargo::warning(format!("set '{name}' compiler launcher for 'build_http'"));
+        }
+
+        configure_cmd.run();
 
         Command::new("cmake")
             .set_make_jobserver(jsc)
@@ -121,17 +131,27 @@ impl TarantoolBuildRoot {
             configure_cmd.arg("-B").arg(tarantool_root);
 
             let mut common_args = vec![
-                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-                "-DBUILD_TESTING=FALSE",
-                "-DBUILD_DOC=FALSE",
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo".to_string(),
+                "-DBUILD_TESTING=FALSE".to_string(),
+                "-DBUILD_DOC=FALSE".to_string(),
             ];
 
             // Tarantool won't let us use gcc for an asan build.
             let profile = cargo::get_build_profile();
             if profile.starts_with("asan") {
-                println!("cargo:warning=ASan has been enabled, this may affect the performance");
+                cargo::warning("ASan has been enabled, this may affect the performance");
                 configure_cmd.envs([("CC", "clang"), ("CXX", "clang++")]);
-                common_args.push("-DENABLE_ASAN=ON");
+                common_args.push("-DENABLE_ASAN=ON".to_string());
+            }
+
+            if let Ok(name) = std::env::var("COMPILER_LAUNCHER") {
+                common_args.extend([
+                    format!("-DCMAKE_C_COMPILER_LAUNCHER={}", name),
+                    format!("-DCMAKE_CXX_COMPILER_LAUNCHER={}", name),
+                ]);
+                cargo::warning(format!(
+                    "set '{name}' compiler launcher for 'build_tarantool'"
+                ));
             }
 
             if use_static_build {
@@ -144,7 +164,7 @@ impl TarantoolBuildRoot {
                 // to build the crate after tarantool, while the order is not determined.
                 // Thus, in practice, openssl crate builds before tarantool and throws an error that it
                 // can't find the library because it wasn't built yet.
-                common_args.push("-DOPENSSL_USE_STATIC_LIBS=FALSE");
+                common_args.push("-DOPENSSL_USE_STATIC_LIBS=FALSE".to_string());
 
                 // static build is a separate project that uses CMAKE_TARANTOOL_ARGS
                 // to forward parameters to tarantool cmake project

@@ -65,3 +65,8 @@ pub fn get_build_profile() -> String {
         .expect("bad file name")
         .to_owned()
 }
+
+/// Print warning
+pub fn warning(msg: impl AsRef<str>) {
+    println!("cargo:warning={}", msg.as_ref());
+}

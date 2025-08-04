@@ -61,6 +61,15 @@ sh -s -- -y --profile default --default-toolchain ${RUST_VERSION} && \
 rustup component add rustfmt && \
 cargo install cargo-audit --locked
 
+# install sccache for compilation caching
+RUN set -e; \
+SCCACHE_VERSION="v0.8.0"; \
+SCCACHE_BINARY="sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl"; \
+curl -sSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_BINARY}.tar.gz" | tar -xz && \
+mv "${SCCACHE_BINARY}/sccache" /usr/local/bin/ && \
+chmod +x /usr/local/bin/sccache && \
+rm -rf "${SCCACHE_BINARY}"
+
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 COPY tools/clone.sh /usr/bin/clone.sh
 

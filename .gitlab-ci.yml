@@ -63,6 +63,9 @@ variables:
   # k8s runner config
   KUBERNETES_CPU_REQUEST: 2
   KUBERNETES_MEMORY_REQUEST: "4Gi"
+  SCCACHE_DIR: $CI_PROJECT_DIR/.sccache
+  SCCACHE_CACHE_SIZE: "15G"
+  COMPILER_LAUNCHER: "sccache"
 
 # job:rules explained:
 #
@@ -117,7 +120,7 @@ variables:
 .base_cache: &base_cache
   paths:
     - .cargo/
-    - target/${TARGET}/
+    - .sccache/
   key: "base_cache-${TARGET}-$CI_COMMIT_REF_SLUG"
   fallback_keys:
     - base_cache-${TARGET}-$MAIN_BRANCH
@@ -311,6 +314,12 @@ test-linux:
     - tools/check_rust.sh
     - cargo -V
 
+    # Setup sccache
+    - |
+      ci-log-section start "sccache-setup" Setting up sccache ...
+      sccache --show-stats
+      ci-log-section end "sccache-setup"
+
     - *poetry-install
     - pushd sbroad && make test
     - make bench_check; popd
@@ -319,6 +328,12 @@ test-linux:
       ci-log-section start "build" Build
       make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
       ci-log-section end "build"
+
+    # Show sccache statistics
+    - |
+      ci-log-section start "sccache-stats" sccache statistics ...
+      sccache --show-stats
+      ci-log-section end "sccache-stats"
     - |
       ci-log-section start "test" Test
       make test \
@@ -361,10 +376,22 @@ lint:
     - <<: *base_node
       policy: pull
   script:
+    # Setup sccache
+    - |
+      ci-log-section start "sccache-setup" Setting up sccache ...
+      sccache --show-stats
+      ci-log-section end "sccache-setup"
+
     - *poetry-install
     - make lint
     - pushd webui && yarn lint; popd
     - pushd sbroad && make check
+
+    # Show sccache statistics
+    - |
+      ci-log-section start "sccache-stats" sccache statistics ...
+      sccache --show-stats
+      ci-log-section end "sccache-stats"
 
 lint-docs:
   image:
@@ -940,3 +967,22 @@ deploy-luarocks:
     - echo "Deploying luarocks..."
     - scp -o stricthostkeychecking=no sbroad*rock luarocks@94.26.239.246:/data/nginx/www/packrepo/luarocks
     - ssh -o stricthostkeychecking=no luarocks@94.26.239.246 "luarocks-admin make_manifest /data/nginx/www/packrepo/luarocks"
+
+clear-sccache:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "clear_sccache"
+    - when: manual
+      allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - |
+      ci-log-section start "sccache-clear" Clearing sccache ...
+      rm -rf ${SCCACHE_DIR}/*
+      echo "Sccache directory cleared successfully"
+      ci-log-section end "sccache-clear"
+  cache:
+    - <<: *base_cache
+      policy: push
+      when: always
