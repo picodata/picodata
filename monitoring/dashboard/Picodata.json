@@ -1,8 +1,8 @@
 {
   "__inputs": [
     {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
+      "name": "DS_VM",
+      "label": "VM",
       "description": "",
       "type": "datasource",
       "pluginId": "prometheus",
@@ -21,7 +21,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "12.0.0"
+      "version": "12.0.2"
     },
     {
       "type": "panel",
@@ -234,12 +234,12 @@
         },
         "showHeader": true
       },
-      "pluginVersion": "12.0.0",
+      "pluginVersion": "12.0.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
           "expr": "up{job=~\"$job\"} * on(instance) group_left(alias) tnt_info_uptime{job=~\"$job\"} or\r\non(instance) label_replace(up{job=~\"$job\"}, \"alias\", \"Down\", \"instance\", \".*\")",
@@ -350,12 +350,12 @@
         "textMode": "value_and_name",
         "wideLayout": true
       },
-      "pluginVersion": "12.0.0",
+      "pluginVersion": "12.0.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
           "expr": "sum(up{job=~\"$job\"})",
@@ -384,7 +384,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${DS_VM}"
       },
       "description": "Overall value of memory available for Tarantool items",
       "fieldConfig": {
@@ -477,12 +477,12 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.0.0",
+      "pluginVersion": "12.0.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
           "expr": "tnt_slab_quota_size{job=~\"$job\"}",
@@ -493,7 +493,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
           "expr": "tnt_slab_arena_used{job=~\"$job\"}",
@@ -510,7 +510,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${DS_VM}"
       },
       "description": "Send and Receive throughput in bytes/sec in the Cluster",
       "fieldConfig": {
@@ -579,27 +579,30 @@
         "legend": {
           "calcs": [
             "mean",
+            "lastNotNull",
             "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "hideZeros": false,
           "mode": "single",
-          "sort": "none"
+          "sort": "desc"
         }
       },
-      "pluginVersion": "12.0.0",
+      "pluginVersion": "12.0.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
-          "expr": "rate(tnt_net_received_total[5m])",
+          "expr": "rate(tnt_net_received_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{instance}} - Receive (In)",
           "range": true,
           "refId": "A"
@@ -607,10 +610,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
-          "expr": "rate(tnt_net_sent_total[5m])",
+          "expr": "rate(tnt_net_sent_total{instance=~\"$instance\"}[5m])",
           "hide": false,
           "instant": false,
           "legendFormat": "{{instance}} - Sent (Out)",
@@ -624,7 +627,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${DS_VM}"
       },
       "fieldConfig": {
         "defaults": {
@@ -695,27 +698,30 @@
         "legend": {
           "calcs": [
             "mean",
+            "lastNotNull",
             "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
-      "pluginVersion": "12.0.0",
+      "pluginVersion": "12.0.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "editorMode": "code",
-          "expr": "( rate(tnt_cpu_user_time[5m]) \n  + rate(tnt_cpu_system_time[5m])\n)\n* 100",
+          "expr": "( rate(tnt_cpu_user_time{instance=~\"$instance\"}[$__rate_interval]) \n  + rate(tnt_cpu_system_time{instance=~\"$instance\"}[$__rate_interval])\n)\n* 100",
           "hide": false,
           "legendFormat": "{{instance}}",
           "range": true,
@@ -738,786 +744,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "Total number of queries written via CAS on global tables",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisGridShow": true,
-                "axisLabel": "Requests per second",
-                "axisPlacement": "auto",
-                "barAlignment": 1,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "smooth",
-                "lineStyle": {
-                  "fill": "solid"
-                },
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "normal"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 0,
-            "y": 20
-          },
-          "id": 175,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "asc"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "rate(pico_cas_records_total{instance=~\"$instance\"}[5m])",
-              "format": "heatmap",
-              "fullMetaSearch": false,
-              "includeNullMetadata": false,
-              "instant": false,
-              "legendFormat": "{{instance}} - {{table}} - {{op_type}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "CAS operations",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "fillOpacity": 80,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineWidth": 1,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": [
-              {
-                "__systemRef": "hideSeriesFrom",
-                "matcher": {
-                  "id": "byNames",
-                  "options": {
-                    "mode": "exclude",
-                    "names": [
-                      "127.0.0.1:8083"
-                    ],
-                    "prefix": "All except:",
-                    "readOnly": true
-                  }
-                },
-                "properties": [
-                  {
-                    "id": "custom.hideFrom",
-                    "value": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": true
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 12,
-            "y": 20
-          },
-          "id": 176,
-          "options": {
-            "combine": false,
-            "legend": {
-              "calcs": [
-                "lastNotNull",
-                "min",
-                "max",
-                "mean"
-              ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "asc"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "expr": "pico_cas_ops_duration_bucket{instance=~\"$instance\", le=\"+Inf\"}",
-              "format": "time_series",
-              "fullMetaSearch": false,
-              "hide": false,
-              "includeNullMetadata": true,
-              "instant": false,
-              "legendFormat": "{{instance}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "CAS operations duration",
-          "type": "histogram"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "Total number of RPC requests",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "Requests per second",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "smooth",
-                "lineStyle": {
-                  "fill": "solid"
-                },
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "normal"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 0,
-            "y": 31
-          },
-          "id": 177,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "expr": "rate(pico_rpc_request_total{instance=~\"$instance\"}[5m])",
-              "format": "time_series",
-              "fullMetaSearch": false,
-              "includeNullMetadata": false,
-              "interval": "",
-              "legendFormat": "{{instance}} - {{proc_name}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "Internal RPC requests",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "fillOpacity": 80,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineWidth": 0,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                }
-              },
-              "fieldMinMax": false,
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 12,
-            "y": 31
-          },
-          "id": 178,
-          "options": {
-            "combine": false,
-            "legend": {
-              "calcs": [
-                "lastNotNull",
-                "min",
-                "max",
-                "mean"
-              ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "expr": "pico_rpc_request_duration_bucket{instance=~\"$instance\", le=\"+Inf\"}",
-              "fullMetaSearch": false,
-              "hide": false,
-              "includeNullMetadata": true,
-              "instant": false,
-              "legendFormat": "{{proc_name}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "Internal RPC requests duration",
-          "type": "histogram"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "Total number of SQL queries",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "smooth",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "normal"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 0,
-            "y": 42
-          },
-          "id": 179,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "rate(pico_sql_query_total{instance=~\"$instance\"}[5m])",
-              "format": "heatmap",
-              "fullMetaSearch": false,
-              "includeNullMetadata": false,
-              "instant": false,
-              "legendFormat": "{{instance}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "SQL queries",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "fillOpacity": 80,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineWidth": 1,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                }
-              },
-              "fieldMinMax": false,
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": [
-              {
-                "__systemRef": "hideSeriesFrom",
-                "matcher": {
-                  "id": "byNames",
-                  "options": {
-                    "mode": "exclude",
-                    "names": [
-                      "127.0.0.1:8083"
-                    ],
-                    "prefix": "All except:",
-                    "readOnly": true
-                  }
-                },
-                "properties": []
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 11,
-            "w": 12,
-            "x": 12,
-            "y": 42
-          },
-          "id": 180,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "expr": "rate(pico_sql_query_duration_bucket{le=\"+Inf\"}[5m])",
-              "format": "time_series",
-              "fullMetaSearch": false,
-              "hide": false,
-              "includeNullMetadata": true,
-              "instant": false,
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "SQL queries duration",
-          "type": "histogram"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "Total number of SQL queries resulted in errors",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "fieldMinMax": false,
-              "mappings": [],
-              "noValue": "0",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": ""
-                  }
-                ]
-              },
-              "unit": "none"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 53
-          },
-          "id": 184,
-          "options": {
-            "minVizHeight": 75,
-            "minVizWidth": 75,
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "showThresholdLabels": false,
-            "showThresholdMarkers": true,
-            "sizing": "auto",
-            "text": {}
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "pico_sql_query_errors_total",
-              "format": "time_series",
-              "fullMetaSearch": false,
-              "includeNullMetadata": true,
-              "instant": false,
-              "legendFormat": "{{instance}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "SQL query errors",
-          "type": "gauge"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "description": "Total number of queries resulted in error via CAS on global tables",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [],
-              "noValue": "0",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 1
-                  }
-                ]
-              },
-              "unit": "none"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 53
-          },
-          "id": 183,
-          "options": {
-            "minVizHeight": 75,
-            "minVizWidth": 75,
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "showThresholdLabels": false,
-            "showThresholdMarkers": true,
-            "sizing": "auto"
-          },
-          "pluginVersion": "12.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "disableTextWrap": false,
-              "editorMode": "builder",
-              "expr": "pico_global_tables_errors_total",
-              "format": "time_series",
-              "fullMetaSearch": false,
-              "includeNullMetadata": true,
-              "legendFormat": "{{instance}}",
-              "range": true,
-              "refId": "A",
-              "useBackend": false
-            }
-          ],
-          "title": "CAS Operations errors",
-          "type": "gauge"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${DS_VM}"
           },
           "description": "Total number of governor transitions ",
           "fieldConfig": {
@@ -1540,10 +767,10 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 8,
+            "h": 9,
             "w": 12,
             "x": 0,
-            "y": 61
+            "y": 20
           },
           "id": 181,
           "options": {
@@ -1561,16 +788,16 @@
             "showThresholdMarkers": true,
             "sizing": "auto"
           },
-          "pluginVersion": "12.0.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "pico_governor_changes_total",
+              "expr": "pico_governor_changes_total{instance=~\"$instance\"}",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "legendFormat": "{{instance}}",
@@ -1663,10 +890,10 @@
             "overrides": []
           },
           "gridPos": {
-            "h": 8,
+            "h": 9,
             "w": 12,
             "x": 12,
-            "y": 61
+            "y": 20
           },
           "id": 13,
           "options": {
@@ -1685,12 +912,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "12.0.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_read_only{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -1701,6 +928,973 @@
           ],
           "title": "Picodata instance status",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Current rate of operations submitted via CAS on global tables. This includes SQL inserts into global tables",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisGridShow": true,
+                "axisLabel": "requests per second",
+                "axisPlacement": "auto",
+                "barAlignment": 1,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 0,
+            "y": 29
+          },
+          "id": 175,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "rate(pico_cas_records_total{instance=~\"$instance\"}[$__rate_interval])",
+              "format": "heatmap",
+              "fullMetaSearch": false,
+              "includeNullMetadata": false,
+              "instant": false,
+              "legendFormat": "{{instance}} - {{table}} - {{op_type}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "CAS operations",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Error rate for CAS operations",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisGridShow": true,
+                "axisLabel": "errors per second",
+                "axisPlacement": "auto",
+                "barAlignment": 1,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 8,
+            "y": 29
+          },
+          "id": 198,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "rate(pico_cas_errors_total{instance=~\"$instance\"}[$__rate_interval])",
+              "format": "heatmap",
+              "fullMetaSearch": false,
+              "includeNullMetadata": false,
+              "instant": false,
+              "legendFormat": "{{instance}} - {{table}} - {{op_type}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "CAS operation errors",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 29
+          },
+          "id": 176,
+          "options": {
+            "combine": false,
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "asc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "expr": "pico_cas_ops_duration_bucket{instance=~\"$instance\", le=\"+Inf\"}",
+              "format": "time_series",
+              "fullMetaSearch": false,
+              "hide": false,
+              "includeNullMetadata": true,
+              "instant": false,
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "CAS operation durations",
+          "type": "histogram"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of RPC requests",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "requests per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 0,
+            "y": 38
+          },
+          "id": 177,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "expr": "rate(pico_rpc_request_total{instance=~\"$instance\"}[$__rate_interval])",
+              "format": "time_series",
+              "fullMetaSearch": false,
+              "includeNullMetadata": false,
+              "interval": "",
+              "legendFormat": "{{instance}} - {{proc_name}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "Internal RPC requests",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of RPC requests",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "errors per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 8,
+            "y": 38
+          },
+          "id": 199,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Last *",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "expr": "rate(pico_rpc_request_errors_total{instance=~\"$instance\"}[$__rate_interval])",
+              "format": "time_series",
+              "fullMetaSearch": false,
+              "includeNullMetadata": false,
+              "interval": "",
+              "legendFormat": "{{instance}} - {{proc_name}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "Internal RPC request errors",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 0,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "fieldMinMax": false,
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 38
+          },
+          "id": 178,
+          "options": {
+            "combine": false,
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "expr": "pico_rpc_request_duration_bucket{instance=~\"$instance\", le=\"+Inf\"}",
+              "fullMetaSearch": false,
+              "hide": false,
+              "includeNullMetadata": true,
+              "instant": false,
+              "legendFormat": "{{proc_name}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "Internal RPC request durations",
+          "type": "histogram"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of SQL queries",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "queries per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 0,
+            "y": 47
+          },
+          "id": 179,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "rate(pico_sql_query_total{instance=~\"$instance\"}[$__rate_interval])",
+              "format": "heatmap",
+              "fullMetaSearch": false,
+              "includeNullMetadata": false,
+              "instant": false,
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "SQL queries",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of SQL queries resulted in errors",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "errors per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "fieldMinMax": false,
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": ""
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 8,
+            "y": 47
+          },
+          "id": 184,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "rate(pico_sql_query_errors_total{job=~\"$job\"}[$__rate_interval])",
+              "format": "time_series",
+              "fullMetaSearch": false,
+              "includeNullMetadata": true,
+              "instant": false,
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "SQL query errors",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "fieldMinMax": false,
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ms"
+            },
+            "overrides": [
+              {
+                "__systemRef": "hideSeriesFrom",
+                "matcher": {
+                  "id": "byNames",
+                  "options": {
+                    "mode": "exclude",
+                    "names": [
+                      "127.0.0.1:8083"
+                    ],
+                    "prefix": "All except:",
+                    "readOnly": true
+                  }
+                },
+                "properties": []
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 47
+          },
+          "id": 180,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              },
+              "disableTextWrap": false,
+              "editorMode": "code",
+              "expr": "rate(pico_sql_query_duration_bucket{instance=~\"$instance\",le=\"+Inf\"}[5m])",
+              "format": "time_series",
+              "fullMetaSearch": false,
+              "hide": false,
+              "includeNullMetadata": true,
+              "instant": false,
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "useBackend": false
+            }
+          ],
+          "title": "SQL query durations",
+          "type": "histogram"
         }
       ],
       "title": "Picodata metrics",
@@ -1800,7 +1994,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 18
+            "y": 517
           },
           "id": 19,
           "options": {
@@ -1819,12 +2013,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_replication_status{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -1901,7 +2095,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 18
+            "y": 517
           },
           "id": 20,
           "options": {
@@ -1921,12 +2115,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_replication_lag{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2002,7 +2196,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 18
+            "y": 517
           },
           "id": 21,
           "options": {
@@ -2021,12 +2215,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_clock_delta{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2103,7 +2297,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 701
+            "y": 525
           },
           "id": 22,
           "options": {
@@ -2122,12 +2316,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2204,7 +2398,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 701
+            "y": 525
           },
           "id": 172,
           "options": {
@@ -2223,12 +2417,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2304,7 +2498,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 701
+            "y": 525
           },
           "id": 24,
           "options": {
@@ -2325,12 +2519,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_synchro_queue_len{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2426,7 +2620,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 701
+            "y": 525
           },
           "id": 25,
           "options": {
@@ -2435,7 +2629,7 @@
                 "last"
               ],
               "displayMode": "table",
-              "placement": "right",
+              "placement": "bottom",
               "showLegend": true
             },
             "tooltip": {
@@ -2445,12 +2639,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_synchro_queue_busy{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2540,7 +2734,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 189
+            "y": 187
           },
           "id": 34,
           "options": {
@@ -2561,12 +2755,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_info_memory_net{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2642,7 +2836,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 189
+            "y": 187
           },
           "id": 35,
           "options": {
@@ -2663,12 +2857,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -2744,7 +2938,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 189
+            "y": 187
           },
           "id": 36,
           "options": {
@@ -2765,12 +2959,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -2846,7 +3040,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 197
+            "y": 195
           },
           "id": 37,
           "options": {
@@ -2867,12 +3061,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -2950,7 +3144,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 197
+            "y": 195
           },
           "id": 38,
           "options": {
@@ -2971,12 +3165,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3052,7 +3246,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 205
+            "y": 203
           },
           "id": 39,
           "options": {
@@ -3073,12 +3267,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3155,7 +3349,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 205
+            "y": 203
           },
           "id": 40,
           "options": {
@@ -3176,12 +3370,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3257,7 +3451,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 205
+            "y": 203
           },
           "id": 41,
           "options": {
@@ -3278,12 +3472,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3360,7 +3554,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 205
+            "y": 203
           },
           "id": 42,
           "options": {
@@ -3381,12 +3575,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3462,7 +3656,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 213
+            "y": 211
           },
           "id": 43,
           "options": {
@@ -3483,12 +3677,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3565,7 +3759,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 213
+            "y": 211
           },
           "id": 44,
           "options": {
@@ -3586,12 +3780,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3667,7 +3861,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 221
+            "y": 219
           },
           "id": 45,
           "options": {
@@ -3688,12 +3882,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3769,7 +3963,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 221
+            "y": 219
           },
           "id": 46,
           "options": {
@@ -3790,12 +3984,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3871,7 +4065,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 229
+            "y": 227
           },
           "id": 47,
           "options": {
@@ -3892,12 +4086,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3974,7 +4168,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 229
+            "y": 227
           },
           "id": 48,
           "options": {
@@ -3995,12 +4189,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_per_thread_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4076,7 +4270,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 237
+            "y": 235
           },
           "id": 49,
           "options": {
@@ -4097,12 +4291,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4178,7 +4372,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 237
+            "y": 235
           },
           "id": 50,
           "options": {
@@ -4199,12 +4393,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4280,7 +4474,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 237
+            "y": 235
           },
           "id": 51,
           "options": {
@@ -4301,12 +4495,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4383,7 +4577,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 245
+            "y": 243
           },
           "id": 52,
           "options": {
@@ -4406,12 +4600,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_per_thread_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4488,7 +4682,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 245
+            "y": 243
           },
           "id": 53,
           "options": {
@@ -4509,12 +4703,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_per_thread_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4591,7 +4785,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 245
+            "y": 243
           },
           "id": 54,
           "options": {
@@ -4612,12 +4806,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_net_per_thread_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4641,6 +4835,917 @@
         "x": 0,
         "y": 22
       },
+      "id": 197,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of pgproto connections.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "total",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 23
+          },
+          "id": 188,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Total pgproto connections",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Average number of new pgproto connections per second.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "new per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 23
+          },
+          "id": 190,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "rate(pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "New pgproto connections",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Number of current active pgproto connections.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "current",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 23
+          },
+          "id": 189,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"} - pico_pgproto_connections_closed_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Current pgproto connections",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of pgproto prepared statements since restart.\n\nStatements are prepared on a client's behalf.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "total",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 31
+          },
+          "id": 191,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Total pgproto statements",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Average number of new pgproto prepared statements per second.\n\nStatements are prepared on a client's behalf.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "new per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 31
+          },
+          "id": 192,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "rate(pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "New pgproto statements",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Number of current active pgproto prepared statements.\n\nStatements are prepared on a client's behalf.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "current",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 31
+          },
+          "id": 193,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_statements_closed_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Current pgproto statements",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Total number of pgproto portals since restart.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "total",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 39
+          },
+          "id": 194,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Total pgproto portals",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Average number of new pgproto portals per second.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "new per second",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 39
+          },
+          "id": 195,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "rate(pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "New pgproto portals",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_VM}"
+          },
+          "description": "Number of current active pgproto portals.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "current",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 39
+          },
+          "id": 196,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_portals_closed_total{instance=~\"$instance\",job=~\"$job\"}",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_VM}"
+              }
+            }
+          ],
+          "title": "Current pgproto portals",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Picodata network (pgproto)",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
       "id": 55,
       "panels": [
         {
@@ -4652,7 +5757,7 @@
             "h": 3,
             "w": 24,
             "x": 0,
-            "y": 118
+            "y": 663
           },
           "id": 56,
           "options": {
@@ -4664,7 +5769,7 @@
             "content": "`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, 50% < `items_used_ratio` < 90% – your memory is highly fragmented. See [docs](https://www.Picodata.io/en/doc/1.10/reference/reference_lua/box_slab/#lua-function.box.slab.info) for more info.\n\n`quota_used_ratio` > 90%, `arena_used_ratio` > 90%, `items_used_ratio` > 90% – you are running out of memory. You should consider increasing Picodata’s memory limit (*box.cfg.memtx_memory*).\n",
             "mode": "markdown"
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "title": "Slab allocator monitoring information",
           "type": "text"
         },
@@ -4736,7 +5841,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 121
+            "y": 666
           },
           "id": 173,
           "options": {
@@ -4757,12 +5862,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "editorMode": "code",
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"} / tnt_slab_quota_size {instance=~\"$instance\",job=~\"$job\"} * 100",
@@ -4842,7 +5947,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 121
+            "y": 666
           },
           "id": 58,
           "options": {
@@ -4861,12 +5966,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_arena_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4944,7 +6049,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 121
+            "y": 666
           },
           "id": 59,
           "options": {
@@ -4963,12 +6068,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_items_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5046,7 +6151,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 494
+            "y": 674
           },
           "id": 57,
           "options": {
@@ -5065,12 +6170,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_quota_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5147,7 +6252,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 494
+            "y": 674
           },
           "id": 61,
           "options": {
@@ -5166,12 +6271,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5248,7 +6353,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 494
+            "y": 674
           },
           "id": 62,
           "options": {
@@ -5267,12 +6372,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_items_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5349,7 +6454,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 551
+            "y": 682
           },
           "id": 60,
           "options": {
@@ -5368,12 +6473,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_quota_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5450,7 +6555,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 551
+            "y": 682
           },
           "id": 64,
           "options": {
@@ -5469,12 +6574,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_arena_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5551,7 +6656,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 551
+            "y": 682
           },
           "id": 65,
           "options": {
@@ -5570,12 +6675,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_items_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5652,7 +6757,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 559
+            "y": 690
           },
           "id": 63,
           "options": {
@@ -5671,12 +6776,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "11.6.0",
+          "pluginVersion": "12.0.2",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_slab_quota_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -5698,7 +6803,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 24
       },
       "id": 66,
       "panels": [
@@ -5766,7 +6871,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 648
+            "y": 2461
           },
           "id": 67,
           "options": {
@@ -5792,7 +6897,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -5868,7 +6973,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 648
+            "y": 2461
           },
           "id": 68,
           "options": {
@@ -5894,7 +6999,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -5970,7 +7075,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 648
+            "y": 2461
           },
           "id": 69,
           "options": {
@@ -5996,7 +7101,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -6072,7 +7177,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 744
+            "y": 2557
           },
           "id": 70,
           "options": {
@@ -6098,7 +7203,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -6174,7 +7279,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 744
+            "y": 2557
           },
           "id": 71,
           "options": {
@@ -6200,7 +7305,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -6276,7 +7381,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 744
+            "y": 2557
           },
           "id": 72,
           "options": {
@@ -6302,7 +7407,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -6378,7 +7483,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 752
+            "y": 2565
           },
           "id": 73,
           "options": {
@@ -6404,7 +7509,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -6480,7 +7585,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 752
+            "y": 2565
           },
           "id": 74,
           "options": {
@@ -6506,7 +7611,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -6582,7 +7687,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 752
+            "y": 2565
           },
           "id": 75,
           "options": {
@@ -6608,7 +7713,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -6684,7 +7789,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 760
+            "y": 2573
           },
           "id": 76,
           "options": {
@@ -6710,7 +7815,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -6786,7 +7891,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 760
+            "y": 2573
           },
           "id": 77,
           "options": {
@@ -6812,7 +7917,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -6888,7 +7993,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 760
+            "y": 2573
           },
           "id": 78,
           "options": {
@@ -6914,7 +8019,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -6989,7 +8094,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 768
+            "y": 2581
           },
           "id": 79,
           "options": {
@@ -7010,7 +8115,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7085,7 +8190,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 768
+            "y": 2581
           },
           "id": 80,
           "options": {
@@ -7106,7 +8211,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -7181,7 +8286,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 768
+            "y": 2581
           },
           "id": 81,
           "options": {
@@ -7202,7 +8307,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -7277,7 +8382,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 776
+            "y": 2589
           },
           "id": 82,
           "options": {
@@ -7298,7 +8403,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -7373,7 +8478,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 776
+            "y": 2589
           },
           "id": 83,
           "options": {
@@ -7394,7 +8499,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7469,7 +8574,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 776
+            "y": 2589
           },
           "id": 84,
           "options": {
@@ -7490,7 +8595,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -7565,7 +8670,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 776
+            "y": 2589
           },
           "id": 85,
           "options": {
@@ -7586,7 +8691,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7661,7 +8766,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 784
+            "y": 2597
           },
           "id": 86,
           "options": {
@@ -7682,7 +8787,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -7757,7 +8862,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 784
+            "y": 2597
           },
           "id": 87,
           "options": {
@@ -7778,7 +8883,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7853,7 +8958,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 784
+            "y": 2597
           },
           "id": 88,
           "options": {
@@ -7874,7 +8979,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -7949,7 +9054,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 784
+            "y": 2597
           },
           "id": 89,
           "options": {
@@ -7970,7 +9075,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8045,7 +9150,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 792
+            "y": 2605
           },
           "id": 90,
           "options": {
@@ -8066,7 +9171,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -8141,7 +9246,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 792
+            "y": 2605
           },
           "id": 91,
           "options": {
@@ -8162,7 +9267,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8237,7 +9342,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 792
+            "y": 2605
           },
           "id": 92,
           "options": {
@@ -8258,7 +9363,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -8333,7 +9438,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 792
+            "y": 2605
           },
           "id": 93,
           "options": {
@@ -8354,7 +9459,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8376,7 +9481,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 25
       },
       "id": 94,
       "panels": [
@@ -8445,7 +9550,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 649
+            "y": 2462
           },
           "id": 95,
           "options": {
@@ -8469,7 +9574,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_space_len{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -8546,7 +9651,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 649
+            "y": 2462
           },
           "id": 96,
           "options": {
@@ -8570,7 +9675,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_tuples{instance=~\"$instance\",engine=\"vinyl\",job=~\"$job\"}",
               "format": "time_series",
@@ -8646,7 +9751,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 745
+            "y": 2558
           },
           "id": 97,
           "options": {
@@ -8670,7 +9775,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_space_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -8746,7 +9851,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 745
+            "y": 2558
           },
           "id": 98,
           "options": {
@@ -8770,7 +9875,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_space_index_bsize{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -8846,7 +9951,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 745
+            "y": 2558
           },
           "id": 99,
           "options": {
@@ -8870,7 +9975,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_space_total_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -8892,7 +9997,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 26
       },
       "id": 100,
       "panels": [
@@ -8960,7 +10065,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 650
+            "y": 2463
           },
           "id": 101,
           "options": {
@@ -8984,7 +10089,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_disk_data_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9060,7 +10165,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 650
+            "y": 2463
           },
           "id": 102,
           "options": {
@@ -9084,7 +10189,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_disk_index_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9160,7 +10265,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 658
+            "y": 2471
           },
           "id": 103,
           "options": {
@@ -9186,7 +10291,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "editorMode": "code",
               "expr": "tnt_vinyl_memory_tuple_cache{instance=~\"$instance\",job=~\"$job\"}",
@@ -9264,7 +10369,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 658
+            "y": 2471
           },
           "id": 104,
           "options": {
@@ -9290,7 +10395,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_memory_page_index{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9366,7 +10471,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 658
+            "y": 2471
           },
           "id": 105,
           "options": {
@@ -9392,7 +10497,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_memory_bloom_filter{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9468,7 +10573,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 666
+            "y": 2479
           },
           "id": 106,
           "options": {
@@ -9494,7 +10599,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_regulator_dump_bandwidth{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9570,7 +10675,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 666
+            "y": 2479
           },
           "id": 107,
           "options": {
@@ -9596,7 +10701,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_regulator_write_rate{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9672,7 +10777,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 666
+            "y": 2479
           },
           "id": 108,
           "options": {
@@ -9698,7 +10803,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_regulator_rate_limit{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9774,7 +10879,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 674
+            "y": 2487
           },
           "id": 109,
           "options": {
@@ -9799,7 +10904,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_memory_level0{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9875,7 +10980,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 674
+            "y": 2487
           },
           "id": 110,
           "options": {
@@ -9899,7 +11004,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_regulator_dump_watermark{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9975,7 +11080,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 674
+            "y": 2487
           },
           "id": 111,
           "options": {
@@ -9999,7 +11104,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_regulator_blocked_writers{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10075,7 +11180,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 682
+            "y": 2495
           },
           "id": 112,
           "options": {
@@ -10101,7 +11206,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_tx_commit{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -10177,7 +11282,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 682
+            "y": 2495
           },
           "id": 113,
           "options": {
@@ -10203,7 +11308,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_tx_rollback{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -10279,7 +11384,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 682
+            "y": 2495
           },
           "id": 114,
           "options": {
@@ -10305,7 +11410,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_tx_conflict{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -10382,7 +11487,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 682
+            "y": 2495
           },
           "id": 115,
           "options": {
@@ -10408,7 +11513,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_tx_read_views{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10484,7 +11589,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 690
+            "y": 2503
           },
           "id": 116,
           "options": {
@@ -10509,7 +11614,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"inprogress\"}",
               "format": "time_series",
@@ -10585,7 +11690,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 690
+            "y": 2503
           },
           "id": 117,
           "options": {
@@ -10610,7 +11715,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"failed\"}[$__rate_interval])",
               "format": "time_series",
@@ -10686,7 +11791,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 690
+            "y": 2503
           },
           "id": 118,
           "options": {
@@ -10712,7 +11817,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -10788,7 +11893,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 690
+            "y": 2503
           },
           "id": 119,
           "options": {
@@ -10814,7 +11919,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -10836,7 +11941,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 27
       },
       "id": 120,
       "panels": [
@@ -10907,7 +12012,7 @@
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 974
+            "y": 2787
           },
           "id": 121,
           "options": {
@@ -10933,7 +12038,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "editorMode": "code",
               "expr": "irate(tnt_cpu_user_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval]) + irate(tnt_cpu_system_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -10957,7 +12062,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 28
       },
       "id": 123,
       "panels": [
@@ -11025,7 +12130,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 993
+            "y": 2806
           },
           "id": 124,
           "options": {
@@ -11051,7 +12156,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_info_memory_lua{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11127,7 +12232,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 993
+            "y": 2806
           },
           "id": 125,
           "options": {
@@ -11151,7 +12256,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_runtime_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11227,7 +12332,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 993
+            "y": 2806
           },
           "id": 126,
           "options": {
@@ -11253,7 +12358,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_info_memory_tx{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11329,7 +12434,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 1001
+            "y": 2814
           },
           "id": 127,
           "options": {
@@ -11355,7 +12460,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_fiber_csw{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11431,7 +12536,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 1001
+            "y": 2814
           },
           "id": 128,
           "options": {
@@ -11457,7 +12562,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_ev_loop_time{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11534,7 +12639,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1009
+            "y": 2822
           },
           "id": 129,
           "options": {
@@ -11559,7 +12664,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_fiber_amount{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11635,7 +12740,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1009
+            "y": 2822
           },
           "id": 130,
           "options": {
@@ -11661,7 +12766,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_fiber_memused{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11737,7 +12842,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1009
+            "y": 2822
           },
           "id": 131,
           "options": {
@@ -11763,7 +12868,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "tnt_fiber_memalloc{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11785,7 +12890,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 29
       },
       "id": 132,
       "panels": [
@@ -11853,7 +12958,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 1018
+            "y": 2831
           },
           "id": 133,
           "options": {
@@ -11879,7 +12984,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_jit_snap_restore_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11955,7 +13060,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 1018
+            "y": 2831
           },
           "id": 134,
           "options": {
@@ -11981,7 +13086,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_jit_trace_num{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12057,7 +13162,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 1018
+            "y": 2831
           },
           "id": 135,
           "options": {
@@ -12083,7 +13188,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_jit_trace_abort_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12159,7 +13264,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 1018
+            "y": 2831
           },
           "id": 136,
           "options": {
@@ -12185,7 +13290,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_jit_mcode_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12261,7 +13366,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 1026
+            "y": 2839
           },
           "id": 137,
           "options": {
@@ -12287,7 +13392,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_strhash_hit_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12363,7 +13468,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 1026
+            "y": 2839
           },
           "id": 138,
           "options": {
@@ -12389,7 +13494,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_strhash_miss_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12465,7 +13570,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1034
+            "y": 2847
           },
           "id": 139,
           "options": {
@@ -12491,7 +13596,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_atomic_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12567,7 +13672,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1034
+            "y": 2847
           },
           "id": 140,
           "options": {
@@ -12593,7 +13698,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_sweepstring_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12669,7 +13774,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1034
+            "y": 2847
           },
           "id": 141,
           "options": {
@@ -12695,7 +13800,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_finalize_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12771,7 +13876,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1042
+            "y": 2855
           },
           "id": 142,
           "options": {
@@ -12797,7 +13902,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_sweep_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12873,7 +13978,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1042
+            "y": 2855
           },
           "id": 143,
           "options": {
@@ -12899,7 +14004,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_propagate_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -12975,7 +14080,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1042
+            "y": 2855
           },
           "id": 144,
           "options": {
@@ -13001,7 +14106,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_steps_pause_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13078,7 +14183,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 1050
+            "y": 2863
           },
           "id": 145,
           "options": {
@@ -13104,7 +14209,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_gc_strnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13181,7 +14286,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 1050
+            "y": 2863
           },
           "id": 146,
           "options": {
@@ -13207,7 +14312,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_gc_tabnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13284,7 +14389,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 1050
+            "y": 2863
           },
           "id": 147,
           "options": {
@@ -13310,7 +14415,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_gc_cdatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13387,7 +14492,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 1050
+            "y": 2863
           },
           "id": 148,
           "options": {
@@ -13413,7 +14518,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_gc_udatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13489,7 +14594,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1058
+            "y": 2871
           },
           "id": 149,
           "options": {
@@ -13515,7 +14620,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "lj_gc_memory{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13591,7 +14696,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1058
+            "y": 2871
           },
           "id": 150,
           "options": {
@@ -13617,7 +14722,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_freed_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13693,7 +14798,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1058
+            "y": 2871
           },
           "id": 151,
           "options": {
@@ -13719,7 +14824,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(lj_gc_allocated_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13741,7 +14846,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 30
       },
       "id": 152,
       "panels": [
@@ -13810,7 +14915,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1067
+            "y": 2880
           },
           "id": 153,
           "options": {
@@ -13836,7 +14941,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"select\"}[$__rate_interval])",
               "format": "time_series",
@@ -13913,7 +15018,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1067
+            "y": 2880
           },
           "id": 154,
           "options": {
@@ -13939,7 +15044,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"insert\"}[$__rate_interval])",
               "format": "time_series",
@@ -14016,7 +15121,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1067
+            "y": 2880
           },
           "id": 155,
           "options": {
@@ -14042,7 +15147,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"replace\"}[$__rate_interval])",
               "format": "time_series",
@@ -14119,7 +15224,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1075
+            "y": 2888
           },
           "id": 156,
           "options": {
@@ -14145,7 +15250,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"upsert\"}[$__rate_interval])",
               "format": "time_series",
@@ -14222,7 +15327,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1075
+            "y": 2888
           },
           "id": 157,
           "options": {
@@ -14248,7 +15353,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"update\"}[$__rate_interval])",
               "format": "time_series",
@@ -14325,7 +15430,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1075
+            "y": 2888
           },
           "id": 158,
           "options": {
@@ -14351,7 +15456,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"delete\"}[$__rate_interval])",
               "format": "time_series",
@@ -14428,7 +15533,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1083
+            "y": 2896
           },
           "id": 159,
           "options": {
@@ -14454,7 +15559,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"call\"}[$__rate_interval])",
               "format": "time_series",
@@ -14531,7 +15636,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1083
+            "y": 2896
           },
           "id": 160,
           "options": {
@@ -14557,7 +15662,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"eval\"}[$__rate_interval])",
               "format": "time_series",
@@ -14634,7 +15739,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1083
+            "y": 2896
           },
           "id": 161,
           "options": {
@@ -14660,7 +15765,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"error\"}[$__rate_interval])",
               "format": "time_series",
@@ -14737,7 +15842,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1091
+            "y": 2904
           },
           "id": 162,
           "options": {
@@ -14763,7 +15868,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"auth\"}[$__rate_interval])",
               "format": "time_series",
@@ -14840,7 +15945,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1091
+            "y": 2904
           },
           "id": 163,
           "options": {
@@ -14866,7 +15971,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"prepare\"}[$__rate_interval])",
               "format": "time_series",
@@ -14943,7 +16048,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1091
+            "y": 2904
           },
           "id": 164,
           "options": {
@@ -14969,7 +16074,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"execute\"}[$__rate_interval])",
               "format": "time_series",
@@ -15046,7 +16151,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 1099
+            "y": 2912
           },
           "id": 165,
           "options": {
@@ -15072,7 +16177,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"begin\"}[$__rate_interval])",
               "format": "time_series",
@@ -15149,7 +16254,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 1099
+            "y": 2912
           },
           "id": 166,
           "options": {
@@ -15175,7 +16280,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"commit\"}[$__rate_interval])",
               "format": "time_series",
@@ -15252,7 +16357,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 1099
+            "y": 2912
           },
           "id": 167,
           "options": {
@@ -15278,7 +16383,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${DS_VM}"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"rollback\"}[$__rate_interval])",
               "format": "time_series",
@@ -15295,9 +16400,11 @@
       "type": "row"
     }
   ],
-  "refresh": "5s",
+  "refresh": "10s",
   "schemaVersion": 41,
-  "tags": [],
+  "tags": [
+    "Picodata"
+  ],
   "templating": {
     "list": [
       {
@@ -15315,7 +16422,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${DS_VM}"
         },
         "definition": "label_values(tnt_info_uptime,job)",
         "description": "picodata",
@@ -15356,7 +16463,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${DS_VM}"
         },
         "definition": "label_values(pico_sql_query_total{job=\"$job\"},replicaset)",
         "description": "",
@@ -15399,13 +16506,13 @@
     ]
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-3h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Picodata",
   "uid": "aei8m2zjm3ri8e",
-  "version": 2,
+  "version": 38,
   "weekStart": ""
 }

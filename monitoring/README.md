@@ -2,7 +2,7 @@
 
 ## Provisioning for Grafana dashboard
 
-Copy the `Picodata-provisioning.json` dashboard file into the `provisioning/dashboards/` directory.
+Copy the `Picodata.json` dashboard file into the `provisioning/dashboards/` directory.
 
 In the same `provisioning/dashboards/` folder, create a file named `default.yml` with this content:
 
@@ -62,6 +62,6 @@ This guide shows two ways to get a three-node Picodata cluster up and running, c
       - Click `Create your first dashboard`
       - Click `Import a dashboard`.
       - Upload the `Picodata.json` file from your `picodata/monitoring/dashboard/` directory.
-      - Select the Prometheus data source (or provisioned default).
+      - Select the Prometheus data source.
 
 Picodata dashboard supports Grafana 8, 9, 10, and 11. For detailed provisioning and configuration guidance, see Grafana’s official [documentation](https://grafana.com/docs/grafana/latest/administration/provisioning/)
