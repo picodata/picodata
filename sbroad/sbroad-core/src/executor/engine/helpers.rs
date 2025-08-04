@@ -113,9 +113,10 @@ pub fn table_name(plan_id: &str, node_id: NodeId) -> SmolStr {
         }
         #[cfg(not(feature = "mock"))]
         {
-            use hash32::{Hasher, Murmur3Hasher};
+            use std::hash::Hasher;
+            use twox_hash::XxHash3_64;
 
-            let mut hasher = Murmur3Hasher::default();
+            let mut hasher = XxHash3_64::default();
             hasher.write(plan_id.as_bytes());
             let id = hasher.finish();
             format_smolstr!("TMP_{id}")
