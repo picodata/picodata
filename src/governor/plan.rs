@@ -336,17 +336,14 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
         )?;
 
-        let mut ranges = vec![];
         let mut ops = vec![];
-        ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
         let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
-        ranges.push(cas::Range::for_dml(&vshard_config_version_bump)?);
         ops.push(vshard_config_version_bump);
 
         let op = Op::single_dml_or_batch(ops);
-        let predicate = cas::Predicate::new(applied, ranges);
+        let predicate = cas::Predicate::new(applied, []);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
         return Ok(ProposeReplicasetStateChanges { cas }.into());
@@ -661,11 +658,9 @@ pub(super) fn action_plan<'i>(
         };
 
         let plugin_def = manifest.plugin_def();
-        let mut ranges = vec![];
         let mut ops = vec![];
 
         let dml = Dml::replace(storage::Plugins::TABLE_ID, &plugin_def, ADMIN_ID)?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
         let ident = plugin_def.into_identifier();
@@ -674,7 +669,6 @@ pub(super) fn action_plan<'i>(
                 service_def.tiers = service_topology.clone();
             }
             let dml = Dml::replace(storage::Services::TABLE_ID, &service_def, ADMIN_ID)?;
-            ranges.push(cas::Range::for_dml(&dml)?);
             ops.push(dml);
 
             let config = manifest
@@ -685,7 +679,6 @@ pub(super) fn action_plan<'i>(
 
             for config_rec in config_records {
                 let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
-                ranges.push(cas::Range::for_dml(&dml)?);
                 ops.push(dml);
             }
         }
@@ -694,7 +687,6 @@ pub(super) fn action_plan<'i>(
             let config_records = PluginConfigRecord::from_config(&ident, entity, config.clone())?;
             for config_rec in config_records {
                 let dml = Dml::replace(storage::PluginConfig::TABLE_ID, &config_rec, ADMIN_ID)?;
-                ranges.push(cas::Range::for_dml(&dml)?);
                 ops.push(dml);
             }
         }
@@ -705,7 +697,6 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
             None,
         )?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
         let success_dml = Op::BatchDml { ops };
@@ -713,7 +704,6 @@ pub(super) fn action_plan<'i>(
             targets,
             rpc,
             success_dml,
-            ranges,
         }
         .into());
     }
@@ -735,7 +725,6 @@ pub(super) fn action_plan<'i>(
             timeout: sync_timeout,
         };
 
-        let mut ranges = vec![];
         let mut success_dml = vec![];
         let mut enable_ops = UpdateOps::new();
         enable_ops.assign(column_name!(PluginDef, enabled), true)?;
@@ -745,7 +734,6 @@ pub(super) fn action_plan<'i>(
             enable_ops,
             ADMIN_ID,
         )?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         success_dml.push(dml);
 
         for i in instances {
@@ -758,7 +746,6 @@ pub(super) fn action_plan<'i>(
                     &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &svc.name),
                     ADMIN_ID,
                 )?;
-                ranges.push(cas::Range::for_dml(&dml)?);
                 success_dml.push(dml);
             }
         }
@@ -769,7 +756,6 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
             None,
         )?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         success_dml.push(dml);
         let success_dml = Op::BatchDml { ops: success_dml };
 
@@ -779,7 +765,6 @@ pub(super) fn action_plan<'i>(
             on_start_timeout: *on_start_timeout,
             ident: plugin,
             success_dml,
-            ranges,
         }
         .into());
     }
@@ -796,7 +781,6 @@ pub(super) fn action_plan<'i>(
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
-        let mut ranges = vec![];
 
         let plugin_def = plugins
             .get(plugin)
@@ -838,7 +822,6 @@ pub(super) fn action_plan<'i>(
                         &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &service_def.name),
                         ADMIN_ID,
                     )?;
-                    ranges.push(cas::Range::for_dml(&dml)?);
                     on_success_dml.push(dml);
                 }
 
@@ -852,14 +835,12 @@ pub(super) fn action_plan<'i>(
                     };
                     let dml =
                         Dml::delete(storage::ServiceRouteTable::TABLE_ID, &key, ADMIN_ID, None)?;
-                    ranges.push(cas::Range::for_dml(&dml)?);
                     on_success_dml.push(dml);
                 }
             }
         }
 
         let dml = Dml::replace(storage::Services::TABLE_ID, &new_service_def, ADMIN_ID)?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         on_success_dml.push(dml);
 
         let dml = Dml::delete(
@@ -868,7 +849,6 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
             None,
         )?;
-        ranges.push(cas::Range::for_dml(&dml)?);
         on_success_dml.push(dml);
         let success_dml = Op::BatchDml {
             ops: on_success_dml,
@@ -891,7 +871,6 @@ pub(super) fn action_plan<'i>(
             enable_rpc,
             disable_rpc,
             success_dml,
-            ranges,
         }
         .into());
     }
@@ -1239,9 +1218,6 @@ pub mod stage {
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
-            /// Ranges for both the `success_dml` and the rollback_op which may
-            /// occur if creating the plugin fails.
-            pub ranges: Vec<cas::Range>,
         }
 
         pub struct EnablePlugin<'i> {
@@ -1257,9 +1233,6 @@ pub mod stage {
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
-            /// Ranges for both the `success_dml` and the rollback_op which may
-            /// occur if enabling the plugin fails.
-            pub ranges: Vec<cas::Range>,
         }
 
         pub struct AlterServiceTiers<'i> {
@@ -1274,9 +1247,6 @@ pub mod stage {
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
-            /// Ranges for both the `success_dml` and the rollback_op which may
-            /// occur if enabling the services fails.
-            pub ranges: Vec<cas::Range>,
         }
 
         pub struct CreateGovernorQueue {
