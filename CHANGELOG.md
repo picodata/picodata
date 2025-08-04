@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.3.3] - TBA
+
+### Fixes
+
+- Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics
+  for queries executed through pgproto
+
 ## [25.3.2] - 2025-08-04
 
 ### Fixes
