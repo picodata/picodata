@@ -14,6 +14,11 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed "instance is already joined" error if picodata crashes during reboostrap
   (see also https://git.picodata.io/core/picodata/-/issues/2077).
 - Supported detecting and fixing broken replication.
+- Remove unnecessary timeout on local Unix domain sockets in `picodata admin` command.
+  Unlike network sockets, local sockets don't silently hang - a server crash
+  immediately breaks the connection, making timeouts redundant. This fixes an issue 
+  where long-running plugin commands could be incorrectly aborted due to the 
+  artificial timeout. 
 
 ## [25.3.1] - 2025-07-25
 
