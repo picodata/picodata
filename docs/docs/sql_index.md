@@ -39,6 +39,7 @@ article.md-typeset.md-typeset ul {
 
 <b>A</b>
 
+* [ABS](reference/sql/abs.md)
 * [ALTER PLUGIN](reference/sql/alter_plugin.md)
 * [ALTER PROCEDURE](reference/sql/alter_procedure.md)
 * [ALTER SYSTEM](reference/sql/alter_system.md)

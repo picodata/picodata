@@ -169,6 +169,14 @@ impl Expression<'_> {
                         }
                         last_ty
                     }
+                    "abs" => {
+                        let child = children.first().ok_or(SbroadError::Invalid(
+                            Entity::SQLFunction,
+                            Some("abs function must have an argument".to_smolstr()),
+                        ))?;
+                        let child_ty = plan.get_expression_node(*child)?;
+                        child_ty.calculate_type(plan)?
+                    }
                     _ => *func_type,
                 }
             }

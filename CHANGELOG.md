@@ -14,6 +14,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Support unique indexes with non-sharded columns on sharded tables, with sharding key prefix provided
 
+### SQL
+- SQL supports scalar function `abs()`.
+
 ### Fixes
 - Fixed "instance is already joined" error if picodata crashes during reboostrap
   (see also https://git.picodata.io/core/picodata/-/issues/2077).

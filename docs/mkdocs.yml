@@ -115,8 +115,7 @@ nav:
         - reference/sql/window.md
         - reference/sql/join.md
       - Функции и выражения:
-        - reference/sql/window_builtin.md
-        - reference/sql/aggregate.md
+        - reference/sql/abs.md
         - reference/sql/case.md
         - reference/sql/cast.md
         - reference/sql/coalesce.md
@@ -127,6 +126,8 @@ nav:
         - reference/sql/substring.md
         - reference/sql/trim.md
         - reference/sql/upper.md
+        - reference/sql/aggregate.md
+        - reference/sql/window_builtin.md
         - Дата и время:
           - reference/sql/current_date.md
           - reference/sql/localtimestamp.md

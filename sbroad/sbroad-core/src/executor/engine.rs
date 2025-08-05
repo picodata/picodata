@@ -126,6 +126,11 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 DerivedType::new(UnrestrictedType::Any),
                 true,
             ),
+            Function::new_stable(
+                "abs".into(),
+                DerivedType::new(UnrestrictedType::Any), // any numeric type
+                true,
+            ),
             // volatile functions
             Function::new_volatile(
                 // TODO: deprecated, remove in future version
