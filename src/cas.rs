@@ -310,7 +310,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let storage = &node.storage;
-    let cluster_name = raft_storage.cluster_name()?;
+    let cluster_name = node.topology_cache.cluster_name;
 
     if req.cluster_name != cluster_name {
         return Err(TraftError::ClusterNameMismatch {
@@ -570,7 +570,7 @@ impl Request {
     pub fn new(op: impl Into<Op>, predicate: Predicate, as_user: UserId) -> traft::Result<Self> {
         let node = node::global()?;
         Ok(Request {
-            cluster_name: node.raft_storage.cluster_name()?,
+            cluster_name: node.topology_cache.cluster_name.into(),
             predicate,
             op: op.into(),
             as_user,

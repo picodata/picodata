@@ -25,7 +25,6 @@ crate::define_rpc_request! {
     /// with an error that cannot be retried.
     fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
-        let raft_storage = &node.raft_storage;
 
         let topology_ref = node.topology_cache.get();
         let instance = topology_ref.instance_by_uuid(&req.instance_uuid)?;
@@ -57,7 +56,9 @@ crate::define_rpc_request! {
 
         let timeout = req.timeout;
 
-        let req = rpc::update_instance::Request::new(instance.name.clone(), raft_storage.cluster_name()?, raft_storage.cluster_uuid()?)
+        let cluster_name = node.topology_cache.cluster_name;
+        let cluster_uuid = node.topology_cache.cluster_uuid;
+        let req = rpc::update_instance::Request::new(instance.name.clone(), cluster_name, cluster_uuid)
             .with_target_state(Expelled);
 
         // Must not hold this reference across yields

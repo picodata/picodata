@@ -39,6 +39,12 @@ pub struct TopologyCache {
     /// across yields.
     inner: NoYieldsRefCell<TopologyCacheMutable>,
 
+    /// Cluster name is always known and never changes, so it can be cached here.
+    pub cluster_name: &'static str,
+
+    /// Cluster uuid is always known and never changes, so it can be cached here.
+    pub cluster_uuid: &'static str,
+
     /// Raft id is always known and never changes, so it can be cached here.
     pub my_raft_id: RaftId,
 
@@ -61,7 +67,12 @@ pub struct TopologyCache {
 impl TopologyCache {
     /// Initializes the cache by loading all of the contents from _pico_instance
     /// and _pico_replicaset system tables.
-    pub fn load(storage: &Catalog, my_raft_id: RaftId) -> Result<Self> {
+    pub fn load(
+        storage: &Catalog,
+        my_raft_id: RaftId,
+        cluster_name: &'static str,
+        cluster_uuid: &'static str,
+    ) -> Result<Self> {
         let inner = TopologyCacheMutable::load(storage, my_raft_id)?;
 
         let my_instance_name = OnceCell::new();
@@ -90,6 +101,8 @@ impl TopologyCache {
         }
 
         Ok(Self {
+            cluster_name,
+            cluster_uuid,
             my_raft_id,
             my_instance_name,
             my_instance_uuid,
@@ -814,7 +827,7 @@ mod tests {
         let routing_item = ServiceRouteItem::new_healthy(instance.into(), &plugin, service);
         let _ = storage.service_route_table.put(&routing_item);
 
-        let topology_cache = TopologyCache::load(&storage, 1).unwrap();
+        let topology_cache = TopologyCache::load(&storage, 1, "name", "uuid").unwrap();
         let topology_ref = topology_cache.get();
 
         let actual_res = topology_ref.check_service_route(

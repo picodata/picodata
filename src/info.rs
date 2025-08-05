@@ -145,9 +145,8 @@ impl InstanceInfo {
             .get(instance.raft_id, &traft::ConnectionType::Iproto)?
             .unwrap_or_else(|| "<unknown>".into());
 
-        let cluster_name = node.raft_storage.cluster_name()?;
-
-        let cluster_uuid = node.raft_storage.cluster_uuid()?;
+        let cluster_name = node.topology_cache.cluster_name.into();
+        let cluster_uuid = node.topology_cache.cluster_uuid.into();
 
         Ok(InstanceInfo {
             raft_id: instance.raft_id,

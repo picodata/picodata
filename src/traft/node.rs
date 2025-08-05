@@ -284,12 +284,7 @@ impl Node {
         let sentinel_loop = if for_tests {
             sentinel::Loop::for_tests()
         } else {
-            sentinel::Loop::start(
-                pool.clone(),
-                status.clone(),
-                raft_storage.clone(),
-                instance_reachability.clone(),
-            )
+            sentinel::Loop::start(pool.clone(), status.clone(), instance_reachability.clone())
         };
 
         let node = Node {
@@ -606,7 +601,20 @@ impl NodeImpl {
         let (applied, _) = watch::channel(applied);
         let (commit, _) = watch::channel(commit);
 
-        let topology_cache = Rc::new(TopologyCache::load(&storage, raft_id)?);
+        // Note that this is not a memory leak. This is equivalent to storing
+        // the `Box` onto a global variable which is never dropped except that
+        // we don't have to fight the borrow checker.
+        let cluster_name = raft_storage.cluster_name()?;
+        let cluster_name = Box::leak(cluster_name.into_boxed_str());
+        let cluster_uuid = raft_storage.cluster_uuid()?;
+        let cluster_uuid = Box::leak(cluster_uuid.into_boxed_str());
+
+        let topology_cache = Rc::new(TopologyCache::load(
+            &storage,
+            raft_id,
+            cluster_name,
+            cluster_uuid,
+        )?);
 
         Ok(Self {
             raw_node,

@@ -37,8 +37,8 @@ use tarantool::vclock::Vclock;
 pub(super) fn action_plan<'i>(
     term: RaftTerm,
     applied: RaftIndex,
-    cluster_name: String,
-    cluster_uuid: String,
+    cluster_name: &'static str,
+    cluster_uuid: &'static str,
     sentinel_status: SentinelStatus,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,

@@ -70,11 +70,15 @@ crate::define_rpc_request! {
 
 impl Request {
     #[inline]
-    pub fn new(instance_name: InstanceName, cluster_name: String, cluster_uuid: String) -> Self {
+    pub fn new(
+        instance_name: InstanceName,
+        cluster_name: impl Into<String>,
+        cluster_uuid: impl Into<String>,
+    ) -> Self {
         Self {
             instance_name,
-            cluster_name,
-            cluster_uuid,
+            cluster_name: cluster_name.into(),
+            cluster_uuid: cluster_uuid.into(),
             dont_retry: false,
             ..Request::default()
         }
@@ -119,7 +123,7 @@ impl Request {
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
     let node = node::global()?;
-    let cluster_uuid = node.raft_storage.cluster_uuid()?;
+    let cluster_uuid = node.topology_cache.cluster_uuid;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 

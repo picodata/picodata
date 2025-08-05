@@ -114,8 +114,8 @@ pub fn compare_picodata_versions(leader_version: &str, joinee_version: &str) -> 
 // wait_* fns also need to be async.
 pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<Response> {
     let node = node::global()?;
-    let cluster_name = node.raft_storage.cluster_name()?;
-    let cluster_uuid = node.raft_storage.cluster_uuid()?;
+    let cluster_name = node.topology_cache.cluster_name;
+    let cluster_uuid = node.topology_cache.cluster_uuid;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
@@ -179,7 +179,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 box_replication: replication_addresses.into_iter().collect(),
                 is_master,
                 shredding: storage.db_config.shredding()?.expect("should be set"),
-                cluster_uuid,
+                cluster_uuid: cluster_uuid.into(),
             });
         }
 
@@ -277,7 +277,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             box_replication: replication_addresses.into_iter().collect(),
             is_master,
             shredding: storage.db_config.shredding()?.expect("should be set"),
-            cluster_uuid,
+            cluster_uuid: cluster_uuid.into(),
         });
     }
 }

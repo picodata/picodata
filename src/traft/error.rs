@@ -83,12 +83,12 @@ pub enum Error {
     #[error("cluster_name mismatch: cluster_name of the instance = {instance_cluster_name:?}, cluster_name of the cluster = {cluster_name:?}")]
     ClusterNameMismatch {
         instance_cluster_name: String,
-        cluster_name: String,
+        cluster_name: &'static str,
     },
     #[error("cluster UUID mismatch: instance {instance_uuid}, cluster {cluster_uuid}")]
     ClusterUuidMismatch {
         instance_uuid: String,
-        cluster_uuid: String,
+        cluster_uuid: &'static str,
     },
     /// Instance was requested to configure replication with different replicaset.
     #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]

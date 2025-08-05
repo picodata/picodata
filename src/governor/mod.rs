@@ -280,14 +280,9 @@ impl Loop {
             .collect();
 
         let term = raft_status.get().term;
-        let applied = raft_storage.applied().expect("storage should never fail");
-        let cluster_name = raft_storage
-            .cluster_name()
-            .expect("storage should never fail");
-        let cluster_uuid = raft_storage
-            .cluster_uuid()
-            .expect("storage should never fail");
-
+        let applied = node.get_index();
+        let cluster_name = node.topology_cache.cluster_name;
+        let cluster_uuid = node.topology_cache.cluster_uuid;
         let sentinel_status = node.sentinel_loop.status();
 
         let pending_schema_change = storage

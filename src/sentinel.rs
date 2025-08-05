@@ -7,8 +7,8 @@ use crate::rpc::update_instance::proc_update_instance;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
+use crate::traft::node;
 use crate::traft::RaftIndex;
-use crate::traft::{node, RaftSpaceAccess};
 use crate::util::NoYieldsRefCell;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
@@ -43,7 +43,6 @@ impl Loop {
 
     async fn iter_fn(state: &mut State) -> ControlFlow<()> {
         let pool = &state.pool;
-        let raft_storage = &state.raft_storage;
         let raft_status = &state.raft_status;
         let status = &mut state.status;
         let instance_reachability = &state.instance_reachability;
@@ -56,8 +55,8 @@ impl Loop {
         }
 
         let node = node::global().expect("just checked it's ok");
-        let cluster_name = raft_storage.cluster_name().expect("storage shouldn't fail");
-        let cluster_uuid = raft_storage.cluster_uuid().expect("storage shouldn't fail");
+        let cluster_name = node.topology_cache.cluster_name;
+        let cluster_uuid = node.topology_cache.cluster_uuid;
 
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
@@ -273,7 +272,6 @@ impl Loop {
     pub fn start(
         pool: Rc<ConnectionPool>,
         raft_status: watch::Receiver<node::Status>,
-        raft_storage: RaftSpaceAccess,
         instance_reachability: InstanceReachabilityManagerRef,
     ) -> Self {
         let (status_tx, status_rx) = watch::channel(SentinelStatus::Initial);
@@ -283,7 +281,6 @@ impl Loop {
 
         let state = State {
             pool,
-            raft_storage,
             raft_status,
             status: status_rx,
             instance_reachability,
@@ -353,7 +350,6 @@ pub enum SentinelStatus {
 
 struct State {
     pool: Rc<ConnectionPool>,
-    raft_storage: RaftSpaceAccess,
     raft_status: watch::Receiver<node::Status>,
     status: watch::Receiver<SentinelStatus>,
     instance_reachability: InstanceReachabilityManagerRef,

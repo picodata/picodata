@@ -719,9 +719,8 @@ pub(crate) fn setup() {
                 }
 
                 let node = traft::node::global()?;
-                let raft_storage = &node.raft_storage;
                 let instance = node.storage.instances.get(&instance_name)?;
-                let cluster_name = raft_storage.cluster_name()?;
+                let cluster_name = node.topology_cache.cluster_name.into();
                 fiber::block_on(rpc::network_call_to_leader(
                     crate::proc_name!(rpc::expel::proc_expel),
                     &rpc::expel::Request {

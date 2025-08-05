@@ -267,7 +267,7 @@ pub(crate) struct TierInfo {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClusterInfo {
     capacity_usage: f64,
-    cluster_name: String,
+    cluster_name: &'static str,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: String,
     replicasets_count: usize,
@@ -519,7 +519,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
         });
     }
 
-    let cluster_name = node::global()?.raft_storage.cluster_name()?;
+    let cluster_name = node::global()?.topology_cache.cluster_name;
 
     let res = ClusterInfo {
         capacity_usage: get_capacity_usage(mem_info.usable, mem_info.used),
