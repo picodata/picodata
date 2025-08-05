@@ -107,6 +107,11 @@ with the `YY.MINOR.MICRO` scheme.
   service of an existing plugin.
 - Fixed an RPC to avoid skipping metrics collection code path on early return in procedure implementation.
 
+### Observability
+
+- All duration-based metrics now report in fractional seconds instead of
+  milliseconds for consistency with Prometheus and more precision.
+
 
 ## [25.5.5] - 2026-01-26
 

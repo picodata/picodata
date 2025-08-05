@@ -129,8 +129,8 @@ pub fn compare_and_swap_and_wait(request: &Request, deadline: Instant) -> traft:
         metrics::record_cas_errors_total(&request.op);
     }
 
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_cas_ops_duration(duration as f64);
+    let duration = Instant::now_fiber().duration_since(start);
+    metrics::observe_cas_ops_duration(&duration);
     metrics::record_cas_ops_total(&request.op);
 
     result
@@ -155,8 +155,8 @@ pub fn compare_and_swap_local(request: &Request, deadline: Instant) -> traft::Re
         metrics::record_cas_errors_total(&request.op);
     }
 
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_cas_ops_duration(duration as f64);
+    let duration = Instant::now_fiber().duration_since(start);
+    metrics::observe_cas_ops_duration(&duration);
     metrics::record_cas_ops_total(&request.op);
 
     result

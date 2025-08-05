@@ -12,6 +12,7 @@ use smol_str::ToSmolStr;
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 extern "C" {
     fn tarantool_uptime() -> f64;
@@ -40,7 +41,7 @@ static SQL_YIELD_SLEEP_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     HistogramVec::new(
         HistogramOpts::new(
             "pico_sql_yield_sleep_duration",
-            "Histogram of the time spent sleeping during SQL execution yields (in milliseconds)",
+            "Histogram of the time spent sleeping during SQL execution yields (in seconds)",
         ),
         &["tier", "replicaset"],
     )
@@ -95,7 +96,7 @@ static SQL_QUERY_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     HistogramVec::new(
         HistogramOpts::new(
             "pico_sql_query_duration",
-            "Histogram of SQL query execution durations (in milliseconds)",
+            "Histogram of SQL query execution durations (in seconds)",
         ),
         &["tier", "replicaset"],
     )
@@ -146,7 +147,7 @@ static RPC_REQUEST_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
     HistogramVec::new(
         HistogramOpts::new(
             "pico_rpc_request_duration",
-            "Histogram of RPC request execution durations (in milliseconds)",
+            "Histogram of RPC request execution durations (in seconds)",
         ),
         &["proc_name"],
     )
@@ -178,7 +179,7 @@ static CAS_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 static CAS_OPS_DURATION: LazyLock<Histogram> = LazyLock::new(|| {
     Histogram::with_opts(HistogramOpts::new(
         "pico_cas_ops_duration",
-        "Histogram of CAS operation durations on global tables (in milliseconds)",
+        "Histogram of CAS operation durations on global tables (in seconds)",
     ))
     .expect("Failed to create pico_cas_ops_duration")
 });
@@ -370,10 +371,11 @@ pub fn record_sql_yields_total() {
         .inc();
 }
 
-pub fn record_sql_yield_sleep_duration(duration_ms: f64) {
+pub fn record_sql_yield_sleep_duration(duration: &Duration) {
+    let seconds = duration.as_secs_f64();
     SQL_YIELD_SLEEP_DURATION
         .with_label_values(&[my_tier(), my_replicaset()])
-        .observe(duration_ms);
+        .observe(seconds);
 }
 
 pub fn record_sql_query_total(tier: &str, replicaset: &str) {
@@ -400,10 +402,11 @@ pub fn record_sql_query_errors_total(tier: &str, replicaset: &str) {
         .inc();
 }
 
-pub fn observe_sql_query_duration(tier: &str, replicaset: &str, duration_ms: f64) {
+pub fn observe_sql_query_duration(tier: &str, replicaset: &str, duration: &Duration) {
+    let seconds = duration.as_secs_f64();
     SQL_QUERY_DURATION
         .with_label_values(&[tier, replicaset])
-        .observe(duration_ms);
+        .observe(seconds);
 }
 
 pub fn record_rpc_request_total(proc_name: &str) {
@@ -416,10 +419,11 @@ pub fn record_rpc_request_errors_total(proc_name: &str) {
         .inc();
 }
 
-pub fn observe_rpc_request_duration(proc_name: &str, duration_ms: f64) {
+pub fn observe_rpc_request_duration(proc_name: &str, duration: &Duration) {
+    let seconds = duration.as_secs_f64();
     RPC_REQUEST_DURATION
         .with_label_values(&[proc_name])
-        .observe(duration_ms);
+        .observe(seconds);
 }
 
 pub fn record_cas_ops_total(cas_ops: &Op) {
@@ -440,8 +444,9 @@ pub fn record_cas_errors_total(cas_ops: &Op) {
     }
 }
 
-pub fn observe_cas_ops_duration(duration_ms: f64) {
-    CAS_OPS_DURATION.observe(duration_ms);
+pub fn observe_cas_ops_duration(duration: &Duration) {
+    let seconds = duration.as_secs_f64();
+    CAS_OPS_DURATION.observe(seconds);
 }
 
 pub fn record_instance_state(tier: &str, instance_name: &str, state: &StateVariant) {

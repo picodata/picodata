@@ -662,8 +662,9 @@ pub fn dispatch_bound_statement<'p>(
     if result.is_err() {
         metrics::record_sql_query_errors_total(tier, replicaset_name);
     }
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_sql_query_duration(tier, replicaset_name, duration as f64);
+
+    let duration = Instant::now_fiber().duration_since(start);
+    metrics::observe_sql_query_duration(tier, replicaset_name, &duration);
     metrics::record_sql_query_total(tier, replicaset_name);
 
     result

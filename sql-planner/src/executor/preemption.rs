@@ -42,10 +42,14 @@ impl Scheduler {
         self.ops_left = opcodes;
 
         // Check time interval.
-        let start_time =
-            SCHEDULER_START_TIME.with(|timer| timer.get().expect("timer must be initialized"));
-        let run_interval = start_time.elapsed();
-        if run_interval < Duration::from_micros(options.yield_interval_us) {
+        let configured_yield_interval = Duration::from_micros(options.yield_interval_us);
+
+        let last_yield_instant =
+            SCHEDULER_START_TIME.with(|timer| timer.get().expect("timer should be initialized"));
+        let elapsed_since_last_yield = last_yield_instant.elapsed();
+
+        let ready_to_yield = elapsed_since_last_yield >= configured_yield_interval;
+        if !ready_to_yield {
             return Ok(());
         }
 
@@ -62,12 +66,15 @@ impl Scheduler {
         // Resume after yield and restart the timer.
         (options.metrics.record_yields_total)();
         SCHEDULER_START_TIME.with(|timer| {
-            let new_time = Instant::now();
-            timer.set(Some(new_time));
-            let sleep_interval = new_time.saturating_duration_since(
-                start_time.checked_add(run_interval).expect("invalid time"),
-            );
-            (options.metrics.record_yield_sleep_duration)(sleep_interval.as_millis() as f64);
+            let new_scheduler_instant = Instant::now();
+            timer.set(Some(new_scheduler_instant));
+
+            let next_yield_instant = last_yield_instant
+                .checked_add(elapsed_since_last_yield)
+                .expect("previous yield duration time should be valid");
+            let yield_sleep_duration =
+                new_scheduler_instant.saturating_duration_since(next_yield_instant);
+            (options.metrics.record_yield_sleep_duration)(&yield_sleep_duration);
         });
 
         // Open new transaction.
@@ -89,7 +96,7 @@ pub struct SchedulerOptions {
 
 pub struct SchedulerMetrics {
     pub record_tx_splits_total: fn(),
-    pub record_yield_sleep_duration: fn(f64),
+    pub record_yield_sleep_duration: fn(&Duration),
     pub record_yields_total: fn(),
 }
 

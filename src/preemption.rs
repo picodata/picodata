@@ -83,9 +83,19 @@ pub(crate) extern "C" fn vdbe_yield_handler(args: *mut VdbeYieldArgs) -> libc::c
         unsafe { *start_mut = current };
         yield_sql_execution();
 
+        // NOTE: we track SQL yields here to measure only successful yield
+        // events. Recording is done AFTER the yield completes to ensure that
+        // failed or aborted yields are not counted, providing accurate metrics.
         metrics::record_sql_yields_total();
-        let sleep_interval_ms = monotonic64().abs_diff(current as u64) as f64 / 1_000_000.0;
-        metrics::record_sql_yield_sleep_duration(sleep_interval_ms);
+
+        // XXX: we must use `tarantool::clock::monotonic64` here. VDBE stores `start_time`
+        // as a raw `clock_monotonic64` value and later computes deltas against it. Mixing
+        // this with any other time source (e.g., commonly used `tarantool::time::Instant`)
+        // would break timing due to different epochs or units.
+        // SEE: <https://git.picodata.io/core/tarantool/-/blob/2f8f8cadeae83561188a13cecd06d6fa05b11186/src/box/sql/vdbe.c#L398>.
+        let slept_ns = monotonic64().abs_diff(current as u64);
+        let duration = Duration::from_nanos(slept_ns);
+        metrics::record_sql_yield_sleep_duration(&duration);
     }
 
     return 0;

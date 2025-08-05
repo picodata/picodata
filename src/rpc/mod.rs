@@ -210,8 +210,8 @@ macro_rules! define_rpc_request {
                 $crate::metrics::record_rpc_request_errors_total(proc_name);
             }
 
-            let duration = tarantool::time::Instant::now_fiber().duration_since(start).as_millis();
-            $crate::metrics::observe_rpc_request_duration(proc_name, duration as f64);
+            let duration = tarantool::time::Instant::now_fiber().duration_since(start);
+            $crate::metrics::observe_rpc_request_duration(proc_name, &duration);
             $crate::metrics::record_rpc_request_total(proc_name);
             result
         }
