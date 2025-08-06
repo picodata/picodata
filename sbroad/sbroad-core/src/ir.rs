@@ -917,12 +917,6 @@ impl Plan {
             };
             match opt.kind {
                 OptionKind::VdbeOpcodeMax => {
-                    if values_count.is_some() {
-                        warn!(
-                            Option::from("apply_options"),
-                            &format!("Option {} does not apply for insert with values", opt.kind)
-                        );
-                    }
                     if let Value::Unsigned(num) = val {
                         res_options.sql_vdbe_opcode_max = *num;
                     } else {
