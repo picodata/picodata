@@ -128,10 +128,13 @@ ALTER PLUGIN synapse 1.0.0 ENABLE;
 ### Установка окружения {: #setting_env }
 
 Создайте файл с описанием кластера согласно [руководству по
-развертыванию кластера](../admin/deploy_ansible.md). Например,
-`synapse.yml`.
+развертыванию кластера](../admin/deploy_ansible.md).
+Ниже показан пример для 4-х серверов, расположенных в 3-х группах (DC1,
+DC2 и DC3). Группа — отдельный [домен отказа].
 
-```yaml
+[домен отказа]: ../overview/glossary.md#failure_domain
+
+```yaml title="synapse.yml"
 ---
 all:
   vars:
@@ -150,7 +153,7 @@ all:
 
     fd_uniq_per_instance: true
 
-    purge: true # при очистке кластера удалять в том числе все данные и логи с сервера
+    purge: true # при очистке кластера удалять в том числе все данные и журналы с сервера
 
     listen_ip: "{{ ansible_default_ipv4.address }}" # ip-адрес, который будет слушать инстанс, по умолчанию ansible_default_ipv4.address
 
@@ -162,31 +165,54 @@ all:
     rootless: true
 
     plugins:
-      synapse:
-        path: "synapse_1.0.0.tar.gz"
-        tiers:
-          - default
-        config: "synapse-config.yml"
-    tiers:
-      default:
-        instances_per_server: 5
-        replication_factor: 15
+      synapse:                                    # плагин
+        path: '../plugins/synapse_1.0.0.tar.gz'   # путь до пакета плагина
+        config: '../plugins/synapse-config.yml'   # путь до файла с настройками плагина
+        services:
+          synapse:
+            tiers:                              # список тиров, в которые устанавливается служба плагина
+              - default                         # по умолчанию — default
+    tiers:                          # описание тиров
+      arbiter:                      # имя тира
+        replicaset_count: 1         # количество репликасетов
+        replication_factor: 1       # фактор репликации
         config:
           memtx:
-            memory: 1G
-          iproto:
-            max_concurrent_messages: 1500
-    admin_password: "<password>"
-    property:
-      auto_offline_timeout: 30
-DC1: # Датацентр (failure_domain)
-  hosts:
-    hostname1:
-      ansible_host: ip1
-    hostname2:
-      ansible_host: ip2
-    hostname3:
-      ansible_host: ip3
+            memory: 64M             # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - ARBITERS                # целевая группа серверов для установки инстанса
+
+      default:                      # имя тира
+        replicaset_count: 3         # количество репликасетов
+        replication_factor: 3       # фактор репликации
+        bucket_count: 16384         # количество бакетов в тире
+        config:
+          memtx:
+            memory: 71M             # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - STORAGES                # целевая группа серверов для установки инстанса
+
+    GROUP1:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-1-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+        server-1-2:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.22' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'ARBITERS'        # определение целевой группы серверов для установки инстансов
+
+    GROUP2:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-2-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.20.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+    GROUP3:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-3-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.21.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
 ```
 
 ### Сопоставление колонок в таблицах {: #mapping }

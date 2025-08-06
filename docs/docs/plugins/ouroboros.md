@@ -76,20 +76,16 @@ Picodata с включенным плагином Ouroboros. В этом кла�
 
 ```
 └── ouroboros
-    └── 1.0.0
-        ├── liburoboros.so
-        ├── manifest.yaml
-        └── migrations
-            ├── 0001_state.db
-            └── 0002_ouroboros_state.db
+    └── 1.1.0
+        ├── deps.toml                     # файл со списком зависимостей плагина
+        ├── libouroboros.so               # основная часть плагина, разделяемая библиотека
+        ├── manifest.yaml                 # манифест, задающий исходную конфигурацию плагина
+        ├── migrations                    # файлы миграций плагина
+        │   ├── 0001_state.db
+        │   ├── 0002_ouroboros_state.db
+        │   └── 0003_ouroboros_bucket.db
+        └── ouroboros-cli                 # сверяет количество записей между кластерами по таблицам и бакетам
 ```
-
-Основная логика плагина обеспечивается разделяемой библиотекой
-`libouroboros.so`. Исходная [конфигурация](#config) плагина задается в файле манифеста
-(`manifest.yaml`). Директория `migrations` зарезервирована для файлов
-[миграций].
-
-[миграций]: ../overview/glossary.md#migration
 
 ## Конфигурация плагина {: #config }
 
@@ -108,56 +104,76 @@ Picodata с включенным плагином Ouroboros. В этом кла�
     ```yaml
     description: Plugin tnt clusters replication
     name: ouroboros
-    version: 0.4.2
+    version: 1.1.0
     services:
       - name: ouroboros
         description: ouroboros descr
         default_configuration:
           password: password
           producer:
-            user_url: http://localhost:9001/uroboros/api/v1/user
-            topology_url: http://localhost:9001/uroboros/api/v1/topology
-            space_info_url: http://localhost:9001/uroboros/api/v1/space
+            user_url: http://localhost:9001/ouroboros/api/v1/user
+            topology_url: http://localhost:9001/ouroboros/api/v1/topology
+            space_info_url: http://localhost:9001/ouroboros/api/v1/space
+            version_url: http://localhost:9001/ouroboros/api/v1/version
           consumer:
             type: tarantool
             attributes:
-              space_info_url: http://localhost:9002/uroboros/api/v1/space
-              user_url: http://localhost:9002/uroboros/api/v1/user
-              topology_url: http://localhost:9002/uroboros/api/v1/topology
+              space_info_url: http://localhost:9002/ouroboros/api/v1/space
+              user_url: http://localhost:9002/ouroboros/api/v1/user
+              topology_url: http://localhost:9002/ouroboros/api/v1/topology
+              version_url: http://localhost:9002/ouroboros/api/v1/version
           enabled_groups: ["default"]
           disabled_spaces: []
           buckets_per_writer: 1000
           reconnect_delay: 10
+          reader_buffer_size: 10000
+          writer_buffer_size: 1000
+          skip_ddl_replication: false
+          small_packet_max_size: 1024
+          small_packets_pool_size: 5000
+          large_packets_pool_size: 500
     migration:
-      - migrations/0001_state.db
-      - migrations/0002_uroboros_state.db
+    - migrations/0001_state.db
+    - migrations/0002_ouroboros_state.db
+    - migrations/0003_ouroboros_bucket.db
     ```
 
 Пользовательская конфигурация плагина определяется отдельным
 конфигурационным файлом для сервиса плагина:
 
-
 ```yaml
-default_configuration:
+ouroboros:
   producer: # настройки кластера-источника
-    space_info_url: "http://<source_address>/uroboros/api/v1/space"
-    user_url: "http://<source_address>/uroboros/api/v1/user"
-    topology_url: "http://<source_address>/uroboros/api/v1/topology"
-  consumer: # настройки кластера-приемника
-    type: "tarantool" # может быть Tarantool, или, в будущем — Kafka или Picodata
+    space_info_url: "http://<source_address>/ouroboros/api/v1/space"
+    user_url: "http://<source_address>/ouroboros/api/v1/user"
+    topology_url: "http://<source_address>/ouroboros/api/v1/topology"
+  consumer: # настройки приемника
+    type: "tarantool" # может быть tarantool, или, в будущем kafka
     attributes:
-      space_info_url: "http://<destination_address>/uroboros/api/v1/space"
-      user_url: "http://<destination_address>/uroboros/api/v1/user"
-      topology_url: "http://<destination_address>/uroboros/api/v1/topology"
-  enabled_groups: # группы шардирования, которые следует реплицировать
+      space_info_url: "http://<destination_address>/ouroboros/api/v1/space"
+      user_url: "http://<destination_address>/ouroboros/api/v1/user"
+      topology_url: "http://<destination_address>/ouroboros/api/v1/topology"
+  enabled_groups: # vshard-группы, которые следует реплицировать
+    - index
+    - kafka
     - storage
-    - group_1
-    - group_2
-  disabled_spaces: # таблицы из указанных выше групп шардирования, которые реплицировать НЕ следует
-    - ignored_space_1
-    - ignored_space_2
-  buckets_per_writer: 1000 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
+  disabled_spaces: # спейсы (таблицы) из указанных выше vshard-group, которые реплицировать НЕ следует
+    - notify_storage_vinyl
+    - distributed_index_queue_vinyl
+    - distributed_index_queue_memtx
+    - _repair_queue_v2
+    - _tmp_event_storage
+    - notify_storage_memtx
+    - event_storage
+  buckets_per_writer: 300 # степень параллелизации обработки. Не стоит изменять без консультации с разработчиками.
   reconnect_delay: 10 # задержка перед восстановлением коннекта к источнику
+  skip_ddl_replication: false # отключить репликацию DDL
+  # технические параметры плагина
+  reader_buffer_size: 10000
+  writer_buffer_size: 1000
+  small_packet_max_size: 1024
+  small_packets_pool_size: 5000
+  large_packets_pool_size: 500
 ```
 
 Для изменения настроек уже запущенного плагина используйте SQL-команду `ALTER PLUGIN ...`
@@ -191,10 +207,10 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN ouroboros 0.4.1;
-ALTER PLUGIN ouroboros MIGRATE TO 0.4.1;
-ALTER PLUGIN ouroboros 0.4.1 ADD SERVICE ouroboros TO TIER default;
-ALTER PLUGIN ouroboros 0.4.1 ENABLE;
+CREATE PLUGIN ouroboros 1.1.0;
+ALTER PLUGIN ouroboros MIGRATE TO 1.1.0;
+ALTER PLUGIN ouroboros 1.1.0 ADD SERVICE ouroboros TO TIER default;
+ALTER PLUGIN ouroboros 1.1.0 ENABLE;
 ```
 
 [административной консоли]: ../tutorial/connecting.md#admin_console
@@ -214,10 +230,13 @@ ALTER PLUGIN ouroboros 0.4.1 ENABLE;
 ### Установка окружения {: #setting_env }
 
 Создайте файл с описанием кластера согласно [руководству по
-развертыванию кластера](../admin/deploy_ansible.md). Например,
-`ouroboros.yml`.
+развертыванию кластера](../admin/deploy_ansible.md). Ниже показан пример
+для 4-х серверов, расположенных в 3-х группах (DC1, DC2 и DC3). Группа —
+отдельный [домен отказа].
 
-```yaml
+[домен отказа]: ../overview/glossary.md#failure_domain
+
+```yaml title="ouroboros.yml"
 ---
 all:
   vars:
@@ -249,30 +268,55 @@ all:
 
     plugins:
       ouroboros:
-        path: "ouroboros_0.3.0.tar.gz"
-        tiers:
-          - default
+        path: "ouroboros_1.1.0.tar.gz"
+        services:
+          tiers:
+            - default
         config: "ouroboros-config.yml"
-    tiers:
-      default:
-        instances_per_server: 5
-        replication_factor: 15
+    tiers:                          # описание тиров
+      arbiter:                      # имя тира
+        replicaset_count: 1         # количество репликасетов
+        replication_factor: 1       # фактор репликации
         config:
           memtx:
-            memory: 1G
-          iproto:
-            max_concurrent_messages: 1500
+            memory: 64M             # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - ARBITERS                # целевая группа серверов для установки инстанса
+
+      default:                      # имя тира
+        replicaset_count: 3         # количество репликасетов
+        replication_factor: 3       # фактор репликации
+        bucket_count: 16384         # количество бакетов в тире
+        config:
+          memtx:
+            memory: 71M             # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - STORAGES                # целевая группа серверов для установки инстанса
     admin_password: "<password>"
     property:
       auto_offline_timeout: 30
-DC1: # Датацентр (failure_domain)
-  hosts:
-    hostname1:
-      ansible_host: ip1
-    hostname2:
-      ansible_host: ip2
-    hostname3:
-      ansible_host: ip3
+
+    GROUP1:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-1-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+        server-1-2:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.22' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'ARBITERS'        # определение целевой группы серверов для установки инстансов
+
+    GROUP2:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-2-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.20.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+    GROUP3:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-3-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.21.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
 ```
 
 Создайте файл с [конфигурацией](#config).
