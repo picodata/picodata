@@ -878,32 +878,53 @@ impl Plan {
     /// - The given option does not work for this specific query
     #[allow(clippy::uninlined_format_args)]
     fn retrive_options(&self) -> Result<Options, SbroadError> {
-        let mut used_options: HashSet<OptionKind> = HashSet::new();
-        let options = &self.raw_options;
-        let values_count = {
-            let mut values_count: Option<usize> = None;
-            let mut bfs =
-                BreadthFirst::with_capacity(|x| self.nodes.rel_iter(x), REL_CAPACITY, REL_CAPACITY);
-            bfs.populate_nodes(self.get_top()?);
-            let nodes = bfs.take_nodes();
-            for level_node in nodes {
-                let id = level_node.1;
-                if let Relational::Insert(_) = self.get_relation_node(id)? {
-                    let child_id = self.get_relational_child(id, 0)?;
-                    if let Relational::Values(Values { children, .. }) =
-                        self.get_relation_node(child_id)?
-                    {
-                        values_count = Some(children.len());
+        // We need to check if the plan has a top node and if it is an Insert with Values.
+        // If it is, we can determine the number of values in the Values node and use it
+        // to make an early decision about the maximum number of rows we can handle.
+        let mut values_count = 0;
+        let id = self.get_top()?;
+        // We don't support INSERT with RETURNING, so we can safely assume that Insert node
+        // is always the top of the plan.
+        if let Relational::Insert(_) = self.get_relation_node(id)? {
+            let child_id = self.get_relational_child(id, 0)?;
+            if let Relational::Values(Values { children, .. }) = self.get_relation_node(child_id)? {
+                values_count = children.len();
+            }
+        }
+
+        let mut max_rows = None;
+        let mut max_opcodes = None;
+        let mut is_duplicate = false;
+        for opt in &self.raw_options {
+            let OptionParamValue::Value {
+                val: Value::Unsigned(limit),
+            } = opt.val
+            else {
+                return Err(SbroadError::Invalid(Entity::OptionSpec, None));
+            };
+            match opt.kind {
+                OptionKind::VdbeOpcodeMax => {
+                    if max_opcodes.is_some() {
+                        is_duplicate = true;
+                    } else {
+                        max_opcodes = Some(limit);
+                    }
+                }
+                OptionKind::MotionRowMax => {
+                    if max_rows.is_some() {
+                        is_duplicate = true;
+                    } else if values_count as u64 > limit {
+                        return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                            "Exceeded maximum number of rows ({}) in virtual table: {}",
+                            limit,
+                            values_count,
+                        )));
+                    } else {
+                        max_rows = Some(limit);
                     }
                 }
             }
-            values_count
-        };
-
-        let mut res_options = self.options.clone();
-
-        for opt in options {
-            if !used_options.insert(opt.kind.clone()) {
+            if is_duplicate {
                 return Err(SbroadError::Invalid(
                     Query,
                     Some(format_smolstr!(
@@ -912,50 +933,16 @@ impl Plan {
                     )),
                 ));
             }
-            let OptionParamValue::Value { val } = &opt.val else {
-                return Err(SbroadError::Invalid(Entity::OptionSpec, None));
-            };
-            match opt.kind {
-                OptionKind::VdbeOpcodeMax => {
-                    if let Value::Unsigned(num) = val {
-                        res_options.sql_vdbe_opcode_max = *num;
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::OptionSpec,
-                            Some(format_smolstr!(
-                                "expected option {} to be unsigned got: {val:?}",
-                                opt.kind
-                            )),
-                        ));
-                    }
-                }
-                OptionKind::MotionRowMax => {
-                    if let Value::Unsigned(limit) = &val {
-                        if let Some(vtable_rows_count) = values_count {
-                            if *limit < vtable_rows_count as u64 {
-                                return Err(SbroadError::UnexpectedNumberOfValues(
-                                    format_smolstr!(
-                                        "Exceeded maximum number of rows ({}) in virtual table: {}",
-                                        *limit,
-                                        vtable_rows_count,
-                                    ),
-                                ));
-                            }
-                        }
-                        res_options.sql_motion_row_max = *limit;
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::OptionSpec,
-                            Some(format_smolstr!(
-                                "expected option {} to be unsigned got: {val:?}",
-                                opt.kind
-                            )),
-                        ));
-                    }
-                }
-            }
         }
-        Ok(res_options)
+
+        let mut options = self.options.clone();
+        if let Some(max_rows) = max_rows {
+            options.sql_motion_row_max = max_rows;
+        };
+        if let Some(max_opcodes) = max_opcodes {
+            options.sql_vdbe_opcode_max = max_opcodes;
+        }
+        Ok(options)
     }
 
     /// Validate options stored in `Plan.raw_options` and initialize
