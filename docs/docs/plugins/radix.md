@@ -114,12 +114,16 @@ Ansible].
 Пример файла конфигурации:
 
 ```yaml
-addr: 0.0.0.0:7301 # адрес, который будет слушать Radix
-clients:           # ограничения клиентских соединений
+radix:
+  addr: 0.0.0.0:7379
+  clients:
     max_clients: 10000
     max_input_buffer_size: 1073741824
     max_output_buffer_size: 1073741824
-cluster_mode: true # какой флаг отдавать в команде `info cluster`
+  cluster_mode: true
+  redis_compatibility:
+    enabled_deprecated_commands: []
+    enforce_one_slot_transactions: true
 ```
 
 [Picodata Pike]: ../tutorial/create_plugin.md#pike_plugin_config_apply
@@ -163,6 +167,18 @@ cluster_mode: true # какой флаг отдавать в команде `inf
 соединения увеличивают счетчик метрики
 `client_output_buffer_limit_disconnections` (пока доступна только через
 `INFO STATS`).
+
+### redis_compatibility
+
+#### enabled_deprecated_commands
+
+Список устаревших команд Redis через запятую, которые будут доступны при
+работе с Radix.
+
+#### enforce_one_slot_transactions
+
+Проводить все SQL-транзакции принудительно в рамках одного слота Redis.
+Данное поведение включено по умолчанию.
 
 ## Использование {: #usage }
 

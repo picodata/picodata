@@ -103,70 +103,102 @@ ALTER PLUGIN argus 2.1.3 ENABLE;
 ### Установка окружения {: #setting_env }
 
 Создайте файл с описанием кластера согласно [руководству по
-развертыванию кластера](../admin/deploy_ansible.md). Например,
-`argus.yml`.
+развертыванию кластера](../admin/deploy_ansible.md).
+Ниже показан пример для 4-х серверов, расположенных в 3-х группах (DC1,
+DC2 и DC3). Группа — отдельный [домен отказа].
 
-```yaml
----
+[домен отказа]: ../overview/glossary.md#failure_domain
+
+```yaml title="argus.yml"
 all:
   vars:
-    user: username # имя пользователя, под которым будут запущены процессы picodata
-    group: groupname # группа пользователя, под которой будут запущены процессы picodata
-    password: "<password>"
-    cluster_name: argus
-    audit: false
-    log_level: warn
-    log_to: file
+    ansible_user: vagrant      # пользователь для ssh-доступа к серверам
 
-    conf_dir: "/opt/picodata/etc"
-    data_dir: "/opt/picodata/data"
-    run_dir: "/var/run/picodata"
-    log_dir: "/opt/picodata/logs"
+    repo: 'https://download.picodata.io'  # репозиторий, откуда инсталлировать пакет picodata
 
-    fd_uniq_per_instance: true
+    cluster_name: 'demo'           # имя кластера
+    admin_password: '123asdZXV'    # пароль пользователя admin
 
-    purge: true # при очистке кластера удалять в том числе все данные и логи с сервера
+    default_bucket_count: 23100    # количество бакетов в каждом тире (по умолчанию 30000)
 
-    listen_ip: "{{ ansible_default_ipv4.address }}" # ip-адрес, который будет слушать инстанс, по умолчанию ansible_default_ipv4.address
+    audit: false                   # отключение аудита
+    log_level: 'info'              # уровень отладки
+    log_to: 'file'                 # вывод журналов в файлы, а не в journald
 
-    first_bin_port: 13301 # начальный бинарный порт для первого инстанса (он же main_peer)
-    first_http_port: 18001
-    first_pg_port: 15001
+    conf_dir: '/etc/picodata'         # директория для хранения конфигурационных файлов
+    data_dir: '/var/lib/picodata'     # директория для хранения данных
+    run_dir: '/var/run/picodata'      # директория для хранения sock-файлов
+    log_dir: '/var/log/picodata'      # директория для журналов и файлов аудита
+    share_dir: '/usr/share/picodata'  # директория для хранения размещения служебных данных (плагинов)
 
-    init_system: "supervisord"
-    rootless: true
+    listen_address: '{{ ansible_fqdn }}'     # адрес, который будет слушать инстанс. Для IP указать {{ansible_default_ipv4.address}}
+    pg_address: '{{ listen_address }}'       # адрес, который будет слушать PostgreSQL-протокола инстанса
 
-    plugins:
-      argus:
-        path: "argus_2.1.3.tar.gz"
-        tiers:
-          - default
-        config: "argus-config.yml"
-    tiers:
-      default:
-        instances_per_server: 5
-        replication_factor: 15
+    first_bin_port: 13301     # начальный бинарный порт для первого инстанса
+    first_http_port: 18001    # начальный http-порт для первого инстанса для веб-интерфейса
+    first_pg_port: 15001      # начальный номер порта для PostgreSQL-протокола инстансов кластера
+
+    tiers:                         # описание тиров
+      arbiter:                     # имя тира
+        replicaset_count: 1        # количество репликасетов
+        replication_factor: 1      # фактор репликации
         config:
           memtx:
-            memory: 1G
-          iproto:
-            max_concurrent_messages: 1500
-    admin_password: "<password>"
-    property:
-      auto_offline_timeout: 30
-DC1: # Датацентр (failure_domain)
-  hosts:
-    hostname1:
-      ansible_host: ip1
-    hostname2:
-      ansible_host: ip2
-    hostname3:
-      ansible_host: ip3
+            memory: 64M            # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - ARBITERS               # целевая группа серверов для установки инстанса
+
+      default:                     # имя тира
+        replicaset_count: 3        # количество репликасетов
+        replication_factor: 3      # фактор репликации
+        bucket_count: 16384        # количество бакетов в тире
+        config:
+          memtx:
+            memory: 71M            # количество памяти, выделяемое каждому инстансу тира
+        host_groups:
+          - STORAGES               # целевая группа серверов для установки инстанса
+
+    db_config:                     # параметры конфигурации кластера https://docs.picodata.io/picodata/stable/reference/db_config/
+      governor_auto_offline_timeout: 30
+      iproto_net_msg_max: 500
+      memtx_checkpoint_count: 1
+      memtx_checkpoint_interval: 7200
+
+    plugins:
+      argus:                                    # плагин
+        path: '../plugins/argus_2.1.3.tar.gz'   # путь до пакета плагина
+        config: '../plugins/argus-config.yml'   # путь до файла с настройками плагина
+        services:
+          argus:
+            tiers:                              # список тиров, в которые устанавливается служба плагина
+              - default                         # по умолчанию — default
+
+    GROUP1:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-1-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+        server-1-2:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.19.22' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'ARBITERS'        # определение целевой группы серверов для установки инстансов
+
+    GROUP2:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-2-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.20.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
+
+    GROUP3:                             # Группа серверов (failure_domain)
+      hosts:                            # серверы в группе
+        server-3-1:                     # имя сервера в инвентарном файле
+          ansible_host: '192.168.21.21' # IP-адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'STORAGES'        # определение целевой группы серверов для установки инстансов
 ```
 
 Создайте файл с конфигурацией. Пример:
 
-```yaml
+```yaml title="argus_config.yml"
 argus:
     interval_secs: 60                         # Как часто опрашивать LDAP на предмет пользователей и ролей. Число, в секундах
     ldap:                                     # Настройки подключения к LDAP:
@@ -181,11 +213,11 @@ argus:
             base: "dc=example,dc=org"         # База поиска (объект вашего LDAP-каталога, с которого начнется поиск)
             filter: "(&(objectClass=inetOrgPerson)(businessCategory=reader))" # Фильтр для поиска
             attr: "cn"                        # Атрибут, в котором находится имя пользователя, которое будет использоваться в Picodata
-  ```
+```
 
-Подготовьте плейбук `picodata.yml`:
+Подготовьте плейбук:
 
-```yaml
+```yaml title="picodata.yml"
 ---
 - name: Deploy Picodata cluster
   hosts: all
