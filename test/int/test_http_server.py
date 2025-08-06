@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from conftest import (
     Cluster,
     Instance,
@@ -407,3 +409,55 @@ def test_picodata_metrics(cluster: Cluster) -> None:
 
     for metric in expected_metrics:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
+
+
+@pytest.mark.webui
+def test_pgproto_metrics_collected(instance: Instance) -> None:
+    from prometheus_client.parser import text_string_to_metric_families
+    from prometheus_client import Metric
+    import psycopg
+
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+
+    def get_metrics():
+        response = requests.get(f"http://{http_listen}/metrics")
+        response.raise_for_status()
+        return text_string_to_metric_families(response.text)
+
+    def check_metric(families: Iterable[Metric], name: str, value: float | None):
+        found_family = None
+        for family in families:
+            print(family.name, name)
+            if family.name == name:
+                found_family = family
+                break
+        if value is None:
+            assert found_family is None, "Metric {} found".format(name)
+        else:
+            assert found_family is not None, "Metric {} not found".format(name)
+            assert len(found_family.samples) == 1, "Metric has {} samples instead of 1".format(
+                len(found_family.samples)
+            )
+            sample = found_family.samples[0]
+            assert sample.value == value, "Metric has unexpected value"
+
+    metrics = get_metrics()
+    check_metric(metrics, "pico_sql_query", None)
+
+    # make a non-privileged user with iproto
+    instance.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
+
+    # creating a user for postgress will increase the metric value, so check it
+    metrics = get_metrics()
+    check_metric(metrics, "pico_sql_query", 1.0)
+
+    # execute a query through postgresql
+    host, port = instance.pg_host, instance.pg_port
+    conn = psycopg.connect(f"postgres://postgres:Passw0rd@{host}:{port}")
+    conn.autocommit = True  # do not make a transaction
+
+    conn.execute("SELECT 1").fetchall()
+
+    # the select above should've increase the metric value too
+    metrics = get_metrics()
+    check_metric(metrics, "pico_sql_query", 2.0)

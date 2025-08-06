@@ -4,6 +4,7 @@ use super::{
     result::{ExecuteResult, Rows},
 };
 use crate::config::observer::AtomicObserver;
+use crate::schema::ADMIN_ID;
 use crate::{
     metrics,
     pgproto::{
@@ -37,6 +38,7 @@ use std::{
     sync::LazyLock,
     vec::IntoIter,
 };
+use tarantool::session::with_su;
 use tarantool::time::Instant;
 use tarantool::{
     proc::{Return, ReturnMsgpack},
@@ -529,7 +531,7 @@ impl PortalInner {
         // collect metrics, making the errors non-fatal
         let collect_metrics = || -> crate::traft::Result<()> {
             let node = node::global()?;
-            let tier = node.raft_storage.tier()?;
+            let tier = with_su(ADMIN_ID, || node.raft_storage.tier())??;
             let tier = tier.as_deref().unwrap_or("<unknown>");
             let raft_id = node.raft_id;
             let inst = node.storage.instances.get(&raft_id)?;
