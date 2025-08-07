@@ -26,6 +26,7 @@ with the `YY.MINOR.MICRO` scheme.
   immediately breaks the connection, making timeouts redundant. This fixes an issue 
   where long-running plugin commands could be incorrectly aborted due to the 
   artificial timeout. 
+- Supported backoff strategies when configuring vshard from the governor.
 - Fixed restart the whole cluster at once taking too long.
 - Fixed an issue where `cluster.shredding` option does not get applied on instance restart.
 

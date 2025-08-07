@@ -453,3 +453,36 @@ cluster:
 
     assert_tier_bucket_count(cluster, "storage", 6000, i1, i2, i3)
     assert_tier_bucket_count(cluster, "radix", 16384, i4, i5)
+
+
+def test_backoff_proc_sharding(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+    i1.wait_governor_status("idle")
+
+    lc1 = log_crawler(i1, "backoff manager: sharding should wait 500 ms")
+    lc2 = log_crawler(i1, "backoff manager: sharding should wait 1000 ms")
+
+    # Enable error injection so that .proc_sharding fails after configuring the vshard
+    i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", True)
+
+    i1.sql(
+        "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
+    )
+    time.sleep(0.3)
+    i1.sql(
+        "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
+    )
+    lc1.wait_matched()
+    time.sleep(0.5)
+    i1.sql(
+        "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
+    )
+    lc2.wait_matched()
+
+    i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", False)
+
+    time.sleep(1.1)
+    i1.sql(
+        "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
+    )
+    i1.wait_governor_status("idle")

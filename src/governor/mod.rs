@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::time::Instant;
 
 use ::tarantool::error::BoxError;
 use ::tarantool::error::IntoBoxError;
@@ -56,9 +57,10 @@ use futures::future::try_join_all;
 use plan::action_plan;
 use plan::stage::*;
 
-pub(crate) mod conf_change;
+mod conf_change;
 pub(crate) mod plan;
 mod queue;
+mod sharding;
 
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
@@ -71,6 +73,7 @@ impl Loop {
             raft_status,
             waker,
             pool,
+            backoff_manager,
         }: &mut State,
     ) -> ControlFlow<()> {
         if !raft_status.get().raft_state.is_leader() {
@@ -220,12 +223,13 @@ impl Loop {
             &governor_operations,
             global_catalog_version,
             pending_catalog_version,
+            backoff_manager,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
                 waker.mark_seen();
-                _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                _ = waker.changed().timeout(backoff_manager.timeout()).await;
                 return ControlFlow::Continue(());
             }
         );
@@ -254,7 +258,7 @@ impl Loop {
                         .expect("status shouldn't ever be borrowed across yields");
 
                     waker.mark_seen();
-                    _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                    _ = waker.changed().timeout(backoff_manager.timeout()).await;
                     return ControlFlow::Continue(());
                 }
             }
@@ -1031,7 +1035,11 @@ impl Loop {
                                 })
                             });
                         }
-                        try_join_all(fs).await?
+                        if let Err(e) = try_join_all(fs).await {
+                            backoff_manager.sharding.handle_failure();
+                            return Err(e);
+                        }
+
                     }
                 }
 
@@ -1039,7 +1047,11 @@ impl Loop {
                     "updating current vshard config"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                        if let Err(e) = cas::compare_and_swap_local(&cas, deadline)?.no_retries() {
+                            backoff_manager.sharding.handle_failure();
+                            return Err(e);
+                        }
+                        backoff_manager.sharding.handle_success();
                     }
                 }
             }
@@ -1211,6 +1223,7 @@ impl Loop {
             raft_status,
             waker: waker_rx,
             pool,
+            backoff_manager: GovernorBackoffManager::new(),
         };
 
         Self {
@@ -1277,6 +1290,7 @@ struct State {
     raft_status: watch::Receiver<Status>,
     waker: watch::Receiver<()>,
     pool: Rc<ConnectionPool>,
+    backoff_manager: GovernorBackoffManager,
 }
 
 #[derive(Debug, Clone)]
@@ -1297,4 +1311,85 @@ pub struct GovernorStatus {
     ///
     /// This value is only used for testing purposes.
     pub step_counter: u64,
+}
+
+/// Manages backoff strategies and timeouts for the different stages of the governor.
+struct GovernorBackoffManager {
+    /// Sharding stage (where `proc_sharding` is called).
+    pub sharding: BackoffManager,
+}
+
+impl GovernorBackoffManager {
+    pub fn new() -> Self {
+        Self {
+            sharding: BackoffManager::new("sharding"),
+        }
+    }
+
+    /// Returns the current timeout.
+    pub fn timeout(&self) -> Duration {
+        Loop::RETRY_TIMEOUT.max(self.sharding.timeout())
+    }
+}
+
+/// Manages the backoff strategy and timeout for a single stage of the governor.
+struct BackoffManager {
+    name: &'static str,
+    last_try: Option<Instant>,
+    multiplier: u32,
+}
+
+impl BackoffManager {
+    const BASE_TIMEOUT: Duration = Duration::from_millis(125);
+    const MAX_TIMEOUT: Duration = Duration::from_secs(600);
+    const MULTIPLIER_COEFF: u32 = 2;
+    const BASE_MULTIPLIER: u32 = 1;
+
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            last_try: None,
+            multiplier: Self::BASE_MULTIPLIER,
+        }
+    }
+
+    /// Returns the current timeout.
+    pub fn timeout(&self) -> Duration {
+        Self::BASE_TIMEOUT.saturating_mul(self.multiplier)
+    }
+
+    /// Checks whether the governor's stage should be executed now
+    /// or if it must wait for the backoff timeout.
+    pub fn should_try(&self) -> bool {
+        let Some(last_try) = self.last_try else {
+            return true;
+        };
+        let now = fiber::clock();
+        let timeout = self.timeout();
+        let result = now.duration_since(last_try) > timeout;
+        if !result {
+            tlog!(
+                Debug,
+                "backoff manager: {} should wait {} ms",
+                self.name,
+                timeout.as_millis()
+            );
+        }
+
+        result
+    }
+
+    pub fn handle_success(&mut self) {
+        self.last_try = None;
+        self.multiplier = Self::BASE_MULTIPLIER;
+    }
+
+    pub fn handle_failure(&mut self) {
+        self.last_try = Some(fiber::clock());
+        let next_multiplier = self.multiplier.saturating_mul(Self::MULTIPLIER_COEFF);
+        let next_timeout = Self::BASE_TIMEOUT.saturating_mul(next_multiplier);
+        if next_timeout <= Self::MAX_TIMEOUT {
+            self.multiplier = next_multiplier;
+        }
+    }
 }

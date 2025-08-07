@@ -1,45 +1,35 @@
 use super::conf_change::raft_conf_change;
 use super::queue::handle_governor_queue;
+use super::sharding::{handle_sharding, handle_sharding_bootstrap};
+use super::GovernorBackoffManager;
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
 use crate::column_name;
 use crate::has_states;
-use crate::instance::state::State;
-use crate::instance::state::StateVariant;
+use crate::instance::state::{State, StateVariant};
 use crate::instance::{Instance, InstanceName};
-use crate::plugin::PluginIdentifier;
-use crate::plugin::PluginOp;
-use crate::plugin::TopologyUpdateOpKind;
-use crate::replicaset::ReplicasetState;
-use crate::replicaset::WeightOrigin;
-use crate::replicaset::{Replicaset, ReplicasetName};
+use crate::plugin::{PluginIdentifier, PluginOp, TopologyUpdateOpKind};
+use crate::replicaset::{Replicaset, ReplicasetName, ReplicasetState, WeightOrigin};
 use crate::rpc;
 use crate::rpc::update_instance::prepare_update_instance_cas_request;
-use crate::schema::TableDef;
 use crate::schema::{
-    PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
+    PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, TableDef,
+    ADMIN_ID,
 };
 use crate::storage;
-use crate::storage::PropertyName;
-use crate::storage::SystemTable;
+use crate::storage::{PropertyName, SystemTable};
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
-use crate::traft::error::Error;
-use crate::traft::error::IdOfInstance;
-use crate::traft::op::Ddl;
-use crate::traft::op::Dml;
-use crate::traft::op::Op;
+use crate::traft::error::{Error, IdOfInstance};
 #[allow(unused_imports)]
 use crate::traft::op::PluginRaftOp;
-use crate::traft::Result;
-use crate::traft::{RaftId, RaftIndex, RaftTerm};
+use crate::traft::op::{Ddl, Dml, Op};
+use crate::traft::{RaftId, RaftIndex, RaftTerm, Result};
 use crate::util::Uppercase;
 use crate::warn_or_panic;
-use ::tarantool::space::UpdateOps;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use tarantool::space::SpaceId;
+use std::collections::{HashMap, HashSet};
+use tarantool::space::{SpaceId, UpdateOps};
 use tarantool::vclock::Vclock;
 
 #[allow(clippy::too_many_arguments)]
@@ -67,6 +57,7 @@ pub(super) fn action_plan<'i>(
     governor_operations: &'i [GovernorOperationDef],
     global_catalog_version: Option<String>,
     pending_catalog_version: Option<String>,
+    backoff_manager: &GovernorBackoffManager,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -348,100 +339,27 @@ pub(super) fn action_plan<'i>(
         return Ok(ProposeReplicasetStateChanges { cas }.into());
     }
 
-    for (&tier_name, &tier) in tiers.iter() {
-        ////////////////////////////////////////////////////////////////////////////
-        // update current vshard config
-        let mut first_ready_replicaset = None;
-        if !tier.vshard_bootstrapped {
-            first_ready_replicaset =
-                get_first_ready_replicaset_in_tier(instances, replicasets, tier_name);
+    ////////////////////////////////////////////////////////////////////////////
+    // sharding on each tier, update current vshard config
+    if let Some(plan) = handle_sharding(term, applied, tiers, instances, replicasets, sync_timeout)?
+    {
+        // Verifies if `proc_sharding` encountered a prior failure
+        // and the backoff timeout period has not yet elapsed.
+        // Returns error and retries governor cycle in such case.
+        if backoff_manager.sharding.should_try() {
+            return Ok(plan);
         }
-
-        // Note: the following is a hack stemming from the fact that we have to work around vshard's weird quirks.
-        // Everything having to deal with bootstrapping vshard should be removed completely once we migrate to our custom sharding solution.
-        //
-        // Vshard will fail if we configure it with all replicaset weights set to 0.
-        // But we don't set a replicaset's weight until it's filled up to the replication factor.
-        // So we wait until at least one replicaset is filled (i.e. `first_ready_replicaset.is_some()`).
-        //
-        // Also if vshard has already been bootstrapped, the user can mess this up by setting all replicasets' weights to 0,
-        // which will break vshard configuration, but this will be the user's fault probably, not sure we can do something about it
-        let ok_to_configure_vshard = tier.vshard_bootstrapped || first_ready_replicaset.is_some();
-
-        if ok_to_configure_vshard
-            && tier.current_vshard_config_version != tier.target_vshard_config_version
-        {
-            // Note at this point all the instances should have their replication configured,
-            // so it's ok to configure sharding for them
-            let targets = maybe_responding(instances)
-                .map(|instance| &instance.name)
-                .collect();
-            let rpc = rpc::sharding::Request {
-                term,
-                applied,
-                timeout: sync_timeout,
-            };
-
-            let mut uops = UpdateOps::new();
-            uops.assign(
-                column_name!(Tier, current_vshard_config_version),
-                tier.target_vshard_config_version,
-            )?;
-
-            let bump = Dml::update(storage::Tiers::TABLE_ID, &[tier_name], uops, ADMIN_ID)?;
-
-            let ranges = vec![cas::Range::for_dml(&bump)?];
-            let predicate = cas::Predicate::new(applied, ranges);
-            let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
-
-            return Ok(UpdateCurrentVshardConfig {
-                targets,
-                rpc,
-                cas,
-                tier_name: tier_name.into(),
-            }
-            .into());
-        }
+        return Err(Error::Other(
+            "backoff manager prevented proc_sharding from running".into(),
+        ));
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding on each tier
-    for (&tier_name, &tier) in tiers.iter() {
-        if tier.vshard_bootstrapped {
-            continue;
-        }
-
-        if let Some(r) = get_first_ready_replicaset_in_tier(instances, replicasets, tier_name) {
-            debug_assert!(
-                !tier.vshard_bootstrapped,
-                "bucket distribution only needs to be bootstrapped once"
-            );
-            let target = &r.current_master_name;
-            let tier_name = &r.tier;
-            let rpc = rpc::sharding::bootstrap::Request {
-                term,
-                applied,
-                timeout: sync_timeout,
-                tier: tier_name.into(),
-            };
-
-            let mut uops = UpdateOps::new();
-            uops.assign(column_name!(Tier, vshard_bootstrapped), true)?;
-
-            let dml = Dml::update(storage::Tiers::TABLE_ID, &[tier_name], uops, ADMIN_ID)?;
-
-            let ranges = vec![cas::Range::for_dml(&dml)?];
-            let predicate = cas::Predicate::new(applied, ranges);
-            let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
-
-            return Ok(ShardingBoot {
-                target,
-                rpc,
-                cas,
-                tier_name: tier_name.into(),
-            }
-            .into());
-        };
+    if let Some(plan) =
+        handle_sharding_bootstrap(term, applied, tiers, instances, replicasets, sync_timeout)?
+    {
+        return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1675,6 +1593,6 @@ pub fn get_replicaset_being_expelled<'r>(
 }
 
 #[inline(always)]
-fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
+pub fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
     instances.iter().filter(|instance| instance.may_respond())
 }
