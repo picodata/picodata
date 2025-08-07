@@ -10,7 +10,7 @@ fn selection_column_from_values() {
     "#;
 
     let expected = PatternWithParams::new(
-        r#"SELECT "COLUMN_1" FROM (VALUES (CAST($1 AS int)))"#.to_string(),
+        r#"SELECT "unnamed_subquery"."COLUMN_1" FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery""#.to_string(),
         vec![Value::Unsigned(1)],
     );
     check_sql_with_snapshot(query, vec![], expected.clone(), Snapshot::Oldest);

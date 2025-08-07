@@ -103,7 +103,7 @@ fn except_transform_with_dag_plan() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     except
         projection (1::int -> "col_1")
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
         motion [policy: full]
@@ -112,7 +112,7 @@ fn except_transform_with_dag_plan() {
                     selection "t2"."e"::int = 1::int
                         scan "t2"
                 projection (1::int -> "col_1")
-                    scan
+                    scan "unnamed_subquery"
                         values
                             value row (data=ROW(1::int))
     execution options:

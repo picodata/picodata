@@ -1908,6 +1908,13 @@ impl RouterRuntimeMock {
     pub fn add_virtual_table(&self, id: NodeId, table: VirtualTable) {
         self.virtual_tables.borrow_mut().insert(id, table);
     }
+
+    pub fn add_table(&mut self, table: Table) {
+        self.metadata
+            .borrow_mut()
+            .tables
+            .insert(table.name.clone(), table);
+    }
 }
 
 impl Router for RouterRuntimeMock {

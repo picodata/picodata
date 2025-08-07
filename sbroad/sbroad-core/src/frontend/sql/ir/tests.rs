@@ -832,8 +832,8 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
     projection ("id_count"::int -> "id_count")
         order by ("id_count"::int)
             scan
-                projection ("id_count"::int -> "id_count")
-                    scan
+                projection ("unnamed_subquery"."id_count"::int -> "id_count")
+                    scan "unnamed_subquery"
                         projection (sum(("count_1"::int))::int -> "id_count")
                             motion [policy: full]
                                 projection (count(("test_space"."id"::int))::int -> "count_1")
@@ -851,13 +851,13 @@ fn front_join_with_identical_columns() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("sysFrom"::int -> "sysFrom", "sysFrom"::int -> "sysFrom")
+    projection ("unnamed_subquery"."sysFrom"::int -> "sysFrom", "unnamed_subquery_1"."sysFrom"::int -> "sysFrom")
         join on true::bool
-            scan
+            scan "unnamed_subquery"
                 projection ("test_space"."sysFrom"::int -> "sysFrom")
                     scan "test_space"
             motion [policy: full]
-                scan
+                scan "unnamed_subquery_1"
                     projection ("test_space"."sysFrom"::int -> "sysFrom")
                         scan "test_space"
     execution options:
@@ -879,11 +879,11 @@ fn front_join_with_vtable_ambiguous_column_name() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "id"::int -> "id", "id"::int -> "id")
+    projection ("test_space"."id"::int -> "id", "test_space"."sysFrom"::int -> "sysFrom", "test_space"."FIRST_NAME"::string -> "FIRST_NAME", "test_space"."sys_op"::int -> "sys_op", "unnamed_subquery"."id"::int -> "id", "unnamed_subquery"."id"::int -> "id")
         join on true::bool
             scan "test_space"
             motion [policy: full]
-                scan
+                scan "unnamed_subquery"
                     projection ("t1"."id"::int -> "id", "t2"."id"::int -> "id")
                         join on true::bool
                             scan "t1"
@@ -1354,8 +1354,8 @@ fn front_sql_groupby_union_2() {
     union all
         projection ("hash_testing"."identification_number"::int -> "identification_number")
             scan "hash_testing"
-        projection ("identification_number"::int -> "identification_number")
-            scan
+        projection ("unnamed_subquery"."identification_number"::int -> "identification_number")
+            scan "unnamed_subquery"
                 union all
                     motion [policy: segment([ref("identification_number")])]
                         projection ("gr_expr_1"::int -> "identification_number")
@@ -1568,14 +1568,14 @@ fn front_sql_distinct_asterisk() {
     projection ("gr_expr_1"::int -> "id", "gr_expr_2"::int -> "id")
         group by ("gr_expr_1"::int, "gr_expr_2"::int) output: ("gr_expr_1"::int -> "gr_expr_1", "gr_expr_2"::int -> "gr_expr_2")
             motion [policy: full]
-                projection ("id"::int -> "gr_expr_1", "id"::int -> "gr_expr_2")
-                    group by ("id"::int, "id"::int) output: ("id"::int -> "id", "id"::int -> "id")
+                projection ("unnamed_subquery"."id"::int -> "gr_expr_1", "unnamed_subquery_1"."id"::int -> "gr_expr_2")
+                    group by ("unnamed_subquery"."id"::int, "unnamed_subquery_1"."id"::int) output: ("unnamed_subquery"."id"::int -> "id", "unnamed_subquery_1"."id"::int -> "id")
                         join on true::bool
-                            scan
+                            scan "unnamed_subquery"
                                 projection ("test_space_hist"."id"::int -> "id")
                                     scan "test_space_hist"
                             motion [policy: full]
-                                scan
+                                scan "unnamed_subquery_1"
                                     projection ("test_space"."id"::int -> "id")
                                         scan "test_space"
     execution options:
@@ -2050,7 +2050,7 @@ fn front_sql_pg_style_params9() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (1::int -> "col_1", 2::int -> "col_2", 3::int -> "col_3")
         selection (5::int = ROW($1)) or exists ROW($0)
-            scan
+            scan "unnamed_subquery"
                 projection (4::int -> "col_1")
     subquery $0:
     scan
@@ -2075,7 +2075,7 @@ fn front_sql_tnt_style_params1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (1::int -> "col_1", 2::int -> "col_2", 3::int -> "col_3")
         selection (5::int = ROW($1)) or exists ROW($0)
-            scan
+            scan "unnamed_subquery"
                 projection (4::int -> "col_1")
     subquery $0:
     scan
@@ -3256,11 +3256,11 @@ fn front_sql_update4() {
     "d" = "col_0"
     "c" = "col_0"
         motion [policy: local]
-            projection ("b1"::int * 2::int -> "col_0", "t"."b"::int -> "col_1")
-                join on "t"."c"::int = "b1"::int
+            projection ("unnamed_subquery"."b1"::int * 2::int -> "col_0", "t"."b"::int -> "col_1")
+                join on "t"."c"::int = "unnamed_subquery"."b1"::int
                     scan "t"
                     motion [policy: full]
-                        scan
+                        scan "unnamed_subquery"
                             projection ("t1"."a"::string -> "a1", "t1"."b"::int -> "b1")
                                 scan "t1"
     execution options:
@@ -3382,9 +3382,9 @@ fn front_sql_not_equal() {
     let input = r#"SELECT * FROM (VALUES (1)) where not true = true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     execution options:
@@ -3398,9 +3398,9 @@ fn front_sql_not_cast() {
     let input = r#"SELECT * FROM (values (1)) where not cast('true' as bool)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     execution options:
@@ -3414,9 +3414,9 @@ fn from_sql_not_column() {
     let input = r#"SELECT * FROM (values (true)) where not "COLUMN_1""#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::bool -> "COLUMN_1")
-        selection not "COLUMN_1"::bool
-            scan
+    projection ("unnamed_subquery"."COLUMN_1"::bool -> "COLUMN_1")
+        selection not "unnamed_subquery"."COLUMN_1"::bool
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(true::bool))
     execution options:
@@ -3430,9 +3430,9 @@ fn front_sql_not_or() {
     let input = r#"SELECT * FROM (values (1)) where not true or true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection true::bool
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     execution options:
@@ -3447,7 +3447,7 @@ fn front_sql_not_and_with_parentheses() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection (not (true::bool and false::bool) -> "col_1")
-        scan
+        scan "unnamed_subquery"
             values
                 value row (data=ROW(1::int))
     execution options:
@@ -3461,9 +3461,9 @@ fn front_sql_not_or_with_parentheses() {
     let input = r#"SELECT * FROM (values (1)) where not (true or true)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection false::bool
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     execution options:
@@ -3477,15 +3477,15 @@ fn front_sql_not_exists() {
     let input = r#"select * from (values (1)) where not exists (select * from (values (1)))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection not exists ROW($0)
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     subquery $0:
     scan
-                projection ("COLUMN_2"::int -> "COLUMN_2")
-                    scan
+                projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
+                    scan "unnamed_subquery_1"
                         values
                             value row (data=ROW(1::int))
     execution options:
@@ -3499,16 +3499,16 @@ fn front_sql_not_in() {
     let input = r#"select * from (values (1)) where 1 not in (select * from (values (1)))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
         selection not (1::int in ROW($0))
-            scan
+            scan "unnamed_subquery"
                 values
                     value row (data=ROW(1::int))
     subquery $0:
     motion [policy: full]
                 scan
-                    projection ("COLUMN_2"::int -> "COLUMN_2")
-                        scan
+                    projection ("unnamed_subquery_1"."COLUMN_2"::int -> "COLUMN_2")
+                        scan "unnamed_subquery_1"
                             values
                                 value row (data=ROW(1::int))
     execution options:
@@ -3542,9 +3542,9 @@ fn front_sql_not_complex_query() {
                             scan "test_space"
     subquery $0:
     scan
-                projection ("COLUMN_1"::int -> "COLUMN_1")
+                projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
                     selection false::bool
-                        scan
+                        scan "unnamed_subquery"
                             values
                                 value row (data=ROW(1::int))
     execution options:
@@ -3559,7 +3559,7 @@ fn front_sql_arithmetic_with_parentheses() {
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ((1::int + 2::int) * 3::int -> "col_1")
-        scan
+        scan "unnamed_subquery"
             values
                 value row (data=ROW(1::int))
     execution options:
@@ -3573,8 +3573,8 @@ fn front_sql_to_date() {
     let input = r#"SELECT to_date("COLUMN_1", '%Y/%d/%m') FROM (values ('2010/10/10'))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("to_date"(("COLUMN_1"::string, '%Y/%d/%m'::string))::datetime -> "col_1")
-        scan
+    projection ("to_date"(("unnamed_subquery"."COLUMN_1"::string, '%Y/%d/%m'::string))::datetime -> "col_1")
+        scan "unnamed_subquery"
             values
                 value row (data=ROW('2010/10/10'::string))
     execution options:
@@ -3597,7 +3597,7 @@ fn front_sql_current_date() {
     let expected_explain = format!(
         r#"projection ({today}::datetime -> "col_1")
     selection "to_date"(('2010/10/10'::string, '%Y/%d/%m'::string))::datetime < {today}::datetime
-        scan
+        scan "unnamed_subquery"
             values
                 value row (data=ROW('2010/10/10'::string))
 execution options:
@@ -3811,8 +3811,8 @@ fn front_subqueries_interpreted_as_expression_as_required_child() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("col_1"::int -> "col_1")
-        scan
+    projection ("unnamed_subquery"."col_1"::int -> "col_1")
+        scan "unnamed_subquery"
             projection (ROW($0) -> "col_1")
                 scan "test_space"
     subquery $0:

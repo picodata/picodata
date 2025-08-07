@@ -174,7 +174,7 @@ motion [policy: full]
         scan
             projection (count(*::int) over win_nested -> "col_1")
                 windows: win_nested as (rows between current row and unbounded following)
-                    scan
+                    scan "unnamed_subquery"
                         limit 1
                             motion [policy: full]
                                 limit 1

@@ -400,8 +400,8 @@ fn select_value_plan() {
     let explain_tree = FullExplain::new(&plan, *top).unwrap();
 
     insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1")
-        scan
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1")
+        scan "unnamed_subquery"
             values
                 value row (data=ROW(1::int))
     execution options:

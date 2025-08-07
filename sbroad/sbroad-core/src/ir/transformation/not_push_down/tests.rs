@@ -15,7 +15,7 @@ fn not_true() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(false)],);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS int))) WHERE CAST($2 AS bool)"
+        @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool)"#
     );
 }
 
@@ -27,7 +27,7 @@ fn not_double() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::from(true)],);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS int))) WHERE CAST($2 AS bool)"
+        @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool)"#
     );
 }
 
@@ -39,7 +39,7 @@ fn not_null() {
     assert_eq!(actual.params, vec![Value::Unsigned(1), Value::Null]);
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS int))) WHERE not $2",
+        @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE not $2"#,
     );
 }
 
@@ -54,7 +54,7 @@ fn not_and() {
     );
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS int))) WHERE CAST($2 AS bool) or CAST($3 AS bool)"
+        @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool) or CAST($3 AS bool)"#
     );
 }
 
@@ -69,7 +69,7 @@ fn not_or() {
     );
     insta::assert_snapshot!(
         actual.pattern,
-        @"SELECT * FROM (VALUES (CAST($1 AS int))) WHERE CAST($2 AS bool) and CAST($3 AS bool)",
+        @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE CAST($2 AS bool) and CAST($3 AS bool)"#,
     );
 }
 

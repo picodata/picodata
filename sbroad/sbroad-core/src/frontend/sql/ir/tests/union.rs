@@ -138,12 +138,12 @@ fn union_under_insert1() {
     insert "TBL" on conflict: fail
         motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
             union
-                projection ("COLUMN_1"::int -> "COLUMN_1", "COLUMN_2"::int -> "COLUMN_2")
-                    scan
+                projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2")
+                    scan "unnamed_subquery"
                         values
                             value row (data=ROW(1::int, 1::int))
-                projection ("COLUMN_3"::int -> "COLUMN_3", "COLUMN_4"::int -> "COLUMN_4")
-                    scan
+                projection ("unnamed_subquery_1"."COLUMN_3"::int -> "COLUMN_3", "unnamed_subquery_1"."COLUMN_4"::int -> "COLUMN_4")
+                    scan "unnamed_subquery_1"
                         values
                             value row (data=ROW(2::int, 2::int))
     execution options:

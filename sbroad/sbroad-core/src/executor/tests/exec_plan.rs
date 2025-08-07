@@ -288,7 +288,8 @@ fn exec_plan_subquery_under_motion_without_alias() {
 
     let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
-    let mut virtual_table = virtual_table_23(None);
+    // name would be added during materialization from subquery
+    let mut virtual_table = virtual_table_23(Some("unnamed_subquery_1"));
     reshard_vtable(&query, motion_id, &mut virtual_table);
     let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
     vtables.insert(motion_id, Rc::new(virtual_table));
@@ -301,7 +302,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") ON CAST($1 AS bool)"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "unnamed_subquery_1" ON CAST($1 AS bool)"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -332,7 +333,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "hti" ON CAST($1 AS bool)"#.to_string(),
+            r#"SELECT * FROM (SELECT "test_space"."id" as "tid" FROM "test_space") as "unnamed_subquery" INNER JOIN (SELECT "COL_1" FROM "TMP_test_0136") as "hti" ON CAST($1 AS bool)"#.to_string(),
             vec![Value::Boolean(true)]
         ));
 }
@@ -930,13 +931,13 @@ fn global_union_all4() {
     let expected = vec![
         ReplicasetDispatchInfo {
             rs_id: 0,
-            pattern: r#" select cast(null as int) where false UNION ALL SELECT * FROM (select cast(null as int) where false UNION ALL SELECT "t2"."f" FROM "t2")"#.to_string(),
+            pattern: r#" select cast(null as int) where false UNION ALL SELECT * FROM (select cast(null as int) where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#.to_string(),
             params: vec![],
             vtables_map: HashMap::new(),
         },
         ReplicasetDispatchInfo {
             rs_id: 1,
-            pattern: r#"SELECT "global_t"."b" FROM "global_t" UNION ALL SELECT * FROM (SELECT "global_t"."a" FROM "global_t" UNION ALL SELECT "t2"."f" FROM "t2")"#.to_string(),
+            pattern: r#"SELECT "global_t"."b" FROM "global_t" UNION ALL SELECT * FROM (SELECT "global_t"."a" FROM "global_t" UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#.to_string(),
             params: vec![],
             vtables_map: HashMap::new(),
         },
@@ -1160,7 +1161,7 @@ fn exec_plan_order_by_with_subquery() {
     assert_eq!(
         sql,
         PatternWithParams::new(
-            r#"SELECT "identification_number" FROM (SELECT "hash_testing"."identification_number" FROM "hash_testing")"#.to_string(),
+            r#"SELECT "unnamed_subquery"."identification_number" FROM (SELECT "hash_testing"."identification_number" FROM "hash_testing") as "unnamed_subquery""#.to_string(),
             vec![]
         )
     );

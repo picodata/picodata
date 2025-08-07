@@ -6,8 +6,8 @@ fn select_values_rows() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    projection ("COLUMN_1"::int -> "COLUMN_1", "COLUMN_2"::int -> "COLUMN_2", "COLUMN_3"::string -> "COLUMN_3")
-        scan
+    projection ("unnamed_subquery"."COLUMN_1"::int -> "COLUMN_1", "unnamed_subquery"."COLUMN_2"::int -> "COLUMN_2", "unnamed_subquery"."COLUMN_3"::string -> "COLUMN_3")
+        scan "unnamed_subquery"
             values
                 value row (data=ROW(1::int, 2::int, 'txt'::string))
     execution options:

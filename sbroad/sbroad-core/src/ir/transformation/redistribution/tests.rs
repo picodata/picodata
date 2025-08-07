@@ -289,7 +289,7 @@ fn test_slices_1() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("t2"."e"::int -> "e")
         join on true::bool
-            scan
+            scan "unnamed_subquery"
                 projection ("t2"."f"::int -> "f")
                     join on true::bool
                         scan "t2"
@@ -324,7 +324,7 @@ fn test_slices_2() {
         motion [policy: full]
             projection (count(("t2"."e"::int))::int -> "count_1")
                 join on true::bool
-                    scan
+                    scan "unnamed_subquery"
                         projection ("t2"."f"::int -> "f")
                             join on true::bool
                                 scan "t2"

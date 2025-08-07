@@ -609,7 +609,7 @@ on q."f" = "t1"."b""#;
         Value::String(String::from(PatternWithParams::new(
             format!(
                 "{} {} {} {}",
-                r#"SELECT "t1"."a", "t1"."b", "q"."COL_1", "q"."COL_2" FROM"#,
+                r#"SELECT "t1"."a", "t1"."b", "q".* FROM"#,
                 r#""t1""#,
                 r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
                 r#"as "q" ON "q"."COL_1" = "t1"."b""#,
@@ -904,3 +904,4 @@ mod frontend;
 mod like;
 mod not_eq;
 mod not_in;
+mod unnamed_subquery;

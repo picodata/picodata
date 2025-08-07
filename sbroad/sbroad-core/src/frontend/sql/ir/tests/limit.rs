@@ -88,8 +88,8 @@ fn single_limit() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     limit 1
-        projection ("id"::int -> "id")
-            scan
+        projection ("unnamed_subquery"."id"::int -> "id")
+            scan "unnamed_subquery"
                 limit 1
                     motion [policy: full]
                         limit 1

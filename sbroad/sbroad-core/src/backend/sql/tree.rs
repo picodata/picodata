@@ -2001,6 +2001,8 @@ impl<'p> SyntaxPlan<'p> {
         // an asterisk we want to generate that asterisk only once.
         let mut already_handled_asterisk_sources = HashSet::new();
         let mut last_handled_asterisk_id: Option<usize> = None;
+        let mut last_handled_asterisk_name: Option<&str> = None;
+        let mut asterisk_distribution = HashMap::new();
         let mut has_system_columns = HashMap::<NodeId, bool>::new();
 
         // Children number + the same number of commas + parentheses.
@@ -2014,119 +2016,173 @@ impl<'p> SyntaxPlan<'p> {
             Comma,
         }
 
-        let mut handle_reference =
-            |sn_id: usize, need_comma: bool, expr_id: NodeId| -> Vec<NodeToAdd> {
-                let ir_plan = self.plan.get_ir_plan();
-                let expr_node = ir_plan
-                    .get_expression_node(expr_id)
-                    .expect("Expression node must exist");
-                let mut non_asterisk_nodes = || -> Vec<NodeToAdd> {
-                    let mut nodes_to_add = Vec::new();
-                    if last_handled_asterisk_id.is_some() {
-                        nodes_to_add.push(NodeToAdd::Comma);
-                    }
-                    nodes_to_add.push(NodeToAdd::SnId(sn_id));
-                    if need_comma {
-                        nodes_to_add.push(NodeToAdd::Comma);
-                    }
-                    last_handled_asterisk_id = None;
-                    nodes_to_add
-                };
-
+        let mut handle_reference = |sn_id: usize,
+                                    need_comma: bool,
+                                    expr_id: NodeId|
+         -> Vec<NodeToAdd> {
+            let ir_plan = self.plan.get_ir_plan();
+            let expr_node = ir_plan
+                .get_expression_node(expr_id)
+                .expect("Expression node must exist");
+            let mut non_asterisk_nodes = || -> Vec<NodeToAdd> {
                 let mut nodes_to_add = Vec::new();
-                if let Expression::Reference(Reference {
-                    asterisk_source:
-                        Some(ReferenceAsteriskSource {
-                            relation_name,
-                            asterisk_id,
-                        }),
-                    ..
-                }) = expr_node
-                {
-                    // We don't want to transform asterisks in order not to select "bucket_id"
-                    // implicitly. That's why we save them as a sequence of references, if system
-                    // columns are involved.
-                    let ref_source_node_id = ir_plan
-                        .get_reference_source_relation(expr_id)
-                        .expect("Reference must have a source relation");
-
-                    let leave_as_sequence = has_system_columns
-                        .entry(ref_source_node_id)
-                        .or_insert_with(|| {
-                            let Ok(output) = ir_plan.get_relational_output(ref_source_node_id)
-                            else {
-                                // TODO[2081]: don't hide an error
-                                return false;
-                            };
-
-                            let Ok(row_list) = ir_plan.get_row_list(output) else {
-                                // TODO[2081]: don't hide an error
-                                return false;
-                            };
-
-                            row_list.iter().any(|node| {
-                                let Ok(node) = ir_plan.get_child_under_alias(*node) else {
-                                    // TODO[2081]: don't hide an error
-                                    return false;
-                                };
-                                let Ok(node) = ir_plan.get_expression_node(node) else {
-                                    // TODO[2081]: don't hide an error
-                                    return false;
-                                };
-                                matches!(
-                                    node,
-                                    Expression::Reference(Reference {
-                                        is_system: true,
-                                        ..
-                                    })
-                                )
-                            })
-                        });
-
-                    if *leave_as_sequence {
-                        return non_asterisk_nodes();
-                    }
-
-                    let mut need_comma = false;
-                    let asterisk_id = *asterisk_id;
-                    if let Some(last_handled_asterisk_id) = last_handled_asterisk_id {
-                        if asterisk_id != last_handled_asterisk_id {
-                            need_comma = true;
-                            already_handled_asterisk_sources.clear();
-                        }
-                    }
-
-                    let pair_to_check = if let Some(relation_name) = relation_name {
-                        (Some(relation_name.clone()), asterisk_id)
-                    } else {
-                        (None, asterisk_id)
-                    };
-
-                    let asterisk_node_to_add =
-                        if !already_handled_asterisk_sources.contains(&pair_to_check) {
-                            already_handled_asterisk_sources.insert(pair_to_check);
-                            let res = if relation_name.is_some() {
-                                SyntaxNode::new_asterisk(relation_name.clone())
-                            } else {
-                                SyntaxNode::new_asterisk(None)
-                            };
-                            Some(res)
-                        } else {
-                            None
-                        };
-
-                    last_handled_asterisk_id = Some(asterisk_id);
-                    if need_comma {
-                        nodes_to_add.push(NodeToAdd::Comma);
-                    }
-                    if let Some(asterisk_node_to_add) = asterisk_node_to_add {
-                        nodes_to_add.push(NodeToAdd::Asterisk(asterisk_node_to_add));
-                    }
-                } else {
-                    return non_asterisk_nodes();
+                if last_handled_asterisk_id.is_some() {
+                    nodes_to_add.push(NodeToAdd::Comma);
                 }
+                nodes_to_add.push(NodeToAdd::SnId(sn_id));
+                if need_comma {
+                    nodes_to_add.push(NodeToAdd::Comma);
+                }
+                last_handled_asterisk_id = None;
+                last_handled_asterisk_name = None;
                 nodes_to_add
             };
+
+            let mut nodes_to_add = Vec::new();
+            if let Expression::Reference(Reference {
+                position,
+                asterisk_source:
+                    Some(ReferenceAsteriskSource {
+                        relation_name,
+                        asterisk_id,
+                    }),
+                ..
+            }) = expr_node
+            {
+                // We don't want to transform asterisks in order not to select "bucket_id"
+                // implicitly. That's why we save them as a sequence of references, if system
+                // columns are involved.
+                let ref_source_node_id = ir_plan
+                    .get_reference_source_relation(expr_id)
+                    .expect("Reference must have a source relation");
+
+                let leave_as_sequence = has_system_columns
+                    .entry(ref_source_node_id)
+                    .or_insert_with(|| {
+                        let Ok(output) = ir_plan.get_relational_output(ref_source_node_id) else {
+                            // TODO[2081]: don't hide an error
+                            return false;
+                        };
+
+                        let Ok(row_list) = ir_plan.get_row_list(output) else {
+                            // TODO[2081]: don't hide an error
+                            return false;
+                        };
+
+                        let mut distribution = HashMap::new();
+
+                        row_list.iter().enumerate().for_each(|(i, node)| {
+                            let key = plan.scan_name(ref_source_node_id, i).unwrap();
+                            let Ok(node) = ir_plan.get_child_under_alias(*node) else {
+                                // TODO[2081]: don't hide an error
+                                distribution
+                                    .entry(key)
+                                    .and_modify(|v| *v |= false)
+                                    .or_insert(false);
+                                return;
+                            };
+                            let Ok(node) = ir_plan.get_expression_node(node) else {
+                                // TODO[2081]: don't hide an error
+                                distribution
+                                    .entry(key)
+                                    .and_modify(|v| *v |= false)
+                                    .or_insert(false);
+                                return;
+                            };
+
+                            let value = matches!(
+                                node,
+                                Expression::Reference(Reference {
+                                    is_system: true,
+                                    ..
+                                })
+                            );
+
+                            distribution
+                                .entry(key)
+                                .and_modify(|v| *v |= value)
+                                .or_insert(value);
+                        });
+
+                        let res = distribution.values().any(|v| *v);
+
+                        if res {
+                            distribution.iter().for_each(|(name, bool)| {
+                                asterisk_distribution.insert((ref_source_node_id, *name), *bool);
+                            });
+                        }
+
+                        res
+                    });
+
+                let mut source_name = None;
+                if *leave_as_sequence {
+                    let Ok(name) = plan.scan_name(ref_source_node_id, *position) else {
+                        // TODO[2081]: don't hide an error
+                        return non_asterisk_nodes();
+                    };
+                    let key = (ref_source_node_id, name);
+                    // TODO[2081]: don't hide an error
+                    if *asterisk_distribution.get(&key).unwrap_or(&false) {
+                        return non_asterisk_nodes();
+                    }
+                    source_name = name;
+                }
+
+                let mut need_comma = false;
+                let asterisk_id = *asterisk_id;
+                if let Some(last_handled_asterisk_id) = last_handled_asterisk_id {
+                    if asterisk_id != last_handled_asterisk_id {
+                        need_comma = true;
+                        already_handled_asterisk_sources.clear();
+                        last_handled_asterisk_name = None;
+                    }
+                }
+
+                if let Some(asterisk_name) = last_handled_asterisk_name {
+                    if let Some(source_name) = source_name {
+                        if source_name != asterisk_name {
+                            need_comma = true;
+                        }
+                    }
+                }
+
+                let pair_to_check = if let Some(relation_name) = relation_name {
+                    (Some(relation_name.clone()), asterisk_id)
+                } else if let Some(source_name) = source_name {
+                    (Some(source_name.to_smolstr()), asterisk_id)
+                } else {
+                    (None, asterisk_id)
+                };
+
+                let asterisk_node_to_add =
+                    if !already_handled_asterisk_sources.contains(&pair_to_check) {
+                        already_handled_asterisk_sources.insert(pair_to_check);
+                        let res = if relation_name.is_some() {
+                            SyntaxNode::new_asterisk(relation_name.clone())
+                        } else if source_name.is_some() {
+                            SyntaxNode::new_asterisk(Some(source_name.unwrap().to_smolstr()))
+                        } else {
+                            SyntaxNode::new_asterisk(None)
+                        };
+                        Some(res)
+                    } else {
+                        None
+                    };
+
+                last_handled_asterisk_id = Some(asterisk_id);
+                last_handled_asterisk_name = source_name;
+                if need_comma {
+                    nodes_to_add.push(NodeToAdd::Comma);
+                }
+                if let Some(asterisk_node_to_add) = asterisk_node_to_add {
+                    nodes_to_add.push(NodeToAdd::Asterisk(asterisk_node_to_add));
+                }
+            } else {
+                return non_asterisk_nodes();
+            }
+            nodes_to_add
+        };
 
         let mut handle_single_list_sn_id = |sn_id: usize,
                                             need_comma: bool|

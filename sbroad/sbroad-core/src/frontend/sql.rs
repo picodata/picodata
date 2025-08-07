@@ -5480,6 +5480,9 @@ impl AbstractSyntaxTree {
         // Unresolved table names are handled in picodata depending in IF EXISTS options.
         let resolve_table_names = self.nodes.get_node(top)?.rule != Rule::DropTable;
 
+        let mut used_aliases = HashSet::new();
+        let mut unnamed_subqueries = Vec::new();
+
         for level_node in dft_post.into_iter(top) {
             let id = level_node.1;
             let node = self.nodes.get_node(id)?;
@@ -5495,6 +5498,7 @@ impl AbstractSyntaxTree {
                     map.add(id, rel_child_id_plan);
                     if let Some(ast_alias_id) = node.children.get(1) {
                         let alias_name = parse_normalized_identifier(self, *ast_alias_id)?;
+                        used_aliases.insert(alias_name.clone());
                         // CTE scans can have different aliases, so clone the CTE scan node,
                         // preserving its subtree.
                         if let Relational::ScanCte(ScanCte { child, .. }) = rel_child_node {
@@ -5504,6 +5508,8 @@ impl AbstractSyntaxTree {
                             let mut scan = plan.get_mut_relation_node(rel_child_id_plan)?;
                             scan.set_scan_name(Some(alias_name.to_smolstr()))?;
                         }
+                    } else if matches!(rel_child_node, Relational::ScanSubQuery(_)) {
+                        unnamed_subqueries.push(rel_child_id_plan);
                     }
                 }
                 Rule::ScanTable => {
@@ -6478,6 +6484,36 @@ impl AbstractSyntaxTree {
                 _ => {}
             }
         }
+
+        let mut counter = 0u32;
+        for node in unnamed_subqueries {
+            let name = loop {
+                let candidate_name: SmolStr = if counter == 0 {
+                    "unnamed_subquery".into()
+                } else {
+                    format!("unnamed_subquery_{}", counter).into()
+                };
+                counter += 1;
+
+                if used_aliases.contains(&candidate_name) {
+                    continue;
+                }
+
+                if ctes.contains_key(&candidate_name) {
+                    continue;
+                }
+
+                if plan.relations.tables.contains_key(&candidate_name) {
+                    continue;
+                }
+
+                break candidate_name;
+            };
+
+            let mut scan = plan.get_mut_relation_node(node)?;
+            scan.set_scan_name(Some(name))?;
+        }
+
         // get root node id
         let plan_top_id = map
             .get(self.top.ok_or_else(|| {

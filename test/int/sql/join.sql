@@ -2,8 +2,10 @@
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
 DROP TABLE IF EXISTS t;
+DROP TABLE IF EXISTS gt;
 CREATE TABLE testing_space ("id" int primary key, "name" string, "product_units" int);
 CREATE TABLE t ("a" INT PRIMARY KEY, "b" INT, "c" INT);
+CREATE TABLE gt ("a" INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
 insert into "testing_space" ("id", "name", "product_units") values
     (1, 'a', 1),
     (2, 'a', 1),
@@ -16,6 +18,7 @@ INSERT INTO t ("a", "b", "c") VALUES
     (1, 2, 3),
     (4, 5, 6),
     (7, 8, 9);
+INSERT INTO gt ("a") VALUES (1), (2);
 
 -- TEST: join1
 -- SQL:
@@ -61,6 +64,41 @@ SELECT * FROM t JOIN t AS t1 ON t1.a IN (t1.b, t1.a) ORDER BY 1
 7, 8, 9, 1, 2, 3,
 7, 8, 9, 4, 5, 6,
 7, 8, 9, 7, 8, 9
+
+-- TEST: test_join4
+-- SQL:
+SELECT * FROM gt join gt as gt2 ON TRUE JOIN t ON TRUE;
+-- EXPECTED:
+1,	1,	1,	2,	3,
+1,	1,	4,	5,	6,
+1,	1,	7,	8,	9,
+1,	2,	1,	2,	3,
+1,	2,	4,	5,	6,
+1,	2,	7,	8,	9,
+2,	1,	1,	2,	3,
+2,	1,	4,	5,	6,
+2,	1,	7,	8,	9,
+2,	2,	1,	2,	3,
+2,	2,	4,	5,	6,
+2,	2,	7,	8,	9
+
+
+-- TEST: test_join5
+-- SQL:
+SELECT * FROM t JOIN gt ON true join gt as gt2 ON TRUE;
+-- EXPECTED:
+1,	2,	3,	1,	1,
+1,	2,	3,	1,	2,
+1,	2,	3,	2,	1,
+1,	2,	3,	2,	2,
+4,	5,	6,	1,	1,
+4,	5,	6,	1,	2,
+4,	5,	6,	2,	1,
+4,	5,	6,	2,	2,
+7,	8,	9,	1,	1,
+7,	8,	9,	1,	2,
+7,	8,	9,	2,	1,
+7,	8,	9,	2,	2
 
 -- TEST: test-check-condition-types-1
 -- SQL:

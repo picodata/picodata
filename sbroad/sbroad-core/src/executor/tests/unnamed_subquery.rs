@@ -1,0 +1,166 @@
+use pretty_assertions::assert_eq;
+
+use crate::backend::sql::ir::PatternWithParams;
+use crate::executor::engine::mock::RouterRuntimeMock;
+use crate::executor::result::ProducerResult;
+use crate::ir::relation::{Column, ColumnRole, Table};
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
+use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::value::Value;
+
+use super::*;
+
+#[test]
+fn unnamed_subquery1_test() {
+    let input = r#"SELECT * FROM (SELECT * FROM t)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
+        scan "unnamed_subquery"
+            projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn unnamed_subquery2_test() {
+    let input = r#"SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) on true"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d", "unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d")
+        join on true::bool
+            scan "unnamed_subquery"
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                    scan "t"
+            motion [policy: full]
+                scan "unnamed_subquery_1"
+                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                        scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn unnamed_subquery_name_conflict1_test() {
+    let input =
+        r#"SELECT * FROM (SELECT * FROM t) join (SELECT * FROM t) as "unnamed_subquery" on true"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d", "unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
+        join on true::bool
+            scan "unnamed_subquery_1"
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                    scan "t"
+            motion [policy: full]
+                scan "unnamed_subquery"
+                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                        scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn unnamed_subquery_name_conflict2_test() {
+    let input = r#"WITH unnamed_subquery as (SELECT * FROM t) SELECT * FROM (SELECT * FROM t) join unnamed_subquery on true"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
+    projection ("unnamed_subquery_1"."a"::int -> "a", "unnamed_subquery_1"."b"::int -> "b", "unnamed_subquery_1"."c"::int -> "c", "unnamed_subquery_1"."d"::int -> "d", "unnamed_subquery"."a"::int -> "a", "unnamed_subquery"."b"::int -> "b", "unnamed_subquery"."c"::int -> "c", "unnamed_subquery"."d"::int -> "d")
+        join on true::bool
+            scan "unnamed_subquery_1"
+                projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                    scan "t"
+            scan cte unnamed_subquery($0)
+    subquery $0:
+    motion [policy: full]
+                    projection ("t"."a"::int -> "a", "t"."b"::int -> "b", "t"."c"::int -> "c", "t"."d"::int -> "d")
+                        scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 45000
+        sql_motion_row_max = 5000
+    "#);
+}
+
+#[test]
+fn unnamed_subquery_name_conflict3_test() {
+    let input = r#"SELECT * FROM (SELECT * FROM t) join unnamed_subquery on true"#;
+
+    let mut coordinator = RouterRuntimeMock::new();
+    let table = Table::new_global(
+        "unnamed_subquery",
+        vec![Column::new(
+            "a",
+            DerivedType::new(UnrestrictedType::Integer),
+            ColumnRole::User,
+            false,
+        )],
+        &["a"],
+    )
+    .unwrap();
+    coordinator.add_table(table);
+
+    let mut query = Query::new(&coordinator, input, vec![]).unwrap();
+    let result = *query
+        .dispatch()
+        .unwrap()
+        .downcast::<ProducerResult>()
+        .unwrap();
+
+    let mut expected = ProducerResult::new();
+
+    expected.rows.push(vec![
+        Value::String("Execute query on all buckets".to_string()),
+        Value::String(String::from(PatternWithParams::new(
+            format!(
+                "{} {} {}",
+                "SELECT * FROM",
+                r#"(SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "unnamed_subquery_1""#,
+                r#"INNER JOIN "unnamed_subquery" ON CAST($1 AS bool)"#,
+            ),
+            vec![Value::Boolean(true)],
+        ))),
+    ]);
+    assert_eq!(expected, result);
+}
+
+#[test]
+fn unnamed_subquery_try_to_reach_implicitly_1_test() {
+    let sql = r#"SELECT "unnamed_subquery"."a" FROM (SELECT * FROM t)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let result = Query::new(&coordinator, sql, vec![]);
+    assert!(result.is_err());
+
+    let Err(error) = result else { unreachable!() };
+
+    assert_eq!(
+        error.to_string(),
+        r#"column with name "a" and scan Some("unnamed_subquery") not found"#
+    );
+}
+
+#[test]
+fn unnamed_subquery_try_to_reach_implicitly_2_test() {
+    let sql = r#"SELECT "a", COUNT(*)  FROM (SELECT * FROM t) GROUP BY "unnamed_subquery"."a""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let result = Query::new(&coordinator, sql, vec![]);
+    assert!(result.is_err());
+
+    let Err(error) = result else { unreachable!() };
+
+    assert_eq!(
+        error.to_string(),
+        r#"column with name "a" and scan Some("unnamed_subquery") not found"#
+    );
+}

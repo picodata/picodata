@@ -543,9 +543,9 @@ fn front_sql_global_join8() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e")
+    projection ("unnamed_subquery"."e"::int -> "e")
         join on true::bool
-            scan
+            scan "unnamed_subquery"
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
@@ -567,9 +567,9 @@ fn front_sql_global_join9() {
     check_join_dist(&plan, &[DistMock::Any]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e")
+    projection ("unnamed_subquery"."e"::int -> "e")
         left join on true::bool
-            scan
+            scan "unnamed_subquery"
                 projection ("t2"."e"::int * "t2"."e"::int -> "e")
                     scan "t2"
             scan "global_t"
@@ -591,9 +591,9 @@ fn front_sql_global_join10() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e")
-        join on "e"::int in ROW($0)
-            scan
+    projection ("unnamed_subquery"."e"::int -> "e")
+        join on "unnamed_subquery"."e"::int in ROW($0)
+            scan "unnamed_subquery"
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
@@ -620,9 +620,9 @@ fn front_sql_global_join11() {
     check_join_dist(&plan, &[DistMock::Global]);
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
-    projection ("e"::int -> "e")
-        join on ROW("e"::int, "e"::int) in ROW($0, $0)
-            scan
+    projection ("unnamed_subquery"."e"::int -> "e")
+        join on ROW("unnamed_subquery"."e"::int, "unnamed_subquery"."e"::int) in ROW($0, $0)
+            scan "unnamed_subquery"
                 projection ("global_t"."a"::int * "global_t"."a"::int -> "e")
                     scan "global_t"
             scan "global_t"
@@ -802,10 +802,10 @@ fn front_sql_global_left_join3() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
+            projection ("unnamed_subquery"."b"::int -> "b", "t2"."e"::int -> "e", "t2"."f"::int -> "f", "t2"."g"::int -> "g", "t2"."h"::int -> "h", "t2"."bucket_id"::int -> "bucket_id")
                 join on true::bool
                     motion [policy: full]
-                        scan
+                        scan "unnamed_subquery"
                             projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
                     scan "t2"
@@ -830,13 +830,13 @@ fn front_sql_global_left_join4() {
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     projection ("e"::int -> "e", "b"::int -> "b")
         motion [policy: full]
-            projection ("b"::int -> "b", "e"::int -> "e")
+            projection ("unnamed_subquery"."b"::int -> "b", "unnamed_subquery_1"."e"::int -> "e")
                 join on true::bool
                     motion [policy: full]
-                        scan
+                        scan "unnamed_subquery"
                             projection ("global_t"."b"::int * "global_t"."b"::int -> "b")
                                 scan "global_t"
-                    scan
+                    scan "unnamed_subquery_1"
                         projection ("t2"."e"::int + 1::int -> "e")
                             scan "t2"
     execution options:
@@ -938,8 +938,8 @@ fn front_sql_global_union_all3() {
 
     insta::assert_snapshot!(plan.as_explain().unwrap(), @r#"
     union all
-        projection ("a"::int -> "a")
-            scan
+        projection ("unnamed_subquery"."a"::int -> "a")
+            scan "unnamed_subquery"
                 union all
                     projection ("global_t"."a"::int -> "a")
                         scan "global_t"
@@ -1069,8 +1069,8 @@ fn front_sql_union() {
     motion [policy: full]
         union
             motion [policy: local]
-                projection ("a"::int -> "a")
-                    scan
+                projection ("unnamed_subquery"."a"::int -> "a")
+                    scan "unnamed_subquery"
                         motion [policy: full]
                             union
                                 motion [policy: local]
@@ -1279,9 +1279,9 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
     except
         projection ("global_t"."b"::int -> "b")
             selection "global_t"."a"::int = 1::int
-                left join on "global_t"."a"::int = "B"::int
+                left join on "global_t"."a"::int = "unnamed_subquery"."B"::int
                     scan "global_t"
-                    scan
+                    scan "unnamed_subquery"
                         projection ("global_t"."b"::int -> "B")
                             scan "global_t"
         motion [policy: full]
@@ -1290,9 +1290,9 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                     scan "t2"
                 projection ("global_t"."b"::int -> "b")
                     selection "global_t"."a"::int = 1::int
-                        left join on "global_t"."a"::int = "B"::int
+                        left join on "global_t"."a"::int = "unnamed_subquery"."B"::int
                             scan "global_t"
-                            scan
+                            scan "unnamed_subquery"
                                 projection ("global_t"."b"::int -> "B")
                                     scan "global_t"
     execution options:

@@ -193,15 +193,15 @@ fn test_query_explain_11() {
     projection ("gr_expr_1"::string -> "a", sum(("count_1"::int))::int -> "col_1")
         group by ("gr_expr_1"::string) output: ("gr_expr_1"::string -> "gr_expr_1", "count_1"::int -> "count_1")
             motion [policy: full]
-                projection ("a"::string -> "gr_expr_1", count(("b"::int))::int -> "count_1")
-                    group by ("a"::string) output: ("e"::int -> "e", "f"::int -> "f", "a"::string -> "a", "b"::int -> "b")
-                        join on "e"::int = "b"::int
-                            scan
+                projection ("unnamed_subquery_1"."a"::string -> "gr_expr_1", count(("unnamed_subquery_1"."b"::int))::int -> "count_1")
+                    group by ("unnamed_subquery_1"."a"::string) output: ("unnamed_subquery"."e"::int -> "e", "unnamed_subquery"."f"::int -> "f", "unnamed_subquery_1"."a"::string -> "a", "unnamed_subquery_1"."b"::int -> "b")
+                        join on "unnamed_subquery"."e"::int = "unnamed_subquery_1"."b"::int
+                            scan "unnamed_subquery"
                                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                                     selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                                         scan "t2"
                             motion [policy: full]
-                                scan
+                                scan "unnamed_subquery_1"
                                     projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                                         selection ROW("t1"."a"::string, "t1"."b"::int) = ROW('20'::string, 20::int)
                                             scan "t1"
@@ -227,14 +227,14 @@ fn test_query_explain_12() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = Query::new(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
-    projection ("a"::string -> "a")
-        join on "e"::int = "b"::int
-            scan
+    projection ("unnamed_subquery_1"."a"::string -> "a")
+        join on "unnamed_subquery"."e"::int = "unnamed_subquery_1"."b"::int
+            scan "unnamed_subquery"
                 projection ("t2"."e"::int -> "e", "t2"."f"::int -> "f")
                     selection ROW("t2"."e"::int, "t2"."f"::int) = ROW(10::int, 10::int)
                         scan "t2"
             motion [policy: full]
-                scan
+                scan "unnamed_subquery_1"
                     projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
                         selection ROW("t1"."a"::string, "t1"."b"::int) = ROW('20'::string, 20::int)
                             scan "t1"
