@@ -16,6 +16,7 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::{self};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 use crate::version::Version;
+use smol_str::format_smolstr;
 use std::collections::HashSet;
 use std::time::Duration;
 use tarantool::fiber;
@@ -460,12 +461,14 @@ pub fn build_instance(
 }
 
 /// Choose [`InstanceName`] based on `tier name`.
+// TODO: use `TopologyCache` instead of `Catalog`
 fn choose_instance_name(storage: &Catalog, replicaset_name: ReplicasetName) -> InstanceName {
     let mut instance_number_in_replicaset = 1;
     loop {
         // tier name is already included in replicaset name
-        let instance_name =
-            InstanceName(format!("{replicaset_name}_{instance_number_in_replicaset}"));
+        let instance_name = InstanceName(format_smolstr!(
+            "{replicaset_name}_{instance_number_in_replicaset}"
+        ));
 
         match storage.instances.get(&instance_name) {
             Ok(instance) => {
@@ -569,7 +572,8 @@ fn choose_replicaset(
 
     let mut replicaset_number = 1;
     loop {
-        let replicaset_name = ReplicasetName(format!("{}_{}", tier.name, replicaset_number));
+        let replicaset_name =
+            ReplicasetName(format_smolstr!("{}_{}", tier.name, replicaset_number));
         match storage.replicasets.get(&replicaset_name)? {
             Some(replicaset) => {
                 match replicaset.state {

@@ -1,5 +1,4 @@
 use crate::config::PicodataConfig;
-use crate::info as pd_info;
 use crate::instance::StateVariant;
 use crate::traft::node;
 use crate::traft::op::{Acl, Ddl, Op};
@@ -556,17 +555,14 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
 fn update_pico_info_uptime() {
     let uptime: f64 = unsafe { tarantool_uptime() };
 
-    let (replicaset, tier, cluster_name) = node::global()
-        .ok()
-        .and_then(|node| pd_info::InstanceInfo::try_get(node, None).ok())
-        .map(|info| (info.replicaset_name.0, info.tier, info.cluster_name))
-        .unwrap_or_else(|| {
-            (
-                String::from("unknown"),
-                String::from("unknown"),
-                String::from("unknown"),
-            )
-        });
+    let mut replicaset = "unknown";
+    let mut tier = "unknown";
+    let mut cluster_name = "unknown";
+    if let Ok(node) = node::global() {
+        replicaset = node.topology_cache.my_replicaset_name();
+        tier = node.topology_cache.my_tier_name();
+        cluster_name = node.topology_cache.cluster_name;
+    }
 
     let instance_dir_name = PicodataConfig::get()
         .instance
@@ -576,11 +572,6 @@ fn update_pico_info_uptime() {
         .unwrap_or_else(|| Cow::Owned(String::from("unknown")));
 
     INFO_UPTIME
-        .with_label_values(&[
-            instance_dir_name.as_ref(),
-            replicaset.as_str(),
-            tier.as_str(),
-            cluster_name.as_str(),
-        ])
+        .with_label_values(&[instance_dir_name.as_ref(), replicaset, tier, cluster_name])
         .set(uptime);
 }

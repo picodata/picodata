@@ -5,19 +5,18 @@ use crate::info::PICODATA_VERSION;
 use crate::traft::RaftId;
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
-use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 
 pub mod state;
 pub use state::State;
 pub use state::StateVariant;
 
-crate::define_string_newtype! {
+crate::define_smolstr_newtype! {
     /// Unique id of a cluster instance.
     ///
     /// This is a new-type style wrapper around String,
     /// to distinguish it from other strings.
-    pub struct InstanceName(pub String);
+    pub struct InstanceName(pub SmolStr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

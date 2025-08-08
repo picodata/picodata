@@ -1,16 +1,15 @@
 use super::instance::InstanceName;
 use crate::instance::Instance;
-use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 use ::tarantool::vclock::Vclock;
 
 // TODO: this redundant boilerplate needs to be removed
-crate::define_string_newtype! {
+crate::define_smolstr_newtype! {
     /// Unique name of a replicaset.
     ///
     /// This is a new-type style wrapper around String,
     /// to distinguish it from other strings.
-    pub struct ReplicasetName(pub String);
+    pub struct ReplicasetName(pub SmolStr);
 }
 
 pub type Weight = f64;
