@@ -28,6 +28,7 @@ use crate::util::{cast_and_encode, edit_distance};
 use crate::{config_parameter_path, sql};
 use crate::{pgproto, traft};
 use observer::AtomicObserverProvider;
+use sbroad::ir::options;
 use sbroad::ir::value::{EncodedValue, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
@@ -43,6 +44,7 @@ use tarantool::tuple::Tuple;
 pub use crate::address::{
     DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_PGPROTO_PORT, DEFAULT_USERNAME,
 };
+
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
 
 pub use sbroad::ir::types::DomainType as SbroadType;
@@ -1873,6 +1875,13 @@ impl DynamicConfigProviders {
             pg_portal_max: AtomicObserverProvider::new(),
             sql_vdbe_opcode_max: AtomicObserverProvider::new(),
             sql_motion_row_max: AtomicObserverProvider::new(),
+        }
+    }
+
+    pub fn current_sql_options(&self) -> options::Options {
+        options::Options {
+            sql_motion_row_max: self.sql_motion_row_max.current_value(),
+            sql_vdbe_opcode_max: self.sql_vdbe_opcode_max.current_value(),
         }
     }
 }

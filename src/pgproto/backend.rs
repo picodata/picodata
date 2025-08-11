@@ -8,6 +8,7 @@ use super::{
     error::{PgError, PgResult},
     value::PgValue,
 };
+use crate::config::DYNAMIC_CONFIG;
 use crate::{
     pgproto::value::{FieldFormat, RawFormat},
     schema::ADMIN_ID,
@@ -16,14 +17,14 @@ use crate::{
 use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
-use sbroad::ir::{OptionParamValue, Options};
+use sbroad::ir::options::PartialOptions;
 use sbroad::{
     executor::{
         engine::{query_id, QueryCache, Router, TableVersionMap},
         lru::Cache,
     },
     frontend::Ast,
-    ir::{value::Value as SbroadValue, OptionKind, OptionSpec, Plan as IrPlan},
+    ir::{value::Value as SbroadValue, Plan as IrPlan},
     utils::MutexLike,
 };
 use smol_str::format_smolstr;
@@ -91,76 +92,29 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
     }
 }
 
-/// Set values from default_options for unspecified options in query_options.
-fn apply_default_options(
-    query_options: &[OptionSpec],
-    connection_options: &[OptionSpec],
-    system_options: &Options,
-) -> Vec<OptionSpec> {
-    // First, set query options, as they have higher priority.
-    let (mut max_steps, mut max_rows) = (None, None);
-    for opt in query_options {
-        match opt.kind {
-            OptionKind::VdbeOpcodeMax => max_steps.get_or_insert_with(|| opt.clone()),
-            OptionKind::MotionRowMax => max_rows.get_or_insert_with(|| opt.clone()),
-        };
-    }
-
-    // Then, apply connection defaults for unspecified options.
-    for opt in connection_options {
-        match opt.kind {
-            OptionKind::VdbeOpcodeMax => max_steps.get_or_insert_with(|| opt.clone()),
-            OptionKind::MotionRowMax => max_rows.get_or_insert_with(|| opt.clone()),
-        };
-    }
-
-    // If all of those are missing, apply cluster-wide defaults.
-    max_steps.get_or_insert_with(|| OptionSpec {
-        kind: OptionKind::VdbeOpcodeMax,
-        val: OptionParamValue::Value {
-            val: system_options.sql_vdbe_opcode_max.into(),
-        },
-    });
-    max_rows.get_or_insert_with(|| OptionSpec {
-        kind: OptionKind::MotionRowMax,
-        val: OptionParamValue::Value {
-            val: system_options.sql_motion_row_max.into(),
-        },
-    });
-
-    // Keep only Some variants.
-    [max_steps, max_rows].into_iter().flatten().collect()
-}
-
 pub fn bind(
     id: ClientId,
     stmt_name: String,
     portal_name: String,
     params: Vec<SbroadValue>,
     result_format: Vec<FieldFormat>,
-    connection_options: Vec<OptionSpec>,
+    connection_options: &PartialOptions,
 ) -> PgResult<()> {
     let key = storage::Key(id, stmt_name.into());
     let statement: Statement = PG_STATEMENTS
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
         .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
 
-    let storage = crate::storage::Catalog::try_get(false).expect("storage should be initialized");
-    let system_options = storage.db_config.sql_query_options();
+    let effective_options = connection_options.unwrap_or(DYNAMIC_CONFIG.current_sql_options());
 
     let mut plan = statement.plan().clone();
 
     if plan.is_empty() {
         // Empty query, do nothing
     } else if plan.is_block()? {
-        // Handle block in the same was as in `Query::with_options`
-        // TODO: can we reuse `Query::with_options` here?
-        plan.bind_params(&params)?;
+        plan.bind_params(&params, effective_options)?;
     } else if plan.is_dql_or_dml()? {
-        plan.bind_params(&params)?;
-        plan.raw_options =
-            apply_default_options(&plan.raw_options, &connection_options, &system_options);
-        plan.apply_options()?;
+        plan.bind_params(&params, effective_options)?;
         plan = plan.optimize()?;
     }
 
@@ -216,7 +170,7 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
             plan.version_map = table_version_map;
         }
         if plan.is_dql_or_dml()? {
-            plan.check_options()?;
+            plan.check_raw_options()?;
         }
         Ok(plan)
     })??;
@@ -372,7 +326,7 @@ impl Backend {
                 "".into(),
                 params,
                 vec![FieldFormat::Text; ncolumns],
-                vec![],
+                &PartialOptions::default(),
             )?;
             self.execute(None, -1)
         };

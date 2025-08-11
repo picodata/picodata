@@ -1,6 +1,7 @@
 import psycopg
 import pytest
 from conftest import Postgres
+from psycopg import RawCursor
 
 
 def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
@@ -113,7 +114,7 @@ def test_sql_vdbe_opcode_max_and_sql_motion_row_max_options(postgres: Postgres):
         conn.execute("SELECT * FROM (VALUES (1), (2))")
 
 
-def test_repeating_options(postgres: Postgres):
+def test_repeating_connection_options(postgres: Postgres):
     user = "postgres"
     password = "Passw0rd"
     host = postgres.host
@@ -135,3 +136,113 @@ def test_repeating_options(postgres: Postgres):
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         conn.execute("SELECT * FROM (VALUES (1), (2))")
+
+
+def test_invalid_sql_options(postgres: Postgres):
+    user = "postgres"
+    password = "Passw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"postgres://{user}:{password}@{host}:{port}", autocommit=True)
+
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"sbroad: invalid query: option sql_motion_row_max specified more than once!",
+    ):
+        conn.execute("""
+                     SELECT * FROM (VALUES (1), (2)) OPTION (
+                       sql_motion_row_max = 3,
+                       sql_motion_row_max = 2,
+                       sql_vdbe_opcode_max = 1,
+                       sql_vdbe_opcode_max = 2
+                     )""")
+
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"sbroad: invalid query: option sql_vdbe_opcode_max specified more than once!",
+    ):
+        conn.execute("""
+                     SELECT * FROM (VALUES (1), (2)) OPTION (
+                       sql_vdbe_opcode_max = 1,
+                       sql_vdbe_opcode_max = 2
+                     )""")
+
+
+def test_parametrized_sql_options(postgres: Postgres):
+    user = "postgres"
+    password = "Passw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"postgres://{user}:{password}@{host}:{port}", autocommit=True)
+
+    q1 = """
+        SELECT * FROM (VALUES (1), (2)) OPTION (
+            sql_motion_row_max = %s,
+            sql_vdbe_opcode_max = %s
+        )
+    """
+
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
+    ):
+        # also test out providing strings as parameters. these work due to them having the same on-wire representation as integers
+        conn.execute(q1, ["1", "200"])
+    with pytest.raises(
+        psycopg.InternalError,
+        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
+    ):
+        conn.execute(q1, [200, 1])
+
+
+def test_invalid_parametrized_sql_options(postgres: Postgres):
+    user = "postgres"
+    password = "Passw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"postgres://{user}:{password}@{host}:{port}", autocommit=True)
+
+    q1 = """
+         SELECT * FROM (VALUES (1), (2)) OPTION (
+            sql_motion_row_max = $1
+         )
+         """
+
+    # use RawCursor to prevent the driver from erroring out due to invalid number of parameters
+    with RawCursor(conn) as cur:
+        # insufficient params
+        with pytest.raises(
+            psycopg.errors.ProtocolViolation,
+            match="bind message supplies 0 parameters, but prepared statement .* requires 1",
+        ):
+            cur.execute(q1, [], prepare=True)
+
+        # excessive params
+        with pytest.raises(
+            psycopg.errors.ProtocolViolation,
+            match="bind message supplies 2 parameters, but prepared statement .* requires 1",
+        ):
+            cur.execute(q1, [42, 721077], prepare=True)
+
+        # NOTE: these errors are only triggerable when using parameters, because literals are limited to be unsigned at parse time
+        # a string gets rejected early by pgproto
+        with pytest.raises(
+            psycopg.errors.InvalidTextRepresentation,
+            match=r"failed to bind parameter \$1: decoding error: 'много' is not a valid int8",
+        ):
+            cur.execute(q1, ["много"])
+        # a negative integer only gets rejected during option lowering
+        with pytest.raises(
+            psycopg.InternalError,
+            match=r"sbroad: invalid OptionSpec: expected option sql_motion_row_max to be either an unsigned or non-negative integer got: Integer\(-1\)",
+        ):
+            cur.execute(q1, [-1])

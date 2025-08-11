@@ -173,7 +173,7 @@ pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, Sb
         sub_plan_id,
         params,
         query_type,
-        exec_plan.get_ir_plan().options.clone(),
+        exec_plan.get_ir_plan().effective_options.clone(),
         schema_info,
         vtables,
     );

@@ -111,7 +111,7 @@ impl ExecutionPlan {
 
     #[must_use]
     pub fn get_sql_motion_row_max(&self) -> u64 {
-        self.plan.options.sql_motion_row_max
+        self.plan.effective_options.sql_motion_row_max
     }
 
     #[allow(dead_code)]
@@ -907,7 +907,7 @@ impl ExecutionPlan {
         }
 
         new_plan.stash_constants(Snapshot::Oldest)?;
-        new_plan.options = self.get_ir_plan().options.clone();
+        new_plan.effective_options = self.get_ir_plan().effective_options.clone();
         new_plan.tier.clone_from(&self.get_ir_plan().tier);
 
         let vtables = if new_vtables.is_empty() {

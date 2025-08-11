@@ -5,6 +5,7 @@ use crate::frontend::sql::ParsingPairsMap;
 use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
+use crate::ir::options::Options;
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
@@ -2005,7 +2006,7 @@ fn front_sql_pg_style_params6() {
     let input = r#"select $1 + $1"#;
     let metadata = &RouterConfigurationMock::new();
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
-    let err = plan.bind_params(&vec![]).unwrap_err();
+    let err = plan.bind_params(&vec![], Options::default()).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
         err.to_string()
@@ -2019,7 +2020,7 @@ fn front_sql_pg_style_params7() {
     let metadata = &RouterConfigurationMock::new();
     let params = [DerivedType::new(Type::Integer)];
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &params, metadata).unwrap();
-    let err = plan.bind_params(&vec![]).unwrap_err();
+    let err = plan.bind_params(&vec![], Options::default()).unwrap_err();
     assert_eq!(
         "invalid query: expected 1 values for parameters, got 0",
         err.to_string()
@@ -2032,7 +2033,9 @@ fn front_sql_pg_style_params8() {
     let input = r#"select $1 + $1 = $2"#;
     let metadata = &RouterConfigurationMock::new();
     let mut plan = AbstractSyntaxTree::transform_into_plan(input, &[], metadata).unwrap();
-    let err = plan.bind_params(&vec![Value::Integer(1)]).unwrap_err();
+    let err = plan
+        .bind_params(&vec![Value::Integer(1)], Options::default())
+        .unwrap_err();
     assert_eq!(
         "invalid query: expected 2 values for parameters, got 1",
         err.to_string()

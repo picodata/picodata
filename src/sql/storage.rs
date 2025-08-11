@@ -207,7 +207,10 @@ impl RequiredPlanInfo for LocalExecutionQueryInfo<'_> {
     }
 
     fn sql_vdbe_opcode_max(&self) -> u64 {
-        self.exec_plan.get_ir_plan().options.sql_vdbe_opcode_max
+        self.exec_plan
+            .get_ir_plan()
+            .effective_options
+            .sql_vdbe_opcode_max
     }
 
     fn sql_motion_row_max(&self) -> u64 {

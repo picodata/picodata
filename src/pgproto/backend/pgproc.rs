@@ -11,6 +11,7 @@ use crate::pgproto::{
 };
 use ::tarantool::proc;
 use postgres_types::Oid;
+use sbroad::ir::options::PartialOptions;
 use sbroad::ir::value::Value;
 use serde::Serialize;
 use tarantool::msgpack;
@@ -58,7 +59,14 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
         encoding_format: output_format,
     } = args;
 
-    backend::bind(id, stmt_name, portal_name, params, output_format, vec![])
+    backend::bind(
+        id,
+        stmt_name,
+        portal_name,
+        params,
+        output_format,
+        &PartialOptions::default(),
+    )
 }
 
 #[proc]

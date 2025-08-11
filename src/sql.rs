@@ -627,7 +627,7 @@ pub fn sql_dispatch(
 
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
-        ExecutingQuery::with_options(&runtime, pattern, params, Some(default_options))
+        ExecutingQuery::with_options(&runtime, pattern, params, default_options)
     })??;
 
     let result = dispatch(query, override_deadline, governor_op_id);

@@ -9,8 +9,8 @@ use tarantool::tuple::{Tuple, TupleBuilder};
 use crate::backend::sql::tree::OrderedSyntaxNodes;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{ExecutionPlan, QueryType};
+use crate::ir::options::Options;
 use crate::ir::value::Value;
-use crate::ir::Options;
 
 use crate::executor::engine::TableVersionMap;
 use crate::ir::node::NodeId;

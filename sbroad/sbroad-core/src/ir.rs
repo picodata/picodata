@@ -8,18 +8,17 @@ use node::expression::{Expression, MutExpression};
 use node::relational::{MutRelational, Relational};
 use node::{Invalid, NodeAligned, Parameter};
 use operator::{Arithmetic, Unary};
+use options::{OptionParamValue, OptionSpec, Options};
 use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
-use std::fmt::{Display, Formatter};
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
 use types::UnrestrictedType;
 
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
-use crate::errors::Entity::Query;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::TableVersionMap;
@@ -29,7 +28,6 @@ use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
     Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned,
     OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection, Trim, UnaryExpr,
-    Values,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::Column;
@@ -51,6 +49,7 @@ pub mod function;
 pub mod helpers;
 pub mod node;
 pub mod operator;
+pub mod options;
 pub mod relation;
 pub mod transformation;
 pub mod tree;
@@ -58,8 +57,6 @@ pub mod types;
 pub mod undo;
 pub mod value;
 
-pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
-pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
 pub const DEFAULT_MAX_NUMBER_OF_CASTS: usize = 10;
 
 /// Plan nodes storage.
@@ -609,69 +606,6 @@ impl Slices {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize)]
-pub enum OptionParamValue {
-    Value { val: Value },
-    Parameter { plan_id: NodeId },
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize)]
-pub struct OptionSpec {
-    pub kind: OptionKind,
-    pub val: OptionParamValue,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
-pub enum OptionKind {
-    VdbeOpcodeMax,
-    MotionRowMax,
-}
-
-impl Display for OptionKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            OptionKind::VdbeOpcodeMax => "sql_vdbe_opcode_max",
-            OptionKind::MotionRowMax => "sql_motion_row_max",
-        };
-        write!(f, "{s}")
-    }
-}
-
-/// SQL options specified by user in `option(..)` clause.
-///
-/// Note: ddl options are handled separately.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct Options {
-    /// Maximum size of the virtual table that this query can produce or use during
-    /// query execution. This limit is checked on storage before sending a result table,
-    /// and on router before appending the result from one storage to results from other
-    /// storages. Value of `0` indicates that this limit is disabled.
-    ///
-    /// Note: this limit allows the out of memory error for query execution in the following
-    /// scenario: if already received vtable has `X` rows and `X + a` causes the OOM, then
-    /// if one of the storages returns `a` or more rows, the OOM will occur.
-    pub sql_motion_row_max: u64,
-    /// Options passed to `box.execute` function on storages. Currently there is only one option
-    /// `sql_vdbe_opcode_max`.
-    pub sql_vdbe_opcode_max: u64,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Options::new(DEFAULT_SQL_MOTION_ROW_MAX, DEFAULT_SQL_VDBE_OPCODE_MAX)
-    }
-}
-
-impl Options {
-    #[must_use]
-    pub fn new(sql_motion_row_max: u64, sql_vdbe_opcode_max: u64) -> Self {
-        Options {
-            sql_motion_row_max,
-            sql_vdbe_opcode_max,
-        }
-    }
-}
-
 /// Logical plan tree structure.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Plan {
@@ -701,13 +635,13 @@ pub struct Plan {
     pub(crate) constants: Vec<Value>,
     /// Options that were passed by user in `Option` clause. Does not include
     /// options for DDL as those are handled separately. This field is used only
-    /// for storing the order of options in `Option` clause, after `bind_params` is
-    /// called this field is not used and becomes empty.
-    pub raw_options: Vec<OptionSpec>,
-    /// SQL options. Initiliazed to defaults upon IR creation. Then bound to actual
-    /// values after `bind_params` these options are set to their actual values.
-    /// See `apply_options`.
-    pub options: Options,
+    /// for storing the order of options in `Option` clause. This is needed because
+    /// the user can use query parameters in options, delaying the resolution of options
+    /// until after the parameters are bound.
+    pub raw_options: Vec<OptionSpec<OptionParamValue>>,
+    /// SQL options. Initialized to defaults upon IR creation.
+    /// Then bound to their effective values resolved from `raw_options` when calling `bind_params`.
+    pub effective_options: Options,
     pub version_map: TableVersionMap,
     /// Exists only on the router during plan build.
     /// RefCell is used because context can be mutated
@@ -852,117 +786,46 @@ impl Plan {
             undo: TransformationLog::new(),
             constants: Vec::new(),
             raw_options: vec![],
-            options: Options::default(),
+            effective_options: Options::default(),
             version_map: TableVersionMap::new(),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
         }
     }
 
-    /// Validate options stored in `Plan.raw_options` and initialize
-    /// `Plan`'s fields for corresponding options if dry_run = false
+    /// Validate options stored in `raw_options` and their usage.
     ///
-    ///
-    /// # Errors
-    /// - Invalid parameter value for given option
-    /// - The same option used more than once in `Plan.raw_options`
-    /// - Option value already violated in current `Plan`
-    /// - The given option does not work for this specific query
-    #[allow(clippy::uninlined_format_args)]
-    fn retrive_options(&self) -> Result<Options, SbroadError> {
-        // We need to check if the plan has a top node and if it is an Insert with Values.
-        // If it is, we can determine the number of values in the Values node and use it
-        // to make an early decision about the maximum number of rows we can handle.
-        let mut values_count = 0;
-        let id = self.get_top()?;
-        // We don't support INSERT with RETURNING, so we can safely assume that Insert node
-        // is always the top of the plan.
-        if let Relational::Insert(_) = self.get_relation_node(id)? {
-            let child_id = self.get_relational_child(id, 0)?;
-            if let Relational::Values(Values { children, .. }) = self.get_relation_node(child_id)? {
-                values_count = children.len();
-            }
-        }
-
-        let mut max_rows = None;
-        let mut max_opcodes = None;
-        let mut is_duplicate = false;
-        for opt in &self.raw_options {
-            let OptionParamValue::Value {
-                val: Value::Unsigned(limit),
-            } = opt.val
-            else {
-                return Err(SbroadError::Invalid(Entity::OptionSpec, None));
-            };
-            match opt.kind {
-                OptionKind::VdbeOpcodeMax => {
-                    if max_opcodes.is_some() {
-                        is_duplicate = true;
-                    } else {
-                        max_opcodes = Some(limit);
-                    }
-                }
-                OptionKind::MotionRowMax => {
-                    if max_rows.is_some() {
-                        is_duplicate = true;
-                    } else if values_count as u64 > limit {
-                        return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                            "Exceeded maximum number of rows ({}) in virtual table: {}",
-                            limit,
-                            values_count,
-                        )));
-                    } else {
-                        max_rows = Some(limit);
-                    }
-                }
-            }
-            if is_duplicate {
-                return Err(SbroadError::Invalid(
-                    Query,
-                    Some(format_smolstr!(
-                        "option {} specified more than once!",
-                        opt.kind
-                    )),
-                ));
-            }
-        }
-
-        let mut options = self.options.clone();
-        if let Some(max_rows) = max_rows {
-            options.sql_motion_row_max = max_rows;
-        };
-        if let Some(max_opcodes) = max_opcodes {
-            options.sql_vdbe_opcode_max = max_opcodes;
-        }
-        Ok(options)
-    }
-
-    /// Validate options stored in `Plan.raw_options` and initialize
-    /// `Plan`'s fields for corresponding options if dry_run = false
-    ///
+    /// This will catch as many errors as possible without having access to query parameters,
+    /// but in some cases a call to `bind_params` might still fail due to options usage.
     ///
     /// # Errors
     /// - Invalid parameter value for given option
     /// - The same option used more than once in `Plan.raw_options`
     /// - Option value already violated in current `Plan`
-    /// - The given option does not work for this specific query
     #[allow(clippy::uninlined_format_args)]
-    pub fn apply_options(&mut self) -> Result<(), SbroadError> {
-        self.options = self.retrive_options()?;
+    pub fn check_raw_options(&self) -> Result<(), SbroadError> {
+        let resolved = self.resolve_raw_options(&self.raw_options, None);
+        let lowered = options::lower_options(&resolved)?;
+        self.validate_options_usage(&lowered)?;
         Ok(())
     }
 
-    /// Validate options stored in `Plan.raw_options`
-    ///
+    /// Resolve and validate options, writing the results to `effective_options`.
     ///
     /// # Errors
     /// - Invalid parameter value for given option
     /// - The same option used more than once in `Plan.raw_options`
     /// - Option value already violated in current `Plan`
-    /// - The given option does not work for this specific query
     #[allow(clippy::uninlined_format_args)]
-    pub fn check_options(&self) -> Result<(), SbroadError> {
-        self.retrive_options()?;
+    fn apply_raw_options(
+        &mut self,
+        params: &[Value],
+        defaults: Options,
+    ) -> Result<(), SbroadError> {
+        let resolved = self.resolve_raw_options(&self.raw_options, Some(params));
+        let lowered = options::lower_options(&resolved)?;
+        self.validate_options_usage(&lowered)?;
+        self.effective_options = lowered.unwrap(defaults);
         Ok(())
     }
 

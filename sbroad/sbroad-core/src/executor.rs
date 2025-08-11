@@ -31,9 +31,10 @@ use crate::executor::lru::Cache;
 use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
+use crate::ir::options::Options;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
-use crate::ir::{Options, Plan, Slices};
+use crate::ir::{Plan, Slices};
 use crate::utils::MutexLike;
 use smol_str::SmolStr;
 use std::any::Any;
@@ -117,7 +118,7 @@ where
         coordinator: &'a C,
         sql: &str,
         params: Vec<Value>,
-        options: Option<Options>,
+        default_options: Options,
     ) -> Result<Self, SbroadError>
     where
         C::Cache: Cache<SmolStr, Plan>,
@@ -154,30 +155,20 @@ where
                 plan.version_map = table_version_map;
             }
 
-            if let Some(options) = options {
-                plan.options = options;
-            }
-
             if plan.is_dql_or_dml()? {
-                let raw_options_clone = plan.raw_options.clone();
-                plan.bind_option_params(&params);
-                plan.check_options()?;
-                plan.raw_options = raw_options_clone;
+                plan.check_raw_options()?;
                 plan = plan.optimize()?;
             }
 
             if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
                 cache.put(key, plan.clone())?;
             }
-        } else if let Some(options) = options {
-            plan.options = options;
         }
 
         if plan.is_block()? {
-            plan.bind_params(&params)?;
+            plan.bind_params(&params, default_options)?;
         } else if plan.is_dql_or_dml()? {
-            plan.bind_params(&params)?;
-            plan.apply_options()?;
+            plan.bind_params(&params, default_options)?;
             plan = plan
                 .update_timestamps()?
                 .cast_constants()?
@@ -209,7 +200,7 @@ where
         C::Cache: Cache<SmolStr, Plan>,
         C::ParseTree: Ast,
     {
-        Self::with_options(coordinator, sql, params, None)
+        Self::with_options(coordinator, sql, params, Options::default())
     }
 
     fn empty(coordinator: &'a C) -> Self {

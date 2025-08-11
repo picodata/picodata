@@ -8,7 +8,7 @@ use crate::{
     tlog,
 };
 use pgwire::messages::startup::Startup;
-use sbroad::ir::{value::Value as SbroadValue, OptionKind, OptionParamValue, OptionSpec};
+use sbroad::ir::options::PartialOptions;
 use smol_str::format_smolstr;
 use std::{
     collections::BTreeMap,
@@ -18,8 +18,7 @@ use std::{
 #[derive(Clone, Debug)]
 pub struct ClientParams {
     pub username: String,
-    pub sql_motion_row_max: Option<u64>,
-    pub sql_vdbe_opcode_max: Option<u64>,
+    pub options: PartialOptions,
     pub _rest: BTreeMap<String, String>,
     // NB: add more params as needed.
     // Keep in mind that a client is required to send only "user".
@@ -33,7 +32,7 @@ impl ClientParams {
             )));
         };
 
-        let (mut sql_motion_row_max, mut sql_vdbe_opcode_max) = (None, None);
+        let mut options_accumulator = PartialOptions::default();
         if let Some(options) = parameters.get("options") {
             for pair in options.split(',') {
                 let mut pair = pair.split('=');
@@ -45,10 +44,12 @@ impl ClientParams {
                     .ok_or_else(|| PgError::other("option without value"))?;
                 match name {
                     "sql_motion_row_max" => {
-                        sql_motion_row_max = Some(val.parse().map_err(PgError::other)?)
+                        options_accumulator.sql_motion_row_max =
+                            Some(val.parse().map_err(PgError::other)?)
                     }
                     "sql_vdbe_opcode_max" => {
-                        sql_vdbe_opcode_max = Some(val.parse().map_err(PgError::other)?)
+                        options_accumulator.sql_vdbe_opcode_max =
+                            Some(val.parse().map_err(PgError::other)?)
                     }
                     _ => {
                         // We prefer using warnings instead of errors for these reasons:
@@ -65,36 +66,13 @@ impl ClientParams {
 
         Ok(Self {
             username,
-            sql_motion_row_max,
-            sql_vdbe_opcode_max,
+            options: options_accumulator,
             _rest: parameters,
         })
     }
 
-    pub fn execution_options(&self) -> Vec<OptionSpec> {
-        let mut opts = vec![];
-
-        if let Some(sql_vdbe_opcode_max) = self.sql_vdbe_opcode_max {
-            let sql_vdbe_opcode_max = OptionParamValue::Value {
-                val: SbroadValue::Unsigned(sql_vdbe_opcode_max),
-            };
-            opts.push(OptionSpec {
-                kind: OptionKind::VdbeOpcodeMax,
-                val: sql_vdbe_opcode_max,
-            })
-        }
-
-        if let Some(sql_motion_row_max) = self.sql_motion_row_max {
-            let sql_motion_row_max = OptionParamValue::Value {
-                val: SbroadValue::Unsigned(sql_motion_row_max),
-            };
-            opts.push(OptionSpec {
-                kind: OptionKind::MotionRowMax,
-                val: sql_motion_row_max,
-            })
-        }
-
-        opts
+    pub fn execution_options(&self) -> &PartialOptions {
+        &self.options
     }
 }
 

@@ -18,10 +18,11 @@ use crate::ir::node::{
     ScanSubQuery, Selection, Timestamp, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
 };
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
+use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Target as IrTarget,
 };
-use crate::ir::{node, OptionKind, Plan};
+use crate::ir::{node, Plan};
 use crate::utils::OrderedMap;
 
 use super::expression::FunctionFeature;
@@ -1366,11 +1367,11 @@ impl FullExplain {
         let mut result = FullExplain::empty();
         result.exec_options.push((
             OptionKind::VdbeOpcodeMax,
-            Value::Unsigned(ir.options.sql_vdbe_opcode_max),
+            Value::Unsigned(ir.effective_options.sql_vdbe_opcode_max),
         ));
         result.exec_options.push((
             OptionKind::MotionRowMax,
-            Value::Unsigned(ir.options.sql_motion_row_max),
+            Value::Unsigned(ir.effective_options.sql_motion_row_max),
         ));
 
         let dft_post = PostOrder::with_capacity(|node| ir.nodes.rel_iter(node), REL_CAPACITY);

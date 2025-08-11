@@ -10,11 +10,13 @@ use crate::ir::node::{Node32, TimeParameters};
 use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
-use crate::ir::{ArenaType, Node, OptionParamValue, Plan};
+use crate::ir::{ArenaType, Node, Plan};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, Time};
 
+use crate::ir;
+use crate::ir::options::{OptionParamValue, OptionSpec};
 use ahash::AHashSet;
 
 // Calculate the maximum parameter index value.
@@ -57,28 +59,29 @@ impl Plan {
         self.nodes.push(Parameter { index, param_type }.into())
     }
 
-    /// Bind params related to `Option` clause.
-    pub fn bind_option_params(&mut self, values: &[Value]) {
-        let mut params = Vec::new();
-        for opt in self.raw_options.iter() {
-            if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
-                if let Expression::Parameter(Parameter { index, .. }) =
-                    self.get_expression_node(param_id).unwrap()
-                {
-                    params.push((param_id, *index));
-                } else {
-                    panic!("OptionParamValue::Parameter does not reffer to parameter node");
-                }
-            }
+    /// Replaces references to bound parameters in `raw_options` to concrete values.
+    ///
+    /// If `None` is provided as `param_values`, options referring to query parameters will contain `None`.
+    /// This is useful to perform some validation on parameter usage before concrete values are known yet.
+    pub fn resolve_raw_options(
+        &self,
+        raw_options: &[OptionSpec<OptionParamValue>],
+        param_values: Option<&[Value]>,
+    ) -> Vec<OptionSpec<Option<Value>>> {
+        fn resolve_value(param_values: Option<&[Value]>, val: &OptionParamValue) -> Option<Value> {
+            Some(match val {
+                OptionParamValue::Value { val } => val.clone(),
+                &OptionParamValue::Parameter { index } => param_values?[index].clone(),
+            })
         }
 
-        for opt in self.raw_options.iter_mut() {
-            if let OptionParamValue::Parameter { plan_id: param_id } = opt.val {
-                let index = params.iter().find(|x| x.0 == param_id).unwrap().1 as usize - 1;
-                let val = values[index].clone();
-                opt.val = OptionParamValue::Value { val };
-            }
-        }
+        raw_options
+            .iter()
+            .map(|&OptionSpec { kind, ref val }| OptionSpec {
+                kind,
+                val: resolve_value(param_values, val),
+            })
+            .collect()
     }
 
     // Gather all parameter nodes from the tree to a hash set.
@@ -188,16 +191,18 @@ impl Plan {
     /// Substitute parameters to the plan.
     /// The purpose of this function is to find every `Expression::Parameter` node and replace it
     /// with `Expression::Constant` (under the row).
+    ///
+    /// It will also resolve SQL query options and update `resolved_options` correspondingly.
     #[allow(clippy::too_many_lines)]
-    pub fn bind_params(&mut self, values: &[Value]) -> Result<(), SbroadError> {
+    pub fn bind_params(
+        &mut self,
+        values: &[Value],
+        default_options: ir::Options,
+    ) -> Result<(), SbroadError> {
         let param_node_ids = self.get_param_set();
         // As parameter indexes are used as indexes in parameters array,
         // we expect that the number of parameters is not less than the max index.
         let params_count = count_max_parameter_index(self, &param_node_ids)?;
-
-        if params_count == 0 {
-            return Ok(());
-        }
 
         // Extra values are ignored.
         if params_count > values.len() {
@@ -211,6 +216,12 @@ impl Plan {
             ));
         }
 
+        self.apply_raw_options(&values, default_options)?;
+
+        if params_count == 0 {
+            return Ok(());
+        }
+
         // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
         //       the same nodes twice. See `update_values_row` for more info.
         let mut tree =
@@ -218,10 +229,6 @@ impl Plan {
         let top_id = self.get_top()?;
         tree.populate_nodes(top_id);
         let nodes = tree.take_nodes();
-
-        if !self.raw_options.is_empty() {
-            self.bind_option_params(values);
-        }
 
         bind_params(self, &param_node_ids, values)?;
 

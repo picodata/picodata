@@ -62,6 +62,7 @@ use crate::ir::node::{
 use crate::ir::operator::{
     Arithmetic, Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
 };
+use crate::ir::options::{OptionKind, OptionParamValue, OptionSpec};
 use crate::ir::relation::{Column, ColumnRole, TableKind};
 use crate::ir::transformation::redistribution::ColumnPosition;
 use crate::ir::tree::traversal::{
@@ -70,7 +71,7 @@ use crate::ir::tree::traversal::{
 use crate::ir::types::CastType;
 use crate::ir::types::DomainType;
 use crate::ir::value::Value;
-use crate::ir::{node::plugin, OptionKind, OptionParamValue, OptionSpec, Plan};
+use crate::ir::{node::plugin, Plan};
 use crate::warn;
 use sbroad_type_system::error::Error as TypeSystemError;
 use tarantool::auth::AuthMethod;
@@ -1982,12 +1983,12 @@ fn parse_unsigned(ast_node: &ParseNode) -> Result<u64, SbroadError> {
     }
 }
 
-/// Common logic for [`crate::ir::OptionKind::VdbeOpcodeMax`]
-/// and [`crate::ir::OptionKind::MotionRowMax`] parsing.
+/// Common logic for [`crate::ir::options::OptionKind::VdbeOpcodeMax`]
+/// and [`crate::ir::options::OptionKind::MotionRowMax`] parsing.
 fn parse_option<M: Metadata>(
     ast: &AbstractSyntaxTree,
+    type_analyzer: &mut TypeAnalyzer,
     option_node_id: usize,
-    param_types: &[DerivedType],
     pairs_map: &mut ParsingPairsMap,
     worker: &mut ExpressionsWorker<M>,
     plan: &mut Plan,
@@ -1995,13 +1996,25 @@ fn parse_option<M: Metadata>(
     let ast_node = ast.nodes.get_node(option_node_id)?;
     let value = match ast_node.rule {
         Rule::Parameter => {
-            let plan_id = parse_param(
-                pairs_map.remove_pair(option_node_id),
-                param_types,
+            let plan_id = parse_scalar_expr(
+                Pairs::single(pairs_map.remove_pair(option_node_id)),
+                type_analyzer,
+                DerivedType::new(UnrestrictedType::Integer),
+                &[],
                 worker,
                 plan,
+                true,
             )?;
-            OptionParamValue::Parameter { plan_id }
+
+            let Expression::Parameter(&Parameter { index, .. }) =
+                plan.get_expression_node(plan_id)?
+            else {
+                unreachable!("Expected Parameter expression under Parameter node");
+            };
+
+            OptionParamValue::Parameter {
+                index: index as usize - 1,
+            }
         }
         Rule::Unsigned => {
             let v = parse_unsigned(ast_node)?;
@@ -5578,8 +5591,8 @@ impl AbstractSyntaxTree {
                         .expect("no children for sql_vdbe_opcode_max option");
                     let val = parse_option(
                         self,
+                        &mut type_analyzer,
                         *ast_child_id,
-                        &get_parameter_derived_types(&type_analyzer),
                         pairs_map,
                         &mut worker,
                         &mut plan,
@@ -5596,8 +5609,8 @@ impl AbstractSyntaxTree {
                         .expect("no children for sql_vdbe_opcode_max option");
                     let val = parse_option(
                         self,
+                        &mut type_analyzer,
                         *ast_child_id,
-                        &get_parameter_derived_types(&type_analyzer),
                         pairs_map,
                         &mut worker,
                         &mut plan,

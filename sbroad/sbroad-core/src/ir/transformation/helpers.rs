@@ -6,6 +6,7 @@ use crate::executor::engine::mock::RouterConfigurationMock;
 use crate::executor::ir::ExecutionPlan;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::frontend::Ast;
+use crate::ir::options::Options;
 use crate::ir::tree::Snapshot;
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
@@ -37,8 +38,7 @@ pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
 pub fn sql_to_ir(query: &str, params: Vec<Value>) -> Plan {
     let params_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
     let mut plan = sql_to_ir_without_bind(query, &params_types);
-    plan.bind_params(&params).unwrap();
-    plan.apply_options().unwrap();
+    plan.bind_params(&params, Options::default()).unwrap();
     plan
 }
 
