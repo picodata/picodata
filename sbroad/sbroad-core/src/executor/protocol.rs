@@ -207,7 +207,7 @@ impl EncodedRows {
     }
 
     #[must_use]
-    pub fn iter(&self) -> EncodedRowsIter {
+    pub fn iter(&self) -> EncodedRowsIter<'_> {
         <&Self as IntoIterator>::into_iter(self)
     }
 }

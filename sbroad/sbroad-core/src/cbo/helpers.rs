@@ -177,7 +177,7 @@ impl<'bytes_vec> VecOfBytes<'bytes_vec> {
             .copied()
     }
 
-    fn iter(&self) -> Iter {
+    fn iter(&self) -> Iter<'_> {
         Iter {
             inner: self,
             min_len: self.min_len(),

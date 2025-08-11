@@ -264,7 +264,7 @@ impl Entry {
         }
     }
 
-    pub fn payload(&self) -> EntryPayload {
+    pub fn payload(&self) -> EntryPayload<'_> {
         match (self.entry_type, &self.context) {
             (raft::EntryType::EntryNormal, EntryContext::None) => {
                 debug_assert!(self.data.is_empty());

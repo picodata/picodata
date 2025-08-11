@@ -2,7 +2,6 @@ use crate::config::LogFormat;
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
 use std::ffi::CString;
-use tarantool::cbus::unbounded as cbus;
 use tarantool::fiber;
 
 #[inline(always)]

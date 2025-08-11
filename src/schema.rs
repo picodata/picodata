@@ -114,7 +114,7 @@ impl TableDef {
         }
     }
 
-    pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
+    pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata<'_>> {
         let format = fields_to_format(&self.format);
 
         let mut flags = BTreeMap::new();
@@ -409,7 +409,7 @@ impl IndexDef {
         }
     }
 
-    pub fn to_index_metadata(&self, table_def: &TableDef) -> IndexMetadata {
+    pub fn to_index_metadata(&self, table_def: &TableDef) -> IndexMetadata<'_> {
         let mut opts = BTreeMap::new();
         for opt in &self.opts {
             let (key, value) = opt.as_kv();
@@ -672,7 +672,7 @@ impl ServiceRouteItem {
         }
     }
 
-    pub fn key(&self) -> ServiceRouteKey {
+    pub fn key(&self) -> ServiceRouteKey<'_> {
         ServiceRouteKey {
             plugin_name: &self.plugin_name,
             plugin_version: &self.plugin_version,

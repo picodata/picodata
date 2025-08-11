@@ -172,7 +172,7 @@ pub enum DecodeResult<'a> {
 ///
 /// # Errors
 /// - Failed to decode the execution plan.
-pub fn decode_msgpack_res(buf: &[u8]) -> Result<DecodeResult, SbroadError> {
+pub fn decode_msgpack_res(buf: &[u8]) -> Result<DecodeResult<'_>, SbroadError> {
     let mut stream = Cursor::new(buf);
     let map_len = rmp::decode::read_map_len(&mut stream).map_err(|e| {
         SbroadError::FailedTo(

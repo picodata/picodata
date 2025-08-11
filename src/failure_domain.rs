@@ -46,7 +46,7 @@ impl FailureDomain {
         self.data.contains_key(name)
     }
 
-    pub fn names(&self) -> std::collections::hash_map::Keys<Uppercase, Uppercase> {
+    pub fn names(&self) -> std::collections::hash_map::Keys<'_, Uppercase, Uppercase> {
         self.data.keys()
     }
 

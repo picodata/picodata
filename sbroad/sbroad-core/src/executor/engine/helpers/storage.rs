@@ -266,7 +266,7 @@ fn result_to_tuple(
     Ok(res)
 }
 
-fn encoded_params(params: &[Value]) -> Vec<EncodedValue> {
+fn encoded_params(params: &[Value]) -> Vec<EncodedValue<'_>> {
     params.iter().map(EncodedValue::from).collect()
 }
 

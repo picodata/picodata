@@ -70,7 +70,7 @@ impl Plan {
     /// # Errors
     /// - the node index is absent in arena
     /// - current node is not of DDL type
-    pub fn get_ddl_node(&self, node_id: NodeId) -> Result<Ddl, SbroadError> {
+    pub fn get_ddl_node(&self, node_id: NodeId) -> Result<Ddl<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
             Node::Ddl(ddl) => Ok(ddl),
@@ -86,7 +86,7 @@ impl Plan {
     /// # Errors
     /// - the node index is absent in arena
     /// - current node is not of DDL type
-    pub fn get_mut_ddl_node(&mut self, node_id: NodeId) -> Result<MutDdl, SbroadError> {
+    pub fn get_mut_ddl_node(&mut self, node_id: NodeId) -> Result<MutDdl<'_>, SbroadError> {
         let node = self.get_mut_node(node_id)?;
         match node {
             MutNode::Ddl(ddl) => Ok(ddl),

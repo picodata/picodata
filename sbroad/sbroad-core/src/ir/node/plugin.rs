@@ -244,7 +244,7 @@ impl Plan {
     ///
     /// # Errors
     /// - the node is not a block node.
-    pub fn get_plugin_node(&self, node_id: NodeId) -> Result<Plugin, SbroadError> {
+    pub fn get_plugin_node(&self, node_id: NodeId) -> Result<Plugin<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
             Node::Plugin(plugin) => Ok(plugin),

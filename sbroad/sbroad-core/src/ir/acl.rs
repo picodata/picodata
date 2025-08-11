@@ -198,7 +198,7 @@ impl Plan {
     /// # Errors
     /// - the node index is absent in arena
     /// - current node is not of ACL type
-    pub fn get_acl_node(&self, node_id: NodeId) -> Result<Acl, SbroadError> {
+    pub fn get_acl_node(&self, node_id: NodeId) -> Result<Acl<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
             Node::Acl(acl) => Ok(acl),
@@ -214,7 +214,7 @@ impl Plan {
     /// # Errors
     /// - the node index is absent in arena
     /// - current node is not of ACL type
-    pub fn get_mut_acl_node(&mut self, node_id: NodeId) -> Result<MutAcl, SbroadError> {
+    pub fn get_mut_acl_node(&mut self, node_id: NodeId) -> Result<MutAcl<'_>, SbroadError> {
         let node = self.get_mut_node(node_id)?;
         match node {
             MutNode::Acl(acl) => Ok(acl),

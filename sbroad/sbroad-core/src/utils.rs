@@ -152,7 +152,7 @@ impl<K: Clone + Hash + Eq, V: Clone, S: BuildHasher> OrderedMap<K, V, S> {
         }
     }
 
-    pub fn iter(&self) -> OrderedMapIterator<K, V, S> {
+    pub fn iter(&self) -> OrderedMapIterator<'_, K, V, S> {
         OrderedMapIterator::new(self)
     }
 }
@@ -196,7 +196,7 @@ impl<V: Clone + Hash + Eq, S: BuildHasher> OrderedSet<V, S> {
         self.map.insert(value, ())
     }
 
-    pub fn iter(&self) -> OrderedSetIterator<V, S> {
+    pub fn iter(&self) -> OrderedSetIterator<'_, V, S> {
         OrderedSetIterator {
             map_iterator: OrderedMapIterator::new(&self.map),
         }

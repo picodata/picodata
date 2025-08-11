@@ -133,7 +133,7 @@ impl Query<'_> {
 }
 
 /// Execute a single SQL query as a prepared statement (transparently cached).
-pub fn query(query: &str) -> Query {
+pub fn query(query: &str) -> Query<'_> {
     Query {
         query,
         params: vec![],

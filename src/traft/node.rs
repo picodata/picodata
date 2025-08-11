@@ -313,7 +313,7 @@ impl Node {
     }
 
     #[inline(always)]
-    pub(crate) fn node_impl(&self) -> MutexGuard<NodeImpl> {
+    pub(crate) fn node_impl(&self) -> MutexGuard<'_, NodeImpl> {
         self.node_impl.lock()
     }
 

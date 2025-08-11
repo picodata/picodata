@@ -698,7 +698,7 @@ impl Value {
     }
 
     #[must_use]
-    pub fn as_key_def_part(&self, field_no: u32) -> KeyDefPart {
+    pub fn as_key_def_part(&self, field_no: u32) -> KeyDefPart<'_> {
         let field_type = match self {
             Value::Boolean(_) => FieldType::Boolean,
             Value::Integer(_) => FieldType::Integer,
@@ -1001,7 +1001,10 @@ impl Value {
     /// # Errors
     /// - the value cannot be cast to the given type.
     #[allow(clippy::too_many_lines)]
-    pub fn cast_and_encode(&self, column_type: &DerivedType) -> Result<EncodedValue, SbroadError> {
+    pub fn cast_and_encode(
+        &self,
+        column_type: &DerivedType,
+    ) -> Result<EncodedValue<'_>, SbroadError> {
         let Some(column_type) = column_type.get() else {
             return Ok(self.into());
         };

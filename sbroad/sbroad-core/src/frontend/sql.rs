@@ -4632,7 +4632,7 @@ impl<'pairs_map> ParsingPairsMap<'pairs_map> {
         self.inner.insert(key, value)
     }
 
-    fn remove_pair(&mut self, key: usize) -> Pair<Rule> {
+    fn remove_pair(&mut self, key: usize) -> Pair<'_, Rule> {
         self.inner
             .remove(&key)
             .expect("pairs_map doesn't contain value for key")

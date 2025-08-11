@@ -12,7 +12,7 @@ impl Plan {
     ///
     /// # Errors
     /// - the node is not a block node.
-    pub fn get_block_node(&self, node_id: NodeId) -> Result<Block, SbroadError> {
+    pub fn get_block_node(&self, node_id: NodeId) -> Result<Block<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
             Node::Block(block) => Ok(block),
@@ -36,7 +36,7 @@ impl Plan {
     ///
     /// # Errors
     /// - the node is not a block node.
-    pub fn get_mut_block_node(&mut self, node_id: NodeId) -> Result<MutBlock, SbroadError> {
+    pub fn get_mut_block_node(&mut self, node_id: NodeId) -> Result<MutBlock<'_>, SbroadError> {
         let node = self.get_mut_node(node_id)?;
         match node {
             MutNode::Block(block) => Ok(block),

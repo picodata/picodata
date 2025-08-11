@@ -12,7 +12,7 @@ use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
@@ -34,12 +34,9 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::Column;
-use crate::ir::tree::traversal::{
-    BreadthFirst, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
-};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
-use crate::warn;
 
 use self::node::{Bound, BoundType, Like, Over, Window};
 
@@ -79,7 +76,7 @@ pub struct Nodes {
 }
 
 impl Nodes {
-    pub(crate) fn get(&self, id: NodeId) -> Option<Node> {
+    pub(crate) fn get(&self, id: NodeId) -> Option<Node<'_>> {
         match id.arena_type {
             ArenaType::Arena32 => self.arena32.get(id.offset as usize).map(|node| match node {
                 Node32::Alias(alias) => Node::Expression(Expression::Alias(alias)),
@@ -206,7 +203,7 @@ impl Nodes {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<MutNode> {
+    pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<MutNode<'_>> {
         match id.arena_type {
             ArenaType::Arena32 => self
                 .arena32
@@ -985,7 +982,7 @@ impl Plan {
     /// # Errors
     /// Returns `SbroadError` when the node with requested index
     /// doesn't exist.
-    pub fn get_node(&self, id: NodeId) -> Result<Node, SbroadError> {
+    pub fn get_node(&self, id: NodeId) -> Result<Node<'_>, SbroadError> {
         match self.nodes.get(id) {
             None => Err(SbroadError::NotFound(
                 Entity::Node,
@@ -1000,7 +997,7 @@ impl Plan {
     /// # Errors
     /// Returns `SbroadError` when the node with requested index
     /// doesn't exist.
-    pub fn get_mut_node(&mut self, id: NodeId) -> Result<MutNode, SbroadError> {
+    pub fn get_mut_node(&mut self, id: NodeId) -> Result<MutNode<'_>, SbroadError> {
         match self.nodes.get_mut(id) {
             None => Err(SbroadError::NotFound(
                 Entity::Node,
@@ -1399,7 +1396,7 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not a relational type
-    pub fn get_relation_node(&self, node_id: NodeId) -> Result<Relational, SbroadError> {
+    pub fn get_relation_node(&self, node_id: NodeId) -> Result<Relational<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
             Node::Relational(rel) => Ok(rel),
@@ -1422,7 +1419,10 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not a relational type
-    pub fn get_mut_relation_node(&mut self, node_id: NodeId) -> Result<MutRelational, SbroadError> {
+    pub fn get_mut_relation_node(
+        &mut self,
+        node_id: NodeId,
+    ) -> Result<MutRelational<'_>, SbroadError> {
         match self.get_mut_node(node_id)? {
             MutNode::Relational(rel) => Ok(rel),
             MutNode::Expression(_)
@@ -1444,7 +1444,7 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not expression type
-    pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression, SbroadError> {
+    pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression<'_>, SbroadError> {
         match self.get_node(node_id)? {
             Node::Expression(Expression::Parameter(param)) => {
                 if let Some(constant) = self.constants.get(&node_id) {
@@ -1493,7 +1493,7 @@ impl Plan {
     pub fn get_mut_expression_node(
         &mut self,
         node_id: NodeId,
-    ) -> Result<MutExpression, SbroadError> {
+    ) -> Result<MutExpression<'_>, SbroadError> {
         let node = self.get_mut_node(node_id)?;
         match node {
             MutNode::Expression(exp) => Ok(exp),

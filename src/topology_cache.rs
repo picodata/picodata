@@ -123,7 +123,7 @@ impl TopologyCache {
     /// access to the immutable info of current instance.
     #[inline(always)]
     #[track_caller]
-    pub fn get(&self) -> NoYieldsRef<TopologyCacheMutable> {
+    pub fn get(&self) -> NoYieldsRef<'_, TopologyCacheMutable> {
         self.inner.borrow()
     }
 

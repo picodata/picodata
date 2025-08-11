@@ -310,7 +310,7 @@ impl ReferenceTarget {
         matches!(self, ReferenceTarget::Leaf)
     }
 
-    pub fn iter(&self) -> ReferenceIterator {
+    pub fn iter(&self) -> ReferenceIterator<'_> {
         ReferenceIterator {
             counter: 0,
             source: self,

@@ -394,7 +394,7 @@ pub struct Tarantool {
 
 impl Tarantool {
     /// Get the arguments that will be passed to `tarantool_main`
-    pub fn tt_args(&self) -> Result<Vec<Cow<CStr>>, String> {
+    pub fn tt_args(&self) -> Result<Vec<Cow<'_, CStr>>, String> {
         Ok(std::iter::once(current_exe()?.into())
             .chain(self.args.iter().map(AsRef::as_ref).map(Cow::from))
             .collect())

@@ -979,7 +979,7 @@ impl<'p> SyntaxPlan<'p> {
         }
     }
 
-    fn prologue_rel(&self, id: NodeId) -> (&Plan, Relational) {
+    fn prologue_rel(&self, id: NodeId) -> (&Plan, Relational<'_>) {
         let plan = self.plan.get_ir_plan();
         let rel = plan
             .get_relation_node(id)
@@ -987,7 +987,7 @@ impl<'p> SyntaxPlan<'p> {
         (plan, rel)
     }
 
-    fn prologue_expr(&self, id: NodeId) -> (&Plan, Expression) {
+    fn prologue_expr(&self, id: NodeId) -> (&Plan, Expression<'_>) {
         let plan = self.plan.get_ir_plan();
         let expr = plan
             .get_expression_node(id)
@@ -2257,7 +2257,10 @@ impl<'p> SyntaxPlan<'p> {
     ///
     /// # Errors
     /// - syntax node wraps an invalid plan node
-    pub fn get_plan_node(&self, data: &SyntaxData) -> Result<Option<(Node, NodeId)>, SbroadError> {
+    pub fn get_plan_node(
+        &self,
+        data: &SyntaxData,
+    ) -> Result<Option<(Node<'_>, NodeId)>, SbroadError> {
         if let SyntaxData::PlanId(id) = data {
             Ok(Some((self.plan.get_ir_plan().get_node(*id)?, *id)))
         } else {
@@ -2270,7 +2273,7 @@ impl<'p> SyntaxPlan<'p> {
     /// # Errors
     /// - plan node is invalid
     /// - syntax tree node doesn't have a plan node
-    pub fn plan_node_or_err(&self, data: &SyntaxData) -> Result<(Node, NodeId), SbroadError> {
+    pub fn plan_node_or_err(&self, data: &SyntaxData) -> Result<(Node<'_>, NodeId), SbroadError> {
         self.get_plan_node(data)?.ok_or_else(|| {
             SbroadError::Invalid(
                 Entity::SyntaxPlan,

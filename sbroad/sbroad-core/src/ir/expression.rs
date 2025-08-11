@@ -1199,7 +1199,7 @@ impl<'iter, 'source: 'iter> IntoIterator for &'source NewColumnsSource<'iter> {
 }
 
 impl<'source> NewColumnsSource<'source> {
-    fn get_columns_spec(&self) -> Option<ColumnsRetrievalSpec> {
+    fn get_columns_spec(&self) -> Option<ColumnsRetrievalSpec<'_>> {
         match self {
             NewColumnsSource::Join { targets, .. } => match targets {
                 JoinTargets::Left { columns_spec } | JoinTargets::Right { columns_spec } => {
