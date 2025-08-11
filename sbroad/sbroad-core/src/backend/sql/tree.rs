@@ -678,6 +678,37 @@ impl Select {
     }
 }
 
+/// AsteriskHandler helper structure
+///
+/// AsteriskHandler is used by add_row to properly transform asterisk references
+/// and handle comma placement between different asterisk sources
+struct AsteriskHandler {
+    already_handled_sources: HashSet<(Option<SmolStr>, usize)>,
+    last_handled_id: Option<usize>,
+    last_handled_name: Option<SmolStr>,
+    distribution: HashMap<(NodeId, Option<SmolStr>), bool>,
+    has_system_columns: HashMap<NodeId, bool>,
+}
+
+impl AsteriskHandler {
+    fn new() -> Self {
+        Self {
+            already_handled_sources: HashSet::new(),
+            last_handled_id: None,
+            last_handled_name: None,
+            distribution: HashMap::new(),
+            has_system_columns: HashMap::new(),
+        }
+    }
+}
+
+// Helper enum used for solving asterisk to local SQL transformation.
+enum NodeToAdd {
+    SnId(usize),
+    Asterisk(SyntaxNode),
+    Comma,
+}
+
 /// A wrapper over original plan tree.
 /// We can modify it as we wish without any influence
 /// on the original plan tree.
@@ -1885,108 +1916,12 @@ impl<'p> SyntaxPlan<'p> {
             panic!("Expected ROW node");
         };
 
-        let first_child_id = *list.first().expect("Row must contain at least one child");
-        let first_list_child = plan
-            .get_expression_node(first_child_id)
-            .expect("expression node expected");
-        if matches!(first_list_child, Expression::Reference { .. }) {
-            let referred_rel_id = plan
-                .get_relational_from_reference_node(first_child_id)
-                .expect("rel id expected");
-            let referred_rel_node = plan
-                .get_relation_node(referred_rel_id)
-                .expect("rel node expected");
-
-            // Case of Motion.
-            if referred_rel_node.is_motion() {
-                // Logic of replacing row child with vtable (corresponding to motion) is
-                // applicable only in case the child is Reference appeared from transformed
-                // SubQuery (Like in case `Exists` or `In` operator or in expression like
-                // `select * from t where b = (select a from t)`).
-                // There are other cases of row containing references to `Motion` nodes when
-                // we shouldn't replace them with vtable (e.g. aggregates' stable functions
-                // which arguments may point to `Motion` node).
-                let first_child_id = *list.first().expect("row should have at least one child");
-                let first_child = plan
-                    .get_expression_node(first_child_id)
-                    .expect("row child is expression");
-                let first_child_is_ref = matches!(first_child, Expression::Reference { .. });
-
-                // Replace motion node to virtual table node.
-                let vtable = self
-                    .plan
-                    .get_motion_vtable(referred_rel_id)
-                    .expect("motion virtual table");
-                let needs_replacement = vtable.get_alias().is_none()
-                    && first_child_is_ref
-                    && plan
-                        .is_additional_child(referred_rel_id)
-                        .expect("motion id is valid");
-                if needs_replacement {
-                    // Remove columns from the stack.
-                    for child_id in list.iter().rev() {
-                        let _ = self.pop_from_stack(*child_id, id);
-
-                        // Remove the referred motion from the stack (if any).
-                        let expr = plan
-                            .get_expression_node(*child_id)
-                            .expect("row child is expression");
-                        if matches!(expr, Expression::Reference { .. }) {
-                            let referred_id = plan
-                                .get_relational_from_reference_node(*child_id)
-                                .expect("referred id");
-                            self.pop_from_stack(referred_id, id);
-                        }
-                    }
-
-                    // Add virtual table node to the stack.
-                    let arena = &mut self.nodes;
-                    let children = vec![
-                        arena.push_sn_non_plan(SyntaxNode::new_open()),
-                        arena.push_sn_non_plan(SyntaxNode::new_vtable(referred_rel_id)),
-                        arena.push_sn_non_plan(SyntaxNode::new_close()),
-                    ];
-                    let sn = SyntaxNode::new_pointer(id, None, children);
-                    arena.push_sn_plan(sn);
-                    return;
-                }
-            }
-
-            // Case of SubQuery.
-            if matches!(referred_rel_node, Relational::ScanSubQuery { .. }) {
-                // Replace current row with the referred sub-query
-                // (except the case when sub-query is located in the FROM clause).
-
-                // We have to check whether SubQuery is additional child, because it may also
-                // be a required child in query like `SELECT COLUMN_1 FROM (VALUES (1))`.
-                if plan
-                    .is_additional_child(referred_rel_id)
-                    .expect("subquery id is valid")
-                {
-                    let mut sq_sn_id = None;
-
-                    // Remove columns from the stack.
-                    for child_id in list.iter().rev() {
-                        let _ = self.pop_from_stack(*child_id, id);
-
-                        // Remove the referred sub-query from the stack (if any).
-                        let expr = plan
-                            .get_expression_node(*child_id)
-                            .expect("row child is expression");
-                        if matches!(expr, Expression::Reference { .. }) {
-                            let referred_id = plan
-                                .get_relational_from_reference_node(*child_id)
-                                .expect("referred id");
-                            sq_sn_id = Some(self.pop_from_stack(referred_id, id));
-                        }
-                    }
-
-                    // Restore the sub-query node on the top of the stack.
-                    self.push_on_stack(sq_sn_id.expect("sub-query id"));
-                    return;
-                }
-            }
+        // Handle special cases for Motion and SubQuery
+        if self.handle_motion_case(id, list) || self.handle_subquery_case(id, list) {
+            return;
         }
+
+        // Handle the general row case
 
         // Vec of row's sn children nodes.
         let mut list_sn_ids = Vec::with_capacity(list.len());
@@ -1996,245 +1931,437 @@ impl<'p> SyntaxPlan<'p> {
         // Need to reverse the order of the children back.
         list_sn_ids.reverse();
 
+        let children = self.build_row_syntax_nodes(id, &list_sn_ids);
+
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        self.nodes.push_sn_plan(sn);
+    }
+
+    fn handle_motion_case(&mut self, id: NodeId, list: &[NodeId]) -> bool {
+        // Logic of replacing row child with vtable (corresponding to motion) is
+        // applicable only in case the child is Reference appeared from transformed
+        // SubQuery (Like in case `Exists` or `In` operator or in expression like
+        // `select * from t where b = (select a from t)`).
+        // There are other cases of row containing references to `Motion` nodes when
+        // we shouldn't replace them with vtable (e.g. aggregates' stable functions
+        // which arguments may point to `Motion` node).
+
+        let plan = self.plan.get_ir_plan();
+        let first_child_id = *list.first().expect("Row must contain at least one child");
+        let first_list_child = plan
+            .get_expression_node(first_child_id)
+            .expect("expression node expected");
+
+        if !matches!(first_list_child, Expression::Reference { .. }) {
+            return false;
+        }
+
+        let referred_rel_id = plan
+            .get_relational_from_reference_node(first_child_id)
+            .expect("rel id expected");
+        let referred_rel_node = plan
+            .get_relation_node(referred_rel_id)
+            .expect("rel node expected");
+
+        if !referred_rel_node.is_motion() {
+            return false;
+        }
+
+        // Replace motion node to virtual table node.
+        let vtable = self
+            .plan
+            .get_motion_vtable(referred_rel_id)
+            .expect("motion virtual table");
+
+        let needs_replacement = vtable.get_alias().is_none()
+            && plan
+                .is_additional_child(referred_rel_id)
+                .expect("motion id is valid");
+
+        if !needs_replacement {
+            return false;
+        }
+
+        // Remove columns from the stack.
+        for child_id in list.iter().rev() {
+            let _ = self.pop_from_stack(*child_id, id);
+
+            // Remove the referred motion from the stack (if any).
+            let expr = plan
+                .get_expression_node(*child_id)
+                .expect("row child is expression");
+            if matches!(expr, Expression::Reference { .. }) {
+                let referred_id = plan
+                    .get_relational_from_reference_node(*child_id)
+                    .expect("referred id");
+                self.pop_from_stack(referred_id, id);
+            }
+        }
+
+        // Add virtual table node to the stack.
+        let arena = &mut self.nodes;
+        let children = vec![
+            arena.push_sn_non_plan(SyntaxNode::new_open()),
+            arena.push_sn_non_plan(SyntaxNode::new_vtable(referred_rel_id)),
+            arena.push_sn_non_plan(SyntaxNode::new_close()),
+        ];
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        arena.push_sn_plan(sn);
+
+        true
+    }
+
+    fn handle_subquery_case(&mut self, id: NodeId, list: &[NodeId]) -> bool {
+        let plan = self.plan.get_ir_plan();
+        let first_child_id = *list.first().expect("Row must contain at least one child");
+        let first_list_child = plan
+            .get_expression_node(first_child_id)
+            .expect("expression node expected");
+
+        if !matches!(first_list_child, Expression::Reference { .. }) {
+            return false;
+        }
+
+        let referred_rel_id = plan
+            .get_relational_from_reference_node(first_child_id)
+            .expect("rel id expected");
+        let referred_rel_node = plan
+            .get_relation_node(referred_rel_id)
+            .expect("rel node expected");
+
+        if !matches!(referred_rel_node, Relational::ScanSubQuery { .. }) {
+            return false;
+        }
+
+        // Replace current row with the referred sub-query
+        // (except the case when sub-query is located in the FROM clause).
+
+        // We have to check whether SubQuery is additional child, because it may also
+        // be a required child in query like `SELECT COLUMN_1 FROM (VALUES (1))`.
+
+        if !plan
+            .is_additional_child(referred_rel_id)
+            .expect("subquery id is valid")
+        {
+            return false;
+        }
+
+        let mut sq_sn_id = None;
+
+        // Remove columns from the stack.
+        for child_id in list.iter().rev() {
+            let _ = self.pop_from_stack(*child_id, id);
+
+            // Remove the referred sub-query from the stack (if any).
+            let expr = plan
+                .get_expression_node(*child_id)
+                .expect("row child is expression");
+            if matches!(expr, Expression::Reference { .. }) {
+                let referred_id = plan
+                    .get_relational_from_reference_node(*child_id)
+                    .expect("referred id");
+                sq_sn_id = Some(self.pop_from_stack(referred_id, id));
+            }
+        }
+
+        // Restore the sub-query node on the top of the stack.
+        self.push_on_stack(sq_sn_id.expect("sub-query id"));
+
+        true
+    }
+
+    fn build_row_syntax_nodes(&mut self, id: NodeId, list_sn_ids: &[usize]) -> Vec<usize> {
         // Set of relation names for which we've already generated asterisk (*).
         // In case we see in output several references that we initially generated from
         // an asterisk we want to generate that asterisk only once.
-        let mut already_handled_asterisk_sources = HashSet::new();
-        let mut last_handled_asterisk_id: Option<usize> = None;
-        let mut last_handled_asterisk_name: Option<&str> = None;
-        let mut asterisk_distribution = HashMap::new();
-        let mut has_system_columns = HashMap::<NodeId, bool>::new();
+        let mut asterisk_handler = AsteriskHandler::new();
 
         // Children number + the same number of commas + parentheses.
-        let mut children = Vec::with_capacity(list.len() * 2 + 2);
+        let mut children = Vec::with_capacity(list_sn_ids.len() * 2 + 2);
         children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
-
-        // Helper enum used for solving asterisk to local SQL transformation.
-        enum NodeToAdd {
-            SnId(usize),
-            Asterisk(SyntaxNode),
-            Comma,
-        }
-
-        let mut handle_reference = |sn_id: usize,
-                                    need_comma: bool,
-                                    expr_id: NodeId|
-         -> Vec<NodeToAdd> {
-            let ir_plan = self.plan.get_ir_plan();
-            let expr_node = ir_plan
-                .get_expression_node(expr_id)
-                .expect("Expression node must exist");
-            let mut non_asterisk_nodes = || -> Vec<NodeToAdd> {
-                let mut nodes_to_add = Vec::new();
-                if last_handled_asterisk_id.is_some() {
-                    nodes_to_add.push(NodeToAdd::Comma);
-                }
-                nodes_to_add.push(NodeToAdd::SnId(sn_id));
-                if need_comma {
-                    nodes_to_add.push(NodeToAdd::Comma);
-                }
-                last_handled_asterisk_id = None;
-                last_handled_asterisk_name = None;
-                nodes_to_add
-            };
-
-            let mut nodes_to_add = Vec::new();
-            if let Expression::Reference(Reference {
-                position,
-                asterisk_source:
-                    Some(ReferenceAsteriskSource {
-                        relation_name,
-                        asterisk_id,
-                    }),
-                ..
-            }) = expr_node
-            {
-                // We don't want to transform asterisks in order not to select "bucket_id"
-                // implicitly. That's why we save them as a sequence of references, if system
-                // columns are involved.
-                let ref_source_node_id = ir_plan
-                    .get_reference_source_relation(expr_id)
-                    .expect("Reference must have a source relation");
-
-                let leave_as_sequence = has_system_columns
-                    .entry(ref_source_node_id)
-                    .or_insert_with(|| {
-                        let Ok(output) = ir_plan.get_relational_output(ref_source_node_id) else {
-                            // TODO[2081]: don't hide an error
-                            return false;
-                        };
-
-                        let Ok(row_list) = ir_plan.get_row_list(output) else {
-                            // TODO[2081]: don't hide an error
-                            return false;
-                        };
-
-                        let mut distribution = HashMap::new();
-
-                        row_list.iter().enumerate().for_each(|(i, node)| {
-                            let key = plan.scan_name(ref_source_node_id, i).unwrap();
-                            let Ok(node) = ir_plan.get_child_under_alias(*node) else {
-                                // TODO[2081]: don't hide an error
-                                distribution
-                                    .entry(key)
-                                    .and_modify(|v| *v |= false)
-                                    .or_insert(false);
-                                return;
-                            };
-                            let Ok(node) = ir_plan.get_expression_node(node) else {
-                                // TODO[2081]: don't hide an error
-                                distribution
-                                    .entry(key)
-                                    .and_modify(|v| *v |= false)
-                                    .or_insert(false);
-                                return;
-                            };
-
-                            let value = matches!(
-                                node,
-                                Expression::Reference(Reference {
-                                    is_system: true,
-                                    ..
-                                })
-                            );
-
-                            distribution
-                                .entry(key)
-                                .and_modify(|v| *v |= value)
-                                .or_insert(value);
-                        });
-
-                        let res = distribution.values().any(|v| *v);
-
-                        if res {
-                            distribution.iter().for_each(|(name, bool)| {
-                                asterisk_distribution.insert((ref_source_node_id, *name), *bool);
-                            });
-                        }
-
-                        res
-                    });
-
-                let mut source_name = None;
-                if *leave_as_sequence {
-                    let Ok(name) = plan.scan_name(ref_source_node_id, *position) else {
-                        // TODO[2081]: don't hide an error
-                        return non_asterisk_nodes();
-                    };
-                    let key = (ref_source_node_id, name);
-                    // TODO[2081]: don't hide an error
-                    if *asterisk_distribution.get(&key).unwrap_or(&false) {
-                        return non_asterisk_nodes();
-                    }
-                    source_name = name;
-                }
-
-                let mut need_comma = false;
-                let asterisk_id = *asterisk_id;
-                if let Some(last_handled_asterisk_id) = last_handled_asterisk_id {
-                    if asterisk_id != last_handled_asterisk_id {
-                        need_comma = true;
-                        already_handled_asterisk_sources.clear();
-                        last_handled_asterisk_name = None;
-                    }
-                }
-
-                if let Some(asterisk_name) = last_handled_asterisk_name {
-                    if let Some(source_name) = source_name {
-                        if source_name != asterisk_name {
-                            need_comma = true;
-                        }
-                    }
-                }
-
-                let pair_to_check = if let Some(relation_name) = relation_name {
-                    (Some(relation_name.clone()), asterisk_id)
-                } else if let Some(source_name) = source_name {
-                    (Some(source_name.to_smolstr()), asterisk_id)
-                } else {
-                    (None, asterisk_id)
-                };
-
-                let asterisk_node_to_add =
-                    if !already_handled_asterisk_sources.contains(&pair_to_check) {
-                        already_handled_asterisk_sources.insert(pair_to_check);
-                        let res = if relation_name.is_some() {
-                            SyntaxNode::new_asterisk(relation_name.clone())
-                        } else if source_name.is_some() {
-                            SyntaxNode::new_asterisk(Some(source_name.unwrap().to_smolstr()))
-                        } else {
-                            SyntaxNode::new_asterisk(None)
-                        };
-                        Some(res)
-                    } else {
-                        None
-                    };
-
-                last_handled_asterisk_id = Some(asterisk_id);
-                last_handled_asterisk_name = source_name;
-                if need_comma {
-                    nodes_to_add.push(NodeToAdd::Comma);
-                }
-                if let Some(asterisk_node_to_add) = asterisk_node_to_add {
-                    nodes_to_add.push(NodeToAdd::Asterisk(asterisk_node_to_add));
-                }
-            } else {
-                return non_asterisk_nodes();
-            }
-            nodes_to_add
-        };
-
-        let mut handle_single_list_sn_id = |sn_id: usize,
-                                            need_comma: bool|
-         -> Result<(), SbroadError> {
-            let sn_node = self.nodes.get_sn(sn_id);
-            let sn_plan_node_pair = self.get_plan_node(&sn_node.data)?;
-
-            let nodes_to_add =
-                if let Some((Node::Expression(node_expr), sn_plan_node_id)) = sn_plan_node_pair {
-                    match node_expr {
-                        Expression::Alias(Alias { child, .. }) => {
-                            handle_reference(sn_id, need_comma, *child)
-                        }
-                        _ => handle_reference(sn_id, need_comma, sn_plan_node_id),
-                    }
-                } else {
-                    // As it's not ad Alias under Projection output, we don't have to
-                    // dead with its machinery flags.
-                    let mut nodes_to_add = Vec::new();
-                    nodes_to_add.push(NodeToAdd::SnId(sn_id));
-                    if need_comma {
-                        nodes_to_add.push(NodeToAdd::Comma)
-                    }
-                    nodes_to_add
-                };
-
-            for node in nodes_to_add {
-                match node {
-                    NodeToAdd::SnId(sn_id) => {
-                        children.push(sn_id);
-                    }
-                    NodeToAdd::Asterisk(asterisk) => {
-                        children.push(self.nodes.push_sn_non_plan(asterisk))
-                    }
-                    NodeToAdd::Comma => {
-                        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()))
-                    }
-                }
-            }
-
-            Ok(())
-        };
 
         if let Some((list_sn_id_last, list_sn_ids_other)) = list_sn_ids.split_last() {
             for list_sn_id in list_sn_ids_other {
-                handle_single_list_sn_id(*list_sn_id, true).expect("Row child should be valid.")
+                self.process_single_row_child(
+                    *list_sn_id,
+                    true,
+                    &mut children,
+                    &mut asterisk_handler,
+                )
+                .expect("Row child should be valid.");
             }
-            handle_single_list_sn_id(*list_sn_id_last, false).expect("Row child should be valid.")
+            self.process_single_row_child(
+                *list_sn_id_last,
+                false,
+                &mut children,
+                &mut asterisk_handler,
+            )
+            .expect("Row child should be valid.");
         }
+
         children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
-        let sn = SyntaxNode::new_pointer(id, None, children);
-        self.nodes.push_sn_plan(sn);
+        children
+    }
+
+    fn process_single_row_child(
+        &mut self,
+        sn_id: usize,
+        need_comma: bool,
+        children: &mut Vec<usize>,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> Result<(), SbroadError> {
+        let sn_node = self.nodes.get_sn(sn_id);
+        let sn_plan_node_pair = self.get_plan_node(&sn_node.data)?;
+
+        let nodes_to_add =
+            if let Some((Node::Expression(node_expr), sn_plan_node_id)) = sn_plan_node_pair {
+                let sn_plan_node_id = match node_expr {
+                    Expression::Alias(Alias { child, .. }) => *child,
+                    _ => sn_plan_node_id,
+                };
+                self.handle_reference_node(sn_id, need_comma, sn_plan_node_id, asterisk_handler)
+            } else {
+                // As it's not ad Alias under Projection output, we don't have to
+                // dead with its machinery flags.
+                let mut nodes_to_add = Vec::with_capacity(2);
+                nodes_to_add.push(NodeToAdd::SnId(sn_id));
+                if need_comma {
+                    nodes_to_add.push(NodeToAdd::Comma)
+                }
+                nodes_to_add
+            };
+
+        for node in nodes_to_add {
+            match node {
+                NodeToAdd::SnId(sn_id) => {
+                    children.push(sn_id);
+                }
+                NodeToAdd::Asterisk(asterisk) => {
+                    children.push(self.nodes.push_sn_non_plan(asterisk));
+                }
+                NodeToAdd::Comma => {
+                    children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_reference_node(
+        &mut self,
+        sn_id: usize,
+        need_comma: bool,
+        expr_id: NodeId,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> Vec<NodeToAdd> {
+        let ir_plan = self.plan.get_ir_plan();
+        let expr_node = ir_plan
+            .get_expression_node(expr_id)
+            .expect("Expression node must exist");
+
+        let Expression::Reference(Reference {
+            position,
+            asterisk_source:
+                Some(ReferenceAsteriskSource {
+                    relation_name,
+                    asterisk_id,
+                }),
+            ..
+        }) = expr_node
+        else {
+            return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
+        };
+
+        self.handle_asterisk_reference(
+            sn_id,
+            need_comma,
+            expr_id,
+            *position,
+            relation_name,
+            *asterisk_id,
+            asterisk_handler,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn handle_asterisk_reference(
+        &mut self,
+        sn_id: usize,
+        need_comma: bool,
+        expr_id: NodeId,
+        position: usize,
+        relation_name: &Option<SmolStr>,
+        asterisk_id: usize,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> Vec<NodeToAdd> {
+        let ir_plan = self.plan.get_ir_plan();
+
+        // We don't want to transform asterisks in order not to select "bucket_id"
+        // implicitly. That's why we save them as a sequence of references, if system
+        // columns are involved.
+        let ref_source_node_id = ir_plan
+            .get_reference_source_relation(expr_id)
+            .expect("Reference must have a source relation");
+
+        let leave_as_sequence = self.should_leave_as_sequence(ref_source_node_id, asterisk_handler);
+
+        if leave_as_sequence {
+            let source_name = ir_plan.scan_name(ref_source_node_id, position);
+            let Ok(name) = source_name else {
+                // TODO[2081]: don't hide an error
+                return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
+            };
+            let key = (ref_source_node_id, name.map(|s| s.to_smolstr()));
+            if *asterisk_handler.distribution.get(&key).unwrap_or(&false) {
+                // TODO[2081]: don't hide an error
+                return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
+            }
+
+            let name = name.map(|s| s.to_smolstr());
+
+            return self.process_asterisk_logic(&name, asterisk_id, asterisk_handler);
+        }
+
+        self.process_asterisk_logic(relation_name, asterisk_id, asterisk_handler)
+    }
+
+    fn handle_non_asterisk_reference(
+        &mut self,
+        sn_id: usize,
+        need_comma: bool,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> Vec<NodeToAdd> {
+        let mut nodes_to_add = Vec::new();
+        if asterisk_handler.last_handled_id.is_some() {
+            nodes_to_add.push(NodeToAdd::Comma);
+        }
+        nodes_to_add.push(NodeToAdd::SnId(sn_id));
+        if need_comma {
+            nodes_to_add.push(NodeToAdd::Comma);
+        }
+        asterisk_handler.last_handled_id = None;
+        asterisk_handler.last_handled_name = None;
+        nodes_to_add
+    }
+
+    fn should_leave_as_sequence(
+        &mut self,
+        ref_source_node_id: NodeId,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> bool {
+        *asterisk_handler
+            .has_system_columns
+            .entry(ref_source_node_id)
+            .or_insert_with(|| {
+                let ir_plan = self.plan.get_ir_plan();
+                let Ok(output) = ir_plan.get_relational_output(ref_source_node_id) else {
+                    // TODO[2081]: don't hide an error
+                    return false;
+                };
+
+                let Ok(row_list) = ir_plan.get_row_list(output) else {
+                    // TODO[2081]: don't hide an error
+                    return false;
+                };
+
+                let mut distribution = HashMap::new();
+                row_list.iter().enumerate().for_each(|(i, node)| {
+                    let key = ir_plan
+                        .scan_name(ref_source_node_id, i)
+                        .unwrap()
+                        .map(|s| s.to_smolstr());
+                    let Ok(node) = ir_plan.get_child_under_alias(*node) else {
+                        // TODO[2081]: don't hide an error
+                        distribution
+                            .entry(key)
+                            .and_modify(|v| *v |= false)
+                            .or_insert(false);
+                        return;
+                    };
+                    let Ok(node) = ir_plan.get_expression_node(node) else {
+                        // TODO[2081]: don't hide an error
+                        distribution
+                            .entry(key)
+                            .and_modify(|v| *v |= false)
+                            .or_insert(false);
+                        return;
+                    };
+
+                    let value = matches!(
+                        node,
+                        Expression::Reference(Reference {
+                            is_system: true,
+                            ..
+                        })
+                    );
+                    distribution
+                        .entry(key)
+                        .and_modify(|v| *v |= value)
+                        .or_insert(value);
+                });
+
+                let has_system = distribution.values().any(|v| *v);
+                if has_system {
+                    distribution.iter().for_each(|(name, bool_val)| {
+                        asterisk_handler
+                            .distribution
+                            .insert((ref_source_node_id, name.clone()), *bool_val);
+                    });
+                }
+
+                has_system
+            })
+    }
+
+    fn process_asterisk_logic(
+        &mut self,
+        relation_name: &Option<SmolStr>,
+        asterisk_id: usize,
+        asterisk_handler: &mut AsteriskHandler,
+    ) -> Vec<NodeToAdd> {
+        let mut nodes_to_add = Vec::new();
+        let mut need_comma = false;
+
+        if let Some(last_id) = asterisk_handler.last_handled_id {
+            if asterisk_id != last_id {
+                need_comma = true;
+                asterisk_handler.already_handled_sources.clear();
+                asterisk_handler.last_handled_name = None;
+            } else {
+                match (&asterisk_handler.last_handled_name, relation_name) {
+                    (Some(last_name), Some(name)) if last_name != name => {
+                        need_comma = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let pair_to_check = (relation_name.clone(), asterisk_id);
+
+        let asterisk_node = if !asterisk_handler
+            .already_handled_sources
+            .contains(&pair_to_check)
+        {
+            asterisk_handler
+                .already_handled_sources
+                .insert(pair_to_check);
+            Some(SyntaxNode::new_asterisk(relation_name.clone()))
+        } else {
+            None
+        };
+
+        asterisk_handler.last_handled_id = Some(asterisk_id);
+        asterisk_handler.last_handled_name = relation_name.clone();
+        if need_comma {
+            nodes_to_add.push(NodeToAdd::Comma);
+        }
+        if let Some(asterisk_node) = asterisk_node {
+            nodes_to_add.push(NodeToAdd::Asterisk(asterisk_node));
+        }
+
+        nodes_to_add
     }
 
     fn add_stable_func(&mut self, id: NodeId) {
