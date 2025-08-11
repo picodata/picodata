@@ -4,33 +4,25 @@ use super::{
     result::{ExecuteResult, Rows},
 };
 use crate::config::observer::AtomicObserver;
-use crate::schema::ADMIN_ID;
+use crate::sql::router::RouterRuntime;
 use crate::{
-    metrics,
     pgproto::{
         client::ClientId,
         error::{PedanticError, PgError, PgErrorCode, PgResult},
         value::{FieldFormat, PgValue},
     },
-    sql::{dispatch, router::RouterRuntime},
     tlog,
     traft::node,
 };
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
 use rmpv::Value;
-use sbroad::{
-    executor::{ir::ExecutionPlan, ExecutingQuery},
-    ir::{
-        types::{DerivedType, UnrestrictedType as SbroadType},
-        Plan,
-    },
-};
+use sbroad::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 use std::{
     cell::RefCell,
-    collections::{btree_map::Entry, BTreeMap, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     iter::zip,
     ops::Bound,
     os::raw::c_int,
@@ -38,8 +30,6 @@ use std::{
     sync::LazyLock,
     vec::IntoIter,
 };
-use tarantool::session::with_su;
-use tarantool::time::Instant;
 use tarantool::{
     proc::{Return, ReturnMsgpack},
     tuple::{FunctionCtx, Tuple},
@@ -241,7 +231,7 @@ pub static PGPROTO_STATEMENTS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new
 #[derive(Debug)]
 pub struct StatementInner {
     key: Key,
-    plan: Plan,
+    statement: sbroad::PreparedStatement,
     describe: StatementDescribe,
 }
 
@@ -261,12 +251,20 @@ impl Drop for StatementInner {
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
-    pub fn new(key: Key, plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
-        let param_oids = collect_param_oids(&plan, &specified_param_oids);
-        let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
+    pub fn new(
+        key: Key,
+        statement: sbroad::PreparedStatement,
+        specified_param_oids: Vec<u32>,
+    ) -> PgResult<Self> {
+        // generate pgproto metadata
+        let inferred_types = statement.collect_parameter_types();
+        let param_oids = collect_param_oids(&inferred_types, &specified_param_oids);
+        let describe = Describe::new(statement.as_plan())?;
+
+        let describe = StatementDescribe::new(describe, param_oids);
         let inner = StatementInner {
             key,
-            plan,
+            statement,
             describe,
         };
 
@@ -282,8 +280,8 @@ impl Statement {
     }
 
     #[inline(always)]
-    pub fn plan(&self) -> &Plan {
-        &self.0.plan
+    pub fn prepared_statement(&self) -> &sbroad::PreparedStatement {
+        &self.0.statement
     }
 
     #[inline(always)]
@@ -379,16 +377,13 @@ pub(super) fn param_oid_to_derived_type(oid: Oid) -> PgResult<DerivedType> {
 /// Note that `client_types` may be incomplete or even empty,
 /// as postgres protocol forces the backend to implement type inference.
 /// Take the original client params and extended them with the inferred ones.
-pub fn collect_param_oids(plan: &Plan, client_types: &[Oid]) -> Vec<Oid> {
+pub fn collect_param_oids(inferred_types: &[SbroadType], client_types: &[Oid]) -> Vec<Oid> {
     #[allow(non_snake_case)]
     let UNKNOWN_OID = PgType::UNKNOWN.oid();
     const BAD_OID: u32 = 0;
     debug_assert_ne!(UNKNOWN_OID, BAD_OID);
 
-    let inferred_types = plan
-        .collect_parameter_types()
-        .into_iter()
-        .map(|ty| sbroad_type_to_pg(&ty).oid());
+    let inferred_types = inferred_types.iter().map(|ty| sbroad_type_to_pg(ty).oid());
 
     let client_types = client_types
         .iter()
@@ -456,7 +451,7 @@ enum PortalState {
     /// Portal has just been created.
     /// Ideally, it should've been `Box<Plan>`, but we need to move it
     /// from a mutable reference and we don't want to allocate a substitute.
-    NotStarted(Option<Box<Plan>>),
+    NotStarted(sbroad::BoundStatement),
     /// Portal has been executed and contains rows to be sent in batches.
     StreamingRows(IntoIter<Vec<PgValue>>),
     /// Portal has been executed and contains a result ready to be sent.
@@ -516,38 +511,12 @@ impl Drop for PortalInner {
 }
 
 impl PortalInner {
-    fn start(&self, plan: Box<Plan>) -> PgResult<PortalState> {
-        let runtime = RouterRuntime::new()?;
-        let query =
-            ExecutingQuery::from_parts(ExecutionPlan::from(*plan), &runtime, HashMap::new());
-
-        let start = Instant::now_fiber();
-        let result = dispatch(query, None, None);
-
-        // collect metrics, making the errors non-fatal
-        let collect_metrics = || -> crate::traft::Result<()> {
-            let node = node::global()?;
-            let tier = with_su(ADMIN_ID, || node.raft_storage.tier())??;
-            let tier = tier.as_deref().unwrap_or("<unknown>");
-            let raft_id = node.raft_id;
-            let inst = node.storage.instances.get(&raft_id)?;
-            let replicaset_name = inst.replicaset_name.as_ref();
-
-            if result.is_err() {
-                metrics::record_sql_query_errors_total(tier, replicaset_name);
-            }
-            let duration = Instant::now_fiber().duration_since(start).as_millis();
-            metrics::observe_sql_query_duration(tier, replicaset_name, duration as f64);
-            metrics::record_sql_query_total(tier, replicaset_name);
-
-            Ok(())
-        };
-        let collect_metrics_result = collect_metrics();
-        if let Err(e) = collect_metrics_result {
-            tlog!(Warning, "Collecting metrics failed: {:?}", e);
-        }
-
-        let tuple = result?;
+    fn start(
+        &self,
+        router: &RouterRuntime,
+        statement: &sbroad::BoundStatement,
+    ) -> PgResult<PortalState> {
+        let tuple = crate::sql::dispatch_bound_statement(router, statement, None, None)?;
 
         let state = match self.describe.query_type() {
             QueryType::Acl | QueryType::Ddl => {
@@ -574,7 +543,7 @@ impl PortalInner {
                 PortalState::StreamingRows(pg_rows.into_iter())
             }
             QueryType::Deallocate => {
-                let ir_plan = self.statement.plan();
+                let ir_plan = self.statement.prepared_statement().as_plan();
                 let top_id = ir_plan.get_top()?;
                 let deallocate = ir_plan.get_deallocate_node(top_id)?;
                 let name = deallocate.name.as_ref().map(|name| name.as_str());
@@ -592,14 +561,12 @@ impl PortalInner {
         Ok(state)
     }
 
-    fn execute(&self, max_rows: usize) -> PgResult<ExecuteResult> {
+    fn execute(&self, runtime: &RouterRuntime, max_rows: usize) -> PgResult<ExecuteResult> {
         let mut state = self.state.borrow_mut();
         loop {
             match &mut *state {
-                PortalState::NotStarted(plan) => {
-                    // We always provide the plan, see Portal::new.
-                    let plan = plan.take().expect("plan not found");
-                    *state = self.start(plan)?;
+                PortalState::NotStarted(bound_statement) => {
+                    *state = self.start(runtime, bound_statement)?;
                 }
                 PortalState::ResultReady(result) => {
                     let result = std::mem::replace(result, ExecuteResult::Empty);
@@ -643,11 +610,11 @@ impl Portal {
         key: Key,
         statement: Statement,
         output_format: Vec<FieldFormat>,
-        plan: Plan,
+        bound_statement: sbroad::BoundStatement,
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
-        let state = PortalState::NotStarted(Some(plan.into())).into();
+        let state = PortalState::NotStarted(bound_statement).into();
         let inner = PortalInner {
             key,
             statement,
@@ -672,8 +639,8 @@ impl Portal {
     }
 
     #[inline(always)]
-    pub fn execute(&self, max_rows: usize) -> PgResult<ExecuteResult> {
-        self.0.execute(max_rows)
+    pub fn execute(&self, runtime: &RouterRuntime, max_rows: usize) -> PgResult<ExecuteResult> {
+        self.0.execute(runtime, max_rows)
     }
 }
 

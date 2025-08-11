@@ -763,7 +763,7 @@ pub(super) fn access_check_op(
     }
 }
 
-/// This function is also called from [`crate::sql::dispatch`] for client-side
+/// This function is also called from [`crate::sql::dispatch_bound_statement`] for client-side
 /// permission checking. See comments next to it for details.
 pub(crate) fn access_check_plugin_system(as_user: UserId) -> tarantool::Result<()> {
     if !is_superuser(as_user) {

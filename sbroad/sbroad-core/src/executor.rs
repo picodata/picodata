@@ -22,20 +22,15 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use self::engine::query_id;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
-use crate::executor::engine::{Router, TableVersionMap, Vshard};
+use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
-use crate::executor::lru::Cache;
-use crate::frontend::Ast;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
-use crate::ir::options::Options;
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
-use crate::utils::MutexLike;
+use crate::BoundStatement;
 use smol_str::SmolStr;
 use std::any::Any;
 use std::collections::HashMap;
@@ -91,119 +86,33 @@ impl<'a, C> ExecutingQuery<'a, C>
 where
     C: Router,
 {
-    pub fn from_parts(
-        exec_plan: ExecutionPlan,
-        coordinator: &'a C,
-        bucket_map: HashMap<NodeId, Buckets>,
-    ) -> Self {
+    pub fn from_bound_statement(runtime: &'a C, statement: &BoundStatement) -> Self {
         Self {
-            exec_plan,
-            coordinator,
-            bucket_map,
-        }
-    }
-
-    /// Create a new query.
-    ///
-    /// # Errors
-    /// - Failed to parse SQL.
-    /// - Failed to build AST.
-    /// - Failed to build IR plan.
-    /// - Failed to apply optimizing transformations to IR plan.
-    pub fn with_options(
-        coordinator: &'a C,
-        sql: &str,
-        params: Vec<Value>,
-        default_options: Options,
-    ) -> Result<Self, SbroadError>
-    where
-        C::Cache: Cache<SmolStr, Plan>,
-        C::ParseTree: Ast,
-    {
-        let param_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
-        let key = query_id(sql, &param_types);
-
-        let mut cache = coordinator.cache().lock();
-
-        let mut plan = Plan::new();
-        if let Some(cached_plan) = cache.get(&key)? {
-            plan = cached_plan.clone();
-        }
-        if plan.is_empty() {
-            let metadata = coordinator.metadata().lock();
-            plan = C::ParseTree::transform_into_plan(sql, &param_types, &*metadata)?;
-            // Empty query.
-            if plan.is_empty() {
-                return Ok(ExecutingQuery::empty(coordinator));
-            }
-
-            if coordinator.provides_versions() {
-                let mut table_version_map =
-                    TableVersionMap::with_capacity(plan.relations.tables.len());
-                for (tbl_name, tbl) in &plan.relations.tables {
-                    if tbl.is_system() {
-                        continue;
-                    }
-                    let normalized = tbl_name;
-                    let version = coordinator.get_table_version(normalized.as_str())?;
-                    table_version_map.insert(normalized.clone(), version);
-                }
-                plan.version_map = table_version_map;
-            }
-
-            if plan.is_dql_or_dml()? {
-                plan.check_raw_options()?;
-                plan = plan.optimize()?;
-            }
-
-            if !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
-                cache.put(key, plan.clone())?;
-            }
-        }
-
-        if plan.is_block()? {
-            plan.bind_params(&params, default_options)?;
-        } else if plan.is_dql_or_dml()? {
-            plan.bind_params(&params, default_options)?;
-            plan = plan
-                .update_timestamps()?
-                .cast_constants()?
-                .fold_boolean_tree()?;
-        }
-
-        let query = ExecutingQuery {
-            exec_plan: ExecutionPlan::from(plan),
-            coordinator,
+            exec_plan: ExecutionPlan::from(statement.as_plan().clone()),
+            coordinator: runtime,
             bucket_map: HashMap::new(),
-        };
-        Ok(query)
+        }
     }
 
-    /// Create a new query.
-    ///
-    /// # Errors
-    /// - Failed to parse SQL.
-    /// - Failed to build AST.
-    /// - Failed to build IR plan.
-    /// - Failed to apply optimizing transformations to IR plan.
+    /// A shorthand to create a [`ExecutingQuery`] directly from SQL text.
+    /// Equivalent to chaining [`BoundStatement::parse_and_bind`] and [`ExecutingQuery::from_bound_statement`].
     pub fn from_text_and_params(
         coordinator: &'a C,
-        sql: &str,
-        params: Vec<Value>,
+        query_text: &str,
+        params: Vec<crate::ir::value::Value>,
     ) -> Result<Self, SbroadError>
     where
-        C::Cache: Cache<SmolStr, Plan>,
-        C::ParseTree: Ast,
+        C::Cache: lru::Cache<SmolStr, Plan>,
+        C::ParseTree: crate::frontend::Ast,
     {
-        Self::with_options(coordinator, sql, params, Options::default())
-    }
-
-    fn empty(coordinator: &'a C) -> Self {
-        Self {
-            exec_plan: Plan::empty().into(),
+        let bound_statement = BoundStatement::parse_and_bind(
             coordinator,
-            bucket_map: Default::default(),
-        }
+            query_text,
+            params,
+            crate::ir::options::Options::default(),
+        )?;
+
+        Ok(Self::from_bound_statement(coordinator, &bound_statement))
     }
 
     /// Get the execution plan of the query.

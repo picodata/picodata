@@ -154,13 +154,14 @@ impl RouterRuntime {
     ///
     /// # Errors
     /// - If the cache cannot be initialized.
-    pub fn new() -> Result<Self, SbroadError> {
+    #[expect(clippy::new_without_default)]
+    pub fn new() -> Self {
         let metadata = RouterMetadata::default();
         let runtime = PLAN_CACHE.with(|cache| RouterRuntime {
             metadata: Mutex::new(metadata),
             ir_cache: cache.clone(),
         });
-        Ok(runtime)
+        runtime
     }
 }
 

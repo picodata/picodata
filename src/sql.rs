@@ -5,7 +5,7 @@ use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::column_name;
-use crate::config::AlterSystemParameters;
+use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
@@ -91,6 +91,7 @@ pub mod storage;
 pub mod storage_port;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
+use sbroad::BoundStatement;
 use serde::Serialize;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
@@ -223,20 +224,15 @@ fn empty_query_response() -> traft::Result<Tuple> {
     Tuple::try_from_slice(&buf).map_err(Into::into)
 }
 
-/// Execute the cluster SQL query.
-///
-/// `override_deadline` if provided is used to override the timeout provided in
-/// the `OPTION (TIMEOUT = ?)` part of the SQL query. Note that overriding only
-/// happens downwards, that is it can only be decreased but not increased.
-///
-/// This is needed for example for `ALTER PLUGIN MIGRATE` queries, so that the
-/// whole query doesn't take longer (give or take) than the timeout specified by
-/// the user.
-pub fn dispatch(
-    mut query: ExecutingQuery<RouterRuntime>,
+/// Same as [`dispatch_bound_statement`], but does not collect any metrics
+fn dispatch_bound_statement_impl(
+    runtime: &RouterRuntime,
+    statement: &BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
+    let mut query = ExecutingQuery::from_bound_statement(runtime, statement);
+
     if query.is_empty() {
         return empty_query_response();
     }
@@ -431,8 +427,10 @@ pub fn dispatch(
         match code_block {
             Block::Procedure(Procedure { name, values }) => {
                 let values = values.clone();
-                let options = ir_plan.raw_options.clone();
+                let options = ir_plan.effective_options.clone();
+
                 let routine = routine_by_name(name)?;
+
                 // Check that the amount of passed values is correct.
                 if routine.params.len() != values.len() {
                     return Err(Error::Sbroad(SbroadError::Invalid(
@@ -480,14 +478,9 @@ pub fn dispatch(
                     }
                     params.push(value);
                 }
-                let runtime = RouterRuntime::new()?;
-                let mut stmt_query = with_su(ADMIN_ID, || {
-                    ExecutingQuery::from_text_and_params(&runtime, &pattern, params)
-                })??;
-                // Take options from the original query.
-                let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
-                stmt_ir_plan.raw_options = options;
-                dispatch(stmt_query, override_deadline, None)
+                let bound_statement =
+                    BoundStatement::parse_and_bind(runtime, &pattern, params, options)?;
+                dispatch_bound_statement_impl(runtime, &bound_statement, override_deadline, None)
             }
         }
     } else {
@@ -555,6 +548,47 @@ pub fn dispatch(
     }
 }
 
+/// Execute the cluster SQL query.
+///
+/// `override_deadline` if provided is used to override the timeout provided in
+/// the `OPTION (TIMEOUT = ?)` part of the SQL query. Note that overriding only
+/// happens downwards, that is it can only be decreased but not increased.
+///
+/// This is needed for example for `ALTER PLUGIN MIGRATE` queries, so that the
+/// whole query doesn't take longer (give or take) than the timeout specified by
+/// the user.
+pub fn dispatch_bound_statement(
+    runtime: &RouterRuntime,
+    statement: &BoundStatement,
+    override_deadline: Option<Instant>,
+    governor_op_id: Option<u64>,
+) -> traft::Result<Tuple> {
+    let start = Instant::now_fiber();
+
+    let result =
+        dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id);
+
+    let tier = &runtime
+        .get_current_tier_name()
+        .map_err(|e| Error::Other(e.into()))?
+        .unwrap_or_else(|| SmolStr::new("unknown_tier"));
+
+    let node = node::global()?;
+
+    let raft_id = node.raft_id;
+    let inst = node.storage.instances.get(&raft_id)?;
+    let replicaset_name = &inst.replicaset_name;
+
+    if result.is_err() {
+        metrics::record_sql_query_errors_total(tier, replicaset_name);
+    }
+    let duration = Instant::now_fiber().duration_since(start).as_millis();
+    metrics::observe_sql_query_duration(tier, replicaset_name, duration as f64);
+    metrics::record_sql_query_total(tier, replicaset_name);
+
+    result
+}
+
 fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     match e {
         Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
@@ -606,50 +640,28 @@ pub unsafe extern "C" fn proc_sql_dispatch(
         Ok(v) => v,
         Err(e) => return report("", Error::from(e)),
     };
-    let result =
-        sql_dispatch(&bind_args.pattern, bind_args.params, None, None).map_err(err_for_tnt_console);
+    let result = parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None)
+        .map_err(err_for_tnt_console);
 
     tarantool::proc::Return::ret(result, ctx)
 }
 
-pub fn sql_dispatch(
-    pattern: &str,
+pub fn parse_and_dispatch(
+    query_text: &str,
     params: Vec<Value>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
-    let start = Instant::now_fiber();
+    let router = RouterRuntime::new();
 
-    let runtime = RouterRuntime::new()?;
-    let node = node::global()?;
+    let bound_statement = BoundStatement::parse_and_bind(
+        &router,
+        query_text,
+        params,
+        DYNAMIC_CONFIG.current_sql_options(),
+    )?;
 
-    let default_options = node.storage.db_config.sql_query_options();
-
-    // Admin privileges are need for reading tables metadata.
-    let query = with_su(ADMIN_ID, || {
-        ExecutingQuery::with_options(&runtime, pattern, params, default_options)
-    })??;
-
-    let result = dispatch(query, override_deadline, governor_op_id);
-
-    let tier: String = runtime
-        .get_current_tier_name()
-        .map_err(|e| Error::Other(e.into()))?
-        .unwrap_or_else(|| SmolStr::new("unknown_tier"))
-        .to_string();
-
-    let raft_id = node.raft_id;
-    let inst = node.storage.instances.get(&raft_id)?;
-    let replicaset_name = inst.replicaset_name.clone().to_smolstr();
-
-    if result.is_err() {
-        metrics::record_sql_query_errors_total(tier.as_str(), replicaset_name.as_str());
-    }
-    let duration = Instant::now_fiber().duration_since(start).as_millis();
-    metrics::observe_sql_query_duration(tier.as_str(), replicaset_name.as_str(), duration as f64);
-    metrics::record_sql_query_total(tier.as_str(), replicaset_name.as_str());
-
-    result
+    dispatch_bound_statement(&router, &bound_statement, override_deadline, governor_op_id)
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {

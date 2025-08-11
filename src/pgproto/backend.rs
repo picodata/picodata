@@ -9,24 +9,17 @@ use super::{
     value::PgValue,
 };
 use crate::config::DYNAMIC_CONFIG;
+use crate::sql::router::RouterRuntime;
+use crate::tlog;
 use crate::{
     pgproto::value::{FieldFormat, RawFormat},
     schema::ADMIN_ID,
-    sql::router::RouterRuntime,
 };
-use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use postgres_types::Oid;
 use sbroad::ir::options::PartialOptions;
-use sbroad::{
-    executor::{
-        engine::{query_id, QueryCache, Router, TableVersionMap},
-        lru::Cache,
-    },
-    frontend::Ast,
-    ir::{value::Value as SbroadValue, Plan as IrPlan},
-    utils::MutexLike,
-};
+use sbroad::ir::value::Value as SbroadValue;
+use sbroad::PreparedStatement;
 use smol_str::format_smolstr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
@@ -100,86 +93,61 @@ pub fn bind(
     result_format: Vec<FieldFormat>,
     connection_options: &PartialOptions,
 ) -> PgResult<()> {
-    let key = storage::Key(id, stmt_name.into());
+    let statement_key = storage::Key(id, stmt_name.into());
+
     let statement: Statement = PG_STATEMENTS
-        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
-        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
+        .with(|storage| {
+            storage
+                .borrow()
+                .get(&statement_key)
+                .map(|holder| holder.statement())
+        })
+        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", statement_key.1)))?;
 
     let effective_options = connection_options.unwrap_or(DYNAMIC_CONFIG.current_sql_options());
 
-    let mut plan = statement.plan().clone();
+    let bound_statement = statement
+        .prepared_statement()
+        .bind(params, effective_options)?;
 
-    if plan.is_empty() {
-        // Empty query, do nothing
-    } else if plan.is_block()? {
-        plan.bind_params(&params, effective_options)?;
-    } else if plan.is_dql_or_dml()? {
-        plan.bind_params(&params, effective_options)?;
-        plan = plan.optimize()?;
-    }
-
-    let key = storage::Key(id, portal_name.into());
-    let portal = Portal::new(key.clone(), statement.clone(), result_format, plan)?;
-    PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
+    let portal_key = storage::Key(id, portal_name.into());
+    let portal = Portal::new(
+        portal_key.clone(),
+        statement.clone(),
+        result_format,
+        bound_statement,
+    )?;
+    PG_PORTALS.with(|storage| storage.borrow_mut().put(portal_key, portal))?;
 
     Ok(())
 }
 
 pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
     let key = storage::Key(id, name.into());
+
+    let router = RouterRuntime::new();
+
     let portal: Portal = PG_PORTALS
         .with(|storage| storage.borrow_mut().get(&key).cloned())
         .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
 
     let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
-    portal.execute(max_rows as usize)
+    portal.execute(&router, max_rows as usize)
 }
 
 pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
+    let key = storage::Key(id, name.into());
+
+    let router = RouterRuntime::new();
+
     let param_types: Vec<_> = param_oids
         .iter()
         .map(|oid| param_oid_to_derived_type(*oid))
         .collect::<Result<_, _>>()?;
-    let cache_key = query_id(query, &param_types);
 
-    let runtime = RouterRuntime::new().map_err(Error::from)?;
-    let mut cache = runtime.cache().lock();
+    let prepared_statement = PreparedStatement::parse(&router, query, &param_types)?;
 
-    let key = storage::Key(id, name.into());
-
-    let cache_entry = with_su(ADMIN_ID, || cache.get(&cache_key))??;
-    if let Some(plan) = cache_entry {
-        let statement = Statement::new(key.clone(), plan.clone(), param_oids)?;
-        PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
-        return Ok(());
-    }
-
-    let plan = with_su(ADMIN_ID, || -> PgResult<IrPlan> {
-        let metadata = runtime.metadata().lock();
-        let mut plan = <RouterRuntime as Router>::ParseTree::transform_into_plan(
-            query,
-            &param_types,
-            &*metadata,
-        )?;
-        if runtime.provides_versions() {
-            let mut table_version_map = TableVersionMap::with_capacity(plan.relations.tables.len());
-            for table in plan.relations.tables.keys() {
-                let version = runtime.get_table_version(table.as_str())?;
-                table_version_map.insert(table.clone(), version);
-            }
-            plan.version_map = table_version_map;
-        }
-        if plan.is_dql_or_dml()? {
-            plan.check_raw_options()?;
-        }
-        Ok(plan)
-    })??;
-
-    if !plan.is_empty() && !plan.is_tcl()? && !plan.is_ddl()? && !plan.is_acl()? {
-        cache.put(cache_key, plan.clone())?;
-    }
-
-    let statement = Statement::new(key.clone(), plan, param_oids)?;
+    let statement = Statement::new(key.clone(), prepared_statement, param_oids)?;
     PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
 
     Ok(())

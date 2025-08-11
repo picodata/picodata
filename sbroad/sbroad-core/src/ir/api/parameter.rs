@@ -216,8 +216,10 @@ impl Plan {
             ));
         }
 
-        self.apply_raw_options(&values, default_options)?;
+        self.apply_raw_options(values, default_options)?;
 
+        // you'd think that this is an optimization, but commenting this check out
+        //   changes the result of type checking and fails some tests!
         if params_count == 0 {
             return Ok(());
         }

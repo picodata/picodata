@@ -496,7 +496,7 @@ impl SqlApplier for SBroadApplier {
             return Err(traft::error::Error::timeout());
         }
 
-        sql::sql_dispatch(sql, vec![], Some(deadline), None).map(|_| ())
+        sql::parse_and_dispatch(sql, vec![], Some(deadline), None).map(|_| ())
     }
 }
 

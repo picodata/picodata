@@ -1090,7 +1090,7 @@ impl Loop {
                         "query" => %query,
                     ]
                     async {
-                        match sql::sql_dispatch(query, vec![], None, Some(operation_id)) {
+                        match sql::parse_and_dispatch(query, vec![], None, Some(operation_id)) {
                             Ok(tuple) => {
                                 // check if we have no-op (row_count = 0)
                                 // mark governor operation as successful in such case

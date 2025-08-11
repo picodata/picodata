@@ -25,10 +25,9 @@ use crate::executor::engine::{
 };
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
-use crate::executor::lru::{LRUCache, DEFAULT_CAPACITY};
+use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
 use crate::executor::result::ProducerResult;
 use crate::executor::vtable::VirtualTable;
-use crate::executor::Cache;
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
