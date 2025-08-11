@@ -1925,6 +1925,10 @@ impl Router for RouterRuntimeMock {
         &self.metadata
     }
 
+    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
+        Ok(f())
+    }
+
     fn materialize_motion(
         &self,
         _plan: &mut ExecutionPlan,

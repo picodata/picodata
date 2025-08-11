@@ -2,8 +2,6 @@
 #[macro_use]
 extern crate pest_derive;
 extern crate core;
-
-use crate::backend::sql::space::ADMIN_ID;
 use crate::errors::SbroadError;
 use crate::executor::engine::{query_id, Metadata, Router, TableVersionMap};
 use crate::executor::lru::Cache;
@@ -14,7 +12,6 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
 use smol_str::SmolStr;
-use tarantool::session::with_su;
 
 pub mod backend;
 pub mod cbo;
@@ -51,7 +48,7 @@ impl PreparedStatement {
         // FIXME: converting the hash to string is suboptimal, we could use a newtype over `[u8; HASH_LEN]` directly
         let cache_key = query_id(query_text, param_types);
 
-        if let Some(cached_plan) = with_su(ADMIN_ID, || cache.get(&cache_key))?? {
+        if let Some(cached_plan) = router.with_admin_su(|| cache.get(&cache_key))?? {
             // FIXME: use an `Rc` here to avoid a clone
             // the RC should be propagated all the way down to the cache
             return Ok(PreparedStatement {
@@ -59,7 +56,7 @@ impl PreparedStatement {
             });
         }
 
-        let new_plan = with_su(ADMIN_ID, || -> Result<Plan, SbroadError> {
+        let new_plan = router.with_admin_su(|| -> Result<Plan, SbroadError> {
             let metadata = router.metadata().lock();
             let mut plan = R::ParseTree::transform_into_plan(query_text, param_types, &*metadata)?;
             if router.provides_versions() {

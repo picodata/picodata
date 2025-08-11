@@ -340,6 +340,8 @@ pub trait Router: QueryCache {
     /// Get the metadata provider (tables, functions, etc.).
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider>;
 
+    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError>;
+
     /// Setup output format of query explain
     ///
     /// # Errors

@@ -274,6 +274,10 @@ impl Router for RouterRuntime {
         &self.metadata
     }
 
+    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
+        with_su(ADMIN_ID, f).map_err(|e| e.into())
+    }
+
     fn materialize_motion(
         &self,
         plan: &mut sbroad::executor::ir::ExecutionPlan,

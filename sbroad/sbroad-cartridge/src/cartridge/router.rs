@@ -14,14 +14,14 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use std::rc::Rc;
-
-use sbroad::cbo::histogram::Scalar;
 use tarantool::tlua::LuaFunction;
 
 use crate::cartridge::bucket_count;
 use crate::cartridge::config::RouterConfiguration;
 
 use super::ConfigurationProvider;
+use sbroad::backend::sql::space::ADMIN_ID;
+use sbroad::cbo::histogram::Scalar;
 use sbroad::error;
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
@@ -40,6 +40,7 @@ use sbroad::executor::vtable::VirtualTable;
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::value::Value;
 use sbroad::ir::Plan;
+use tarantool::session::with_su;
 
 pub struct SingleTier {
     bucket_count: u64,
@@ -239,6 +240,10 @@ impl Router for RouterRuntime {
 
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider> {
         &self.metadata
+    }
+
+    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
+        with_su(ADMIN_ID, f).map_err(|e| e.into())
     }
 
     /// Execute a sub tree on the nodes
