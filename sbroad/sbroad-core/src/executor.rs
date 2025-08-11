@@ -78,8 +78,6 @@ pub struct ExecutingQuery<'a, C>
 where
     C: Router,
 {
-    /// Explain flag
-    is_explain: bool,
     /// Execution plan
     exec_plan: ExecutionPlan,
     /// Coordinator runtime
@@ -94,13 +92,11 @@ where
     C: Router,
 {
     pub fn from_parts(
-        is_explain: bool,
         exec_plan: ExecutionPlan,
         coordinator: &'a C,
         bucket_map: HashMap<NodeId, Buckets>,
     ) -> Self {
         Self {
-            is_explain,
             exec_plan,
             coordinator,
             bucket_map,
@@ -176,7 +172,6 @@ where
         }
 
         let query = ExecutingQuery {
-            is_explain: plan.is_explain(),
             exec_plan: ExecutionPlan::from(plan),
             coordinator,
             bucket_map: HashMap::new(),
@@ -205,7 +200,6 @@ where
 
     fn empty(coordinator: &'a C) -> Self {
         Self {
-            is_explain: false,
             exec_plan: Plan::empty().into(),
             coordinator,
             bucket_map: Default::default(),
@@ -358,7 +352,7 @@ where
 
     /// Checks that query is explain and have not to be executed
     pub fn is_explain(&self) -> bool {
-        self.is_explain
+        self.exec_plan.get_ir_plan().is_explain()
     }
 
     /// Checks that query is a statement block.

@@ -518,12 +518,8 @@ impl Drop for PortalInner {
 impl PortalInner {
     fn start(&self, plan: Box<Plan>) -> PgResult<PortalState> {
         let runtime = RouterRuntime::new()?;
-        let query = ExecutingQuery::from_parts(
-            plan.is_explain(),
-            ExecutionPlan::from(*plan),
-            &runtime,
-            HashMap::new(),
-        );
+        let query =
+            ExecutingQuery::from_parts(ExecutionPlan::from(*plan), &runtime, HashMap::new());
 
         let start = Instant::now_fiber();
         let result = dispatch(query, None, None);
