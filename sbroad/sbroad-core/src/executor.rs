@@ -73,7 +73,7 @@ impl Plan {
 
 /// Query to execute.
 #[derive(Debug)]
-pub struct Query<'a, C>
+pub struct ExecutingQuery<'a, C>
 where
     C: Router,
 {
@@ -88,7 +88,7 @@ where
     bucket_map: HashMap<NodeId, Buckets>,
 }
 
-impl<'a, C> Query<'a, C>
+impl<'a, C> ExecutingQuery<'a, C>
 where
     C: Router,
 {
@@ -137,7 +137,7 @@ where
             plan = C::ParseTree::transform_into_plan(sql, &param_types, &*metadata)?;
             // Empty query.
             if plan.is_empty() {
-                return Ok(Query::empty(coordinator));
+                return Ok(ExecutingQuery::empty(coordinator));
             }
 
             if coordinator.provides_versions() {
@@ -184,7 +184,7 @@ where
                 .fold_boolean_tree()?;
         }
 
-        let query = Query {
+        let query = ExecutingQuery {
             is_explain: plan.is_explain(),
             exec_plan: ExecutionPlan::from(plan),
             coordinator,
@@ -200,7 +200,11 @@ where
     /// - Failed to build AST.
     /// - Failed to build IR plan.
     /// - Failed to apply optimizing transformations to IR plan.
-    pub fn new(coordinator: &'a C, sql: &str, params: Vec<Value>) -> Result<Self, SbroadError>
+    pub fn from_text_and_params(
+        coordinator: &'a C,
+        sql: &str,
+        params: Vec<Value>,
+    ) -> Result<Self, SbroadError>
     where
         C::Cache: Cache<SmolStr, Plan>,
         C::ParseTree: Ast,

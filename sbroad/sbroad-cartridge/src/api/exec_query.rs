@@ -10,7 +10,7 @@ use crate::api::{COORDINATOR_ENGINE, SEGMENT_ENGINE};
 use crate::utils::{wrap_proc_result, RawProcResult, RetResult};
 use sbroad::backend::sql::ir::PatternWithParams;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
-use sbroad::executor::Query;
+use sbroad::executor::ExecutingQuery;
 
 use sbroad::debug;
 
@@ -32,7 +32,8 @@ fn dispatch_query_inner(args: &RawBytes) -> anyhow::Result<RawProcResult> {
     COORDINATOR_ENGINE.with(|engine| {
         let runtime = engine.lock();
         let mut query =
-            Query::new(&*runtime, &lua_params.pattern, lua_params.params).context("build query")?;
+            ExecutingQuery::from_text_and_params(&*runtime, &lua_params.pattern, lua_params.params)
+                .context("build query")?;
         if let Ok(true) = query.is_ddl() {
             bail!("DDL queries are not supported");
         }

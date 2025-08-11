@@ -6,7 +6,7 @@ use sbroad::frontend::Ast;
 use pest::Parser;
 use pest_derive::Parser;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use sbroad::executor::Query;
+use sbroad::executor::ExecutingQuery;
 use sbroad::ir::tree::Snapshot;
 use sbroad::ir::value::Value;
 use sbroad::ir::Plan;
@@ -393,7 +393,7 @@ fn bench_take_subtree(crit: &mut Criterion) {
     let params = vec![Value::from(param)];
 
     let target_query = get_query_with_many_references();
-    let mut query = Query::new(&engine, target_query, params).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&engine, target_query, params).unwrap();
 
     let plan = query.get_exec_plan().get_ir_plan();
     let top_id = plan.get_top().unwrap();
@@ -414,7 +414,7 @@ fn bench_serde_clone(crit: &mut Criterion) {
     let params = vec![Value::from(param)];
 
     let target_query = get_query_with_many_references();
-    let query = Query::new(&engine, target_query, params).unwrap();
+    let query = ExecutingQuery::from_text_and_params(&engine, target_query, params).unwrap();
 
     let plan = query.get_exec_plan().get_ir_plan();
 
@@ -433,7 +433,7 @@ fn bench_serde_clone(crit: &mut Criterion) {
 }
 
 fn build_ir(pattern: &str, params: Vec<Value>, engine: &mut RouterRuntimeMock) {
-    let query = Query::new(engine, pattern, params).unwrap();
+    let query = ExecutingQuery::from_text_and_params(engine, pattern, params).unwrap();
     let top_id = query.get_exec_plan().get_ir_plan().get_top().unwrap();
     let plan = query.get_exec_plan();
     let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).unwrap();

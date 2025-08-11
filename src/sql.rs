@@ -35,7 +35,7 @@ use sbroad::executor::engine::helpers::{
 use sbroad::executor::engine::Router;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
-use sbroad::executor::Query;
+use sbroad::executor::ExecutingQuery;
 use sbroad::ir::acl::{AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::{AlterSystemType, ParamDef};
 use sbroad::ir::node::acl::AclOwned;
@@ -233,7 +233,7 @@ fn empty_query_response() -> traft::Result<Tuple> {
 /// whole query doesn't take longer (give or take) than the timeout specified by
 /// the user.
 pub fn dispatch(
-    mut query: Query<RouterRuntime>,
+    mut query: ExecutingQuery<RouterRuntime>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
@@ -481,7 +481,9 @@ pub fn dispatch(
                     params.push(value);
                 }
                 let runtime = RouterRuntime::new()?;
-                let mut stmt_query = with_su(ADMIN_ID, || Query::new(&runtime, &pattern, params))??;
+                let mut stmt_query = with_su(ADMIN_ID, || {
+                    ExecutingQuery::from_text_and_params(&runtime, &pattern, params)
+                })??;
                 // Take options from the original query.
                 let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
                 stmt_ir_plan.raw_options = options;
@@ -625,7 +627,7 @@ pub fn sql_dispatch(
 
     // Admin privileges are need for reading tables metadata.
     let query = with_su(ADMIN_ID, || {
-        Query::with_options(&runtime, pattern, params, Some(default_options))
+        ExecutingQuery::with_options(&runtime, pattern, params, Some(default_options))
     })??;
 
     let result = dispatch(query, override_deadline, governor_op_id);
@@ -2324,7 +2326,7 @@ pub unsafe extern "C" fn proc_sql_execute(
 // convert virtual table to a batch of DML ops and apply it via
 // CAS. No retries are made in case of CAS error.
 fn do_dml_on_global_tbl(
-    mut query: Query<RouterRuntime>,
+    mut query: ExecutingQuery<RouterRuntime>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<ConsumerResult> {

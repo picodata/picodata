@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
-use crate::executor::Query;
+use crate::executor::ExecutingQuery;
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
@@ -83,7 +83,7 @@ impl Buckets {
     }
 }
 
-impl<T> Query<'_, T>
+impl<T> ExecutingQuery<'_, T>
 where
     T: Router,
 {

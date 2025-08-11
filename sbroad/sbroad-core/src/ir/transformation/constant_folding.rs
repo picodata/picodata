@@ -284,14 +284,14 @@ impl Plan {
 mod tests {
     use crate::executor::bucket::Buckets;
     use crate::executor::engine::mock::RouterRuntimeMock;
-    use crate::executor::Query;
+    use crate::executor::ExecutingQuery;
 
     #[test]
     fn test_bool_folding1() {
         let query = r#"SELECT * from t WHERE 1 = 1 and 2 > -4"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -314,7 +314,7 @@ mod tests {
         let query = r#"SELECT * from t WHERE 1 = 0"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -337,7 +337,7 @@ mod tests {
         let query = r#"SELECT * from t WHERE 1 = 0 or 2 > -4"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -360,7 +360,7 @@ mod tests {
         let query = r#"SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -383,7 +383,7 @@ mod tests {
         let query = r#"SELECT * from t WHERE 1 = 0 and 5 >= 4 and 6 < -8 UNION ALL SELECT * FROM t where 1 = 9"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -410,7 +410,7 @@ mod tests {
         let query = r#"SELECT * from t JOIN t on true WHERE 1 = 1 AND 56 <= 500"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -437,7 +437,7 @@ mod tests {
         let query = r#"SELECT * FROM t WHERE true and not (null is null)"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -460,7 +460,7 @@ mod tests {
         let query = r#"SELECT * FROM t WHERE null = null"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -483,7 +483,7 @@ mod tests {
         let query = r#"SELECT * FROM t WHERE 1.0 = 1"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -506,7 +506,7 @@ mod tests {
         let query = r#"SELECT * FROM t WHERE 'inf' = 'inf'::double"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();
@@ -529,7 +529,7 @@ mod tests {
         let query = r#"SELECT * FROM t WHERE 'nan' = 'nan'::double"#;
 
         let coordinator = RouterRuntimeMock::new();
-        let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
         let plan = query.get_exec_plan().get_ir_plan();
         let top = plan.get_top().unwrap();
         let query_explain = plan.as_explain().unwrap();

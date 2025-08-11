@@ -9,7 +9,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::helpers::to_user;
 use crate::executor::engine::Router;
-use crate::executor::Query;
+use crate::executor::ExecutingQuery;
 use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
@@ -1683,7 +1683,7 @@ impl Plan {
     }
 }
 
-impl<C: Router> Query<'_, C> {
+impl<C: Router> ExecutingQuery<'_, C> {
     pub fn as_explain(&mut self) -> Result<SmolStr, SbroadError> {
         let plan = self.get_exec_plan().get_ir_plan();
         let top_id = plan.get_top()?;

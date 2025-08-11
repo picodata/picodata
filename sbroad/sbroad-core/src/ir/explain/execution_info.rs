@@ -5,7 +5,7 @@ use crate::{
     executor::{
         bucket::Buckets,
         engine::{Router, Vshard},
-        Query,
+        ExecutingQuery,
     },
     ir::{
         node::{relational::Relational, Motion, Node, NodeId},
@@ -55,7 +55,9 @@ impl BucketsInfo {
     ///
     /// In case we can't compute buckets for this query, we
     /// `BucketsInfo::Unknown` variant.
-    pub fn new_from_query<R: Router>(query: &mut Query<'_, R>) -> Result<Self, SbroadError> {
+    pub fn new_from_query<R: Router>(
+        query: &mut ExecutingQuery<'_, R>,
+    ) -> Result<Self, SbroadError> {
         let ir = query.get_exec_plan().get_ir_plan();
         if !Self::can_estimate_buckets(ir)? {
             return Ok(BucketsInfo::Unknown);

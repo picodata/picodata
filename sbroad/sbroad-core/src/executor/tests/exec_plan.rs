@@ -19,7 +19,7 @@ use crate::ir::Slice;
 use super::*;
 
 fn reshard_vtable(
-    query: &Query<RouterRuntimeMock>,
+    query: &ExecutingQuery<RouterRuntimeMock>,
     motion_id: NodeId,
     virtual_table: &mut VirtualTable,
 ) {
@@ -52,7 +52,7 @@ fn exec_plan_subtree_test() {
     (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
@@ -88,7 +88,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     let sql = r#"SELECT "T1"."FIRST_NAME" FROM "test_space" as "T1" group by "T1"."FIRST_NAME""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
 
     let mut virtual_table = VirtualTable::new();
@@ -134,7 +134,7 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     let sql = r#"SELECT "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom" FROM "test_space" as "T1" GROUP BY "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_user_non_null(Type::String));
@@ -194,7 +194,7 @@ fn exec_plan_subtree_aggregates() {
                       FROM "test_space" as "T1" group by "T1"."sys_op""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -237,7 +237,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     let sql = r#"SELECT count("T1"."sysFrom"), sum(distinct "T1"."id" + "T1"."sysFrom") FROM "test_space" as "T1""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -286,7 +286,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
     "#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     // name would be added during materialization from subquery
     let mut virtual_table = virtual_table_23(Some("unnamed_subquery_1"));
@@ -318,7 +318,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
     "#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(Some("hti"));
     reshard_vtable(&query, motion_id, &mut virtual_table);
@@ -343,7 +343,7 @@ fn exec_plan_motion_under_in_operator() {
     let sql = r#"SELECT "id" FROM "test_space" WHERE "id" in (SELECT "identification_number" FROM "hash_testing")"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
@@ -372,7 +372,7 @@ fn exec_plan_motion_under_except() {
     "#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
@@ -397,7 +397,7 @@ fn exec_plan_subtree_count_asterisk() {
     let sql = r#"SELECT count(*) FROM "test_space""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -448,7 +448,8 @@ fn exec_plan_subtree_having() {
     );
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql.as_str(), vec![]).unwrap();
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql.as_str(), vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -510,7 +511,8 @@ fn exec_plan_subtree_having_without_groupby() {
     );
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql.as_str(), vec![]).unwrap();
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql.as_str(), vec![]).unwrap();
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
@@ -567,7 +569,7 @@ fn exec_plan_subquery_as_expression_under_projection() {
     let sql = r#"SELECT (values (1)) from "test_space""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -586,7 +588,7 @@ fn exec_plan_subquery_as_expression_under_projection_several() {
     let sql = r#"SELECT (values (1)), (values (2)) from "test_space""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -606,7 +608,7 @@ fn exec_plan_subquery_as_expression_under_selection() {
     let sql = r#"SELECT "id" FROM "test_space" WHERE (VALUES (true))"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -626,7 +628,7 @@ fn exec_plan_subquery_as_expression_under_order_by() {
     let sql = r#"SELECT "id" FROM "test_space" ORDER BY "id" + (VALUES (1))"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
     let motion_id = query.get_motion_id(0, 0);
@@ -665,7 +667,7 @@ fn exec_plan_subquery_as_expression_under_projection_nested() {
     let sql = r#"SELECT (values ((values (1)))) from "test_space""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
 
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
@@ -685,7 +687,7 @@ fn exec_plan_subquery_as_expression_under_group_by() {
     let sql = r#"SELECT COUNT(*) FROM "test_space" GROUP BY "id" + (VALUES (1))"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = VirtualTable::new();
@@ -724,7 +726,7 @@ fn global_table_scan() {
     let sql = r#"SELECT * from "global_t""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     assert_eq!(Vec::<Slice>::new(), exec_plan.get_ir_plan().slices.slices);
 
@@ -745,7 +747,7 @@ fn global_union_all() {
     let mut coordinator = RouterRuntimeMock::new();
     coordinator.set_vshard_mock(2);
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
 
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
@@ -782,7 +784,7 @@ fn global_union_all2() {
     let mut coordinator = RouterRuntimeMock::new();
     coordinator.set_vshard_mock(3);
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let motion_id = query.get_motion_id(0, 0);
     let motion_child = query.exec_plan.get_motion_subtree_root(motion_id).unwrap();
@@ -861,7 +863,7 @@ fn global_union_all3() {
     let mut coordinator = RouterRuntimeMock::new();
     coordinator.set_vshard_mock(2);
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let slices = query.exec_plan.get_ir_plan().clone_slices();
     let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
@@ -920,7 +922,7 @@ fn global_union_all4() {
     let mut coordinator = RouterRuntimeMock::new();
     coordinator.set_vshard_mock(2);
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let top_id = query.exec_plan.get_ir_plan().get_top().unwrap();
     let buckets = query.bucket_discovery(top_id).unwrap();
@@ -953,7 +955,7 @@ fn global_except() {
     let mut coordinator = RouterRuntimeMock::new();
     coordinator.set_vshard_mock(3);
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let intersect_motion_id = query.get_motion_id(0, 0);
 
@@ -1010,7 +1012,7 @@ fn local_translation_asterisk_single() {
     let sql = r#"SELECT * from "t3""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -1026,7 +1028,7 @@ fn local_translation_asterisk_several() {
     let sql = r#"SELECT *, * from "t3""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -1045,7 +1047,7 @@ fn local_translation_asterisk_named() {
     let sql = r#"SELECT *, "t3".*, * from "t3""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -1065,7 +1067,7 @@ fn local_translation_asterisk_with_additional_columns() {
     let sql = r#"SELECT "a", *, "t3"."b", "t3".*, * from "t3""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let exec_plan = query.get_mut_exec_plan();
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
 
@@ -1085,7 +1087,7 @@ fn exec_plan_order_by() {
                       ORDER BY "identification_number""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = *query
         .exec_plan
         .get_ir_plan()
@@ -1134,7 +1136,7 @@ fn exec_plan_order_by_with_subquery() {
                       ORDER BY "identification_number""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion_id = *query
         .exec_plan
         .get_ir_plan()
@@ -1186,7 +1188,7 @@ fn exec_plan_order_by_with_join() {
                       ORDER BY 1"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let slices = query.exec_plan.get_ir_plan().clone_slices();
     let mut sq_vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
 
@@ -1263,7 +1265,7 @@ fn check_subtree_hashes_are_equal(
 ) {
     let coordinator = RouterRuntimeMock::new();
     let get_hash = |sql: &str, values: Vec<Value>| -> SmolStr {
-        let mut query = Query::new(&coordinator, sql, values).unwrap();
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
         query
             .get_mut_exec_plan()
             .get_mut_ir_plan()
@@ -1331,7 +1333,7 @@ fn check_parentheses() {
     let query = r#"SELECT "id" from "test_space" WHERE "sysFrom" = ((1) + (3)) + 2"#;
 
     let rt = RouterRuntimeMock::new();
-    let mut query = Query::new(&rt, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&rt, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top_id = plan.get_top().unwrap();
 

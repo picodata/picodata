@@ -22,7 +22,7 @@ fn empty_motion1_test() {
 
     let coordinator = RouterRuntimeMock::new();
 
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let motion1_id = query.get_motion_id(0, 0);
     let mut virtual_t1 = t2_empty();
     if let MotionPolicy::Segment(key) = get_motion_policy(query.exec_plan.get_ir_plan(), motion1_id)

@@ -1,5 +1,5 @@
 use crate::{
-    executor::{engine::mock::RouterRuntimeMock, Query},
+    executor::{engine::mock::RouterRuntimeMock, ExecutingQuery},
     ir::value::Value,
 };
 
@@ -8,7 +8,7 @@ fn test_query_explain_1() {
     let sql = r#"select 1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection (1::int -> "col_1")
     execution options:
@@ -23,7 +23,7 @@ fn test_query_explain_2() {
     let sql = r#"select e from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t2"."e"::int -> "e")
         scan "t2"
@@ -39,7 +39,7 @@ fn test_query_explain_3() {
     let sql = r#"select e from t2 where e = 1 and f = 13"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t2"."e"::int -> "e")
         selection ("t2"."e"::int = 1::int) and ("t2"."f"::int = 13::int)
@@ -56,7 +56,7 @@ fn test_query_explain_4() {
     let sql = r#"select count(*) from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection (sum(("count_1"::int))::int -> "col_1")
         motion [policy: full]
@@ -74,7 +74,7 @@ fn test_query_explain_5() {
     let sql = r#"select a from global_t"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("global_t"."a"::int -> "a")
         scan "global_t"
@@ -90,7 +90,7 @@ fn test_query_explain_6() {
     let sql = r#"insert into t1 values ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "t1" on conflict: fail
         motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")])]
@@ -108,7 +108,7 @@ fn test_query_explain_7() {
     let sql = r#"insert into t1 select a, b from t1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "t1" on conflict: fail
         motion [policy: local segment([ref("a"), ref("b")])]
@@ -126,7 +126,7 @@ fn test_query_explain_8() {
     let sql = r#"insert into global_t values (1, 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "global_t" on conflict: fail
         motion [policy: full]
@@ -144,7 +144,7 @@ fn test_query_explain_9() {
     let sql = r#"delete from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     delete "t2"
     execution options:
@@ -159,7 +159,7 @@ fn test_query_explain_10() {
     let sql = r#"update t2 set e = 20 where (e, f) = (10, 10)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     update "t2"
     "f" = "col_1"
@@ -191,7 +191,7 @@ fn test_query_explain_11() {
 "#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("gr_expr_1"::string -> "a", sum(("count_1"::int))::int -> "col_1")
         group by ("gr_expr_1"::string) output: ("gr_expr_1"::string -> "gr_expr_1", "count_1"::int -> "count_1")
@@ -228,7 +228,7 @@ fn test_query_explain_12() {
 "#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("unnamed_subquery_1"."a"::string -> "a")
         join on "unnamed_subquery"."e"::int = "unnamed_subquery_1"."b"::int
@@ -253,7 +253,7 @@ fn test_query_explain_13() {
     let sql = r#"insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     insert "global_t" on conflict: fail
         motion [policy: full]
@@ -272,7 +272,7 @@ fn test_query_explain_14() {
     let sql = r#"select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection ("t1"."a"::string -> "a", "t1"."b"::int -> "b")
         selection (ROW("t1"."a"::string, "t1"."b"::int) = ROW('1'::string, 1::int)) and (ROW("t1"."a"::string, "t1"."b"::int) = ROW('2'::string, 2::int))
@@ -289,7 +289,7 @@ fn test_query_explain_15() {
     let sql = "explain select 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     projection (1::int -> "col_1")
     execution options:
@@ -304,7 +304,7 @@ fn test_query_explain_16() {
     let sql = "explain select 1 option (sql_vdbe_opcode_max = $1, sql_motion_row_max = $2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(
+    let mut query = ExecutingQuery::from_text_and_params(
         metadata,
         sql,
         vec![Value::Unsigned(14), Value::Unsigned(88)],
@@ -324,7 +324,7 @@ fn test_query_explain_17() {
     let sql = "explain update t set c = 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
     insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
     update "t"
     "c" = "col_0"

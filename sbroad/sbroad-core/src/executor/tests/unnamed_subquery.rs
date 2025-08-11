@@ -109,7 +109,7 @@ fn unnamed_subquery_name_conflict3_test() {
     .unwrap();
     coordinator.add_table(table);
 
-    let mut query = Query::new(&coordinator, input, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, input, vec![]).unwrap();
     let result = *query
         .dispatch()
         .unwrap()
@@ -138,7 +138,7 @@ fn unnamed_subquery_try_to_reach_implicitly_1_test() {
     let sql = r#"SELECT "unnamed_subquery"."a" FROM (SELECT * FROM t)"#;
     let coordinator = RouterRuntimeMock::new();
 
-    let result = Query::new(&coordinator, sql, vec![]);
+    let result = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]);
     assert!(result.is_err());
 
     let Err(error) = result else { unreachable!() };
@@ -154,7 +154,7 @@ fn unnamed_subquery_try_to_reach_implicitly_2_test() {
     let sql = r#"SELECT "a", COUNT(*)  FROM (SELECT * FROM t) GROUP BY "unnamed_subquery"."a""#;
     let coordinator = RouterRuntimeMock::new();
 
-    let result = Query::new(&coordinator, sql, vec![]);
+    let result = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]);
     assert!(result.is_err());
 
     let Err(error) = result else { unreachable!() };

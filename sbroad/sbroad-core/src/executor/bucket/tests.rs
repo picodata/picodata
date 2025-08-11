@@ -5,7 +5,7 @@ use crate::collection;
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::executor::engine::Vshard;
-use crate::executor::Query;
+use crate::executor::ExecutingQuery;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::value::Value;
 
@@ -20,7 +20,7 @@ fn simple_union_query() {
     WHERE "id" = 1"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -45,7 +45,7 @@ fn simple_disjunction_in_union_query() {
     WHERE ("id" = 1) OR ("id" = 100)"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -76,7 +76,7 @@ fn complex_shard_key_union_query() {
     WHERE "identification_number" = 1 AND "product_code" = '222'"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -113,7 +113,7 @@ fn union_complex_cond_query() {
         OR "product_code" = '111')"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -174,7 +174,7 @@ fn union_query_conjunction() {
     SELECT * FROM "test_space_hist" WHERE "id" = 2"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -201,7 +201,7 @@ fn simple_except_query() {
     WHERE "id" = 1"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -221,7 +221,7 @@ fn global_tbl_selection() {
     where "a" = 1 or "b" = 2"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -235,7 +235,7 @@ fn global_tbl_scan() {
     select * from "global_t""#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -255,7 +255,7 @@ fn global_tbl_sq1() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -275,7 +275,7 @@ fn global_tbl_sq2() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -296,7 +296,7 @@ fn global_tbl_sq3() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -314,7 +314,7 @@ fn global_tbl_sq4() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -333,7 +333,7 @@ fn global_tbl_sq5() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -350,7 +350,7 @@ fn global_tbl_join1() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -370,7 +370,7 @@ fn global_tbl_join2() {
     "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -387,7 +387,7 @@ fn global_tbl_join3() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -410,7 +410,7 @@ fn global_tbl_join4() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -427,7 +427,7 @@ fn global_tbl_join5() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -440,7 +440,7 @@ fn global_tbl_join6() {
     let query = r#"update "t3" set "b" = "b1" from (select "b" as "b1" from "global_t")"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -458,7 +458,7 @@ fn tbl_join_single_constant_condition1() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -479,7 +479,7 @@ fn tbl_join_single_constant_condition2() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -500,7 +500,7 @@ fn tbl_join_single_constant_condition3() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -518,7 +518,7 @@ fn tbl_join_single_constant_condition4() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -537,7 +537,7 @@ fn tbl_join_tuple_constant_condition1() {
 "#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -558,7 +558,7 @@ fn global_tbl_groupby() {
     let query = r#"select "a", avg("b") from "global_t" group by "a" having sum("b") > 10"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -571,7 +571,7 @@ fn update_local() {
     let query = r#"update t set c = 1 where (a, b) = (1, 1)"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -584,7 +584,7 @@ fn delete_local() {
     let query = r#"delete from t where (a, b) = (1, 1)"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -597,7 +597,7 @@ fn same_multicolumn_sk_in_eq() {
     let query = r#"select * from t where a = 1 and b = 1 and b = 2 and a = 2"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
@@ -610,7 +610,7 @@ fn same_column_in_eq() {
     let query = r#"select * from test_space where id = 1 and id = 2"#;
 
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, query, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
     let top = plan.get_top().unwrap();
     let buckets = query.bucket_discovery(top).unwrap();

@@ -20,7 +20,7 @@ use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
 use rmpv::Value;
 use sbroad::{
-    executor::{ir::ExecutionPlan, Query},
+    executor::{ir::ExecutionPlan, ExecutingQuery},
     ir::{
         types::{DerivedType, UnrestrictedType as SbroadType},
         Plan,
@@ -518,7 +518,7 @@ impl Drop for PortalInner {
 impl PortalInner {
     fn start(&self, plan: Box<Plan>) -> PgResult<PortalState> {
         let runtime = RouterRuntime::new()?;
-        let query = Query::from_parts(
+        let query = ExecutingQuery::from_parts(
             plan.is_explain(),
             ExecutionPlan::from(*plan),
             &runtime,

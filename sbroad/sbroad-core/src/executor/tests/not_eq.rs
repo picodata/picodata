@@ -20,7 +20,7 @@ fn not_eq1_test() {
 
     // Initialize the query.
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
 
     // Validate the motion type.
@@ -61,7 +61,7 @@ fn not_eq2_test() {
 
     // Initialize the query.
     let coordinator = RouterRuntimeMock::new();
-    let mut query = Query::new(&coordinator, sql, vec![]).unwrap();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let plan = query.exec_plan.get_ir_plan();
 
     // Validate the motion type.
