@@ -10,6 +10,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.4.0] - Unreleased
 
+### Features
+
+- Support unique indexes with non-sharded columns on sharded tables, with sharding key prefix provided
+
 ### Fixes
 - Fixed "instance is already joined" error if picodata crashes during reboostrap
   (see also https://git.picodata.io/core/picodata/-/issues/2077).

@@ -4801,12 +4801,18 @@ def test_index(cluster: Cluster):
     ddl = i1.sql(""" create index i1 on t (a, b) """)
     assert ddl["row_count"] == 1
 
-    # Unique index can be created only on the sharding key for sharded tables.
-    invalid_unique = "unique index for the sharded table must duplicate its sharding key columns"
+    # Unique index cannot be created if it doesn't include the sharding key as a prefix.
+    invalid_unique = "unique index for the sharded table must include all sharding key columns as a prefix"
     with pytest.raises(TarantoolError, match=invalid_unique):
         i1.sql(""" create unique index i2 on t using tree (b) """)
 
-    # Successful unique tree index creation on the sharding key.
+    # Successful unique tree index creation with sharding key as prefix.
+    ddl = i1.sql(""" create unique index i2 on t using tree (a, b) """)
+    assert ddl["row_count"] == 1
+    ddl = i1.sql(""" drop index i2 """)
+    assert ddl["row_count"] == 1
+
+    # Successful unique tree index creation on the exact sharding key.
     ddl = i1.sql(""" create unique index i2 on t using tree (a) """)
     assert ddl["row_count"] == 1
 

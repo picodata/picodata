@@ -1773,7 +1773,9 @@ pub enum CreateIndexError {
     IncompatibleIndexColumnType { ty: String, ctype: String },
     #[error("index type {ty} does not support nullable columns")]
     IncompatipleNullableColumn { ty: String },
-    #[error("unique index for the sharded table must duplicate its sharding key columns")]
+    #[error(
+        "unique index for the sharded table must include all sharding key columns as a prefix"
+    )]
     IncompatibleUniqueIndexColumns,
     #[error("index type {ty} does not support unique indexes")]
     UniqueIndexType { ty: String },
@@ -2012,9 +2014,9 @@ impl CreateIndexParams {
                         ty: self.ty.to_string(),
                     })?;
                 }
-                // Unique index for the sharded table must duplicate its sharding key columns.
+                // Unique index for the sharded table must include all sharding key columns as a prefix
                 if let Distribution::ShardedImplicitly { sharding_key, .. } = &table.distribution {
-                    if sharding_key.len() != self.columns.len() {
+                    if sharding_key.len() > self.columns.len() {
                         return Err(CreateIndexError::IncompatibleUniqueIndexColumns)?;
                     }
                     for (sharding_key, column) in sharding_key.iter().zip(&self.columns) {
