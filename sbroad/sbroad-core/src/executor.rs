@@ -86,9 +86,9 @@ impl<'a, C> ExecutingQuery<'a, C>
 where
     C: Router,
 {
-    pub fn from_bound_statement(runtime: &'a C, statement: &BoundStatement) -> Self {
+    pub fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self {
         Self {
-            exec_plan: ExecutionPlan::from(statement.as_plan().clone()),
+            exec_plan: ExecutionPlan::from(*statement.plan),
             coordinator: runtime,
             bucket_map: HashMap::new(),
         }
@@ -102,7 +102,7 @@ where
         params: Vec<crate::ir::value::Value>,
     ) -> Result<Self, SbroadError>
     where
-        C::Cache: lru::Cache<SmolStr, Plan>,
+        C::Cache: lru::Cache<SmolStr, Rc<Plan>>,
         C::ParseTree: crate::frontend::Ast,
     {
         let bound_statement = BoundStatement::parse_and_bind(
@@ -112,7 +112,7 @@ where
             crate::ir::options::Options::default(),
         )?;
 
-        Ok(Self::from_bound_statement(coordinator, &bound_statement))
+        Ok(Self::from_bound_statement(coordinator, bound_statement))
     }
 
     /// Get the execution plan of the query.

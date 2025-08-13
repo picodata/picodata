@@ -451,7 +451,7 @@ enum PortalState {
     /// Portal has just been created.
     /// Ideally, it should've been `Box<Plan>`, but we need to move it
     /// from a mutable reference and we don't want to allocate a substitute.
-    NotStarted(sbroad::BoundStatement),
+    NotStarted(Option<sbroad::BoundStatement>),
     /// Portal has been executed and contains rows to be sent in batches.
     StreamingRows(IntoIter<Vec<PgValue>>),
     /// Portal has been executed and contains a result ready to be sent.
@@ -514,7 +514,7 @@ impl PortalInner {
     fn start(
         &self,
         router: &RouterRuntime,
-        statement: &sbroad::BoundStatement,
+        statement: sbroad::BoundStatement,
     ) -> PgResult<PortalState> {
         let tuple = crate::sql::dispatch_bound_statement(router, statement, None, None)?;
 
@@ -566,7 +566,7 @@ impl PortalInner {
         loop {
             match &mut *state {
                 PortalState::NotStarted(bound_statement) => {
-                    *state = self.start(runtime, bound_statement)?;
+                    *state = self.start(runtime, bound_statement.take().unwrap())?;
                 }
                 PortalState::ResultReady(result) => {
                     let result = std::mem::replace(result, ExecuteResult::Empty);
@@ -614,7 +614,7 @@ impl Portal {
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
-        let state = PortalState::NotStarted(bound_statement).into();
+        let state = PortalState::NotStarted(Some(bound_statement)).into();
         let inner = PortalInner {
             key,
             statement,

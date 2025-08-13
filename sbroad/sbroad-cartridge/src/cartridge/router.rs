@@ -106,7 +106,7 @@ impl Vshard for SingleTier {
 pub struct RouterRuntime {
     metadata: Mutex<RouterConfiguration>,
     bucket_count: u64,
-    ir_cache: Mutex<LRUCache<SmolStr, Plan>>,
+    ir_cache: Mutex<LRUCache<SmolStr, Rc<Plan>>>,
 }
 
 impl ConfigurationProvider for RouterRuntime {
@@ -202,7 +202,7 @@ impl ConfigurationProvider for RouterRuntime {
 }
 
 impl QueryCache for RouterRuntime {
-    type Cache = LRUCache<SmolStr, Plan>;
+    type Cache = LRUCache<SmolStr, Rc<Plan>>;
     type Mutex = Mutex<Self::Cache>;
 
     fn cache(&self) -> &Self::Mutex
@@ -350,7 +350,7 @@ impl RouterRuntime {
     /// # Errors
     /// - Failed to detect the correct amount of buckets.
     pub fn new() -> Result<Self, SbroadError> {
-        let cache: LRUCache<SmolStr, Plan> = LRUCache::new(DEFAULT_CAPACITY, None)?;
+        let cache: LRUCache<SmolStr, Rc<Plan>> = LRUCache::new(DEFAULT_CAPACITY, None)?;
         let result = RouterRuntime {
             metadata: Mutex::new(RouterConfiguration::new()),
             bucket_count: bucket_count()?,

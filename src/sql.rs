@@ -227,7 +227,7 @@ fn empty_query_response() -> traft::Result<Tuple> {
 /// Same as [`dispatch_bound_statement`], but does not collect any metrics
 fn dispatch_bound_statement_impl(
     runtime: &RouterRuntime,
-    statement: &BoundStatement,
+    statement: BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
@@ -480,7 +480,7 @@ fn dispatch_bound_statement_impl(
                 }
                 let bound_statement =
                     BoundStatement::parse_and_bind(runtime, &pattern, params, options)?;
-                dispatch_bound_statement_impl(runtime, &bound_statement, override_deadline, None)
+                dispatch_bound_statement_impl(runtime, bound_statement, override_deadline, None)
             }
         }
     } else {
@@ -559,7 +559,7 @@ fn dispatch_bound_statement_impl(
 /// the user.
 pub fn dispatch_bound_statement(
     runtime: &RouterRuntime,
-    statement: &BoundStatement,
+    statement: BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
 ) -> traft::Result<Tuple> {
@@ -661,7 +661,7 @@ pub fn parse_and_dispatch(
         DYNAMIC_CONFIG.current_sql_options(),
     )?;
 
-    dispatch_bound_statement(&router, &bound_statement, override_deadline, governor_op_id)
+    dispatch_bound_statement(&router, bound_statement, override_deadline, governor_op_id)
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {

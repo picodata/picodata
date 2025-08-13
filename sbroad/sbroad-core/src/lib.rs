@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate pest_derive;
 extern crate core;
+
 use crate::errors::SbroadError;
 use crate::executor::engine::{query_id, Metadata, Router, TableVersionMap};
 use crate::executor::lru::Cache;
@@ -12,6 +13,7 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
 use smol_str::SmolStr;
+use std::rc::Rc;
 
 pub mod backend;
 pub mod cbo;
@@ -25,7 +27,8 @@ pub mod utils;
 /// A parsed parameterized query. It still has parameter placeholders instead of actual parameter values.
 #[derive(Debug)]
 pub struct PreparedStatement {
-    plan: Box<Plan>,
+    // This Rc shares the reference with the query cache
+    plan: Rc<Plan>,
 }
 
 impl PreparedStatement {
@@ -40,7 +43,7 @@ impl PreparedStatement {
     where
         R: Router,
         R::MetadataProvider: Metadata,
-        R::Cache: Cache<SmolStr, Plan>,
+        R::Cache: Cache<SmolStr, Rc<Plan>>,
         R::ParseTree: Ast,
     {
         let mut cache = router.cache().lock();
@@ -49,10 +52,8 @@ impl PreparedStatement {
         let cache_key = query_id(query_text, param_types);
 
         if let Some(cached_plan) = router.with_admin_su(|| cache.get(&cache_key))?? {
-            // FIXME: use an `Rc` here to avoid a clone
-            // the RC should be propagated all the way down to the cache
             return Ok(PreparedStatement {
-                plan: Box::new(cached_plan.clone()),
+                plan: cached_plan.clone(),
             });
         }
 
@@ -77,15 +78,15 @@ impl PreparedStatement {
             Ok(plan)
         })??;
 
+        let new_plan = Rc::new(new_plan);
+
         // Only DQL and DML is cached, because it is on the hot path
         // other types of queries are much less likely to be queried again
         if new_plan.is_dql_or_dml()? {
             cache.put(cache_key, new_plan.clone())?;
         }
 
-        Ok(PreparedStatement {
-            plan: Box::new(new_plan.clone()),
-        })
+        Ok(PreparedStatement { plan: new_plan })
     }
 
     /// A shorthand method for [`Plan::collect_parameter_types`]
@@ -104,7 +105,7 @@ impl PreparedStatement {
         params: Vec<Value>,
         default_options: Options,
     ) -> Result<BoundStatement, SbroadError> {
-        let mut plan = self.plan.clone();
+        let mut plan = Box::new(self.plan.as_ref().clone());
 
         if plan.is_empty() {
             // Empty query, do nothing
@@ -123,8 +124,10 @@ impl PreparedStatement {
 }
 
 /// A query with parameter values supplied. This representation is ready for execution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoundStatement {
+    // wrap the plan into a `Box` to reduce the size of `BoundStatement`
+    // this is important for `pgproto`, which stores it in `PortalState`
     plan: Box<Plan>,
 }
 
@@ -140,7 +143,7 @@ impl BoundStatement {
     where
         R: Router,
         R::MetadataProvider: Metadata,
-        R::Cache: Cache<SmolStr, Plan>,
+        R::Cache: Cache<SmolStr, Rc<Plan>>,
         R::ParseTree: Ast,
     {
         let param_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();

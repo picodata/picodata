@@ -1432,7 +1432,7 @@ pub struct RouterRuntimeMock {
     // so it could be used in unit tests - they won't compile otherwise due to missing tarantool symbols.
     metadata: RefCell<RouterConfigurationMock>,
     virtual_tables: RefCell<HashMap<NodeId, VirtualTable>>,
-    ir_cache: Rc<RefCell<LRUCache<SmolStr, Plan>>>,
+    ir_cache: Rc<RefCell<LRUCache<SmolStr, Rc<Plan>>>>,
     table_statistics_cache: RefCell<HashMap<SmolStr, Rc<TableStats>>>,
     initial_column_statistics_cache: RefCell<HashMap<TableColumnPair, Rc<Box<dyn Any>>>>,
     pub vshard_mock: VshardMock,
@@ -1473,7 +1473,7 @@ impl ProducerResult {
 }
 
 impl QueryCache for RouterRuntimeMock {
-    type Cache = LRUCache<SmolStr, Plan>;
+    type Cache = LRUCache<SmolStr, Rc<Plan>>;
     type Mutex = RefCell<Self::Cache>;
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
@@ -1596,7 +1596,7 @@ impl RouterRuntimeMock {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     #[must_use]
     pub fn new() -> Self {
-        let cache: LRUCache<SmolStr, Plan> = LRUCache::new(DEFAULT_CAPACITY, None).unwrap();
+        let cache: LRUCache<SmolStr, Rc<Plan>> = LRUCache::new(DEFAULT_CAPACITY, None).unwrap();
 
         let mut table_statistics_cache = HashMap::new();
         let hash_testing_hist_rows_number = 1000.0;

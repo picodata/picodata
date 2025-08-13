@@ -165,7 +165,7 @@ impl RouterRuntime {
     }
 }
 
-pub type PlanCache = LRUCache<SmolStr, Plan>;
+pub type PlanCache = LRUCache<SmolStr, Rc<Plan>>;
 
 /// Wrapper around default LRU cache, that
 /// checks schema version.
@@ -185,8 +185,11 @@ impl PicoRouterCache {
     }
 }
 
-impl Cache<SmolStr, Plan> for PicoRouterCache {
-    fn new(capacity: usize, evict_fn: Option<EvictFn<SmolStr, Plan>>) -> Result<Self, SbroadError>
+impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
+    fn new(
+        capacity: usize,
+        evict_fn: Option<EvictFn<SmolStr, Rc<Plan>>>,
+    ) -> Result<Self, SbroadError>
     where
         Self: Sized,
     {
@@ -195,7 +198,7 @@ impl Cache<SmolStr, Plan> for PicoRouterCache {
         })
     }
 
-    fn get(&mut self, key: &SmolStr) -> Result<Option<&Plan>, SbroadError> {
+    fn get(&mut self, key: &SmolStr) -> Result<Option<&Rc<Plan>>, SbroadError> {
         let Some(ir) = self.inner.get(key)? else {
             return Ok(None);
         };
@@ -230,7 +233,7 @@ impl Cache<SmolStr, Plan> for PicoRouterCache {
         Ok(Some(ir))
     }
 
-    fn put(&mut self, key: SmolStr, value: Plan) -> Result<(), SbroadError> {
+    fn put(&mut self, key: SmolStr, value: Rc<Plan>) -> Result<(), SbroadError> {
         self.inner.put(key, value)
     }
 
