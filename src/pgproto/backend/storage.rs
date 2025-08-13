@@ -451,13 +451,15 @@ enum PortalState {
     /// Portal has just been created.
     /// Ideally, it should've been `Box<Plan>`, but we need to move it
     /// from a mutable reference and we don't want to allocate a substitute.
-    NotStarted(Option<sbroad::BoundStatement>),
+    NotStarted(sbroad::BoundStatement),
     /// Portal has been executed and contains rows to be sent in batches.
     StreamingRows(IntoIter<Vec<PgValue>>),
     /// Portal has been executed and contains a result ready to be sent.
     ResultReady(ExecuteResult),
     /// Portal has been executed, and a result has been sent.
     Done,
+    /// An error encountered when executing the portal. Further execution is not possible.
+    Errored,
 }
 
 // We use this instance in tests. Furthermore, stock debug print is too verbose.
@@ -470,6 +472,7 @@ impl std::fmt::Display for PortalState {
             StreamingRows(_) => f.debug_tuple("StreamingRows").finish_non_exhaustive(),
             ResultReady(_) => f.debug_struct("ResultReady").finish_non_exhaustive(),
             Done => f.debug_struct("Done").finish(),
+            Errored => f.debug_struct("Errored").finish(),
         }
     }
 }
@@ -563,40 +566,61 @@ impl PortalInner {
 
     fn execute(&self, runtime: &RouterRuntime, max_rows: usize) -> PgResult<ExecuteResult> {
         let mut state = self.state.borrow_mut();
-        loop {
-            match &mut *state {
-                PortalState::NotStarted(bound_statement) => {
-                    *state = self.start(runtime, bound_statement.take().unwrap())?;
-                }
-                PortalState::ResultReady(result) => {
-                    let result = std::mem::replace(result, ExecuteResult::Empty);
-                    *state = PortalState::Done;
 
-                    return Ok(result);
+        /// A helper that allows to run the [`PortalState`] state machine, with a step taking the ownership of the current state.
+        ///
+        /// The function `f` defines the step function of the state machine.
+        /// It receives the current state by value and returns a tuple of a return value and a new state.
+        ///
+        /// If `f` returns [`Err`] or panics, `dest` will be replaced with [`PortalState::Errored`]
+        pub fn step_portal<R, F: FnOnce(PortalState) -> PgResult<(R, PortalState)>>(
+            dest: &mut PortalState,
+            f: F,
+        ) -> PgResult<R> {
+            replace_with::replace_with_and_return(
+                dest,
+                || PortalState::Errored,
+                |state| match f(state) {
+                    Ok((result, new_state)) => (Ok(result), new_state),
+                    Err(err) => (Err(err), PortalState::Errored),
+                },
+            )
+        }
+
+        loop {
+            // run the state machine until a return value is produced as a `Some`
+            let result = step_portal(&mut state, |state| match state {
+                PortalState::NotStarted(bound_statement) => {
+                    Ok((None, self.start(runtime, bound_statement)?))
                 }
-                PortalState::StreamingRows(ref mut stored_rows) => {
-                    let taken: Vec<_> = stored_rows.take(max_rows).collect();
+                PortalState::ResultReady(result) => Ok((Some(result), PortalState::Done)),
+                PortalState::StreamingRows(mut stored_rows) => {
+                    let taken: Vec<_> = (&mut stored_rows).take(max_rows).collect();
                     let row_count = taken.len();
                     let rows = Rows::new(taken, self.describe.row_info());
 
-                    return Ok(match stored_rows.len() {
-                        0 => {
-                            *state = PortalState::Done;
-
-                            ExecuteResult::FinishedDql {
+                    Ok(match stored_rows.len() {
+                        0 => (
+                            Some(ExecuteResult::FinishedDql {
                                 rows,
                                 row_count,
                                 tag: self.describe.command_tag(),
-                            }
-                        }
-                        _ => ExecuteResult::SuspendedDql { rows },
-                    });
+                            }),
+                            PortalState::Done,
+                        ),
+                        _ => (
+                            Some(ExecuteResult::SuspendedDql { rows }),
+                            PortalState::StreamingRows(stored_rows),
+                        ),
+                    })
                 }
-                _ => {
-                    return Err(PgError::other(format!(
-                        "Can't execute portal in state {state}",
-                    )));
-                }
+                _ => Err(PgError::other(format!(
+                    "Can't execute portal in state {state}",
+                ))),
+            })?;
+
+            if let Some(result) = result {
+                break Ok(result);
             }
         }
     }
@@ -614,7 +638,7 @@ impl Portal {
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
-        let state = PortalState::NotStarted(Some(bound_statement)).into();
+        let state = PortalState::NotStarted(bound_statement).into();
         let inner = PortalInner {
             key,
             statement,
