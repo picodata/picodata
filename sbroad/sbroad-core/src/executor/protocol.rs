@@ -1,7 +1,8 @@
-use rmp::decode::{read_array_len, Bytes, RmpRead};
+use rmp::decode::read_array_len;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
+use std::io::Cursor;
 use tarantool::tlua::{self, AsLua, Push, PushGuard, PushInto, PushOne, PushOneInto, Void};
 use tarantool::tuple::{Tuple, TupleBuilder};
 
@@ -218,7 +219,7 @@ impl<'e> IntoIterator for &'e EncodedRows {
 
     fn into_iter(self) -> Self::IntoIter {
         EncodedRowsIter {
-            stream: Bytes::from(self.encoded.0.data()),
+            stream: Cursor::new(self.encoded.0.data()),
             marking: &self.marking,
             position: 0,
         }
@@ -227,7 +228,7 @@ impl<'e> IntoIterator for &'e EncodedRows {
 
 pub struct EncodedRowsIter<'e> {
     /// Encoded tuples as msgpack array stream.
-    stream: Bytes<'e>,
+    stream: Cursor<&'e [u8]>,
     /// Lengths of encoded rows.
     marking: &'e [usize],
     /// Current stream position.
@@ -247,11 +248,11 @@ impl Iterator for EncodedRowsIter<'_> {
         let row_len = self.marking.get(cur_pos)?;
         assert!(*row_len <= u32::MAX as usize);
         let mut builder = TupleBuilder::rust_allocated();
-        builder.reserve(*row_len);
-        for _ in 0..*row_len {
-            let byte = self.stream.read_u8().expect("encoded tuple");
-            builder.append(&[byte]);
-        }
+        // We don't need reserve here, because append will do it for us.
+        let pos = self.stream.position() as usize;
+        let new_pos = pos + *row_len;
+        builder.append(&self.stream.get_ref()[pos..new_pos]);
+        self.stream.set_position(new_pos as u64);
         let tuple = builder
             .into_tuple()
             .expect("failed to create rust-allocated tuple");
