@@ -58,7 +58,7 @@ instance:
 """
     )
     instance = Instance(
-        binary_path=cluster.binary_path,
+        runtime=cluster.runtime,
         cwd=cluster.data_dir,
         color_code=ColorCode.Cyan,
         config_path=cluster.config_path,
@@ -401,7 +401,7 @@ instance:
 
 def test_picodata_default_config(cluster: Cluster):
     # Check generating the default config
-    data = subprocess.check_output([cluster.binary_path, "config", "default"])
+    data = subprocess.check_output([cluster.runtime.command, "config", "default"])
     default_config = data.decode()
     assert len(default_config) != 0
 
@@ -412,7 +412,7 @@ def test_picodata_default_config(cluster: Cluster):
 
     # Explicit filename
     subprocess.call(
-        [cluster.binary_path, "config", "default", "-o", "filename.yaml"],
+        [cluster.runtime.command, "config", "default", "-o", "filename.yaml"],
         cwd=cluster.data_dir,
     )
     with open(f"{cluster.data_dir}/filename.yaml", "r") as f:
@@ -420,7 +420,7 @@ def test_picodata_default_config(cluster: Cluster):
     assert default_config.strip() == default_config_2.strip()
 
     # Explicit stdout
-    data = subprocess.check_output([cluster.binary_path, "config", "default", "-o-"])
+    data = subprocess.check_output([cluster.runtime.command, "config", "default", "-o-"])
     default_config_3 = data.decode()
     assert default_config.strip() == default_config_3.strip()
 

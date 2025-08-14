@@ -25,7 +25,7 @@ def test_connect_ux(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -102,7 +102,7 @@ def test_admin_ux(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -185,7 +185,7 @@ def assert_config_change(
     inst_addr = f"{username}@{instance.iproto_listen}"
     proc = subprocess.Popen(
         [
-            instance.binary_path,
+            instance.runtime.command,
             "plugin",
             "configure",
             "--peer",
@@ -327,7 +327,7 @@ def test_lua_completion(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -377,7 +377,7 @@ def test_sql_explain_ok(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -490,7 +490,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
 
     # test crash error when run with `picodata connect`
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -508,7 +508,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     # test crash error when run with `picodata admin`
     cli = pexpect.spawn(
         cwd=i2.instance_dir,
-        command=i2.binary_path,
+        command=i2.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -529,7 +529,7 @@ def test_input_with_delimiter(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -613,7 +613,7 @@ def test_input_with_delimiter(cluster: Cluster):
 def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     instance = cluster.add_instance()
     data = subprocess.check_output(
-        [cluster.binary_path, "admin", f"{instance.instance_dir}/admin.sock"],
+        [cluster.runtime.command, "admin", f"{instance.instance_dir}/admin.sock"],
         input=b"""\
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
@@ -648,7 +648,7 @@ def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
     i1 = cluster.add_instance()
 
     data = subprocess.check_output(
-        [cluster.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
+        [cluster.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
         input=b"""\
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice"
@@ -667,7 +667,7 @@ Bye
     )
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "alice"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -751,7 +751,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
     cli = pexpect.spawn(
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -778,7 +778,7 @@ def test_picodata_tarantool(cluster: Cluster):
         )
 
     stdout = subprocess.check_output(
-        [cluster.binary_path, "tarantool", "--", test_lua],
+        [cluster.runtime.command, "tarantool", "--", test_lua],
         cwd=cluster.data_dir,
     )
     assert stdout == b"stdout check\n"
@@ -798,7 +798,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -850,7 +850,7 @@ def test_command_history_with_delimiter(cluster: Cluster):
 
 
 def test_picodata_version(cluster: Cluster):
-    stdout = subprocess.check_output([cluster.binary_path, "--version"])
+    stdout = subprocess.check_output([cluster.runtime.command, "--version"])
     lines = iter(stdout.splitlines())
     assert_starts_with(next(lines), b"picodata ")
     assert_starts_with(next(lines), b"tarantool (fork) version")
@@ -875,7 +875,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
+        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -903,7 +903,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i2.wait_online()
 
     process = subprocess.run(
-        [i2.binary_path, "admin", f"{i2.instance_dir}/admin.sock"],
+        [i2.runtime.command, "admin", f"{i2.instance_dir}/admin.sock"],
         stdin=open(insert_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -925,7 +925,7 @@ def test_admin_cli_exit_code(cluster: Cluster):
     i3.wait_online()
 
     process = subprocess.run(
-        [i3.binary_path, "admin", f"{i3.instance_dir}/admin.sock"],
+        [i3.runtime.command, "admin", f"{i3.instance_dir}/admin.sock"],
         stdin=open(plugin_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -956,7 +956,7 @@ def test_connect_cli_exit_code(cluster: Cluster):
     i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock"],
+        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock"],
         stdin=open(connect_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -985,7 +985,7 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     i1.wait_online()
 
     process = subprocess.run(
-        [i1.binary_path, "admin", f"{i1.instance_dir}/admin.sock", "--ignore-errors"],
+        [i1.runtime.command, "admin", f"{i1.instance_dir}/admin.sock", "--ignore-errors"],
         stdin=open(setup_sql, "r"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1046,7 +1046,7 @@ def test_picodata_status_basic(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1083,7 +1083,7 @@ def test_picodata_status_basic(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             i1_address,
@@ -1129,7 +1129,7 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
     if err:
         proc = subprocess.Popen(
             [
-                cluster.binary_path,
+                cluster.runtime.command,
                 "status",
                 "--peer",
                 inst_addr,
@@ -1146,7 +1146,7 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
     else:
         data = subprocess.check_output(
             [
-                cluster.binary_path,
+                cluster.runtime.command,
                 "status",
                 "--peer",
                 inst_addr,
@@ -1217,7 +1217,7 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1252,7 +1252,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     process = subprocess.run(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1273,7 +1273,7 @@ def test_picodata_status_exit_code(cluster: Cluster):
 
     process = subprocess.run(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1332,7 +1332,7 @@ def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             f"{i1_address}",
@@ -1368,7 +1368,7 @@ def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
 
     data = subprocess.check_output(
         [
-            cluster.binary_path,
+            cluster.runtime.command,
             "status",
             "--peer",
             i1_address,

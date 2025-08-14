@@ -9,7 +9,7 @@ import stat
 import sys
 import time
 import threading
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import yaml as yaml_lib  # type: ignore
@@ -18,6 +18,7 @@ import signal
 import subprocess
 import msgpack  # type: ignore
 from rand.params import generate_seed
+from random import randint
 from functools import reduce
 from typing import (
     Any,
@@ -47,6 +48,9 @@ from framework import ldap
 from framework.log import log
 from framework.constants import BASE_HOST
 from framework.port_distributor import PortDistributor
+from framework.rolling.registry import Registry
+from framework.rolling.runtime import Runtime
+from framework.rolling.version import Version as RelativeVersion
 
 pytest_plugins = "framework.sqltester"
 
@@ -607,7 +611,7 @@ def can_cause_fail(error: Exception):
 
 @dataclass
 class Instance:
-    binary_path: str
+    runtime: Runtime
     cwd: str
     color_code: str
 
@@ -645,6 +649,8 @@ class Instance:
     iproto_tls_cert: str | None = None
     iproto_tls_key: str | None = None
     iproto_tls_ca: str | None = None
+
+    registry: Optional[Registry] = None
 
     @property
     def instance_dir(self):
@@ -707,7 +713,7 @@ class Instance:
 
         # fmt: off
         return [
-            self.binary_path, "run",
+            self.runtime.command, "run",
             *([f"--cluster-name={self.cluster_name}"] if self.cluster_name else []),
             *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
@@ -1106,7 +1112,7 @@ class Instance:
                 daemon=True,
             ).start()
 
-    def fail_to_start(self, timeout: int = 10):
+    def fail_to_start(self, timeout: int = 10, rolling: bool = False):
         assert self.process is None, "process is already running"
         self.start()
         assert self.process
@@ -1121,7 +1127,11 @@ class Instance:
             assert rc != 0
         except Exception as e:
             self.kill()
-            raise e from e
+
+            if rolling:
+                return
+            else:
+                raise e from e
 
     def wait_process_stopped(self, timeout: int = 10):
         if self.process is None:
@@ -1717,6 +1727,30 @@ class Instance:
                 password = password[:-1]
         return password
 
+    def is_healthy(self) -> bool:
+        return self.current_state()["variant"] == "Online"
+
+    def is_ceased(self) -> bool:
+        try:
+            return not self.is_healthy()
+        except ProcessDead:
+            return True
+
+    def change_version(
+        self,
+        to: RelativeVersion,
+        fail: bool = False,
+    ) -> None:
+        print(
+            f"instance_name={self.name}: changing version [from={self.runtime.absolute_version}, to={to}], should fail? {fail}"
+        )
+
+        assert self.registry
+
+        self.terminate()
+        self.runtime = self.registry.get(to)
+        self.fail_to_start(rolling=True) if fail else self.start_and_wait()
+
     def fill_with_data(self):
         ddl = self.sql(
             """
@@ -1726,8 +1760,7 @@ class Instance:
                 quantity INTEGER,
                 PRIMARY KEY (nmbr))
             USING vinyl DISTRIBUTED BY (product)
-            IN TIER "default"
-            OPTION (TIMEOUT = 3.0);
+            IN TIER "default";
         """
         )
         assert ddl["row_count"] == 1
@@ -1744,18 +1777,17 @@ class Instance:
         )
         assert dml["row_count"] == 5
 
-        dcl = self.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0);")
+        dcl = self.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0)")
         assert dcl["row_count"] == 1
 
-        dcl = self.sql("GRANT ALTER ON TABLE deliveries TO toy;")
+        dcl = self.sql("GRANT ALTER ON TABLE deliveries TO toy")
         assert dcl["row_count"] == 1
 
         dcl = self.sql(
             """
             CREATE USER "andy"
             WITH PASSWORD 'P@ssw0rd'
-            USING chap-sha1
-            OPTION (TIMEOUT = 3.0);
+            USING chap-sha1;
         """
         )
         assert dcl["row_count"] == 1
@@ -1772,8 +1804,7 @@ class Instance:
                 PAGE_SIZE = 8192,
                 RANGE_SIZE = 1073741824,
                 RUN_COUNT_PER_LEVEL = 2
-            )
-            OPTION (TIMEOUT = 3.0);
+            );
         """
         )
         assert ddl["row_count"] == 1
@@ -1781,8 +1812,7 @@ class Instance:
         ddl = self.sql(
             """
             CREATE PROCEDURE proc (int, text, int)
-            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$
-            OPTION (TIMEOUT = 5.0);
+            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$;
         """
         )
         assert ddl["row_count"] == 1
@@ -1807,7 +1837,7 @@ CLUSTER_COLORS = (
 
 @dataclass
 class Cluster:
-    binary_path: str
+    runtime: Runtime
     id: str
     data_dir: str
     base_host: str
@@ -1822,6 +1852,8 @@ class Cluster:
     # so that we don't have to do expensive RPC to figure out an instance to
     # connect to
     peer: Instance | None = None
+
+    registry: Optional[Registry] = None
 
     def __repr__(self):
         ports = ",".join(str(i.port) for i in self.instances)
@@ -1844,7 +1876,7 @@ class Cluster:
         """
 
         # Generate default config.
-        data = subprocess.check_output([self.binary_path, "config", "default"])
+        data = subprocess.check_output([self.runtime.command, "config", "default"])
         default_config = data.decode()
         config_yaml_obj = yaml_lib.safe_load(default_config)
 
@@ -1908,7 +1940,7 @@ class Cluster:
             log.info(f"executing: `picodata restore` on instance {i} and backup path {i_backup_full_path}")
             try:
                 command = [
-                    self.binary_path,
+                    self.runtime.command,
                     "restore",
                     "--path",
                     i_backup_full_path,
@@ -1993,6 +2025,9 @@ class Cluster:
         self.set_service_password(service_password)
 
         for _ in range(instance_count):
+            print(
+                f"cluster_id={self.id}: deploying instance [version={self.runtime.absolute_version} ({self.runtime.relative_version})]"
+            )
             self.add_instance(
                 wait_online=False,
                 tier=tier,
@@ -2086,7 +2121,7 @@ class Cluster:
         instance_dir = self.choose_instance_dir(name or str(port))
 
         instance = Instance(
-            binary_path=self.binary_path,
+            runtime=self.runtime,
             cwd=self.data_dir,
             cluster_name=self.id,
             name=name,
@@ -2105,6 +2140,7 @@ class Cluster:
             tier=tier,
             config_path=self.config_path,
             audit=audit,
+            registry=self.registry,
         )
 
         if service_password:
@@ -2472,6 +2508,54 @@ class Cluster:
 
         return Path(candidate)
 
+    def is_healthy(
+        self,
+        exclude: List[Instance] = list(),
+    ) -> bool:
+        for instance in self.instances:
+            if instance not in exclude:
+                if instance.is_ceased() and not instance.is_healthy():
+                    return False
+        return True
+
+    def is_ceased(
+        self,
+        exclude: List[Instance] = list(),
+    ) -> bool:
+        for instance in self.instances:
+            if instance not in exclude:
+                if not instance.is_ceased() and instance.is_healthy():
+                    return False
+        return True
+
+    def change_version(
+        self,
+        to: RelativeVersion,
+        exclude: List[Instance] = list(),
+        fail: bool = False,
+    ) -> None:
+        print(
+            f"cluster_id={self.id}: changing version [from={self.runtime.absolute_version}, to={to}], should fail? {fail}"
+        )
+
+        assert self.registry
+        self.runtime = self.registry.get(to)
+
+        for instance in self.instances:
+            if instance not in exclude:
+                instance.change_version(to, fail)
+
+    def pick_random_instance(
+        self,
+        exclude: List[Instance] = list(),
+    ) -> Instance:
+        index = randint(0, len(self.instances) - 1)
+        pick = self.instances[index]
+        if pick not in exclude:
+            return pick
+        else:
+            return self.pick_random_instance(exclude)
+
 
 def picodata_expel(
     *, peer: Instance, target: Instance, password_file: str | None, force: bool = False, timeout: int = 30
@@ -2489,7 +2573,7 @@ def picodata_expel(
 
     # fmt: off
     command: list[str] = [
-        peer.binary_path, "expel",
+        peer.runtime.command, "expel",
         "--peer", f"pico_service@{peer.iproto_listen}",
         "--cluster-name", target.cluster_name or "",
         "--password-file", password_file,
@@ -2623,11 +2707,11 @@ def target() -> str:
 
 
 @pytest.fixture(scope="session")
-def binary_path_fixt(cargo_build_fixt: None) -> str:
+def binary_path_fixt(cargo_build_fixt: None) -> Runtime:
     return binary_path()
 
 
-def binary_path() -> str:
+def binary_path() -> Runtime:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(
         [
@@ -2687,7 +2771,12 @@ def binary_path() -> str:
     for dst_dir in destinations:
         copy_plugin_library(cargo_target_dir, dst_dir, "libtestplug")
 
-    return binary_path
+    repository = Repository()
+
+    absolute_version = repository.current_version()
+    relative_version = RelativeVersion.CURRENT
+    runner_entity = Path(binary_path)
+    return Runtime(absolute_version, relative_version, runner_entity)
 
 
 # TODO: implement a proper plugin installation routine for tests
@@ -2775,7 +2864,7 @@ def cluster_factory(binary_path_fixt, class_tmp_dir, cluster_names, port_distrib
         # see how it's done in def binary_path()
         share_dir = os.getcwd() + "/test/testplug"
         cluster = Cluster(
-            binary_path=binary_path_fixt,
+            runtime=binary_path_fixt,
             id=next(cluster_names),
             data_dir=class_tmp_dir,
             share_dir=share_dir,
@@ -2802,7 +2891,7 @@ def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
     os.makedirs(cluster2_dir, exist_ok=True)
 
     cluster = Cluster(
-        binary_path=binary_path_fixt,
+        runtime=binary_path_fixt,
         id=next(cluster_names),
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
@@ -2819,7 +2908,7 @@ def second_cluster(binary_path_fixt, tmpdir, cluster_names, port_distributor):
 def compat_cluster(binary_path_fixt, class_tmp_dir) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying backwards compatibility test clusters."""
     cluster = Cluster(
-        binary_path=binary_path_fixt,
+        runtime=binary_path_fixt,
         id="demo",  # should be in sync with snapshot generation script
         data_dir=class_tmp_dir,
         base_host=BASE_HOST,  # should be in sync with snapshot generation script
@@ -3356,3 +3445,63 @@ def compat_instance(compat_cluster: Cluster) -> Instance:
     instance = compat_cluster.add_instance(wait_online=False)
     os.makedirs(instance.instance_dir)
     return instance
+
+
+class Repository:
+    root: Path
+    info: git.Git
+    repo: git.Repo
+    tags: List[Version]  # descending order
+
+    def __init__(self) -> None:
+        self.root = Path(os.getcwd())
+
+        self.info = git.Git(self.root)
+        self.repo = git.Repo(self.root)
+
+        self.tags = list()
+        for tag in map(str, self.repo.tags):
+            try:
+                version = Version(tag)
+                if version.major >= 25:
+                    self.tags.append(version)
+            except InvalidVersion:
+                pass
+        self.tags.sort(reverse=True)
+
+    def current_version(self) -> Version:
+        dirty_version = self.info.describe()
+        if not dirty_version:
+            error = "no git describe info"
+            raise ValueError(error)
+
+        version_parts = dirty_version.split("-")
+        current_version = Version(version_parts[0])
+        return current_version
+
+    def all_versions(self) -> List[Version]:
+        return self.tags
+
+    def rolling_versions(self) -> List[Version]:
+        """
+        TODO: ?.
+        """
+
+        seen = set()
+        result = list()
+
+        for version in self.all_versions():
+            # NOTE: versions list is descending, and for rolling tests we ignore
+            # versions that does not follow rolling upgrade guarantees.
+            if version.major < 25:
+                break
+
+            # NOTE: we only need latest versions by patch of major with minor, so
+            # as long as our versions list is descending, we can key by major and
+            # minor, appending to the seen versions set to filter properly.
+            key = (version.major, version.minor)
+            if key not in seen:
+                seen.add(key)
+                result.append(version)
+
+        return result

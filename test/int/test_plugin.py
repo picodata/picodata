@@ -408,7 +408,7 @@ def init_dummy_plugin(
     os.makedirs(plugin_dir)
 
     if not cargo_target_dir:
-        cargo_target_dir = Path(cluster.binary_path).parent
+        cargo_target_dir = Path(cluster.runtime.command).parent
 
     # Copy plugin library
     copy_plugin_library(cargo_target_dir, plugin_dir, library_name)
