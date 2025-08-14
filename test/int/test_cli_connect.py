@@ -8,6 +8,7 @@ from pathlib import Path
 from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
 
 from framework.ldap import is_glauth_available, LdapServer
+from framework.rolling.runtime import Runtime
 
 
 @pytest.fixture
@@ -20,7 +21,7 @@ def i1(cluster: Cluster) -> Instance:
 
 def test_connect_testuser(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -39,7 +40,7 @@ def test_connect_testuser(i1: Instance):
 
 def test_connect_user_host_port(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=[
             "connect",
             f"testuser@{i1.host}:{i1.port}",
@@ -63,7 +64,7 @@ def test_connect_user_host_port(i1: Instance):
 
 def test_connect_guest(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -84,7 +85,7 @@ def test_connect_user_with_role(i1: Instance):
     assert acl["row_count"] == 1
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -103,7 +104,7 @@ def test_connect_user_with_role(i1: Instance):
 
 def test_no_pass(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "user"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -120,7 +121,7 @@ def test_no_pass(i1: Instance):
 
 def test_wrong_pass(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -136,10 +137,10 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connection_refused(binary_path_fixt: str):
+def test_connection_refused(binary_path_fixt: Runtime):
     eprint("")
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["connect", "127.0.0.1:0", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -163,7 +164,7 @@ def test_connection_refused(binary_path_fixt: str):
 
 def test_connect_auth_type_ok(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -182,7 +183,7 @@ def test_connect_auth_type_ok(i1: Instance):
 
 def test_connect_auth_type_wrong(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "ldap"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -198,7 +199,7 @@ def test_connect_auth_type_wrong(i1: Instance):
 
 def test_connect_auth_type_md5(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "md5"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -239,7 +240,7 @@ def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
     #
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=[
             "connect",
             f"{i1.host}:{i1.port}",
@@ -296,7 +297,7 @@ def test_connect_testuser_tls(cluster: Cluster, cert_auth_enabled):
     if cert_auth_enabled:
         args.append("--tls-auth")
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=args,
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -310,9 +311,9 @@ def test_connect_testuser_tls(cluster: Cluster, cert_auth_enabled):
     cli.expect_exact("sql> ")
 
 
-def test_connect_auth_type_unknown(binary_path_fixt: str):
+def test_connect_auth_type_unknown(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["connect", "127.0.0.1:0", "-u", "testuser", "-a", "deadbeef"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -324,9 +325,9 @@ def test_connect_auth_type_unknown(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_enoent(binary_path_fixt: str):
+def test_admin_enoent(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -339,9 +340,9 @@ def test_admin_enoent(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_econnrefused(binary_path_fixt: str):
+def test_admin_econnrefused(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["admin", "/dev/null"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -359,9 +360,9 @@ def test_admin_econnrefused(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_invalid_path(binary_path_fixt: str):
+def test_admin_invalid_path(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["admin", "./[][]"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -374,9 +375,9 @@ def test_admin_invalid_path(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_empty_path(binary_path_fixt: str):
+def test_admin_empty_path(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["admin", ""],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -400,7 +401,7 @@ def test_admin_with_password(cluster: Cluster):
     i1.wait_online()
 
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=[
             "connect",
             f"{i1.host}:{i1.port}",
@@ -442,7 +443,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -471,9 +472,9 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_empty_password_path(binary_path_fixt: str):
+def test_connect_with_empty_password_path(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=["connect", "127.0.0.1:3301", "--password-file", "", "-u", "trash"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -485,9 +486,9 @@ def test_connect_with_empty_password_path(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_wrong_password_path(binary_path_fixt: str):
+def test_connect_with_wrong_password_path(binary_path_fixt: Runtime):
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=[
             "connect",
             "127.0.0.1:3301",
@@ -506,13 +507,13 @@ def test_connect_with_wrong_password_path(binary_path_fixt: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
+def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: Runtime):
     password_path = i1.instance_dir / "password"
     with open(password_path, "w") as f:
         f.write("Testpa55")
 
     cli = pexpect.spawn(
-        command=binary_path_fixt,
+        command=binary_path_fixt.command,
         args=[
             "connect",
             f"{i1.host}:{i1.port}",
@@ -536,7 +537,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
 
 def test_connect_connection_info_and_help(i1: Instance):
     cli = pexpect.spawn(
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -572,7 +573,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.instance_dir,
-        command=i1.binary_path,
+        command=i1.runtime.command,
         args=["admin", socket_path],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -592,7 +593,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
 def test_connect_with_incorrect_url(cluster: Cluster):
     def connect_to(address):
         cli = pexpect.spawn(
-            command=cluster.binary_path,
+            command=cluster.runtime.command,
             args=["connect", address],
             encoding="utf-8",
             timeout=CLI_TIMEOUT,
@@ -621,7 +622,7 @@ def test_connect_with_incorrect_url(cluster: Cluster):
 def test_connect_timeout(cluster: Cluster):
     def connect_to(address, timeout=None):
         cli = pexpect.spawn(
-            command=cluster.binary_path,
+            command=cluster.runtime.command,
             args=[
                 "connect",
                 address,

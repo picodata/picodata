@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     try:
         cluster = Cluster(
-            binary_path=conftest.binary_path(),
+            runtime=conftest.binary_path(),
             id="demo",  # default cluster name
             data_dir=str(tmpdir),
             base_host=conftest.BASE_HOST,

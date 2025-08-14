@@ -22,7 +22,7 @@ def instance_with_gostech_audit(
 ) -> Generator[Tuple[Instance, AuditServer], None, None]:
     audit_server = AuditServer(port_distributor.get())
     audit_server.start()
-    unstarted_instance.audit = audit_server.cmd(unstarted_instance.binary_path)
+    unstarted_instance.audit = audit_server.cmd(unstarted_instance.runtime.command)
     unstarted_instance.start_and_wait()
     yield (unstarted_instance, audit_server)
     unstarted_instance.terminate()
@@ -252,9 +252,9 @@ def test_gostech_join_expel_instance(cluster: Cluster, port_distributor: PortDis
     audit_server = AuditServer(port_distributor.get())
     audit_server.start()
 
-    [i1] = cluster.deploy(instance_count=1, audit=audit_server.cmd(cluster.binary_path))
+    [i1] = cluster.deploy(instance_count=1, audit=audit_server.cmd(cluster.runtime.command))
 
-    i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.binary_path))
+    i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.runtime.command))
     counter = i1.governor_step_counter()
     cluster.expel(i2, force=True)
     timeout = 60 if sys.platform == "darwin" else 30

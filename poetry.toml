@@ -1,2 +1,5 @@
 [keyring]
 enabled = false
+
+[virtualenvs]
+in-project = true
