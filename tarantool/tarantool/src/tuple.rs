@@ -1749,8 +1749,10 @@ impl TupleBuilder {
     #[inline]
     pub fn append(&mut self, data: &[u8]) {
         if self.is_rust_allocated && self.buffer.is_empty() {
-            self.buffer
-                .reserve(Self::TUPLE_HEADER_PADDING.len() + data.len());
+            if self.buffer.capacity() == 0 {
+                self.buffer
+                    .reserve(Self::TUPLE_HEADER_PADDING.len() + data.len());
+            }
             self.buffer.extend_from_slice(Self::TUPLE_HEADER_PADDING);
         }
         self.buffer.extend_from_slice(data);
