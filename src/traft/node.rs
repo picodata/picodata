@@ -2928,7 +2928,7 @@ impl MainLoop {
         };
 
         Self {
-            fiber_id: loop_start!("raft_main_loop", Self::iter_fn, state),
+            fiber_id: loop_start!("raft_main_loop", Self::raft_main_loop, state),
             loop_waker: loop_waker_tx,
         }
     }
@@ -2947,7 +2947,7 @@ impl MainLoop {
         let _ = self.loop_waker.send(());
     }
 
-    async fn iter_fn(state: &mut MainLoopState) -> ControlFlow<()> {
+    async fn raft_main_loop(state: &mut MainLoopState) -> ControlFlow<()> {
         let _ = state.loop_waker.changed().timeout(Self::TICK).await;
 
         // FIXME: potential deadlock - can't use sync mutex in async fn

@@ -26,6 +26,7 @@ with the `YY.MINOR.MICRO` scheme.
   immediately breaks the connection, making timeouts redundant. This fixes an issue 
   where long-running plugin commands could be incorrectly aborted due to the 
   artificial timeout. 
+- Fixed restart the whole cluster at once taking too long.
 
 ## [25.3.1] - 2025-07-25
 

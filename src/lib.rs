@@ -1475,6 +1475,16 @@ fn postjoin(
     let mut retry_timeout = Duration::from_millis(250);
     let max_retry_timeout = Duration::from_secs(5);
 
+    // When the whole cluster is restarting we use a smaller election timeout so
+    // that we don't wait too long.
+    const BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(1);
+    // Use a random factor so that hopefully everybody doesn't start the
+    // election at the same time.
+    let random_factor = 1.0 + rand::random::<f64>();
+    let election_timeout =
+        Duration::from_secs_f64(BOOTSTRAP_ELECTION_TIMEOUT.as_secs_f64() * random_factor);
+    let mut next_election_try = fiber::clock().saturating_add(election_timeout);
+
     // Activates instance
     loop {
         let now = fiber::clock();
@@ -1522,6 +1532,28 @@ fn postjoin(
                 Debug,
                 "leader address is still unknown, retrying in {timeout:?}"
             );
+
+            // Leader has been unknown for too long, try to become the new leader
+            if fiber::clock() >= next_election_try {
+                // Normally we should get here only if the whole cluster of
+                // several instances is restarting at the same time, because
+                // otherwise the raft leader should be known and the waking up
+                // instance should find out about them via raft_main_loop.
+                //
+                // Note that everybody will not start the election at the same
+                // time because of `random_factor` applied to the
+                // `election_timeout` above.
+                //
+                // Also note that even if the raft leader is chosen in a cluster
+                // a mulfanctioning instance trying to become the new leader
+                // will not affect the healthy portion of the cluster thanks to
+                // the pre_vote extension to the raft algorithm which is used in
+                // picodata.
+                tlog!(Info, "leader not known for too long, trying to promote");
+                node.campaign_and_yield().ok();
+                next_election_try = fiber::clock().saturating_add(election_timeout);
+            }
+
             fiber::sleep(timeout);
             continue;
         };
