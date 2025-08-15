@@ -1,5 +1,30 @@
 use crate::backend::sql::space::{TableGuard, ADMIN_ID};
+use ahash::AHashMap;
+
+use crate::{
+    error,
+    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name},
+    ir::{
+        node::{
+            expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
+            Update, Values, ValuesRow,
+        },
+        types::DerivedType,
+    },
+};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use std::{
+    any::Any,
+    cmp::Ordering,
+    collections::HashMap,
+    rc::Rc,
+    str::{from_utf8, FromStr},
+    sync::OnceLock,
+};
+use tarantool::space::Space;
+
 use crate::executor::protocol::{EncodedVTables, SchemaInfo};
+use crate::executor::Port;
 use crate::ir::node::Node;
 use crate::ir::value::{EncodedValue, MsgPackValue};
 use crate::{
@@ -23,39 +48,16 @@ use crate::{
         Plan,
     },
 };
-use crate::{
-    error,
-    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name, Port},
-    ir::{
-        node::{
-            expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
-            Update, Values, ValuesRow,
-        },
-        types::DerivedType,
-    },
-};
-use ahash::AHashMap;
 use rmp::encode::{write_array_len, write_map_len, write_str};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::{
-    any::Any,
-    cmp::Ordering,
-    collections::HashMap,
-    io::Write,
-    rc::Rc,
-    str::{from_utf8, FromStr},
-    sync::OnceLock,
-};
+use std::io::Write;
 use tarantool::msgpack::rmp::{self, decode::RmpRead};
 use tarantool::session::with_su;
-use tarantool::space::Space;
 use tarantool::tuple::Tuple;
 
 use self::vshard::CacheInfo;
 
 use super::{Metadata, Router, Vshard};
 
-pub mod proxy;
 pub mod vshard;
 
 /// Transform:

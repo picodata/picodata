@@ -33,14 +33,12 @@ use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
 use crate::BoundStatement;
 use rmp::encode::write_str;
-use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::io::Write;
 use std::rc::Rc;
-use tarantool::error::Error as TntError;
 use tarantool::msgpack;
-use tarantool::sql::Statement;
+use vdbe::{SqlError, SqlStmt};
 
 pub mod bucket;
 pub mod engine;
@@ -49,6 +47,7 @@ pub mod ir;
 pub mod lru;
 pub mod protocol;
 pub mod result;
+pub mod vdbe;
 pub mod vtable;
 
 impl Plan {
@@ -85,19 +84,13 @@ pub enum PortType {
 pub trait Port<'p>: Write {
     fn add_mp(&mut self, data: &[u8]);
 
-    fn process_sql<IN>(&mut self, sql: &str, params: &IN, max_vdbe: u64) -> Result<(), TntError>
-    where
-        IN: Serialize,
-        Self: Sized;
-
-    fn process_stmt<IN>(
+    fn process_stmt(
         &mut self,
-        stmt: &Statement,
-        params: &IN,
+        stmt: &mut SqlStmt,
+        params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), TntError>
+    ) -> Result<(), SqlError>
     where
-        IN: Serialize,
         Self: Sized;
 
     fn iter(&self) -> impl Iterator<Item = &[u8]>

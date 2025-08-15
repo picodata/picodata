@@ -1,3 +1,4 @@
+use crate::executor::vdbe::SqlError;
 use crate::ir::types::UnrestrictedType;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_type_system::error::Error as TypeSystemError;
@@ -351,6 +352,8 @@ pub enum SbroadError {
     UseOfBothParamsStyles,
     GlobalDml(SmolStr),
     DispatchError(SmolStr),
+    // Can't use vdbe::SqlError because it doesn't implement PartialEq :(
+    VdbeError(SmolStr),
     Other(SmolStr),
 }
 
@@ -391,7 +394,9 @@ impl fmt::Display for SbroadError {
             SbroadError::TypeSystemError(err) => {
                 format_smolstr!("{err}")
             }
-            SbroadError::DispatchError(s) | SbroadError::Other(s) => s.clone(),
+            SbroadError::DispatchError(s) | SbroadError::Other(s) | SbroadError::VdbeError(s) => {
+                s.clone()
+            }
         };
 
         write!(f, "{p}")
@@ -429,5 +434,11 @@ impl From<TypeError> for SbroadError {
 impl From<TypeSystemError> for SbroadError {
     fn from(error: TypeSystemError) -> Self {
         SbroadError::TypeSystemError(error)
+    }
+}
+
+impl From<SqlError> for SbroadError {
+    fn from(value: SqlError) -> Self {
+        Self::VdbeError(value.to_smolstr())
     }
 }

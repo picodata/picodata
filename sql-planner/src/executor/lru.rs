@@ -23,11 +23,11 @@ pub trait Cache<Key, Value> {
     /// - Internal error (should never happen).
     fn get(&mut self, key: &Key) -> Result<Option<&Value>, SbroadError>;
 
-    /// Inserts a key-value pair into the cache.
+    /// Inserts a key-value pair into the cache, returning removed one.
     ///
     /// # Errors
     /// - Internal error (should never happen).
-    fn put(&mut self, key: Key, value: Value) -> Result<(), SbroadError>;
+    fn put(&mut self, key: Key, value: Value) -> Result<Option<Value>, SbroadError>;
 }
 
 pub struct LRUCache<Key, Value>
@@ -48,6 +48,14 @@ where
         self.lru.cap().into()
     }
 
+    pub fn len(&self) -> usize {
+        self.lru.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lru.is_empty()
+    }
+
     pub fn adjust_capacity(&mut self, target_capacity: usize) -> Result<(), SbroadError> {
         debug_assert!(target_capacity > 0);
 
@@ -62,6 +70,20 @@ where
         self.lru.resize(target_capacity.try_into().unwrap());
 
         Ok(())
+    }
+
+    pub fn get_mut(&mut self, key: &Key) -> Option<&mut Value> {
+        self.lru.get_mut(key)
+    }
+
+    pub fn pop(&mut self) -> Result<Option<Value>, SbroadError> {
+        if let Some((k, mut v)) = self.lru.pop_lru() {
+            if let Some(ref f) = self.evict_fn {
+                f(&k, &mut v)?;
+            }
+            return Ok(Some(v));
+        }
+        Ok(None)
     }
 }
 
@@ -86,13 +108,14 @@ where
         Ok(self.lru.get(key))
     }
 
-    fn put(&mut self, key: Key, value: Value) -> Result<(), SbroadError> {
+    fn put(&mut self, key: Key, value: Value) -> Result<Option<Value>, SbroadError> {
         if let Some((k, mut v)) = self.lru.push(key, value) {
             if let Some(ref f) = self.evict_fn {
                 f(&k, &mut v)?;
             }
+            return Ok(Some(v));
         }
-        Ok(())
+        Ok(None)
     }
 }
 

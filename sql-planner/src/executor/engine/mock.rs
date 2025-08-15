@@ -32,13 +32,12 @@ use rand::random;
 use serde::{Deserialize, Serialize};
 use std::io::{Result as IoResult, Write};
 use std::rc::Rc;
-use tarantool::error::Error as TntError;
 use tarantool::space::SpaceId;
-use tarantool::sql::Statement;
 
 use super::helpers::vshard::prepare_rs_to_ir_map;
 use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
 use super::{get_builtin_functions, Metadata, QueryCache};
+use crate::executor::vdbe::{SqlError, SqlStmt};
 
 pub const TEMPLATE: &str = "test";
 
@@ -76,22 +75,13 @@ impl Port<'_> for PortMocked {
         self.tuples.push(data.to_vec());
     }
 
-    fn process_sql<IN>(&mut self, _sql: &str, _params: &IN, _max_vdbe: u64) -> Result<(), TntError>
-    where
-        IN: Serialize,
-        Self: Sized,
-    {
-        unreachable!();
-    }
-
-    fn process_stmt<IN>(
+    fn process_stmt(
         &mut self,
-        _stmt: &Statement,
-        _params: &IN,
+        _stmt: &mut SqlStmt,
+        _params: &[Value],
         _max_vdbe: u64,
-    ) -> Result<(), TntError>
+    ) -> Result<(), SqlError>
     where
-        IN: Serialize,
         Self: Sized,
     {
         unreachable!();

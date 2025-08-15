@@ -5,7 +5,6 @@ use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::backend::sql::space::ADMIN_ID;
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::helpers::proxy::prepare;
 use sql::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
     init_local_update_tuple_builder, init_sharded_update_tuple_builder, pk_name, populate_table,
@@ -16,6 +15,7 @@ use sql::executor::engine::{QueryCache, StorageCache, Vshard};
 use sql::executor::ir::QueryType;
 use sql::executor::protocol::{OptionalData, RequiredData};
 use sql::executor::result::ConsumerResult;
+use sql::executor::vdbe::SqlStmt;
 use sql::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
 use sql::executor::{Port, PortType};
 use sql::ir::node::relational::Relational;
@@ -28,9 +28,9 @@ use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
+use tarantool::session::with_su;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
 use tarantool::transaction::transaction;
-use tarantool::{session::with_su, sql::Statement};
 
 const LINE_WIDTH: usize = 80;
 
@@ -192,13 +192,9 @@ where
         table_create(&table_name, &pk_name, meta)?;
     }
 
-    let encoded_params = encoded_params(info.params());
-    with_su(ADMIN_ID, || {
-        port.process_sql(&explain, &encoded_params, info.sql_vdbe_opcode_max())
-    })?
-    .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
-
-    Ok(())
+    let mut stmt = SqlStmt::compile(&explain)?;
+    port.process_stmt(&mut stmt, info.params(), info.sql_vdbe_opcode_max())
+        .map_err(Into::into)
 }
 
 fn plan_execute<'p, R: QueryCache>(
@@ -286,7 +282,7 @@ fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<()
 
 // Requires the cache to be locked.
 fn stmt_execute<'p>(
-    stmt: &Statement,
+    stmt: &mut SqlStmt,
     info: &mut impl RequiredPlanInfo,
     motion_ids: &[NodeId],
     port: &mut impl Port<'p>,
@@ -297,12 +293,8 @@ fn stmt_execute<'p>(
         for motion_id in motion_ids {
             populate_table(motion_id, info.id(), &vtables)?;
         }
-        let encoded_params = encoded_params(info.params());
-        with_su(ADMIN_ID, || {
-            port.process_stmt(stmt, &encoded_params, info.sql_vdbe_opcode_max())
-        })?
-        .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
-        Ok(())
+        port.process_stmt(stmt, info.params(), info.sql_vdbe_opcode_max())
+            .map_err(Into::into)
     };
 
     let res = pcall();
@@ -347,55 +339,21 @@ where
         table_create(&table_name, &pk_name, meta)?;
     }
 
-    match prepare(local_sql.clone()) {
-        Ok(stmt) => {
-            cache_guarded.put(
-                info.id().clone(),
-                stmt,
-                info.schema_info(),
-                motion_ids.clone(),
-            )?;
-
-            let (stmt, motion_ids) = cache_guarded.get(info.id())?.unwrap();
-            stmt_execute(stmt, info, motion_ids, port)?;
-            return Ok(());
-        }
-        Err(e) => tlog!(
+    let stmt = SqlStmt::compile(&local_sql).inspect_err(|e| {
+        tlog!(
             Warning,
             "Failed to compile statement for the query '{local_sql}': {e}"
-        ),
-    }
-    // Possibly the statement is correct, but doesn't fit into Tarantool's prepared
-    // statements cache (`sql_cache_size`). So we try to execute it bypassing the cache.
+        )
+    })?;
+    cache_guarded.put(
+        info.id().clone(),
+        stmt,
+        info.schema_info(),
+        motion_ids.clone(),
+    )?;
 
-    // We need the cache to be locked though we are not going to use it. If we don't lock it,
-    // the prepared statement made from our pattern can be inserted into the cache by some
-    // other fiber because we have removed some big statements with LRU and tarantool cache
-    // has enough space to store this statement. And it can cause races in the temporary
-    // tables.
-
-    let vtables = info.extract_data();
-    let mut pcall = || -> Result<(), SbroadError> {
-        let motion_ids = vtables.keys().copied().collect::<Vec<NodeId>>();
-        for motion_id in motion_ids.iter() {
-            populate_table(motion_id, info.id(), &vtables)?;
-        }
-        let encoded_params = encoded_params(info.params());
-        with_su(ADMIN_ID, || {
-            port.process_sql(&local_sql, &encoded_params, info.sql_vdbe_opcode_max())
-        })?
-        .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
-        Ok(())
-    };
-    let res = pcall();
-    truncate_tables(&motion_ids, info.id());
-    res?;
-    Ok(())
-}
-
-#[inline(always)]
-fn encoded_params(params: &[Value]) -> Vec<EncodedValue<'_>> {
-    params.iter().map(EncodedValue::from).collect()
+    let (stmt, motion_ids) = cache_guarded.get(info.id())?.unwrap();
+    stmt_execute(stmt, info, motion_ids, port)
 }
 
 /// Helper function to materialize a virtual table on storage.

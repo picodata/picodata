@@ -288,10 +288,10 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
         Ok(value)
     }
 
-    fn put(&mut self, key: SmolStr, value: Rc<Plan>) -> Result<(), SbroadError> {
-        self.inner.put(key, value)?;
+    fn put(&mut self, key: SmolStr, value: Rc<Plan>) -> Result<Option<Rc<Plan>>, SbroadError> {
+        let removed = self.inner.put(key, value)?;
         ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.inc();
-        Ok(())
+        Ok(removed)
     }
 }
 

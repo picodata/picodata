@@ -1823,12 +1823,11 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
-    /// Tarantool statement cache size capacity in bytes.
+    /// Picodata statement cache size capacity in bytes.
     ///
     /// Corresponds to `box.cfg.sql_cache_size`.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 5242880)]
-    #[introspection(scope = tier)]
     pub sql_storage_cache_size_max: u64,
 
     /// The maximum number of statements that Picodata
@@ -2125,7 +2124,7 @@ pub fn validate_alter_system_parameter_value<'v>(
             .integer()
             .expect("invalid value for sql_storage_cache_size_max");
 
-        let cache_size = i32::try_from(cache_size)
+        i32::try_from(cache_size)
             .ok()
             .filter(|&x| x >= 1)
             .ok_or_else(|| {
@@ -2135,19 +2134,6 @@ pub fn validate_alter_system_parameter_value<'v>(
                     i32::MAX,
                 ))
             })?;
-
-        // Retrieve the current cache size
-        // to prevent setting a value smaller than the current cache size.
-        let lua = tarantool::lua_state();
-        let current_cache_size: i32 = lua
-            .eval("return box.info.sql().cache.size")
-            .expect("sql_cache_size should be available");
-
-        if cache_size < current_cache_size {
-            return Err(Error::other(format!(
-                "invalid value for '{name}': value must be greater than the current cache size {current_cache_size}",
-            )));
-        }
     }
 
     if name == system_parameter_name!(sql_storage_cache_count_max) {
@@ -2325,7 +2311,6 @@ pub fn apply_parameter(
         (system_parameter_name!(memtx_checkpoint_count),        "checkpoint_count"),
         (system_parameter_name!(memtx_checkpoint_interval),     "checkpoint_interval"),
         (system_parameter_name!(iproto_net_msg_max),            "net_msg_max"),
-        (system_parameter_name!(sql_storage_cache_size_max),    "sql_cache_size"),
     ];
 
     if let Some((_, cfg_parameter)) = MAPPING.iter().find(|(n, _)| *n == name) {
@@ -2361,8 +2346,24 @@ pub fn apply_parameter(
             let mut res = Ok(());
             if let Some(cache) = cache.get() {
                 let mut cache = cache.lock();
-                cache.capacity = value;
-                res = cache.cache.adjust_capacity(value);
+                res = cache.adjust_count_max(value);
+            } else {
+                // Statement cache will be initialized later with the correct capacity
+            }
+            res
+        })?;
+    } else if name == system_parameter_name!(sql_storage_cache_size_max) {
+        let value = v.as_u64().expect("type is already checked") as _;
+
+        STATEMENT_CACHE.with(|cache| {
+            // Yield might happen, but apply_parameter is not called from transaction.
+            // lock() on cache might happen many times during executing sql, but
+            // it doesn't take for long.
+            // Also changing capacity is a very rare operation, so it shouldn't be a problem.
+            let mut res = Ok(());
+            if let Some(cache) = cache.get() {
+                let mut cache = cache.lock();
+                res = cache.adjust_size_max(value);
             } else {
                 // Statement cache will be initialized later with the correct capacity
             }

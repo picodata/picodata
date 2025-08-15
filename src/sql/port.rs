@@ -4,7 +4,6 @@ use crate::sql::lua::{
 };
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::write_bool;
-use serde::Serialize;
 use sql::executor::{Port as SqlPort, PortType as SqlPortType};
 use sql_protocol::encode::{
     dispatch_write_dml_response, dispatch_write_dql_response, dispatch_write_explain_response,
@@ -14,11 +13,11 @@ use sql_protocol::encode::{
 use std::io::{Cursor, Error as IoError, Result as IoResult, Write};
 use std::os::raw::c_int;
 use std::ptr::NonNull;
-use tarantool::error::Error as TntError;
 use tarantool::ffi::sql::{obuf_append, Obuf, Port, PortC, PortVTable};
-use tarantool::sql::{sql_execute_into_port, Statement};
 
 use super::lua::{dispatch_query_plan_dump_lua, escape_bytes};
+use sql::executor::vdbe::{SqlError, SqlStmt};
+use sql::ir::value::Value;
 
 /// The response of dump_mp callback is used in the IPROTO body
 /// to encode the length of the IPTOTO_DATA value:
@@ -177,27 +176,16 @@ impl SqlPort<'_> for PicoPortOwned {
         unsafe { self.port.as_mut_port_c().add_mp(data) }
     }
 
-    fn process_sql<IN>(&mut self, sql: &str, params: &IN, max_vdbe: u64) -> Result<(), TntError>
-    where
-        IN: Serialize,
-        Self: Sized,
-    {
-        sql_execute_into_port(sql, params, max_vdbe, self.port_c_mut())?;
-        Ok(())
-    }
-
-    fn process_stmt<IN>(
+    fn process_stmt(
         &mut self,
-        stmt: &Statement,
-        params: &IN,
+        stmt: &mut SqlStmt,
+        params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), TntError>
+    ) -> Result<(), SqlError>
     where
-        IN: Serialize,
         Self: Sized,
     {
-        stmt.execute_into_port(params, max_vdbe, self.port_c_mut())?;
-        Ok(())
+        stmt.execute(params, max_vdbe, self.port_c_mut())
     }
 
     fn iter(&self) -> impl Iterator<Item = &[u8]> {
@@ -248,27 +236,16 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
         unsafe { self.port.add_mp(data) };
     }
 
-    fn process_sql<IN>(&mut self, sql: &str, params: &IN, max_vdbe: u64) -> Result<(), TntError>
-    where
-        IN: Serialize,
-        Self: Sized,
-    {
-        sql_execute_into_port(sql, params, max_vdbe, self.port)?;
-        Ok(())
-    }
-
-    fn process_stmt<IN>(
+    fn process_stmt(
         &mut self,
-        stmt: &Statement,
-        params: &IN,
+        stmt: &mut SqlStmt,
+        params: &[Value],
         max_vdbe: u64,
-    ) -> Result<(), TntError>
+    ) -> Result<(), SqlError>
     where
-        IN: Serialize,
         Self: Sized,
     {
-        stmt.execute_into_port(params, max_vdbe, self.port)?;
-        Ok(())
+        stmt.execute(params, max_vdbe, self.port)
     }
 
     fn iter(&self) -> impl Iterator<Item = &[u8]> {

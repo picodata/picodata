@@ -529,3 +529,15 @@ DROP TABLE t;
 CREATE TABLE t(a INT PRIMARY KEY, b INT, c TEXT);
 CREATE INDEX ta ON t (a);
 CREATE INDEX tb ON t (b);
+
+-- TEST: put-query-in-the-storage-cache-to-test-collisions
+-- SQL:
+SELECT * FROM (SELECT 1 a);
+-- EXPECTED:
+1
+
+-- TEST: storage-cache-collision-is-not-an-error
+-- SQL:
+SELECT a FROM (SELECT 1 a);
+-- EXPECTED:
+1

@@ -1763,7 +1763,8 @@ fn postjoin(
 
     // Initialize SQL statement cache
     let capacity = alter_system_parameters.borrow().sql_storage_cache_count_max;
-    sql::storage::init_statement_cache(capacity as _);
+    let size = alter_system_parameters.borrow().sql_storage_cache_size_max;
+    sql::storage::init_statement_cache(capacity as _, size as _);
 
     setup_metrics_and_start_http_server(config, &storage, &raft_storage)?;
 

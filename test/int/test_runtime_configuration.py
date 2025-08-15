@@ -16,14 +16,12 @@ def test_set_via_alter_system(cluster: Cluster):
     instance.sql("ALTER SYSTEM SET iproto_net_msg_max TO 100 FOR ALL TIERS")
     instance.sql("ALTER SYSTEM SET memtx_checkpoint_interval TO 100 FOR ALL TIERS")
     instance.sql("ALTER SYSTEM SET memtx_checkpoint_count TO 100 FOR ALL TIERS")
-    instance.sql("ALTER SYSTEM SET sql_storage_cache_size_max TO 100 FOR ALL TIERS")
 
     # parameters values changed
     box_config = instance.eval("return box.cfg")
     assert box_config["net_msg_max"] == 100
     assert box_config["checkpoint_interval"] == 100
     assert box_config["checkpoint_count"] == 100
-    assert box_config["sql_cache_size"] == 100
 
     # box settings isn't persistent, so it should be reapplied
     instance.restart()
@@ -34,7 +32,6 @@ def test_set_via_alter_system(cluster: Cluster):
     assert box_config["net_msg_max"] == 100
     assert box_config["checkpoint_interval"] == 100
     assert box_config["checkpoint_count"] == 100
-    assert box_config["sql_cache_size"] == 100
 
     # bad values for parameters shouldn't pass validation
     # stage before creating DML from ir node
@@ -209,59 +206,6 @@ cluster:
     assert red_config["checkpoint_interval"] == 3600
 
 
-def test_cache_capacity(cluster: Cluster):
-    i1 = cluster.add_instance()
-
-    i1.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 1")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 0
-
-    # random sql that inserts to tarantool cache
-    i1.sql("SELECT * FROM _pico_instance")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 1
-
-    i1.sql("SELECT * FROM _pico_replicaset")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 1
-
-    i1.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 2")
-
-    i1.sql("SELECT * FROM _pico_replicaset")
-
-    # select from replicaset already cached
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 1
-
-    i1.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 3")
-
-    i1.sql("SELECT * FROM _pico_instance")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 2
-
-    i1.sql("SELECT * FROM _pico_tier")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["stmt_count"] == 3
-
-    # cache can shrink
-    i1.sql("ALTER SYSTEM SET sql_storage_cache_count_max = 1")
-
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["size"] == 2393
-
-    i1.sql("SELECT * FROM _pico_tier")
-
-    # if size doesn't changed, then query was in cache, and it's true,
-    # because of LRU
-    cache_info = i1.eval("return box.info.sql()")
-    assert cache_info["cache"]["size"] == 2393
-
-
 def test_alter_system_iproto_net_msg_max(cluster: Cluster):
     instance = cluster.add_instance()
     iproto_net_msg_max = "iproto_net_msg_max"
@@ -384,13 +328,9 @@ def test_alter_system_sql_storage_cache_size_max(cluster: Cluster):
     ):
         instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_size_max} = {bad_value}")
 
-    bad_value = 1
-    with pytest.raises(
-        TarantoolError,
-        match=f"""invalid value for '{sql_storage_cache_size_max}': value must be greater than the current cache size 845""",
-    ):
-        instance.sql("SELECT 1")
-        instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_size_max} = {bad_value}")
+    # can shrink cache
+    instance.sql("SELECT 1")
+    instance.sql(f"ALTER SYSTEM SET {sql_storage_cache_size_max} = 1")
 
     bad_value = -1
     with pytest.raises(

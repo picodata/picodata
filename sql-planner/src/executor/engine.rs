@@ -26,9 +26,9 @@ use crate::ir::value::Value;
 
 use super::Port;
 
+use crate::executor::vdbe::SqlStmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::space::SpaceId;
-use tarantool::sql::Statement;
 
 pub mod helpers;
 #[cfg(feature = "mock")]
@@ -203,7 +203,7 @@ pub trait StorageCache {
     fn put(
         &mut self,
         plan_id: SmolStr,
-        stmt: Statement,
+        stmt: SqlStmt,
         schema_info: &SchemaInfo,
         motion_ids: Vec<NodeId>,
     ) -> Result<(), SbroadError>;
@@ -212,7 +212,8 @@ pub trait StorageCache {
     /// If the schema version for some virtual table (corresponding to some Motion)
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
-    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError>;
+    #[allow(clippy::type_complexity)]
+    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&mut SqlStmt, &[NodeId])>, SbroadError>;
 }
 
 pub type TableVersionMap = HashMap<SmolStr, u64>;

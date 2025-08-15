@@ -15,7 +15,6 @@ use sql::backend::sql::space::TableGuard;
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::bucket::Buckets;
-use sql::executor::engine::helpers::proxy::unprepare;
 use sql::executor::engine::helpers::vshard::get_random_bucket;
 use sql::executor::engine::helpers::{
     table_name, EncodedQueryInfo, FullPlanInfo, RequiredPlanInfo,
@@ -32,27 +31,30 @@ use crate::metrics::{
     STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
 };
 use smol_str::{format_smolstr, SmolStr};
+use sql::executor::vdbe::SqlStmt;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
-use tarantool::fiber::Mutex;
-use tarantool::space::SpaceId;
+use tarantool::space::{Space, SpaceId};
 
-use tarantool::sql::Statement;
+use crate::schema::ADMIN_ID;
+use crate::tlog;
+use tarantool::fiber::Mutex;
+use tarantool::session::with_su;
 
 thread_local!(
     // OnceCell is used for interior mutability
     pub static STATEMENT_CACHE: OnceCell<Rc<Mutex<PicoStorageCache>>> = const { OnceCell::new() };
 );
 
-pub fn init_statement_cache(capacity: usize) {
+pub fn init_statement_cache(count_max: usize, size_max: usize) {
     STATEMENT_CACHE.with(|cache| {
         assert!(cache.get().is_none(), "must be initialized only once");
         cache.get_or_init(|| {
             Rc::new(Mutex::new(
-                PicoStorageCache::new(capacity, Some(Box::new(evict))).unwrap(),
+                PicoStorageCache::new(count_max, size_max, Some(Box::new(evict))).unwrap(),
             ))
         });
     });
@@ -64,22 +66,38 @@ pub struct StorageRuntime {
     cache: Rc<Mutex<PicoStorageCache>>,
 }
 
-type StorageCacheValue = (Statement, VersionMap, Vec<NodeId>);
+type StorageCacheValue = (SqlStmt, VersionMap, Vec<NodeId>);
 
 fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
-    let (stmt, _, table_ids) = std::mem::take(val);
     STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
-    unprepare(plan_id, &mut (stmt, table_ids))
+    // Remove temporary tables from the instance.
+    for node_id in &val.2 {
+        let table = table_name(plan_id, *node_id);
+        Space::find(table.as_str()).map(|space| {
+            with_su(ADMIN_ID, || {
+                space
+                    .drop()
+                    .inspect_err(|e| tlog!(Error, "failed to drop temporary table {table}: {e:?}"))
+            })
+        });
+    }
+    Ok(())
 }
 
 pub struct PicoStorageCache {
     pub cache: LRUCache<SmolStr, StorageCacheValue>,
-    pub capacity: usize,
+    /// Amount of memory currently used by SQL statements.
+    /// NB: We track only SQL statements because they occupy the most memory.
+    mem_used: usize,
+    /// Maximum amount of memory that can be used by SQL statements.
+    /// NB: We track only SQL statements because they occupy the most memory.
+    mem_limit: usize,
 }
 
 impl PicoStorageCache {
     pub fn new(
-        capacity: usize,
+        count_max: usize,
+        size_max: usize,
         evict_fn: Option<EvictFn<SmolStr, StorageCacheValue>>,
     ) -> Result<Self, SbroadError> {
         let new_fn: Option<EvictFn<SmolStr, StorageCacheValue>> = if let Some(evict_fn) = evict_fn {
@@ -92,17 +110,39 @@ impl PicoStorageCache {
         };
 
         Ok(PicoStorageCache {
-            cache: LRUCache::new(capacity, new_fn)?,
-            capacity,
+            cache: LRUCache::new(count_max, new_fn)?,
+            mem_limit: size_max,
+            mem_used: 0,
         })
     }
 
     pub fn capacity(&self) -> usize {
-        self.capacity
+        self.cache.capacity()
     }
 
-    pub fn adjust_capacity(&mut self, target_capacity: usize) -> Result<(), SbroadError> {
-        self.cache.adjust_capacity(target_capacity)
+    pub fn adjust_count_max(&mut self, count_max: usize) -> Result<(), SbroadError> {
+        debug_assert!(count_max > 0);
+
+        while self.cache.len() > count_max {
+            self.pop()?;
+        }
+
+        self.cache.adjust_capacity(count_max)
+    }
+
+    pub fn adjust_size_max(&mut self, size_max: usize) -> Result<(), SbroadError> {
+        debug_assert!(size_max > 0);
+
+        while self.mem_used > size_max {
+            self.pop()?;
+        }
+        self.mem_limit = size_max;
+        Ok(())
+    }
+
+    fn pop(&mut self) -> Result<Option<StorageCacheValue>, SbroadError> {
+        let removed = self.cache.pop()?;
+        Ok(removed.inspect(|x| self.mem_used -= x.0.estimated_size()))
     }
 }
 
@@ -110,7 +150,7 @@ impl StorageCache for PicoStorageCache {
     fn put(
         &mut self,
         plan_id: SmolStr,
-        stmt: Statement,
+        stmt: SqlStmt,
         schema_info: &SchemaInfo,
         table_ids: Vec<NodeId>,
     ) -> Result<(), SbroadError> {
@@ -135,13 +175,19 @@ impl StorageCache for PicoStorageCache {
             version_map.insert(table_name.clone(), current_version);
         }
 
-        self.cache.put(plan_id, (stmt, version_map, table_ids))?;
+        let mem_added = stmt.estimated_size();
+        let removed = self.cache.put(plan_id, (stmt, version_map, table_ids))?;
+        let mem_removed = removed.map(|x| x.0.estimated_size()).unwrap_or(0);
+
+        self.mem_used += mem_added;
+        self.mem_used -= mem_removed;
+
         STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.inc();
         Ok(())
     }
 
-    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError> {
-        let Some((ir, version_map, table_ids)) = self.cache.get(plan_id)? else {
+    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&mut SqlStmt, &[NodeId])>, SbroadError> {
+        let Some((ir, version_map, table_ids)) = self.cache.get_mut(plan_id) else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema

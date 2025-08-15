@@ -188,7 +188,7 @@ impl Statement {
         }
         let param_ptr = param_data.as_ptr() as *const u8;
         let execute_result = unsafe {
-            ffi::sql::stmt_execute_into_port(
+            ffi::sql::sql_stmt_execute_into_port(
                 self.id(),
                 param_ptr,
                 vdbe_max_steps,

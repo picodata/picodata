@@ -63,7 +63,7 @@ crate::define_dlsym_reloc! {
         vdbe_max_steps: u64,
         obuf: *mut Obuf,
     ) -> c_int;
-    pub(crate) fn stmt_execute_into_port(
+    pub(crate) fn sql_stmt_execute_into_port(
         stmt_id: u32,
         mp_params: *const u8,
         vdbe_max_steps: u64,
