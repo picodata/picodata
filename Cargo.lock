@@ -4313,6 +4313,7 @@ dependencies = [
  "log",
  "md-5",
  "once_cell",
+ "openssl",
  "pretty_assertions",
  "refpool",
  "rmp",

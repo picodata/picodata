@@ -82,7 +82,7 @@ fn main_impl(args: args::Status) -> cli::Result<()> {
     let credentials = Credentials::try_from(&args)?;
     let timeout = Some(Duration::from_secs(args.timeout));
     let client = credentials
-        .connect(&args.peer_address, timeout)
+        .connect(&args.peer_address, &args.tls, timeout)
         .map_err(traft::error::Error::other)?;
 
     let instance_info =

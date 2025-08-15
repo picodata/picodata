@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use tarantool::auth::AuthMethod;
 use tarantool::log::SayLevel;
+use tarantool::network::client::tls;
 use tarantool::tlua;
 
 #[derive(Debug, Parser)]
@@ -491,6 +492,9 @@ pub struct Expel {
     )]
     /// Time to wait for the operation to complete.
     pub timeout: u64,
+
+    #[clap(flatten)]
+    pub tls: IprotoTlsArgs,
 }
 
 impl Expel {
@@ -595,6 +599,9 @@ pub struct Connect {
     )]
     /// Connection timeout in seconds.
     pub timeout: u64,
+
+    #[clap(flatten)]
+    pub tls: IprotoTlsArgs,
 }
 
 impl Connect {
@@ -690,6 +697,9 @@ pub struct Status {
     )]
     /// Connection timeout in seconds.
     pub timeout: u64,
+
+    #[clap(flatten)]
+    pub tls: IprotoTlsArgs,
 }
 
 impl Status {
@@ -823,6 +833,9 @@ pub struct ServiceConfigUpdate {
     /// If no matching service were found, error message
     /// is printed to a user.
     pub service_names: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub tls: IprotoTlsArgs,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -834,4 +847,46 @@ pub struct ServiceConfigUpdate {
 pub enum Demo {
     #[clap(about = "Start a cluster and connect to it using `psql`")]
     Simple,
+}
+
+#[derive(Debug, PartialEq, clap::Args, tlua::Push)]
+#[group(requires_all = ["cert", "key", "ca"])]
+pub struct IprotoTlsArgs {
+    #[clap(
+        long = "tls-cert",
+        value_name = "CERT_FILE",
+        env = "PICODATA_IPROTO_TLS_CERT"
+    )]
+    /// Path to certificate file to enable mTLS.
+    pub cert: Option<PathBuf>,
+    #[clap(
+        long = "tls-key",
+        value_name = "KEY_FILE",
+        env = "PICODATA_IPROTO_TLS_KEY"
+    )]
+    /// Path to private key file to enable mTLS.
+    pub key: Option<PathBuf>,
+    #[clap(
+        long = "tls-ca",
+        value_name = "CA_FILE",
+        env = "PICODATA_IPROTO_TLS_CA"
+    )]
+    /// Path to trusted CA file to enable mTLS.
+    pub ca: Option<PathBuf>,
+}
+
+impl IprotoTlsArgs {
+    pub fn to_tls_config(&self) -> tls::TlsConfig<'_> {
+        tls::TlsConfig {
+            cert_file: self
+                .cert
+                .as_ref()
+                .expect("'tls-cert' argument should be already checked"),
+            key_file: self
+                .key
+                .as_ref()
+                .expect("'tls-key' argument should be already checked"),
+            ca_file: self.ca.as_ref(),
+        }
+    }
 }

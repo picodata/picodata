@@ -18,6 +18,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Validate cluster UUID during IPROTO handshake and propagate `cluster_uuid` via IPROTO_ID. Connections with a mismatching `cluster_uuid` are rejected, ensuring cross-cluster isolation.
 - Instance's which loose ability to apply raft log updates will automatically
   become Offline. (See also https://git.picodata.io/core/picodata/-/issues/2238).
+- Support TLS in IPROTO for intra-cluster communication and CLI.
+  - Configure via new config section: `instance.iproto_tls`;
+  - Run CLI with new arguments: `--tls-cert`, `--tls-key`, `--tls-ca`.
 - New ALTER SYSTEM parameter `plugin_check_migration_hash` (default: true)
   allows disabling plugin migration file checksum validation. This allows plugin
   authors to more easily fix mistakes in migration files.

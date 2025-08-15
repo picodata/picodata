@@ -130,6 +130,9 @@ instance:
                 ssl=dict(source="default", value=False),
             ),
             boot_timeout=dict(value=7200, source="default"),
+            iproto_tls=dict(
+                enabled=dict(value=False, source="commandline_or_environment"),
+            ),
         ),
     )
 

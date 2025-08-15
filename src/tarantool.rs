@@ -23,6 +23,7 @@ use std::io::Cursor;
 use std::mem;
 use std::ops::Range;
 use std::os::unix::ffi::OsStrExt;
+use std::path::PathBuf;
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tarantool::error::IntoBoxError;
@@ -177,6 +178,56 @@ mod tests {
     }
 }
 
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialEq,
+    tlua::LuaRead,
+    tlua::Push,
+    tlua::PushInto,
+)]
+pub struct ListenConfigParams {
+    pub transport: String,
+    pub ssl_cert_file: Option<PathBuf>,
+    pub ssl_key_file: Option<PathBuf>,
+    pub ssl_ca_file: Option<PathBuf>,
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialEq,
+    tlua::LuaRead,
+    tlua::Push,
+    tlua::PushInto,
+)]
+pub struct ListenConfig {
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<ListenConfigParams>,
+}
+
+impl ListenConfig {
+    pub fn new(uri: String, config: &crate::iproto::TlsConfig) -> Self {
+        let mut result = Self { uri, params: None };
+        if config.enabled {
+            result.params = Some(ListenConfigParams {
+                transport: "ssl".to_string(),
+                ssl_cert_file: config.cert_file.clone(),
+                ssl_key_file: config.key_file.clone(),
+                ssl_ca_file: config.ca_file.clone(),
+            });
+        }
+        result
+    }
+}
+
 /// Tarantool configuration.
 /// See <https://www.tarantool.io/en/doc/latest/reference/configuration/#configuration-parameters>
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -184,10 +235,10 @@ pub struct Cfg {
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
 
-    pub listen: Option<String>,
+    pub listen: Option<ListenConfig>,
 
     pub read_only: bool,
-    pub replication: Vec<String>,
+    pub replication: Vec<ListenConfig>,
 
     pub bootstrap_strategy: Option<BootstrapStrategy>,
 
@@ -302,8 +353,12 @@ impl Cfg {
     ) -> Result<Self, Error> {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
         let password = crate::pico_service::pico_service_password();
+        let tls_config = &config.instance.iproto_tls;
         for address in &resp.box_replication {
-            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"))
+            replication_cfg.push(ListenConfig::new(
+                format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"),
+                tls_config,
+            ));
         }
 
         let mut res = Self {
@@ -314,7 +369,10 @@ impl Cfg {
 
             // Needs to be set, because an applier will attempt to connect to
             // self and will block box.cfg() call until it succeeds.
-            listen: Some(config.instance.iproto_listen().to_host_port()),
+            listen: Some(ListenConfig::new(
+                config.instance.iproto_listen().to_host_port(),
+                tls_config,
+            )),
 
             // If we're joining to an existing replicaset,
             // then we're the follower.

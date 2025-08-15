@@ -36,6 +36,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::fiber;
+use tarantool::network::client::tls::TlsConnector;
 use tarantool::session;
 use tarantool::util::IntoClones;
 
@@ -139,12 +140,15 @@ pub struct PluginManager {
 
 impl PluginManager {
     /// Create a new plugin manager.
-    pub fn new(storage: Catalog) -> Self {
+    pub fn new(storage: Catalog, tls_connector: Option<TlsConnector>) -> Self {
         let (rx, tx) = fiber::channel::Channel::new(1000).into_clones();
         let plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>> =
             Rc::new(fiber::Mutex::default());
 
-        let options = WorkerOptions::default();
+        let options = WorkerOptions {
+            tls_connector,
+            ..Default::default()
+        };
         let pool = ConnectionPool::new(storage, options);
 
         let async_event_fiber_id = fiber::Builder::new()

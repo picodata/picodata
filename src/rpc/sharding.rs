@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::governor::plan::get_first_ready_replicaset_in_tier;
 use crate::storage::space_by_name;
 use crate::storage::ToEntryIter;
@@ -68,7 +69,11 @@ crate::define_rpc_request! {
 
             let mut config = VshardConfig::from_storage(storage, &tier.name, tier.bucket_count)?;
 
-            config.listen = Some(lua.eval("return box.info.listen")?);
+            let tls_config = &PicodataConfig::get().instance.iproto_tls;
+            let listen_config = crate::tarantool::ListenConfig::new(
+                lua.eval("return box.info.listen")?,
+                tls_config);
+            config.listen = Some(listen_config);
             config.set_password_in_uris();
 
             crate::error_injection!("BROKEN_REPLICATION" => { config.sharding.clear(); });

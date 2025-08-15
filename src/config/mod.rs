@@ -1319,6 +1319,10 @@ pub struct InstanceConfig {
     #[introspection(nested)]
     pub pg: pgproto::Config,
 
+    #[serde(default)]
+    #[introspection(nested)]
+    pub iproto_tls: crate::iproto::TlsConfig,
+
     #[introspection(config_default = 2 * 60 * 60)]
     pub boot_timeout: Option<u64>,
 

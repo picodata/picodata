@@ -1,6 +1,8 @@
-import time
+import os
+import pathlib
 import pytest
 import re
+import time
 
 from conftest import (
     Cluster,
@@ -595,3 +597,25 @@ def test_applier_cluster_uuid_mismatch(cluster: Cluster, second_cluster: Cluster
     a.eval(f"box.cfg{{replication = {{'{uri_b}'}}}}")
 
     lc.wait_matched()
+
+
+def test_iproto_tls_with_replication(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+
+    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+    for i in (i1, i2):
+        i.iproto_tls_enabled = True
+        i.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
+        i.iproto_tls_key = str(ssl_dir / "server.key")
+        i.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+
+    cluster.wait_online()
+
+    info_replication = i1.eval("return box.info.replication")
+    assert info_replication[2]["upstream"]["status"] == "follow"
+    assert info_replication[2]["downstream"]["status"] == "follow"
+
+    info_replication = i2.eval("return box.info.replication")
+    assert info_replication[1]["upstream"]["status"] == "follow"
+    assert info_replication[1]["downstream"]["status"] == "follow"

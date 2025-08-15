@@ -16,7 +16,7 @@ use comfy_table::{ContentArrangement, Table};
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use serde::{Deserialize, Serialize};
 use tarantool::auth::AuthMethod;
-use tarantool::network::{AsClient, Client, Config};
+use tarantool::network::{client::tls, AsClient, Client, Config};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ColumnDesc {
@@ -134,14 +134,14 @@ impl Display for ResultSet {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Credentials {
-    pub username: String,
+    username: String,
     // TODO: <https://git.picodata.io/core/picodata/-/issues/1263>.
-    pub password: String,
-    pub method: Option<AuthMethod>,
+    password: String,
+    method: Option<AuthMethod>,
 }
 
 impl Credentials {
-    pub fn new(username: String, password: String, method: Option<AuthMethod>) -> Self {
+    fn new(username: String, password: String, method: Option<AuthMethod>) -> Self {
         Self {
             username,
             password,
@@ -152,6 +152,7 @@ impl Credentials {
     pub fn connect(
         &self,
         address: &IprotoAddress,
+        tls_args: &args::IprotoTlsArgs,
         timeout: Option<Duration>,
     ) -> cli::Result<Client> {
         let host = address.host.as_str();
@@ -177,20 +178,30 @@ impl Credentials {
         // an owned string. This might be fixed at some point in future.
         let authority = (self.username.clone(), self.password.clone());
         config.creds = Some(authority);
-
         config.connect_timeout = timeout;
+
+        let tls_connector = if tls_args.cert.is_some() {
+            let tls_config = tls_args.to_tls_config();
+            Some(tls::TlsConnector::new(tls_config)?)
+        } else {
+            None
+        };
 
         if let Some(method) = self.method {
             config.auth_method = method;
         } else {
-            let connection_client =
-                try_determine_auth_method(host, port, config).map_err(any_connection_error)?;
+            let connection_client = try_determine_auth_method(host, port, config, tls_connector)
+                .map_err(any_connection_error)?;
             return Ok(connection_client);
         }
 
-        let potential_client =
-            ::tarantool::fiber::block_on(Client::connect_with_config(host, port, config))
-                .map_err(connection_error)?;
+        let potential_client = ::tarantool::fiber::block_on(Client::connect_with_config_and_tls(
+            host,
+            port,
+            config,
+            tls_connector,
+        ))
+        .map_err(connection_error)?;
 
         // Check if the connection is valid. We need to do it because connect
         // is lazy and we want to check whether authentication have succeeded
@@ -300,14 +311,23 @@ impl TryFrom<&args::ServiceConfigUpdate> for Credentials {
     }
 }
 
-fn try_determine_auth_method(url: &str, port: u16, config: Config) -> cli::Result<Client> {
+fn try_determine_auth_method(
+    url: &str,
+    port: u16,
+    config: Config,
+    tls_connector: Option<tls::TlsConnector>,
+) -> cli::Result<Client> {
     for auth_method in AuthMethod::VARIANTS {
         // NOTE: This cloning is needed because authentication requires owned data.
         let mut config = config.clone();
         config.auth_method = *auth_method;
 
-        let connection_client =
-            ::tarantool::fiber::block_on(Client::connect_with_config(url, port, config))?;
+        let connection_client = ::tarantool::fiber::block_on(Client::connect_with_config_and_tls(
+            url,
+            port,
+            config,
+            tls_connector.clone(),
+        ))?;
 
         // Even if we get a "successful" client after connection request, it does not mean it
         // is valid (i.e., in our case, it does not mean that appropriate auth method was used).

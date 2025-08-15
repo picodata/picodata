@@ -143,9 +143,9 @@ def test_replication(cluster: Cluster):
 
     def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
-        assert set(box_replication) == set(
-            (f"pico_service:secret@{addr}" for addr in [i1.iproto_listen, i2.iproto_listen])
-        ), instance
+        assert sorted(box_replication, key=lambda d: d["uri"]) == [
+            {"uri": f"pico_service:secret@{addr}"} for addr in [i1.iproto_listen, i2.iproto_listen]
+        ], instance
 
     for instance in cluster.instances:
         raft_instance = instance.eval("return box.space._pico_instance:get(...):tomap()", instance.name)

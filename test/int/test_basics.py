@@ -659,7 +659,9 @@ cluster:
                 f"{storage_instance.uuid()}": {
                     "master": True,
                     "name": "storage_1_1",
-                    "uri": f"pico_service@{storage_instance.host}:{storage_instance.port}",
+                    "uri": {
+                        "uri": f"pico_service@{storage_instance.host}:{storage_instance.port}",
+                    },
                 }
             },
             "weight": 1.0,
@@ -672,12 +674,16 @@ cluster:
                 f"{router_instance_1.uuid()}": {
                     "master": True,
                     "name": "router_1_1",
-                    "uri": f"pico_service@{router_instance_1.host}:{router_instance_1.port}",
+                    "uri": {
+                        "uri": f"pico_service@{router_instance_1.host}:{router_instance_1.port}",
+                    },
                 },
                 f"{router_instance_2.uuid()}": {
                     "master": False,
                     "name": "router_1_2",
-                    "uri": f"pico_service@{router_instance_2.host}:{router_instance_2.port}",
+                    "uri": {
+                        "uri": f"pico_service@{router_instance_2.host}:{router_instance_2.port}",
+                    },
                 },
             },
             "weight": 0.0,

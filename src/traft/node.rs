@@ -220,16 +220,22 @@ impl Node {
             return Err(Error::other("raft node is already initialized"));
         }
 
+        let tls_connector = if for_tests {
+            None
+        } else {
+            crate::iproto::get_tls_connector()
+        };
         let opts = WorkerOptions {
             raft_msg_handler: proc_name!(proc_raft_interact),
             call_timeout: MainLoop::TICK.saturating_mul(4),
+            tls_connector: tls_connector.cloned(),
             ..Default::default()
         };
         let mut pool = ConnectionPool::new(storage.clone(), opts);
         let instance_reachability = instance_reachability_manager(storage.clone());
         pool.instance_reachability = Some(instance_reachability.clone());
         let pool = Rc::new(pool);
-        let plugin_manager = Rc::new(PluginManager::new(storage.clone()));
+        let plugin_manager = Rc::new(PluginManager::new(storage.clone(), tls_connector.cloned()));
 
         let main_loop_info = Rc::new(NoYieldsRefCell::new(MainLoopInfo::default()));
 

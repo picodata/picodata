@@ -34,6 +34,7 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::Duration;
+use tarantool::network::client::tls;
 
 pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
@@ -43,6 +44,7 @@ pub struct WorkerOptions {
     pub raft_msg_handler: &'static str,
     pub call_timeout: Duration,
     pub max_concurrent_futs: usize,
+    pub tls_connector: Option<tls::TlsConnector>,
 }
 
 impl Default for WorkerOptions {
@@ -51,6 +53,7 @@ impl Default for WorkerOptions {
             raft_msg_handler: crate::proc_name!(crate::traft::node::proc_raft_interact),
             call_timeout: DEFAULT_CALL_TIMEOUT,
             max_concurrent_futs: DEFAULT_CUNCURRENT_FUTURES,
+            tls_connector: None,
         }
     }
 }
@@ -159,6 +162,7 @@ impl PoolWorker {
                                 opts.call_timeout,
                                 opts.max_concurrent_futs,
                                 instance_reachability,
+                                opts.tls_connector,
                             ).fuse() => (),
                         _ = stop_receiver.fuse() => ()
                     }
@@ -187,10 +191,12 @@ impl PoolWorker {
         call_timeout: Duration,
         max_concurrent_fut: usize,
         instance_reachability: Option<InstanceReachabilityManagerRef>,
+        tls_connector: Option<tls::TlsConnector>,
     ) {
         let mut config = relay_connection_config();
         config.connect_timeout = Some(call_timeout);
-        let client = ReconnClient::with_config(address.clone(), port, config);
+        let client =
+            ReconnClient::with_config_and_tls(address.clone(), port, config, tls_connector);
 
         let mut client_ver: usize = 0;
         let mut futures = VecDeque::new();

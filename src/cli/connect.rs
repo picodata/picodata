@@ -125,7 +125,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
     let credentials = Credentials::try_from(&args).map_err(ReplError::other)?;
     let timeout = Some(Duration::from_secs(args.timeout));
     let client = credentials
-        .connect(&args.address, timeout)
+        .connect(&args.address, &args.tls, timeout)
         .map_err(ReplError::other)?;
 
     let mut console = Console::new()?;

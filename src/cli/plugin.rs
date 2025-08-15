@@ -99,6 +99,7 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
                 plugin_version,
                 config_file,
                 service_names,
+                tls,
                 timeout,
                 ..
             } = &cfg;
@@ -111,7 +112,7 @@ fn main_impl(args: Plugin) -> cli::Result<()> {
             let credentials = Credentials::try_from(&cfg)?;
             let timeout = Some(Duration::from_secs(*timeout));
             let client = credentials
-                .connect(peer_address, timeout)
+                .connect(peer_address, tls, timeout)
                 .map_err(crate::traft::error::Error::other)?;
 
             // setup buffers and current parameters to update them

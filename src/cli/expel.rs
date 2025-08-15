@@ -38,7 +38,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     let credentials = Credentials::try_from(&args)?;
     let timeout = Some(Duration::from_secs(args.timeout));
     let client = credentials
-        .connect(&args.peer_address, timeout)
+        .connect(&args.peer_address, &args.tls, timeout)
         .map_err(Error::other)?;
 
     let timeout = deadline.duration_since(fiber::clock());

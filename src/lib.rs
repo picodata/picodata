@@ -52,7 +52,7 @@ use crate::storage::schema::copy_dir_async;
 use crate::storage::schema::copy_file_async;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::PropertyName;
-use crate::tarantool::rm_tarantool_files;
+use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
@@ -83,6 +83,7 @@ pub mod instance;
 pub mod instance_uuid_file;
 pub mod introspection;
 pub mod ipc;
+mod iproto;
 pub mod kvcell;
 pub mod r#loop;
 mod luamod;
@@ -895,6 +896,8 @@ fn init_common(
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
 
+    iproto::tls_init_once(&config.instance.iproto_tls)?;
+
     if let Err(e) = tarantool::set_cfg(cfg) {
         // Tarantool error is taken separately as in `set_cfg`
         // the needed tarantool error turns into lua error.
@@ -1185,15 +1188,16 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
 
     // Start listening only after we've checked if this is a restart.
     // Postjoin phase has its own idea of when to start listening.
-    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port()).map_err(
-        |err| {
-            Error::other(format!(
-                "failed to start listen on iproto {}: {}",
-                config.instance.iproto_listen().to_host_port(),
-                err
-            ))
-        },
-    )?;
+    let tls_config = &config.instance.iproto_tls;
+    let listen_config =
+        ListenConfig::new(config.instance.iproto_listen().to_host_port(), tls_config);
+    tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
+        Error::other(format!(
+            "failed to start listening on iproto {}: {}",
+            config.instance.iproto_listen().to_host_port(),
+            err
+        ))
+    })?;
 
     let role = discovery::wait_global();
     let next_entrypoint = match role {
@@ -1459,6 +1463,7 @@ fn start_pre_join(
         // case we simply send another proc_raft_join RPC with the same
         // instance_uuid and everything works correctly.
         instance_uuid = uuid;
+        iproto::tls_init_once(&config.instance.iproto_tls)?;
     } else {
         // This is this initial attempt to join the cluster as a new picodata
         // instance. We need to generate a new instance_uuid and persist it to
@@ -1676,14 +1681,16 @@ fn postjoin(
         assert!(node.status().raft_state.is_leader());
     }
 
-    tarantool::set_cfg_field("listen", config.instance.iproto_listen().to_host_port())
-        .unwrap_or_else(|err| {
-            panic!(
-                "changing listen address to {} shouldn't fail: {}",
-                config.instance.iproto_listen().to_host_port(),
-                err
-            );
-        });
+    let tls_config = &config.instance.iproto_tls;
+    let listen_config =
+        ListenConfig::new(config.instance.iproto_listen().to_host_port(), tls_config);
+    tarantool::set_cfg_field("listen", listen_config).map_err(|err| {
+        Error::other(format!(
+            "failed to change listen address to {}: {}",
+            config.instance.iproto_listen().to_host_port(),
+            err
+        ))
+    })?;
 
     // Start admin console, set permission mode on socket file to 0660
     let socket_uri = util::validate_and_complete_unix_socket_path(config.instance.admin_socket())?;

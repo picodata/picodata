@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
@@ -10,6 +11,7 @@ use crate::sql::router;
 use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
 use crate::storage::TABLE_ID_BUCKET;
+use crate::tarantool::ListenConfig;
 use crate::traft::error::Error as TraftError;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -200,7 +202,7 @@ pub struct VshardConfig {
     /// otherwise vshard will override it with an incorrect value.
     #[serde(skip_serializing_if="Option::is_none")]
     #[serde(default)]
-    pub listen: Option<String>,
+    pub listen: Option<ListenConfig>,
 }
 
 #[rustfmt::skip]
@@ -213,9 +215,9 @@ pub struct ReplicasetSpec {
 
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Default, Clone, Debug, PartialEq, Eq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
+#[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct ReplicaSpec {
-    uri: String,
+    uri: ListenConfig,
     name: String,
     master: bool,
 }
@@ -294,10 +296,14 @@ impl VshardConfig {
                     ..Default::default()
                 });
 
+            let tls_config = &PicodataConfig::get().instance.iproto_tls;
             replicaset.replicas.insert(
                 peer.uuid.clone(),
                 ReplicaSpec {
-                    uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
+                    uri: ListenConfig::new(
+                        format!("{PICO_SERVICE_USER_NAME}@{address}"),
+                        tls_config,
+                    ),
                     master: r.current_master_name == peer.name,
                     name: peer.name.to_string(),
                 },
@@ -327,13 +333,13 @@ impl VshardConfig {
                 // username and address in separate fields, or even not store
                 // the username at all, because it's always `pico_service`,
                 // but this also works... for now.
-                let Some((username, address)) = replica.uri.split_once('@') else {
+                let Some((username, address)) = replica.uri.uri.split_once('@') else {
                     continue;
                 };
                 if username != PICO_SERVICE_USER_NAME {
                     continue;
                 }
-                replica.uri = format!("{username}:{password}@{address}");
+                replica.uri.uri = format!("{username}:{password}@{address}");
             }
         }
     }

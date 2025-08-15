@@ -636,6 +636,10 @@ class Instance:
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
+    iproto_tls_enabled: bool | None = None
+    iproto_tls_cert: str | None = None
+    iproto_tls_key: str | None = None
+    iproto_tls_ca: str | None = None
 
     @property
     def instance_dir(self):
@@ -715,6 +719,10 @@ class Instance:
             *(["--config", self.config_path] if self.config_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
             *(["--audit", audit] if audit else []),
+            *(["-c instance.iproto_tls.enabled=true"] if self.iproto_tls_enabled else []),
+            *([f"-c instance.iproto_tls.cert_file={self.iproto_tls_cert}"] if self.iproto_tls_cert else []),
+            *([f"-c instance.iproto_tls.key_file={self.iproto_tls_key}"] if self.iproto_tls_key else []),
+            *([f"-c instance.iproto_tls.ca_file={self.iproto_tls_ca}"] if self.iproto_tls_ca else []),
         ]
         # fmt: on
 
@@ -744,6 +752,10 @@ class Instance:
                 connection_timeout=timeout,
                 connect_now=True,
                 fetch_schema=False,
+                transport="ssl" if self.iproto_tls_enabled else None,
+                ssl_cert_file=self.iproto_tls_cert if self.iproto_tls_enabled else None,
+                ssl_key_file=self.iproto_tls_key if self.iproto_tls_enabled else None,
+                ssl_ca_file=self.iproto_tls_ca if self.iproto_tls_enabled else None,
             )
         except Exception as e:
             if can_cause_fail(e):

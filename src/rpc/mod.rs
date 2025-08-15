@@ -164,7 +164,9 @@ where
     })?;
 
     let config = relay_connection_config();
-    let client = Client::connect_with_config(address, port, config).await?;
+    let tls_connector = crate::iproto::get_tls_connector();
+    let client =
+        Client::connect_with_config_and_tls(address, port, config, tls_connector.cloned()).await?;
 
     let tuple = client.call(proc, args).await?;
     decode_iproto_return_value(tuple)

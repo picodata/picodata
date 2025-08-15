@@ -1,4 +1,5 @@
 import os
+import pathlib
 import pexpect  # type: ignore
 import pytest
 import stat
@@ -253,6 +254,44 @@ def test_connect_auth_type_ldap(cluster: Cluster, ldap_server: LdapServer):
 
     cli.expect_exact(f"Enter password for {ldap_server.user}: ")
     cli.sendline(ldap_server.password)
+
+    cli.expect_exact("sql> ")
+
+
+def test_connect_testuser_tls(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    ssl_dir = pathlib.Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+    i1.iproto_tls_enabled = True
+    i1.iproto_tls_cert = str(ssl_dir / "server-with-ext.crt")
+    i1.iproto_tls_key = str(ssl_dir / "server.key")
+    i1.iproto_tls_ca = str(ssl_dir / "combined-ca.crt")
+    i1.start()
+    i1.wait_online()
+
+    acl = i1.sql("create user \"testuser\" with password 'Testpa55'", sudo=True)
+    assert acl["row_count"] == 1
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=[
+            "connect",
+            f"{i1.host}:{i1.port}",
+            "-u",
+            "testuser",
+            "--tls-cert",
+            str(ssl_dir / "client.crt"),
+            "--tls-key",
+            str(ssl_dir / "client.key"),
+            "--tls-ca",
+            str(ssl_dir / "combined-ca.crt"),
+        ],
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("sql> ")
 

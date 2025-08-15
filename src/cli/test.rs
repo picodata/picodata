@@ -163,12 +163,15 @@ fn test_one(test: &TestCase) {
     use crate::tarantool;
 
     let temp = tempfile::tempdir().expect("Failed creating a temp directory");
-    std::env::set_current_dir(temp.path()).expect("Failed chainging current directory");
+    std::env::set_current_dir(temp.path()).expect("Failed changing current directory");
 
     crate::set_tarantool_compat_options();
 
     let cfg = tarantool::Cfg {
-        listen: Some("127.0.0.1:0".into()),
+        listen: Some(tarantool::ListenConfig {
+            uri: "127.0.0.1:0".to_string(),
+            params: None,
+        }),
         read_only: false,
         log_level: Some(::tarantool::log::SayLevel::Verbose as u8),
         ..Default::default()
