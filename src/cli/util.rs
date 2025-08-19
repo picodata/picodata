@@ -157,6 +157,17 @@ impl Credentials {
             .parse::<u16>()
             .map_err(|e| format!("ERROR: parsing port '{}' failed: {e}", address.port))?;
 
+        let any_connection_error = |e| {
+            Error::other(format!(
+                "ERROR: connection failure for address '{host}:{port}': {e}",
+            ))
+        };
+        let connection_error = |e| {
+            Error::other(format!(
+                "ERROR: connection failure for address '{host}:{port}': {e}",
+            ))
+        };
+
         let mut config = Config::default();
 
         // NOTE: Cloning here is inevitable because connection config requires
@@ -169,15 +180,10 @@ impl Credentials {
         if let Some(method) = self.method {
             config.auth_method = method;
         } else {
-            let connection_client = try_determine_auth_method(host, port, config)?;
+            let connection_client =
+                try_determine_auth_method(host, port, config).map_err(any_connection_error)?;
             return Ok(connection_client);
         }
-
-        let connection_error = |e| {
-            Error::other(format!(
-                "ERROR: connection failure for address '{host}:{port}': {e}",
-            ))
-        };
 
         let potential_client =
             ::tarantool::fiber::block_on(Client::connect_with_config(host, port, config))
@@ -211,9 +217,7 @@ impl TryFrom<&args::Expel> for Credentials {
             }
         };
 
-        let method = Some(value.auth_method);
-
-        Ok(Credentials::new(username, password, method))
+        Ok(Credentials::new(username, password, value.auth_method))
     }
 }
 
@@ -241,9 +245,7 @@ impl TryFrom<&args::Connect> for Credentials {
             }
         };
 
-        let method = Some(value.auth_method);
-
-        Ok(Credentials::new(username, password, method))
+        Ok(Credentials::new(username, password, value.auth_method))
     }
 }
 

@@ -433,16 +433,9 @@ pub struct Expel {
     /// provided, it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
 
-    #[clap(
-        short = 'a',
-        long = "auth-type",
-        value_name = "METHOD",
-        default_value = AuthMethod::ChapSha1.as_str(),
-    )]
+    #[clap(short = 'a', long = "auth-type", value_name = "METHOD")]
     /// The preferred authentication method.
-    /// Defaults to "CHAP-SHA1" because in most
-    /// cases "pico_service" user will be used.
-    pub auth_method: AuthMethod,
+    pub auth_method: Option<AuthMethod>,
 
     #[clap(short = 'f', long = "force")]
     /// Expel instance even if it is currently online.
@@ -537,16 +530,9 @@ pub struct Connect {
     /// The username to connect with. Ignored if provided in `ADDRESS`.
     pub user: String,
 
-    #[clap(
-        short = 'a',
-        long = "auth-type",
-        value_name = "METHOD",
-        default_value = AuthMethod::Md5.as_str(),
-    )]
+    #[clap(short = 'a', long = "auth-type", value_name = "METHOD")]
     /// The preferred authentication method.
-    /// Defaults to "MD5" because in most
-    /// cases non-internal user will be used.
-    pub auth_method: AuthMethod,
+    pub auth_method: Option<AuthMethod>,
 
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address to connect. Format:
