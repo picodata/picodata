@@ -970,7 +970,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // no action needed
-    Ok(Plan::None)
+    Ok(Plan::GoIdle)
 }
 
 macro_rules! define_plan {
@@ -1000,7 +1000,7 @@ macro_rules! define_plan {
         )+
 
         pub enum Plan<'i> {
-            None,
+            GoIdle,
             $(
                 $stage ( $stage $(<$lt>)? ),
             )+

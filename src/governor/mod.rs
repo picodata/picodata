@@ -1426,7 +1426,7 @@ impl Loop {
                 }
             }
 
-            Plan::None => {
+            Plan::GoIdle => {
                 set_status!("idle");
                 tlog!(Info, "nothing to do, waiting for events to handle");
                 waker.mark_seen();
