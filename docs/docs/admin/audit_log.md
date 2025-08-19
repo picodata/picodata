@@ -39,16 +39,21 @@ API, предоставляемых самой СУБД.
 который имеет множество настроек и даже позволяет отправлять журналы на
 внешние хосты.
 
+По умолчанию, запись событий не ведется.
+
+Способ вывода журнала задается при запуске инстанса. После
+первоначального бутстрапа инстанса эту настройку можно изменить в
+дальнейшем, перезапустив инстанс с новым значением параметра.
+
 ## Включение журнала {: #enable_audit_log }
 
-По умолчанию, запись событий не ведется. Включить журнал можно при
-запуске инстанса, указав параметр [`picodata run --audit`] в командной
-строке или параметр [instance.audit] в [файле конфигурации].
+Задайте способ ведения журнала при запуске инстанса. Набор действий
+зависит от того, каким способом вы запускаете инстансы кластера.
 
-[instance.audit]: ../reference/config.md#instance_audit
-[файле конфигурации]: ../reference/config.md
+### В командной строке {: #enable_in_cli }
 
-Для примера, задействуем файл журнала при запуске инстанса:
+Используйте параметр [`picodata run --audit`] в командной
+строке:
 
 Вывод журнала в текстовый файл:
 
@@ -63,6 +68,102 @@ picodata run --audit=syslog:
 ```
 
 [`picodata run --audit`]: ../reference/cli.md#run_audit
+
+### В файле конфигурации {: #enable_in_config }
+
+Используйте параметр [instance.audit] в [файле конфигурации]:
+
+1. Сгенерируйте шаблон файла конфигурации со значениями по умолчанию:
+```shell
+picodata config default -o config.yaml
+```
+
+1. Отредактируйте полученный файл `config.yaml`, задав нужные значения у
+   параметров. В том числе, измените строку `audit: null`, указав
+   требуемый способ вывода журнала.<br><br>
+   Вывод журнала в текстовый файл:
+   ```yaml
+   audit: file:/tmp/audit.log
+   ```
+   Вывод журнала в syslog:
+   ```yaml
+   audit: syslog:
+   ```
+
+1. Запустите инстанс, используя параметры из файла конфигурации:
+```shell
+picodata run --config config.yaml
+```
+
+[instance.audit]: ../reference/config.md#instance_audit
+[файле конфигурации]: ../reference/config.md
+
+### С помощью переменной окружения {: #enable_in_env }
+
+Задайте нужное значение для переменной `PICODATA_AUDIT_LOG`.
+
+Вывод журнала в текстовый файл:
+
+```shell
+PICODATA_AUDIT_LOG=audit.log picodata run
+```
+
+Вывод журнала в syslog:
+
+```shell
+PICODATA_AUDIT_LOG=syslog: picodata run
+```
+
+Необходимый набор переменных иногда удобнее задать в shell-скрипте.
+Например:
+
+```shell
+#!/bin/bash
+export PICODATA_AUDIT_LOG=syslog:
+picodata run
+```
+
+### С помощью Ansible {: #enable_in_ansible }
+
+Используйте [переменные] `audit`, `audit_to` и `audit_pipe_command` при настройке роли
+Picodata для Ansible:
+
+- `audit` — включение аудита событий в кластере. Может принимать значения `true` и `false`
+- `audit_to` — способ ведения журнала аудита. Может принимать значения `syslog` (по умолчанию), `file` и `pipe`
+- `audit_pipe_command` — команда для перенаправления сообщений аудит в
+  подпроцесс в том случае, если в `audit_to` задано значение `pipe`
+
+Порядок действий для использования переменных:
+
+1. Ознакомьтесь с инструкцией по [Развертыванию кластера с помощью Ansible](deploy_ansible.md)
+1. Создайте инвентарный файл `hosts/cluster.yml` и добавьте в него нужный набор параметров аудита.
+
+    Вывод журнала в текстовый файл (файлы аудита будут размещаться в `log_dir` и начинаться с `audit-`):
+
+    ```yaml
+        all:
+        vars:
+            log_dir: /var/log/picodata
+            audit: true
+            audit_to: file
+    ```
+
+    Вывод журнала в syslog:
+
+    ```yaml
+        all:
+        vars:
+            audit: true
+            audit_to: syslog
+    ```
+
+1. Создайте плейбук `playbooks/picodata.yml` (см. [подробнее](deploy_ansible.md#create_playbook))
+1. Установите кластер:
+    ```shell
+    ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
+    ```
+
+[переменные]: ../reference/ansible_variables.md#logs_and_audit
 
 ## Получение доступа к журналу {: #access_audit_log }
 
