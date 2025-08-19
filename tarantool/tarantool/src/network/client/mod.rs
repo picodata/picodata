@@ -522,6 +522,26 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    async fn connect_with_cluster_uuid_and_ping() {
+        // Ensure that sending cluster_uuid via IPROTO_ID does not break vanilla Tarantool.
+        let client = Client::connect_with_config(
+            "localhost",
+            listen_port(),
+            protocol::Config {
+                creds: Some(("test_user".into(), "password".into())),
+                auth_method: crate::auth::AuthMethod::ChapSha1,
+                cluster_uuid: Some("11111111-2222-3333-4444-555555555555".into()),
+                ..Default::default()
+            },
+        )
+        .timeout(Duration::from_secs(3))
+        .await
+        .unwrap();
+
+        client.ping().timeout(Duration::from_secs(3)).await.unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
     fn ping_concurrent() {
         let client = fiber::block_on(test_client());
         let fiber_a = fiber::start_async(async {

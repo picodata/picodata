@@ -65,6 +65,8 @@ pub type ResponseError = TarantoolError;
 enum State {
     /// Awaits greeting
     Init,
+    /// Awaits ID response
+    Id,
     /// Awaits auth
     Auth,
     /// Ready to accept new messages
@@ -81,6 +83,8 @@ pub struct Config {
     pub auth_method: AuthMethod,
     /// Connection establishment timeout.
     pub connect_timeout: Option<Duration>,
+    /// Optional cluster uuid to pass via IPROTO_ID after auth.
+    pub cluster_uuid: Option<String>,
     // TODO: add buffer limits here
 }
 
@@ -104,6 +108,10 @@ pub struct Protocol {
     /// (user, password)
     creds: Option<(String, String)>,
     auth_method: AuthMethod,
+    // Cluster uuid to send via IPROTO_ID when connection becomes ready.
+    cluster_uuid: Option<String>,
+    /// Greeting salt captured from server greeting to be used for Auth after ID.
+    greeting_salt: Option<Vec<u8>>,
 }
 
 impl Default for Protocol {
@@ -125,6 +133,8 @@ impl Protocol {
             incoming: HashMap::new(),
             // Greeting is exactly 128 bytes
             msg_size_hint: Some(128),
+            cluster_uuid: None,
+            greeting_salt: None,
         }
     }
 
@@ -133,6 +143,7 @@ impl Protocol {
         let mut protocol = Self::new();
         protocol.creds = config.creds;
         protocol.auth_method = config.auth_method;
+        protocol.cluster_uuid = config.cluster_uuid;
         protocol
     }
 
@@ -225,6 +236,55 @@ impl Protocol {
         }
     }
 
+    /// Handle error response and return appropriate error
+    fn handle_error_response<R: Read + Seek>(
+        &self,
+        message: &mut R,
+        header: &codec::Header,
+    ) -> Result<(), error::Error> {
+        if header.iproto_type == IProtoType::Error as u32 {
+            let error = codec::decode_error(message, header)?;
+            return Err(error::Error::Remote(error));
+        }
+        Ok(())
+    }
+
+    /// Send auth request to the server
+    fn send_auth_request(
+        &mut self,
+        user: &str,
+        pass: &str,
+        salt: &[u8],
+    ) -> Result<(), error::Error> {
+        debug_assert!(self.outgoing.is_empty());
+        let mut buf = Cursor::new(&mut self.outgoing);
+        let sync = self.sync.next_index();
+        write_to_buffer(
+            &mut buf,
+            sync,
+            &api::Auth {
+                user,
+                pass,
+                salt,
+                method: self.auth_method,
+            },
+        )
+    }
+
+    /// Send ID request to the server
+    fn send_id_request(&mut self) -> Result<(), error::Error> {
+        debug_assert!(self.outgoing.is_empty());
+        let mut buf = Cursor::new(&mut self.outgoing);
+        let sync = self.sync.next_index();
+        write_to_buffer(
+            &mut buf,
+            sync,
+            &api::Id {
+                cluster_uuid: self.cluster_uuid.as_deref(),
+            },
+        )
+    }
+
     fn process_message<R: Read + Seek>(
         &mut self,
         message: &mut R,
@@ -232,48 +292,62 @@ impl Protocol {
         let sync = match self.state {
             State::Init => {
                 let salt = codec::decode_greeting(message)?;
-                if let Some((user, pass)) = self.creds.as_ref() {
+                self.greeting_salt = Some(salt.clone());
+                if self.cluster_uuid.is_some() {
+                    self.state = State::Id;
+                    self.send_id_request()?;
+                } else if let Some((user, pass)) = self.creds.clone() {
                     // Auth
                     self.state = State::Auth;
-                    // Write straight to outgoing, it should be empty
-                    debug_assert!(self.outgoing.is_empty());
-                    let mut buf = Cursor::new(&mut self.outgoing);
-                    let sync = self.sync.next_index();
-                    write_to_buffer(
-                        &mut buf,
-                        sync,
-                        &api::Auth {
-                            user,
-                            pass,
-                            salt: &salt,
-                            method: self.auth_method,
-                        },
-                    )?;
+                    self.send_auth_request(&user, &pass, &salt)?;
                 } else {
                     // No auth
                     self.state = State::Ready;
                 }
                 None
             }
-            State::Auth => {
+            State::Id => {
+                // Decode ID response. If it's an error, ignore only ER_INVALID_MSGPACK.
+                // In vanilla Tarantool the ID body is type-checked against iproto_key_type;
+                // if a key (e.g. CLUSTER_UUID) is missing there, the expected type resolves to 0
+                // and mismatches the actual MP_STR, which triggers ER_INVALID_MSGPACK. Propagate
+                // any other error.
                 let header = codec::Header::decode(message)?;
                 if header.iproto_type == IProtoType::Error as u32 {
-                    let error = codec::decode_error(message, &header)?;
-                    return Err(error::Error::Remote(error));
+                    let err = codec::decode_error(message, &header)?;
+                    // 20 == ER_INVALID_MSGPACK
+                    if err.code != 20 {
+                        return Err(error::Error::Remote(err));
+                    }
+                    crate::say_warn!(
+                        "IPROTO_ID: ignoring ER_INVALID_MSGPACK (code 20); vanilla Tarantool likely lacks iproto_key_type entry for CLUSTER_UUID"
+                    );
                 }
+
+                if let Some((user, pass)) = self.creds.clone() {
+                    self.state = State::Auth;
+                    let salt = self.greeting_salt.clone().unwrap_or_default();
+                    self.send_auth_request(&user, &pass, &salt)?;
+                } else {
+                    self.state = State::Ready;
+                }
+                None
+            }
+            State::Auth => {
+                let header = codec::Header::decode(message)?;
+                self.handle_error_response(message, &header)?;
                 self.state = State::Ready;
                 None
             }
             State::Ready => {
                 let header = codec::Header::decode(message)?;
-                let response;
-                if header.iproto_type == IProtoType::Error as u32 {
-                    response = Err(codec::decode_error(message, &header)?);
+                let response = if header.iproto_type == IProtoType::Error as u32 {
+                    Err(codec::decode_error(message, &header)?)
                 } else {
                     // FIXME: we know the exact size of the body at this point
                     let mut buf = Vec::new();
                     message.read_to_end(&mut buf)?;
-                    response = Ok(buf);
+                    Ok(buf)
                 };
                 self.incoming.insert(header.sync, response);
                 Some(header.sync)

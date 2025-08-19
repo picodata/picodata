@@ -49,6 +49,25 @@ impl Request for Ping {
     }
 }
 
+pub struct Id<'a> {
+    pub cluster_uuid: Option<&'a str>,
+}
+
+impl Request for Id<'_> {
+    const TYPE: IProtoType = IProtoType::Id;
+    type Response = ();
+
+    #[inline(always)]
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
+        codec::encode_id(out, self.cluster_uuid)
+    }
+
+    #[inline(always)]
+    fn decode_response_body(_in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+        Ok(())
+    }
+}
+
 pub struct Call<'a, 'b, T: ?Sized> {
     pub fn_name: &'a str,
     pub args: &'b T,

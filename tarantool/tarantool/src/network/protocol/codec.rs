@@ -49,6 +49,7 @@ pub mod iproto_key {
     // ...
     pub const ERROR_EXT: u8 = 0x52;
     // ...
+    pub const CLUSTER_UUID: u8 = 0x5c;
 }
 use iproto_key::*;
 
@@ -81,6 +82,7 @@ crate::define_enum_with_introspection! {
         Commit = 15,
         Rollback = 16,
         // ...
+        Id = 73,
         Ping = 64,
         // ...
         /// Error marker. This value will be combined with the error code in the
@@ -261,6 +263,19 @@ pub fn encode_auth(
 
 pub fn encode_ping(stream: &mut impl Write) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 0)?;
+    Ok(())
+}
+
+pub fn encode_id(stream: &mut impl Write, cluster_uuid: Option<&str>) -> Result<(), Error> {
+    use iproto_key::CLUSTER_UUID;
+
+    if let Some(uuid) = cluster_uuid {
+        rmp::encode::write_map_len(stream, 1)?;
+        rmp::encode::write_pfix(stream, CLUSTER_UUID)?;
+        rmp::encode::write_str(stream, uuid)?;
+    } else {
+        rmp::encode::write_map_len(stream, 0)?;
+    }
     Ok(())
 }
 
