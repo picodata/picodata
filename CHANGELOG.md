@@ -35,6 +35,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### CLI
 
+- Authentication method flags are now silently ignored in favor of automatic method
+  recognition, delivering less error-prone and simpler user experience.
+
 - `picodata status` and `picodata plugin configure` now support execution with
   custom user, determining authentication method automatically on it's own.
   WARNING: If you do not specify an authentication method, it will be found
@@ -45,20 +48,12 @@ with the `YY.MINOR.MICRO` scheme.
 - `picodata plugin configure` now prints a message on success for better UX.
   See <https://git.picodata.io/core/picodata/-/issues/1904>.
 
-- `picodata expel` now uses CHAP-SHA1 as a default authentication method, because
-  in most cases, this command will be executed as a `pico_service` internal user.
-
 ## [25.3.1] - 2025-07-25
 
 ### Features
 
 - Introduce automatic system catalog schema upgrade on new releases
   (automatically executing DDL/DML and creating internal functions).
-
-### CLI
-- `picodata plugin configure` now prints a message on success.
-- `picodata status` and `picodata plugin configure` now support execution as a custom user.
-  Before, only `pico_service` user could be used to perform these subcommands.
 
 ### ACL
 - The maximum number of users and roles that can be created has been increased from 32 to 128.
