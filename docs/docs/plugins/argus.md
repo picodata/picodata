@@ -11,10 +11,10 @@ Picodata.
 ## Общие сведения {: #intro }
 
 Плагин Argus используется для синхронизации учетных данных между
-сервером LDAP и Picodata. Синхронизация происходит однонаправленно и
+сервером LDAP/LDAPS и Picodata. Синхронизация происходит однонаправленно и
 позволяет импортировать данные пользователей и групп с сервера LDAP в
 Picodata, для которой перед этим была настроена авторизация с помощью
-[LDAP](../admin/ldap.md).
+[LDAP/LDAPS](../admin/ldap.md).
 
 ## Состав плагина {: #plugin_files }
 
@@ -29,7 +29,7 @@ Picodata, для которой перед этим была настроена 
 
 ```
 └── argus
-    └── 2.1.3
+    └── 2.1.4
         ├── libargus.so
         └── manifest.yaml
 ```
@@ -75,9 +75,9 @@ picodata run --plugin-dir=<PLUGIN-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN argus 2.1.3;
-ALTER PLUGIN argus 2.1.3 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN argus 2.1.3 ENABLE;
+CREATE PLUGIN argus 2.1.4;
+ALTER PLUGIN argus 2.1.4 ADD SERVICE argus TO TIER default;
+ALTER PLUGIN argus 2.1.4 ENABLE;
 ```
 
 !!! note "Примечание"
@@ -166,7 +166,7 @@ all:
 
     plugins:
       argus:                                    # плагин
-        path: '../plugins/argus_2.1.3.tar.gz'   # путь до пакета плагина
+        path: '../plugins/argus_2.1.4.tar.gz'   # путь до пакета плагина
         config: '../plugins/argus-config.yml'   # путь до файла с настройками плагина
         services:
           argus:
