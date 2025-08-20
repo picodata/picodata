@@ -863,11 +863,12 @@ audit:
   stage: test
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    CACHE_POLICY: pull
   rules:
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
+    - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-        CACHE_POLICY: pull
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
   script:
     - make audit
 
