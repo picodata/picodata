@@ -143,7 +143,6 @@ impl Nodes {
                 Node64::ValuesRow(values_row) => {
                     Node::Relational(Relational::ValuesRow(values_row))
                 }
-                Node64::NamedWindows(window) => Node::Relational(Relational::NamedWindows(window)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
@@ -299,9 +298,6 @@ impl Nodes {
                     }
                     Node64::ValuesRow(values_row) => {
                         MutNode::Relational(MutRelational::ValuesRow(values_row))
-                    }
-                    Node64::NamedWindows(window) => {
-                        MutNode::Relational(MutRelational::NamedWindows(window))
                     }
                 }),
             ArenaType::Arena96 => self
@@ -1055,7 +1051,6 @@ impl Plan {
                 self.get_reference_source_relation(source_ref_id)
             }
             Relational::ScanRelation { .. }
-            | Relational::NamedWindows { .. }
             | Relational::Projection { .. }
             | Relational::SelectWithoutScan { .. }
             | Relational::ScanCte { .. }

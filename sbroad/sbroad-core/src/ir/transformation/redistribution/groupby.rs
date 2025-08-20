@@ -303,10 +303,9 @@ impl Plan {
     /// Approximate plan before adding 2-stage aggregation:
     /// ```txt
     /// Projection (1)
-    ///     NamedWindows (2)
-    ///         Having (3)
-    ///             GroupBy (4)
-    ///                 Scan (5)
+    ///         Having (2)
+    ///             GroupBy (3)
+    ///                 Scan (4)
     /// ```
     /// Then this function will return `([1, 2, 3], 4)`
     pub(crate) fn split_group_by(
@@ -329,7 +328,7 @@ impl Plan {
         let max_reduce_nodes = 3;
         for _ in 0..=max_reduce_nodes {
             match self.get_relation_node(next)? {
-                Relational::Projection(_) | Relational::NamedWindows(_) | Relational::Having(_) => {
+                Relational::Projection(_) | Relational::Having(_) => {
                     finals.push(next);
                     next = get_first_child(next)?;
                 }

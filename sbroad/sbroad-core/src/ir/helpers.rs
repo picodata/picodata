@@ -19,7 +19,7 @@ use std::hash::BuildHasher;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{
-    ArithmeticExpr, Like, Limit, NamedWindows, Over, Parameter, ScalarFunction, Timestamp, Window,
+    ArithmeticExpr, Like, Limit, Over, Parameter, ScalarFunction, Timestamp, Window,
 };
 
 /// Helper macros to build a hash map or set
@@ -92,16 +92,11 @@ impl Plan {
             write!(buf, "expression: ")?;
             match expr {
                 Expression::Window(Window {
-                    name,
                     partition,
                     ordering,
                     frame,
                 }) => {
-                    if let Some(name) = name {
-                        writeln!(buf, "Window [name = {name}]")?;
-                    } else {
-                        writeln!(buf, "Window")?;
-                    }
+                    writeln!(buf, "Window")?;
                     if let Some(partition) = partition {
                         writeln_with_tabulation(buf, tabulation_number + 1, "Partition")?;
                         for part in partition {
@@ -130,7 +125,6 @@ impl Plan {
                     stable_func,
                     filter,
                     window,
-                    ref_by_name,
                 }) => {
                     writeln!(buf, "Over")?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "StableFunc")?;
@@ -141,11 +135,6 @@ impl Plan {
                     }
                     writeln_with_tabulation(buf, tabulation_number + 1, "Window")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *window)?;
-                    writeln_with_tabulation(
-                        buf,
-                        tabulation_number + 1,
-                        &format!("Ref by name: {ref_by_name}"),
-                    )?;
                 }
                 Expression::Alias(Alias { name, child }) => {
                     writeln!(buf, "Alias [name = {name}]")?;
@@ -335,12 +324,6 @@ impl Plan {
                 write!(buf, "relation: ")?;
                 // Print relation name and specific info.
                 match relation {
-                    Relational::NamedWindows(NamedWindows { windows, .. }) => {
-                        writeln!(buf, "NamedWindows")?;
-                        for window_id in windows {
-                            self.write_expr(buf, tabulation_number + 1, *window_id)?;
-                        }
-                    }
                     Relational::ScanRelation(ScanRelation {
                         alias, relation, ..
                     }) => {
@@ -470,7 +453,6 @@ impl Plan {
                 // Print children.
                 match relation {
                     Relational::Join(_)
-                    | Relational::NamedWindows(_)
                     | Relational::Projection(_)
                     | Relational::Except(_)
                     | Relational::Delete(_)

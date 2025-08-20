@@ -11,10 +11,10 @@ use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
-    Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, NamedWindows, Node,
-    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row,
-    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim,
-    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
+    Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, Node, NodeAligned,
+    NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
+    Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -157,7 +157,6 @@ impl SubtreeCloner {
         // be updated, or compilation will fail.
         match &mut copied {
             ExprOwned::Window(Window {
-                name: _,
                 ref mut partition,
                 ref mut ordering,
                 ref mut frame,
@@ -198,7 +197,6 @@ impl SubtreeCloner {
                 ref mut stable_func,
                 ref mut filter,
                 ref mut window,
-                ref_by_name: _,
             }) => {
                 *stable_func = self.get_new_id(*stable_func)?;
                 if let Some(filter) = filter {
@@ -322,12 +320,7 @@ impl SubtreeCloner {
         // when a new field is added to a struct, this match must
         // be updated, or compilation will fail.
         match &mut copied {
-            RelOwned::NamedWindows(NamedWindows {
-                child: _,
-                output: _,
-                windows: _,
-            })
-            | RelOwned::Values(Values {
+            RelOwned::Values(Values {
                 output: _,
                 children: _,
             })

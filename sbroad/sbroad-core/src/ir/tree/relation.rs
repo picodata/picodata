@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::TreeIterator;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{ArenaType, Limit, NamedWindows, NodeId, Projection, ScanCte};
+use crate::ir::node::{ArenaType, Limit, NodeId, Projection, ScanCte};
 use crate::ir::{Node, Nodes};
 
 trait RelationalTreeIterator<'nodes>: TreeIterator<'nodes> {}
@@ -100,7 +100,6 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                     None
                 }
                 Relational::ScanCte(ScanCte { child, .. })
-                | Relational::NamedWindows(NamedWindows { child, .. })
                 | Relational::Limit(Limit { child, .. }) => {
                     let step = *iter.get_child().borrow();
                     if step == 0 {

@@ -18,7 +18,6 @@ fn window_simple_partition_by() {
         false,
     );
     let window = Window {
-        name: None,
         partition: Some(vec![a_ref]),
         ordering: None,
         frame: None,
@@ -55,7 +54,6 @@ fn window_complex_partition_by() {
     );
     let sum = plan.nodes.add_bool(a_ref, Bool::And, b_ref).unwrap();
     let window = Window {
-        name: None,
         partition: Some(vec![sum]),
         ordering: None,
         frame: None,
@@ -72,7 +70,6 @@ fn window_empty_partition_by() {
 
     // Check empty vector as partition.
     let window = Window {
-        name: None,
         partition: Some(vec![]),
         ordering: None,
         frame: None,
@@ -82,7 +79,6 @@ fn window_empty_partition_by() {
 
     // Check None as partition.
     let window = Window {
-        name: None,
         partition: None,
         ordering: None,
         frame: None,

@@ -569,7 +569,7 @@ impl AbstractSyntaxTree {
 
         // The order of the nodes in the chain is partially reversed.
         // Original nodes from grammar:
-        // Projection -> Scan -> Join1 -> ... -> JoinK -> Selection -> GroupBy -> Having -> OrderBy.
+        // Projection -> Scan -> Join1 -> ... -> JoinK -> Selection -> GroupBy -> Having -> NamedWindows.
         // We need to change the order of the chain to:
         // Projection -> NamedWindows -> Having -> GroupBy -> Selection -> JoinK -> ... -> Join1
         let mut chain = Vec::with_capacity(children.len() - 1);

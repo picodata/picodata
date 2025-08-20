@@ -424,7 +424,6 @@ impl ExecutionPlan {
                                 push_identifier(&mut sql, relation)
                             }
                             Relational::ScanSubQuery { .. }
-                            | Relational::NamedWindows { .. }
                             | Relational::ScanCte { .. }
                             | Relational::Motion { .. }
                             | Relational::ValuesRow { .. }

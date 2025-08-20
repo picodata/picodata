@@ -228,8 +228,7 @@ trait TreeIterator<'nodes> {
         }
 
         if step == 0 {
-            // We iterate over windows without names in Projection. All named windows are
-            // iterated in NamedWindows node to keep the bind order for parameters.
+            // We iterate over windows without names in Projection.
             return Some(*window);
         }
         None

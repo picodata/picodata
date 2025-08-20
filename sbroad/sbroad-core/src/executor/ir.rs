@@ -13,9 +13,9 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
-    GroupBy, Having, Insert, Join, Like, Motion, NamedWindows, Node136, NodeId, NodeOwned, OrderBy,
-    Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
-    Trim, UnaryExpr, Update, ValuesRow, Window,
+    GroupBy, Having, Insert, Join, Like, Motion, Node136, NodeId, NodeOwned, OrderBy, Over,
+    Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection, Trim,
+    UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -303,7 +303,6 @@ impl ExecutionPlan {
             | Relational::Intersect { .. }
             | Relational::Join { .. }
             | Relational::Projection { .. }
-            | Relational::NamedWindows { .. }
             | Relational::ScanRelation { .. }
             | Relational::Selection { .. }
             | Relational::SelectWithoutScan { .. }
@@ -472,11 +471,6 @@ impl ExecutionPlan {
             match node {
                 NodeOwned::Relational(ref mut rel) => {
                     match rel {
-                        RelOwned::NamedWindows(NamedWindows { windows, .. }) => {
-                            for window in windows {
-                                *window = subtree_map.get_id(*window);
-                            }
-                        }
                         RelOwned::Selection(Selection {
                             filter: ref mut expr_id,
                             ..

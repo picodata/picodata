@@ -1442,7 +1442,6 @@ fn take_subtree_projection_windows_transfer() {
             })
             .collect();
         let window = Window {
-            name: None,
             partition: None,
             ordering: Some(ordering),
             frame: None,
@@ -1467,7 +1466,6 @@ fn take_subtree_projection_windows_transfer() {
             stable_func: stable_func_id,
             window,
             filter: None,
-            ref_by_name: false,
         };
 
         plan.nodes.push(over.into())

@@ -1142,7 +1142,6 @@ pub struct Frame {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Window {
-    pub name: Option<SmolStr>,
     pub partition: Option<Vec<NodeId>>,
     pub ordering: Option<Vec<OrderByElement>>,
     pub frame: Option<Frame>,
@@ -1155,25 +1154,11 @@ impl From<Window> for NodeAligned {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct NamedWindows {
-    pub child: NodeId,
-    pub output: NodeId,
-    pub windows: Vec<NodeId>,
-}
-
-impl From<NamedWindows> for NodeAligned {
-    fn from(value: NamedWindows) -> Self {
-        Self::Node64(Node64::NamedWindows(value))
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 
 pub struct Over {
     pub stable_func: NodeId,
     pub filter: Option<NodeId>,
     pub window: NodeId,
-    pub ref_by_name: bool,
 }
 
 impl From<Over> for NodeAligned {
@@ -1371,7 +1356,6 @@ pub enum Node64 {
     SetTransaction(SetTransaction),
     Invalid(Invalid),
     Over(Over),
-    NamedWindows(NamedWindows),
     TruncateTable(TruncateTable),
 }
 
@@ -1411,9 +1395,6 @@ impl Node64 {
                 NodeOwned::Ddl(DdlOwned::SetTransaction(set_trans))
             }
             Node64::ValuesRow(values_row) => NodeOwned::Relational(RelOwned::ValuesRow(values_row)),
-            Node64::NamedWindows(named_windows) => {
-                NodeOwned::Relational(RelOwned::NamedWindows(named_windows))
-            }
         }
     }
 }

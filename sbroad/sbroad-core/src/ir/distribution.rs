@@ -15,7 +15,6 @@ use crate::ir::transformation::redistribution::{MotionKey, Target};
 
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::Relational;
-use super::node::NamedWindows;
 use super::relation::{Column, ColumnPositions};
 use super::Plan;
 
@@ -452,9 +451,6 @@ impl Plan {
         let output_id = self.get_relational_output(proj_id)?;
         let child_id = self.get_relational_child(proj_id, 0)?;
         let ref_info = ReferenceInfo::new(output_id, self)?;
-        if let Relational::NamedWindows(NamedWindows { .. }) = self.get_relation_node(child_id)? {
-            self.set_rel_output_distribution(child_id)?;
-        }
         let child_dist = self.dist_from_child(child_id, &ref_info.child_column_to_parent_col)?;
 
         if let Distribution::Segment { .. } = child_dist {

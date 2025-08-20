@@ -254,7 +254,6 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 | Relational::Join { .. }
                 | Relational::Motion { .. }
                 | Relational::Projection { .. }
-                | Relational::NamedWindows { .. }
                 | Relational::Intersect { .. }
                 | Relational::ScanCte { .. }
                 | Relational::ScanRelation { .. }

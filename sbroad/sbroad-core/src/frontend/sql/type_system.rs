@@ -287,7 +287,6 @@ pub fn to_type_expr(
             stable_func,
             filter,
             window,
-            ref_by_name: _,
         }) => {
             let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
                 plan.get_expression_node(*stable_func)?

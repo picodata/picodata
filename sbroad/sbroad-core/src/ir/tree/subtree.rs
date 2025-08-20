@@ -5,9 +5,9 @@ use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NamedWindows, NodeId,
-    OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
+    Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId, OrderBy,
+    Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
+    Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -408,27 +408,6 @@ fn subtree_next<'plan>(
                             *iter.get_child().borrow_mut() += 1;
                             return Some(*output);
                         }
-                    }
-                    None
-                }
-                Relational::NamedWindows(NamedWindows {
-                    child,
-                    output,
-                    windows,
-                    ..
-                }) => {
-                    let step = *iter.get_child().borrow();
-                    if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*child);
-                    }
-                    if step <= windows.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return windows.get(step - 1).copied();
-                    }
-                    if iter.need_output() && step == windows.len() + 1 {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*output);
                     }
                     None
                 }

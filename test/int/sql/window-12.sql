@@ -1,4 +1,4 @@
--- TEST: window12
+-- TEST: window12-init-1
 -- SQL:
 DROP TABLE IF EXISTS t6;
 CREATE TABLE t6(x INT PRIMARY KEY, y INT);
@@ -126,11 +126,10 @@ WINDOW
     win AS (ORDER BY y + 2 * (SELECT 111) + (SELECT 2)),
     win1 AS (PARTITION BY x + (SELECT 3));
 -- EXPECTED:
-projection (avg("x"::int) over win1 -> "col_1", sum("x"::int) over win -> "col_2")
-    windows: win1 as (partition by ("x"::int + ROW($0)) ), win as (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) )
-        motion [policy: full]
-            projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
-                scan "t6"
+projection (avg("x"::int) over (partition by ("x"::int + ROW($0)) ) -> "col_1", sum("x"::int) over (order by (("y"::int + (2::int * ROW($2))) + ROW($1)) ) -> "col_2")
+    motion [policy: full]
+        projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
+            scan "t6"
 subquery $0:
 scan
         projection (3::int -> "col_1")
@@ -164,29 +163,189 @@ WINDOW
         )
     )::int);
 -- EXPECTED:
-projection (row_number() over win2 -> "col_1", sum("y"::int) over win2 -> "col_2", max("x"::int) over win3 -> "col_3")
-    windows: win2 as (partition by ("x"::int + ROW($1)) ), win3 as (order by ("x"::int + ROW($0)::int) )
-        motion [policy: full]
-            projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
-                scan "t6"
+projection (row_number() over (partition by ("x"::int + ROW($1)) ) -> "col_1", sum("y"::int) over (partition by ("x"::int + ROW($1)) ) -> "col_2", max("x"::int) over (order by ("x"::int + ROW($0)::int) ) -> "col_3")
+    motion [policy: full]
+        projection ("t6"."x"::int -> "x", "t6"."bucket_id"::int -> "bucket_id", "t6"."y"::int -> "y")
+            scan "t6"
 subquery $0:
 motion [policy: full]
         scan
-            projection (count(*::int) over win_nested -> "col_1")
-                windows: win_nested as (rows between current row and unbounded following)
-                    scan "unnamed_subquery"
-                        limit 1
-                            motion [policy: full]
-                                limit 1
-                                    projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
-                                        scan "t6"
+            projection (count(*::int) over (rows between current row and unbounded following) -> "col_1")
+                scan "unnamed_subquery"
+                    limit 1
+                        motion [policy: full]
+                            limit 1
+                                projection ("t6"."x"::int -> "x", "t6"."y"::int -> "y")
+                                    scan "t6"
 subquery $1:
 scan
         projection (2::int -> "col_1")
-subquery $2:
-scan
-        projection (1::int -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
     sql_motion_row_max = 5000
 buckets = [1-3000]
+
+-- TEST: window12-3.7
+-- SQL:
+explain select 1 from t6 window w as (partition by (select 1 from t6 window w as ()));
+-- EXPECTED:
+projection (1::int -> "col_1")
+    scan "t6"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = [1-3000]
+
+-- TEST: window12-4-init
+-- SQL:
+DROP TABLE IF EXISTS t_win;
+CREATE TABLE t_win(a INT PRIMARY KEY, b INT, c INT);
+INSERT INTO t_win VALUES(1, 10, 100);
+INSERT INTO t_win VALUES(2, 20, 200);
+INSERT INTO t_win VALUES(3, 30, 300);
+INSERT INTO t_win VALUES(4, 40, 400);
+INSERT INTO t_win VALUES(5, 50, 500);
+
+-- TEST: window12-4.1
+-- SQL:
+SELECT max(a) OVER w FROM t_win WINDOW w AS () 
+EXCEPT 
+SELECT max(1) OVER w ORDER BY 1;
+-- ERROR:
+sbroad: invalid expression: Window with name w not found
+
+-- TEST: window12-4.2
+-- SQL:
+SELECT * FROM (
+    SELECT row_number() OVER w FROM t_win WINDOW w AS (ORDER BY a)
+) AS sub
+WHERE EXISTS (
+    SELECT 1 FROM t_win WINDOW w AS (ORDER BY b DESC)
+);
+-- EXPECTED:
+1, 2, 3, 4, 5
+
+-- TEST: window12-4.3
+-- SQL:
+SELECT a, (SELECT max(b) OVER w FROM t_win) 
+FROM t_win 
+WINDOW w AS (PARTITION BY a);
+-- ERROR:
+sbroad: invalid expression: Window with name w not found
+
+-- TEST: window12-4.4
+-- SQL:
+SELECT count(*) OVER w 
+FROM t_win AS w 
+WINDOW w AS (ORDER BY w.a);
+-- EXPECTED:
+1, 2, 3, 4, 5
+
+-- TEST: window12-4.5
+-- SQL:
+SELECT sum(a) OVER w FROM t_win WINDOW w AS (ORDER BY a)
+UNION ALL
+SELECT sum(b) OVER w FROM t_win WINDOW w AS (ORDER BY b DESC);
+-- EXPECTED:
+1, 3, 6, 10, 15, 50, 90, 120, 140, 150
+
+-- TEST: window12-4.6
+-- SQL:
+SELECT count(*) OVER w 
+FROM t_win 
+WINDOW w AS (PARTITION BY (SELECT max(a) OVER w2 FROM t_win WINDOW w2 AS ()));
+-- ERROR:
+Failed to execute SQL statement: Expression subquery returned more than 1 row
+
+-- TEST: window12-4.7
+-- SQL:
+WITH cte AS (
+    SELECT a, sum(b) OVER w AS sum_b 
+    FROM t_win 
+    WINDOW w AS (PARTITION BY a)
+)
+SELECT *, avg(sum_b) OVER w 
+FROM cte 
+WINDOW w AS (ORDER BY a);
+-- EXPECTED:
+1, 10, 10.0, 2, 20, 15.0, 3, 30, 20.0, 4, 40, 25.0, 5, 50, 30.0
+
+-- TEST: window12-4.8
+-- SQL:
+SELECT 1 FROM t_win 
+WINDOW w AS (PARTITION BY (SELECT 1 FROM t_win WINDOW w AS ()));
+-- EXPECTED:
+1, 1, 1, 1, 1
+
+-- TEST: window12-4.9
+-- SQL:
+SELECT 
+    row_number() OVER w1,
+    row_number() OVER w2 
+FROM t_win 
+WINDOW w1 AS (ORDER BY a),
+       w2 AS (ORDER BY a);
+-- EXPECTED:
+1, 1, 2, 2, 3, 3, 4, 4, 5, 5
+
+-- TEST: window12-4.10
+-- SQL:
+WITH cte AS (
+    SELECT * FROM t_win WINDOW w AS (ORDER BY a)
+)
+SELECT sum(a) OVER w FROM cte;
+-- ERROR:
+sbroad: invalid expression: Window with name w not found
+
+-- TEST: window12-4.11
+-- SQL:
+SELECT DISTINCT a, count(*) OVER w 
+FROM t_win 
+GROUP BY a 
+WINDOW w AS (ORDER BY a);
+-- EXPECTED:
+1, 1, 2, 2, 3, 3, 4, 4, 5, 5
+
+-- TEST: window12-4.12
+-- SQL:
+SELECT 
+    CASE 
+        WHEN row_number() OVER w = 1 THEN 'first'
+        WHEN row_number() OVER w = count(*) OVER w THEN 'last'
+        ELSE 'middle'
+    END 
+FROM t_win 
+WINDOW w AS (ORDER BY a);
+-- EXPECTED:
+'first', 'last', 'last', 'last', 'last'
+
+-- TEST: window12-4.13
+-- SQL:
+SELECT sum(a) OVER w as s FROM t_win WINDOW w AS (ORDER BY a ASC)
+UNION
+SELECT sum(a) OVER w as s FROM t_win WINDOW w AS (ORDER BY a DESC)
+ORDER BY s;
+-- EXPECTED:
+1, 3, 5, 6, 9, 10, 12, 14, 15
+
+-- TEST: window12-4.14
+-- SQL:
+SELECT row_number() OVER user 
+FROM t_win 
+WINDOW user AS (ORDER BY a);
+-- EXPECTED:
+1, 2, 3, 4, 5
+
+-- TEST: window12-5-init
+-- SQL:
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT PRIMARY KEY, b INT, c INT);
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t2(a INT PRIMARY KEY, b INT, c INT);
+DROP TABLE IF EXISTS g1;
+CREATE TABLE g1(a INT PRIMARY KEY, b INT, c INT);
+
+-- TEST: window12-5.1
+-- SQL:
+SELECT sum(-13) AS c0, 11 AS c1, t3.b AS c2, t3.c AS c3 FROM t2 AS t0 LEFT JOIN t1 AS t1 ON t0.c > t1.b JOIN t1 AS t2 ON t2.c = t1.c JOIN t2 AS t3 ON (SELECT t2.a AS c0 FROM t1 AS t0 LEFT JOIN g1 AS t1 ON t0.b = t1.a JOIN g1 AS t2 ON t1.a = t2.a LEFT JOIN t2 AS t3 ON t3.a = t2.a WHERE t0.b = t0.a AND t2.c >= t2.a UNION SELECT max(t0.a) AS c0 FROM t1 AS t0 LEFT JOIN g1 AS t1 ON t0.b = t1.b JOIN g1 AS t2 ON t2.c = t1.c WHERE t1.b <> t1.b OR t1.c < t1.c HAVING 15 < avg(t0.c) OR count(t0.c) = 5961600 WINDOW win0 AS (PARTITION BY t1.a, t2.a ORDER BY t1.a), win1 AS (PARTITION BY t0.a ORDER BY t1.c DESC, t1.c DESC), win2 AS (PARTITION BY (SELECT t0.a AS c0 FROM t2 AS t0 WHERE t0.c < t0.a OR t0.a = t0.b OR t0.a NOT BETWEEN t0.c AND t0.a ORDER BY c0 DESC LIMIT 1), count(t0.b), max(9), t0.a ORDER BY t0.b ASC, t0.c ASC, t0.a ASC, t2.c ASC, t0.a ASC) ORDER BY c0 ASC LIMIT 1) < t3.b WHERE t0.a = t1.a OR t3.b <= t3.b GROUP BY t3.c, t3.b HAVING max(DISTINCT t3.a) = 11 ORDER BY c3, c1 ASC, c0 DESC, c2 ASC;
+-- EXPECTED:

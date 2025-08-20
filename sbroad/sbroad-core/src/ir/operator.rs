@@ -28,7 +28,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use super::expression::{ColumnPositionMap, ExpressionId};
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
-use super::node::{ArenaType, Limit, NamedWindows, Node, NodeAligned, SelectWithoutScan};
+use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
 use super::transformation::redistribution::{MotionPolicy, Program};
 use super::types::DerivedType;
 use crate::ir::distribution::{Distribution, Key, KeySet};
@@ -964,21 +964,6 @@ impl Plan {
         self.add_relational(proj.into())
     }
 
-    pub fn add_named_windows(
-        &mut self,
-        child: NodeId,
-        windows: Vec<NodeId>,
-    ) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_output(child, &[], true, None)?;
-        let named_windows = NamedWindows {
-            child,
-            windows,
-            output,
-        };
-
-        self.add_relational(named_windows.into())
-    }
-
     /// Adds projection node (use a list of expressions instead of alias names).
     ///
     /// # Errors
@@ -1719,9 +1704,6 @@ impl Plan {
                 }
                 Ok(None)
             }
-            Relational::NamedWindows(NamedWindows { child, .. }) => {
-                self.scan_name(*child, output_alias_position)
-            }
             Relational::Except { .. }
             | Relational::Union { .. }
             | Relational::UnionAll { .. }
@@ -1800,7 +1782,6 @@ impl Plan {
                 child: Some(child), ..
             })
             | Relational::Insert(Insert { child, .. })
-            | Relational::NamedWindows(NamedWindows { child, .. })
             | Relational::ScanSubQuery(ScanSubQuery { child, .. }) => Children::Single(child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })

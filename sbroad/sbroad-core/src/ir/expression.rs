@@ -15,8 +15,8 @@ use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
 use super::node::{
-    Bound, BoundType, GroupBy, Having, Join, Like, NamedWindows, OrderBy, Over, ReferenceTarget,
-    Selection, Window,
+    Bound, BoundType, GroupBy, Having, Join, Like, OrderBy, Over, ReferenceTarget, Selection,
+    Window,
 };
 use super::operator::OrderByEntity;
 use super::types::DerivedType;
@@ -306,13 +306,11 @@ impl<'plan> Comparator<'plan> {
                         }
                     }
                     Expression::Window(Window {
-                        name: l_name,
                         partition: l_partition,
                         ordering: l_ordering,
                         frame: l_frame,
                     }) => {
                         if let Expression::Window(Window {
-                            name: r_name,
                             partition: r_partition,
                             ordering: r_ordering,
                             frame: r_frame,
@@ -399,10 +397,7 @@ impl<'plan> Comparator<'plan> {
                                 (None, None) => {}
                                 _ => return Ok(false),
                             }
-                            return Ok(l_name == r_name
-                                && parts_equal
-                                && ordering_equal
-                                && frame_equal);
+                            return Ok(parts_equal && ordering_equal && frame_equal);
                         }
                     }
                     Expression::Over(Over {
@@ -704,12 +699,10 @@ impl<'plan> Comparator<'plan> {
         };
         match node {
             Expression::Window(Window {
-                name,
                 partition,
                 ordering,
                 frame,
             }) => {
-                name.hash(state);
                 if let Some(ordering) = ordering {
                     for elem in ordering {
                         elem.order_type.hash(state);
@@ -778,7 +771,6 @@ impl<'plan> Comparator<'plan> {
                 stable_func,
                 filter,
                 window,
-                ref_by_name,
             }) => {
                 let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
                     self.plan.get_expression_node(*stable_func).unwrap()
@@ -786,7 +778,6 @@ impl<'plan> Comparator<'plan> {
                     panic!("Over should have stable func");
                 };
                 name.to_string().hash(state);
-                ref_by_name.hash(state);
                 for arg in children {
                     self.hash_for_child_expr(*arg, depth);
                 }
@@ -1850,11 +1841,6 @@ impl Plan {
                 let oldest = self.undo.get_oldest(&filter);
                 if *oldest != filter {
                     self.replace_target_in_subtree(*oldest, from, to)?;
-                }
-            }
-            Relational::NamedWindows(NamedWindows { windows, .. }) => {
-                for window in windows.clone() {
-                    self.replace_target_in_subtree(window, from, to)?;
                 }
             }
             Relational::ScanCte(_) => {}

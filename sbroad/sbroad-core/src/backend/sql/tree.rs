@@ -5,10 +5,10 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
-    GroupBy, Having, Intersect, Join, Like, Limit, Motion, NamedWindows, Node, NodeId, OrderBy,
-    Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
-    Values, ValuesRow, Window,
+    GroupBy, Having, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over, Parameter,
+    Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte, ScanRelation,
+    ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll, Values,
+    ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -304,14 +304,6 @@ impl SyntaxNode {
     fn new_inline(value: &str) -> Self {
         SyntaxNode {
             data: SyntaxData::Inline(value.into()),
-            left: None,
-            right: Vec::new(),
-        }
-    }
-
-    fn new_window() -> Self {
-        SyntaxNode {
-            data: SyntaxData::Window,
             left: None,
             right: Vec::new(),
         }
@@ -959,7 +951,6 @@ impl<'p> SyntaxPlan<'p> {
                 self.nodes.push_sn_plan(sn);
             }
             Node::Relational(ref rel) => match rel {
-                Relational::NamedWindows { .. } => self.add_named_windows(id),
                 Relational::Delete { .. } => self.add_delete(id),
                 Relational::Insert { .. } | Relational::Update { .. } => {
                     panic!("DML node {node:?} is not supported in the syntax plan")
@@ -1191,44 +1182,6 @@ impl<'p> SyntaxPlan<'p> {
             sn_children.push(*first);
         }
 
-        let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), sn_children);
-        self.nodes.push_sn_plan(sn);
-    }
-
-    fn add_named_windows(&mut self, id: NodeId) {
-        let (_, named_windows) = self.prologue_rel(id);
-        let Relational::NamedWindows(NamedWindows { child, windows, .. }) = named_windows else {
-            panic!("Expected NAMED WINDOWS node");
-        };
-
-        let child_plan_id = *child;
-        let windows: Vec<NodeId> = windows.iter().rev().copied().collect();
-
-        let mut sn_children = Vec::with_capacity(windows.len() * 6);
-        for (pos, window_id) in windows.iter().enumerate() {
-            let window_sn_id = self.pop_from_stack(*window_id, id);
-            let (_, window_expr) = self.prologue_expr(*window_id);
-            let Expression::Window(Window { name, .. }) = window_expr else {
-                panic!("Expected WINDOW expression");
-            };
-            let name: String = name
-                .to_owned()
-                .map(|name| name.into())
-                .expect("window name");
-            if pos != 0 {
-                sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_comma()));
-            }
-            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
-            sn_children.push(window_sn_id);
-            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
-            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_as()));
-            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_inline(&name)));
-        }
-        if !windows.is_empty() {
-            sn_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_window()));
-        }
-        sn_children.reverse();
-        let child_sn_id = self.pop_from_stack(child_plan_id, id);
         let sn = SyntaxNode::new_pointer(id, Some(child_sn_id), sn_children);
         self.nodes.push_sn_plan(sn);
     }
@@ -1743,32 +1696,11 @@ impl<'p> SyntaxPlan<'p> {
         let filter = *filter;
         let window = *window;
 
-        // Get window name if it exists
-        let window_name = if let Expression::Window(Window { name, .. }) = plan
-            .get_expression_node(window)
-            .expect("Window expression node is expected for OVER expression")
-        {
-            name.clone()
-        } else {
-            panic!("WINDOW expression node expected")
-        };
-
         let mut right_children = Vec::new();
-
-        // Handle window name or window expression
-        if let Some(window_name) = window_name {
-            let name_sn_id = self
-                .nodes
-                .push_sn_non_plan(SyntaxNode::new_inline(window_name.as_str()));
-            right_children.push(name_sn_id);
-            // We still need to remove the window from the stack.
-            let _ = self.pop_from_stack(window, id);
-        } else {
-            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
-            let window_sn_id = self.pop_expr_from_stack(window, id);
-            right_children.push(window_sn_id);
-            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
-        }
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        let window_sn_id = self.pop_expr_from_stack(window, id);
+        right_children.push(window_sn_id);
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
         right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_over()));
 
         // Handle filter if present

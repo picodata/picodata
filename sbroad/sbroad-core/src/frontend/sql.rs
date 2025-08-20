@@ -8,8 +8,8 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
-    NamedWindows, Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget,
-    Row, ScalarFunction, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
+    Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
+    ScalarFunction, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
 };
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use ahash::{AHashMap, AHashSet};
@@ -2199,14 +2199,24 @@ where
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
     column_positions_cache: HashMap<NodeId, ColumnPositionMap>,
-    /// Map of named window definitions where key is the window name and value is the corresponding node ID.
-    /// Used to store and look up window definitions that can be referenced by name in window functions.
-    named_windows_map: HashMap<SmolStr, NodeId>,
-    /// Vec of all window nodes in the query plan.
+    /// Inside WindowBody node.
+    /// Used to correctly process subqueries inside window body.
+    inside_window_body: bool,
+    /// Vec of window nodes in the current projection context.
     /// Stores window definitions in order of appearance, including both named and inline windows.
-    windows: Vec<NodeId>,
-    /// Vec of named window NodeId's that are explicitly referenced in window functions.
-    referenced_named_window_ids: Vec<NodeId>,
+    curr_windows: Vec<NodeId>,
+    /// Named windows nodes, stack of projection contexts for named windows.
+    /// Example with >1 context:
+    /// select distinct 1 from t group by (select row_number() over w from t window w as () limit 1) window w as ()
+    named_windows_stack: Vec<HashMap<SmolStr, NodeId>>,
+    /// Named windows for current projection.
+    curr_named_windows: HashMap<SmolStr, NodeId>,
+    /// Window node by SubQuery NodeId.
+    /// This is used when window contains subquery.
+    /// This is used to avoid unnecessary subqueries linked to projection.
+    named_windows_sqs: HashMap<NodeId, NodeId>,
+    /// Subqueries inside current Window node.
+    curr_window_sqs: Vec<NodeId>,
 }
 
 impl<'worker, M> ExpressionsWorker<'worker, M>
@@ -2228,9 +2238,12 @@ where
             betweens: Vec::new(),
             reference_to_name_map: HashMap::with_capacity(REFERENCES_MAP_CAPACITY),
             column_positions_cache: HashMap::with_capacity(COLUMN_POSITIONS_CACHE_CAPACITY),
-            named_windows_map: HashMap::new(),
-            windows: Vec::new(),
-            referenced_named_window_ids: Vec::new(),
+            inside_window_body: false,
+            curr_windows: Vec::new(),
+            named_windows_stack: Vec::new(),
+            curr_named_windows: HashMap::new(),
+            named_windows_sqs: HashMap::new(),
+            curr_window_sqs: Vec::new(),
         }
     }
 
@@ -2436,6 +2449,9 @@ impl Plan {
         sq_id: NodeId,
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<NodeId, SbroadError> {
+        if worker.inside_window_body {
+            worker.curr_window_sqs.push(sq_id);
+        }
         let sq_row_id = self.add_row_from_subquery(sq_id)?;
         worker.subquery_replaces.insert(sq_id, sq_row_id);
         worker.sub_queries_to_fix_queue.push_back(sq_id);
@@ -2451,7 +2467,10 @@ impl Plan {
         let mut rel_node = self.get_mut_relation_node(rel_id)?;
 
         while let Some(sq_id) = worker.sub_queries_to_fix_queue.pop_front() {
-            rel_node.add_sq_child(sq_id);
+            let window_id = worker.named_windows_sqs.get(&sq_id);
+            if window_id.is_none() || worker.curr_windows.contains(window_id.unwrap()) {
+                rel_node.add_sq_child(sq_id);
+            }
         }
         Ok(())
     }
@@ -3182,7 +3201,6 @@ fn parse_window_func<M: Metadata>(
 
     // Parse window
     let window_pair = inner.next().expect("Window expected under Over");
-    let mut ref_by_name = false;
     let window = match window_pair.as_rule() {
         Rule::Identifier => {
             let window_name = window_pair.as_str().to_smolstr();
@@ -3192,17 +3210,10 @@ fn parse_window_func<M: Metadata>(
                 Some(format_smolstr!("Window with name {window_name} not found")),
             ));
 
-            ref_by_name = true;
-
             worker
-                .named_windows_map
+                .curr_named_windows
                 .get(&window_name)
-                .map_or(err, |id| {
-                    if !worker.referenced_named_window_ids.contains(id) {
-                        worker.referenced_named_window_ids.push(*id);
-                    }
-                    Ok(*id)
-                })?
+                .map_or(err, |id| Ok(*id))?
         }
         Rule::WindowBody => {
             let mut partition: Option<Vec<NodeId>> = None;
@@ -3334,7 +3345,6 @@ fn parse_window_func<M: Metadata>(
             }
 
             let window = Window {
-                name: None,
                 partition,
                 ordering,
                 frame,
@@ -3343,12 +3353,11 @@ fn parse_window_func<M: Metadata>(
         }
         _ => panic!("Unexpected rule met under Window: {window_pair:?}"),
     };
-    worker.windows.push(window);
+    worker.curr_windows.push(window);
     let over = Over {
         stable_func: stable_func_id,
         filter,
         window,
-        ref_by_name,
     };
 
     Ok(plan.nodes.push(over.into()))
@@ -4798,12 +4807,26 @@ impl AbstractSyntaxTree {
         worker: &mut ExpressionsWorker<M>,
     ) -> Result<(), SbroadError> {
         let node = self.nodes.get_node(node_id)?;
-        let Some((rel_child_id, mut other_children_ids)) = node.children.split_first() else {
-            return Err(SbroadError::Invalid(
-                Entity::Query,
-                Some("Projection must have some children".into()),
-            ));
+
+        let (mut rel_child_id, mut other_children_ids) = {
+            let Some((first, rest)) = node.children.split_first() else {
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some("Projection must have some children".into()),
+                ));
+            };
+            (first, rest.iter().as_slice())
         };
+
+        let rel_child_node = self.nodes.get_node(*rel_child_id)?;
+        if matches!(rel_child_node.rule, Rule::NamedWindows) {
+            worker.curr_named_windows = worker.named_windows_stack.pop().unwrap_or_default();
+            rel_child_id = rel_child_node
+                .children
+                .first()
+                .expect("NamedWindows must have at least one child");
+        }
+
         let mut is_distinct: bool = false;
         let Some(first_col_ast_id) = other_children_ids.first() else {
             return Err(SbroadError::Invalid(
@@ -4830,25 +4853,6 @@ impl AbstractSyntaxTree {
         // for each projection. Used to distinguish the source of asterisk projections
         // like `select *, * from t`, where there are several of them.
         let mut asterisk_id = 0;
-
-        let mut named_windows = HashMap::new();
-        let rel_child = plan.get_relation_node(plan_rel_child_id)?;
-        if let Relational::NamedWindows(NamedWindows {
-            windows: window_ids,
-            ..
-        }) = rel_child
-        {
-            named_windows.reserve(window_ids.len());
-            for window_id in window_ids {
-                let window = plan.get_expression_node(*window_id)?;
-                let Expression::Window(Window { name, .. }) = window else {
-                    panic!("Expected Window node, got {:?}", window);
-                };
-                let name = name.as_ref().expect("Window name must be set").clone();
-                named_windows.insert(name, *window_id);
-            }
-        }
-        worker.named_windows_map = named_windows;
 
         for ast_column_id in other_children_ids {
             let ast_column = self.nodes.get_node(*ast_column_id)?;
@@ -4932,20 +4936,15 @@ impl AbstractSyntaxTree {
             }
         }
 
-        if let MutRelational::NamedWindows(NamedWindows {
-            windows: named_windows,
-            ..
-        }) = plan.get_mut_relation_node(plan_rel_child_id)?
-        {
-            *named_windows = std::mem::take(&mut worker.referenced_named_window_ids);
-        }
-
-        let windows = std::mem::take(&mut worker.windows);
+        let windows = worker.curr_windows.clone();
         let projection_id =
             plan.add_proj_internal(vec![plan_rel_child_id], &proj_columns, is_distinct, windows)?;
 
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
+
+        worker.curr_named_windows.clear();
+        worker.curr_windows.clear();
         Ok(())
     }
 
@@ -4963,8 +4962,11 @@ impl AbstractSyntaxTree {
             panic!("NamedWindow must have at least 1 child and 1 WindowDef");
         };
         let plan_rel_child_id = map.get(*child_id)?;
-        let mut windows = Vec::with_capacity(window_def_ids.len());
+        worker
+            .named_windows_stack
+            .push(HashMap::with_capacity(window_def_ids.len()));
         for def_id in window_def_ids {
+            worker.curr_window_sqs.clear();
             let def_node = self.nodes.get_node(*def_id)?;
             assert_eq!(def_node.rule, Rule::WindowDef);
             let window_name_id = def_node
@@ -4976,8 +4978,9 @@ impl AbstractSyntaxTree {
                 .children
                 .get(1)
                 .expect("Window body should be met under WindowDef");
-            let window = self.parse_window_body(
-                Some(window_name),
+            worker.inside_window_body = true;
+            let window_id = self.parse_named_window_body(
+                window_name,
                 plan_rel_child_id,
                 type_analyzer,
                 plan,
@@ -4986,11 +4989,11 @@ impl AbstractSyntaxTree {
                 pairs_map,
                 worker,
             )?;
-            windows.push(window);
+            worker.inside_window_body = false;
+            for sq_id in worker.curr_window_sqs.iter() {
+                worker.named_windows_sqs.insert(*sq_id, window_id);
+            }
         }
-        let named_windows_id = plan.add_named_windows(plan_rel_child_id, windows)?;
-
-        map.add(node_id, named_windows_id);
         Ok(())
     }
 
@@ -5274,9 +5277,9 @@ impl AbstractSyntaxTree {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn parse_window_body<M: Metadata>(
+    fn parse_named_window_body<M: Metadata>(
         &self,
-        window_name: Option<SmolStr>,
+        window_name: SmolStr,
         proj_child_id: NodeId,
         type_analyzer: &mut TypeAnalyzer,
         plan: &mut Plan,
@@ -5429,7 +5432,6 @@ impl AbstractSyntaxTree {
         }
 
         let window: Window = Window {
-            name: window_name,
             partition,
             ordering,
             frame,
@@ -5437,7 +5439,18 @@ impl AbstractSyntaxTree {
 
         let plan_window_by_id = plan.nodes.push(window.into());
         map.add(node_id, plan_window_by_id);
-
+        worker
+            .named_windows_stack
+            .last_mut()
+            .ok_or_else(|| {
+                SbroadError::Invalid(
+                    Entity::Node,
+                    Some(format_smolstr!(
+                        "Window body expected to be inside NamedWindows",
+                    )),
+                )
+            })?
+            .insert(window_name, plan_window_by_id);
         Ok(plan_window_by_id)
     }
 

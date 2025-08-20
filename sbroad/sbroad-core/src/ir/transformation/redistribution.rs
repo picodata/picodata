@@ -17,8 +17,8 @@ use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
-    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, NamedWindows, NodeId,
-    OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
+    BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, NodeId, OrderBy,
+    Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
@@ -829,15 +829,7 @@ impl Plan {
             ));
         };
 
-        // If projection's child is a NamedWindows node, we have to
-        // put the motions under it instead.
-        let mut parent_id = rel_id;
-        let mut first_child_id = self.get_relational_child(rel_id, 0)?;
-        let child_rel = self.get_relation_node(first_child_id)?;
-        if let Relational::NamedWindows(NamedWindows { child, .. }) = child_rel {
-            parent_id = first_child_id;
-            first_child_id = *child;
-        }
+        let first_child_id = self.get_relational_child(rel_id, 0)?;
 
         // Collect the distribution of the windows (if any).
         let mut final_dist = None;
@@ -854,7 +846,7 @@ impl Plan {
                 break;
             }
         }
-        let mut strategy = Strategy::new(parent_id);
+        let mut strategy = Strategy::new(rel_id);
         let Some(window_dist) = final_dist else {
             // If there are no windows, we don't need to do anything.
             strategy.add_child(first_child_id, MotionPolicy::None, Program::default());
@@ -903,7 +895,7 @@ impl Plan {
             }
         }
 
-        self.add_proj_for_strategy(&mut strategy, parent_id, first_child_id)?;
+        self.add_proj_for_strategy(&mut strategy, rel_id, first_child_id)?;
         Ok(strategy)
     }
 
@@ -2451,12 +2443,6 @@ impl Plan {
             }
 
             match node {
-                RelOwned::NamedWindows(NamedWindows { output, child, .. }) => {
-                    // Named windows are not used in the plan, so they don't produce any motions.
-                    // The actual window functions are used in the projection nodes.
-                    let child_dist = self.get_rel_distribution(child)?;
-                    self.set_dist(output, child_dist.clone())?;
-                }
                 RelOwned::Motion { .. } => {
                     // We can apply this transformation only once,
                     // i.e. to the plan without any motion nodes.

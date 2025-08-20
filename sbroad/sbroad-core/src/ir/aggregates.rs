@@ -469,7 +469,7 @@ impl Plan {
     ///
     /// # Arguments
     /// * `finals` - ids of nodes in final (reduce stage) before adding two stage aggregation.
-    ///   It may contain ids of `Projection`, `Having` or `NamedWindows`.
+    ///   It may contain ids of `Projection` or `Having`.
     ///   Note: final `GroupBy` is not present because it will be added later in 2-stage pipeline.
     pub fn collect_aggregates(&self, finals: &Vec<NodeId>) -> Result<Vec<Aggregate>, SbroadError> {
         let mut aggrs = Vec::with_capacity(AGGR_CAPACITY);
@@ -485,11 +485,6 @@ impl Plan {
                 Relational::Having(Having { filter, .. }) => {
                     let mut collector = AggrCollector::with_capacity(self, AGGR_CAPACITY, *node_id);
                     aggrs.extend(collector.collect_aggregates(*filter)?);
-                }
-                // We should skip NamedWindows node in case Projection has no window functions
-                // e.g. `select * from t window win1 as ()`
-                Relational::NamedWindows(_) => {
-                    continue;
                 }
                 _ => {
                     unreachable!(

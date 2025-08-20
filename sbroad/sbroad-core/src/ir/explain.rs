@@ -28,7 +28,7 @@ use super::expression::FunctionFeature;
 use super::helpers::RepeatableState;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
-use super::node::{Bound, BoundType, Frame, FrameType, Limit, NamedWindows, Over, Window};
+use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
 use super::operator::{Arithmetic, Bool, Unary};
 use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
@@ -80,12 +80,8 @@ impl Display for ColExpr {
                     format!("{func_name}{formatted_args} over")
                 };
                 if let ColExpr::Window(window_explain) = window.as_ref() {
-                    let WindowExplain { name, .. } = window_explain.as_ref();
-                    if let Some(name) = name {
-                        format!("{prefix} {name}")
-                    } else {
-                        format!("{prefix} {window}")
-                    }
+                    let WindowExplain { .. } = window_explain.as_ref();
+                    format!("{prefix} {window}")
                 } else {
                     panic!("Expected Window expression in OVER clause")
                 }
@@ -234,7 +230,6 @@ impl ColExpr {
 
             match &current_node {
                 Expression::Window(Window {
-                    name,
                     partition,
                     ordering,
                     frame,
@@ -270,7 +265,6 @@ impl ColExpr {
                     }
 
                     let window = WindowExplain {
-                        name: name.clone(),
                         partition: p_elems,
                         ordering: o_elems,
                         frame,
@@ -565,7 +559,6 @@ impl Display for FrameExplain {
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
 struct WindowExplain {
-    name: Option<SmolStr>,
     partition: Vec<ColExpr>,
     ordering: Vec<OrderByPair>,
     frame: Option<FrameExplain>,
@@ -575,9 +568,6 @@ impl Display for WindowExplain {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut s = String::from("");
 
-        if let Some(name) = &self.name {
-            write!(s, "{name} as ")?;
-        }
         write!(s, "(")?;
 
         if !self.partition.is_empty() {
@@ -632,29 +622,6 @@ impl Display for Projection {
             .join(", ");
 
         write!(f, "projection ({cols})")
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize, Clone)]
-struct NamedWindowsExplain {
-    windows: Vec<ColExpr>,
-}
-
-impl NamedWindowsExplain {
-    #[allow(dead_code)]
-    fn new(
-        plan: &Plan,
-        windows: &Vec<NodeId>,
-        sq_ref_map: &SubQueryRefMap,
-    ) -> Result<Self, SbroadError> {
-        let mut result = NamedWindowsExplain {
-            windows: Vec::with_capacity(windows.len()),
-        };
-        for window_id in windows {
-            let window = ColExpr::new(plan, *window_id, sq_ref_map)?;
-            result.windows.push(window);
-        }
-        Ok(result)
     }
 }
 
@@ -1157,20 +1124,11 @@ enum ExplainNode {
     Motion(Motion),
     Cte(SmolStr, Ref),
     Limit(u64),
-    NamedWindows(NamedWindowsExplain),
 }
 
 impl Display for ExplainNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = match &self {
-            ExplainNode::NamedWindows(NamedWindowsExplain { windows }) => {
-                let windows_str = windows
-                    .iter()
-                    .map(ToSmolStr::to_smolstr)
-                    .collect::<Vec<SmolStr>>()
-                    .join(", ");
-                format_smolstr!("windows: {windows_str}")
-            }
             ExplainNode::Cte(s, r) => format_smolstr!("scan cte {s}({r})"),
             ExplainNode::Delete(s) => format_smolstr!("delete \"{s}\""),
             ExplainNode::Except => "except".to_smolstr(),
@@ -1421,17 +1379,6 @@ impl FullExplain {
             let node = ir.get_relation_node(id)?;
 
             current_node.current = match &node {
-                Relational::NamedWindows(NamedWindows { child, windows, .. }) => {
-                    let mut sq_ref_map =
-                        result.get_sq_ref_map(&mut current_node, &mut stack, &[*child], 1);
-                    let proj = ir.find_parent_rel(id)?.unwrap();
-                    let children = ir.get_relational_children(proj)?;
-                    for (k, child) in children[1..].iter().rev().enumerate() {
-                        sq_ref_map.insert(*child, k);
-                    }
-                    let window_exprs = NamedWindowsExplain::new(ir, windows, &sq_ref_map)?;
-                    Some(ExplainNode::NamedWindows(window_exprs))
-                }
                 Relational::Intersect { .. } => {
                     if let (Some(right), Some(left)) = (stack.pop(), stack.pop()) {
                         current_node.children.push(left);

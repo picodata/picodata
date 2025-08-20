@@ -174,11 +174,10 @@ explain select count(*) over win from t WINDOW win as () union select 1
 -- EXPECTED:
 motion [policy: full]
     union
-        projection (count(*::int) over win -> "col_1")
-            windows: win as ()
-                motion [policy: full]
-                    projection ("t"."a"::int -> "a", "t"."bucket_id"::int -> "bucket_id", "t"."b"::int -> "b")
-                        scan "t"
+        projection (count(*::int) over () -> "col_1")
+            motion [policy: full]
+                projection ("t"."a"::int -> "a", "t"."bucket_id"::int -> "bucket_id", "t"."b"::int -> "b")
+                    scan "t"
         projection (1::int -> "col_1")
 execution options:
     sql_vdbe_opcode_max = 45000
