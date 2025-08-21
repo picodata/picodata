@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, Node, Node32, NodeId, Parameter};
@@ -9,6 +7,7 @@ use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::{Nodes, Plan};
 use smol_str::format_smolstr;
+use std::collections::HashSet;
 
 impl Expression<'_> {
     /// Gets value from const node
@@ -92,17 +91,6 @@ impl Plan {
         vec
     }
 
-    /// Replace parameters with constants from the parameters map.
-    ///
-    /// # Errors
-    /// - The parameters map is corrupted (parameters map points to invalid nodes).
-    pub fn restore_constants(&mut self) -> Result<(), SbroadError> {
-        for (id, constant) in self.constants.drain() {
-            self.nodes.replace32(id, Node32::Constant(constant))?;
-        }
-        Ok(())
-    }
-
     /// Replace constant nodes with parameters (and hide them in the parameters map).
     ///
     /// # Errors
@@ -116,6 +104,7 @@ impl Plan {
             })
         };
         let constants = self.get_const_list(snapshot);
+        self.constants.reserve(constants.len());
         for (num, const_id) in constants.iter().enumerate() {
             let param_type = self.calculate_expression_type(*const_id)?;
             let param_type = param_type
@@ -129,8 +118,8 @@ impl Plan {
                     index: index(num)?,
                 }),
             )?;
-            if let Node32::Constant(constant) = const_node {
-                self.constants.insert(*const_id, constant);
+            if let Node32::Constant(Constant { value }) = const_node {
+                self.constants.push(value);
             } else {
                 panic!("{const_node:?} is not a constant");
             }

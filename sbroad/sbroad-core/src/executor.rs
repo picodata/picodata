@@ -324,9 +324,6 @@ where
         if self.is_explain() {
             return self.produce_explain();
         }
-        self.get_mut_exec_plan()
-            .get_mut_ir_plan()
-            .restore_constants()?;
 
         let slices = self.exec_plan.get_ir_plan().clone_slices();
         self.materialize_subtree(slices)?;

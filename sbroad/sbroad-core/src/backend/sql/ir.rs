@@ -7,7 +7,6 @@ use crate::ir::node::{
     ScalarFunction, ScanRelation,
 };
 use crate::ir::relation::Column;
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
 use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
@@ -121,46 +120,9 @@ impl From<PatternWithParams> for String {
 }
 
 impl ExecutionPlan {
-    /// # Errors
-    /// - IR plan is invalid
-    pub fn to_params(&self) -> Result<Vec<Value>, SbroadError> {
+    pub fn to_params(&self) -> &[Value] {
         let plan = self.get_ir_plan();
-        let capacity = plan.nodes.len();
-        let mut was: AHashSet<NodeId> = AHashSet::with_capacity(plan.constants.len());
-        let filter = |id: NodeId| -> bool {
-            if matches!(
-                plan.get_node(id),
-                Ok(Node::Expression(Expression::Parameter(_)))
-            ) && !was.contains(&id)
-            {
-                was.insert(id);
-                true
-            } else {
-                false
-            }
-        };
-        let mut tree = PostOrderWithFilter::with_capacity(
-            |node| plan.flashback_subtree_iter(node),
-            capacity,
-            Box::new(filter),
-        );
-        let top_id = plan.get_top()?;
-        tree.populate_nodes(top_id);
-        let nodes = tree.take_nodes();
-        let mut params: Vec<Value> = Vec::with_capacity(nodes.len());
-        for LevelNode(_, param_id) in nodes {
-            let Expression::Constant(Constant { value }) = plan.get_expression_node(param_id)?
-            else {
-                return Err(SbroadError::Invalid(
-                    Entity::Plan,
-                    Some(format_smolstr!(
-                        "expected parameter constant on id={param_id}"
-                    )),
-                ));
-            };
-            params.push(value.clone());
-        }
-        Ok(params)
+        &plan.constants
     }
 
     /// Remove vtables from execution plan.
@@ -237,7 +199,6 @@ impl ExecutionPlan {
             sql.push('\"');
         };
         let mut guard = Vec::with_capacity(capacity);
-        let mut params: Vec<Value> = Vec::new();
         let mut params_idx: AHashSet<usize> = AHashSet::new();
 
         let mut sql = String::new();
@@ -542,18 +503,7 @@ impl ExecutionPlan {
                         None => sql.push_str(&format_smolstr!("${index}")),
                     }
 
-                    let value = ir_plan.get_expression_node(*id)?;
-                    if let Expression::Constant(Constant { value, .. }) = value {
-                        if !params_idx.contains(index) {
-                            params.push(value.clone());
-                            params_idx.insert(*index);
-                        }
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some(format_smolstr!("parameter {value:?} is not a constant")),
-                        ));
-                    }
+                    params_idx.insert(*index);
                 }
                 SyntaxData::VTable(motion_id) => {
                     // Note that in case Motion is a top of the plan it won't be transformed
@@ -600,9 +550,13 @@ impl ExecutionPlan {
                 }
             }
         }
+        assert_eq!(ir_plan.constants.len(), params_idx.len());
 
         // MUST be constructed out of the `syntax.ordered.sql` context scope.
-        Ok((PatternWithParams::new(sql, params), guard))
+        Ok((
+            PatternWithParams::new(sql, ir_plan.constants.clone()),
+            guard,
+        ))
     }
 
     /// Checks if the given query subtree modifies data or not.

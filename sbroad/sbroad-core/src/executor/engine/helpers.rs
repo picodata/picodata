@@ -165,7 +165,7 @@ pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, Sb
         };
     }
     let sub_plan_id = sub_plan_id.unwrap_or_default();
-    let params = exec_plan.to_params()?;
+    let params = exec_plan.to_params().to_vec();
     let vtables = exec_plan.encode_vtables();
     let router_version_map = std::mem::take(&mut exec_plan.get_mut_ir_plan().version_map);
     let schema_info = SchemaInfo::new(router_version_map);
@@ -412,7 +412,6 @@ pub fn compile_optional(
     optional: &mut OptionalData,
     template: &str,
 ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-    optional.exec_plan.get_mut_ir_plan().restore_constants()?;
     let nodes = optional.ordered.to_syntax_data()?;
     let vtables_meta = Some(&optional.vtables_meta);
     let (u, v) = optional.exec_plan.to_sql(&nodes, template, vtables_meta)?;
@@ -1554,7 +1553,6 @@ where
 {
     let data = std::mem::take(raw_optional);
     let mut optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
-    optional.exec_plan.get_mut_ir_plan().restore_constants()?;
     let plan = optional.exec_plan.get_ir_plan();
     let top_id = plan.get_top()?;
     let top = plan.get_relation_node(top_id)?;
@@ -1581,7 +1579,6 @@ fn materialize_vtable_locally<R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache,
 {
-    optional.exec_plan.get_mut_ir_plan().restore_constants()?;
     let mut info = QueryInfo::new(optional, required);
     let mut locked_cache = runtime.cache().lock();
     let result =

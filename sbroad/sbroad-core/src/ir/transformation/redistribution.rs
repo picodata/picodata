@@ -2237,8 +2237,11 @@ impl Plan {
         }
 
         let cloned_left_id = SubtreeCloner::clone_subtree(self, left_id)?;
-        let right_output_id = self.get_relational_output(right_id)?;
-        let intersect_output_id = SubtreeCloner::clone_subtree(self, right_output_id)?;
+        let intersect_output_id = self.add_row_for_output(right_id, &[], true, None)?;
+        self.set_dist(
+            intersect_output_id,
+            self.get_rel_distribution(right_id)?.clone(),
+        )?;
         let intersect = Intersect {
             left: right_id,
             right: cloned_left_id,

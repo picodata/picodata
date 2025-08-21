@@ -12,7 +12,6 @@ use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::slice::{Iter, IterMut};
 use tree::traversal::LevelNode;
@@ -698,8 +697,8 @@ pub struct Plan {
     /// The undo log keeps the history of the plan transformations. It can
     /// be used to revert the plan subtree to some previous snapshot if needed.
     pub(crate) undo: TransformationLog,
-    /// Maps parameter to the corresponding constant node.
-    pub(crate) constants: HashMap<NodeId, Constant>,
+    /// Constants that were stashed during execution preparation. They will be passed as parameters.
+    pub(crate) constants: Vec<Value>,
     /// Options that were passed by user in `Option` clause. Does not include
     /// options for DDL as those are handled separately. This field is used only
     /// for storing the order of options in `Option` clause, after `bind_params` is
@@ -851,7 +850,7 @@ impl Plan {
             top: None,
             is_explain: false,
             undo: TransformationLog::new(),
-            constants: HashMap::new(),
+            constants: Vec::new(),
             raw_options: vec![],
             options: Options::default(),
             version_map: TableVersionMap::new(),
@@ -1441,13 +1440,6 @@ impl Plan {
     /// - node is not expression type
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression<'_>, SbroadError> {
         match self.get_node(node_id)? {
-            Node::Expression(Expression::Parameter(param)) => {
-                if let Some(constant) = self.constants.get(&node_id) {
-                    Ok(Expression::Constant(constant))
-                } else {
-                    Ok(Expression::Parameter(param))
-                }
-            }
             Node::Expression(exp) => Ok(exp),
             _ => Err(SbroadError::Invalid(
                 Entity::Node,

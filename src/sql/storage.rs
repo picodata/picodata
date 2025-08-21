@@ -247,7 +247,7 @@ impl Vshard for StorageRuntime {
         let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
-        let params = sub_plan.to_params()?;
+        let params = sub_plan.to_params().to_vec();
         let version_map = sub_plan.get_ir_plan().version_map.clone();
         let schema_info = SchemaInfo::new(version_map);
         let mut info = LocalExecutionQueryInfo {
