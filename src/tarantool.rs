@@ -609,6 +609,42 @@ pub fn box_schema_version() -> u64 {
     unsafe { ffi::box_schema_version() }
 }
 
+#[inline(always)]
+pub fn box_is_ro() -> bool {
+    mod ffi {
+        extern "C" {
+            pub fn box_is_ro() -> bool;
+        }
+    }
+
+    // SAFETY: always safe
+    unsafe { ffi::box_is_ro() }
+}
+
+#[inline(always)]
+pub fn box_ro_reason() -> Option<&'static str> {
+    mod ffi {
+        extern "C" {
+            pub fn box_ro_reason() -> *const i8;
+        }
+    }
+
+    // SAFETY: always safe
+    let ptr = unsafe { ffi::box_ro_reason() };
+    if ptr.is_null() {
+        // This means instance is not read-only
+        return None;
+    }
+
+    // SAFETY: tarantool always returns a valid nul-terminated string
+    let cstr = unsafe { std::ffi::CStr::from_ptr(ptr) };
+    let res = cstr
+        .to_str()
+        .expect("tarantool always returns a valid utf-8 string");
+
+    Some(res)
+}
+
 /// Return codes for IPROTO request handlers.
 #[derive(Debug)]
 #[repr(C)]

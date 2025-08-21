@@ -41,6 +41,7 @@ use crate::pico_service::pico_service_password;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::tarantool::box_ro_reason;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -52,7 +53,6 @@ use crate::traft::{node, RaftTerm, Result};
 use std::time::Duration;
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
-use tarantool::tlua;
 use tarantool::transaction::transaction;
 use tarantool::vclock::Vclock;
 
@@ -240,14 +240,10 @@ fn promote_to_master() -> Result<()> {
     // become more involved.
     let was_read_only = is_read_only()?;
 
-    let lua = tarantool::lua_state();
-    let ro_reason: Option<tlua::StringInLua<_>> = lua.eval(
-        "box.cfg { read_only = false }
-        return box.info.ro_reason",
-    )?;
+    set_cfg_field("read_only", false)?;
 
     #[rustfmt::skip]
-    if let Some(ro_reason) = ro_reason.as_deref() {
+    if let Some(ro_reason) = box_ro_reason() {
         tlog!(Warning, "failed to promote self to replication leader, reason = {ro_reason}");
         return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
     };
@@ -278,7 +274,7 @@ crate::define_rpc_request! {
 
         let was_read_only = is_read_only()?;
 
-        crate::tarantool::exec("box.cfg { read_only = true }")?;
+        set_cfg_field("read_only", true)?;
 
         if !was_read_only {
             // errors ignored because it must be already handled by plugin manager itself
