@@ -280,6 +280,153 @@ def test_webui_with_plugin(cluster: Cluster):
 
 
 @pytest.mark.webui
+def test_webui_replicaset_state(cluster: Cluster):
+    cluster_cfg = """
+    cluster:
+        name: test
+        tier:
+            red:
+                replication_factor: 2
+    """
+    cluster.set_config_file(yaml=cluster_cfg)
+
+    i1 = cluster.add_instance(wait_online=True, tier="red")
+    i2 = cluster.add_instance(wait_online=True, tier="red")
+    i3 = cluster.add_instance(wait_online=True, tier="red")
+    i4 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+
+    # 1. Make sure i3 is leader
+    # 2. Kill i3
+    # 3. Make sure i4 was promoted
+    # 4. Check that replicaset status == Online
+    i3.promote_or_fail()
+    i3.kill()
+    cluster.wait_has_states(i3, "Offline", "Offline")
+
+    i4.promote_or_fail()
+
+    # we have to query i4 to avoid incosistency in cluster view
+    # data from global tables (as instance state etc) could be
+    # distributed in cluster with delay significant enough to
+    # cause flaks in tests
+    http_listen = i4.env["PICODATA_HTTP_LISTEN"]
+    instance_version = i1.eval("return pico.PICODATA_VERSION")
+
+    with urlopen(f"http://{http_listen}/") as response:
+        assert response.headers.get("content-type") == "text/html"
+
+    instance_template = {
+        "failureDomain": {},
+        "currentState": "Online",
+        "targetState": "Online",
+        "version": instance_version,
+        "httpAddress": "",
+    }
+    instance_1 = {
+        **instance_template,
+        "name": "red_1_1",
+        "isLeader": True,
+        "binaryAddress": i1.iproto_listen,
+        "pgAddress": i1.pg_listen,
+    }
+    instance_2 = {
+        **instance_template,
+        "name": "red_1_2",
+        "isLeader": False,
+        "binaryAddress": i2.iproto_listen,
+        "pgAddress": i2.pg_listen,
+    }
+    instance_3 = {
+        **instance_template,
+        "name": "red_2_1",
+        "isLeader": False,
+        "currentState": "Offline",
+        "targetState": "Offline",
+        "binaryAddress": i3.iproto_listen,
+        "pgAddress": i3.pg_listen,
+        "version": "",
+    }
+    instance_4 = {
+        **instance_template,
+        "name": "red_2_2",
+        "isLeader": True,
+        "binaryAddress": i4.iproto_listen,
+        "pgAddress": i4.pg_listen,
+        "httpAddress": http_listen,
+    }
+
+    replicaset_template = {
+        "state": "Online",
+        "version": instance_version,
+        "instanceCount": 2,
+        "capacityUsage": 0,
+        "systemCapacityUsage": 12.5,
+        "systemMemory": {
+            "usable": 268435456,
+            "used": 33554432,
+        },
+    }
+    r1 = {
+        **replicaset_template,
+        "state": "Online",
+        "uuid": i1.replicaset_uuid(),
+        "name": "red_1",
+        "instances": [instance_1, instance_2],
+        "memory": {
+            "usable": 67108864,
+            "used": 0,
+        },
+    }
+    r2 = {
+        **replicaset_template,
+        "state": "Online",
+        # use i4, as i3 is already dead
+        "uuid": i4.replicaset_uuid(),
+        "name": "red_2",
+        "instances": [instance_3, instance_4],
+        "memory": {
+            "usable": 67108864,
+            "used": 0,
+        },
+    }
+
+    tier_red = {
+        "replicasetCount": 2,
+        "rf": 2,
+        "bucketCount": 3000,
+        "instanceCount": 4,
+        "can_vote": True,
+        "name": "red",
+        "services": [],
+        "replicasets": [r1, r2],
+    }
+
+    with urlopen(f"http://{http_listen}/api/v1/tiers") as response:
+        assert response.headers.get("content-type") == "application/json"
+        assert sorted(json.load(response), key=lambda tier: tier["name"]) == [
+            tier_red,
+        ], "/api/v1/tier"
+
+    with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
+        assert response.headers.get("content-type") == "application/json"
+        assert json.load(response) == {
+            "capacityUsage": 0,
+            "clusterName": cluster.id,
+            "replicasetsCount": 2,
+            "instancesCurrentStateOnline": 3,
+            "instancesCurrentStateOffline": 1,
+            "currentInstaceVersion": instance_version,
+            "memory": {"usable": 134217728, "used": 0},
+            "plugins": [],
+            "systemCapacityUsage": 12.5,
+            "systemMemory": {
+                "usable": 536870912,
+                "used": 67108864,
+            },
+        }, "/api/v1/cluster"
+
+
+@pytest.mark.webui
 def test_webui_can_vote_flag(cluster: Cluster):
     cluster_cfg = """
     cluster:

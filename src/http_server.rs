@@ -373,6 +373,10 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
             };
             replicaset_info.system_memory.usable = system_mem_usable;
             replicaset_info.system_memory.used = system_mem_used;
+
+            replicaset_info.state = instance_info.current_state;
+
+            replicaset_info.version = instance_info.version.clone();
         }
         replicaset_info.instances.push(instance_info);
         replicaset_info.instance_count += 1;

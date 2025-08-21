@@ -99,6 +99,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### WebUI
 
+- Replicaset state now always display current leader state
 - Display cluster ID and instance PG address
 - Cluster info and other data refreshes automatically every 10 seconds if the window is focused
 - Offline instances are now marked with a contrasting indicator
