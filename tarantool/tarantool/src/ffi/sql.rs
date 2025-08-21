@@ -3,7 +3,6 @@
 use libc::{iovec, size_t};
 use std::cmp;
 use std::io::Read;
-use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::{null, NonNull};
@@ -28,6 +27,9 @@ crate::define_dlsym_reloc! {
 
     pub(crate) fn cord_slab_cache() -> *const SlabCache;
 
+    pub(crate) fn obuf_new() -> *mut Obuf;
+    pub(crate) fn obuf_iovec_list(obuf: *const Obuf, count: *mut usize) -> *const iovec;
+    pub(crate) fn obuf_used(obuf: *const Obuf) -> size_t;
     pub(crate) fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
     pub(crate) fn obuf_destroy(obuf: *mut Obuf);
     pub(crate) fn obuf_reset(obuf: *mut Obuf);
@@ -107,7 +109,7 @@ pub unsafe fn obuf_append(obuf: *mut Obuf, mp: &[u8]) -> crate::Result<()> {
 }
 
 pub struct ObufWrapper {
-    pub inner: Obuf,
+    pub inner: *mut Obuf,
     read_pos: usize,
     read_iov_n: usize,
     read_iov_pos: usize,
@@ -121,9 +123,9 @@ impl ObufWrapper {
         let inner_buf = unsafe {
             let slab_c = cord_slab_cache();
 
-            let mut buf = MaybeUninit::<Obuf>::zeroed();
-            obuf_create(buf.as_mut_ptr(), slab_c, start_capacity);
-            buf.assume_init()
+            let buf: *mut Obuf = obuf_new();
+            obuf_create(buf, slab_c, start_capacity);
+            buf
         };
 
         Self {
@@ -147,17 +149,33 @@ impl ObufWrapper {
     }
 
     pub fn obuf(&mut self) -> *mut Obuf {
-        &mut self.inner as *mut Obuf
+        self.inner
+    }
+
+    fn obuf_used(obuf: *const Obuf) -> usize {
+        unsafe { obuf_used(obuf) }
+    }
+
+    fn obuf_iovec_list(obuf: *const Obuf, _n_iov: &mut usize) -> &[iovec] {
+        unsafe {
+            let res = obuf_iovec_list(obuf, _n_iov);
+            std::slice::from_raw_parts(res, *_n_iov)
+        }
     }
 }
 
 impl Read for ObufWrapper {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut remains_read = cmp::min(buf.len(), self.inner.used - self.read_pos);
+        let mut remains_read = cmp::min(
+            buf.len(),
+            ObufWrapper::obuf_used(self.inner) - self.read_pos,
+        );
         let mut buf_pos = 0;
 
+        let mut _n_iov = 0;
+        let iov = ObufWrapper::obuf_iovec_list(self.inner, &mut _n_iov);
         while remains_read > 0 {
-            let iov_available_len = self.inner.iov[self.read_iov_n].iov_len - self.read_iov_pos;
+            let iov_available_len = iov[self.read_iov_n].iov_len - self.read_iov_pos;
             if iov_available_len == 0 {
                 self.read_iov_n += 1;
                 self.read_iov_pos = 0;
@@ -172,7 +190,7 @@ impl Read for ObufWrapper {
 
             let cp = unsafe {
                 std::slice::from_raw_parts(
-                    (self.inner.iov[self.read_iov_n].iov_base as *const u8).add(self.read_iov_pos),
+                    (iov[self.read_iov_n].iov_base as *const u8).add(self.read_iov_pos),
                     read_len,
                 )
             };
@@ -189,27 +207,18 @@ impl Read for ObufWrapper {
     }
 }
 
-// TODO: ASan-enabled build has a different layout (obuf_asan.h).
-#[repr(C)]
-pub struct Obuf {
-    _slab_cache: *const c_void,
-    pub pos: i32,
-    pub n_iov: i32,
-    pub used: size_t,
-    pub start_capacity: size_t,
-    pub capacity: [size_t; 32],
-    pub iov: [iovec; 32],
-    // This flag is only present in debug builds (!NDEBUG),
-    // but it's easier to just add it unconditionally to
-    // prevent illegal memory access in obuf_create.
-    // TODO: prevent this class of errors using a better solution.
-    pub reserved: bool,
+impl Drop for ObufWrapper {
+    fn drop(&mut self) {
+        unsafe {
+            obuf_destroy(self.inner);
+            libc::free(self.inner as *mut c_void);
+        }
+    }
 }
 
-impl Drop for Obuf {
-    fn drop(&mut self) {
-        unsafe { obuf_destroy(self as *mut Obuf) }
-    }
+#[repr(C)]
+pub struct Obuf {
+    _unused: [u8; 0],
 }
 
 #[repr(C)]
