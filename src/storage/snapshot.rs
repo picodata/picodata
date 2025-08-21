@@ -11,7 +11,7 @@ use crate::storage::schema::ddl_create_index_on_master;
 use crate::storage::schema::ddl_create_space_on_master;
 use crate::storage::schema::ddl_drop_space_on_master;
 use crate::storage::{self, ignore_only_error, space_by_id, Privileges};
-use crate::storage::{local_schema_version, Tables};
+use crate::storage::{local_schema_version, PicoTable};
 use crate::storage::{set_local_schema_version, SystemTable};
 use crate::storage::{Catalog, Indexes};
 use crate::storage::{ToEntryIter, Users};
@@ -66,11 +66,11 @@ impl Catalog {
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
         let mut space_indexes = Vec::with_capacity(32);
 
-        for space_def in self.tables.iter()? {
-            if !matches!(space_def.distribution, Distribution::Global) {
+        for table_def in self.pico_table.iter()? {
+            if !matches!(table_def.distribution, Distribution::Global) {
                 continue;
             }
-            space_indexes.push((space_def.id, 0));
+            space_indexes.push((table_def.id, 0));
         }
 
         let schema_version = self.properties.global_schema_version()?;
@@ -323,7 +323,7 @@ impl Catalog {
         let mut old_dynamic_parameters = HashSet::new();
         let mut changed_parameters = Vec::new();
 
-        for def in self.tables.iter()? {
+        for def in self.pico_table.iter()? {
             old_table_versions.insert(def.id, def.schema_version);
         }
         // Primary key is handled explicitly in space creating/dropping.
@@ -395,7 +395,7 @@ impl Catalog {
         if is_master && v_local < v_snapshot {
             let t0 = std::time::Instant::now();
 
-            self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
+            self.apply_schema_changes_on_master(self.pico_table.iter()?, &old_table_versions)?;
             // Primary key is handled explicitly in space creating/dropping.
             // So we skip it here.
             self.apply_schema_changes_on_master(
@@ -487,7 +487,7 @@ impl Catalog {
         return Ok(changed_parameters);
 
         const SCHEMA_DEFINITION_SPACES: &[SpaceId] = &[
-            Tables::TABLE_ID,
+            PicoTable::TABLE_ID,
             Indexes::TABLE_ID,
             Users::TABLE_ID,
             Privileges::TABLE_ID,

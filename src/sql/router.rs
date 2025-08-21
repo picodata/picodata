@@ -130,11 +130,11 @@ pub fn get_table_version(space_name: &str) -> Result<u64, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
-    let storage_tables = &node.storage.tables;
-    if let Some(space_def) = storage_tables.by_name(space_name).map_err(|e| {
-        SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+    let pico_table = &node.storage.pico_table;
+    if let Some(table_def) = pico_table.by_name(space_name).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
     })? {
-        Ok(space_def.schema_version)
+        Ok(table_def.schema_version)
     } else {
         Err(SbroadError::NotFound(
             Entity::SpaceMetadata,
@@ -206,7 +206,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
         let node = node::global().map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
-        let storage_tables = &node.storage.tables;
+        let pico_table = &node.storage.pico_table;
         for (tbl_name, tbl) in &ir.relations.tables {
             if tbl.is_system() {
                 continue;
@@ -217,8 +217,8 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                     format_smolstr!("in version map with name: {}", tbl_name),
                 )
             })?;
-            let Some(space_def) = storage_tables.by_name(tbl_name.as_str()).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+            let Some(table_def) = pico_table.by_name(tbl_name.as_str()).map_err(|e| {
+                SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
             })?
             else {
                 return Ok(None);
@@ -226,7 +226,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
             // The outdated entry will be replaced when
             // `put` is called (which is always called
             // after cache miss).
-            if cached_version != space_def.schema_version {
+            if cached_version != table_def.schema_version {
                 return Ok(None);
             }
         }
@@ -507,7 +507,7 @@ impl Metadata for RouterMetadata {
 
         // // Get the space columns and engine of the space from global metatable.
         let table = storage
-            .tables
+            .pico_table
             .by_name(&name)?
             .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
 

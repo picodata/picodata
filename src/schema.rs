@@ -166,7 +166,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
     use crate::storage::*;
     push_definitions!(
         result,
-        Tables,
+        PicoTable,
         Indexes,
         PeerAddresses,
         Instances,
@@ -897,7 +897,7 @@ impl UserDef {
 
     pub fn ensure_no_dependent_objects(&self, storage: &Catalog) -> traft::Result<()> {
         let tables: Vec<_> = storage
-            .tables
+            .pico_table
             .by_owner_id(self.id)?
             .map(|def| def.name)
             .collect();
@@ -1244,7 +1244,7 @@ impl PrivilegeDef {
             return Ok(None);
         };
         let name = match self.object_type {
-            SchemaObjectType::Table => storage.tables.get(id).map(|t| t.map(|t| t.name)),
+            SchemaObjectType::Table => storage.pico_table.get(id).map(|t| t.map(|t| t.name)),
             SchemaObjectType::Role | SchemaObjectType::User => {
                 storage.users.by_id(id).map(|t| t.map(|t| t.name))
             }
@@ -1890,7 +1890,7 @@ impl CreateIndexParams {
     }
 
     pub fn table(&self, storage: &Catalog) -> traft::Result<TableDef> {
-        let table = with_su(ADMIN_ID, || storage.tables.by_name(&self.space_name))??;
+        let table = with_su(ADMIN_ID, || storage.pico_table.by_name(&self.space_name))??;
         let Some(table) = table else {
             return Err(CreateIndexError::TableNotFound {
                 table_name: self.space_name.clone(),

@@ -159,7 +159,7 @@ pub struct Catalog {
     pub snapshot_cache: Rc<SnapshotCache>,
     // It's ok to lose this information during restart.
     pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
-    pub tables: Tables,
+    pub pico_table: PicoTable,
     pub indexes: Indexes,
     pub peer_addresses: PeerAddresses,
     pub instances: Instances,
@@ -200,7 +200,7 @@ impl Catalog {
         }
 
         Ok(Self {
-            tables: Tables::new()?,
+            pico_table: PicoTable::new()?,
             indexes: Indexes::new()?,
             peer_addresses: PeerAddresses::new()?,
             instances: Instances::new()?,
@@ -224,7 +224,7 @@ impl Catalog {
 
     pub fn system_space_name_by_id(id: SpaceId) -> Option<&'static str> {
         match id {
-            Tables::TABLE_ID => Some(Tables::TABLE_NAME),
+            PicoTable::TABLE_ID => Some(PicoTable::TABLE_NAME),
             Indexes::TABLE_ID => Some(Indexes::TABLE_NAME),
             PeerAddresses::TABLE_ID => Some(PeerAddresses::TABLE_NAME),
             Instances::TABLE_ID => Some(Instances::TABLE_NAME),
@@ -246,10 +246,10 @@ impl Catalog {
     }
 
     fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
-        let Some(space_def) = self.tables.get(id)? else {
+        let Some(table_def) = self.pico_table.get(id)? else {
             return Err(Error::other(format!("global space #{id} not found")));
         };
-        Ok(space_def.name.into())
+        Ok(table_def.name.into())
     }
 
     /// Get a reference to a global instance of clusterwide storage.
@@ -302,14 +302,14 @@ impl Catalog {
         let storage = Self::try_get(true).unwrap();
         storage.governor_queue.create_space().unwrap();
 
-        if storage.tables.space.len().unwrap() != 0 {
+        if storage.pico_table.space.len().unwrap() != 0 {
             // Already initialized by other tests.
             return storage.clone();
         }
 
         // Add system tables
         for (table, index_defs) in crate::schema::system_table_definitions() {
-            storage.tables.put(&table).unwrap();
+            storage.pico_table.put(&table).unwrap();
             for index in index_defs {
                 storage.indexes.put(&index).unwrap();
             }
@@ -474,19 +474,20 @@ pub trait SystemTable {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Tables
+// PicoTable
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing definitions of all picodata tables.
+/// A struct for accessing contents of `_pico_table` system table.
+/// `_pico_table` contains definitions of all picodata tables.
 #[derive(Debug, Clone)]
-pub struct Tables {
+pub struct PicoTable {
     pub space: Space,
     pub index_name: Index,
     pub index_id: Index,
     pub index_owner_id: Index,
 }
 
-impl SystemTable for Tables {
+impl SystemTable for PicoTable {
     const TABLE_NAME: &'static str = "_pico_table";
     const TABLE_ID: SpaceId = 512;
     const DESCRIPTION: &'static str = "Stores metadata of all the cluster tables in picodata.";
@@ -535,7 +536,7 @@ impl SystemTable for Tables {
     }
 }
 
-impl Tables {
+impl PicoTable {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
@@ -645,7 +646,7 @@ impl Tables {
     ///
     /// ```no_run
     /// # use tarantool::space::SpaceId;
-    /// let tables = picodata::storage::Tables::new().unwrap();
+    /// let tables = picodata::storage::PicoTable::new().unwrap();
     ///
     /// let table_id = 28;
     /// let new_schema_version = 42;
@@ -689,7 +690,7 @@ impl Tables {
     }
 }
 
-impl ToEntryIter<MP_CUSTOM> for Tables {
+impl ToEntryIter<MP_CUSTOM> for PicoTable {
     type Entry = TableDef;
 
     #[inline(always)]
@@ -3748,7 +3749,7 @@ mod tests {
         let sys_space = SystemSpace::Space.as_space();
         let sys_index = SystemSpace::Index.as_space();
 
-        for sys_table in storage.tables.iter().unwrap() {
+        for sys_table in storage.pico_table.iter().unwrap() {
             //
             // box.space._space
             //
@@ -3769,7 +3770,7 @@ mod tests {
             //
 
             // Check table definition is in picodata's "_pico_table"
-            let pico_table_def = storage.tables.get(sys_table.id).unwrap().unwrap();
+            let pico_table_def = storage.pico_table.get(sys_table.id).unwrap().unwrap();
 
             // Check picodata & tarantool agree on the definition
             assert_eq!(pico_table_def.to_space_metadata().unwrap(), tt_space_def);
@@ -3832,7 +3833,7 @@ mod tests {
         // Make sure storage is initialized
         let storage = Catalog::for_tests();
 
-        for table in storage.tables.iter().unwrap() {
+        for table in storage.pico_table.iter().unwrap() {
             assert_eq!(
                 SYSTEM_TABLES_ID_RANGE.contains(&table.id),
                 Catalog::system_space_name_by_id(table.id).is_some()

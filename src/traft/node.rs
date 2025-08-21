@@ -1146,7 +1146,7 @@ impl NodeImpl {
                     }
 
                     Ddl::DropTable { id, initiator } => {
-                        let space_raw = self.storage.tables.get(id);
+                        let space_raw = self.storage.pico_table.get(id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
 
@@ -1168,7 +1168,7 @@ impl NodeImpl {
 
                         let initiator_def = user_by_id(initiator).expect("user must exist");
 
-                        let space_raw = self.storage.tables.get(id);
+                        let space_raw = self.storage.pico_table.get(id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
                         let name = &space.name;
                         crate::audit!(
@@ -1189,11 +1189,11 @@ impl NodeImpl {
                         ..
                     } => {
                         self.storage
-                            .tables
+                            .pico_table
                             .update_operable(table_id, true)
                             .expect("storage shouldn't fail");
                         self.storage
-                            .tables
+                            .pico_table
                             .update_schema_version(table_id, schema_version)
                             .expect("storage shouldn't fail");
 
@@ -1219,13 +1219,13 @@ impl NodeImpl {
                         // TODO: it would be nice to fuse the update of `operable` field with the update of `schema_version`
                         // this needs some API design though
                         self.storage
-                            .tables
+                            .pico_table
                             .update_schema_version(table_id, schema_version)
                             .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
 
-                        let space_raw = self.storage.tables.get(table_id);
+                        let space_raw = self.storage.pico_table.get(table_id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
                         let name = &space.name;
                         crate::audit!(
@@ -1405,11 +1405,11 @@ impl NodeImpl {
                         table_id, old_name, ..
                     } => {
                         self.storage
-                            .tables
+                            .pico_table
                             .rename(table_id, old_name.as_str())
                             .expect("storage shouldn't fail");
                         self.storage
-                            .tables
+                            .pico_table
                             .update_operable(table_id, true)
                             .expect("storage shouldn't fail");
                     }
@@ -1443,7 +1443,7 @@ impl NodeImpl {
                         }
 
                         self.storage
-                            .tables
+                            .pico_table
                             .update_format(table_id, old_format, &reversed_renames)
                             .expect("storage shouldn't fail");
                     }
@@ -1906,7 +1906,7 @@ impl NodeImpl {
                     // TODO: add description field into Ddl::CreateTable
                     description: "".into(),
                 };
-                let res = self.storage.tables.insert(&table_def);
+                let res = self.storage.pico_table.insert(&table_def);
                 if let Err(e) = res {
                     // Ignore the error for now, let governor deal with it.
                     tlog!(Warning, "failed creating table '{}': {e}", table_def.name);
@@ -1944,12 +1944,12 @@ impl NodeImpl {
                 table_id, new_name, ..
             } => {
                 self.storage
-                    .tables
+                    .pico_table
                     .rename(table_id, new_name.as_str())
                     .expect("table existence must have been checked before commit");
 
                 self.storage
-                    .tables
+                    .pico_table
                     .update_operable(table_id, false)
                     .expect("storage shouldn't fail");
             }
@@ -2020,7 +2020,7 @@ impl NodeImpl {
                 ..
             } => {
                 self.storage
-                    .tables
+                    .pico_table
                     .update_format(table_id, &new_format, &column_renames)
                     .expect("storage shouldn't fail");
 
@@ -2040,7 +2040,7 @@ impl NodeImpl {
                 }
 
                 self.storage
-                    .tables
+                    .pico_table
                     .update_operable(table_id, false)
                     .expect("storage shouldn't fail");
             }

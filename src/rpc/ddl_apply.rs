@@ -206,7 +206,7 @@ pub fn apply_schema_change(
 
         Ddl::TruncateTable { id, .. } => {
             let space = storage
-                .tables
+                .pico_table
                 .get(id)
                 .map_err(|e| Error::Aborted(e.into()))?
                 .expect("failed to get space");

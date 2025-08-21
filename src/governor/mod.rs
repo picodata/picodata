@@ -148,7 +148,7 @@ impl Loop {
             .pending_schema_change()
             .expect("storage should never fail");
         let tables: Vec<_> = storage
-            .tables
+            .pico_table
             .iter()
             .expect("storage should never fail")
             .collect();

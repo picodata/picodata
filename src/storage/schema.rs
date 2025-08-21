@@ -40,7 +40,7 @@ pub fn ddl_meta_space_update_operable(
     space_id: SpaceId,
     operable: bool,
 ) -> traft::Result<()> {
-    storage.tables.update_operable(space_id, operable)?;
+    storage.pico_table.update_operable(space_id, operable)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         storage
@@ -61,7 +61,7 @@ pub fn ddl_meta_drop_space(storage: &Catalog, space_id: SpaceId) -> traft::Resul
     for index in iter {
         storage.indexes.delete(index.table_id, index.id)?;
     }
-    storage.tables.delete(space_id)?;
+    storage.pico_table.delete(space_id)?;
     Ok(())
 }
 
@@ -370,25 +370,25 @@ pub fn ddl_create_space_on_master(
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
 
-    let pico_space_def = storage
-        .tables
+    let pico_table_def = storage
+        .pico_table
         .get(space_id)?
         .ok_or_else(|| Error::other(format!("space with id {space_id} not found")))?;
     // TODO: set defaults
-    let tt_space_def = pico_space_def.to_space_metadata()?;
+    let tt_space_def = pico_table_def.to_space_metadata()?;
 
     let pico_pk_def = storage.indexes.get(space_id, 0)?.ok_or_else(|| {
         Error::other(format!(
             "primary index for space {} not found",
-            pico_space_def.name
+            pico_table_def.name
         ))
     })?;
-    let tt_pk_def = pico_pk_def.to_index_metadata(&pico_space_def);
+    let tt_pk_def = pico_pk_def.to_index_metadata(&pico_table_def);
 
-    let bucket_id_def = match &pico_space_def.distribution {
+    let bucket_id_def = match &pico_table_def.distribution {
         Distribution::ShardedImplicitly { .. } => {
             let index = IndexDef {
-                table_id: pico_space_def.id,
+                table_id: pico_table_def.id,
                 id: 1,
                 name: "bucket_id".into(),
                 ty: IndexType::Tree,
@@ -397,7 +397,7 @@ pub fn ddl_create_space_on_master(
                     .field_type(IndexFieldType::Unsigned)
                     .is_nullable(false)],
                 operable: false,
-                schema_version: pico_space_def.schema_version,
+                schema_version: pico_table_def.schema_version,
             };
             Some(index)
         }
@@ -418,7 +418,7 @@ pub fn ddl_create_space_on_master(
         sys_space.insert(&tt_space_def)?;
         sys_index.insert(&tt_pk_def)?;
         if let Some(def) = bucket_id_def {
-            sys_index.insert(&def.to_index_metadata(&pico_space_def))?;
+            sys_index.insert(&def.to_index_metadata(&pico_table_def))?;
         }
 
         Ok(())

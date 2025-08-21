@@ -105,13 +105,13 @@ impl StorageCache for PicoStorageCache {
         let node = node::global().map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
-        let storage_tables = &node.storage.tables;
+        let pico_table = &node.storage.pico_table;
         for table_name in schema_info.router_version_map.keys() {
-            let current_version = if let Some(space_def) =
-                storage_tables.by_name(table_name.as_str()).map_err(|e| {
-                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+            let current_version = if let Some(table_def) =
+                pico_table.by_name(table_name.as_str()).map_err(|e| {
+                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
                 })? {
-                space_def.schema_version
+                table_def.schema_version
             } else {
                 return Err(SbroadError::NotFound(
                     Entity::SpaceMetadata,
@@ -133,17 +133,17 @@ impl StorageCache for PicoStorageCache {
         let node = node::global().map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
-        let storage_tables = &node.storage.tables;
+        let pico_table = &node.storage.pico_table;
         for (table_name, cached_version) in version_map {
-            let Some(space_def) = storage_tables.by_name(table_name.as_str()).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+            let Some(table_def) = pico_table.by_name(table_name.as_str()).map_err(|e| {
+                SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
             })?
             else {
                 return Ok(None);
             };
             // The outdated entry will be replaced when `put` is called (that is always
             // called after the cache miss).
-            if *cached_version != space_def.schema_version {
+            if *cached_version != table_def.schema_version {
                 return Ok(None);
             }
         }

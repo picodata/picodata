@@ -505,7 +505,7 @@ fn dispatch_bound_statement_impl(
                 let table_name = table.name.clone();
 
                 let table_id = storage
-                    .tables
+                    .pico_table
                     .by_name(&table_name)?
                     .ok_or(traft::error::DoesNotExist::Table(table_name))?
                     .id;
@@ -1382,7 +1382,7 @@ fn ddl_ir_node_to_op_or_result(
         DdlOwned::DropTable(DropTable {
             name, if_exists, ..
         }) => {
-            let Some(space_def) = storage.tables.by_name(name)? else {
+            let Some(table_def) = storage.pico_table.by_name(name)? else {
                 if *if_exists {
                     return Ok(Break(ConsumerResult { row_count: 0 }));
                 } else {
@@ -1390,7 +1390,7 @@ fn ddl_ir_node_to_op_or_result(
                 }
             };
             let ddl = OpDdl::DropTable {
-                id: space_def.id,
+                id: table_def.id,
                 initiator: current_user,
             };
             Ok(Continue(Op::DdlPrepare {
@@ -1400,11 +1400,11 @@ fn ddl_ir_node_to_op_or_result(
             }))
         }
         DdlOwned::TruncateTable(TruncateTable { name, .. }) => {
-            let Some(space_def) = storage.tables.by_name(name)? else {
+            let Some(table_def) = storage.pico_table.by_name(name)? else {
                 return Err(error::DoesNotExist::Table(name.clone()).into());
             };
             let ddl = OpDdl::TruncateTable {
-                id: space_def.id,
+                id: table_def.id,
                 initiator: current_user,
             };
             Ok(Continue(Op::DdlPrepare {
@@ -1632,7 +1632,7 @@ fn ddl_ir_node_to_op_or_result(
             }))
         }
         DdlOwned::AlterTable(alter_table) => {
-            let Some(table) = &storage.tables.by_name(&alter_table.name)? else {
+            let Some(table) = &storage.pico_table.by_name(&alter_table.name)? else {
                 return Err(error::DoesNotExist::Table(alter_table.name.clone()).into());
             };
 
@@ -1705,7 +1705,7 @@ fn ddl_ir_node_to_op_or_result(
                     }))
                 }
                 AlterTableOp::RenameTable { new_table_name } => {
-                    if storage.tables.by_name(new_table_name)?.is_some() {
+                    if storage.pico_table.by_name(new_table_name)?.is_some() {
                         return Err(error::AlreadyExists::Table(new_table_name.clone()).into());
                     };
 
@@ -1768,7 +1768,7 @@ fn check_ddl_applied(
     let pending_schema_version = storage.properties.pending_schema_version()?;
     match ddl {
         OpDdl::CreateTable { name, .. } => {
-            let Some(table_def) = storage.tables.by_name(name)? else {
+            let Some(table_def) = storage.pico_table.by_name(name)? else {
                 tlog!(Warning, "Table `{name}` has already been dropped.");
                 return error(
                     "Table does not exist: either operation was aborted \
@@ -1796,7 +1796,7 @@ fn check_ddl_applied(
             Ok(true)
         }
         OpDdl::DropTable { id, .. } => {
-            let Some(table_def) = storage.tables.get(*id)? else {
+            let Some(table_def) = storage.pico_table.get(*id)? else {
                 return Ok(true);
             };
 
@@ -1827,7 +1827,7 @@ fn check_ddl_applied(
             table_id,
             ..
         } => {
-            let Some(table_def) = storage.tables.get(*table_id)? else {
+            let Some(table_def) = storage.pico_table.get(*table_id)? else {
                 tlog!(
                     Warning,
                     "Table with id `{table_id}` was dropped while renaming \
@@ -2033,7 +2033,7 @@ fn check_ddl_applied(
             new_format,
             ..
         } => {
-            let Some(table_def) = storage.tables.get(*table_id)? else {
+            let Some(table_def) = storage.pico_table.get(*table_id)? else {
                 tlog!(
                     Warning,
                     "Table with id `{table_id}` has already been dropped."
@@ -2063,7 +2063,7 @@ fn check_ddl_applied(
             Ok(true)
         }
         OpDdl::TruncateTable { id, .. } => {
-            if storage.tables.get(*id)?.is_none() {
+            if storage.pico_table.get(*id)?.is_none() {
                 tlog!(Warning, "Table with id `{id}` has already been dropped.");
                 return error("Table has been dropped while truncating.");
             };

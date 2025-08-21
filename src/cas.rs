@@ -39,7 +39,7 @@ const PROHIBITED_CONFIGS: &[&str] = &[config::SHREDDING_PARAM_NAME];
 /// dedicated operation types (e.g. Ddl, Acl) because updating these tables
 /// requires automatically updating corresponding local spaces.
 const PROHIBITED_TABLES: &[SpaceId] = &[
-    storage::Tables::TABLE_ID,
+    storage::PicoTable::TABLE_ID,
     storage::Indexes::TABLE_ID,
     storage::Users::TABLE_ID,
     storage::Privileges::TABLE_ID,
@@ -47,7 +47,7 @@ const PROHIBITED_TABLES: &[SpaceId] = &[
 ];
 
 pub fn check_table_operable(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
-    if let Some(table) = storage.tables.get(space_id)? {
+    if let Some(table) = storage.pico_table.get(space_id)? {
         if !table.operable {
             tlog!(Warning, "Table is not operable; skipping DML operation");
             return Err(Error::TableNotOperable {
@@ -64,7 +64,7 @@ pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
     if PROHIBITED_TABLES.contains(&dml.table_id()) {
         return Err(Error::TableNotAllowed {
             table: storage
-                .tables
+                .pico_table
                 .get(dml.table_id())?
                 .expect("system tables exist")
                 .name,
@@ -923,7 +923,7 @@ impl PartialEq for Range {
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
-        let table = if let Some(table) = node.storage.tables.by_name(&range.table)? {
+        let table = if let Some(table) = node.storage.pico_table.by_name(&range.table)? {
             table.id
         } else if let Some(table) = Space::find(&range.table) {
             table.id()
@@ -1222,7 +1222,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Catalog) -> bool {
 /// Predicate tests based on the CaS Design Document.
 mod tests {
     use sbroad::ir::operator::ConflictStrategy;
-    use storage::Tables;
+    use storage::PicoTable;
     use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
@@ -1297,7 +1297,7 @@ mod tests {
 
         // drop_space
         // `DropTable` needs `TableDef` to get space name
-        storage.tables.insert(&table_def).unwrap();
+        storage.pico_table.insert(&table_def).unwrap();
         t(&drop_space, Range::new(props).eq(&pending_schema_change)).unwrap_err();
         t(&drop_space, Range::new(props).eq(&pending_schema_version)).unwrap_err();
         t(&drop_space, Range::new(props).eq(("another_key",))).unwrap();
@@ -1362,7 +1362,7 @@ mod tests {
         let test =
             |op: &Dml, range: Range| check_predicate(2, &Op::Dml(op.clone()), &[range], &storage);
 
-        let table = Tables::TABLE_ID;
+        let table = PicoTable::TABLE_ID;
         let ops = &[
             Dml::Insert {
                 table,

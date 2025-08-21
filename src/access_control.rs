@@ -187,7 +187,7 @@ fn forbid_drop_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::R
     }
 
     let table_name = storage
-        .tables
+        .pico_table
         .get(space_id)?
         .map_or_else(|| format!("id={space_id}"), |table| table.name);
 
@@ -225,7 +225,7 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
     let space_id = dml.space();
     if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
         let table_name = storage
-            .tables
+            .pico_table
             .get(space_id)?
             .map_or_else(|| format!("id={space_id}"), |table| table.name);
 
