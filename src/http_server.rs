@@ -493,6 +493,10 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>> {
         tier.replicasets.push(replicaset);
     }
 
+    res.iter_mut().for_each(|tup| {
+        tup.1.replicasets.sort_by_key(|rs| rs.name.clone());
+    });
+
     Ok(res.into_values().collect())
 }
 
