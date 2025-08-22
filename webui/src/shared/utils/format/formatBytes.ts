@@ -12,7 +12,7 @@ export const formatBytes = (bytes: number, decimals = 2) => {
     "YiB",
   ];
 
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = bytes !== 0 ? Math.floor(Math.log(bytes) / Math.log(k)) : 0;
 
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${
     sizes[i]
