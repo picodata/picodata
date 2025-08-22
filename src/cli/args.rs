@@ -427,7 +427,7 @@ pub struct Expel {
 
     #[clap(
         long = "peer",
-        value_name = "HOST:PORT",
+        value_name = "[USER@]HOST:PORT",
         env = "PICODATA_PEER",
         default_value = "127.0.0.1:3301"
     )]
