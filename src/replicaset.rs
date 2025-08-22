@@ -117,6 +117,27 @@ impl Replicaset {
         ]
     }
 
+    #[inline(always)]
+    pub fn master_is_transitioning(&self) -> bool {
+        self.current_master_name != self.target_master_name
+    }
+
+    /// Returns the name of instance which should be the master replica at this
+    /// moment.
+    ///
+    /// Returns `None` if the role of the master is transitioning from
+    /// [`Self::current_master_name`] to [`Self::target_master_name`].
+    ///
+    /// NOTE if this function returns `None` then all replicas should be
+    /// read-only.
+    pub fn effective_master_name(&self) -> Option<&InstanceName> {
+        if self.master_is_transitioning() {
+            return None;
+        }
+
+        Some(&self.current_master_name)
+    }
+
     /// A dummy instance of the type for use in tests.
     #[inline(always)]
     pub fn for_tests() -> Self {

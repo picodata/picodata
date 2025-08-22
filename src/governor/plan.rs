@@ -203,10 +203,7 @@ pub(super) fn action_plan<'i>(
         debug_assert!(!targets.is_empty());
         let replicaset_name = &replicaset.name;
 
-        let mut master_name = None;
-        if replicaset.current_master_name == replicaset.target_master_name {
-            master_name = Some(&replicaset.current_master_name);
-        }
+        let master_name = replicaset.effective_master_name();
 
         let mut ops = UpdateOps::new();
         ops.assign(

@@ -296,6 +296,8 @@ impl VshardConfig {
                 continue;
             };
 
+            let is_master = Some(&peer.name) == r.effective_master_name();
+
             let replicaset = sharding
                 .entry(peer.replicaset_uuid.clone())
                 .or_insert_with(|| ReplicasetSpec {
@@ -311,7 +313,7 @@ impl VshardConfig {
                         format!("{PICO_SERVICE_USER_NAME}@{address}"),
                         tls_config,
                     ),
-                    master: r.current_master_name == peer.name,
+                    master: is_master,
                     name: peer.name.to_string(),
                 },
             );
