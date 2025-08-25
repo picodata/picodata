@@ -317,14 +317,6 @@ impl SyntaxNode {
         }
     }
 
-    fn new_as() -> Self {
-        SyntaxNode {
-            data: SyntaxData::As,
-            left: None,
-            right: Vec::new(),
-        }
-    }
-
     fn new_over() -> Self {
         SyntaxNode {
             data: SyntaxData::Over,
@@ -1674,7 +1666,7 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_over(&mut self, id: NodeId) {
         // Extract all needed values upfront to avoid holding the immutable borrow
-        let (plan, expr) = self.prologue_expr(id);
+        let (_plan, expr) = self.prologue_expr(id);
         let Expression::Over(Over {
             stable_func,
             filter,
@@ -1863,7 +1855,7 @@ impl<'p> SyntaxPlan<'p> {
         // Need to reverse the order of the children back.
         list_sn_ids.reverse();
 
-        let children = self.build_row_syntax_nodes(id, &list_sn_ids);
+        let children = self.build_row_syntax_nodes(&list_sn_ids);
 
         let sn = SyntaxNode::new_pointer(id, None, children);
         self.nodes.push_sn_plan(sn);
@@ -2002,7 +1994,7 @@ impl<'p> SyntaxPlan<'p> {
         true
     }
 
-    fn build_row_syntax_nodes(&mut self, id: NodeId, list_sn_ids: &[usize]) -> Vec<usize> {
+    fn build_row_syntax_nodes(&mut self, list_sn_ids: &[usize]) -> Vec<usize> {
         // Set of relation names for which we've already generated asterisk (*).
         // In case we see in output several references that we initially generated from
         // an asterisk we want to generate that asterisk only once.
