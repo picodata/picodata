@@ -1,4 +1,7 @@
-use crate::executor::{engine::mock::RouterRuntimeMock, Query};
+use crate::{
+    executor::{engine::mock::RouterRuntimeMock, Query},
+    ir::value::Value,
+};
 
 #[test]
 fn test_query_explain_1() {
@@ -278,5 +281,59 @@ fn test_query_explain_14() {
         sql_vdbe_opcode_max = 45000
         sql_motion_row_max = 5000
     buckets = []
+    "#);
+}
+
+#[test]
+fn test_query_explain_15() {
+    let sql = "explain select 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (1::int -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 1
+        sql_motion_row_max = 2
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_16() {
+    let sql = "explain select 1 option (sql_vdbe_opcode_max = $1, sql_motion_row_max = $2)";
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = Query::new(
+        metadata,
+        sql,
+        vec![Value::Unsigned(14), Value::Unsigned(88)],
+    )
+    .unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    projection (1::int -> "col_1")
+    execution options:
+        sql_vdbe_opcode_max = 14
+        sql_motion_row_max = 88
+    buckets = any
+    "#);
+}
+
+#[test]
+fn test_query_explain_17() {
+    let sql = "explain update t set c = 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
+
+    let metadata = &RouterRuntimeMock::new();
+    let mut query = Query::new(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(query.to_explain().unwrap(), @r#"
+    update "t"
+    "c" = "col_0"
+        motion [policy: local]
+            projection (1::int -> "col_0", "t"."b"::int -> "col_1")
+                scan "t"
+    execution options:
+        sql_vdbe_opcode_max = 1
+        sql_motion_row_max = 2
+    buckets = [1-10000]
     "#);
 }

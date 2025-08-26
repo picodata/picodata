@@ -256,7 +256,7 @@ Block = ${ CallProc ~ (W ~ DqlOption)? }
 ExplainQuery = _{ Explain }
     Explain = ${ ^"explain" ~ W ~ Query }
 
-Query = { (SelectFull | Values | Insert | Update | Delete) ~ DqlOption? }
+Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
     SelectFull = ${ (^"with" ~ W ~ Ctes ~ W)? ~ SelectStatement }
         Ctes = _{ Cte ~ (WO ~ "," ~ WO ~ Cte)* }
     SelectStatement = ${ SelectWithOptionalContinuation  ~ (W ~ OrderBy)? ~ (W ~ Limit)? }
