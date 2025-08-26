@@ -286,8 +286,7 @@ impl QueryCache for RouterRuntime {
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.ir_cache.lock() = Self::Cache::new(self.cache_capacity()?)?;
-        Ok(())
+        self.ir_cache.lock().clear()
     }
 
     fn provides_versions(&self) -> bool {

@@ -173,8 +173,7 @@ impl QueryCache for StorageRuntime {
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.cache.lock() = Self::Cache::new(self.cache_capacity()?, Some(Box::new(evict)))?;
-        Ok(())
+        self.cache.lock().clear()
     }
 
     fn provides_versions(&self) -> bool {

@@ -1523,8 +1523,7 @@ impl QueryCache for RouterRuntimeMock {
     type Mutex = RefCell<Self::Cache>;
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.ir_cache.borrow_mut() = LRUCache::new(self.cache_capacity()?, None)?;
-        Ok(())
+        self.ir_cache.lock().clear()
     }
 
     fn cache(&self) -> &Self::Mutex {

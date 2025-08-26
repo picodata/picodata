@@ -226,8 +226,7 @@ impl QueryCache for RouterRuntime {
     where
         Self: Sized,
     {
-        self.ir_cache.lock().clear()?;
-        Ok(())
+        self.ir_cache.lock().clear()
     }
 
     fn cache_capacity(&self) -> Result<usize, SbroadError> {
