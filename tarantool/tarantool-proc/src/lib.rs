@@ -1054,7 +1054,7 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
         // The generated impl.
         impl #impl_generics #tarantool_crate::msgpack::Encode for #name #ty_generics #where_clause {
             fn encode(&self, w: &mut impl ::std::io::Write, context: &#tarantool_crate::msgpack::Context)
-                -> Result<(), #tarantool_crate::msgpack::EncodeError>
+                -> std::result::Result<(), #tarantool_crate::msgpack::EncodeError>
             {
                 use #tarantool_crate::msgpack::StructStyle;
                 #encode_fields

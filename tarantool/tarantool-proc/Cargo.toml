@@ -4,7 +4,7 @@ authors = [
 ]
 name = "tarantool-proc"
 description = "Tarantool proc macros"
-version = "4.0.0"
+version = "4.0.1"
 edition = "2021"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tarantool-proc/"
