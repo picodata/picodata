@@ -76,9 +76,9 @@ pub type lua_Integer = libc::ptrdiff_t;
 /// following protocol, which defines the way parameters and results are passed:
 /// a C function receives its arguments from Lua in its stack in direct order
 /// (the first argument is pushed first). So, when the function starts,
-/// [`lua_gettop`]`(L)` returns the number of arguments received by the function.
+/// [`lua_gettop`]`(l)` returns the number of arguments received by the function.
 /// The first argument (if any) is at index 1 and its last argument is at index
-/// [`lua_gettop`]`(L)`. To return values to Lua, a C function just pushes them
+/// [`lua_gettop`]`(l)`. To return values to Lua, a C function just pushes them
 /// onto the stack, in direct order (the first result is pushed first), and
 /// returns the number of results. Any other value in the stack below the
 /// results will be properly discarded by Lua. Like a Lua function, a C function
@@ -126,13 +126,13 @@ pub type lua_Alloc = extern "C" fn(
 /// the reader must return `NULL` or set `size` to zero. The reader function may
 /// return pieces of any size greater than zero.
 pub type lua_Reader = extern "C" fn(
-    L: *mut lua_State,
+    l: *mut lua_State,
     data: *mut libc::c_void,
     size: *mut libc::size_t,
 ) -> *const libc::c_char;
 
 pub type lua_Writer = extern "C" fn(
-    L: *mut lua_State,
+    l: *mut lua_State,
     p: *const libc::c_void,
     sz: libc::size_t,
     ud: *mut libc::c_void,
@@ -155,7 +155,7 @@ extern "C-unwind" {
 
     pub fn lua_atpanic(l: *mut lua_State, panicf: lua_CFunction) -> lua_CFunction;
 
-    pub fn lua_version(L: *mut lua_State) -> *const lua_Number;
+    pub fn lua_version(l: *mut lua_State) -> *const lua_Number;
 
     /// Returns the index of the top element in the stack. Because indices start
     /// at 1, this result is equal to the number of elements in the stack (and
@@ -492,7 +492,7 @@ extern "C-unwind" {
     /// This function never returns, but it is an idiom to use it in C functions
     /// as return `luaL_error(args)`.
     pub fn luaL_error(l: *mut lua_State, fmt: *const c_char, ...) -> c_int;
-    pub fn luaL_openlibs(L: *mut lua_State);
+    pub fn luaL_openlibs(l: *mut lua_State);
 
     /// Creates and returns a reference, in the table at index `t`, for the
     /// object at the top of the stack (and pops the object).
@@ -501,7 +501,7 @@ extern "C-unwind" {
     /// A reference is a unique integer key. As long as you do not manually add
     /// integer keys into table t, `luaL_ref` ensures the uniqueness of the key
     /// it returns. You can retrieve an object referred by reference r by
-    /// calling [`lua_rawgeti`]`(L, t, r)`. Function [`luaL_unref`] frees a
+    /// calling [`lua_rawgeti`]`(l, t, r)`. Function [`luaL_unref`] frees a
     /// reference and its associated object.
     ///
     /// If the object at the top of the stack is nil, `luaL_ref` returns the
@@ -556,7 +556,7 @@ pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_char {
 
 #[inline(always)]
 /// Creates a new empty table and pushes it onto the stack. It is equivalent to
-/// [`lua_createtable`]`(L, 0, 0)`.
+/// [`lua_createtable`]`(l, 0, 0)`.
 /// *[-0, +1, m]*
 pub unsafe fn lua_newtable(state: *mut lua_State) {
     lua_createtable(state, 0, 0);

@@ -393,7 +393,7 @@ impl PortC {
         }
     }
 
-    pub fn iter(&self) -> PortCIterator {
+    pub fn iter(&self) -> PortCIterator<'_> {
         PortCIterator::new(self)
     }
 

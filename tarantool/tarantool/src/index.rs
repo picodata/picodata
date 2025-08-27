@@ -576,7 +576,7 @@ impl Index {
 
     // Return index metadata from system `_index` space.
     #[inline]
-    pub fn meta(&self) -> Result<Metadata, Error> {
+    pub fn meta(&self) -> Result<Metadata<'_>, Error> {
         let sys_space: Space = SystemSpace::Index.into();
         let tuple = sys_space.get(&[self.space_id, self.index_id])?;
         let Some(tuple) = tuple else {

@@ -70,7 +70,7 @@ where
     /// Iterates over the elements inside the table.
     // TODO: doc
     #[inline]
-    pub fn iter<K, V>(&self) -> LuaTableIterator<L, K, V> {
+    pub fn iter<K, V>(&self) -> LuaTableIterator<'_, L, K, V> {
         unsafe {
             ffi::lua_pushnil(self.as_lua());
 

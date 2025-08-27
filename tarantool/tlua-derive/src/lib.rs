@@ -853,8 +853,8 @@ fn split_generics(
     generics: &syn::Generics,
 ) -> (
     Vec<&syn::LifetimeDef>,
-    Vec<ImplTypeParam>,
-    Vec<ImplConstParam>,
+    Vec<ImplTypeParam<'_>>,
+    Vec<ImplConstParam<'_>>,
 ) {
     let mut res = (vec![], vec![], vec![]);
     for param in &generics.params {

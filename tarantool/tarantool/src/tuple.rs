@@ -1845,9 +1845,6 @@ mod vtab_impl {
         data: *const u8,
         end: *const u8,
     ) -> *mut ffi::BoxTuple {
-        #[rustfmt::skip]
-        debug_assert_eq!((*format).vtab.tuple_delete, tuple_delete_rust_allocator as ffi::FnTupleDelete);
-
         const TUPLE_HEADER_SIZE: usize = std::mem::size_of::<ffi::BoxTuple>();
         let data_offset = TUPLE_HEADER_SIZE;
         // Skipping field map calculations, as we don't support them yet
@@ -1893,9 +1890,6 @@ mod vtab_impl {
         format: *mut ffi::BoxTupleFormat,
         tuple: *mut ffi::BoxTuple,
     ) {
-        #[rustfmt::skip]
-        debug_assert_eq!((*format).vtab.tuple_delete, tuple_delete_rust_allocator as ffi::FnTupleDelete);
-
         debug_assert!(tuple != 0 as _);
         debug_assert_eq!((*tuple).refs, 0);
         const FLAG_TUPLE_HAS_UPLOADED_REFS: u8 = 1 << 0;

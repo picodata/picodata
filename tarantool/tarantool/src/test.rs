@@ -7,12 +7,18 @@ use tester::{ShouldPanic, TestDesc, TestDescAndFn, TestFn, TestName, TestType};
 /// See also [`collect_tester`].
 ///
 /// [`tarantool::test`]: macro@crate::test
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct TestCase {
     name: &'static str,
     // TODO: Support functions returning `Result`
     f: fn(),
     should_panic: bool,
+}
+
+impl PartialEq for TestCase {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.should_panic == other.should_panic
+    }
 }
 
 impl TestCase {

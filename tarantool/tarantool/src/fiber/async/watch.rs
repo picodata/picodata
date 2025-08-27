@@ -162,7 +162,7 @@ impl<T> Sender<T> {
     /// control to other fibers while holding a ref.
     ///
     /// Consider using [`Self::get`] or [`Self::get_cloned`] instead.
-    pub fn borrow(&self) -> ValueRef<T> {
+    pub fn borrow(&self) -> ValueRef<'_, T> {
         ValueRef(self.state.value.borrow())
     }
 
@@ -254,7 +254,7 @@ impl<T> Receiver<T> {
     /// this `Receiver`, or until the [`Sender`] is dropped.
     ///
     /// This method returns an error if and only if the [`Sender`] is dropped.
-    pub fn changed(&mut self) -> Notification<T> {
+    pub fn changed(&mut self) -> Notification<'_, T> {
         Notification { rx: self }
     }
 
@@ -274,7 +274,7 @@ impl<T> Receiver<T> {
     /// possible.
     ///
     /// Consider using [`Self::get`] or [`Self::get_cloned`] instead.
-    pub fn borrow(&self) -> ValueRef<T> {
+    pub fn borrow(&self) -> ValueRef<'_, T> {
         ValueRef(self.state.value.borrow())
     }
 

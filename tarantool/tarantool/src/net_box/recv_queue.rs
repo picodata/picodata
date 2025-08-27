@@ -121,7 +121,7 @@ impl RecvQueue {
             .and_then(|c| c.upgrade())
     }
 
-    pub fn iter_consumers(&self) -> HashMapIter<SyncIndex, Weak<dyn Consumer>> {
+    pub fn iter_consumers(&self) -> HashMapIter<'_, SyncIndex, Weak<dyn Consumer>> {
         unsafe { &*self.async_consumers.get() }.iter()
     }
 

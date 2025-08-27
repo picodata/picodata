@@ -897,13 +897,6 @@ pub fn readwrite_strings() {
         c_str: &'c CStr,
     }
 
-    #[derive(tlua::Push, tlua::LuaRead)]
-    struct OwnedS {
-        os: OsString,
-        path: PathBuf,
-        c_str: CString,
-    }
-
     lua.set("a", "hello");
     lua.set("b", &"hello".to_string());
     lua.set("c", c_str!("can you hear me?"));

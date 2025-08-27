@@ -486,7 +486,7 @@ impl Space {
     ///
     /// - `name` - name of space to be created
     #[inline(always)]
-    pub fn builder(name: &str) -> Builder {
+    pub fn builder(name: &str) -> Builder<'_> {
         Builder::new(name)
     }
 
@@ -930,7 +930,7 @@ impl Space {
 
     // Return space metadata from system `_space` space.
     #[inline(always)]
-    pub fn meta(&self) -> Result<Metadata, Error> {
+    pub fn meta(&self) -> Result<Metadata<'_>, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
         tuple.decode::<Metadata>()

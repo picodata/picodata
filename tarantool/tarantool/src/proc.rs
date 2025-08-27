@@ -25,7 +25,7 @@ macro_rules! unwrap_or_report_err {
 /// `#[`[`tarantool::proc`]`]` macro attribute.
 ///
 /// [`tarantool::proc`]: macro@crate::proc
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Proc {
     name: &'static str,
     proc: ffi::Proc,

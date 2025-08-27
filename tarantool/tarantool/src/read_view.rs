@@ -68,7 +68,7 @@ impl ReadView {
         &self,
         space: SpaceId,
         index: IndexId,
-    ) -> crate::Result<Option<ReadViewIterator>> {
+    ) -> crate::Result<Option<ReadViewIterator<'_>>> {
         unsafe {
             let mut iter = MaybeUninit::uninit();
             let rc = ffi::box_read_view_iterator_all(

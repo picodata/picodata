@@ -323,7 +323,7 @@ impl_function_ext! {A B C D E F G H I J K M N}
 ///     42
 /// );
 /// ```
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct CFunction(ffi::lua_CFunction);
 
 impl CFunction {
