@@ -2703,7 +2703,7 @@ cluster:
     # Check requesting RPC to unknown tier
     with pytest.raises(
         TarantoolError,
-        match="tier with name `undefined` not found",
+        match='tier with name "undefined" not found',
     ):
         context = make_context()
         input = dict(

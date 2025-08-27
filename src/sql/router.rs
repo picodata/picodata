@@ -61,49 +61,22 @@ pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
 
-    let tier = with_su(ADMIN_ID, || {
-        node.storage
-            .tiers
-            .by_name(tier_name)
-            .map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Get,
-                    None,
-                    format_smolstr!("tier object by tier name: {e}"),
-                )
-            })?
-            .ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Metadata,
-                    format_smolstr!("tier with name `{tier_name}` not found"),
-                )
-            })
-    })??;
+    let topology_ref = node.topology_cache.get();
+    let tier = topology_ref.tier_by_name(tier_name).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("tier info: {}", e))
+    })?;
 
     Ok(Tier {
         bucket_count: tier.bucket_count,
-        name: tier.name,
+        name: tier.name.clone(),
     })
 }
 
-fn get_current_tier_name() -> Result<String, SbroadError> {
+fn get_current_tier_name() -> Result<&'static str, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
-    let tier_name = with_su(ADMIN_ID, || {
-        node.raft_storage
-            .tier()
-            .map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("tier name: {e}"))
-            })?
-            .ok_or_else(|| {
-                SbroadError::FailedTo(
-                    Action::Get,
-                    None,
-                    format_smolstr!("tier name should be persisted at instance bootstrap"),
-                )
-            })
-    })??;
+    let tier_name = node.topology_cache.my_tier_name();
 
     Ok(tier_name)
 }
@@ -373,16 +346,18 @@ impl Router for RouterRuntime {
     }
 
     fn get_current_tier_name(&self) -> Result<Option<SmolStr>, SbroadError> {
-        Ok(Some(SmolStr::from(get_current_tier_name()?)))
+        Ok(Some(SmolStr::new_static(get_current_tier_name()?)))
     }
 
     fn get_vshard_object_by_tier(
         &self,
         tier_name: Option<&SmolStr>,
     ) -> Result<Self::VshardImplementor, SbroadError> {
-        let current_instance_tier_name = SmolStr::from(get_current_tier_name()?);
-        let tier_name = tier_name.unwrap_or(&current_instance_tier_name);
-        get_tier_info(tier_name)
+        if let Some(tier_name) = tier_name {
+            get_tier_info(tier_name)
+        } else {
+            get_tier_info(get_current_tier_name()?)
+        }
     }
 
     fn materialize_values(
