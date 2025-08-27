@@ -16,6 +16,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 - SQL supports scalar function `abs()`.
+- Multiple `OPTIONS` specified in an SQL query no longer result in an error.
+  Instead, the rightmost option takes precedence.
 
 ### Fixes
 - Fixed "instance is already joined" error if picodata crashes during reboostrap

@@ -54,9 +54,9 @@ INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
 
 -- TEST: test_invalid-1
 -- SQL:
-select * from "testing_space" option(sql_vdbe_opcode_max = 10, sql_vdbe_opcode_max = 11) 
+select * from "testing_space" option(sql_vdbe_opcode_max = 10, sql_vdbe_opcode_max = 11)
 -- ERROR:
-invalid query: option sql_vdbe_opcode_max specified more than once!
+Reached a limit on max executed vdbe opcodes. Limit: 11
 
 -- TEST: test_invalid-2
 -- SQL:

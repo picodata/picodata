@@ -124,28 +124,12 @@ impl<T> LoweredOptionValue<T> {
     /// Specify the value of the option.
     /// If `None` value is supplied, the option will be marked as specified, but with unknown value.
     ///
-    /// # Errors
-    /// - Option has already been specified
-    pub fn try_specify_opt(
-        &mut self,
-        kind: OptionKind,
-        value: Option<T>,
-    ) -> Result<(), SbroadError> {
-        match self {
-            LoweredOptionValue::Default => {
-                *self = match value {
-                    None => LoweredOptionValue::Unknown,
-                    Some(value) => LoweredOptionValue::Known(value),
-                };
-                Ok(())
-            }
-            LoweredOptionValue::Unknown | LoweredOptionValue::Known(_) => {
-                Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!("option {} specified more than once!", kind)),
-                ))
-            }
-        }
+    /// If an option was already specified, this function will overwrite the previous value.
+    pub fn specify_opt(&mut self, value: Option<T>) {
+        *self = match value {
+            None => LoweredOptionValue::Unknown,
+            Some(value) => LoweredOptionValue::Known(value),
+        };
     }
 
     /// Gets the value of the option, if known
@@ -229,9 +213,9 @@ pub(super) fn lower_options(
             .transpose()?;
 
         match kind {
-            OptionKind::VdbeOpcodeMax => result.sql_vdbe_opcode_max.try_specify_opt(kind, value),
-            OptionKind::MotionRowMax => result.sql_motion_row_max.try_specify_opt(kind, value),
-        }?
+            OptionKind::VdbeOpcodeMax => result.sql_vdbe_opcode_max.specify_opt(value),
+            OptionKind::MotionRowMax => result.sql_motion_row_max.specify_opt(value),
+        }
     }
 
     Ok(result)

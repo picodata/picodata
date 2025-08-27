@@ -148,26 +148,34 @@ def test_invalid_sql_options(postgres: Postgres):
 
     conn = psycopg.connect(f"postgres://{user}:{password}@{host}:{port}", autocommit=True)
 
+    conn.execute("""
+                 SELECT * FROM (VALUES (1), (2)) OPTION (
+                   sql_motion_row_max = 1,
+                   sql_motion_row_max = 10
+                 )""")
     with pytest.raises(
         psycopg.InternalError,
-        match=r"sbroad: invalid query: option sql_motion_row_max specified more than once!",
+        match=r"unexpected number of values: Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         conn.execute("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (
-                       sql_motion_row_max = 3,
-                       sql_motion_row_max = 2,
-                       sql_vdbe_opcode_max = 1,
-                       sql_vdbe_opcode_max = 2
+                       sql_motion_row_max = 10,
+                       sql_motion_row_max = 1
                      )""")
 
+    conn.execute("""
+                 SELECT * FROM (VALUES (1), (2)) OPTION (
+                   sql_vdbe_opcode_max = 1,
+                   sql_vdbe_opcode_max = 100
+                 )""")
     with pytest.raises(
         psycopg.InternalError,
-        match=r"sbroad: invalid query: option sql_vdbe_opcode_max specified more than once!",
+        match=r"Reached a limit on max executed vdbe opcodes. Limit: 1",
     ):
         conn.execute("""
                      SELECT * FROM (VALUES (1), (2)) OPTION (
-                       sql_vdbe_opcode_max = 1,
-                       sql_vdbe_opcode_max = 2
+                       sql_vdbe_opcode_max = 10,
+                       sql_vdbe_opcode_max = 1
                      )""")
 
 
