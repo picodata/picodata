@@ -9,7 +9,7 @@ use crate::ir::node::{
 use crate::ir::relation::Column;
 use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use tarantool::msgpack;
@@ -176,19 +176,17 @@ impl ExecutionPlan {
         Ok(vtables_meta)
     }
 
-    /// Transform plan sub-tree (pointed by top) to sql string pattern with parameters.
-    ///
-    /// # Errors
-    /// - plan is invalid and can't be transformed
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_lines)]
-    pub fn to_sql(
+    fn generate_sql_impl<T, TableName>(
         &self,
         nodes: &[&SyntaxData],
-        plan_id: &str,
+        plan_id: T,
         vtables_meta: Option<&VTablesMeta>,
-    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let capacity = self.get_vtables().map_or(1, HashMap::len);
+        table_name: TableName,
+    ) -> Result<(String, Vec<NodeId>), SbroadError>
+    where
+        TableName: Fn(T, NodeId) -> SmolStr,
+        T: Copy,
+    {
         // In our data structures, we store plan identifiers without
         // quotes in normalized form, but tarantool local sql has
         // different normalizing rules (to uppercase), so we need
@@ -198,7 +196,7 @@ impl ExecutionPlan {
             sql.push_str(identifier);
             sql.push('\"');
         };
-        let mut guard = Vec::with_capacity(capacity);
+        let mut motions = Vec::with_capacity(self.get_vtables().map_or(1, HashMap::len));
         let mut params_idx: AHashSet<usize> = AHashSet::new();
 
         let mut sql = String::new();
@@ -492,9 +490,6 @@ impl ExecutionPlan {
                             param_type,
                             ..
                         }))) => *param_type,
-                        Ok(Node::Expression(Expression::Constant(Constant { value }))) => {
-                            value.get_type()
-                        }
                         node => panic!("parameter node points to {node:?}"),
                     };
 
@@ -503,6 +498,7 @@ impl ExecutionPlan {
                         None => sql.push_str(&format_smolstr!("${index}")),
                     }
 
+                    assert!(*index <= ir_plan.constants.len());
                     params_idx.insert(*index);
                 }
                 SyntaxData::VTable(motion_id) => {
@@ -545,16 +541,40 @@ impl ExecutionPlan {
                         )
                     })?;
                     // BETWEEN can refer to the same virtual table multiple times.
-                    let table_guard = create_table(self, plan_id, *motion_id, vtables_meta)?;
-                    guard.push(table_guard);
+                    motions.push(*motion_id);
                 }
             }
         }
         assert_eq!(ir_plan.constants.len(), params_idx.len());
 
+        Ok((sql, motions))
+    }
+
+    /// Transform plan sub-tree (pointed by top) to sql string pattern with parameters.
+    ///
+    /// # Errors
+    /// - plan is invalid and can't be transformed
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_lines)]
+    pub fn to_sql(
+        &self,
+        nodes: &[&SyntaxData],
+        plan_id: &str,
+        vtables_meta: Option<&VTablesMeta>,
+    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
+        let capacity = self.get_vtables().map_or(1, HashMap::len);
+        let mut guard = Vec::with_capacity(capacity);
+
+        let (sql, motions) = self.generate_sql_impl(nodes, plan_id, vtables_meta, table_name)?;
+
+        for motion_id in motions {
+            let table_guard = create_table(self, plan_id, motion_id, vtables_meta)?;
+            guard.push(table_guard);
+        }
+
         // MUST be constructed out of the `syntax.ordered.sql` context scope.
         Ok((
-            PatternWithParams::new(sql, ir_plan.constants.clone()),
+            PatternWithParams::new(sql, self.get_ir_plan().constants.clone()),
             guard,
         ))
     }
