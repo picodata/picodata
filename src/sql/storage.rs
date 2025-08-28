@@ -168,10 +168,6 @@ impl QueryCache for StorageRuntime {
         &self.cache
     }
 
-    fn cache_capacity(&self) -> Result<usize, SbroadError> {
-        Ok(self.cache().lock().capacity())
-    }
-
     fn clear_cache(&self) -> Result<(), SbroadError> {
         self.cache.lock().clear()
     }

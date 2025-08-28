@@ -201,12 +201,6 @@ pub trait QueryCache {
     /// - Failed to get the cache.
     fn cache(&self) -> &Self::Mutex;
 
-    /// Get the cache capacity.
-    ///
-    /// # Errors
-    /// - Failed to get the cache capacity.
-    fn cache_capacity(&self) -> Result<usize, SbroadError>;
-
     /// Clear the cache.
     ///
     /// # Errors

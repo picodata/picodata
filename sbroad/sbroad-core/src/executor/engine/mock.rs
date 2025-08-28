@@ -1530,10 +1530,6 @@ impl QueryCache for RouterRuntimeMock {
         &self.ir_cache
     }
 
-    fn cache_capacity(&self) -> Result<usize, SbroadError> {
-        Ok(self.cache().lock().capacity())
-    }
-
     fn provides_versions(&self) -> bool {
         false
     }

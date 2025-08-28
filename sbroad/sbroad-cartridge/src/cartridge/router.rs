@@ -229,10 +229,6 @@ impl QueryCache for RouterRuntime {
         self.ir_cache.lock().clear()
     }
 
-    fn cache_capacity(&self) -> Result<usize, SbroadError> {
-        Ok(self.cache().lock().capacity())
-    }
-
     fn provides_versions(&self) -> bool {
         false
     }
