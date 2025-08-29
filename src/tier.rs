@@ -24,6 +24,8 @@ pub struct Tier {
     pub target_vshard_config_version: u64,
     pub vshard_bootstrapped: bool,
     pub bucket_count: u64,
+    #[serde(default)]
+    pub is_default: Option<bool>,
 }
 
 impl Encode for Tier {}
@@ -41,6 +43,7 @@ impl Tier {
             Field::from(("target_vshard_config_version", FieldType::Unsigned)),
             Field::from(("vshard_bootstrapped", FieldType::Boolean)),
             Field::from(("bucket_count", FieldType::Unsigned)),
+            Field::from(("is_default", FieldType::Boolean)).is_nullable(true),
         ]
     }
 
@@ -67,6 +70,7 @@ impl Default for Tier {
             current_vshard_config_version: 0,
             target_vshard_config_version: 0,
             vshard_bootstrapped: false,
+            is_default: Some(false),
         }
     }
 }

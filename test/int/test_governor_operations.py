@@ -37,31 +37,47 @@ def insert_operations(cluster: Cluster, ops: list[str]) -> int:
     return index
 
 
+@pytest.mark.xdist_group(name="compat")
 def test_catalog_upgrade_ok(compat_instance: Instance):
+    """
+    Test that system catalog upgrade from previous version to current version is correct.
+    """
+    i = compat_instance
     compat = Compatibility()
     backup_dir = compat.previous_minor_path
-    copy_dir(backup_dir, compat_instance.instance_dir)
+    copy_dir(backup_dir, i.instance_dir)
 
-    compat_instance.start_and_wait()
-    compat_instance.wait_governor_status("idle")
+    i.start_and_wait()
+    i.wait_governor_status("idle")
 
-    res_all = compat_instance.sql("SELECT COUNT(*) FROM _pico_governor_queue")
-    res_done = compat_instance.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
+    res_all = i.sql("SELECT COUNT(*) FROM _pico_governor_queue")
+    res_done = i.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
     assert res_all == res_done
 
     tt_procs = [
         "proc_backup_abort_clear",
         "proc_apply_backup",
+        "proc_internal_script",
     ]
     for proc_name in tt_procs:
-        res = compat_instance.call("box.space._func.index.name:select", [f".{proc_name}"])
+        res = i.call("box.space._func.index.name:select", [f".{proc_name}"])
         assert res[0][2] == f".{proc_name}"
+
+    res = i.sql("SELECT name, is_default FROM _pico_tier")
+    assert res == [["default", True]]
+
+    res = i.sql("SELECT format FROM _pico_table WHERE id = 523")
+    assert res[0][0][7] == {"field_type": "boolean", "is_nullable": True, "name": "is_default"}
+
+    res = i.call("box.space._space:select", [523])
+    assert res[0][6][7] == {"type": "boolean", "is_nullable": True, "name": "is_default"}
 
     res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
     assert res == [["25.4.1"]]
 
 
-def test_catalog_upgrade_from_25_3_1_to_25_4_0_ok(compat_instance: Instance):
+@pytest.mark.xdist_group(name="compat")
+def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(compat_instance: Instance):
     i = compat_instance
     compat = Compatibility()
     backup_dir = compat.version_to_dir_path(Version("25.3.1"))
@@ -102,6 +118,46 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_0_ok(compat_instance: Instance):
             "upgrade",
             "upgrade to catalog version 25.4.1",
         ],
+        [
+            4,
+            "25.4.1",
+            "proc_internal_script",
+            "proc_name",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+        [
+            5,
+            "25.4.1",
+            "alter_pico_tier_add_is_default",
+            "exec_script",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+        [
+            6,
+            "25.4.1",
+            "UPDATE _pico_tier SET is_default = true WHERE 1 in (SELECT count(*) FROM _pico_tier)",
+            "sql",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
+        [
+            7,
+            "25.4.1",
+            "UPDATE _pico_tier SET is_default = CASE WHEN name = 'default' THEN true ELSE false END",
+            "sql",
+            "done",
+            "",
+            "upgrade",
+            "upgrade to catalog version 25.4.1",
+        ],
     ]
 
     tt_procs = [
@@ -112,6 +168,15 @@ def test_catalog_upgrade_from_25_3_1_to_25_4_0_ok(compat_instance: Instance):
     for proc_name in tt_procs:
         res = i.call("box.space._func.index.name:select", [f".{proc_name}"])
         assert res[0][2] == f".{proc_name}"
+
+    res = i.sql("SELECT name, is_default FROM _pico_tier")
+    assert res == [["default", True]]
+
+    res = i.sql("SELECT format FROM _pico_table WHERE id = 523")
+    assert res[0][0][7] == {"field_type": "boolean", "is_nullable": True, "name": "is_default"}
+
+    res = i.call("box.space._space:select", [523])
+    assert res[0][6][7] == {"type": "boolean", "is_nullable": True, "name": "is_default"}
 
     res = i.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
     assert res == [["25.4.1"]]
@@ -338,3 +403,81 @@ def test_tt_proc_creation_error(cluster: Cluster):
                 "my description",
             ],
         ]
+
+
+def test_alter_pico_tier_add_is_default_ok(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        nondefault:
+"""
+    )
+    i1 = cluster.add_instance(tier="nondefault", wait_online=False)
+    i2 = cluster.add_instance(tier="nondefault", wait_online=False)
+    cluster.wait_online()
+    res = i1.sql("SELECT is_default FROM _pico_tier")
+    assert res == [[False]]
+
+    index, _ = i1.cas(
+        "insert",
+        "_pico_governor_queue",
+        [
+            1,
+            "batch_id",
+            "alter_pico_tier_add_is_default",
+            "exec_script",
+            "pending",
+            "",
+            "custom",
+            "my description",
+        ],
+    )
+    i2.raft_wait_index(index)
+
+    i1.wait_governor_status("idle")
+    res = i1.sql("SELECT status FROM _pico_governor_queue")
+    assert res == [["done"]]
+
+    res = i1.sql("SELECT is_default FROM _pico_tier")
+    assert res == [[False]]
+
+
+def test_alter_pico_tier_add_is_default_error(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        nondefault1:
+        nondefault2:
+"""
+    )
+    i1 = cluster.add_instance(tier="nondefault1", wait_online=False)
+    i2 = cluster.add_instance(tier="nondefault2", wait_online=False)
+    cluster.wait_online()
+    index, _ = i1.cas(
+        "insert",
+        "_pico_governor_queue",
+        [
+            1,
+            "batch_id",
+            "alter_pico_tier_add_is_default",
+            "exec_script",
+            "pending",
+            "",
+            "custom",
+            "my description",
+        ],
+    )
+    i2.raft_wait_index(index)
+
+    i1.wait_governor_status("idle")
+    res = i1.sql("SELECT status, status_description FROM _pico_governor_queue")
+    assert res == [
+        [
+            "failed",
+            "server responded with error: box error #10000: cannot determine the default tier while altering _pico_tier",
+        ]
+    ]

@@ -122,6 +122,9 @@ impl std::fmt::Display for GovernorOperationDef {
 
         /// Internal procedure name for creation.
         ProcName = "proc_name",
+
+        /// Internal script name for executing.
+        ExecScript = "exec_script",
     }
 }
 

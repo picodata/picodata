@@ -13,6 +13,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::space::UpdateOps;
 
+use self::upgrade_operations::proc_internal_script;
 use crate::cas;
 use crate::column_name;
 use crate::instance::InstanceName;
@@ -1340,6 +1341,62 @@ impl Loop {
                     "updating operation status" [
                         "operation_id" => %operation_id,
                         "proc_name" => %proc_name,
+                        "success" => %is_success,
+                    ]
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        let cas = match error_message {
+                            Some(_) => queue::make_change_status_cas(operation_id, applied, true, error_message)?,
+                            None => cas_on_success,
+                        };
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::RunExecScriptOperationStep(RunExecScriptOperationStep {
+                operation_id,
+                script_name,
+                targets,
+                rpc,
+                cas_on_success,
+            }) => {
+                set_status(governor_status, "run exec_script operation step");
+                let mut error_message = None;
+
+                governor_substep! {
+                    "executing script" [
+                        "operation_id" => %operation_id,
+                        "script_name" => %script_name,
+                    ]
+                    async {
+                        let mut fs = vec![];
+                        for instance_name in targets {
+                            tlog!(Info, "calling proc_internal_script"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_internal_script), &rpc, rpc_timeout)?;
+                            fs.push(async move {
+                                match resp.await {
+                                    Ok(_) => Ok(()),
+                                    Err(e) => {
+                                        tlog!(Warning, "failed calling proc_internal_script: {e}";
+                                            "instance_name" => %instance_name
+                                        );
+                                        Err(e)
+                                    }
+                                }
+                            });
+                        }
+                        if let Err(e) = try_join_all(fs).await {
+                            error_message = Some(e.to_string());
+                        }
+                    }
+                }
+
+                let is_success = error_message.is_none();
+                governor_substep! {
+                    "updating operation status" [
+                        "operation_id" => %operation_id,
+                        "script_name" => %script_name,
                         "success" => %is_success,
                     ]
                     async {

@@ -5,7 +5,8 @@ use crate::catalog::governor_queue::{
 use crate::column_name;
 use crate::governor::{
     upgrade_operations::CATALOG_UPGRADE_LIST, CreateGovernorQueue, FinishCatalogUpgrade,
-    InsertUpgradeOperation, Plan, RunProcNameOperationStep, RunSqlOperationStep,
+    InsertUpgradeOperation, Plan, RunExecScriptOperationStep, RunProcNameOperationStep,
+    RunSqlOperationStep,
 };
 use crate::instance::Instance;
 use crate::replicaset::{Replicaset, ReplicasetName};
@@ -169,17 +170,17 @@ fn run_governor_operation<'i>(
     sync_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(Info, "next governor operation to apply: {}", op);
+    let cas_on_success = make_change_status_cas(op.id, applied, false, None)?;
     match op.op_format {
         GovernorOpFormat::Sql => Ok(Some(
             RunSqlOperationStep {
                 operation_id: op.id,
                 query: &op.op,
-                cas_on_success: make_change_status_cas(op.id, applied, false, None)?,
+                cas_on_success,
             }
             .into(),
         )),
         GovernorOpFormat::ProcName => {
-            let cas_on_success = make_change_status_cas(op.id, applied, false, None)?;
             let rpc = rpc::ddl_apply::Request {
                 term: cas_on_success.predicate.term,
                 applied,
@@ -195,6 +196,24 @@ fn run_governor_operation<'i>(
                     operation_id: op.id,
                     proc_name: &op.op,
                     targets: masters,
+                    rpc,
+                    cas_on_success,
+                }
+                .into(),
+            ))
+        }
+        GovernorOpFormat::ExecScript => {
+            let rpc = super::upgrade_operations::Request {
+                script_name: op.op.clone(),
+            };
+            let targets: Vec<_> = super::plan::maybe_responding(instances)
+                .map(|i| &i.name)
+                .collect();
+            Ok(Some(
+                RunExecScriptOperationStep {
+                    operation_id: op.id,
+                    script_name: &op.op,
+                    targets,
                     rpc,
                     cas_on_success,
                 }

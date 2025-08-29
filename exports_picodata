@@ -33,6 +33,7 @@ proc_get_index
 proc_get_vclock
 proc_get_vshard_config
 proc_instance_info
+proc_internal_script
 proc_load_plugin_dry_run
 proc_pg_bind
 proc_pg_close_client_portals

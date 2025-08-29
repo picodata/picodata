@@ -1310,6 +1310,20 @@ pub mod stage {
             pub cas_on_success: cas::Request,
         }
 
+        pub struct RunExecScriptOperationStep<'i> {
+            /// ID of the governor operation to run.
+            /// This is the ID of the operation in the `_pico_governor_queue` table.
+            pub operation_id: u64,
+            /// This is the internal script name for executing.
+            pub script_name: &'i str,
+            /// These are instances in the cluster.
+            pub targets: Vec<&'i InstanceName>,
+            /// Request to call [`crate::governor::upgrade_operations::proc_internal_script`] on `targets`.
+            pub rpc: crate::governor::upgrade_operations::Request,
+            /// DML operation to update operation status on success.
+            pub cas_on_success: cas::Request,
+        }
+
         pub struct FinishCatalogUpgrade {
             // DML operations to update state in `_pico_property`
             pub cas: cas::Request,
