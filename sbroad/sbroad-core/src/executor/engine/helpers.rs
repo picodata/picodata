@@ -902,14 +902,12 @@ pub fn dispatch_by_buckets(
             }
             // Check that all vtables don't have index. Because if they do,
             // they will be filtered later by filter_vtable
-            if let Some(vtables) = &sub_plan.vtables {
-                for (motion_id, vtable) in vtables.map() {
-                    if !vtable.get_bucket_index().is_empty() {
-                        return Err(SbroadError::Invalid(
+            for (motion_id, vtable) in sub_plan.get_vtables() {
+                if !vtable.get_bucket_index().is_empty() {
+                    return Err(SbroadError::Invalid(
                             Entity::Motion,
                             Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
                         ));
-                    }
                 }
             }
             runtime.exec_ir_on_any_node(sub_plan, return_format)
@@ -1113,13 +1111,11 @@ pub fn materialize_motion(
 /// # Errors
 /// - failed to build a new virtual table with the passed set of buckets
 pub fn filter_vtable(plan: &mut ExecutionPlan, bucket_ids: &[u64]) -> Result<(), SbroadError> {
-    if let Some(vtables) = plan.get_mut_vtables() {
-        for rc_vtable in vtables.values_mut() {
-            // If the virtual table id hashed by the bucket_id, we can filter its tuples.
-            // Otherwise (full motion policy) we need to preserve all tuples.
-            if !rc_vtable.get_bucket_index().is_empty() {
-                *rc_vtable = Rc::new(rc_vtable.new_with_buckets(bucket_ids)?);
-            }
+    for rc_vtable in plan.get_mut_vtables().values_mut() {
+        // If the virtual table id hashed by the bucket_id, we can filter its tuples.
+        // Otherwise (full motion policy) we need to preserve all tuples.
+        if !rc_vtable.get_bucket_index().is_empty() {
+            *rc_vtable = Rc::new(rc_vtable.new_with_buckets(bucket_ids)?);
         }
     }
     Ok(())

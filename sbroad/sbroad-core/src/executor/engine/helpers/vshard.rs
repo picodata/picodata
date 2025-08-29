@@ -868,19 +868,18 @@ fn apply_serialize_as_empty_opcode(
     sub_plan: &mut ExecutionPlan,
     info: &mut SerializeAsEmptyInfo,
 ) -> Result<(), SbroadError> {
-    if let Some(vtables_map) = sub_plan.get_mut_vtables() {
-        let unused_motions = std::mem::take(&mut info.unused_motions);
-        for motion_id in &unused_motions {
-            let Some(use_count) = info.motions_ref_count.get_mut(motion_id) else {
-                return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "no ref count for motion={motion_id:?}"
-                )));
-            };
-            if *use_count > 1 {
-                *use_count -= 1;
-            } else {
-                vtables_map.remove(motion_id);
-            }
+    let vtables_map = sub_plan.get_mut_vtables();
+    let unused_motions = std::mem::take(&mut info.unused_motions);
+    for motion_id in &unused_motions {
+        let Some(use_count) = info.motions_ref_count.get_mut(motion_id) else {
+            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                "no ref count for motion={motion_id:?}"
+            )));
+        };
+        if *use_count > 1 {
+            *use_count -= 1;
+        } else {
+            vtables_map.remove(motion_id);
         }
     }
 

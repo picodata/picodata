@@ -2376,12 +2376,8 @@ fn do_dml_on_global_tbl(
         query.materialize_subtree(slices.into())?;
 
         let exec_plan = query.get_mut_exec_plan();
-        let vtables_map = exec_plan
-            .vtables
-            .as_mut()
-            .expect("subtree must be materialized");
-        let vtable = vtables_map
-            .mut_map()
+        let vtable = exec_plan
+            .get_mut_vtables()
             .remove(&motion_id)
             .expect("subtree must be materialized");
 

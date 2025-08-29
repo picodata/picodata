@@ -56,14 +56,14 @@ pub struct ExecutionPlan {
     plan: Plan,
     /// Virtual tables for `Motion` nodes.
     /// Map of { `Motion` node_id -> it's corresponding data }
-    pub vtables: Option<VirtualTableMap>,
+    vtables: VirtualTableMap,
 }
 
 impl From<Plan> for ExecutionPlan {
     fn from(plan: Plan) -> Self {
         ExecutionPlan {
             plan,
-            vtables: None,
+            vtables: VirtualTableMap::new(),
         }
     }
 }
@@ -120,29 +120,26 @@ impl ExecutionPlan {
     }
 
     #[must_use]
-    pub fn get_vtables(&self) -> Option<&HashMap<NodeId, Rc<VirtualTable>>> {
-        self.vtables.as_ref().map(VirtualTableMap::map)
+    pub fn get_vtables(&self) -> &VirtualTableMap {
+        &self.vtables
     }
 
-    pub fn get_mut_vtables(&mut self) -> Option<&mut HashMap<NodeId, Rc<VirtualTable>>> {
-        self.vtables.as_mut().map(VirtualTableMap::mut_map)
+    pub fn get_mut_vtables(&mut self) -> &mut VirtualTableMap {
+        &mut self.vtables
     }
 
-    pub fn set_vtables(&mut self, vtables: HashMap<NodeId, Rc<VirtualTable>>) {
-        self.vtables = Some(VirtualTableMap::new(vtables));
+    pub fn set_vtables(&mut self, vtables: VirtualTableMap) {
+        self.vtables = vtables;
     }
 
     pub fn contains_vtable_for_motion(&self, motion_id: NodeId) -> bool {
-        self.get_vtables()
-            .is_some_and(|map| map.contains_key(&motion_id))
+        self.get_vtables().contains_key(&motion_id)
     }
 
     /// Get motion virtual table
     pub fn get_motion_vtable(&self, motion_id: NodeId) -> Result<Rc<VirtualTable>, SbroadError> {
-        if let Some(vtable) = self.get_vtables() {
-            if let Some(result) = vtable.get(&motion_id) {
-                return Ok(Rc::clone(result));
-            }
+        if let Some(result) = self.get_vtables().get(&motion_id) {
+            return Ok(Rc::clone(result));
         }
         let motion_node = self.get_ir_plan().get_relation_node(motion_id)?;
         panic!("Virtual table for motion {motion_node:?} with id {motion_id} not found.")
@@ -209,12 +206,7 @@ impl ExecutionPlan {
                 }
                 MotionOpcode::AddMissingRowsForLeftJoin { motion_id, .. } => {
                     let motion_id = *motion_id;
-                    let Some(vtables) = &mut self.vtables else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
-                            "expected at least one virtual table".into(),
-                        ));
-                    };
-                    let Some(from_vtable) = vtables.map().get(&motion_id) else {
+                    let Some(from_vtable) = self.vtables.get(&motion_id) else {
                         return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                             "expected virtual table for motion {motion_id:?}"
                         )));
@@ -225,26 +217,16 @@ impl ExecutionPlan {
             }
         }
 
-        let need_init = self.get_vtables().is_none();
-        if need_init {
-            self.set_vtables(HashMap::new());
-        }
-
-        if let Some(vtables) = self.get_mut_vtables() {
-            vtables.insert(*motion_id, Rc::new(vtable));
-        }
+        self.get_mut_vtables().insert(*motion_id, Rc::new(vtable));
 
         Ok(())
     }
 
     #[must_use]
     pub fn has_segmented_tables(&self) -> bool {
-        self.vtables.as_ref().is_some_and(|vtable_map| {
-            vtable_map
-                .map()
-                .values()
-                .any(|t| !t.get_bucket_index().is_empty())
-        })
+        self.vtables
+            .values()
+            .any(|t| !t.get_bucket_index().is_empty())
     }
 
     /// Return true if plan needs to be customized for each storage.
@@ -431,7 +413,7 @@ impl ExecutionPlan {
         let nodes = subtree.take_nodes();
 
         let mut subtree_map = SubtreeMap::with_capacity(nodes.len());
-        let vtables_capacity = self.get_vtables().map_or_else(|| 1, HashMap::len);
+        let vtables_capacity = self.get_vtables().len();
         // Map of { plan node_id -> virtual table }.
         let mut new_vtables: HashMap<NodeId, Rc<VirtualTable>> =
             HashMap::with_capacity(vtables_capacity);
@@ -513,9 +495,7 @@ impl ExecutionPlan {
                             output,
                             ..
                         }) => {
-                            if let Some(vtable) =
-                                self.get_vtables().map_or_else(|| None, |v| v.get(&node_id))
-                            {
+                            if let Some(vtable) = self.get_vtables().get(&node_id) {
                                 let next_id = new_plan.nodes.next_id(ArenaType::Arena136);
                                 new_vtables.insert(next_id, Rc::clone(vtable));
 
@@ -911,9 +891,9 @@ impl ExecutionPlan {
         new_plan.tier.clone_from(&self.get_ir_plan().tier);
 
         let vtables = if new_vtables.is_empty() {
-            None
+            VirtualTableMap::new()
         } else {
-            Some(VirtualTableMap::new(new_vtables))
+            new_vtables
         };
         let new_exec_plan = ExecutionPlan {
             plan: new_plan,
@@ -935,7 +915,7 @@ impl ExecutionPlan {
     }
 
     pub fn vtables_empty(&self) -> bool {
-        self.get_vtables().is_none_or(HashMap::is_empty)
+        self.get_vtables().is_empty()
     }
 
     /// Calculates an engine for the virtual tables in the plan.

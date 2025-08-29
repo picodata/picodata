@@ -141,10 +141,8 @@ where
         for slice in slices.slices() {
             // TODO: make it work in parallel
             for motion_id in slice.positions() {
-                if let Some(vtables_map) = self.exec_plan.get_vtables() {
-                    if vtables_map.contains_key(motion_id) {
-                        continue;
-                    }
+                if self.exec_plan.get_vtables().contains_key(motion_id) {
+                    continue;
                 }
                 let motion = self.exec_plan.get_ir_plan().get_relation_node(*motion_id)?;
                 if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -231,10 +229,7 @@ where
             let err =
                 |s: &str| -> SbroadError { SbroadError::Invalid(Entity::Plan, Some(s.into())) };
             let motion_aliases = ir_plan.get_relational_aliases(top_id)?;
-            let Some(vtables) = self.exec_plan.get_mut_vtables() else {
-                return Err(err("no vtables in plan with motion top"));
-            };
-            let Some(mut vtable) = vtables.remove(&top_id) else {
+            let Some(mut vtable) = self.exec_plan.get_mut_vtables().remove(&top_id) else {
                 return Err(err(&format!("no motion on top_id: {top_id:?}")));
             };
             let Some(v) = Rc::get_mut(&mut vtable) else {

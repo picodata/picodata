@@ -10,7 +10,6 @@ use crate::ir::relation::Column;
 use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
-use std::collections::HashMap;
 use std::fmt::Write as _;
 use tarantool::msgpack;
 use tarantool::msgpack::{Context, DecodeError};
@@ -154,9 +153,7 @@ impl ExecutionPlan {
             }
         }
 
-        let Some(vtables) = self.get_mut_vtables() else {
-            return Ok(VTablesMeta::default());
-        };
+        let vtables = self.get_mut_vtables();
         let mut vtables_meta = VTablesMeta::with_capacity(vtables.len());
 
         for (id, vtable) in vtables.iter() {
@@ -196,7 +193,7 @@ impl ExecutionPlan {
             sql.push_str(identifier);
             sql.push('\"');
         };
-        let mut motions = Vec::with_capacity(self.get_vtables().map_or(1, HashMap::len));
+        let mut motions = Vec::with_capacity(self.get_vtables().len());
         let mut params_idx: AHashSet<usize> = AHashSet::new();
 
         let mut sql = String::new();
@@ -562,8 +559,7 @@ impl ExecutionPlan {
         plan_id: &str,
         vtables_meta: Option<&VTablesMeta>,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let capacity = self.get_vtables().map_or(1, HashMap::len);
-        let mut guard = Vec::with_capacity(capacity);
+        let mut guard = Vec::with_capacity(self.get_vtables().len());
 
         let (sql, motions) = self.generate_sql_impl(nodes, plan_id, vtables_meta, table_name)?;
 

@@ -2131,10 +2131,7 @@ impl ReplicasetDispatchInfo {
         let (pattern_with_params, _) = exec_plan
             .to_sql(&syntax_data_nodes, TEMPLATE, None)
             .unwrap();
-        let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
-        if let Some(vtables_map) = exec_plan.get_vtables() {
-            vtables.clone_from(vtables_map);
-        }
+        let vtables = exec_plan.get_vtables().clone();
         Self {
             rs_id,
             pattern: pattern_with_params.pattern,

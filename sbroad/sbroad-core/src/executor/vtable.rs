@@ -734,9 +734,7 @@ fn vtable_marking(vtable: &VirtualTable) -> Vec<usize> {
 
 impl ExecutionPlan {
     pub fn encode_vtables(&self) -> EncodedVTables {
-        let Some(vtables) = self.get_vtables() else {
-            return EncodedVTables::default();
-        };
+        let vtables = self.get_vtables();
         let mut encoded_tables = EncodedVTables::with_capacity(vtables.len());
 
         for (id, vtable) in vtables {
@@ -829,24 +827,7 @@ pub fn calculate_unified_types(
 }
 
 /// Map of { motion_id -> corresponding virtual table }
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct VirtualTableMap(HashMap<NodeId, Rc<VirtualTable>>);
-
-impl VirtualTableMap {
-    #[must_use]
-    pub fn new(map: HashMap<NodeId, Rc<VirtualTable>>) -> Self {
-        Self(map)
-    }
-
-    #[must_use]
-    pub fn map(&self) -> &HashMap<NodeId, Rc<VirtualTable>> {
-        &self.0
-    }
-
-    pub fn mut_map(&mut self) -> &mut HashMap<NodeId, Rc<VirtualTable>> {
-        &mut self.0
-    }
-}
+pub type VirtualTableMap = HashMap<NodeId, Rc<VirtualTable>>;
 
 #[cfg(test)]
 mod tests;
