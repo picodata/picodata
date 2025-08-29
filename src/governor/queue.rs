@@ -90,7 +90,7 @@ pub(super) fn handle_governor_queue<'i>(
         return run_governor_operation(next_op, applied, replicasets, instances, sync_timeout);
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 /// Handles system catalog upgrade to version `pending_catalog_version`.
@@ -155,7 +155,7 @@ fn handle_catalog_upgrade<'i>(
     }
 
     // we have all upgrade operations completed here
-    return finish_catalog_upgrade(pending_catalog_version, applied);
+    finish_catalog_upgrade(pending_catalog_version, applied)
 }
 
 /// Runs operation from `_pico_governor_queue` table.
@@ -304,7 +304,7 @@ fn insert_catalog_upgrade_operations<'i>(
     let predicate = cas::Predicate::new(applied, []);
     let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
-    return Ok(Some(InsertUpgradeOperation { cas }.into()));
+    Ok(Some(InsertUpgradeOperation { cas }.into()))
 }
 
 fn get_versions_for_upgrade(
@@ -358,7 +358,7 @@ fn finish_catalog_upgrade<'i>(
     let predicate = cas::Predicate::new(applied, []);
     let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
-    return Ok(Some(FinishCatalogUpgrade { cas }.into()));
+    Ok(Some(FinishCatalogUpgrade { cas }.into()))
 }
 
 pub fn make_change_status_cas(
