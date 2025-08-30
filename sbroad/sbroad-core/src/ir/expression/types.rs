@@ -127,6 +127,7 @@ impl Expression<'_> {
                 };
                 DerivedType::new(res)
             }
+            Expression::Index(_) => DerivedType::new(UnrestrictedType::Any),
             Expression::Cast(Cast { to, .. }) => DerivedType::new((*to).into()),
             Expression::Trim(_) | Expression::Concat(_) => {
                 DerivedType::new(UnrestrictedType::String)

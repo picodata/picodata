@@ -13,7 +13,7 @@ use crate::executor::ExecutingQuery;
 use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, Insert, Join,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr, Insert, Join,
     Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte, ScanRelation,
     ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr, Update as UpdateRel,
     Values, ValuesRow,
@@ -44,6 +44,7 @@ enum ColExpr {
     Bool(Box<ColExpr>, Bool, Box<ColExpr>),
     Unary(Unary, Box<ColExpr>),
     Column(String, DerivedType),
+    Index(Box<ColExpr>, Box<ColExpr>),
     Cast(Box<ColExpr>, CastType),
     Case(
         Option<Box<ColExpr>>,
@@ -104,6 +105,7 @@ impl Display for ColExpr {
                 }
             },
             ColExpr::Column(c, col_type) => format!("{c}::{col_type}"),
+            ColExpr::Index(v, i) => format!("{v}[{i}]"),
             ColExpr::Cast(v, t) => format!("{v}::{t}"),
             ColExpr::Case(search_expr, when_blocks, else_expr) => {
                 let mut res = String::from("case");
@@ -287,10 +289,17 @@ impl ColExpr {
                     let over_expr = ColExpr::Over(Box::new(stable_func), filter, Box::new(window));
                     stack.push((over_expr, id));
                 }
-                Expression::Cast(Cast { to, .. }) => {
-                    let child_expr = stack.pop_expr(Some(id));
+                Expression::Index(IndexExpr { .. }) => {
+                    let which_expr = stack.pop_expr(Some(id)).into();
+                    let child_expr = stack.pop_expr(Some(id)).into();
 
-                    let cast_expr: ColExpr = ColExpr::Cast(Box::new(child_expr), *to);
+                    let index_expr: ColExpr = ColExpr::Index(child_expr, which_expr);
+                    stack.push((index_expr, id));
+                }
+                Expression::Cast(Cast { to, .. }) => {
+                    let child_expr = stack.pop_expr(Some(id)).into();
+
+                    let cast_expr: ColExpr = ColExpr::Cast(child_expr, *to);
                     stack.push((cast_expr, id));
                 }
                 Expression::Case(Case {

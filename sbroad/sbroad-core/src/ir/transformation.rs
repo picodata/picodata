@@ -23,8 +23,8 @@ use super::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Join, NodeId, Row, ScalarFunction, Selection,
-    Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, IndexExpr, Join, NodeId, Row, ScalarFunction,
+    Selection, Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::{Node, Plan};
@@ -359,6 +359,10 @@ impl Plan {
                 | MutExpression::Cast(Cast { child, .. })
                 | MutExpression::Unary(UnaryExpr { child, .. }) => {
                     map.replace(child);
+                }
+                MutExpression::Index(IndexExpr { child, which }) => {
+                    map.replace(child);
+                    map.replace(which);
                 }
                 MutExpression::Case(Case {
                     search_expr,

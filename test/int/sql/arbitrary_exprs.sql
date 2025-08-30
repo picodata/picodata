@@ -214,3 +214,135 @@ VALUES (8, 8, null), (9, 9, 'hello')
 VALUES (9, 9, 'hello'), (8, 8, null)
 -- EXPECTED:
 9, 9, 'hello', 8, 8, null
+
+-- TEST: test_index_current_state_from_pico_instance
+-- SQL:
+SELECT DISTINCT current_state[1] FROM _pico_instance;
+-- EXPECTED:
+'Online'
+
+-- TEST: test_arithmetic_expr_as_an_index
+-- SQL:
+SELECT DISTINCT current_state[1 + 2 - 2] FROM _pico_instance;
+-- EXPECTED:
+'Online'
+
+-- TEST: test_out_of_bounds_index_returns_null-1
+-- SQL:
+SELECT DISTINCT current_state[9223372036854775807] FROM _pico_instance;
+-- EXPECTED:
+null
+
+-- TEST: test_out_of_bounds_index_returns_null-2
+-- SQL:
+SELECT DISTINCT current_state[0] FROM _pico_instance;
+-- EXPECTED:
+null
+
+-- TEST: test_out_of_bounds_index_returns_null-3
+-- SQL:
+SELECT DISTINCT current_state[-9223372036854775808] FROM _pico_instance;
+-- EXPECTED:
+null
+
+-- TEST: test_subquery_as_an_index-1
+-- SQL:
+SELECT DISTINCT current_state[(SELECT 1)] FROM _pico_instance;
+-- EXPECTED:
+'Online'
+
+-- TEST: test_subquery_as_an_index-2
+-- SQL:
+SELECT DISTINCT current_state[(SELECT count(*) FROM _pico_instance) / count(*)] FROM _pico_instance;
+-- EXPECTED:
+'Online'
+
+-- TEST: test_index_with_between
+-- SQL:
+SELECT DISTINCT current_state[1]::text BETWEEN 'Ofline' AND 'Online' FROM _pico_instance;
+-- EXPECTED:
+true
+
+-- TEST: test_filter_with_index
+WITH online_instances AS (
+  SELECT uuid FROM _pico_instance WHERE current_state[1]::text = 'Online'
+), all_instances AS (
+  SELECT uuid FROM _pico_instance
+)
+SELECT (SELECT count(*) FROM online_instances) = (SELECT count(*) FROM all_instances)
+-- EXPECTED:
+true
+
+-- TEST: test_between_filter_with_subuery_and_index
+-- SQL:
+WITH all_instances1 AS (
+SELECT * FROM _pico_instance WHERE current_state[(SELECT 1)]::text BETWEEN 'Offline' AND 'Online'
+), all_instances2 AS (
+SELECT * FROM _pico_instance
+)
+SELECT (SELECT count(*) FROM all_instances1) = (SELECT count(*) FROM all_instances2)
+-- EXPECTED:
+true
+
+-- TEST: test_index_chain_from_pico_index
+-- SQL:
+SELECT DISTINCT parts[1][2] FROM _pico_index ORDER BY 1;
+-- EXPECTED:
+'integer',
+'string',
+'unsigned'
+
+-- TEST: test_filter_with_index_chain
+-- SQL:
+WITH string_and_numeric_indexes AS (
+  SELECT name FROM _pico_index WHERE parts[1][2]::text IN ('string', 'integer', 'unsigned')
+), all_indexes AS (
+  SELECT name FROM _pico_index
+)
+SELECT (SELECT count(*) FROM string_and_numeric_indexes) = (SELECT count(*) FROM all_indexes)
+-- EXPECTED:
+true
+
+-- TEST: test_index_explain
+-- SQL:
+EXPLAIN SELECT current_state[1] FROM _pico_instance;
+-- EXPECTED:
+projection ("_pico_instance"."current_state"::array[1::int] -> "col_1")
+    scan "_pico_instance"
+execution options:
+    sql_vdbe_opcode_max = 45000
+    sql_motion_row_max = 5000
+buckets = any
+
+-- TEST: test_index_explain_raw
+-- SQL:
+EXPLAIN (raw) SELECT current_state[1] FROM _pico_instance;
+-- EXPECTED:
+1. Query (ROUTER):
+SELECT _pico_instance.current_state [ CAST($1 AS int) ] as col_1 FROM _pico_instance
++----------+-------+------+-------------------------------------------+
+| selectid | order | from | detail                                    |
++=====================================================================+
+| 0        | 0     | 0    | SCAN TABLE _pico_instance (~1048576 rows) |
++----------+-------+------+-------------------------------------------+
+''
+''
+
+-- TEST: test_index_returns_any
+-- SQL:
+SELECT current_state[2] + 1 FROM _pico_instance;
+-- ERROR:
+could not resolve operator overload for \+\(any, int\)
+
+-- TEST: test_index_cannot_be_string
+-- SQL:
+SELECT current_state['lol'::text] FROM _pico_instance;
+-- ERROR:
+could not resolve operator overload for \[\]\(array, text\)
+
+-- TEST: test_cannot_index_expr_of_random_type
+-- SQL:
+SELECT (1 + 1)[1];
+-- ERROR:
+cannot index expression of type int
+

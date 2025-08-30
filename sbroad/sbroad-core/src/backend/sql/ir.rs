@@ -284,7 +284,6 @@ impl ExecutionPlan {
                 SyntaxData::Then => sql.push_str("THEN"),
                 SyntaxData::Else => sql.push_str("ELSE"),
                 SyntaxData::End => sql.push_str("END"),
-                SyntaxData::CloseParenthesis => sql.push(')'),
                 SyntaxData::Concat => sql.push_str("||"),
                 SyntaxData::Comma => sql.push(','),
                 SyntaxData::Condition => sql.push_str("ON"),
@@ -304,6 +303,9 @@ impl ExecutionPlan {
                 SyntaxData::Trailing => sql.push_str("TRAILING"),
                 SyntaxData::Operator(s) => sql.push_str(s.as_str()),
                 SyntaxData::OpenParenthesis => sql.push('('),
+                SyntaxData::CloseParenthesis => sql.push(')'),
+                SyntaxData::OpenBracket => sql.push('['),
+                SyntaxData::CloseBracket => sql.push(']'),
                 SyntaxData::Trim => sql.push_str("TRIM"),
                 SyntaxData::PlanId(id) => {
                     let node = ir_plan.get_node(*id)?;
@@ -406,6 +408,7 @@ impl ExecutionPlan {
                                 | Expression::Over { .. }
                                 | Expression::Bool { .. }
                                 | Expression::Arithmetic { .. }
+                                | Expression::Index { .. }
                                 | Expression::Cast { .. }
                                 | Expression::Case { .. }
                                 | Expression::Concat { .. }

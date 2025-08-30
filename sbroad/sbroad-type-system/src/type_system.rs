@@ -471,6 +471,38 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
 
                 Ok(report)
             }
+            ExprKind::IndexChain {
+                ref source,
+                ref indexes,
+            } => {
+                let mut report = self.analyze(source, Type::Array)?;
+                if report.get_type(&source.id) != Type::Array {
+                    return Err(Error::CannotIndexExpressionOfType(
+                        report.get_type(&source.id),
+                    ));
+                }
+
+                for idx in indexes {
+                    let r = self.analyze(idx, Type::Integer)?;
+                    report.extend(r);
+
+                    if report.get_type(&idx.id) != Type::Integer {
+                        // Add the array itself to the argument list to make the error message
+                        // clearly indicate a problem with array indexing.
+                        let mut args = vec![source.as_ref()];
+                        args.extend(indexes.iter());
+                        return Err(self.could_not_resolve_function_overload_error(
+                            FunctionKind::Operator,
+                            "[]",
+                            &args,
+                        ));
+                    }
+                }
+
+                // Arrays in tarantool can contain values of any type.
+                report.report(&expr.id, Type::Any);
+                Ok(report)
+            }
             ExprKind::Coalesce(ref args) => {
                 let (ty, mut report) =
                     self.analyze_homogeneous_exprs("COALESCE", args, desired_type)?;

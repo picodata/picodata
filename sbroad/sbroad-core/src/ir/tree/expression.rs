@@ -115,7 +115,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         | Expression::Unary { .. } => iter.handle_single_child(expr),
                         Expression::Bool { .. }
                         | Expression::Arithmetic { .. }
-                        | Expression::Concat { .. } => iter.handle_left_right_children(expr),
+                        | Expression::Concat { .. }
+                        | Expression::Index { .. } => iter.handle_left_right_children(expr),
                         Expression::Row(Row { list, .. }) => {
                             let child_step = *iter.get_child().borrow();
                             let mut is_leaf = false;

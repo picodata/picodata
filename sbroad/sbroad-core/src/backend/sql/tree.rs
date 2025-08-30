@@ -5,10 +5,10 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
-    GroupBy, Having, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over, Parameter,
-    Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte, ScanRelation,
-    ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr, Union,
-    UnionAll, Values, ValuesRow, Window,
+    GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over,
+    Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr,
+    Union, UnionAll, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -45,6 +45,12 @@ pub enum SyntaxData {
     Else,
     // "end"
     End,
+    /// "["
+    OpenBracket,
+    /// "]"
+    CloseBracket,
+    /// "("
+    OpenParenthesis,
     /// ")"
     CloseParenthesis,
     /// "||"
@@ -102,8 +108,6 @@ pub enum SyntaxData {
     Trailing,
     /// "trim"
     Trim,
-    /// "("
-    OpenParenthesis,
     /// "=, >, <, and, or, ..."
     Operator(SmolStr),
     /// plan node id
@@ -240,14 +244,6 @@ impl SyntaxNode {
     fn new_else() -> Self {
         SyntaxNode {
             data: SyntaxData::Else,
-            left: None,
-            right: Vec::new(),
-        }
-    }
-
-    fn new_close() -> Self {
-        SyntaxNode {
-            data: SyntaxData::CloseParenthesis,
             left: None,
             right: Vec::new(),
         }
@@ -437,9 +433,33 @@ impl SyntaxNode {
         }
     }
 
-    fn new_open() -> Self {
+    fn new_lbracket() -> Self {
+        SyntaxNode {
+            data: SyntaxData::OpenBracket,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_rbracket() -> Self {
+        SyntaxNode {
+            data: SyntaxData::CloseBracket,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_lparen() -> Self {
         SyntaxNode {
             data: SyntaxData::OpenParenthesis,
+            left: None,
+            right: Vec::new(),
+        }
+    }
+
+    fn new_rparen() -> Self {
+        SyntaxNode {
+            data: SyntaxData::CloseParenthesis,
             left: None,
             right: Vec::new(),
         }
@@ -876,9 +896,9 @@ impl<'p> SyntaxPlan<'p> {
                 let vtable_sn_node = SyntaxNode::new_vtable(motion_to_fix_id);
                 let fixed_children = if should_cover_with_parentheses {
                     let mut fixed_children: Vec<usize> = vec![
-                        arena.push_sn_non_plan(SyntaxNode::new_open()),
+                        arena.push_sn_non_plan(SyntaxNode::new_lparen()),
                         arena.push_sn_non_plan(vtable_sn_node),
-                        arena.push_sn_non_plan(SyntaxNode::new_close()),
+                        arena.push_sn_non_plan(SyntaxNode::new_rparen()),
                     ];
                     if let Some(name) = vtable_alias {
                         assert!(!name.is_empty(), "Virtual table has an empty alias name");
@@ -970,6 +990,7 @@ impl<'p> SyntaxPlan<'p> {
             Node::Expression(expr) => match expr {
                 Expression::Window { .. } => self.add_window(id),
                 Expression::Over { .. } => self.add_over(id),
+                Expression::Index { .. } => self.add_index(id),
                 Expression::Cast { .. } => self.add_cast(id),
                 Expression::Case { .. } => self.add_case(id),
                 Expression::Concat { .. } => self.add_concat(id),
@@ -1115,9 +1136,9 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_from_stack(child, id);
         let arena = &mut self.nodes;
         let children: Vec<usize> = vec![
-            arena.push_sn_non_plan(SyntaxNode::new_open()),
+            arena.push_sn_non_plan(SyntaxNode::new_lparen()),
             child_sn_id,
-            arena.push_sn_non_plan(SyntaxNode::new_close()),
+            arena.push_sn_non_plan(SyntaxNode::new_rparen()),
             arena.push_sn_non_plan(SyntaxNode::new_alias(alias)),
         ];
         let sn = SyntaxNode::new_pointer(id, None, children);
@@ -1502,9 +1523,9 @@ impl<'p> SyntaxPlan<'p> {
 
         let arena = &mut self.nodes;
         let mut children: Vec<usize> = vec![
-            arena.push_sn_non_plan(SyntaxNode::new_open()),
+            arena.push_sn_non_plan(SyntaxNode::new_lparen()),
             child_sn_id,
-            arena.push_sn_non_plan(SyntaxNode::new_close()),
+            arena.push_sn_non_plan(SyntaxNode::new_rparen()),
         ];
         if let Some(name) = sq_alias {
             children.push(arena.push_sn_non_plan(SyntaxNode::new_alias(name)));
@@ -1597,9 +1618,9 @@ impl<'p> SyntaxPlan<'p> {
             .expect("top and left nodes should exist");
         if should_cover_with_parentheses {
             let compound_node = SyntaxNode::new_compound(vec![
-                self.nodes.push_sn_non_plan(SyntaxNode::new_open()),
+                self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()),
                 sn_id,
-                self.nodes.push_sn_non_plan(SyntaxNode::new_close()),
+                self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()),
             ]);
             self.nodes.push_sn_non_plan(compound_node)
         } else {
@@ -1691,25 +1712,25 @@ impl<'p> SyntaxPlan<'p> {
         let window = *window;
 
         let mut right_children = Vec::new();
-        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
         let window_sn_id = self.pop_expr_from_stack(window, id);
         right_children.push(window_sn_id);
-        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
         right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_over()));
 
         // Handle filter if present
         if let Some(filter) = filter {
             let filter_sn_id = self.pop_expr_from_stack(filter, id);
-            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
             right_children.push(filter_sn_id);
             right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_where()));
-            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+            right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
             let filter_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_filter());
             right_children.push(filter_sn_id);
         }
 
         // Add the stable function
-        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
         if let Some((last_id, other_ids)) = func_args.split_first() {
             for other_id in other_ids.iter().rev() {
                 right_children.push(self.pop_expr_from_stack(*other_id, id));
@@ -1717,7 +1738,7 @@ impl<'p> SyntaxPlan<'p> {
             }
             right_children.push(self.pop_expr_from_stack(*last_id, id));
         }
-        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+        right_children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
 
         let name_sn_id = self
             .nodes
@@ -1767,6 +1788,25 @@ impl<'p> SyntaxPlan<'p> {
         self.nodes.push_sn_plan(sn);
     }
 
+    fn add_index(&mut self, id: NodeId) {
+        let (_, expr) = self.prologue_expr(id);
+        let Expression::Index(IndexExpr { child, which }) = expr else {
+            panic!("Expected INDEX node");
+        };
+        let (child, which) = (*child, *which);
+        let which_sn_id = self.pop_expr_from_stack(which, id);
+        let child_sn_id = self.pop_expr_from_stack(child, id);
+
+        let children = vec![
+            child_sn_id,
+            self.nodes.push_sn_non_plan(SyntaxNode::new_lbracket()),
+            which_sn_id,
+            self.nodes.push_sn_non_plan(SyntaxNode::new_rbracket()),
+        ];
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        self.nodes.push_sn_plan(sn);
+    }
+
     fn add_cast(&mut self, id: NodeId) {
         let (_, expr) = self.prologue_expr(id);
         let Expression::Cast(Cast { child, to }) = expr else {
@@ -1778,10 +1818,10 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_expr_from_stack(child_plan_id, id);
         let arena = &mut self.nodes;
         let children = vec![
-            arena.push_sn_non_plan(SyntaxNode::new_open()),
+            arena.push_sn_non_plan(SyntaxNode::new_lparen()),
             child_sn_id,
             arena.push_sn_non_plan(SyntaxNode::new_cast_type(to_alias)),
-            arena.push_sn_non_plan(SyntaxNode::new_close()),
+            arena.push_sn_non_plan(SyntaxNode::new_rparen()),
         ];
         let cast_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast());
         let sn = SyntaxNode::new_pointer(id, Some(cast_sn_id), children);
@@ -1923,9 +1963,9 @@ impl<'p> SyntaxPlan<'p> {
         // Add virtual table node to the stack.
         let arena = &mut self.nodes;
         let children = vec![
-            arena.push_sn_non_plan(SyntaxNode::new_open()),
+            arena.push_sn_non_plan(SyntaxNode::new_lparen()),
             arena.push_sn_non_plan(SyntaxNode::new_vtable(referred_rel_id)),
-            arena.push_sn_non_plan(SyntaxNode::new_close()),
+            arena.push_sn_non_plan(SyntaxNode::new_rparen()),
         ];
         let sn = SyntaxNode::new_pointer(id, None, children);
         arena.push_sn_plan(sn);
@@ -1990,7 +2030,7 @@ impl<'p> SyntaxPlan<'p> {
 
         // Children number + the same number of commas + parentheses.
         let mut children = Vec::with_capacity(list_sn_ids.len() * 2 + 2);
-        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
 
         if let Some((list_sn_id_last, list_sn_ids_other)) = list_sn_ids.split_last() {
             for list_sn_id in list_sn_ids_other {
@@ -2011,7 +2051,7 @@ impl<'p> SyntaxPlan<'p> {
             .expect("Row child should be valid.");
         }
 
-        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        children.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
         children
     }
 
@@ -2293,7 +2333,7 @@ impl<'p> SyntaxPlan<'p> {
         if !is_window {
             // The arguments on the stack are in the reverse order.
             let mut nodes = Vec::with_capacity(args.len() * 2 + 2);
-            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
             if let Some((first, others)) = args.split_first() {
                 for child_id in others.iter().rev() {
                     nodes.push(self.pop_expr_from_stack(*child_id, id));
@@ -2305,7 +2345,7 @@ impl<'p> SyntaxPlan<'p> {
             if let Some(FunctionFeature::Distinct) = feature {
                 nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_distinct()));
             }
-            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+            nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
             // Need to reverse the order of the children back.
             nodes.reverse();
             let sn = SyntaxNode::new_pointer(id, None, nodes);
@@ -2342,7 +2382,7 @@ impl<'p> SyntaxPlan<'p> {
             None => None,
         };
         let mut nodes = Vec::with_capacity(6);
-        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_open()));
+        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()));
         if let Some(kind) = sn_kind {
             nodes.push(self.nodes.push_sn_non_plan(kind));
             need_from = true;
@@ -2354,7 +2394,7 @@ impl<'p> SyntaxPlan<'p> {
             nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_from()));
         }
         nodes.push(target_sn_id);
-        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_close()));
+        nodes.push(self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()));
 
         let trim_id = self.nodes.push_sn_non_plan(SyntaxNode::new_trim());
         let sn = SyntaxNode::new_pointer(id, Some(trim_id), nodes);

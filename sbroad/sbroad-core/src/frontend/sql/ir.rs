@@ -12,10 +12,10 @@ use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Delete,
-    Except, GroupBy, Having, Insert, Intersect, Join, Like, Limit, Motion, Node, NodeAligned,
-    NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanCte,
-    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll,
-    Update, Values, ValuesRow, Window,
+    Except, GroupBy, Having, IndexExpr, Insert, Intersect, Join, Like, Limit, Motion, Node,
+    NodeAligned, NodeId, OrderBy, Over, Projection, Reference, ReferenceTarget, Row,
+    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Trim,
+    UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -220,6 +220,13 @@ impl SubtreeCloner {
                 op: _,
             }) => {
                 *child = self.get_new_id(*child)?;
+            }
+            ExprOwned::Index(IndexExpr {
+                ref mut child,
+                ref mut which,
+            }) => {
+                *child = self.get_new_id(*child)?;
+                *which = self.get_new_id(*which)?;
             }
             ExprOwned::Case(Case {
                 ref mut search_expr,

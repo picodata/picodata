@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::{
     errors::{Entity, SbroadError},
-    ir::aggregates::AggregateKind,
+    ir::{aggregates::AggregateKind, node::IndexExpr},
 };
 
 use super::{
@@ -17,6 +17,7 @@ pub enum ExprOwned {
     Alias(Alias),
     Bool(BoolExpr),
     Arithmetic(ArithmeticExpr),
+    Index(IndexExpr),
     Cast(Cast),
     Concat(Concat),
     Constant(Constant),
@@ -44,6 +45,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Arithmetic(arithm) => arithm.into(),
             ExprOwned::Bool(bool) => bool.into(),
             ExprOwned::Case(case) => case.into(),
+            ExprOwned::Index(index) => index.into(),
             ExprOwned::Cast(cast) => cast.into(),
             ExprOwned::Concat(concat) => concat.into(),
             ExprOwned::Constant(constant) => constant.into(),
@@ -78,6 +80,7 @@ pub enum Expression<'a> {
     Alias(&'a Alias),
     Bool(&'a BoolExpr),
     Arithmetic(&'a ArithmeticExpr),
+    Index(&'a IndexExpr),
     Cast(&'a Cast),
     Concat(&'a Concat),
     Constant(&'a Constant),
@@ -102,6 +105,7 @@ pub enum MutExpression<'a> {
     Alias(&'a mut Alias),
     Bool(&'a mut BoolExpr),
     Arithmetic(&'a mut ArithmeticExpr),
+    Index(&'a mut IndexExpr),
     Cast(&'a mut Cast),
     Concat(&'a mut Concat),
     Constant(&'a mut Constant),
@@ -171,6 +175,7 @@ impl Expression<'_> {
             Expression::Arithmetic(arithm) => ExprOwned::Arithmetic((*arithm).clone()),
             Expression::Bool(bool) => ExprOwned::Bool((*bool).clone()),
             Expression::Case(case) => ExprOwned::Case((*case).clone()),
+            Expression::Index(index) => ExprOwned::Index((*index).clone()),
             Expression::Cast(cast) => ExprOwned::Cast((*cast).clone()),
             Expression::Concat(con) => ExprOwned::Concat((*con).clone()),
             Expression::Constant(constant) => ExprOwned::Constant((*constant).clone()),

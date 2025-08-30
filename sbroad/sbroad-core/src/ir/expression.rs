@@ -28,7 +28,7 @@ use super::{
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{Parameter, ReferenceAsteriskSource, SubQueryReference};
+use crate::ir::node::{IndexExpr, Parameter, ReferenceAsteriskSource, SubQueryReference};
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
@@ -510,6 +510,19 @@ impl<'plan> Comparator<'plan> {
                                 && self.are_subtrees_equal(*r_left, *r_right)?);
                         }
                     }
+                    Expression::Index(IndexExpr {
+                        child: child_left,
+                        which: which_left,
+                    }) => {
+                        if let Expression::Index(IndexExpr {
+                            child: child_right,
+                            which: which_right,
+                        }) = right
+                        {
+                            return Ok(self.are_subtrees_equal(*child_left, *child_right)?
+                                && self.are_subtrees_equal(*which_left, *which_right)?);
+                        }
+                    }
                     Expression::Cast(Cast {
                         child: child_left,
                         to: to_left,
@@ -831,6 +844,10 @@ impl<'plan> Comparator<'plan> {
                 op.hash(state);
                 self.hash_for_child_expr(*left, depth);
                 self.hash_for_child_expr(*right, depth);
+            }
+            Expression::Index(IndexExpr { child, which }) => {
+                self.hash_for_child_expr(*child, depth);
+                self.hash_for_child_expr(*which, depth);
             }
             Expression::Cast(Cast { child, to }) => {
                 to.hash(state);

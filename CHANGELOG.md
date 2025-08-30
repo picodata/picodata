@@ -19,6 +19,9 @@ with the `YY.MINOR.MICRO` scheme.
 ### WebUI
 - Login form and simple session control
 
+### SQL
+- Support indexing arrays, i.e. `a[1][2]` expressions.
+
 ## [25.4.1] - 2025-10-03
 
 ### Features

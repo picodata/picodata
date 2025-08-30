@@ -6,7 +6,7 @@ use super::{
     Nodes, Plan,
 };
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, NodeId, Trim, UnaryExpr,
+    Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, IndexExpr, NodeId, Trim, UnaryExpr,
 };
 use std::cell::RefCell;
 
@@ -62,7 +62,11 @@ trait TreeIterator<'nodes> {
     fn handle_left_right_children(&mut self, expr: Expression) -> Option<NodeId> {
         let (Expression::Bool(BoolExpr { left, right, .. })
         | Expression::Arithmetic(ArithmeticExpr { left, right, .. })
-        | Expression::Concat(Concat { left, right, .. })) = expr
+        | Expression::Concat(Concat { left, right, .. })
+        | Expression::Index(IndexExpr {
+            child: left,
+            which: right,
+        })) = expr
         else {
             panic!("Expected expression with left and right children")
         };

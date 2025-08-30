@@ -13,8 +13,8 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
-    GroupBy, Having, Insert, Join, Like, Motion, Node136, NodeId, NodeOwned, OrderBy, Over,
-    Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
+    GroupBy, Having, IndexExpr, Insert, Join, Like, Motion, Node136, NodeId, NodeOwned, OrderBy,
+    Over, Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
     SubQueryReference, Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
@@ -750,6 +750,13 @@ impl ExecutionPlan {
                     | ExprOwned::Cast(Cast { ref mut child, .. })
                     | ExprOwned::Unary(UnaryExpr { ref mut child, .. }) => {
                         *child = subtree_map.get_id(*child);
+                    }
+                    ExprOwned::Index(IndexExpr {
+                        ref mut child,
+                        ref mut which,
+                    }) => {
+                        *child = subtree_map.get_id(*child);
+                        *which = subtree_map.get_id(*which);
                     }
                     ExprOwned::Bool(BoolExpr {
                         ref mut left,

@@ -92,6 +92,9 @@ pub enum Error {
     #[error("unexpected expression of type any, explicit cast to the actual type is required")]
     UnexpectedExpressionOfTypeAny,
 
+    #[error("cannot index expression of type {0}")]
+    CannotIndexExpressionOfType(Type),
+
     #[error("{0}")]
     Other(String),
 }

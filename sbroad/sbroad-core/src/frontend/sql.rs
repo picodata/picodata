@@ -20,6 +20,7 @@ use pest::iterators::{Pair, Pairs};
 use pest::pratt_parser::PrattParser;
 use pest::Parser;
 use smol_str::{format_smolstr, SmolStr, StrExt, ToSmolStr};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::{
     collections::{HashMap, HashSet},
@@ -2206,7 +2207,7 @@ lazy_static::lazy_static! {
     static ref PRATT_PARSER: PrattParser<Rule> = {
         use pest::pratt_parser::{Assoc::Left, Op};
         use Rule::{Add, And, Between, ConcatInfixOp, Divide, Eq, Escape, Gt, GtEq,
-            In, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Modulo, Multiply,
+            In, IndexPostfix, IsPostfix, CastPostfix, Like, Similar, Lt, LtEq, Modulo, Multiply,
             NotEq, Or, Subtract, UnaryNot
         };
 
@@ -2228,6 +2229,7 @@ lazy_static::lazy_static! {
             .op(Op::infix(Add, Left) | Op::infix(Subtract, Left))
             .op(Op::infix(Multiply, Left) | Op::infix(Divide, Left) | Op::infix(ConcatInfixOp, Left) | Op::infix(Modulo, Left))
             .op(Op::postfix(IsPostfix))
+            .op(Op::postfix(IndexPostfix))
             .op(Op::postfix(CastPostfix))
     };
 }
@@ -2478,6 +2480,10 @@ enum ParseExpression {
         is_not: bool,
         child: Box<ParseExpression>,
         value: Option<bool>,
+    },
+    Index {
+        child: Box<ParseExpression>,
+        which: Box<ParseExpression>,
     },
     Cast {
         cast_type: CastType,
@@ -2766,6 +2772,11 @@ impl ParseExpression {
             ParseExpression::PlanId { plan_id } => *plan_id,
             ParseExpression::SubQueryPlanId { plan_id } => {
                 plan.add_replaced_subquery(*plan_id, worker)?
+            }
+            ParseExpression::Index { child, which } => {
+                let child_plan_id = child.populate_plan(plan, worker)?;
+                let which_plan_id = which.populate_plan(plan, worker)?;
+                plan.add_index(child_plan_id, which_plan_id)?
             }
             ParseExpression::Cast { cast_type, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
@@ -3756,8 +3767,16 @@ where
 {
     type WhenBlocks = Vec<(Box<ParseExpression>, Box<ParseExpression>)>;
 
-    PRATT_PARSER
+    let worker = RefCell::new(worker);
+    let plan = RefCell::new(plan);
+
+    let res = PRATT_PARSER
         .map_primary(|primary| {
+            let mut worker = worker.borrow_mut();
+            let worker = &mut **worker;
+            let mut plan = plan.borrow_mut();
+            let plan = &mut **plan;
+
             let parse_expr = match primary.as_rule() {
                 Rule::Expr | Rule::Literal => {
                     parse_expr_pratt(primary.into_inner(), param_types, referred_relation_ids, worker, plan, safe_for_volatile_function)?
@@ -4287,8 +4306,26 @@ where
             Ok(ParseExpression::Prefix { op, child: Box::new(child?)})
         })
         .map_postfix(|child, op| {
+            let mut worker = worker.borrow_mut();
+            let worker = &mut **worker;
+            let mut plan = plan.borrow_mut();
+            let plan = &mut **plan;
+
             let child = child?;
             match op.as_rule() {
+                Rule::IndexPostfix => {
+                    let expr_pair = op.into_inner().next()
+                        .expect("Expected Expr under IndexPostfix.");
+                    let which = parse_expr_pratt(
+                        expr_pair.into_inner(),
+                        param_types,
+                        referred_relation_ids,
+                        worker,
+                        plan,
+                        true
+                    )?;
+                    Ok(ParseExpression::Index { child: Box::new(child), which: Box::new(which) })
+                }
                 Rule::CastPostfix => {
                     let ty_pair = op.into_inner().next()
                         .expect("Expected Type under CastPostfix.");
@@ -4317,7 +4354,9 @@ where
                 rule => unreachable!("Expr::parse expected postfix operator, found {:?}", rule),
             }
         })
-        .parse(expression_pairs)
+        .parse(expression_pairs);
+
+    res
 }
 
 // Mapping between pest's Pair and corresponding id

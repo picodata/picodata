@@ -286,6 +286,7 @@ impl Plan {
                         self.formatted_arena_node(buf, tabulation_number + 1, *value)?;
                     }
                 }
+                Expression::Index(_) => writeln!(buf, "Index")?,
                 Expression::Cast(_) => writeln!(buf, "Cast")?,
                 Expression::Trim(Trim {
                     kind,

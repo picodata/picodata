@@ -346,7 +346,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                             &IdentifierInapplicableSymbol }
         RegularIdentifierFirstApplicableSymbol = { !(IdentifierInapplicableSymbol | ASCII_DIGIT) ~ ANY }
         RegularIdentifierApplicableSymbol = { !IdentifierInapplicableSymbol ~ ANY }
-        IdentifierInapplicableSymbol = { WHITESPACE | "." | "," | "(" | EOF | ")" | "\"" | ":"
+        IdentifierInapplicableSymbol = { WHITESPACE | "." | "," | "(" | EOF | ")" | "\"" | ":" | "[" | "]"
                                        | "'" | ArithInfixOp | ConcatInfixOp | NotEq | GtEq
                                        | Gt | LtEq | Lt | Eq }
         KeywordCoverage = { Keyword ~ IdentifierInapplicableSymbol }
@@ -409,9 +409,10 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             Lt    = { "<" }
             LtEq  = { "<=" }
             NotEq = { "<>" | "!=" }
-    ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ CastPostfix* ~ (W ~ IsPostfix)* }
+    ExprAtomValue = _{ (UnaryNot ~ W)* ~ AtomicExpr ~ IndexPostfix* ~ CastPostfix* ~ (W ~ IsPostfix)* }
         UnaryNot   = { NotFlag }
-        CastPostfix = { "::" ~ Type }
+        IndexPostfix = { WO ~ "[" ~ WO ~ Expr ~ WO ~ "]" }
+        CastPostfix = { WO ~ "::" ~ WO ~ Type }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
         AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime

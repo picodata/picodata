@@ -26,8 +26,8 @@ use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
-    Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned,
-    OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection,
+    IndexExpr, Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId,
+    NodeOwned, OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection,
     SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
@@ -80,6 +80,7 @@ impl Nodes {
                 Node32::Arithmetic(arithm) => Node::Expression(Expression::Arithmetic(arithm)),
                 Node32::Bool(bool) => Node::Expression(Expression::Bool(bool)),
                 Node32::Concat(concat) => Node::Expression(Expression::Concat(concat)),
+                Node32::Index(index) => Node::Expression(Expression::Index(index)),
                 Node32::Cast(cast) => Node::Expression(Expression::Cast(cast)),
                 Node32::CountAsterisk(count) => Node::Expression(Expression::CountAsterisk(count)),
                 Node32::Like(like) => Node::Expression(Expression::Like(like)),
@@ -217,6 +218,7 @@ impl Nodes {
                     Node32::Bool(bool) => MutNode::Expression(MutExpression::Bool(bool)),
                     Node32::Limit(limit) => MutNode::Relational(MutRelational::Limit(limit)),
                     Node32::Concat(concat) => MutNode::Expression(MutExpression::Concat(concat)),
+                    Node32::Index(index) => MutNode::Expression(MutExpression::Index(index)),
                     Node32::Cast(cast) => MutNode::Expression(MutExpression::Cast(cast)),
                     Node32::CountAsterisk(count) => {
                         MutNode::Expression(MutExpression::CountAsterisk(count))
@@ -1117,6 +1119,22 @@ impl Plan {
         Ok(self.nodes.push(node.into()))
     }
 
+    pub fn add_index(&mut self, child: NodeId, which: NodeId) -> Result<NodeId, SbroadError> {
+        self.nodes.get(child).ok_or_else(|| {
+            SbroadError::NotFound(
+                Entity::Node,
+                format_smolstr!("(left child of Index node) from arena with index {child:?}"),
+            )
+        })?;
+        self.nodes.get(which).ok_or_else(|| {
+            SbroadError::NotFound(
+                Entity::Node,
+                format_smolstr!("(right child of Index node) from arena with index {which:?}"),
+            )
+        })?;
+        Ok(self.nodes.push(IndexExpr { child, which }.into()))
+    }
+
     /// Add arithmetic node to the plan.
     ///
     /// # Errors
@@ -1647,6 +1665,16 @@ impl Plan {
                     return Ok(());
                 }
             }
+            MutExpression::Index(IndexExpr { child, which }) => {
+                if *child == old_id {
+                    *child = new_id;
+                    return Ok(());
+                }
+                if *which == old_id {
+                    *which = new_id;
+                    return Ok(());
+                }
+            }
             MutExpression::Case(Case {
                 search_expr,
                 when_blocks,
@@ -1904,6 +1932,7 @@ impl Plan {
                 Expression::ScalarFunction(_)
                     | Expression::Trim(_)
                     | Expression::Timestamp(_)
+                    | Expression::Index(_)
                     | Expression::CountAsterisk(_)
                     | Expression::Row(_)
                     | Expression::Reference(_)

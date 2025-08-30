@@ -4,8 +4,8 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Frame,
-    FrameType, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
-    Trim, UnaryExpr, ValuesRow, Window,
+    FrameType, IndexExpr, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
+    SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -195,6 +195,25 @@ pub fn to_type_expr(
             };
             let ty = Type::from(*sbroad_type);
             let kind = TypeExprKind::Reference(ty);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::Index(IndexExpr { child, which }) => {
+            let mut index_ids = vec![which];
+            let mut source_id = *child;
+            while let Expression::Index(IndexExpr { child, which }) =
+                plan.get_expression_node(source_id)?
+            {
+                source_id = *child;
+                index_ids.push(which)
+            }
+
+            index_ids.reverse();
+            let source = Box::new(to_type_expr(source_id, plan, subquery_map)?);
+            let indexes = index_ids
+                .into_iter()
+                .map(|idx| to_type_expr(*idx, plan, subquery_map))
+                .collect::<Result<Vec<_>, SbroadError>>()?;
+            let kind = TypeExprKind::IndexChain { source, indexes };
             Ok(TypeExpr::new(node_id, kind))
         }
         Expression::Cast(Cast { child, to }) => {

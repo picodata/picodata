@@ -263,7 +263,7 @@ pub struct Run {
     pub http_listen: Option<HttpAddress>,
 
     #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
-    /// Enable interactive console. Deprecated in 24.1.
+    /// Enable interactive console.
     pub interactive_mode: bool,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCK")]

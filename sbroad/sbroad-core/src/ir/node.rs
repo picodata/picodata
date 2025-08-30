@@ -168,6 +168,23 @@ impl From<Cast> for NodeAligned {
     }
 }
 
+/// Index expression.
+///
+/// Example: `x[10]`.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct IndexExpr {
+    /// Target expression we're going to take an element of.
+    pub child: NodeId,
+    /// Expression pointing to an element of the target expression.
+    pub which: NodeId,
+}
+
+impl From<IndexExpr> for NodeAligned {
+    fn from(value: IndexExpr) -> Self {
+        Self::Node32(Node32::Index(value))
+    }
+}
+
 /// String concatenation expression.
 ///
 /// Example: `a || 'hello'`.
@@ -1316,6 +1333,7 @@ pub enum Node32 {
     Limit(Limit),
     Arithmetic(ArithmeticExpr),
     Trim(Trim),
+    Index(IndexExpr),
     Cast(Cast),
     Alias(Alias),
     Except(Except),
@@ -1344,6 +1362,7 @@ impl Node32 {
             Node32::Arithmetic(arithm) => NodeOwned::Expression(ExprOwned::Arithmetic(arithm)),
             Node32::Bool(bool) => NodeOwned::Expression(ExprOwned::Bool(bool)),
             Node32::Limit(limit) => NodeOwned::Relational(RelOwned::Limit(limit)),
+            Node32::Index(index) => NodeOwned::Expression(ExprOwned::Index(index)),
             Node32::Cast(cast) => NodeOwned::Expression(ExprOwned::Cast(cast)),
             Node32::Concat(concat) => NodeOwned::Expression(ExprOwned::Concat(concat)),
             Node32::CountAsterisk(count) => NodeOwned::Expression(ExprOwned::CountAsterisk(count)),
