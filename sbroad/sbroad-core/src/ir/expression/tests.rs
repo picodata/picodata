@@ -1,6 +1,7 @@
 use crate::ir::operator::Arithmetic;
 use crate::ir::tests::{column_integer_user_non_null, sharding_column};
 use pretty_assertions::assert_eq;
+use rand::random;
 use smol_str::SmolStr;
 
 use crate::ir::relation::{Column, SpaceEngine, Table};
@@ -26,6 +27,7 @@ fn rel_nodes_from_reference_in_scan() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![column_integer_user_non_null(SmolStr::from("a"))],
         &["a"],
@@ -48,6 +50,7 @@ fn rel_nodes_from_reference_in_proj() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![column_integer_user_non_null(SmolStr::from("a"))],
         &["a"],
@@ -80,6 +83,7 @@ fn derive_expr_type() {
 
     let mut plan = Plan::default();
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column(SmolStr::from("a"), UnrestrictedType::Integer),

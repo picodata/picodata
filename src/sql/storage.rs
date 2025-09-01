@@ -22,7 +22,9 @@ use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
 
-use crate::sql::router::{calculate_bucket_id, get_table_version, VersionMap};
+use crate::sql::router::{
+    calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
+};
 use crate::traft::node;
 use once_cell::sync::Lazy;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
@@ -32,6 +34,7 @@ use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::{any::Any, rc::Rc};
 use tarantool::msgpack;
+use tarantool::space::SpaceId;
 
 thread_local!(
     // We need Lazy, because cache can be initialized only after raft node.
@@ -175,8 +178,12 @@ impl QueryCache for StorageRuntime {
         true
     }
 
-    fn get_table_version(&self, space_name: &str) -> Result<u64, SbroadError> {
-        get_table_version(space_name)
+    fn get_table_version(&self, table_name: &str) -> Result<u64, SbroadError> {
+        get_table_version(table_name)
+    }
+
+    fn get_table_version_by_id(&self, table_id: SpaceId) -> Result<u64, SbroadError> {
+        get_table_version_by_id(table_id)
     }
 }
 

@@ -1,5 +1,3 @@
-use pretty_assertions::assert_eq;
-
 use crate::backend::sql::ir::PatternWithParams;
 use crate::executor::engine::mock::RouterRuntimeMock;
 use crate::executor::result::ProducerResult;
@@ -7,6 +5,8 @@ use crate::ir::relation::{Column, ColumnRole, Table};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
+use pretty_assertions::assert_eq;
+use rand::random;
 
 use super::*;
 
@@ -97,6 +97,7 @@ fn unnamed_subquery_name_conflict3_test() {
 
     let mut coordinator = RouterRuntimeMock::new();
     let table = Table::new_global(
+        random(),
         "unnamed_subquery",
         vec![Column::new(
             "a",

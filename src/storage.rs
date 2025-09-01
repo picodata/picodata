@@ -686,6 +686,19 @@ impl PicoTable {
         }
     }
 
+    #[inline]
+    pub fn by_id(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
+        use ::tarantool::msgpack;
+
+        let tuple = self.index_id.get(&[id])?;
+        if let Some(tuple) = tuple {
+            let table_def = msgpack::decode(&tuple.to_vec())?;
+            Ok(Some(table_def))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn by_owner_id(
         &self,
         owner_id: UserId,

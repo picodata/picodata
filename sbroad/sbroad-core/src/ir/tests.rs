@@ -3,6 +3,7 @@ use crate::executor::vtable::VTableColumn;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use pretty_assertions::assert_eq;
+use rand::random;
 use smol_str::SmolStr;
 
 /// Helper function to create `Column` object with given name and default:
@@ -83,6 +84,7 @@ fn get_node() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![Column::new(
             "a",

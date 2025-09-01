@@ -39,6 +39,7 @@ use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::value::Value;
 use sbroad::ir::Plan;
 use tarantool::session::with_su;
+use tarantool::space::SpaceId;
 
 pub struct SingleTier {
     bucket_count: u64,
@@ -227,6 +228,10 @@ impl QueryCache for RouterRuntime {
     }
 
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
+
+    fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError> {
         Err(SbroadError::DoSkip)
     }
 }

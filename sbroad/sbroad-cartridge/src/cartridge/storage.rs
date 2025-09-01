@@ -24,6 +24,7 @@ use std::any::Any;
 
 use std::fmt::Display;
 use tarantool::fiber::Mutex;
+use tarantool::space::SpaceId;
 use tarantool::sql::Statement;
 use tarantool::tlua::LuaFunction;
 
@@ -82,6 +83,10 @@ impl QueryCache for StorageRuntime {
     }
 
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
+
+    fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError> {
         Err(SbroadError::DoSkip)
     }
 }

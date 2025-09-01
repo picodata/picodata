@@ -1,5 +1,3 @@
-use pretty_assertions::assert_eq;
-
 use crate::collection;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::{Distribution, Key};
@@ -9,6 +7,8 @@ use crate::ir::tests::{column_user_non_null, sharding_column};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
+use pretty_assertions::assert_eq;
+use rand::random;
 
 use super::*;
 
@@ -17,6 +17,7 @@ fn scan_rel() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -58,6 +59,7 @@ fn projection() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -114,6 +116,7 @@ fn selection() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -154,6 +157,7 @@ fn except() {
     let mut valid_plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -169,6 +173,7 @@ fn except() {
     let scan_t1_id = valid_plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -191,6 +196,7 @@ fn except() {
     let scan_t1_id = invalid_plan.add_scan("t1", None).unwrap();
 
     let t3 = Table::new_sharded(
+        random(),
         "t3",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Integer),
@@ -218,6 +224,7 @@ fn insert() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -233,6 +240,7 @@ fn insert() {
     let scan_t1_id = plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Integer),
@@ -294,6 +302,7 @@ fn union_all() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -308,6 +317,7 @@ fn union_all() {
     let scan_t1_id = plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -329,6 +339,7 @@ fn union_all_col_amount_mismatch() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -345,6 +356,7 @@ fn union_all_col_amount_mismatch() {
 
     // Check errors for children with different amount of column
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![column_user_non_null(
             SmolStr::from("b"),
@@ -372,6 +384,7 @@ fn sub_query() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -411,6 +424,7 @@ fn join() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -426,6 +440,7 @@ fn join() {
     let scan_t1 = plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![
             column_user_non_null(SmolStr::from("c"), UnrestrictedType::Boolean),
@@ -460,6 +475,7 @@ fn join_duplicate_columns() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -475,6 +491,7 @@ fn join_duplicate_columns() {
     let scan_t1 = plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),

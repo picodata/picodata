@@ -30,6 +30,7 @@ use tarantool::msgpack;
 use super::result::ProducerResult;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
+use tarantool::space::SpaceId;
 use tarantool::sql::Statement;
 
 pub mod helpers;
@@ -226,6 +227,16 @@ pub trait QueryCache {
     /// - table was not found in system space
     /// - could not access the system space
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError>;
+
+    /// Return current schema version of given table.
+    ///
+    /// Must be called only if `provides_versions` returns
+    /// `true`.
+    ///
+    /// # Errors
+    /// - table was not found in system space
+    /// - could not access the system space
+    fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError>;
 }
 
 /// Compute a query cache key from the query pattern and parameter types.

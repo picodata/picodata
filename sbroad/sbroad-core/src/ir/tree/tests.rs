@@ -8,6 +8,7 @@ use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
+use rand::random;
 use smol_str::SmolStr;
 
 #[test]
@@ -59,6 +60,7 @@ fn relational_post() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -73,6 +75,7 @@ fn relational_post() {
     let scan_t1_id = plan.add_scan("t1", None).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -129,6 +132,7 @@ fn selection_subquery_dfs_post() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -144,6 +148,7 @@ fn selection_subquery_dfs_post() {
     let a = plan.add_row_from_child(scan_t1_id, &["a"]).unwrap();
 
     let t2 = Table::new_sharded(
+        random(),
         "t2",
         vec![
             column_user_non_null(SmolStr::from("b"), UnrestrictedType::Boolean),
@@ -219,6 +224,7 @@ fn subtree_dfs_post() {
     let mut plan = Plan::default();
 
     let t1 = Table::new_sharded(
+        random(),
         "t1",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),

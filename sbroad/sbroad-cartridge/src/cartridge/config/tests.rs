@@ -142,6 +142,7 @@ fn test_getting_table_segment() {
     s.load_schema(test_schema).unwrap();
 
     let expected = Table::new_sharded(
+        0,
         "hash_testing",
         vec![
             Column::new(

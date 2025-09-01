@@ -6,6 +6,7 @@ use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::types::UnrestrictedType as Type;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
+use rand::random;
 use smol_str::SmolStr;
 
 #[test]
@@ -13,6 +14,7 @@ fn proj_preserve_dist_key() {
     let mut plan = Plan::default();
 
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), Type::Boolean),

@@ -7,6 +7,7 @@ use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::Plan;
 use crate::ir::Slices;
 use pretty_assertions::assert_eq;
+use rand::random;
 
 #[test]
 fn union_all_in_sq() {
@@ -386,7 +387,7 @@ fn test_slices_3() {
         add_motion(plan, sq_id)
     };
 
-    plan.add_rel(Table::new_global("t", vec![Column::default()], &[""]).unwrap());
+    plan.add_rel(Table::new_global(random(), "t", vec![Column::default()], &[""]).unwrap());
 
     let s1_id = plan.add_scan("t", None).unwrap();
     let m1_id = add_motion(&mut plan, s1_id);

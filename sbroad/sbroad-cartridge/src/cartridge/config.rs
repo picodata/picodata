@@ -238,6 +238,7 @@ impl RouterConfiguration {
                     .map(SmolStr::as_str)
                     .collect::<Vec<&str>>();
                 let t = Table::new_sharded(
+                    0, // we don't use it
                     &table_name,
                     fields,
                     shard_key_str.as_slice(),

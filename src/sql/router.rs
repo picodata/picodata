@@ -42,6 +42,7 @@ use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
 use ::tarantool::tuple::{KeyDef, Tuple};
+use tarantool::space::SpaceId;
 
 pub type VersionMap = HashMap<SmolStr, u64>;
 
@@ -116,29 +117,54 @@ impl Tier {
 
 pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
 
-/// Get the schema version for the given space.
+/// Get the schema version for the given table.
 ///
 /// # Arguments:
-/// * `space_name` - name of the space. The name must not
+/// * `table_name` - name of the table. The name must not
 ///   be enclosed in quotes as in sql. If in sql user uses
 ///   `"t"`, here `t` must be passed.
 ///
 /// # Errors:
-/// - errors on access to system space
-/// - space with given name not found
-pub fn get_table_version(space_name: &str) -> Result<u64, SbroadError> {
+/// - errors on access to system table
+/// - table with given name not found
+pub fn get_table_version(table_name: &str) -> Result<u64, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
     let pico_table = &node.storage.pico_table;
-    if let Some(table_def) = pico_table.by_name(space_name).map_err(|e| {
+    if let Some(table_def) = pico_table.by_name(table_name).map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
     })? {
         Ok(table_def.schema_version)
     } else {
         Err(SbroadError::NotFound(
             Entity::SpaceMetadata,
-            format_smolstr!("for space: {}", space_name),
+            format_smolstr!("for table: {}", table_name),
+        ))
+    }
+}
+
+/// Get the schema version for the given table.
+///
+/// # Arguments:
+/// * `id` - id of the table
+///
+/// # Errors:
+/// - errors on access to system table
+/// - table with given id not found
+pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
+    let node = node::global().map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+    })?;
+    let storage_tables = &node.storage.pico_table;
+    if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+    })? {
+        Ok(table_def.schema_version)
+    } else {
+        Err(SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {}", id),
         ))
     }
 }
@@ -263,8 +289,12 @@ impl QueryCache for RouterRuntime {
         true
     }
 
-    fn get_table_version(&self, space_name: &str) -> Result<u64, SbroadError> {
-        get_table_version(space_name)
+    fn get_table_version(&self, table_name: &str) -> Result<u64, SbroadError> {
+        get_table_version(table_name)
+    }
+
+    fn get_table_version_by_id(&self, table_id: SpaceId) -> Result<u64, SbroadError> {
+        get_table_version_by_id(table_id)
     }
 }
 
@@ -536,14 +566,14 @@ impl Metadata for RouterMetadata {
 
         let is_system_table = storage::SYSTEM_TABLES_ID_RANGE.contains(&table.id);
         if is_system_table {
-            return Table::new_system(&name, columns, pk_cols_str);
+            return Table::new_system(table.id, &name, columns, pk_cols_str);
         }
 
         // Try to find the sharding columns of the space in "_pico_table".
         // If nothing found then the space is local and we can't query it with
         // distributed SQL.
         match table.distribution {
-            Distribution::Global => Table::new_global(&name, columns, pk_cols_str),
+            Distribution::Global => Table::new_global(table.id, &name, columns, pk_cols_str),
             Distribution::ShardedImplicitly {
                 sharding_key,
                 sharding_fn,
@@ -568,6 +598,7 @@ impl Metadata for RouterMetadata {
                     .collect::<Vec<_>>();
 
                 Table::new_sharded_in_tier(
+                    table.id,
                     &name,
                     columns,
                     &sharding_key_cols,

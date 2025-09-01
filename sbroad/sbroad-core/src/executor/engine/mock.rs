@@ -7,8 +7,6 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use std::rc::Rc;
-
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
@@ -30,6 +28,11 @@ use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
+use rand::random;
+use std::rc::Rc;
+use tarantool::decimal;
+use tarantool::decimal::Decimal;
+use tarantool::space::SpaceId;
 
 use super::helpers::vshard::{prepare_rs_to_ir_map, GroupedBuckets};
 use super::helpers::{dispatch_by_buckets, normalize_name_from_sql};
@@ -156,6 +159,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_testing".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_testing",
                 columns.clone(),
                 sharding_key,
@@ -168,6 +172,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_testing_hist".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_testing_hist",
                 columns.clone(),
                 sharding_key,
@@ -214,6 +219,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_testing2".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_testing2",
                 columns2.clone(),
                 sharding_key,
@@ -226,6 +232,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_testing_hist2".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_testing_hist2",
                 columns2,
                 sharding_key,
@@ -239,6 +246,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_single_testing".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_single_testing",
                 columns.clone(),
                 sharding_key,
@@ -251,6 +259,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "hash_single_testing_hist".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "hash_single_testing_hist",
                 columns,
                 sharding_key,
@@ -298,6 +307,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "test_space".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "test_space",
                 columns.clone(),
                 sharding_key,
@@ -310,6 +320,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "test_space_hist".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "test_space_hist",
                 columns,
                 sharding_key,
@@ -338,6 +349,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "history".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "history",
                 columns,
                 sharding_key,
@@ -372,6 +384,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "TBL".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "TBL",
                 columns,
                 sharding_key,
@@ -417,8 +430,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["b"];
         tables.insert(
             "t".to_smolstr(),
-            Table::new_sharded("t", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -445,8 +465,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["a", "b"];
         tables.insert(
             "t1".to_smolstr(),
-            Table::new_sharded("t1", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t1",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -474,6 +501,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "t1_2".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "t1_2",
                 columns,
                 sharding_key,
@@ -519,8 +547,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["g", "h"];
         tables.insert(
             "t2".to_smolstr(),
-            Table::new_sharded("t2", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t2",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -547,8 +582,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["a"];
         tables.insert(
             "t3".to_smolstr(),
-            Table::new_sharded("t3", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t3",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -576,6 +618,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "t3_2".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "t3_2",
                 columns,
                 sharding_key,
@@ -609,8 +652,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["d"];
         tables.insert(
             "t4".to_smolstr(),
-            Table::new_sharded("t4", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t4",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -638,8 +688,15 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["a"];
         tables.insert(
             "t5".to_smolstr(),
-            Table::new_sharded("t5", columns, sharding_key, primary_key, SpaceEngine::Memtx)
-                .unwrap(),
+            Table::new_sharded(
+                random(),
+                "t5",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
         );
 
         let columns = vec![
@@ -660,7 +717,7 @@ impl RouterConfigurationMock {
         let primary_key: &[&str] = &["a"];
         tables.insert(
             "global_t".to_smolstr(),
-            Table::new_global("global_t", columns, primary_key).unwrap(),
+            Table::new_global(random(), "global_t", columns, primary_key).unwrap(),
         );
 
         // Table for sbroad-benches
@@ -1295,6 +1352,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "test__gibdd_db__vehicle_reg_and_res100_actual".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "test__gibdd_db__vehicle_reg_and_res100_actual",
                 columns.clone(),
                 sharding_key,
@@ -1306,6 +1364,7 @@ impl RouterConfigurationMock {
         tables.insert(
             "test__gibdd_db__vehicle_reg_and_res100_history".to_smolstr(),
             Table::new_sharded(
+                random(),
                 "test__gibdd_db__vehicle_reg_and_res100_history",
                 columns,
                 sharding_key,
@@ -1483,6 +1542,10 @@ impl QueryCache for RouterRuntimeMock {
     }
 
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError> {
+        Err(SbroadError::DoSkip)
+    }
+
+    fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError> {
         Err(SbroadError::DoSkip)
     }
 }

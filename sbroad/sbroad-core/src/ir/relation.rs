@@ -12,7 +12,7 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::fmt::Formatter;
 use tarantool::index::Metadata as IndexMetadata;
-use tarantool::space::{Field, Space, SpaceEngineType, SystemSpace};
+use tarantool::space::{Field, Space, SpaceEngineType, SpaceId, SystemSpace};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
 
 use serde::de::{Error, MapAccess, Visitor};
@@ -373,6 +373,7 @@ fn table_new_impl<'column>(
 /// Table is a tuple storage in the cluster.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Table {
+    pub id: SpaceId,
     /// List of the columns.
     pub columns: Vec<Column>,
     /// Primary key of the table (column positions).
@@ -396,6 +397,7 @@ impl Table {
     /// - primary key is not found among the columns;
     /// - sharding key is not found among the columns;
     pub fn new_sharded_in_tier(
+        id: SpaceId,
         name: &str,
         columns: Vec<Column>,
         sharding_key: &[&str],
@@ -403,7 +405,7 @@ impl Table {
         engine: SpaceEngine,
         tier: Option<SmolStr>,
     ) -> Result<Self, SbroadError> {
-        let mut table = Self::new_sharded(name, columns, sharding_key, primary_key, engine)?;
+        let mut table = Self::new_sharded(id, name, columns, sharding_key, primary_key, engine)?;
         table.tier = tier;
         Ok(table)
     }
@@ -415,6 +417,7 @@ impl Table {
     /// - primary key is not found among the columns;
     /// - sharding key is not found among the columns;
     pub fn new_sharded(
+        id: SpaceId,
         name: &str,
         columns: Vec<Column>,
         sharding_key: &[&str],
@@ -425,6 +428,7 @@ impl Table {
         let sharding_key = Key::with_columns(&columns, &pos_map, sharding_key)?;
         let kind = TableKind::new_sharded(sharding_key, engine);
         Ok(Table {
+            id,
             name: name.into(),
             columns,
             primary_key,
@@ -439,6 +443,7 @@ impl Table {
     /// - column names are duplicated;
     /// - primary key is not found among the columns;
     pub fn new_global(
+        id: SpaceId,
         name: &str,
         columns: Vec<Column>,
         primary_key: &[&str],
@@ -446,6 +451,7 @@ impl Table {
         let (_, primary_key) = table_new_impl(name, &columns, primary_key)?;
         let kind = TableKind::new_global();
         Ok(Table {
+            id,
             name: name.into(),
             columns,
             primary_key,
@@ -460,6 +466,7 @@ impl Table {
     /// - column names are duplicated;
     /// - primary key is not found among the columns;
     pub fn new_system(
+        id: SpaceId,
         name: &str,
         columns: Vec<Column>,
         primary_key: &[&str],
@@ -467,6 +474,7 @@ impl Table {
         let (_, primary_key) = table_new_impl(name, &columns, primary_key)?;
         let kind = TableKind::new_system();
         Ok(Table {
+            id,
             name: name.into(),
             columns,
             primary_key,

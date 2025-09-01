@@ -1,8 +1,8 @@
-use pretty_assertions::{assert_eq, assert_ne};
-use std::collections::HashSet;
-
 use super::*;
 use crate::ir::tests::column_user_non_null;
+use pretty_assertions::{assert_eq, assert_ne};
+use rand::random;
+use std::collections::HashSet;
 
 #[test]
 fn column() {
@@ -24,6 +24,7 @@ fn column() {
 #[test]
 fn table_seg() {
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -46,6 +47,7 @@ fn table_seg() {
 #[test]
 fn table_seg_name() {
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![column_user_non_null(
             SmolStr::from("a"),
@@ -63,6 +65,7 @@ fn table_seg_name() {
 fn table_seg_duplicate_columns() {
     assert_eq!(
         Table::new_sharded(
+            random(),
             "t",
             vec![
                 column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -84,6 +87,7 @@ fn table_seg_duplicate_columns() {
 #[test]
 fn table_seg_dno_bucket_id_column() {
     let t1 = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -105,6 +109,7 @@ fn table_seg_dno_bucket_id_column() {
     );
 
     let t2 = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -139,6 +144,7 @@ fn table_seg_dno_bucket_id_column() {
 fn table_seg_wrong_key() {
     assert_eq!(
         Table::new_sharded(
+            random(),
             "t",
             vec![
                 column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
@@ -159,6 +165,7 @@ fn table_seg_wrong_key() {
 fn table_seg_compound_type_in_key() {
     assert_eq!(
         Table::new_sharded(
+            random(),
             "t",
             vec![
                 Column::new(
@@ -238,6 +245,7 @@ fn column_msgpack_deserialize() {
 #[test]
 fn table_converting() {
     let t = Table::new_sharded(
+        random(),
         "t",
         vec![
             column_user_non_null(SmolStr::from("a"), UnrestrictedType::Boolean),
