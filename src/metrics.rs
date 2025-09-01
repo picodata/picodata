@@ -1,9 +1,18 @@
+use crate::config::PicodataConfig;
+use crate::info as pd_info;
+use crate::traft::node;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use prometheus::{
     Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts,
     TextEncoder,
 };
+use std::borrow::Cow;
+use std::ffi::OsStr;
 use std::sync::LazyLock;
+
+extern "C" {
+    fn tarantool_uptime() -> f64;
+}
 
 static GOVERNOR_CHANGE_COUNTER: LazyLock<IntCounter> = LazyLock::new(|| {
     IntCounter::with_opts(Opts::new(
@@ -160,6 +169,14 @@ static RAFT_LEADER_ID: LazyLock<Gauge> = LazyLock::new(|| {
     .expect("Failed to create pico_raft_leader_id gauge")
 });
 
+static INFO_UPTIME: LazyLock<GaugeVec> = LazyLock::new(|| {
+    GaugeVec::new(
+        Opts::new("pico_info_uptime", "Picodata uptime"),
+        &["instance_dir_name", "replicaset", "tier", "cluster_name"],
+    )
+    .expect("Failed to create pico_info_uptime gauge")
+});
+
 pub fn record_governor_change() {
     GOVERNOR_CHANGE_COUNTER.inc();
 }
@@ -267,13 +284,15 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(SQL_QUERY_DURATION.clone()))?;
     registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
+    registry.register(Box::new(INFO_UPTIME.clone()))?;
 
     Ok(())
 }
 
-pub fn collect_metrics() -> String {
+pub fn collect_from_registry(registry: &prometheus::Registry) -> String {
+    update_pico_info_uptime();
     let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
+    let metric_families = registry.gather();
     encoder.encode_to_string(&metric_families).unwrap()
 }
 
@@ -376,4 +395,36 @@ pub fn get_op_type_and_table(op: &Op) -> Vec<(&str, String)> {
     }
 
     operations
+}
+
+fn update_pico_info_uptime() {
+    let uptime: f64 = unsafe { tarantool_uptime() };
+
+    let (replicaset, tier, cluster_name) = node::global()
+        .ok()
+        .and_then(|node| pd_info::InstanceInfo::try_get(node, None).ok())
+        .map(|info| (info.replicaset_name.0, info.tier, info.cluster_name))
+        .unwrap_or_else(|| {
+            (
+                String::from("unknown"),
+                String::from("unknown"),
+                String::from("unknown"),
+            )
+        });
+
+    let instance_dir_name = PicodataConfig::get()
+        .instance
+        .instance_dir()
+        .file_name()
+        .map(OsStr::to_string_lossy)
+        .unwrap_or_else(|| Cow::Owned(String::from("unknown")));
+
+    INFO_UPTIME
+        .with_label_values(&[
+            instance_dir_name.as_ref(),
+            replicaset.as_str(),
+            tier.as_str(),
+            cluster_name.as_str(),
+        ])
+        .set(uptime);
 }

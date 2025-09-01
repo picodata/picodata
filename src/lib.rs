@@ -316,7 +316,10 @@ fn preload_http() {
     preload!("http.mime_types", "http/mime_types.lua");
 }
 
-fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(), Error> {
+fn start_http_server(
+    HttpAddress { host, port, .. }: &HttpAddress,
+    registry: &'static prometheus::Registry,
+) -> Result<(), Error> {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
     lua.exec_with(
@@ -360,7 +363,6 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
 
     // Initialize all of the metrics here!
     let register_metrics = || {
-        let registry = prometheus::default_registry();
         metrics::register_metrics(registry)?;
         pgproto::register_metrics(registry)?;
         prometheus::Result::Ok(())
@@ -377,7 +379,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) -> Result<(),
         end)"#,
         (
             tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
-            tlua::Function::new(crate::metrics::collect_metrics),
+            tlua::Function::new(move || crate::metrics::collect_from_registry(registry)),
         ),
     )
     .map_err(|err| Error::other(format!("failed to add route `/metrics`: {err}")))?;
@@ -1595,8 +1597,21 @@ fn postjoin(
         audit::init(config, raft_id, gen);
     }
 
+    // Build a Prometheus registry with const labels (instance_name)
+    let registry: &'static prometheus::Registry = {
+        let instance_name_for_metrics = raft_storage
+            .instance_name()?
+            .expect("instance_name should be already set")
+            .to_string();
+        let mut labels = std::collections::HashMap::new();
+        labels.insert("instance_name".to_string(), instance_name_for_metrics);
+        let reg = prometheus::Registry::new_custom(None, Some(labels))
+            .expect("failed to create Prometheus registry");
+        Box::leak(Box::new(reg))
+    };
+
     if let Some(addr) = &config.instance.http_listen {
-        start_http_server(addr)?;
+        start_http_server(addr, registry)?;
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
         } else {
@@ -1604,6 +1619,20 @@ fn postjoin(
         }
         #[cfg(feature = "webui")]
         start_webui();
+    }
+    // Set global label for Tarantool metrics: instance_name
+    {
+        let instance_name_for_metrics = raft_storage
+            .instance_name()?
+            .expect("instance_name should be already set");
+        let lua = ::tarantool::lua_state();
+        lua.exec_with(
+            r#"
+            local name = ...;
+            require('metrics').set_global_labels({ instance_name = name })
+            "#,
+            instance_name_for_metrics.to_string(),
+        )?;
     }
     // Execute postjoin script if present
     if let Some(ref script) = config.instance.deprecated_script {

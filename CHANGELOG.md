@@ -17,6 +17,11 @@ with the `YY.MINOR.MICRO` scheme.
 - Pgproto now reports more verbose TLS error messages
 - Validate cluster UUID during IPROTO handshake and propagate `cluster_uuid` via IPROTO_ID. Connections with a mismatching `cluster_uuid` are rejected, ensuring cross-cluster isolation.
 
+### Observability
+- `instance_name` is now the primary label for Prometheus metrics.
+- Added the metric `pico_info_uptime{instance_name, instance_dir_name, replicaset, tier, cluster_name}`.
+- Updated Grafana dashboard: legends now use `{{instance_name}}`.
+
 ### SQL
 - SQL supports scalar function `abs()`.
 - Multiple `OPTIONS` specified in an SQL query no longer result in an error.
