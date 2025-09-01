@@ -10,6 +10,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## [25.3.3] - TBA
 
+### Features
+- Pgproto now reports more verbose TLS error messages
+
 ### Fixes
 
 - Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics
