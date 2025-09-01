@@ -2,7 +2,7 @@ use ahash::AHashMap;
 
 use crate::{
     error,
-    executor::vtable::vtable_indexed_column_name,
+    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name},
     ir::{
         node::{
             expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
@@ -685,7 +685,7 @@ pub fn build_insert_args<'t>(
 ///
 /// # Errors
 /// - Invalid insert node or plan
-fn init_sharded_update_tuple_builder(
+pub fn init_sharded_update_tuple_builder(
     plan: &Plan,
     vtable: &VirtualTable,
     update_id: NodeId,
@@ -925,7 +925,7 @@ pub fn dispatch_by_buckets(
     }
 }
 
-fn vtable_columns(plan: &Plan, top_id: NodeId) -> Result<Vec<Column>, SbroadError> {
+pub fn vtable_columns(plan: &Plan, top_id: NodeId) -> Result<Vec<Column>, SbroadError> {
     let top = plan.get_relation_node(top_id)?;
     let output_id = top.output();
     let columns = plan.get_row_list(output_id)?;
@@ -1203,19 +1203,19 @@ pub fn sharding_key_from_tuple<'tuple>(
     }
 }
 
-fn populate_table(
-    motion_id: NodeId,
+pub fn populate_table(
+    motion_id: &NodeId,
     plan_id: &SmolStr,
     vtables: &mut EncodedVTables,
 ) -> Result<(), SbroadError> {
-    let data = vtables.get_mut(&motion_id).ok_or_else(|| {
+    let data = vtables.get_mut(motion_id).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
             format_smolstr!("encoded table with id {motion_id}"),
         )
     })?;
     with_su(ADMIN_ID, || -> Result<(), SbroadError> {
-        let name = table_name(plan_id, motion_id);
+        let name = table_name(plan_id, *motion_id);
         let space = Space::find(&name).ok_or_else(|| {
             // See https://git.picodata.io/core/picodata/-/issues/1859.
             SbroadError::Invalid(
@@ -1242,7 +1242,7 @@ fn populate_table(
     Ok(())
 }
 
-fn truncate_tables(table_ids: &[NodeId], plan_id: &SmolStr) {
+pub fn truncate_tables(table_ids: &[NodeId], plan_id: &SmolStr) {
     with_su(ADMIN_ID, || {
         for node_id in table_ids {
             let name = table_name(plan_id, *node_id);
@@ -1275,6 +1275,14 @@ pub trait FullPlanInfo: RequiredPlanInfo {
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError>;
+
+    /// Extracts the query and vtables meta from the plan.
+    ///
+    /// # Errors
+    /// - Failed to extract query and vtables meta.
+    fn get_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        Ok((String::new(), Vec::new(), HashMap::new()))
+    }
 }
 
 pub struct QueryInfo<'data> {
@@ -1370,6 +1378,20 @@ impl FullPlanInfo for EncodedQueryInfo<'_> {
         let mut optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
         compile_optional(&mut optional, &self.required.plan_id)
     }
+
+    fn get_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        let data = std::mem::take(self.optional_bytes.get_mut()?);
+        let optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
+        let nodes = optional.ordered.to_syntax_data()?;
+        let (local_sql, motion_ids) = optional.exec_plan.generate_sql(
+            &nodes,
+            self.required.plan_id(),
+            Some(&optional.vtables_meta),
+            |name: &str, id| table_name(name, id),
+        )?;
+
+        Ok((local_sql, motion_ids, optional.vtables_meta))
+    }
 }
 
 /// If the statement with given `plan_id` is found in the cache,
@@ -1404,7 +1426,7 @@ where
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
         let result = 'dql: {
             for motion_id in motion_ids {
-                if let Err(e) = populate_table(*motion_id, plan_id, vtables) {
+                if let Err(e) = populate_table(motion_id, plan_id, vtables) {
                     break 'dql Err(e);
                 }
             }
@@ -1442,7 +1464,7 @@ fn read_bypassing_cache(
     let result = 'dql: {
         let motion_ids = vtables.keys().copied().collect::<Vec<NodeId>>();
         for motion_id in motion_ids {
-            if let Err(e) = populate_table(motion_id, plan_id, vtables) {
+            if let Err(e) = populate_table(&motion_id, plan_id, vtables) {
                 break 'dql Err(e);
             }
         }

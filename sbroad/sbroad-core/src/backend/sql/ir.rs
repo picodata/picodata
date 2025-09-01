@@ -173,7 +173,7 @@ impl ExecutionPlan {
         Ok(vtables_meta)
     }
 
-    fn generate_sql_impl<T, TableName>(
+    pub fn generate_sql<T, TableName>(
         &self,
         nodes: &[&SyntaxData],
         plan_id: T,
@@ -561,7 +561,7 @@ impl ExecutionPlan {
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
         let mut guard = Vec::with_capacity(self.get_vtables().len());
 
-        let (sql, motions) = self.generate_sql_impl(nodes, plan_id, vtables_meta, table_name)?;
+        let (sql, motions) = self.generate_sql(nodes, plan_id, vtables_meta, table_name)?;
 
         for motion_id in motions {
             let table_guard = create_table(self, plan_id, motion_id, vtables_meta)?;
