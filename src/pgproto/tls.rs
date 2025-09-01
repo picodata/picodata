@@ -3,6 +3,7 @@ use openssl::x509::store::X509StoreBuilder;
 use openssl::x509::X509;
 use openssl::{
     error::ErrorStack,
+    ssl::Error as SslError,
     ssl::{self, HandshakeError, SslFiletype, SslMethod, SslStream},
 };
 
@@ -14,8 +15,8 @@ pub enum TlsHandshakeError {
     #[error("setup failure: {0}")]
     SetupFailure(ErrorStack),
 
-    #[error("handshake failure")]
-    HandshakeFailure,
+    #[error("handshake error: {0}")]
+    Failure(SslError),
 }
 
 #[derive(Error, Debug)]
@@ -100,7 +101,9 @@ impl TlsAcceptor {
     {
         self.0.accept(stream).map_err(|e| match e {
             HandshakeError::SetupFailure(stack) => TlsHandshakeError::SetupFailure(stack),
-            _ => TlsHandshakeError::HandshakeFailure,
+            HandshakeError::Failure(e) | HandshakeError::WouldBlock(e) => {
+                TlsHandshakeError::Failure(e.into_error())
+            }
         })
     }
 
