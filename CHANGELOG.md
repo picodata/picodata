@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Features
 
 - Support unique indexes with non-sharded columns on sharded tables, with sharding key prefix provided
+- Pgproto now reports more verbose TLS error messages
 
 ### SQL
 - SQL supports scalar function `abs()`.
