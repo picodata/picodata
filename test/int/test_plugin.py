@@ -2410,6 +2410,8 @@ cluster:
             end"""
         )
 
+    input: dict[str, Any]
+
     plugin_name = "testplug_sdk"
     service_name = "service_with_rpc_tests"
     i1.sql(f"CREATE PLUGIN {plugin_name} 0.1.0")
@@ -2420,6 +2422,10 @@ cluster:
 
     # Run test test_fiber_name_after_local_RPC
     i1.call(".proc_rpc_dispatch", "/test_fiber_name_after_local_RPC", b"", make_context())
+
+    # Run test test_huge_response
+    input = dict(n=4923, m=85, k=10)
+    i1.call(".proc_rpc_dispatch", "/test_huge_response", msgpack.dumps(input), make_context())
 
     # Call simple RPC endpoint, check context is passed correctly
     context = make_context(
@@ -2446,8 +2452,6 @@ cluster:
         # We don't add it by default for optimization.
         # call_was_local=False,
     )
-
-    input: dict[str, Any]
 
     # Check calling RPC to a specific instance_name via the plugin SDK
     # Note: /proxy endpoint redirects the request
