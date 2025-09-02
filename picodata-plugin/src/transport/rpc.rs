@@ -1,7 +1,6 @@
 use crate::error_code::ErrorCode;
 use crate::util::copy_to_region;
 use crate::util::DisplayAsHexBytesLimitted;
-use crate::util::RegionBuffer;
 use std::borrow::Cow;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
@@ -256,6 +255,7 @@ impl Response {
     /// implementation.
     ///
     /// Note: The structs are encoded as msgpack mappings (string keys).
+    /// See also [`Self::encode_rmp_unnamed`].
     ///
     /// This method should be used on the **server side** of the RPC request.
     #[inline]
@@ -264,15 +264,17 @@ impl Response {
     where
         T: serde::Serialize,
     {
-        let mut buffer = RegionBuffer::new();
-        if let Err(e) = rmp_serde::encode::write_named(&mut buffer, v) {
-            // Note: not using `.map_err()` so that `#[track_caller]` works
-            // and we can capture the caller's source location
-            return Err(BoxError::new(ErrorCode::Other, e.to_string()));
-        }
-        let (region_slice, _) = buffer.into_raw_parts();
+        let res = rmp_serde::encode::to_vec_named(v);
+        let data = match res {
+            Ok(v) => v,
+            Err(e) => {
+                // Note: not using `.map_err()` so that `#[track_caller]` works
+                // and we can capture the caller's source location
+                return Err(BoxError::new(ErrorCode::Other, e.to_string()));
+            }
+        };
         Ok(Self {
-            inner: ResponseImpl::RegionSlice(region_slice),
+            inner: ResponseImpl::Owned(data.into()),
         })
     }
 
@@ -280,6 +282,7 @@ impl Response {
     /// implementation.
     ///
     /// Note: The structs are encoded as msgpack arrays.
+    /// See also [`Self::encode_rmp`].
     ///
     /// This method should be used on the **server side** of the RPC request.
     #[inline]
@@ -288,15 +291,17 @@ impl Response {
     where
         T: serde::Serialize,
     {
-        let mut buffer = RegionBuffer::new();
-        if let Err(e) = rmp_serde::encode::write(&mut buffer, v) {
-            // Note: not using `.map_err()` so that `#[track_caller]` works
-            // and we can capture the caller's source location
-            return Err(BoxError::new(ErrorCode::Other, e.to_string()));
-        }
-        let (region_slice, _) = buffer.into_raw_parts();
+        let res = rmp_serde::encode::to_vec(v);
+        let data = match res {
+            Ok(v) => v,
+            Err(e) => {
+                // Note: not using `.map_err()` so that `#[track_caller]` works
+                // and we can capture the caller's source location
+                return Err(BoxError::new(ErrorCode::Other, e.to_string()));
+            }
+        };
         Ok(Self {
-            inner: ResponseImpl::RegionSlice(region_slice),
+            inner: ResponseImpl::Owned(data.into()),
         })
     }
 }
