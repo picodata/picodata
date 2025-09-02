@@ -1208,7 +1208,7 @@ pub fn populate_table(
     plan_id: &SmolStr,
     vtables: &mut EncodedVTables,
 ) -> Result<(), SbroadError> {
-    let data = vtables.get_mut(motion_id).ok_or_else(|| {
+    let data = vtables.remove(motion_id).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
             format_smolstr!("encoded table with id {motion_id}"),
@@ -1220,10 +1220,13 @@ pub fn populate_table(
             // See https://git.picodata.io/core/picodata/-/issues/1859.
             SbroadError::Invalid(
                 Entity::Space,
-                Some(format_smolstr!("Temporary SQL table {name} not found. Probably there are unused Motions in the plan")),
+                Some(format_smolstr!(
+                    "Temporary SQL table {name} not found. \
+                    Probably there are unused motions in the plan"
+                )),
             )
         })?;
-        for tuple in data.iter() {
+        for tuple in data.into_iter() {
             match space.insert(&tuple) {
                 Ok(_) => {}
                 Err(e) => {
@@ -1232,7 +1235,7 @@ pub fn populate_table(
                     return Err(SbroadError::FailedTo(
                         Action::Insert,
                         Some(Entity::Tuple),
-                        format_smolstr!("tuple {tuple:?} into {name}: {e}"),
+                        format_smolstr!("tuple {tuple:?}, temporary table {name}: {e}"),
                     ));
                 }
             }

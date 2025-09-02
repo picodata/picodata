@@ -83,6 +83,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tarantool::{msgpack, session, set_error};
 
+pub mod execute;
 pub mod lua;
 pub mod port;
 pub mod router;

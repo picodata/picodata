@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "darling",
  "proc-macro-error2",
