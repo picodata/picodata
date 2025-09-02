@@ -205,6 +205,7 @@ impl SubtreeCloner {
             | ExprOwned::Timestamp(_)
             | ExprOwned::Parameter(_)
             | ExprOwned::Reference(_)
+            | ExprOwned::SubQueryReference(_)
             | ExprOwned::CountAsterisk { .. } => {}
             ExprOwned::Alias(Alias {
                 ref mut child,

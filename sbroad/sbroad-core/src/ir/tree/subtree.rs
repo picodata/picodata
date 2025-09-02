@@ -7,7 +7,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId, OrderBy,
     Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, Union, UnionAll, Update, Values, ValuesRow,
+    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -313,42 +313,19 @@ fn subtree_next<'plan>(
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
+                | Expression::Reference { .. }
                 | Expression::Parameter { .. } => None,
-                Expression::Reference { .. } => {
+                Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
                     if !iter.need_subquery() {
                         return None;
                     }
-
                     let step = *iter.get_child().borrow();
                     if step == 0 {
                         *iter.get_child().borrow_mut() += 1;
-
-                        // At first we need to detect the place where the reference is used:
-                        // for selection filter or a join condition, we need to check whether
-                        // the reference points to an **additional** sub-query and then traverse
-                        // into it. Otherwise, stop traversal.
-                        if let Ok(rel_id) = iter
-                            .get_plan()
-                            .get_relational_from_reference_node(iter.get_current())
-                        {
-                            match iter.get_plan().get_relation_node(rel_id) {
-                                Ok(rel_node)
-                                    if rel_node.is_subquery_or_cte() || rel_node.is_motion() =>
-                                {
-                                    // TODO(#2008): how to check it better
-                                    let is_additional_child =
-                                        iter.get_plan().is_additional_child(rel_id).expect(
-                                            "Relational node failed to check additional child.",
-                                        );
-                                    if is_additional_child {
-                                        return Some(rel_id);
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
+                        Some(*rel_id)
+                    } else {
+                        None
                     }
-                    None
                 }
             },
             Node::Relational(r) => match r {

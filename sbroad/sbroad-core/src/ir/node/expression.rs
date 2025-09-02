@@ -7,8 +7,8 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk, Like,
-    NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Timestamp, Trim,
-    UnaryExpr, Window,
+    NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
+    Timestamp, Trim, UnaryExpr, Window,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -22,6 +22,7 @@ pub enum ExprOwned {
     Constant(Constant),
     Like(Like),
     Reference(Reference),
+    SubQueryReference(SubQueryReference),
     Row(Row),
     ScalarFunction(ScalarFunction),
     Trim(Trim),
@@ -49,6 +50,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::CountAsterisk(count) => count.into(),
             ExprOwned::Like(like) => like.into(),
             ExprOwned::Reference(reference) => reference.into(),
+            ExprOwned::SubQueryReference(sq_reference) => sq_reference.into(),
             ExprOwned::Row(row) => row.into(),
             ExprOwned::ScalarFunction(stable_func) => stable_func.into(),
             ExprOwned::Trim(trim) => trim.into(),
@@ -81,6 +83,7 @@ pub enum Expression<'a> {
     Constant(&'a Constant),
     Like(&'a Like),
     Reference(&'a Reference),
+    SubQueryReference(&'a SubQueryReference),
     Row(&'a Row),
     ScalarFunction(&'a ScalarFunction),
     Trim(&'a Trim),
@@ -104,6 +107,7 @@ pub enum MutExpression<'a> {
     Constant(&'a mut Constant),
     Like(&'a mut Like),
     Reference(&'a mut Reference),
+    SubQueryReference(&'a mut SubQueryReference),
     Row(&'a mut Row),
     ScalarFunction(&'a mut ScalarFunction),
     Trim(&'a mut Trim),
@@ -173,6 +177,9 @@ impl Expression<'_> {
             Expression::Like(like) => ExprOwned::Like((*like).clone()),
             Expression::CountAsterisk(count) => ExprOwned::CountAsterisk((*count).clone()),
             Expression::Reference(reference) => ExprOwned::Reference((*reference).clone()),
+            Expression::SubQueryReference(sq_reference) => {
+                ExprOwned::SubQueryReference((*sq_reference).clone())
+            }
             Expression::Row(row) => ExprOwned::Row((*row).clone()),
             Expression::ScalarFunction(sfunc) => ExprOwned::ScalarFunction((*sfunc).clone()),
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),

@@ -6,8 +6,8 @@ use crate::backend::sql::tree::{SyntaxData, SyntaxPlan};
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
     Alias, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, TimeParameters, Trim,
-    UnaryExpr, Update, ValuesRow,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
+    TimeParameters, Trim, UnaryExpr, Update, ValuesRow,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -213,6 +213,53 @@ impl Plan {
                             format!("target_id: {target_id}").as_str(),
                         )?;
                     }
+
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        format!("Position: {position:?}").as_str(),
+                    )?;
+
+                    let col_type_str = col_type.to_string();
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        format!("Column type: {col_type_str}").as_str(),
+                    )?;
+                }
+                Expression::SubQueryReference(SubQueryReference {
+                    rel_id,
+                    position,
+                    col_type,
+                    ..
+                }) => {
+                    writeln!(buf, "SubQueryReference")?;
+                    let alias = self.get_alias_from_reference_node(&expr);
+                    if let Result::Ok(alias) = alias {
+                        writeln_with_tabulation(
+                            buf,
+                            tabulation_number + 1,
+                            format!("Alias: {alias}").as_str(),
+                        )?;
+                    }
+
+                    // See explain logic for Reference node
+                    let rel_node = self.get_relation_node(*rel_id);
+                    if rel_node.is_ok() {
+                        if let Ok(Some(name)) = self.scan_name(*rel_id, *position) {
+                            writeln_with_tabulation(
+                                buf,
+                                tabulation_number + 1,
+                                format!("Referenced table name (or alias): {name}").as_str(),
+                            )?;
+                        }
+                    }
+
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        format!("rel_id: {rel_id}").as_str(),
+                    )?;
 
                     writeln_with_tabulation(
                         buf,

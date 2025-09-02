@@ -15,7 +15,7 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Join, NodeId, Reference, ReferenceTarget, Row,
+    Alias, ArithmeticExpr, BoolExpr, Join, Node, NodeId, Reference, ReferenceTarget, Row,
 };
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::BreadthFirst;
@@ -108,22 +108,26 @@ impl Chain {
                     return Ok(());
                 }
 
-                // If boolean expression contains a reference to an additional
-                //  sub-query, it should be added to the "other" list.
+                // If boolean expression contains a SubQueryReference it should be added to the "other" list.
                 let left_sq = if plan.is_row(left_id)? {
-                    plan.get_sub_query_from_row_node(left_id)?
+                    Some(plan.get_sq_ref_ids_from_row_node(left_id)?)
                 } else {
                     None
                 };
                 let right_sq = if plan.is_row(right_id)? {
-                    plan.get_sub_query_from_row_node(right_id)?
+                    Some(plan.get_sq_ref_ids_from_row_node(right_id)?)
                 } else {
                     None
                 };
-                for sq_id in [left_sq, right_sq].iter().flatten() {
-                    if plan.is_additional_child(*sq_id)? {
-                        self.other.push(expr_id);
-                        return Ok(());
+                for ref_ids in [left_sq, right_sq].iter().flatten() {
+                    for ref_id in ref_ids {
+                        if matches!(
+                            plan.get_node(*ref_id)?,
+                            Node::Expression(Expression::SubQueryReference(..))
+                        ) {
+                            self.other.push(expr_id);
+                            return Ok(());
+                        }
                     }
                 }
 
@@ -318,11 +322,10 @@ impl Plan {
                         ..
                     }) = expr
                     {
-                        if node == &first_child_target || node == &second_child_target {
-                            return true;
-                        }
+                        node == &first_child_target || node == &second_child_target
+                    } else {
+                        false
                     }
-                    false
                 })
             })
         };

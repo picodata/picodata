@@ -4,7 +4,7 @@ use crate::{
     errors::{Entity, SbroadError},
     executor::vtable::calculate_unified_types,
     ir::{
-        node::{Over, Parameter},
+        node::{Over, Parameter, SubQueryReference},
         types::{DerivedType, UnrestrictedType},
         Plan,
     },
@@ -132,7 +132,8 @@ impl Expression<'_> {
                 DerivedType::new(UnrestrictedType::String)
             }
             Expression::Constant(Constant { value, .. }) => value.get_type(),
-            Expression::Reference(Reference { col_type, .. }) => *col_type,
+            Expression::Reference(Reference { col_type, .. })
+            | Expression::SubQueryReference(SubQueryReference { col_type, .. }) => *col_type,
             Expression::Row(Row { list, .. }) => {
                 if let (Some(expr_id), None) = (list.first(), list.get(1)) {
                     let expr = plan.get_expression_node(*expr_id)?;

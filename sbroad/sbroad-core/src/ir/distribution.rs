@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::collection;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{NodeId, Reference, ReferenceTarget, Row, ScanRelation};
+use crate::ir::node::{NodeId, Reference, ReferenceTarget, Row, ScanRelation, SubQueryReference};
 use crate::ir::transformation::redistribution::{MotionKey, Target};
 
 use super::node::expression::{Expression, MutExpression};
@@ -388,6 +388,17 @@ impl ReferenceInfo {
                         .push(parent_column_pos);
                     ref_nodes.append(*target_id);
                 }
+            } else if let Expression::SubQueryReference(SubQueryReference {
+                rel_id,
+                position,
+                ..
+            }) = ir.get_expression_node(child_id)?
+            {
+                ref_map
+                    .entry((*rel_id, *position).into())
+                    .or_default()
+                    .push(parent_column_pos);
+                ref_nodes.append(*rel_id);
             }
         }
 
@@ -656,7 +667,7 @@ impl Plan {
             return Ok(Distribution::Any);
         };
 
-        if reference_target == &ReferenceTarget::Leaf {
+        if matches!(reference_target, ReferenceTarget::Leaf) {
             unreachable!("distribution with leaf targets should be handled in parent function");
         }
 

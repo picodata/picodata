@@ -9,7 +9,9 @@ use crate::ir::distribution::Distribution;
 use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{ArenaType, GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget};
+use crate::ir::node::{
+    ArenaType, GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
+};
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
@@ -148,20 +150,10 @@ impl<'plan> ExpressionMapper<'plan> {
     /// Helper function for `find_matches` which compares current node to `GroupBy` expressions
     /// and if no match is found recursively calls itself.
     fn find(&mut self, current: NodeId, parent_expr: Option<NodeId>) -> Result<(), SbroadError> {
-        let is_ref = matches!(
-            self.plan.get_expression_node(current),
-            Ok(Expression::Reference(_))
-        );
+        let expr_node = self.plan.get_expression_node(current)?;
 
-        if is_ref {
-            // Because subqueries are replaced with References, we must not
-            // try to match these references against any GroupBy expressions.
-            // Except those which are added from DISTINCT qualifier (but they
-            // will be matched earlier on a stage of ROWs comparison).
-            let referred_rel = self.plan.get_relational_from_reference_node(current)?;
-            if self.plan.is_additional_child(referred_rel)? {
-                return Ok(());
-            }
+        if matches!(expr_node, Expression::SubQueryReference { .. }) {
+            return Ok(());
         }
 
         let comparator = Comparator::new(self.plan);
@@ -183,7 +175,7 @@ impl<'plan> ExpressionMapper<'plan> {
             }
             return Ok(());
         }
-        if is_ref {
+        if matches!(expr_node, Expression::Reference(_)) {
             // We found a column which is not inside aggregate function
             // and it is not a grouping expression:
             // select a from t group by b - is invalid
@@ -374,9 +366,11 @@ impl Plan {
                 // we should remove scalar subquery from the final projection children
                 // and move it to the GroupBy expression (and children).
                 for ref_id in self.get_refs_from_subtree(proj_col_id)? {
-                    let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
-                    if self.is_additional_child(referred_rel_id)? {
-                        scalar_sqs_to_fix.insert(referred_rel_id);
+                    if matches!(
+                        self.get_expression_node(ref_id)?,
+                        Expression::SubQueryReference { .. }
+                    ) {
+                        scalar_sqs_to_fix.insert(self.get_relational_from_reference_node(ref_id)?);
                     }
                 }
 
@@ -456,13 +450,7 @@ impl Plan {
                         for level_node in nodes {
                             let id = level_node.1;
                             let n = self.get_expression_node(id)?;
-                            if let Expression::Reference(_) = n {
-                                let referred_rel_node =
-                                    self.get_relational_from_reference_node(id)?;
-                                if self.is_additional_child(referred_rel_node)? {
-                                    continue;
-                                }
-
+                            if matches!(n, Expression::Reference(_)) {
                                 let alias = match self.get_alias_from_reference_node(&n) {
                                     Ok(v) => v.to_smolstr(),
                                     Err(e) => e.to_smolstr(),
@@ -488,10 +476,6 @@ impl Plan {
                     for level_node in nodes {
                         let id = level_node.1;
                         if let Expression::Reference(_) = self.get_expression_node(id)? {
-                            let referred_rel_node = self.get_relational_from_reference_node(id)?;
-                            if self.is_additional_child(referred_rel_node)? {
-                                continue;
-                            }
                             return Err(SbroadError::Invalid(
                                 Entity::Query,
                                 Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
@@ -616,11 +600,13 @@ impl Plan {
                 // For query `SELECT 1 FROM t GROUP BY (SELECT 1)`
                 // we'd like to clone scalar subquery from local GroupBy
                 // to local Projection node.
-                for ref_id in self.get_refs_from_subtree(*gr_expr_local)? {
-                    let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
-
-                    if self.is_additional_child(referred_rel_id)? {
-                        scalar_sqs_to_fix.insert(referred_rel_id);
+                for ref_id in self.get_sq_refs_from_subtree(*gr_expr_local)? {
+                    let ref_node = self.get_expression_node(ref_id)?;
+                    match ref_node {
+                        Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                            scalar_sqs_to_fix.insert(*rel_id);
+                        }
+                        _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
                     }
                 }
             }
@@ -652,10 +638,13 @@ impl Plan {
                 .expect("Number of args for aggregate should have been already checked");
 
             // For such aggregates we should move their sqs from final Projection to local GroupBy.
-            for ref_id in self.get_refs_from_subtree(arg)? {
-                let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
-                if self.is_additional_child(referred_rel_id)? {
-                    scalar_sqs_to_fix.insert(referred_rel_id);
+            for ref_id in self.get_sq_refs_from_subtree(arg)? {
+                let ref_node = self.get_expression_node(ref_id)?;
+                match ref_node {
+                    Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                        scalar_sqs_to_fix.insert(*rel_id);
+                    }
+                    _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
                 }
             }
 
@@ -1282,10 +1271,13 @@ impl Plan {
                 .first()
                 .expect("Number of args for aggregate should have been already checked");
 
-            for ref_id in self.get_refs_from_subtree(arg)? {
-                let referred_rel_id = self.get_relational_from_reference_node(ref_id)?;
-                if self.is_additional_child(referred_rel_id)? {
-                    scalar_sqs_to_fix.insert(referred_rel_id);
+            for ref_id in self.get_sq_refs_from_subtree(arg)? {
+                let ref_node = self.get_expression_node(ref_id)?;
+                match ref_node {
+                    Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                        scalar_sqs_to_fix.insert(*rel_id);
+                    }
+                    _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
                 }
             }
         }

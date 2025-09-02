@@ -111,3 +111,10 @@ true, true
 with t(b) as (select true) select * from t t1 join t t2 on t1.b or 1
 -- ERROR:
 could not resolve operator overload for or\(bool, int\)
+
+-- TEST: tets-sq-in-join-condition
+-- SQL:
+with t(a) as (values (1), (2), (3)) select * from t t1 join t t2 on (select true) and t1.a = t2.a
+-- EXPECTED:
+1, 1, 2, 2, 3, 3
+

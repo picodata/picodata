@@ -28,7 +28,7 @@ use super::{
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::to_user;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{Parameter, ReferenceAsteriskSource};
+use crate::ir::node::{Parameter, ReferenceAsteriskSource, SubQueryReference};
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
@@ -168,6 +168,16 @@ impl Nodes {
             col_type,
             asterisk_source,
             is_system,
+        };
+        self.push(r.into())
+    }
+
+    /// Adds subquery reference node.
+    pub fn add_sq_ref(&mut self, rel_id: NodeId, position: usize, col_type: DerivedType) -> NodeId {
+        let r = SubQueryReference {
+            rel_id,
+            position,
+            col_type,
         };
         self.push(r.into())
     }
@@ -593,26 +603,21 @@ impl<'plan> Comparator<'plan> {
                             //       1. For Projection and GroupBy scalar subquery `(select 1)` will have different targets
                             //       2. They are referencing different relations.
 
-                            let base_equal = p_left == p_right;
-                            // When we call `add_update` we have to compare references
-                            // without parent relation being added yet. That's why we don't unwrap
-                            // results here.
-                            let rel_left = self.plan.get_relational_from_reference_node(lhs);
-                            let rel_right = self.plan.get_relational_from_reference_node(rhs);
-                            let (Ok(rel_left), Ok(rel_right)) = (rel_left, rel_right) else {
-                                return Ok(base_equal);
-                            };
-                            let res = if self.plan.is_additional_child(rel_left)?
-                                && self.plan.is_additional_child(rel_right)?
-                            {
-                                // E.g. additional subqueries may be equal in case we've copied one under DISTINCT
-                                // qualifier of Projection into local GroupBy (`select distinct (select 1) from t`).
-                                base_equal && rel_left == rel_right
-                            } else {
-                                base_equal
-                            };
-
-                            return Ok(res);
+                            return Ok(p_left == p_right);
+                        }
+                    }
+                    Expression::SubQueryReference(SubQueryReference {
+                        position: l_position,
+                        rel_id: l_rel_id,
+                        ..
+                    }) => {
+                        if let Expression::SubQueryReference(SubQueryReference {
+                            position: r_position,
+                            rel_id: r_rel_id,
+                            ..
+                        }) = right
+                        {
+                            return Ok(l_position == r_position && l_rel_id == r_rel_id);
                         }
                     }
                     Expression::Row(Row {
@@ -857,6 +862,12 @@ impl<'plan> Comparator<'plan> {
                 position.hash(state);
                 col_type.hash(state);
                 is_asterisk.hash(state);
+            }
+            Expression::SubQueryReference(SubQueryReference {
+                position, col_type, ..
+            }) => {
+                position.hash(state);
+                col_type.hash(state);
             }
             Expression::Row(Row { list, .. }) => {
                 for child in list {
@@ -1344,6 +1355,8 @@ impl Plan {
             let alias_name = SmolStr::from(alias_expr.get_alias_name()?);
             let col_type = alias_expr.calculate_type(self)?;
 
+            // In case when we add output row for Motion, we can mess up with SubQuery.
+            // So we should check it.
             let r_id = self
                 .nodes
                 .add_ref(new_targets, pos, col_type, asterisk_source, is_system);
@@ -1511,9 +1524,7 @@ impl Plan {
                 .get(pos)
                 .expect("subquery output row already checked");
             let alias_type = self.get_expression_node(alias_id)?.calculate_type(self)?;
-            let ref_id =
-                self.nodes
-                    .add_ref(ReferenceTarget::Single(sq_id), pos, alias_type, None, false);
+            let ref_id = self.nodes.add_sq_ref(sq_id, pos, alias_type);
             new_refs.push(ref_id);
         }
         let row_id = self.nodes.add_row(new_refs.clone(), None);
@@ -1590,7 +1601,7 @@ impl Plan {
         Ok(list[0])
     }
 
-    /// A relational node pointed by the reference.
+    /// A relational node pointed by the reference or subquery-reference.
     /// In a case of a reference in the Motion node
     /// within a dispatched IR to the storage, returns
     /// the Motion node itself.
@@ -1598,10 +1609,8 @@ impl Plan {
         &self,
         ref_id: NodeId,
     ) -> Result<NodeId, SbroadError> {
-        if let Node::Expression(Expression::Reference(Reference { target, .. })) =
-            self.get_node(ref_id)?
-        {
-            return match target {
+        match self.get_node(ref_id)? {
+            Node::Expression(Expression::Reference(Reference { target, .. })) => match target {
                 ReferenceTarget::Leaf => Err(SbroadError::UnexpectedNumberOfValues(
                     "Reference node has no targets".into(),
                 )),
@@ -1611,9 +1620,12 @@ impl Plan {
                         "Reference expected to point exactly a single relational node".into(),
                     ))
                 }
-            };
+            },
+            Node::Expression(Expression::SubQueryReference(SubQueryReference {
+                rel_id, ..
+            })) => Ok(*rel_id),
+            _ => Err(SbroadError::Invalid(Entity::Expression, None)),
         }
-        Err(SbroadError::Invalid(Entity::Expression, None))
     }
 
     /// Get relational nodes referenced in the row.
@@ -1631,10 +1643,11 @@ impl Plan {
             ));
         };
         let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
-                return true;
-            }
-            false
+            matches!(
+                self.get_node(node_id).expect("node in the plan must exist"),
+                Node::Expression(Expression::Reference { .. })
+                    | Node::Expression(Expression::SubQueryReference { .. })
+            )
         };
         let mut post_tree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
@@ -1652,12 +1665,18 @@ impl Plan {
         Ok(rel_nodes)
     }
 
+    /// Get relational nodes referenced in the reference.
+    ///
+    /// # Errors
+    /// - Node is neither a Reference nor a SubQueryReference.
     pub fn get_relational_nodes_from_reference(
         &self,
         ref_id: NodeId,
     ) -> Result<HashSet<NodeId, RandomState>, SbroadError> {
-        if let Expression::Reference(..) = self.get_expression_node(ref_id)? {
-        } else {
+        if !matches!(
+            self.get_expression_node(ref_id)?,
+            Expression::Reference(..) | Expression::SubQueryReference(..)
+        ) {
             return Err(SbroadError::Invalid(
                 Entity::Expression,
                 Some("Node is not a reference".into()),
@@ -1679,11 +1698,17 @@ impl Plan {
         rel_nodes: &mut HashSet<NodeId, RandomState>,
     ) -> Result<(), SbroadError> {
         let reference = self.get_expression_node(ref_id)?;
-        if let Expression::Reference(Reference { target, .. }) = reference {
-            rel_nodes.reserve(target.len());
-            for target_id in target.iter() {
-                rel_nodes.insert(*target_id);
+        match reference {
+            Expression::Reference(Reference { target, .. }) => {
+                rel_nodes.reserve(target.len());
+                for target_id in target.iter() {
+                    rel_nodes.insert(*target_id);
+                }
             }
+            Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                rel_nodes.insert(*rel_id);
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -1737,7 +1762,8 @@ impl Plan {
                     return self.is_trivalent(*inner_id);
                 }
             }
-            Expression::Reference(Reference { col_type, .. }) => {
+            Expression::Reference(Reference { col_type, .. })
+            | Expression::SubQueryReference(SubQueryReference { col_type, .. }) => {
                 let col_type_inner = col_type.get();
                 return Ok(col_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
             }
@@ -1754,7 +1780,7 @@ impl Plan {
     pub fn is_ref(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
         let expr = self.get_expression_node(expr_id)?;
         match expr {
-            Expression::Reference { .. } => return Ok(true),
+            Expression::Reference { .. } | Expression::SubQueryReference { .. } => return Ok(true),
             Expression::Row(Row { list, .. }) => {
                 if let (Some(inner_id), None) = (list.first(), list.get(1)) {
                     return self.is_ref(*inner_id);
@@ -1872,10 +1898,11 @@ impl Plan {
         to_id: NodeId,
     ) -> Result<(), SbroadError> {
         let filter = |node_id: NodeId| -> bool {
-            if let Ok(Node::Expression(Expression::Reference { .. })) = self.get_node(node_id) {
-                return true;
-            }
-            false
+            matches!(
+                self.get_node(node_id).expect("node in the plan must exist"),
+                Node::Expression(Expression::Reference { .. })
+                    | Node::Expression(Expression::SubQueryReference { .. })
+            )
         };
         let mut subtree = PostOrderWithFilter::with_capacity(
             |node| self.nodes.expr_iter(node, false),
@@ -1886,10 +1913,8 @@ impl Plan {
         let references = subtree.take_nodes();
         drop(subtree);
         for LevelNode(_, id) in references {
-            if let MutExpression::Reference(Reference { target, .. }) =
-                self.get_mut_expression_node(id)?
-            {
-                match target {
+            match self.get_mut_expression_node(id)? {
+                MutExpression::Reference(Reference { target, .. }) => match target {
                     ReferenceTarget::Leaf => {}
                     ReferenceTarget::Single(node_id) => {
                         if node_id == &from_id {
@@ -1912,7 +1937,13 @@ impl Plan {
                             }
                         });
                     }
+                },
+                MutExpression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                    if *rel_id == from_id {
+                        *rel_id = to_id
+                    }
                 }
+                _ => {}
             }
         }
         Ok(())
@@ -1941,18 +1972,6 @@ impl Plan {
         let references = subtree.take_nodes();
         drop(subtree);
         for LevelNode(_, id) in references {
-            // We don't change references to additional children because we could lose
-            // connection with them.
-            let node_id = self.get_relational_from_reference_node(id)?;
-            let node = self.get_relation_node(node_id)?;
-            if matches!(
-                node,
-                Relational::ScanSubQuery { .. } | Relational::Motion { .. }
-            ) && self.is_additional_child(node_id)?
-            {
-                continue;
-            }
-
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {
                 if !matches!(target, ReferenceTarget::Single(_)) {

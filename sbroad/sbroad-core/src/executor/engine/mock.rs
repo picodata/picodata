@@ -1931,10 +1931,11 @@ impl Router for RouterRuntimeMock {
 
     fn materialize_motion(
         &self,
-        _plan: &mut ExecutionPlan,
+        plan: &mut ExecutionPlan,
         motion_node_id: &NodeId,
         _buckets: &Buckets,
     ) -> Result<VirtualTable, SbroadError> {
+        plan.unlink_motion_subtree(*motion_node_id)?;
         Ok(self
             .virtual_tables
             .borrow()

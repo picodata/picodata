@@ -128,6 +128,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                                         iter.get_nodes().get(*col),
                                         Some(Node::Expression(
                                             Expression::Reference { .. }
+                                                | Expression::SubQueryReference { .. }
                                                 | Expression::Constant { .. }
                                         ))
                                     ) {
@@ -166,6 +167,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         Expression::Case { .. } => iter.handle_case_iter(expr),
                         Expression::Constant { .. }
                         | Expression::Reference { .. }
+                        | Expression::SubQueryReference { .. }
                         | Expression::CountAsterisk { .. }
                         | Expression::Timestamp { .. }
                         | Expression::Parameter { .. } => None,

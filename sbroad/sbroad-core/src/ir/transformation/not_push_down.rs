@@ -228,9 +228,10 @@ impl Plan {
                     expr_id
                 }
             }
-            Expression::ScalarFunction(_) | Expression::Cast(_) | Expression::Reference(_) => {
-                self.cover_with_not(expr_id, &not_state)?
-            }
+            Expression::ScalarFunction(_)
+            | Expression::Cast(_)
+            | Expression::Reference(_)
+            | Expression::SubQueryReference(_) => self.cover_with_not(expr_id, &not_state)?,
             Expression::Row(Row { list, .. }) => {
                 let list_len = list.len();
                 if list_len == 1 {

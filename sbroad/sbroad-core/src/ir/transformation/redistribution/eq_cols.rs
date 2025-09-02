@@ -3,7 +3,7 @@ use crate::ir::expression::ExpressionId;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Like, NodeId, Reference, ReferenceTarget,
-    Row, ScalarFunction, Trim, UnaryExpr,
+    Row, ScalarFunction, SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::Bool;
 use crate::ir::transformation::redistribution::BoolOp;
@@ -129,6 +129,7 @@ impl ReferredMap {
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
+                | Expression::SubQueryReference(SubQueryReference { .. })
                 | Expression::Parameter { .. } => Referred::None,
                 Expression::Reference(Reference { target, .. }) => {
                     if target == &ReferenceTarget::Single(inner_child) {

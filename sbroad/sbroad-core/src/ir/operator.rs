@@ -1713,24 +1713,6 @@ impl Plan {
         }
     }
 
-    /// Checks if the node is an additional child of some relational node.
-    /// We can use a simple node scan instead of the tree traversal as we are interested
-    /// only in relational nodes that can't be unlinked from the tree by our transformations.
-    /// This is done for performance reasons.
-    ///
-    /// # Errors
-    /// - Failed to get plan top
-    /// - Node returned by the relational iterator is not relational (bug)
-    pub fn is_additional_child(&self, sq_id: NodeId) -> Result<bool, SbroadError> {
-        let parent_rel_id = self.find_parent_rel(sq_id)?;
-        if let Some(parent_rel_id) = parent_rel_id {
-            if self.is_additional_child_of_rel(parent_rel_id, sq_id)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
     /// Checks that the sub-query is an additional child of the parent relational node.
     ///
     /// # Errors

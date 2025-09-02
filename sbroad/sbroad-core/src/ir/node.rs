@@ -344,6 +344,23 @@ impl From<Reference> for NodeAligned {
     }
 }
 
+/// Reference to the position in the incoming tuple(s) for subquery.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub struct SubQueryReference {
+    /// Relational node
+    pub rel_id: NodeId,
+    /// Expression position in the input tuple (i.e. `Alias` column).
+    pub position: usize,
+    /// Referred column type in the input tuple.
+    pub col_type: DerivedType,
+}
+
+impl From<SubQueryReference> for NodeAligned {
+    fn from(value: SubQueryReference) -> Self {
+        Self::Node32(Node32::SubQueryReference(value))
+    }
+}
+
 /// Top of the tuple tree.
 ///
 /// If the current tuple is the output for some relational operator, it should
@@ -1285,6 +1302,8 @@ pub enum Node32 {
     Tcl(Tcl),
     CreateSchema,
     DropSchema,
+    SubQueryReference(SubQueryReference),
+
     // begin the section to allow in-place swapping with Constant using the replace32()
     Parameter(Parameter),
     Constant(Constant),
@@ -1323,6 +1342,9 @@ impl Node32 {
             },
             Node32::CreateSchema => NodeOwned::Ddl(DdlOwned::CreateSchema),
             Node32::DropSchema => NodeOwned::Ddl(DdlOwned::DropSchema),
+            Node32::SubQueryReference(sub_query_reference) => {
+                NodeOwned::Expression(ExprOwned::SubQueryReference(sub_query_reference))
+            }
             Node32::Constant(constant) => NodeOwned::Expression(ExprOwned::Constant(constant)),
             Node32::Parameter(param) => NodeOwned::Expression(ExprOwned::Parameter(param)),
             Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),

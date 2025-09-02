@@ -9,7 +9,8 @@ use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, Bound, BoundType, Frame, FrameType, GroupBy,
     Node32, Over, Parameter, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
-    ScalarFunction, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow, Window,
+    ScalarFunction, SubQueryReference, TimeParameters, Timestamp, TruncateTable, Values, ValuesRow,
+    Window,
 };
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use ahash::{AHashMap, AHashSet};
@@ -5194,13 +5195,20 @@ impl AbstractSyntaxTree {
                             PostOrder::with_capacity(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
                         for LevelNode(_, node_id) in expr_tree.into_iter(expr_plan_node_id) {
-                            if let Expression::Reference(Reference { target, .. }) = plan.get_expression_node(node_id)? {
-                                if !target.is_leaf() {
-                                    // Subquery reference met.
-                                    reference_met = true;
-                                    break
-                                }
-                            }
+							let node = plan.get_expression_node(node_id)?;
+							match node {
+								Expression::Reference(Reference { target, .. }) => {
+									if !target.is_leaf() {
+										reference_met = true;
+										break;
+									}
+								},
+								Expression::SubQueryReference(SubQueryReference { .. }) => {
+									reference_met = true;
+									break;
+								},
+								_ => {}
+							}
                         }
 
                         if !reference_met {

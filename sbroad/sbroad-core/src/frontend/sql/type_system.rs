@@ -4,8 +4,8 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant, Frame,
-    FrameType, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction, Trim, UnaryExpr,
-    ValuesRow, Window,
+    FrameType, Like, NodeId, Over, Parameter, Reference, Row, ScalarFunction, SubQueryReference,
+    Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
@@ -184,7 +184,8 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Literal(ty);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Reference(Reference { col_type, .. }) => {
+        Expression::Reference(Reference { col_type, .. })
+        | Expression::SubQueryReference(SubQueryReference { col_type, .. }) => {
             let Some(sbroad_type) = col_type.get() else {
                 // Parameterized queries can create references of unknown type. This will be
                 // fixed once we support parameter types inference. But until then, we'll treat

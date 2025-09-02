@@ -7,8 +7,8 @@ use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except, FrameType,
     GroupBy, Having, Intersect, Join, Like, Limit, Motion, Node, NodeId, OrderBy, Over, Parameter,
     Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction, ScanCte, ScanRelation,
-    ScanSubQuery, SelectWithoutScan, Selection, Trim, UnaryExpr, Union, UnionAll, Values,
-    ValuesRow, Window,
+    ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr, Union,
+    UnionAll, Values, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -978,7 +978,9 @@ impl<'p> SyntaxPlan<'p> {
                     self.nodes.push_sn_plan(sn);
                 }
                 Expression::Like { .. } => self.add_like(id),
-                Expression::Reference { .. } | Expression::CountAsterisk { .. } => {
+                Expression::Reference { .. }
+                | Expression::SubQueryReference { .. }
+                | Expression::CountAsterisk { .. } => {
                     let sn = SyntaxNode::new_pointer(id, None, vec![]);
                     self.nodes.push_sn_plan(sn);
                 }
@@ -1841,6 +1843,7 @@ impl<'p> SyntaxPlan<'p> {
         };
 
         // Handle special cases for Motion and SubQuery
+        // The order is important, because we want to handle the motion case first
         if self.handle_motion_case(id, list) || self.handle_subquery_case(id, list) {
             return;
         }
@@ -1876,18 +1879,20 @@ impl<'p> SyntaxPlan<'p> {
             .get_expression_node(first_child_id)
             .expect("expression node expected");
 
-        if !matches!(first_list_child, Expression::Reference { .. }) {
-            return false;
-        }
+        let referred_rel_id =
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
+                first_list_child
+            {
+                *rel_id
+            } else {
+                return false;
+            };
 
-        let referred_rel_id = plan
-            .get_relational_from_reference_node(first_child_id)
-            .expect("rel id expected");
-        let referred_rel_node = plan
+        if !plan
             .get_relation_node(referred_rel_id)
-            .expect("rel node expected");
-
-        if !referred_rel_node.is_motion() {
+            .expect("rel node expected")
+            .is_motion()
+        {
             return false;
         }
 
@@ -1897,12 +1902,7 @@ impl<'p> SyntaxPlan<'p> {
             .get_motion_vtable(referred_rel_id)
             .expect("motion virtual table");
 
-        let needs_replacement = vtable.get_alias().is_none()
-            && plan
-                .is_additional_child(referred_rel_id)
-                .expect("motion id is valid");
-
-        if !needs_replacement {
+        if vtable.get_alias().is_some() {
             return false;
         }
 
@@ -1914,11 +1914,9 @@ impl<'p> SyntaxPlan<'p> {
             let expr = plan
                 .get_expression_node(*child_id)
                 .expect("row child is expression");
-            if matches!(expr, Expression::Reference { .. }) {
-                let referred_id = plan
-                    .get_relational_from_reference_node(*child_id)
-                    .expect("referred id");
-                self.pop_from_stack(referred_id, id);
+
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) = expr {
+                self.pop_from_stack(*rel_id, id);
             }
         }
 
@@ -1942,33 +1940,26 @@ impl<'p> SyntaxPlan<'p> {
             .get_expression_node(first_child_id)
             .expect("expression node expected");
 
-        if !matches!(first_list_child, Expression::Reference { .. }) {
-            return false;
-        }
+        let referred_rel_id =
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
+                first_list_child
+            {
+                *rel_id
+            } else {
+                return false;
+            };
 
-        let referred_rel_id = plan
-            .get_relational_from_reference_node(first_child_id)
-            .expect("rel id expected");
-        let referred_rel_node = plan
-            .get_relation_node(referred_rel_id)
-            .expect("rel node expected");
-
-        if !matches!(referred_rel_node, Relational::ScanSubQuery { .. }) {
-            return false;
-        }
+        debug_assert!(matches!(
+            plan.get_relation_node(referred_rel_id)
+                .expect("rel node expected"),
+            Relational::ScanSubQuery { .. }
+        ));
 
         // Replace current row with the referred sub-query
         // (except the case when sub-query is located in the FROM clause).
 
         // We have to check whether SubQuery is additional child, because it may also
         // be a required child in query like `SELECT COLUMN_1 FROM (VALUES (1))`.
-
-        if !plan
-            .is_additional_child(referred_rel_id)
-            .expect("subquery id is valid")
-        {
-            return false;
-        }
 
         let mut sq_sn_id = None;
 
@@ -1980,11 +1971,8 @@ impl<'p> SyntaxPlan<'p> {
             let expr = plan
                 .get_expression_node(*child_id)
                 .expect("row child is expression");
-            if matches!(expr, Expression::Reference { .. }) {
-                let referred_id = plan
-                    .get_relational_from_reference_node(*child_id)
-                    .expect("referred id");
-                sq_sn_id = Some(self.pop_from_stack(referred_id, id));
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) = expr {
+                sq_sn_id = Some(self.pop_from_stack(*rel_id, id));
             }
         }
 

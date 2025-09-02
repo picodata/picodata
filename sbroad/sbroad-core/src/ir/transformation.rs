@@ -399,6 +399,7 @@ impl Plan {
                 | MutExpression::Constant(_)
                 | MutExpression::Like(_)
                 | MutExpression::Reference(_)
+                | MutExpression::SubQueryReference(_)
                 | MutExpression::CountAsterisk(_)
                 | MutExpression::Timestamp(_)
                 | MutExpression::Parameter(_) => {}

@@ -19,7 +19,8 @@ use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
     BoolExpr, Constant, Except, GroupBy, Having, Intersect, Join, Limit, NodeId, OrderBy,
     Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
+    SelectWithoutScan, Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values,
+    ValuesRow, Window,
 };
 use crate::ir::transformation::redistribution::eq_cols::EqualityCols;
 use crate::ir::tree::traversal::{
@@ -431,6 +432,41 @@ impl Plan {
         self.get_sub_query_among_rel_nodes(&rel_ids)
     }
 
+    /// Get subquery ref_ids from the row node.
+    ///
+    /// # Errors
+    /// - Row node is not of a row type
+    pub fn get_sq_ref_ids_from_row_node(&self, row_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+        let row = self.get_expression_node(row_id)?;
+        let capacity = if let Expression::Row(Row { list, .. }) = row {
+            list.len()
+        } else {
+            return Err(SbroadError::Invalid(
+                Entity::Node,
+                Some("Node is not a row".into()),
+            ));
+        };
+        let filter = |node_id: NodeId| -> bool {
+            matches!(
+                self.get_node(node_id),
+                Ok(Node::Expression(Expression::SubQueryReference { .. }))
+            )
+        };
+        let mut post_tree = PostOrderWithFilter::with_capacity(
+            |node| self.nodes.expr_iter(node, false),
+            capacity,
+            Box::new(filter),
+        );
+        post_tree.populate_nodes(row_id);
+        let nodes = post_tree.take_nodes();
+        // We don't expect much relational references in a row (5 is a reasonable number).
+        let mut ref_nodes: Vec<NodeId> = Vec::with_capacity(capacity);
+        for LevelNode(_, id) in nodes {
+            ref_nodes.push(id);
+        }
+        Ok(ref_nodes)
+    }
+
     /// Get a single sub-query from among the list of relational nodes.
     ///
     /// # Errors
@@ -541,22 +577,24 @@ impl Plan {
                 }
             };
             for (pos_in_row, ref_id) in refs.iter().enumerate() {
-                let ref node @ Expression::Reference(Reference {
-                    target,
-                    position: ref_pos,
-                    ..
-                }) = self.get_expression_node(*ref_id)?
-                else {
-                    continue;
+                let node = self.get_expression_node(*ref_id)?;
+                let (child_id, ref_pos) = match node {
+                    Expression::Reference(Reference {
+                        target, position, ..
+                    }) => (target.first(), position),
+                    Expression::SubQueryReference(SubQueryReference {
+                        rel_id, position, ..
+                    }) => (Some(rel_id), position),
+                    _ => continue,
                 };
-                let child_id = target.first().ok_or_else(|| {
-                    SbroadError::Invalid(
+                let Some(child_id) = child_id else {
+                    return Err(SbroadError::Invalid(
                         Entity::Node,
                         Some(format_smolstr!(
-                            "ref ({ref_id:?}) in join condition with empty targets: {node:?}"
-                        )),
-                    )
-                })?;
+							"ref / subquery_ref ({ref_id:?}) in join condition with empty targets: {node:?}"
+						)),
+                    ));
+                };
                 let mut context = self.context_mut();
                 if let Some(positions) = context.get_shard_columns_positions(*child_id, self)? {
                     if positions[0] != Some(*ref_pos) && positions[1] != Some(*ref_pos) {

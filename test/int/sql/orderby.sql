@@ -194,3 +194,10 @@ select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc
 with t(a) as (values (1), (2)) select a from t union all select a from t order by a asc;
 -- EXPECTED:
 1, 1, 2, 2
+
+-- TEST: test-sq-in-orderby
+-- SQL:
+with t(a) as (values (1), (2), (3)) select a from t order by (select 1), a desc;
+-- EXPECTED:
+3, 2, 1
+

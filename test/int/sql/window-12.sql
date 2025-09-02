@@ -336,6 +336,13 @@ WINDOW user AS (ORDER BY a);
 -- EXPECTED:
 1, 2, 3, 4, 5
 
+-- TEST: window12-4.15
+-- SQL:
+SELECT max(1) over w FROM t_win
+WINDOW w AS (PARTITION BY (SELECT a from t_win limit 1));
+-- EXPECTED:
+1, 1, 1, 1, 1
+
 -- TEST: window12-5-init
 -- SQL:
 DROP TABLE IF EXISTS t1;

@@ -4,7 +4,7 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     BoundType, Constant, Delete, FrameType, Join, Node, NodeId, Parameter, Projection, Reference,
-    ScalarFunction, ScanRelation,
+    ScalarFunction, ScanRelation, SubQueryReference,
 };
 use crate::ir::relation::Column;
 use ahash::AHashSet;
@@ -455,6 +455,46 @@ impl ExecutionPlan {
                                         continue;
                                     }
                                     if let Some(name) = ir_plan.scan_name(rel_id, *position)? {
+                                        push_identifier(&mut sql, name);
+                                        sql.push('.');
+                                        push_identifier(&mut sql, alias);
+
+                                        continue;
+                                    }
+                                    push_identifier(&mut sql, alias);
+                                }
+                                Expression::SubQueryReference(SubQueryReference {
+                                    position,
+                                    rel_id,
+                                    ..
+                                }) => {
+                                    let sq_node = ir_plan.get_relation_node(*rel_id)?;
+
+                                    if sq_node.is_motion() {
+                                        if let Ok(vt) = self.get_motion_vtable(*id) {
+                                            let alias = (*vt)
+                                                .get_columns()
+                                                .get(*position)
+                                                .map(|column| &column.name)
+                                                .ok_or_else(|| {
+                                                    SbroadError::NotFound(
+                                                        Entity::Name,
+                                                        format_smolstr!(
+                                                            "for column at position {position}"
+                                                        ),
+                                                    )
+                                                })?;
+                                            if let Some(name) = (*vt).get_alias() {
+                                                push_identifier(&mut sql, name);
+                                                sql.push('.');
+                                                push_identifier(&mut sql, alias);
+                                                continue;
+                                            }
+                                        }
+                                    }
+
+                                    let alias = &ir_plan.get_alias_from_reference_node(&expr)?;
+                                    if let Some(name) = ir_plan.scan_name(*rel_id, *position)? {
                                         push_identifier(&mut sql, name);
                                         sql.push('.');
                                         push_identifier(&mut sql, alias);

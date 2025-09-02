@@ -27,7 +27,8 @@ use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Case, Cast, Concat, Constant, GroupBy, Having,
     Limit, Motion, MutNode, Node, Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned,
-    OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection, Trim, UnaryExpr,
+    OrderBy, Projection, Reference, Row, ScalarFunction, ScanRelation, Selection,
+    SubQueryReference, Trim, UnaryExpr,
 };
 use crate::ir::operator::{Bool, OrderByEntity};
 use crate::ir::relation::Column;
@@ -102,6 +103,9 @@ impl Nodes {
                 },
                 Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
                 Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
+                Node32::SubQueryReference(sq_reference) => {
+                    Node::Expression(Expression::SubQueryReference(sq_reference))
+                }
                 Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
                 Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
                 Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
@@ -239,6 +243,9 @@ impl Nodes {
                     },
                     Node32::CreateSchema => MutNode::Ddl(MutDdl::CreateSchema),
                     Node32::DropSchema => MutNode::Ddl(MutDdl::DropSchema),
+                    Node32::SubQueryReference(sq_reference) => {
+                        MutNode::Expression(MutExpression::SubQueryReference(sq_reference))
+                    }
                     Node32::Constant(constant) => {
                         MutNode::Expression(MutExpression::Constant(constant))
                     }
@@ -1335,6 +1342,15 @@ impl Plan {
         None
     }
 
+    /// Return Reference if this `node_id` refers to it,
+    /// otherwise return `None`.
+    pub fn get_sq_reference(&self, node_id: NodeId) -> Option<&SubQueryReference> {
+        if let Expression::SubQueryReference(r) = self.get_expression_node(node_id).ok()? {
+            return Some(r);
+        }
+        None
+    }
+
     /// Get mutable expression type node
     ///
     /// # Errors
@@ -1369,6 +1385,24 @@ impl Plan {
             matches!(
                 self.get_node(node_id),
                 Ok(Node::Expression(Expression::Reference(_)))
+            )
+        };
+        let mut dfs = PostOrderWithFilter::with_capacity(
+            |x| self.nodes.expr_iter(x, false),
+            EXPR_CAPACITY,
+            Box::new(filter),
+        );
+        dfs.populate_nodes(expr_id);
+        let ref_ids: Vec<NodeId> = dfs.take_nodes().iter().map(|n| n.1).collect();
+        Ok(ref_ids)
+    }
+
+    /// Get vec of subquery references from the subtree of the given expression.
+    pub fn get_sq_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+        let filter = |node_id: NodeId| -> bool {
+            matches!(
+                self.get_node(node_id),
+                Ok(Node::Expression(Expression::SubQueryReference(_)))
             )
         };
         let mut dfs = PostOrderWithFilter::with_capacity(
@@ -1627,6 +1661,7 @@ impl Plan {
             }
             MutExpression::Constant { .. }
             | MutExpression::Reference { .. }
+            | MutExpression::SubQueryReference { .. }
             | MutExpression::CountAsterisk { .. }
             | MutExpression::Timestamp { .. }
             | MutExpression::Parameter { .. } => {}
@@ -1723,22 +1758,26 @@ impl Plan {
     ///
     /// # Errors
     /// - node doesn't exist in the plan
-    /// - node is not `Reference`
+    /// - node is neither `Reference` nor `SubQueryReference`
     /// - invalid references between nodes
     ///
     /// # Panics
     /// - Plan is in invalid state
     pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<&str, SbroadError> {
-        let Expression::Reference(Reference {
-            target, position, ..
-        }) = node
-        else {
-            unreachable!("get_alias_from_reference_node: Node is not of a reference type");
+        let (ref_node_target_child, position) = match node {
+            Expression::Reference(Reference {
+                target, position, ..
+            }) => (
+                target
+                    .first()
+                    .expect("Expected at least one node in reference"),
+                position,
+            ),
+            Expression::SubQueryReference(SubQueryReference {
+                rel_id, position, ..
+            }) => (rel_id, position),
+            _ => unreachable!("get_alias_from_reference_node: Node is not of a reference type"),
         };
-
-        let ref_node_target_child = target
-            .first()
-            .expect("Expected at least one node in reference");
 
         let column_rel_node = self.get_relation_node(*ref_node_target_child)?;
         let column_expr_node = self.get_expression_node(column_rel_node.output())?;
@@ -1799,6 +1838,7 @@ impl Plan {
                     | Expression::CountAsterisk(_)
                     | Expression::Row(_)
                     | Expression::Reference(_)
+                    | Expression::SubQueryReference(_)
                     | Expression::Constant(_)
                     | Expression::Cast(_)
                     | Expression::Parameter(_)

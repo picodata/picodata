@@ -14,8 +14,8 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, BoolExpr, Bound, BoundType, Case, Cast, Concat, Delete,
     GroupBy, Having, Insert, Join, Like, Motion, Node136, NodeId, NodeOwned, OrderBy, Over,
-    Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection, Trim,
-    UnaryExpr, Update, ValuesRow, Window,
+    Projection, Reference, ReferenceTarget, Row, ScalarFunction, ScanRelation, Selection,
+    SubQueryReference, Trim, UnaryExpr, Update, ValuesRow, Window,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::relation::SpaceEngine;
@@ -824,6 +824,14 @@ impl ExecutionPlan {
                             }
                         }
                     },
+                    ExprOwned::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                        match subtree_map.get_id_if_exist(*rel_id) {
+                            Some(node) => {
+                                *rel_id = *node;
+                            }
+                            None => is_invalid_ref = true,
+                        }
+                    }
                     ExprOwned::Row(Row {
                         list: ref mut children,
                         ..

@@ -15,7 +15,8 @@ use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Constant, Delete, Having, Insert, Join,
     Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte, ScanRelation,
-    ScanSubQuery, Selection, Timestamp, Trim, UnaryExpr, Update as UpdateRel, Values, ValuesRow,
+    ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr, Update as UpdateRel,
+    Values, ValuesRow,
 };
 use crate::ir::operator::{ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType};
 use crate::ir::options::OptionKind;
@@ -336,6 +337,26 @@ impl ColExpr {
                     let rel_id: NodeId = plan.get_relational_from_reference_node(id)?;
 
                     if let Some(name) = plan.scan_name(rel_id, *position)? {
+                        col_name.push('"');
+                        col_name.push_str(name);
+                        col_name.push('"');
+                        col_name.push('.');
+                    }
+
+                    let alias = plan.get_alias_from_reference_node(&current_node)?;
+                    col_name.push('"');
+                    col_name.push_str(alias);
+                    col_name.push('"');
+
+                    let ref_expr = ColExpr::Column(col_name, current_node.calculate_type(plan)?);
+                    stack.push((ref_expr, id));
+                }
+                Expression::SubQueryReference(SubQueryReference {
+                    position, rel_id, ..
+                }) => {
+                    let mut col_name = String::new();
+
+                    if let Some(name) = plan.scan_name(*rel_id, *position)? {
                         col_name.push('"');
                         col_name.push_str(name);
                         col_name.push('"');
@@ -945,25 +966,27 @@ impl Row {
 
             match &current_node {
                 Expression::Reference { .. } => {
-                    let rel_id: NodeId = plan.get_relational_from_reference_node(expr_id)?;
-
-                    let rel_node = plan.get_relation_node(rel_id)?;
-                    if plan.is_additional_child(rel_id)? {
-                        if let Relational::ScanSubQuery { .. } | Relational::Motion { .. } =
-                            rel_node
-                        {
-                            let sq_offset = sq_ref_map.get(&rel_id).unwrap_or_else(|| {
-                                panic!("Not found subquery with index {rel_id} in the map.")
-                            });
+                    let col = ColExpr::new(plan, expr_id, sq_ref_map)?;
+                    row.add_col(RowVal::ColumnExpr(col));
+                }
+                Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                    let rel_node = plan.get_relation_node(*rel_id)?;
+                    if let Relational::ScanSubQuery { .. } | Relational::Motion { .. } = rel_node {
+                        if let Some(sq_offset) = sq_ref_map.get(rel_id) {
                             row.add_col(RowVal::SqRef(Ref::new(*sq_offset)));
                         } else {
-                            panic!(
-                                "Additional child ({rel_id}) is not SQ or Motion: {rel_node:?}."
-                            );
+                            return Err(SbroadError::NotFound(
+                                Entity::SubQuery,
+                                format_smolstr!("with id {rel_id}"),
+                            ));
                         }
                     } else {
-                        let col = ColExpr::new(plan, expr_id, sq_ref_map)?;
-                        row.add_col(RowVal::ColumnExpr(col));
+                        Err(SbroadError::Invalid(
+                            Entity::Node,
+                            Some(format_smolstr!(
+                                "additional child ({rel_id}) is neither SQ nor Motion: {rel_node:?}."
+                            )),
+                        ))?;
                     }
                 }
                 _ => row.add_col(RowVal::ColumnExpr(col_expr)),
