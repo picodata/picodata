@@ -1,4 +1,4 @@
-# Picodata Sirin
+# Sirin
 
 В данном разделе приведены сведения о Sirin, плагине для СУБД Picodata.
 
