@@ -2184,7 +2184,14 @@ class Cluster:
                     continue
                 has_rebalancer = j.eval(
                     """
+                    for _, router in pairs(pico.router) do
+                        -- The discovery fiber is responsible for updating the
+                        -- router's bucket to replicaset mapping cache.
+                        router:discovery_wakeup()
+                    end
                     if vshard.storage.internal.rebalancer_fiber ~= nil then
+                        -- The rebalancer fiber is responsible for sending sharded
+                        -- data between storages.
                         vshard.storage.rebalancer_wakeup()
                         return true
                     end
