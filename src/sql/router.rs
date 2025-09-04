@@ -42,6 +42,10 @@ use sbroad::ir::types::{DerivedType, UnrestrictedType};
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
+use crate::metrics::{
+    ROUTER_CACHE_HITS_TOTAL, ROUTER_CACHE_MISSES_TOTAL, ROUTER_CACHE_STATEMENTS_ADDED_TOTAL,
+    ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL,
+};
 use ::tarantool::tuple::{KeyDef, Tuple};
 use tarantool::space::SpaceId;
 
@@ -206,8 +210,13 @@ pub struct PicoRouterCache {
 
 impl PicoRouterCache {
     pub fn new(capacity: usize) -> Result<Self, SbroadError> {
+        fn evict(_key: &SmolStr, _value: &mut Rc<Plan>) -> Result<(), SbroadError> {
+            ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
+            Ok(())
+        }
+
         Ok(PicoRouterCache {
-            inner: PlanCache::new(capacity, None)?,
+            inner: PlanCache::new(capacity, Some(Box::new(evict)))?,
         })
     }
 
@@ -230,42 +239,59 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
     }
 
     fn get(&mut self, key: &SmolStr) -> Result<Option<&Rc<Plan>>, SbroadError> {
-        let Some(ir) = self.inner.get(key)? else {
-            return Ok(None);
-        };
-        // check Plan's tables have up to date schema
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let pico_table = &node.storage.pico_table;
-        for (tbl_name, tbl) in &ir.relations.tables {
-            if tbl.is_system() {
-                continue;
-            }
-            let cached_version = *ir.version_map.get(tbl_name.as_str()).ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Table,
-                    format_smolstr!("in version map with name: {}", tbl_name),
-                )
-            })?;
-            let Some(table_def) = pico_table.by_name(tbl_name.as_str()).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-            })?
-            else {
+        fn do_get<'a>(
+            cache: &'a mut PlanCache,
+            key: &SmolStr,
+        ) -> Result<Option<&'a Rc<Plan>>, SbroadError> {
+            let Some(ir) = cache.get(key)? else {
                 return Ok(None);
             };
-            // The outdated entry will be replaced when
-            // `put` is called (which is always called
-            // after cache miss).
-            if cached_version != table_def.schema_version {
-                return Ok(None);
+            // check Plan's tables have up to date schema
+            let node = node::global().map_err(|e| {
+                SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+            })?;
+            let pico_table = &node.storage.pico_table;
+            for (tbl_name, tbl) in &ir.relations.tables {
+                if tbl.is_system() {
+                    continue;
+                }
+                let cached_version = *ir.version_map.get(tbl_name.as_str()).ok_or_else(|| {
+                    SbroadError::NotFound(
+                        Entity::Table,
+                        format_smolstr!("in version map with name: {}", tbl_name),
+                    )
+                })?;
+                let Some(space_def) = pico_table.by_name(tbl_name.as_str()).map_err(|e| {
+                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+                })?
+                else {
+                    return Ok(None);
+                };
+                // The outdated entry will be replaced when
+                // `put` is called (which is always called
+                // after cache miss).
+                if cached_version != space_def.schema_version {
+                    return Ok(None);
+                }
             }
+            Ok(Some(ir))
         }
-        Ok(Some(ir))
+
+        let value = do_get(&mut self.inner, key)?;
+
+        if value.is_some() {
+            ROUTER_CACHE_HITS_TOTAL.inc();
+        } else {
+            ROUTER_CACHE_MISSES_TOTAL.inc();
+        }
+
+        Ok(value)
     }
 
     fn put(&mut self, key: SmolStr, value: Rc<Plan>) -> Result<(), SbroadError> {
-        self.inner.put(key, value)
+        self.inner.put(key, value)?;
+        ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.inc();
+        Ok(())
     }
 
     fn clear(&mut self) -> Result<(), SbroadError> {

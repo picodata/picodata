@@ -25,6 +25,9 @@ use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
 
+use crate::metrics::{
+    STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
+};
 use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
 };
@@ -60,6 +63,7 @@ type StorageCacheValue = (Statement, VersionMap, Vec<NodeId>);
 
 fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
     let (stmt, _, table_ids) = std::mem::take(val);
+    STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.inc();
     unprepare(plan_id, &mut (stmt, table_ids))
 }
 
@@ -127,6 +131,7 @@ impl StorageCache for PicoStorageCache {
         }
 
         self.cache.put(plan_id, (stmt, version_map, table_ids))?;
+        STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.inc();
         Ok(())
     }
 

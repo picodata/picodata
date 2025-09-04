@@ -8,6 +8,7 @@ use crate::catalog::governor_queue;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
+use crate::metrics::{STORAGE_CACHE_1ST_REQUESTS_TOTAL, STORAGE_CACHE_2ND_REQUESTS_TOTAL};
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -93,6 +94,8 @@ pub mod router;
 pub mod storage;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
+use sbroad::executor::engine::helpers::vshard::CacheInfo;
+use sbroad::executor::ir::QueryType;
 use sbroad::BoundStatement;
 use serde::Serialize;
 
@@ -2441,6 +2444,14 @@ pub unsafe extern "C" fn proc_sql_execute(
             )
         }
     };
+
+    // Report cache metrics only for DQL queries as other types of queries are not cached.
+    if required.query_type == QueryType::DQL {
+        match cache_info {
+            CacheInfo::CacheableFirstRequest => STORAGE_CACHE_1ST_REQUESTS_TOTAL.inc(),
+            CacheInfo::CacheableSecondRequest => STORAGE_CACHE_2ND_REQUESTS_TOTAL.inc(),
+        }
+    }
 
     let runtime = StorageRuntime::new();
     match runtime.execute_plan(&mut required, optional_bytes, cache_info) {

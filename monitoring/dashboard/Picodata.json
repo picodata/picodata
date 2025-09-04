@@ -1,65 +1,4 @@
 {
-  "__inputs": [
-    {
-      "name": "DS_VM",
-      "label": "VM",
-      "description": "",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "pluginName": "Prometheus"
-    }
-  ],
-  "__elements": {},
-  "__requires": [
-    {
-      "type": "panel",
-      "id": "gauge",
-      "name": "Gauge",
-      "version": ""
-    },
-    {
-      "type": "grafana",
-      "id": "grafana",
-      "name": "Grafana",
-      "version": "12.0.2"
-    },
-    {
-      "type": "panel",
-      "id": "histogram",
-      "name": "Histogram",
-      "version": ""
-    },
-    {
-      "type": "datasource",
-      "id": "prometheus",
-      "name": "Prometheus",
-      "version": "1.0.0"
-    },
-    {
-      "type": "panel",
-      "id": "stat",
-      "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "table",
-      "name": "Table",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "text",
-      "name": "Text",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "timeseries",
-      "name": "Time series",
-      "version": ""
-    }
-  ],
   "annotations": {
     "list": [
       {
@@ -80,11 +19,11 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
+  "id": 1,
   "links": [],
   "panels": [
     {
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -92,644 +31,651 @@
         "y": 0
       },
       "id": 2,
-      "panels": [],
-      "title": "Picodata Cluster overview",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$prometheus"
-      },
-      "description": "Overview of Picodata instances observed by Prometheus job.\n\nIf instance row is *red*, it means Prometheus can't reach\nURI specified in targets or ran into error.\nIf instance row is *green*, it means instance is up and running and\nPrometheus is successfully extracting metrics from it.\n\"Uptime\" column shows time since instant start.\n\nInstance instance filtering is disabled here.\n\nIf Prometheus job filter is not specified, displays running instances\nand ignores unreachable instances (we have no specific source to fetch)\n",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "text",
-            "mode": "fixed"
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$prometheus"
           },
-          "custom": {
-            "align": "left",
-            "cellOptions": {
-              "type": "color-text"
-            },
-            "inspect": false,
-            "minWidth": 200
-          },
-          "mappings": [],
-          "noValue": "UP",
-          "thresholds": {
-            "mode": "percentage",
-            "steps": [
-              {
-                "color": "green"
+          "description": "Overview of Picodata instances observed by Prometheus job.\n\nIf instance row is *red*, it means Prometheus can't reach\nURI specified in targets or ran into error.\nIf instance row is *green*, it means instance is up and running and\nPrometheus is successfully extracting metrics from it.\n\"Uptime\" column shows time since instant start.\n\nInstance instance filtering is disabled here.\n\nIf Prometheus job filter is not specified, displays running instances\nand ignores unreachable instances (we have no specific source to fetch)\n",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "text",
+                "mode": "fixed"
               },
-              {
-                "color": "red",
-                "value": ""
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "color-text"
+                },
+                "inspect": false,
+                "minWidth": 200
               },
-              {
-                "color": "#EAB839",
-                "value": "10"
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "__name__"
-            },
-            "properties": [
-              {
-                "id": "custom.hidden",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "alias"
-            },
-            "properties": [
-              {
-                "id": "custom.hidden",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Value"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Uptime"
-              },
-              {
-                "id": "mappings",
-                "value": [
+              "mappings": [],
+              "noValue": "UP",
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
                   {
-                    "options": {
-                      "0": {
-                        "color": "dark-red",
-                        "index": 0
-                      }
-                    },
-                    "type": "value"
+                    "color": "green",
+                    "value": 0
                   },
                   {
-                    "options": {
-                      "from": 1,
-                      "result": {
-                        "color": "dark-green",
-                        "index": 1
-                      },
-                      "to": 100000000000
-                    },
-                    "type": "range"
+                    "color": "red",
+                    "value": ""
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": "10"
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "__name__"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
                   }
                 ]
               },
               {
-                "id": "unit",
-                "value": "dtdhms"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "job"
-            },
-            "properties": [
+                "matcher": {
+                  "id": "byName",
+                  "options": "alias"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
               {
-                "id": "custom.hidden",
-                "value": true
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Uptime"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "0": {
+                            "color": "dark-red",
+                            "index": 0
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "from": 1,
+                          "result": {
+                            "color": "dark-green",
+                            "index": 1
+                          },
+                          "to": 100000000000
+                        },
+                        "type": "range"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "unit",
+                    "value": "dtdhms"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "job"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
               }
             ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 9,
-        "x": 0,
-        "y": 1
-      },
-      "id": 3,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
           },
-          "editorMode": "code",
-          "expr": "up{job=~\"$job\"} * on(instance) group_left(alias) pico_info_uptime{job=~\"$job\"} or\r\non(instance) label_replace(up{job=~\"$job\"}, \"alias\", \"Down\", \"instance\", \".*\")",
-          "format": "table",
-          "instant": true,
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "refId": "A"
-        }
-      ],
-      "title": "Cluster status overview",
-      "transformations": [
-        {
-          "id": "merge",
+          "gridPos": {
+            "h": 9,
+            "w": 9,
+            "x": 0,
+            "y": 295
+          },
+          "id": 3,
           "options": {
-            "reducers": []
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$prometheus"
-      },
-      "description": "Up and Down running Picodata instances.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed"
-          },
-          "decimals": 0,
-          "links": [],
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "semi-dark-red"
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Up"
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
             },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
+            "showHeader": true
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Down"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
+          "pluginVersion": "12.1.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
               },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 7,
-        "x": 9,
-        "y": 1
-      },
-      "id": 168,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "last"
+              "editorMode": "code",
+              "expr": "up{job=~\"$job\"} * on(instance) group_left(alias) pico_info_uptime{job=~\"$job\"} or\r\non(instance) label_replace(up{job=~\"$job\"}, \"alias\", \"Down\", \"instance\", \".*\")",
+              "format": "table",
+              "instant": true,
+              "intervalFactor": 2,
+              "legendFormat": "",
+              "refId": "A"
+            }
           ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
-          },
-          "editorMode": "code",
-          "expr": "sum(up{job=~\"$job\"})",
-          "format": "time_series",
-          "intervalFactor": 2,
-          "legendFormat": "Up",
-          "range": true,
-          "refId": "A"
+          "title": "Cluster status overview",
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {
+                "reducers": []
+              }
+            }
+          ],
+          "type": "table"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "$prometheus"
           },
-          "editorMode": "code",
-          "expr": "count(up{job=~\"$job\"}) - sum(up{job=~\"$job\"})",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "Down",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_VM}"
-      },
-      "description": "Overall value of memory available for Tarantool items",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
+          "description": "Up and Down running Picodata instances.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "fixed"
+              },
+              "decimals": 0,
+              "links": [],
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "semi-dark-red",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "none"
             },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "decimals": 2,
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+            "overrides": [
               {
-                "color": "green"
-              }
-            ]
-          },
-          "unit": "bytes"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Memory total"
-            },
-            "properties": []
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Memory used"
-            },
-            "properties": []
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 8,
-        "x": 16,
-        "y": 1
-      },
-      "id": 185,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
-          },
-          "editorMode": "code",
-          "expr": "tnt_slab_quota_size{job=~\"$job\"}",
-          "legendFormat": "{{instance_name}} - Memory Total",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
-          },
-          "editorMode": "code",
-          "expr": "tnt_slab_arena_used{job=~\"$job\"}",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "{{instance_name}} Memory Used",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Memory Load",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_VM}"
-      },
-      "description": "Send and Receive throughput in bytes/sec in the Cluster",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
+                "matcher": {
+                  "id": "byName",
+                  "options": "Up"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "semi-dark-green",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
               },
               {
-                "color": "red",
-                "value": 80
+                "matcher": {
+                  "id": "byName",
+                  "options": "Down"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "semi-dark-red",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
               }
             ]
           },
-          "unit": "Bps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 10
-      },
-      "id": 186,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true,
-          "sortBy": "Last *",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 9,
+            "y": 295
           },
-          "editorMode": "code",
-          "expr": "rate(tnt_net_received_total{instance=~\"$instance\"}[$__rate_interval])",
-          "legendFormat": "{{instance_name}} - Receive (In)",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_VM}"
+          "id": 168,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "last"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "value_and_name",
+            "wideLayout": true
           },
-          "editorMode": "code",
-          "expr": "rate(tnt_net_sent_total{instance=~\"$instance\"}[5m])",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "{{instance_name}} - Sent (Out)",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Network I/O (bytes/sec)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_VM}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
+          "pluginVersion": "12.1.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum(up{job=~\"$job\"})",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "Up",
+              "range": true,
+              "refId": "A"
             },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineStyle": {
-              "fill": "solid"
-            },
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$prometheus"
+              },
+              "editorMode": "code",
+              "expr": "count(up{job=~\"$job\"}) - sum(up{job=~\"$job\"})",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "Down",
+              "range": true,
+              "refId": "B"
             }
+          ],
+          "title": "",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
           },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          "description": "Overall value of memory available for Tarantool items",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "decimals": 2,
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": [
               {
-                "color": "green"
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory total"
+                },
+                "properties": []
               },
               {
-                "color": "red",
-                "value": 80
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory used"
+                },
+                "properties": []
               }
             ]
           },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 10
-      },
-      "id": 187,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "lastNotNull",
-            "max"
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 295
+          },
+          "id": 185,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.1.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "tnt_slab_quota_size{job=~\"$job\"}",
+              "legendFormat": "{{instance_name}} - Memory Total",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "tnt_slab_arena_used{job=~\"$job\"}",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "{{instance_name}} Memory Used",
+              "range": true,
+              "refId": "B"
+            }
           ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true,
-          "sortBy": "Last *",
-          "sortDesc": true
+          "title": "Memory Load",
+          "type": "timeseries"
         },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
-          "editorMode": "code",
-          "expr": "( rate(tnt_cpu_user_time{instance=~\"$instance\"}[$__rate_interval]) \n  + rate(tnt_cpu_system_time{instance=~\"$instance\"}[$__rate_interval])\n)\n* 100",
-          "hide": false,
-          "legendFormat": "{{instance_name}}",
-          "range": true,
-          "refId": "A"
+          "description": "Send and Receive throughput in bytes/sec in the Cluster",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "Bps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 404
+          },
+          "id": 186,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Last *",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.1.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "rate(tnt_net_received_total{instance=~\"$instance\"}[$__rate_interval])",
+              "legendFormat": "{{instance_name}} - Receive (In)",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "rate(tnt_net_sent_total{instance=~\"$instance\"}[5m])",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "{{instance_name}} - Sent (Out)",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Network I/O (bytes/sec)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 404
+          },
+          "id": 187,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "sortBy": "Last *",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.1.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "( rate(tnt_cpu_user_time{instance=~\"$instance\"}[$__rate_interval]) \n  + rate(tnt_cpu_system_time{instance=~\"$instance\"}[$__rate_interval])\n)\n* 100",
+              "hide": false,
+              "legendFormat": "{{instance_name}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "CPU Load",
+          "type": "timeseries"
         }
       ],
-      "title": "CPU Load",
-      "type": "timeseries"
+      "title": "Picodata Cluster overview",
+      "type": "row"
     },
     {
       "collapsed": true,
@@ -737,14 +683,14 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 1
       },
       "id": 174,
       "panels": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of governor transitions ",
           "fieldConfig": {
@@ -758,7 +704,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   }
                 ]
               },
@@ -770,7 +717,7 @@
             "h": 9,
             "w": 12,
             "x": 0,
-            "y": 20
+            "y": 2
           },
           "id": 181,
           "options": {
@@ -788,12 +735,12 @@
             "showThresholdMarkers": true,
             "sizing": "auto"
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -893,7 +840,7 @@
             "h": 9,
             "w": 12,
             "x": 12,
-            "y": 20
+            "y": 2
           },
           "id": 13,
           "options": {
@@ -912,12 +859,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_read_only{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -932,7 +879,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Current rate of operations submitted via CAS on global tables. This includes SQL inserts into global tables",
           "fieldConfig": {
@@ -982,7 +929,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -998,7 +946,7 @@
             "h": 9,
             "w": 8,
             "x": 0,
-            "y": 29
+            "y": 113
           },
           "id": 175,
           "options": {
@@ -1020,12 +968,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1047,7 +995,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Error rate for CAS operations",
           "fieldConfig": {
@@ -1097,7 +1045,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1113,7 +1062,7 @@
             "h": 9,
             "w": 8,
             "x": 8,
-            "y": 29
+            "y": 113
           },
           "id": 198,
           "options": {
@@ -1135,12 +1084,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1162,7 +1111,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "",
           "fieldConfig": {
@@ -1189,7 +1138,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   }
                 ]
               },
@@ -1201,7 +1151,7 @@
             "h": 9,
             "w": 8,
             "x": 16,
-            "y": 29
+            "y": 113
           },
           "id": 176,
           "options": {
@@ -1224,12 +1174,12 @@
               "sort": "asc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1251,7 +1201,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of RPC requests",
           "fieldConfig": {
@@ -1300,7 +1250,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1316,7 +1267,7 @@
             "h": 9,
             "w": 8,
             "x": 0,
-            "y": 38
+            "y": 122
           },
           "id": 177,
           "options": {
@@ -1338,12 +1289,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1364,7 +1315,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of RPC requests",
           "fieldConfig": {
@@ -1413,7 +1364,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1429,7 +1381,7 @@
             "h": 9,
             "w": 8,
             "x": 8,
-            "y": 38
+            "y": 122
           },
           "id": 199,
           "options": {
@@ -1451,12 +1403,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1477,7 +1429,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "",
           "fieldConfig": {
@@ -1505,7 +1457,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1521,7 +1474,7 @@
             "h": 9,
             "w": 8,
             "x": 16,
-            "y": 38
+            "y": 122
           },
           "id": 178,
           "options": {
@@ -1544,12 +1497,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1570,7 +1523,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of SQL queries",
           "fieldConfig": {
@@ -1616,7 +1569,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   }
                 ]
               },
@@ -1628,7 +1582,7 @@
             "h": 9,
             "w": 8,
             "x": 0,
-            "y": 47
+            "y": 131
           },
           "id": 179,
           "options": {
@@ -1650,12 +1604,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1677,7 +1631,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of SQL queries resulted in errors",
           "fieldConfig": {
@@ -1725,7 +1679,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1741,7 +1696,7 @@
             "h": 9,
             "w": 8,
             "x": 8,
-            "y": 47
+            "y": 131
           },
           "id": 184,
           "options": {
@@ -1763,12 +1718,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1790,7 +1745,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "",
           "fieldConfig": {
@@ -1818,7 +1773,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -1850,7 +1806,7 @@
             "h": 9,
             "w": 8,
             "x": 16,
-            "y": 47
+            "y": 131
           },
           "id": 180,
           "options": {
@@ -1872,12 +1828,12 @@
               "sort": "none"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "disableTextWrap": false,
               "editorMode": "code",
@@ -1901,12 +1857,1353 @@
       "type": "row"
     },
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 219,
+      "panels": [],
+      "title": "Picodata query caches statistics",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 3
+      },
+      "id": 203,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "vertical",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(rate(pico_router_cache_hits_total[1m])) / clamp_min(sum(rate(pico_router_cache_hits_total[1m]) + rate(pico_router_cache_misses_total[1m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "1m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(pico_router_cache_hits_total[5m])) / clamp_min(sum(rate(pico_router_cache_hits_total[5m]) + rate(pico_router_cache_misses_total[5m])), 1)",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "5m",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(rate(pico_router_cache_hits_total[20m])) / clamp_min(sum(rate(pico_router_cache_hits_total[20m]) + rate(pico_router_cache_misses_total[20m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "legendFormat": "20m",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Clusterwide router cache hitrate (5 mins)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMax": 1,
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "super-light-green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 5,
+        "y": 3
+      },
+      "id": 200,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(pico_router_cache_hits_total[$__rate_interval]) / (rate(pico_router_cache_hits_total[$__rate_interval]) + rate(pico_router_cache_misses_total[$__rate_interval]))",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router cache hitrate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 3
+      },
+      "id": 216,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(pico_router_cache_statements_added_total - pico_router_cache_statements_evicted_total) / clamp_min(rate(pico_router_cache_statements_evicted_total[$__rate_interval]), 1)",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Estimated router cache entry lifetime",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 7
+      },
+      "id": 215,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "vertical",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(pico_router_cache_statements_added_total) - sum(pico_router_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total[1m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "1m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "(sum(pico_router_cache_statements_added_total) - sum(pico_router_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total[5m])), 1)",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "5m",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(pico_router_cache_statements_added_total) - sum(pico_router_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_router_cache_statements_evicted_total[20m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "legendFormat": "20m",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Clusterwide router cache entry lifetime (5 minutes)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 11
+      },
+      "id": 204,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "vertical",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(pico_storage_cache_1st_requests_total[1m]) - rate(pico_storage_cache_2nd_requests_total[1m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total[1m])), 1)",
+          "hide": true,
+          "legendFormat": "1m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(pico_storage_cache_1st_requests_total[5m]) - rate(pico_storage_cache_2nd_requests_total[5m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total[5m])), 1)",
+          "hide": false,
+          "legendFormat": "5m",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(pico_storage_cache_1st_requests_total[20m]) - rate(pico_storage_cache_2nd_requests_total[20m])) / clamp_min(sum(rate(pico_storage_cache_1st_requests_total[20m])), 1)",
+          "hide": true,
+          "legendFormat": "20m",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Clusterwide storage cache hitrate (5 minutes)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMax": 1,
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "super-light-green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 5,
+        "y": 11
+      },
+      "id": 201,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(rate(pico_storage_cache_1st_requests_total[$__rate_interval]) - rate(pico_storage_cache_2nd_requests_total[$__rate_interval])) / rate(pico_storage_cache_1st_requests_total[$__rate_interval])",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Storage cache hitrate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 11
+      },
+      "id": 217,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(pico_storage_cache_statements_added_total - pico_storage_cache_statements_evicted_total) / clamp_min(rate(pico_storage_cache_statements_evicted_total[$__rate_interval]), 1)",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Estimated storage cache entry lifetime",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 15
+      },
+      "id": 218,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "vertical",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[1m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "1m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[5m])), 1)",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "5m",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(pico_storage_cache_statements_added_total) - sum(pico_storage_cache_statements_evicted_total) ) / clamp_min(sum(rate(pico_storage_cache_statements_evicted_total[20m])), 1)",
+          "format": "time_series",
+          "hide": true,
+          "instant": false,
+          "legendFormat": "20m",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Clusterwide storage cache entry lifetime (5 minutes)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "total",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 19
+      },
+      "id": 210,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "pico_router_cache_statements_added_total",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total router cache entries added",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "new per second",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 19
+      },
+      "id": 205,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(pico_router_cache_statements_added_total[$__rate_interval])",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "New router cache entries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "current",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 19
+      },
+      "id": 211,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "pico_router_cache_statements_added_total - pico_router_cache_statements_evicted_total",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Current router cache entries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "total",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "id": 212,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "pico_storage_cache_statements_added_total",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total storage cache entries added",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "new per second",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 26
+      },
+      "id": 213,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(pico_storage_cache_statements_added_total[$__rate_interval])",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "New storage cache entries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "current",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 26
+      },
+      "id": 214,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "pico_storage_cache_statements_added_total - pico_storage_cache_statements_evicted_total",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Current storage cache entries",
+      "type": "timeseries"
+    },
+    {
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 33
       },
       "id": 18,
       "panels": [
@@ -1994,7 +3291,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 517
+            "y": 1029
           },
           "id": 19,
           "options": {
@@ -2018,7 +3315,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_replication_status{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2095,7 +3392,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 517
+            "y": 1029
           },
           "id": 20,
           "options": {
@@ -2120,7 +3417,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_replication_lag{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2196,7 +3493,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 517
+            "y": 1029
           },
           "id": 21,
           "options": {
@@ -2220,7 +3517,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_clock_delta{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2297,7 +3594,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 525
+            "y": 1037
           },
           "id": 22,
           "options": {
@@ -2321,7 +3618,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2398,7 +3695,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 525
+            "y": 1037
           },
           "id": 172,
           "options": {
@@ -2422,7 +3719,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_synchro_queue_owner{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2498,7 +3795,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 525
+            "y": 1037
           },
           "id": 24,
           "options": {
@@ -2524,7 +3821,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_synchro_queue_len{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2620,7 +3917,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 525
+            "y": 1037
           },
           "id": 25,
           "options": {
@@ -2644,7 +3941,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_synchro_queue_busy{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2666,7 +3963,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 34
       },
       "id": 33,
       "panels": [
@@ -2718,7 +4015,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -2734,7 +4032,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 187
+            "y": 415
           },
           "id": 34,
           "options": {
@@ -2755,12 +4053,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_info_memory_net{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -2820,7 +4118,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -2836,7 +4135,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 187
+            "y": 415
           },
           "id": 35,
           "options": {
@@ -2857,12 +4156,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -2922,7 +4221,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -2938,7 +4238,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 187
+            "y": 415
           },
           "id": 36,
           "options": {
@@ -2959,12 +4259,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3024,7 +4324,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3040,7 +4341,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 195
+            "y": 423
           },
           "id": 37,
           "options": {
@@ -3061,12 +4362,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3128,7 +4429,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3144,7 +4446,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 195
+            "y": 423
           },
           "id": 38,
           "options": {
@@ -3165,12 +4467,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3230,7 +4532,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3246,7 +4549,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 203
+            "y": 431
           },
           "id": 39,
           "options": {
@@ -3267,12 +4570,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3333,7 +4636,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3349,7 +4653,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 203
+            "y": 431
           },
           "id": 40,
           "options": {
@@ -3370,12 +4674,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3435,7 +4739,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3451,7 +4756,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 203
+            "y": 431
           },
           "id": 41,
           "options": {
@@ -3472,12 +4777,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3538,7 +4843,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3554,7 +4860,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 203
+            "y": 431
           },
           "id": 42,
           "options": {
@@ -3575,12 +4881,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3640,7 +4946,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3656,7 +4963,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 211
+            "y": 439
           },
           "id": 43,
           "options": {
@@ -3677,12 +4984,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3743,7 +5050,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3759,7 +5067,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 211
+            "y": 439
           },
           "id": 44,
           "options": {
@@ -3780,12 +5088,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -3845,7 +5153,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3861,7 +5170,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 219
+            "y": 447
           },
           "id": 45,
           "options": {
@@ -3882,12 +5191,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_sent_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -3947,7 +5256,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -3963,7 +5273,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 219
+            "y": 447
           },
           "id": 46,
           "options": {
@@ -3984,12 +5294,12 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_received_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4065,7 +5375,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 227
+            "y": 455
           },
           "id": 47,
           "options": {
@@ -4091,7 +5401,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_connections_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4168,7 +5478,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 227
+            "y": 455
           },
           "id": 48,
           "options": {
@@ -4194,7 +5504,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_per_thread_connections_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4270,7 +5580,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 235
+            "y": 463
           },
           "id": 49,
           "options": {
@@ -4296,7 +5606,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_requests_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4372,7 +5682,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 235
+            "y": 463
           },
           "id": 50,
           "options": {
@@ -4398,7 +5708,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_progress_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4474,7 +5784,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 235
+            "y": 463
           },
           "id": 51,
           "options": {
@@ -4500,7 +5810,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_net_per_thread_requests_in_stream_queue_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -4577,7 +5887,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 243
+            "y": 471
           },
           "id": 52,
           "options": {
@@ -4605,7 +5915,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_per_thread_requests_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4682,7 +5992,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 243
+            "y": 471
           },
           "id": 53,
           "options": {
@@ -4708,7 +6018,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_per_thread_requests_in_progress_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4785,7 +6095,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 243
+            "y": 471
           },
           "id": 54,
           "options": {
@@ -4811,7 +6121,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_net_per_thread_requests_in_stream_queue_current{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -4833,14 +6143,14 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 35
       },
       "id": 197,
       "panels": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of pgproto connections.",
           "fieldConfig": {
@@ -4886,7 +6196,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -4901,7 +6212,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 23
+            "y": 240
           },
           "id": 188,
           "options": {
@@ -4917,18 +6228,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Total pgproto connections",
@@ -4937,7 +6248,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Average number of new pgproto connections per second.",
           "fieldConfig": {
@@ -4983,7 +6294,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -4998,7 +6310,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 23
+            "y": 240
           },
           "id": 190,
           "options": {
@@ -5018,18 +6330,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "New pgproto connections",
@@ -5038,7 +6350,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Number of current active pgproto connections.",
           "fieldConfig": {
@@ -5084,7 +6396,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5099,7 +6412,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 23
+            "y": 240
           },
           "id": 189,
           "options": {
@@ -5119,18 +6432,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_connections_opened_total{instance=~\"$instance\",job=~\"$job\"} - pico_pgproto_connections_closed_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Current pgproto connections",
@@ -5139,7 +6452,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of pgproto prepared statements since restart.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -5185,7 +6498,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5200,7 +6514,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 31
+            "y": 248
           },
           "id": 191,
           "options": {
@@ -5216,18 +6530,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Total pgproto statements",
@@ -5236,7 +6550,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Average number of new pgproto prepared statements per second.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -5282,7 +6596,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5297,7 +6612,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 31
+            "y": 248
           },
           "id": 192,
           "options": {
@@ -5317,18 +6632,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "New pgproto statements",
@@ -5337,7 +6652,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Number of current active pgproto prepared statements.\n\nStatements are prepared on a client's behalf.",
           "fieldConfig": {
@@ -5383,7 +6698,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5398,7 +6714,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 31
+            "y": 248
           },
           "id": 193,
           "options": {
@@ -5418,18 +6734,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_statements_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_statements_closed_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Current pgproto statements",
@@ -5438,7 +6754,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Total number of pgproto portals since restart.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -5484,7 +6800,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5499,7 +6816,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 39
+            "y": 256
           },
           "id": 194,
           "options": {
@@ -5515,18 +6832,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Total pgproto portals",
@@ -5535,7 +6852,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Average number of new pgproto portals per second.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -5581,7 +6898,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5596,7 +6914,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 39
+            "y": 256
           },
           "id": 195,
           "options": {
@@ -5616,18 +6934,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "rate(pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "New pgproto portals",
@@ -5636,7 +6954,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_VM}"
+            "uid": "PBFA97CFB590B2093"
           },
           "description": "Number of current active pgproto portals.\n\nPortal is created whenever we bind parameters to a prepared statement right before execution.",
           "fieldConfig": {
@@ -5682,7 +7000,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": 0
                   },
                   {
                     "color": "red",
@@ -5697,7 +7016,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 39
+            "y": 256
           },
           "id": 196,
           "options": {
@@ -5717,18 +7036,18 @@
               "sort": "desc"
             }
           },
-          "pluginVersion": "12.0.2",
+          "pluginVersion": "12.1.1",
           "targets": [
             {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
               "editorMode": "code",
               "expr": "pico_pgproto_portals_opened_total{instance=~\"$instance\",job=~\"$job\"} -\npico_pgproto_portals_closed_total{instance=~\"$instance\",job=~\"$job\"}",
               "legendFormat": "{{instance_name}}",
               "range": true,
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_VM}"
-              }
+              "refId": "A"
             }
           ],
           "title": "Current pgproto portals",
@@ -5744,7 +7063,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 36
       },
       "id": 55,
       "panels": [
@@ -5757,7 +7076,7 @@
             "h": 3,
             "w": 24,
             "x": 0,
-            "y": 663
+            "y": 1175
           },
           "id": 56,
           "options": {
@@ -5841,7 +7160,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 666
+            "y": 1178
           },
           "id": 173,
           "options": {
@@ -5867,7 +7186,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"} / tnt_slab_quota_size {instance=~\"$instance\",job=~\"$job\"} * 100",
@@ -5947,7 +7266,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 666
+            "y": 1178
           },
           "id": 58,
           "options": {
@@ -5971,7 +7290,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_arena_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6049,7 +7368,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 666
+            "y": 1178
           },
           "id": 59,
           "options": {
@@ -6073,7 +7392,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_items_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6151,7 +7470,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 674
+            "y": 1186
           },
           "id": 57,
           "options": {
@@ -6175,7 +7494,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_quota_used_ratio{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6252,7 +7571,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 674
+            "y": 1186
           },
           "id": 61,
           "options": {
@@ -6276,7 +7595,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_arena_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6353,7 +7672,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 674
+            "y": 1186
           },
           "id": 62,
           "options": {
@@ -6377,7 +7696,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_items_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6454,7 +7773,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 682
+            "y": 1194
           },
           "id": 60,
           "options": {
@@ -6478,7 +7797,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_quota_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6555,7 +7874,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 682
+            "y": 1194
           },
           "id": 64,
           "options": {
@@ -6579,7 +7898,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_arena_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6656,7 +7975,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 682
+            "y": 1194
           },
           "id": 65,
           "options": {
@@ -6680,7 +7999,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_items_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6757,7 +8076,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 690
+            "y": 1202
           },
           "id": 63,
           "options": {
@@ -6781,7 +8100,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_slab_quota_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -6803,7 +8122,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 37
       },
       "id": 66,
       "panels": [
@@ -6871,7 +8190,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2461
+            "y": 2973
           },
           "id": 67,
           "options": {
@@ -6897,7 +8216,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -6973,7 +8292,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2461
+            "y": 2973
           },
           "id": 68,
           "options": {
@@ -6999,7 +8318,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -7075,7 +8394,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2461
+            "y": 2973
           },
           "id": 69,
           "options": {
@@ -7101,7 +8420,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_statements{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -7177,7 +8496,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2557
+            "y": 3069
           },
           "id": 70,
           "options": {
@@ -7203,7 +8522,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7279,7 +8598,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2557
+            "y": 3069
           },
           "id": 71,
           "options": {
@@ -7305,7 +8624,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -7381,7 +8700,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2557
+            "y": 3069
           },
           "id": 72,
           "options": {
@@ -7407,7 +8726,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_user{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -7483,7 +8802,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2565
+            "y": 3077
           },
           "id": 73,
           "options": {
@@ -7509,7 +8828,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7585,7 +8904,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2565
+            "y": 3077
           },
           "id": 74,
           "options": {
@@ -7611,7 +8930,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -7687,7 +9006,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2565
+            "y": 3077
           },
           "id": 75,
           "options": {
@@ -7713,7 +9032,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_tnx_system{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -7789,7 +9108,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2573
+            "y": 3085
           },
           "id": 76,
           "options": {
@@ -7815,7 +9134,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -7891,7 +9210,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2573
+            "y": 3085
           },
           "id": 77,
           "options": {
@@ -7917,7 +9236,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -7993,7 +9312,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2573
+            "y": 3085
           },
           "id": 78,
           "options": {
@@ -8019,7 +9338,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_trackers{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -8094,7 +9413,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2581
+            "y": 3093
           },
           "id": 79,
           "options": {
@@ -8115,7 +9434,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8190,7 +9509,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2581
+            "y": 3093
           },
           "id": 80,
           "options": {
@@ -8211,7 +9530,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"average\"}",
               "format": "time_series",
@@ -8286,7 +9605,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2581
+            "y": 3093
           },
           "id": 81,
           "options": {
@@ -8307,7 +9626,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_conflicts{instance=~\"$instance\",job=~\"$job\",kind=\"max\"}",
               "format": "time_series",
@@ -8382,7 +9701,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2589
+            "y": 3101
           },
           "id": 82,
           "options": {
@@ -8403,7 +9722,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -8478,7 +9797,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2589
+            "y": 3101
           },
           "id": 83,
           "options": {
@@ -8499,7 +9818,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8574,7 +9893,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2589
+            "y": 3101
           },
           "id": 84,
           "options": {
@@ -8595,7 +9914,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -8670,7 +9989,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2589
+            "y": 3101
           },
           "id": 85,
           "options": {
@@ -8691,7 +10010,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_used_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8766,7 +10085,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2597
+            "y": 3109
           },
           "id": 86,
           "options": {
@@ -8787,7 +10106,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -8862,7 +10181,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2597
+            "y": 3109
           },
           "id": 87,
           "options": {
@@ -8883,7 +10202,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -8958,7 +10277,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2597
+            "y": 3109
           },
           "id": 88,
           "options": {
@@ -8979,7 +10298,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -9054,7 +10373,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2597
+            "y": 3109
           },
           "id": 89,
           "options": {
@@ -9075,7 +10394,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_read_view_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9150,7 +10469,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2605
+            "y": 3117
           },
           "id": 90,
           "options": {
@@ -9171,7 +10490,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -9246,7 +10565,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2605
+            "y": 3117
           },
           "id": 91,
           "options": {
@@ -9267,7 +10586,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_stories{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9342,7 +10661,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2605
+            "y": 3117
           },
           "id": 92,
           "options": {
@@ -9363,7 +10682,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"count\"}",
               "format": "time_series",
@@ -9438,7 +10757,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2605
+            "y": 3117
           },
           "id": 93,
           "options": {
@@ -9459,7 +10778,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_memtx_mvcc_tuples_tracking_retained{instance=~\"$instance\",job=~\"$job\",kind=\"total\"}",
               "format": "time_series",
@@ -9481,7 +10800,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 38
       },
       "id": 94,
       "panels": [
@@ -9550,7 +10869,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 2462
+            "y": 2974
           },
           "id": 95,
           "options": {
@@ -9574,7 +10893,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_space_len{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -9651,7 +10970,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 2462
+            "y": 2974
           },
           "id": 96,
           "options": {
@@ -9675,7 +10994,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_tuples{instance=~\"$instance\",engine=\"vinyl\",job=~\"$job\"}",
               "format": "time_series",
@@ -9751,7 +11070,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2558
+            "y": 3070
           },
           "id": 97,
           "options": {
@@ -9775,7 +11094,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_space_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -9851,7 +11170,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2558
+            "y": 3070
           },
           "id": 98,
           "options": {
@@ -9875,7 +11194,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_space_index_bsize{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -9951,7 +11270,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2558
+            "y": 3070
           },
           "id": 99,
           "options": {
@@ -9975,7 +11294,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_space_total_bsize{instance=~\"$instance\",engine=\"memtx\",job=~\"$job\"}",
               "format": "time_series",
@@ -9997,7 +11316,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 39
       },
       "id": 100,
       "panels": [
@@ -10065,7 +11384,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 2463
+            "y": 2975
           },
           "id": 101,
           "options": {
@@ -10089,7 +11408,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_disk_data_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10165,7 +11484,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 2463
+            "y": 2975
           },
           "id": 102,
           "options": {
@@ -10189,7 +11508,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_disk_index_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10265,7 +11584,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2471
+            "y": 2983
           },
           "id": 103,
           "options": {
@@ -10291,7 +11610,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
               "expr": "tnt_vinyl_memory_tuple_cache{instance=~\"$instance\",job=~\"$job\"}",
@@ -10369,7 +11688,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2471
+            "y": 2983
           },
           "id": 104,
           "options": {
@@ -10395,7 +11714,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_memory_page_index{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10471,7 +11790,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2471
+            "y": 2983
           },
           "id": 105,
           "options": {
@@ -10497,7 +11816,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_memory_bloom_filter{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10573,7 +11892,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2479
+            "y": 2991
           },
           "id": 106,
           "options": {
@@ -10599,7 +11918,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_regulator_dump_bandwidth{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10675,7 +11994,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2479
+            "y": 2991
           },
           "id": 107,
           "options": {
@@ -10701,7 +12020,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_regulator_write_rate{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10777,7 +12096,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2479
+            "y": 2991
           },
           "id": 108,
           "options": {
@@ -10803,7 +12122,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_regulator_rate_limit{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10879,7 +12198,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2487
+            "y": 2999
           },
           "id": 109,
           "options": {
@@ -10904,7 +12223,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_memory_level0{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -10980,7 +12299,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2487
+            "y": 2999
           },
           "id": 110,
           "options": {
@@ -11004,7 +12323,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_regulator_dump_watermark{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11080,7 +12399,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2487
+            "y": 2999
           },
           "id": 111,
           "options": {
@@ -11104,7 +12423,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_regulator_blocked_writers{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11180,7 +12499,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2495
+            "y": 3007
           },
           "id": 112,
           "options": {
@@ -11206,7 +12525,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_tx_commit{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11282,7 +12601,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2495
+            "y": 3007
           },
           "id": 113,
           "options": {
@@ -11308,7 +12627,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_tx_rollback{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11384,7 +12703,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2495
+            "y": 3007
           },
           "id": 114,
           "options": {
@@ -11410,7 +12729,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_tx_conflict{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11487,7 +12806,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2495
+            "y": 3007
           },
           "id": 115,
           "options": {
@@ -11513,7 +12832,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_tx_read_views{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -11589,7 +12908,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2503
+            "y": 3015
           },
           "id": 116,
           "options": {
@@ -11614,7 +12933,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"inprogress\"}",
               "format": "time_series",
@@ -11690,7 +13009,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2503
+            "y": 3015
           },
           "id": 117,
           "options": {
@@ -11715,7 +13034,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_scheduler_tasks{instance=~\"$instance\",job=~\"$job\",status=\"failed\"}[$__rate_interval])",
               "format": "time_series",
@@ -11791,7 +13110,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2503
+            "y": 3015
           },
           "id": 118,
           "options": {
@@ -11817,7 +13136,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11893,7 +13212,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2503
+            "y": 3015
           },
           "id": 119,
           "options": {
@@ -11919,7 +13238,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_vinyl_scheduler_dump_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -11941,7 +13260,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 40
       },
       "id": 120,
       "panels": [
@@ -12012,7 +13331,7 @@
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 2787
+            "y": 3299
           },
           "id": 121,
           "options": {
@@ -12038,7 +13357,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "editorMode": "code",
               "expr": "irate(tnt_cpu_user_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval]) + irate(tnt_cpu_system_time{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
@@ -12062,7 +13381,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 41
       },
       "id": 123,
       "panels": [
@@ -12130,7 +13449,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2806
+            "y": 3318
           },
           "id": 124,
           "options": {
@@ -12156,7 +13475,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_info_memory_lua{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12232,7 +13551,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2806
+            "y": 3318
           },
           "id": 125,
           "options": {
@@ -12256,7 +13575,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_runtime_used{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12332,7 +13651,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2806
+            "y": 3318
           },
           "id": 126,
           "options": {
@@ -12358,7 +13677,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_info_memory_tx{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12434,7 +13753,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 2814
+            "y": 3326
           },
           "id": 127,
           "options": {
@@ -12460,7 +13779,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_fiber_csw{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12536,7 +13855,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 2814
+            "y": 3326
           },
           "id": 128,
           "options": {
@@ -12562,7 +13881,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_ev_loop_time{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12639,7 +13958,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2822
+            "y": 3334
           },
           "id": 129,
           "options": {
@@ -12664,7 +13983,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_fiber_amount{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12740,7 +14059,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2822
+            "y": 3334
           },
           "id": 130,
           "options": {
@@ -12766,7 +14085,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_fiber_memused{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12842,7 +14161,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2822
+            "y": 3334
           },
           "id": 131,
           "options": {
@@ -12868,7 +14187,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "tnt_fiber_memalloc{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -12890,7 +14209,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 42
       },
       "id": 132,
       "panels": [
@@ -12958,7 +14277,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2831
+            "y": 3343
           },
           "id": 133,
           "options": {
@@ -12984,7 +14303,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_jit_snap_restore_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13060,7 +14379,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2831
+            "y": 3343
           },
           "id": 134,
           "options": {
@@ -13086,7 +14405,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_jit_trace_num{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13162,7 +14481,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2831
+            "y": 3343
           },
           "id": 135,
           "options": {
@@ -13188,7 +14507,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_jit_trace_abort_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13264,7 +14583,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2831
+            "y": 3343
           },
           "id": 136,
           "options": {
@@ -13290,7 +14609,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_jit_mcode_size{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -13366,7 +14685,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 2839
+            "y": 3351
           },
           "id": 137,
           "options": {
@@ -13392,7 +14711,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_strhash_hit_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13468,7 +14787,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 2839
+            "y": 3351
           },
           "id": 138,
           "options": {
@@ -13494,7 +14813,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_strhash_miss_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13570,7 +14889,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2847
+            "y": 3359
           },
           "id": 139,
           "options": {
@@ -13596,7 +14915,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_atomic_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13672,7 +14991,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2847
+            "y": 3359
           },
           "id": 140,
           "options": {
@@ -13698,7 +15017,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_sweepstring_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13774,7 +15093,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2847
+            "y": 3359
           },
           "id": 141,
           "options": {
@@ -13800,7 +15119,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_finalize_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13876,7 +15195,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2855
+            "y": 3367
           },
           "id": 142,
           "options": {
@@ -13902,7 +15221,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_sweep_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -13978,7 +15297,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2855
+            "y": 3367
           },
           "id": 143,
           "options": {
@@ -14004,7 +15323,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_propagate_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14080,7 +15399,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2855
+            "y": 3367
           },
           "id": 144,
           "options": {
@@ -14106,7 +15425,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_steps_pause_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14183,7 +15502,7 @@
             "h": 8,
             "w": 6,
             "x": 0,
-            "y": 2863
+            "y": 3375
           },
           "id": 145,
           "options": {
@@ -14209,7 +15528,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_gc_strnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14286,7 +15605,7 @@
             "h": 8,
             "w": 6,
             "x": 6,
-            "y": 2863
+            "y": 3375
           },
           "id": 146,
           "options": {
@@ -14312,7 +15631,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_gc_tabnum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14389,7 +15708,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 2863
+            "y": 3375
           },
           "id": 147,
           "options": {
@@ -14415,7 +15734,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_gc_cdatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14492,7 +15811,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 2863
+            "y": 3375
           },
           "id": 148,
           "options": {
@@ -14518,7 +15837,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_gc_udatanum{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14594,7 +15913,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2871
+            "y": 3383
           },
           "id": 149,
           "options": {
@@ -14620,7 +15939,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "lj_gc_memory{instance=~\"$instance\",job=~\"$job\"}",
               "format": "time_series",
@@ -14696,7 +16015,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2871
+            "y": 3383
           },
           "id": 150,
           "options": {
@@ -14722,7 +16041,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_freed_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14798,7 +16117,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2871
+            "y": 3383
           },
           "id": 151,
           "options": {
@@ -14824,7 +16143,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(lj_gc_allocated_total{instance=~\"$instance\",job=~\"$job\"}[$__rate_interval])",
               "format": "time_series",
@@ -14846,7 +16165,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 43
       },
       "id": 152,
       "panels": [
@@ -14915,7 +16234,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2880
+            "y": 3392
           },
           "id": 153,
           "options": {
@@ -14941,7 +16260,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"select\"}[$__rate_interval])",
               "format": "time_series",
@@ -15018,7 +16337,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2880
+            "y": 3392
           },
           "id": 154,
           "options": {
@@ -15044,7 +16363,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"insert\"}[$__rate_interval])",
               "format": "time_series",
@@ -15121,7 +16440,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2880
+            "y": 3392
           },
           "id": 155,
           "options": {
@@ -15147,7 +16466,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"replace\"}[$__rate_interval])",
               "format": "time_series",
@@ -15224,7 +16543,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2888
+            "y": 3400
           },
           "id": 156,
           "options": {
@@ -15250,7 +16569,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"upsert\"}[$__rate_interval])",
               "format": "time_series",
@@ -15327,7 +16646,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2888
+            "y": 3400
           },
           "id": 157,
           "options": {
@@ -15353,7 +16672,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"update\"}[$__rate_interval])",
               "format": "time_series",
@@ -15430,7 +16749,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2888
+            "y": 3400
           },
           "id": 158,
           "options": {
@@ -15456,7 +16775,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"delete\"}[$__rate_interval])",
               "format": "time_series",
@@ -15533,7 +16852,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2896
+            "y": 3408
           },
           "id": 159,
           "options": {
@@ -15559,7 +16878,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"call\"}[$__rate_interval])",
               "format": "time_series",
@@ -15636,7 +16955,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2896
+            "y": 3408
           },
           "id": 160,
           "options": {
@@ -15662,7 +16981,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"eval\"}[$__rate_interval])",
               "format": "time_series",
@@ -15739,7 +17058,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2896
+            "y": 3408
           },
           "id": 161,
           "options": {
@@ -15765,7 +17084,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"error\"}[$__rate_interval])",
               "format": "time_series",
@@ -15842,7 +17161,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2904
+            "y": 3416
           },
           "id": 162,
           "options": {
@@ -15868,7 +17187,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"auth\"}[$__rate_interval])",
               "format": "time_series",
@@ -15945,7 +17264,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2904
+            "y": 3416
           },
           "id": 163,
           "options": {
@@ -15971,7 +17290,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"prepare\"}[$__rate_interval])",
               "format": "time_series",
@@ -16048,7 +17367,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2904
+            "y": 3416
           },
           "id": 164,
           "options": {
@@ -16074,7 +17393,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"execute\"}[$__rate_interval])",
               "format": "time_series",
@@ -16151,7 +17470,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 2912
+            "y": 3424
           },
           "id": 165,
           "options": {
@@ -16177,7 +17496,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"begin\"}[$__rate_interval])",
               "format": "time_series",
@@ -16254,7 +17573,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 2912
+            "y": 3424
           },
           "id": 166,
           "options": {
@@ -16280,7 +17599,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"commit\"}[$__rate_interval])",
               "format": "time_series",
@@ -16357,7 +17676,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 2912
+            "y": 3424
           },
           "id": 167,
           "options": {
@@ -16383,7 +17702,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_VM}"
+                "uid": "PBFA97CFB590B2093"
               },
               "expr": "rate(tnt_stats_op_total{instance=~\"$instance\",job=~\"$job\",operation=\"rollback\"}[$__rate_interval])",
               "format": "time_series",
@@ -16400,6 +17719,7 @@
       "type": "row"
     }
   ],
+  "preload": false,
   "refresh": "10s",
   "schemaVersion": 41,
   "tags": [
@@ -16408,7 +17728,10 @@
   "templating": {
     "list": [
       {
-        "current": {},
+        "current": {
+          "text": "Prometheus",
+          "value": "PBFA97CFB590B2093"
+        },
         "includeAll": false,
         "label": "Datasource",
         "name": "prometheus",
@@ -16419,10 +17742,13 @@
         "type": "datasource"
       },
       {
-        "current": {},
+        "current": {
+          "text": "picodata",
+          "value": "picodata"
+        },
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_VM}"
+          "uid": "PBFA97CFB590B2093"
         },
         "definition": "label_values(pico_info_uptime,job)",
         "description": "picodata",
@@ -16440,7 +17766,12 @@
         "type": "query"
       },
       {
-        "current": {},
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
         "datasource": {
           "uid": "$prometheus"
         },
@@ -16460,10 +17791,13 @@
         "type": "query"
       },
       {
-        "current": {},
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_VM}"
+          "uid": "PBFA97CFB590B2093"
         },
         "definition": "label_values(pico_sql_query_total{job=\"$job\"},replicaset)",
         "description": "",
@@ -16482,7 +17816,10 @@
         "type": "query"
       },
       {
-        "current": {},
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "datasource": {
           "type": "prometheus",
           "uid": "${prometheus}"
@@ -16506,13 +17843,12 @@
     ]
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Picodata",
   "uid": "aei8m2zjm3ri8e",
-  "version": 38,
-  "weekStart": ""
+  "version": 8
 }

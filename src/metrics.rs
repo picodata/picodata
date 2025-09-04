@@ -177,6 +177,70 @@ static INFO_UPTIME: LazyLock<GaugeVec> = LazyLock::new(|| {
     .expect("Failed to create pico_info_uptime gauge")
 });
 
+pub static ROUTER_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_router_cache_statements_added_total",
+        "Total number of statements added to the router cache since startup",
+    ))
+    .unwrap()
+});
+
+pub static ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_router_cache_statements_evicted_total",
+        "Total number of statements evicted from the router cache since startup",
+    ))
+    .unwrap()
+});
+
+pub static ROUTER_CACHE_HITS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_router_cache_hits_total",
+        "Total number of requests to the router cache resulted in cache hit since startup",
+    ))
+    .unwrap()
+});
+
+pub static ROUTER_CACHE_MISSES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_router_cache_misses_total",
+        "Total number of requests to the router cache resulted in cache miss since startup",
+    ))
+    .unwrap()
+});
+
+pub static STORAGE_CACHE_STATEMENTS_ADDED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_storage_cache_statements_added_total",
+        "Total number of statements added to the storage cache since startup",
+    ))
+    .unwrap()
+});
+
+pub static STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_storage_cache_statements_evicted_total",
+        "Total number of statements evicted from the storage cache since startup",
+    ))
+    .unwrap()
+});
+
+pub static STORAGE_CACHE_1ST_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_storage_cache_1st_requests_total",
+        "Total number of 1st requests to the storage cache since startup (aka total number of requests to the cache)",
+    ))
+    .unwrap()
+});
+
+pub static STORAGE_CACHE_2ND_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::with_opts(prometheus::Opts::new(
+        "pico_storage_cache_2nd_requests_total",
+        "Total number of 2nd reqests to the storage cache since startup (aka total number of cache misses)",
+    ))
+    .unwrap()
+});
+
 pub fn record_governor_change() {
     GOVERNOR_CHANGE_COUNTER.inc();
 }
@@ -285,6 +349,14 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
     registry.register(Box::new(SQL_QUERY_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(SQL_QUERY_TOTAL.clone()))?;
     registry.register(Box::new(INFO_UPTIME.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_1ST_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(STORAGE_CACHE_2ND_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(ROUTER_CACHE_STATEMENTS_ADDED_TOTAL.clone()))?;
+    registry.register(Box::new(ROUTER_CACHE_STATEMENTS_EVICTED_TOTAL.clone()))?;
+    registry.register(Box::new(ROUTER_CACHE_HITS_TOTAL.clone()))?;
+    registry.register(Box::new(ROUTER_CACHE_MISSES_TOTAL.clone()))?;
 
     Ok(())
 }
