@@ -5,7 +5,7 @@
 
 extern crate pest;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::mem::swap;
 
 use pest::iterators::Pair;
@@ -219,15 +219,11 @@ pub struct AbstractSyntaxTree {
     pub(in crate::frontend::sql) nodes: ParseNodes,
     /// Index of top `ParseNode` in `nodes.arena`.
     pub(in crate::frontend::sql) top: Option<usize>,
-    /// Map of { reference node_id -> relation node_ids it refers to }.
-    /// See `build_ref_to_relation_map` to understand how it is filled.
-    /// Note: corresponding vec has 2 values only in case of Join relational node.
-    pub(super) map: HashMap<usize, Vec<usize>>,
 }
 
 impl PartialEq for AbstractSyntaxTree {
     fn eq(&self, other: &Self) -> bool {
-        self.nodes == other.nodes && self.top == other.top && self.map == other.map
+        self.nodes == other.nodes && self.top == other.top
     }
 }
 

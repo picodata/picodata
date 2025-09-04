@@ -4701,7 +4701,6 @@ impl AbstractSyntaxTree {
         AbstractSyntaxTree {
             nodes: ParseNodes::new(),
             top: None,
-            map: HashMap::new(),
         }
     }
 
