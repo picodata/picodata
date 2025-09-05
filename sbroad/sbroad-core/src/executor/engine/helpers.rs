@@ -2162,7 +2162,7 @@ where
 
 /// # Errors
 /// - Execution errors
-pub fn execute_first_cacheable_request<R: Vshard + QueryCache>(
+pub fn execute_first_cacheable_request<R: QueryCache>(
     runtime: &R,
     info: &mut impl RequiredPlanInfo,
 ) -> Result<Box<dyn Any>, SbroadError>
@@ -2224,7 +2224,7 @@ where
 
 /// # Errors
 /// - Execution errors
-pub fn execute_second_cacheable_request<R: Vshard + QueryCache>(
+pub fn execute_second_cacheable_request<R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
 ) -> Result<Box<dyn Any>, SbroadError>

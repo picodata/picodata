@@ -3,7 +3,7 @@
 //! for execution of the dispatched query plan subtrees.
 
 use sbroad::backend::sql::ir::PatternWithParams;
-use sbroad::backend::sql::space::TableGuard;
+use sbroad::backend::sql::space::{TableGuard, ADMIN_ID};
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat};
@@ -22,8 +22,7 @@ use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
 use tarantool::tuple::{Tuple, TupleBuffer};
 
-use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
-use crate::sql::router::{get_table_version, VersionMap};
+use crate::sql::router::{calculate_bucket_id, get_table_version, VersionMap};
 use crate::traft::node;
 use once_cell::sync::Lazy;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
@@ -33,8 +32,19 @@ use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::{any::Any, rc::Rc};
 use tarantool::msgpack;
+use tarantool::session::with_su;
 
 thread_local!(
+    pub static BUCKET_COUNT: Lazy<u64> = Lazy::new(|| {
+        let node = node::global().expect("node should be initialized at this moment");
+        let tier_name = node.topology_cache.my_tier_name();
+        let tier = with_su(ADMIN_ID, || node.storage.tiers.by_name(tier_name))
+                            .expect("su shouldn't fail")
+                            .expect("storage shouldn't fail")
+                            .expect("tier should exists");
+        tier.bucket_count
+    });
+
     // We need Lazy, because cache can be initialized only after raft node.
     pub static STATEMENT_CACHE: Lazy<Rc<Mutex<PicoStorageCache>>> = Lazy::new(|| {
         let node = node::global().expect("node should be initialized at this moment");
@@ -314,8 +324,12 @@ impl StorageRuntime {
     /// - Failed to initialize the LRU cache.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        BUCKET_COUNT.with(|count| Self::new_with_bucket_count(*(*count)))
+    }
+
+    fn new_with_bucket_count(bucket_count: u64) -> Self {
         STATEMENT_CACHE.with(|cache| StorageRuntime {
-            bucket_count: DEFAULT_BUCKET_COUNT,
+            bucket_count,
             cache: (*cache).clone(),
         })
     }
