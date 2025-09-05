@@ -11,8 +11,8 @@ Radix — реализация [Redis](https://ru.wikipedia.org/wiki/Redis) на
 Picodata, предназначенная для замены существующих инсталляций Redis.
 
 Плагин Radix состоит из одноименного сервиса (`radix`), реализующего
-Redis на базе СУБД Picodata. Каждый экземпляр Radix открывает еще один
-порт для подключения в дополнение к уже открытым.
+Redis на базе СУБД Picodata. Каждый экземпляр Radix открывает дополнительный
+порт для подключения.
 
 При использовании Picodata c плагином Radix нет необходимости в
 отдельной инфраструктуре Redis Sentinel, так как каждый узел Picodata
@@ -28,12 +28,13 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 
 Процедура установки включает:
 
-- установку адреса, который будет слушать Radix (например, `export
-  RADIX_ADDR=0.0.0.0:7379`). Эта настройка также доступна для
-  инвентарного файла Ansible (см. [ниже](#addr)). Если в одном
-  пространстве имен (например, на одном хосте) запущено несколько
-  инстансов Picodata, то нужно задать для них отличающиеся значения
-  `RADIX_ADDR`.
+- установку адреса, который будет слушать Radix (например, `export RADIX_LISTEN_ADDR=0.0.0.0:7379`).
+  Эта настройка также доступна для инвентарного файла Ansible. Если в одном пространстве имен
+  (например, на одном хосте) запущено несколько инстансов Picodata, то нужно
+  задать для них разные значения `RADIX_LISTEN_ADDR`.
+- установку публичного адреса, который Radix будет использовать для кластерных команд
+  (например, `export RADIX_ADVERTISE_ADDR=public.hostname.int:7379`). Этот адрес будет
+  возвращаться клиентам (например, в `CLUSTER NODES`).
 - установку у [тиров][tier], на которые предполагается развернуть
   плагин, 16384 [бакетов]. См. описание [bucket_count] и
   [default_bucket_count].
@@ -52,49 +53,52 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 
 ### Подключение плагина {: #plugin_enable }
 
+Радикс поддерживает 16 баз данных, каждую из которых можно расположить на отдельном тире.
+На одном тире можно разместить несколько баз данных. Ниже будут примеры для одного и двух тиров.
+
 Для подключение плагина последовательно выполните следующие SQL-команды
-в административной консоли Picodata:
+в административной консоли Picodata.
 
-
-Для создания плагина в кластере и регистрации его сервиса на доступных тирах:
-
-```sql title="В примере использованы два тира: `default` и `extra`"
-CREATE PLUGIN radix 0.9.0;
-ALTER PLUGIN radix 0.9.0 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 0.9.0 ADD SERVICE radix TO TIER extra;
+```sql
+CREATE PLUGIN radix 0.10.0;
 ```
+
+#### Пример с двумя тирами (hot/cold) {: #plugin_enable_hotcold }
 
 Для настройки миграций задайте значения для 16 параметров (по числу баз данных в Radix):
 
 ```sql
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_0='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_1='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_2='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_3='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_4='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_5='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_6='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_7='default';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_8='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_9='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_10='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_11='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_12='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_13='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_14='extra';
-ALTER PLUGIN radix 0.9.0 SET migration_context.tier_15='extra';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_0='hot';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_1='hot';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_2='hot';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_3='hot';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_4='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_5='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_6='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_7='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_8='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_9='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_10='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_11='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_12='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_13='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_14='cold';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_15='cold';
+
+ALTER PLUGIN radix 0.10.0 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 0.10.0 ADD SERVICE radix TO TIER cold;
 ```
 
 Для выполнения миграции:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 0.9.0 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 0.10.0 OPTION(TIMEOUT=300);
 ```
 
 Для включения плагина в кластере:
 
 ```sql title="Убедитесь, что задан адрес, который будет слушать Radix"
-ALTER PLUGIN radix 0.9.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 0.10.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -105,6 +109,30 @@ SELECT * FROM _pico_plugin;
 
 В строке, соответствующей плагину Radix, в колонке `enabled` должно быть значение `true`.
 
+#### Пример с одним тиром {: #plugin_enable_single }
+
+Если в кластере используется только один тир `default`, настройка миграций будет выглядеть так:
+
+```sql
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_0='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_1='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_2='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_3='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_4='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_5='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_6='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_7='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_8='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_9='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_10='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_11='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_12='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_13='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_14='default';
+ALTER PLUGIN radix 0.10.0 SET migration_context.tier_15='default';
+ALTER PLUGIN radix 0.10.0 ADD SERVICE radix TO TIER default;
+```
+
 ## Настройка {: #configuration }
 
 Для настройки плагина используйте файл конфигурации, который можно
@@ -114,33 +142,30 @@ Ansible].
 Пример файла конфигурации:
 
 ```yaml
-radix:
-  addr: 0.0.0.0:7379
-  clients:
+clients:                 # ограничения клиентских соединений
     max_clients: 10000
     max_input_buffer_size: 1073741824
     max_output_buffer_size: 1073741824
-  cluster_mode: true
-  redis_compatibility:
+cluster_mode: true       # какой флаг отдавать в команде `info cluster`
+sentinel_enabled: false  # режим совместимости с Redis Sentinel
+redis_compatibility:
     enabled_deprecated_commands: []
-    enforce_one_slot_transactions: true
+    enforce_one_slot_transactions: false
+authorization_mode:
+    state: Off
 ```
 
 [Picodata Pike]: ../tutorial/create_plugin.md#pike_plugin_config_apply
 [инвентарного файла Ansible]: ../admin/deploy_ansible.md#plugin_management
 
-Для изменения доступны следующие параметры:
+### Сетевые настройки {: #network_settings }
 
-### addr
+- `RADIX_LISTEN_ADDR` — Radix откроет сокет по указанному адресу и будет его слушать.
+- `RADIX_ADVERTISE_ADDR` — Radix будет использовать этот адрес в кластерных и sentinel-командах.
 
-Адрес, по которому Radix откроет сокет и будет его слушать.
-
-Имейте ввиду, что данные параметры одинаковы для всех узлов Picodata, на
-которых развернут Radix. Следовательно, если у вас процессы не
-изолированы каждый в своем сетевом пространстве имен (т.е. не
-используется Docker или K8S), то вам надо отдельно для каждого узла
-прописать переменную окружения `RADIX_ADDR` для того, чтобы не было
-конфликтов по портам.
+!!! note
+    Если процессы не изолированы (например, развёртывание произведено без использования Docker или Kubernetes), то
+    необходимо указывать разные `RADIX_LISTEN_ADDR` на каждой ноде, чтобы избежать конфликтов портов.
 
 ### clients
 
@@ -180,14 +205,129 @@ radix:
 Проводить все SQL-транзакции принудительно в рамках одного слота Redis.
 Данное поведение включено по умолчанию.
 
+### cluster_mode
+
+Данная настройка влияет только на вывод команды `info cluster`.
+
+### sentinel_enabled
+
+Включает режим совместимости с [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/).
+
+#### Пример миграции приложения на Radix {: #sentinel_topology }
+
+В настройках приложения следует указывать `service_name` (`master_name`) и адрес сервера Redis Sentinel из одного тира.
+Например, `service_name` — `cold_4`, а адрес Sentinel — `cold_4_1`, если топология кластера похожа на топологию ниже.
+
+```yaml
+# вариант топологии Радикса
+hot:
+  hot_1:
+  - hot_1_1
+  - hot_1_2
+  hot_2:
+  - hot_2_1
+  - hot_2_2
+cold:
+  cold_1:
+  - cold_1_1
+  - cold_1_2
+  cold_2:
+  - cold_2_1
+  - cold_2_2
+  cold_3:
+  - cold_3_1
+  - cold_3_2
+  cold_4:
+  - cold_4_1
+  - cold_4_2
+```
+
+### authorization_mode
+
+Управляет состоянием авторизации в Радиксе. Возможные значения:
+
+- `{ "state": "on", "default_user_name": "<str>" }` — авторизация включена, пользователь по умолчанию задан. Используется для клиентов, которые подключаются с помощью `AUTH password` без имени пользователя.
+- `{ "state": "on" }` — авторизация включена, пользователь по умолчанию не задан. В этом случае команды `AUTH password` без имени пользователя работать не будут.
+- `{ "state": "off" }` — авторизация выключена (значение по умолчанию).
+
+#### Предустановленные роли {: #auth_roles }
+
+- Глобальные:
+  - `radix_reader` — доступ на чтение ко всем данным,
+  - `radix_writer` — доступ на запись ко всем данным.
+- Локальные для каждой БД:
+  - `radix_reader_0` … `radix_reader_15`
+  - `radix_writer_0` … `radix_writer_15`
+
+#### Примеры использования {: #auth_examples }
+
+##### Миграция с кластера с директивой `requirepass` {: #requirepass }
+
+```sql
+ALTER PLUGIN radix 0.10.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+CREATE USER default_radix_user WITH PASSWORD 'S0m1Str2ngP3ssword';
+GRANT radix_reader TO default_radix_user;
+GRANT radix_writer TO default_radix_user;
+```
+
+```bash
+$ redis-cli -p 7301
+127.0.0.1:7301> GET abc
+(error) NOAUTH Authentication required
+127.0.0.1:7301> AUTH S0m1Str2ngP3ssword
+OK
+127.0.0.1:7301> SET abc 123
+OK
+```
+
+##### Использование LDAP {: #ldapuser }
+
+```sql
+ALTER PLUGIN radix 0.10.0 SET radix.authorization_mode = '{ "state": "On", "default_user_name": "default_radix_user" }';
+CREATE USER default_radix_user USING ldap;
+GRANT radix_reader TO default_radix_user;
+GRANT radix_writer TO default_radix_user;
+```
+
+##### Использование Argus для синхронизации пользователей {: #argus }
+
+```yaml
+argus:
+  searches:
+    - role: "radix_reader"
+      base: "dc=example,dc=org"
+      filter: "<filter>"
+      attr: "cn"
+    - role: "radix_writer"
+      base: "dc=example,dc=org"
+      filter: "<filter>"
+      attr: "cn"
+```
+
+##### Разделение доступов по БД {: #access_separation }
+
+```sql
+ALTER PLUGIN radix 0.10.0 SET radix.authorization_mode = '{ "state": "On" }';
+
+CREATE USER app_1_user WITH PASSWORD 'pwd1';
+GRANT radix_reader_0 TO app_1_user;
+GRANT radix_writer_0 TO app_1_user;
+
+CREATE USER app_2_user WITH PASSWORD 'pwd2';
+GRANT radix_reader_0 TO app_2_user;
+GRANT radix_writer_2 TO app_2_user;
+
+CREATE USER app_3_user WITH PASSWORD 'pwd3';
+GRANT radix_reader_0 TO app_3_user;
+GRANT radix_writer_5 TO app_3_user;
+```
+
 ## Использование {: #usage }
 
-В консоли для общения с Redis используется клиентская программа
-`redis-cli.` Для подключения к инстансу Picodata по протоколу Redis
-используйте адрес, заданный ранее в переменной `RADIX_ADDR`:
+Для работы с Radix используйте клиентскую программу `redis-cli`. Подключение осуществляется по адресу, заданному в `RADIX_ADVERTISE_ADDR` (или `RADIX_LISTEN_ADDR`, если публичный адрес не указан).
 
-```shell
-redis-cli -p 7379
+```bash
+redis-cli -p 7301
 ```
 
 ## Поддерживаемые команды {: #supported_commands }
@@ -278,6 +418,34 @@ PING [message]
 - измерения задержки
 
 ### Управление соединениями {: #connection_management }
+
+#### auth
+
+```sql
+auth password
+```
+
+Производит аутентификацию пользователем по умолчанию. Имя пользователя должно быть задано
+в конфигурации плагина в параметре `default_user_name`.
+
+```sql
+auth username password
+```
+
+Производит аутентификацию выбранным пользователем.
+
+#### reset
+
+```sql
+reset
+```
+
+Сбрасывает соединение в состояние по умолчанию:
+
+- откатывается текущая транзакция, если она была открыта,
+- сбрасываются наблюдения за ключами, которые раньше были установлены командой WATCH,
+- если были открыты курсоры командами SCAN/HSCAN, то они закрываются,
+- сбрасывается авторизация, потребуется её пройти заново.
 
 #### select
 
@@ -462,6 +630,17 @@ TYPE key
 - `hash`
 - `stream`
 
+#### unlink
+
+```sql
+UNLINK key [key ...]
+```
+
+Выполняет асинхронное удаление ключей. Работает точно также, как и `DEL`,
+за исключением того, что фактическое удаление данных происходит в фоне.
+
+Можно использовать для повышения отзывчивости приложения.
+
 ### Хэш-команды {: #hash }
 
 #### hdel
@@ -535,6 +714,31 @@ HLEN key
 Возвращает количество полей, содержащихся в хэше, хранящемся по адресу
 ключа `key`.
 
+#### hmget
+
+```sql
+HMGET key field [field ...]
+```
+
+Возвращает значения указанных полей из хеша.
+
+#### hmset
+
+```sql
+HMSET key field value [field value ...]
+```
+
+Выставляет значения указанным полям для заданного хэша.
+
+??? warning "Примечание"
+    Вместо этой команды необходимо использовать команду `HSET`
+    Данная команда отнесена в Redis в разряд
+    устаревших и по умолчанию отключена в Radix. Для включения
+    используйте следующий SQL-запрос:
+    ```sql
+    ALTER PLUGIN RADIX 0.10.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["hmset" ] }';
+    ```
+
 #### hscan
 
 ```sql
@@ -563,6 +767,52 @@ HVALS key
 ```
 
 Возвращает значения всех полей в хэше, хранящиеся по адресу ключа `key`.
+
+### Команды для сортированных списков {: #ordered_sets }
+
+??? warning "Примечание"
+    Данный раздел документации в работе
+
+Поддерживаемые команды:
+
+- bzmpop
+- bzpopmax
+- bzpopmin
+- zadd
+- zcard
+- zcount
+- zdiff
+- zdiffstore
+- zincrby
+- zinter
+- zintercard
+- zinterstore
+- zlexcount
+- zmpop
+- zmscore
+- zpopmax
+- zpopmin
+- zrandmember
+- zrange
+- zrangestore
+- zrank
+- zrem
+- zremrangebylex
+- zremrangebyrank
+- zremrangebyscore
+- zrevrank
+- zscan
+- zscore
+- zunion
+- zunionstore
+
+Устаревшие, но всё ещё поддерживаемые, команды:
+
+- zrangebylex
+- zrangebyscore
+- zrevrange
+- zrevrangebylex
+- zrevrangebyscore
 
 
 ### Команды для списков {: #lists }
@@ -1218,7 +1468,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN RADIX 0.10.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -1271,7 +1521,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN RADIX 0.10.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернет ошибку.
@@ -1290,7 +1540,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN RADIX 0.9.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN RADIX 0.10.0 SET radix.redis_compatibility = '{ "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -1301,6 +1551,67 @@ STRLEN key
 
 Возвращает длину текстового значения, хранящегося по
 указанному ключу.
+
+### Команды для получения информации о Sentinel {: #sentinel }
+
+Радикс поддерживает необходимый минимум команд для того, чтобы приложения
+могли получать адреса серверов Пикодаты, если эти приложения написаны
+с поддержкой Sentinel.
+
+По умолчанию перечисленные ниже команды отключены. Для того, чтобы
+включить, используйте запрос:
+
+```sql
+ALTER PLUGIN radix 0.10.0 set radix.sentinel_enabled = 'true';
+```
+
+#### sentinel get-master-addr-by-name {: #sentinel-get-master-addr-by-name }
+
+```sql
+SENTINEL GET-MASTER-ADDR-BY-NAME <replicaset name>
+```
+
+Возвращает адрес Радикса для заданного репликасета.
+
+#### sentinel master {: #sentinel-master }
+
+```sql
+SENTINEL MASTER <replicaset name>
+```
+
+Выводит мастера для заданного репликасета. Радикс возвращает мастера репликасета с соотвествующим именем.
+
+#### sentinel masters {: #sentinel-masters }
+
+```sql
+SENTINEL MASTERS
+```
+
+Возвращает список репликасетов, которые есть в системе.
+
+#### sentinel myid {: #sentinel-myid }
+
+```sql
+SENTINEL MYID
+```
+
+Возвращает id текущего инстанса
+
+#### sentinel replicas {: #sentinel-replicas }
+
+```sql
+SENTINEL REPLICAS <replicaset name>
+```
+
+Показывает список реплик для заданного репликасета.
+
+#### sentinel sentinels {: #sentinel-sentinels }
+
+```sql
+SENTINEL SENTINELS <replicaset name>
+```
+
+Показывает список сентинелей для заданного репликасета. Радикс возвращает мастера репликасета с соотвествующим именем.
 
 ### Команды для скриптов {: #scripting }
 
@@ -1381,14 +1692,6 @@ SCRIPT LOAD script
 
 ### Команды для транзакций {: #transactions }
 
-#### exec
-
-```sql
-EXEC
-```
-
-Исполняет все команды в очереди в виде единой транзакции.
-
 #### discard
 
 ```sql
@@ -1396,6 +1699,14 @@ DISCARD
 ```
 
 Удаляет все команды из очереди исполнения
+
+#### exec
+
+```sql
+EXEC
+```
+
+Исполняет все команды в очереди в рамках единой транзакции.
 
 #### multi
 
@@ -1424,6 +1735,32 @@ WATCH key [key ...]
 
 ### Команды управления и диагностики {: #server }
 
+#### flushall
+
+```sql
+FLUSHALL [ASYNC | SYNC]
+```
+
+Очищает все базы данных.
+
+- SYNC: синхронно, т.е. команда вернёт управление только после полной очистки БД.
+- ASYNC: асинхронно, команда вернёт управление быстрее, данные очистятся в фоне.
+
+Если ни одна из опций не указана, используется режим SYNC
+
+#### flushdb
+
+```sql
+FLUSHDB [ASYNC | SYNC]
+```
+
+Очищает текущую базу данных.
+
+- SYNC: синхронно, т.е. команда вернёт управление только после полной очистки БД.
+- ASYNC: асинхронно, команда вернёт управление быстрее, данные очистятся в фоне.
+
+Если ни одна из опций не указана, используется режим SYNC
+
 #### info
 
 ```sql
@@ -1451,7 +1788,7 @@ INFO [section [section ...]]
     ```
     127.0.0.1:7379> info
     # Server
-    radix_version:0.9.0
+    radix_version:0.10.0
     picodata_version:25.2.1-19-g283377900
     picodata_cluster_name:my_cluster
     picodata_cluster_uuid:928ab3b9-fe7f-4aff-a740-2e6700fc2960
@@ -1640,6 +1977,14 @@ INFO [section [section ...]]
 
     # Commandstats
     cmdstat_info:calls=1,usec=154,usec_per_call=0,rejected_calls=0,failed_calls=0
+
+    # Sentinel
+    sentinel_masters:4
+    sentinel_tilt:0
+    sentinel_tilt_since_seconds:0
+    sentinel_running_scripts:0
+    sentinel_scripts_queue_length:0
+    sentinel_simulate_failure_flags:0
     ```
 
 #### memory usage {: #memory_usage }
@@ -1654,4 +1999,532 @@ MEMORY USAGE key [SAMPLES count]
 `SAMPLES` равно 5. Для учета всех дочерних элементов следует указать
 `SAMPLES 0`.
 
+## Журнал изменений {: #changelog }
 
+### 0.10.0 - 2025-09-02 {: #0.10.0 }
+
+#### Новая функциональность {: #0.10.0-novaia-funktsional-nost }
+
+- FLUSHDB должен очищать и ordered set спейсы
+- By default auth should be disabled
+- Remove chrono
+- Implement auth method
+- Implement mset
+- Add sentinel section to info
+- Introduce sentinel
+- Introduce ordered sets
+- Implement flush && flushall
+- Split RADIX\_ADDR into listen/advertise
+- Add hmget/hmset, readonly, reset, unlink cmds
+
+#### Исправления {: #0.10.0-ispravleniia }
+
+- Явно прописываем WAIT APPLIED LOCALLY для асинхронного FLUSHDB
+- Pubsub should work with su
+- Обрабатывать ошибку "доступа нет" от ядра
+- Remove key type if the last list element was popped
+- Do not block in scripts
+- Rename timeout func
+- Reschedule list lock remove action if there are pending actions
+- Use defer
+- Remove locks if command went into a timeout (only blpop rn)
+- Do not reverse values and scores for zscan, add tests for new behaviour
+- Zscan
+- Fail on decode bucket in \`get\_buckets\`
+- Final fixes in auth method
+- Create type on zdiffstore
+- Use instance name for replica
+- Use the original redis error for evalsha
+- Close conn on client handle return
+- Use box.info.replication to check replication status in INFO REPLICATION
+- Use cas for patsub dml ops
+
+#### Производительность {: #0.10.0-proizvoditel-nost }
+
+- :zap: move debug logs to debug and raise default level to info
+
+#### Документация {: #0.10.0-dokumentatsiia }
+
+- Авторизация, описание и примеры использования
+- Исправим документацию по сентинелю
+- Добавим документацию конфигурацию клиента sentinel
+- Добавим скрипт для автоматического обновления списка поддерживаемых команд
+
+#### Внутренние улучшения {: #0.10.0-vnutrennie-uluchsheniia }
+
+- Переименуем миграции, чтобы была нумерация последовательная
+- Stringify the field name of a stat for a subtraction warning
+
+#### Тестирование {: #0.10.0-testirovanie }
+
+- Перепишем тесты с шелла и пайпов на psql
+
+#### Прочее {: #0.10.0-prochee }
+
+- Remove docs from gamayun scan
+- Обновим список поддерживаемых команд
+- Review fix
+- Добавим лицензию в файлы
+- Удалим docker-compose.yml из анализа гамаюна
+- License update
+- Remove unneeded dirs for gamayun
+- :page\_facing\_up: опечатку исправим
+- Add license-check job
+- :page\_facing\_up: добавил лицензию на плагин
+- Do not build in ci pipeline, block tests, until linting is done
+
+#### Build {: #0.10.0-build }
+
+- Remove PIKE\_DATA\_DIR
+- Remove TARGET\_ROOT, remove unused parameters in the cluster config
+- Pack old migrations, use new migrations locally
+- Update dependencies
+- Update the makefile to use new pike features
+
+#### Deps {: #0.10.0-deps }
+
+- Обновим пикодату до 25.3.2
+
+### 0.9.0 - 2025-06-25 {: #0.9.0 }
+
+#### Новая функциональность {: #0.9.0-novaia-funktsional-nost }
+
+- Watch empty keys too
+- Add picodata's cluster\_name and cluster\_uuid to server info
+- Add a config option to enforce same-slot transactions
+
+#### Исправления {: #0.9.0-ispravleniia }
+
+- Handle all commands in transactions, even if they have no bucket\_id
+- TYPE должна возвращать "none" на ключах, которых нет
+- Don't panic on empty del cmd call
+- Conn dead lock while receive on drop
+
+#### Производительность {: #0.9.0-proizvoditel-nost }
+
+- Implement partial list deserialization
+
+#### Внутренние улучшения {: #0.9.0-vnutrennie-uluchsheniia }
+
+- :arrow\_up: запускаю cargo update для обновления токио
+- :arrow\_up: обновляю picodata-plugin до 25.2.2
+- :rotating\_light: будем в бенчмарке использовать crypto/rand вместо math/rand
+
+#### Тестирование {: #0.9.0-testirovanie }
+
+- :adhesive\_bandage: грязный трюк с прогоном теста на тире с 1 репликасетом
+- Увеличиваем таймаут в тесте пабсаба
+- :adhesive\_bandage: добавить небольшой таймаут после старта кластера, чтобы он закончил с ребалансом
+
+#### Прочее {: #0.9.0-prochee }
+
+- Fetch tags for gamayun
+- Останавливаю кластер перед тем, как забрать артефакты
+- Пробуем запустить тесты ещё и на альте
+- Передадим прошлую версию в Гамаюн
+- :heavy\_minus\_sign: удаляю неиспользуемые dev-dependencies
+- Wait for quality gate
+- Подставим версию 3 в Cargo.lock, ничего не сломается.
+- Удалим пароль для админского юзера из топологии
+- :coffin: удалим старые неиспользуемые луашки
+- :construction\_worker: добавляю Гамаюна
+
+### 0.8.0 - 2025-06-04 {: #0.8.0 }
+
+#### Новая функциональность {: #0.8.0-novaia-funktsional-nost }
+
+- Add more script telemetry
+
+#### Исправления {: #0.8.0-ispravleniia }
+
+- Don't panic when downstream is not in the follow state or upstream's fiber is invalid
+
+#### Документация {: #0.8.0-dokumentatsiia }
+
+- Add redis\_compatibility user documentation
+
+### 0.7.0 - 2025-05-28 {: #0.7.0 }
+
+#### Новая функциональность {: #0.7.0-novaia-funktsional-nost }
+
+- Add deprecated set commands
+- Use non-blocking variants of commands in transactions
+- Implement more expire commands
+- Add expiretime
+- Make scripts transactional
+- Implement hvals
+
+#### Исправления {: #0.7.0-ispravleniia }
+
+- Correctly close client connections on listener drop
+- :bug: используем правильный запрос для получения информации о репликасете
+- Rust 1.87.0
+- Pop crash
+
+#### Документация {: #0.7.0-dokumentatsiia }
+
+- Создаем тикет на обновление доков радикса, а не аргуса
+- Обновим пользовательскую документацию
+
+#### Прочее {: #0.7.0-prochee }
+
+- :arrow\_up: обновим пикодатный плагин до 25.2.1
+- 🔨 обновим редис до 8.0 в кластере для тестов
+- :construction\_worker: при релизе создаём тикет в пикодату на обновление документации
+- :bug: исправим пути файлов в релизе и приложим файл от бендера всегда
+
+#### Build {: #0.7.0-build }
+
+- :arrow\_up: picodata 25.1.2
+
+### 0.6.1 - 2025-04-28 {: #0.6.1 }
+
+#### Документация {: #0.6.1-dokumentatsiia }
+
+- :memo: обновим документацию
+
+#### Прочее {: #0.6.1-prochee }
+
+- :construction\_worker: вернём redos
+
+### 0.6.0 - 2025-04-18 {: #0.6.0 }
+
+#### Новая функциональность {: #0.6.0-novaia-funktsional-nost }
+
+- ✨ add functions to the redis object in lua scripts, add SCRIPT LOAD, SCRIPT EXISTS commands
+- Use custom radix string type
+- Use negative indexing for lists
+- Introduce transactions
+
+#### Исправления {: #0.6.0-ispravleniia }
+
+- :bug: удалим падающую миграцию
+- Command processed metric
+- Deadlocks for blocking commands on same bucket
+- :bug: бакеты из другого тира всегда удалённые
+- :technologist: исправим упаковку релиза после мёржа пики
+- :technologist: исправим сообщение
+- Mem stat
+- 🚑 fix the plugin file layout for pike
+- :ambulance: provide replication\_factor setting in picodata.yaml
+
+#### Производительность {: #0.6.0-proizvoditel-nost }
+
+- Try to optimize list op
+
+#### Документация {: #0.6.0-dokumentatsiia }
+
+- Опишем конфигурацию миграций в пользовательской документации
+
+#### Внутренние улучшения {: #0.6.0-vnutrennie-uluchsheniia }
+
+- :loud\_sound: поправим сообщение для лога, в случае ошибки
+
+#### Прочее {: #0.6.0-prochee }
+
+- :fire: удалить лишние файлы
+- Fix path to cargo2junit
+- Fix clippy format warnings
+- :rotating\_light: rust 1.86.0
+- :construction\_worker: используем новые образа для упаковки
+- :construction\_worker: поправим бендера в мейне
+- :construction\_worker: добавим новые ОС в процесс сборки
+- :hammer: положим редис-кластер в репу с командой для запуска
+- 🩹 match the topology with the main branch's, move env variables to topology.toml
+
+#### Build {: #0.6.0-build }
+
+- Используем пайк 2.1.0 для билда
+- :adhesive\_bandage: сделал по два репликасета на каждый тир как и в оригинальном кластере
+- :arrow\_up: introduce pike 2.0.0
+
+### 0.5.2 - 2025-03-19 {: #0.5.2 }
+
+#### Прочее {: #0.5.2-prochee }
+
+- :technologist: добавим отлаженного Бендера
+
+### 0.5.1 - 2025-03-13 {: #0.5.1 }
+
+#### Исправления {: #0.5.1-ispravleniia }
+
+- :adhesive\_bandage: проверяем на андерфлоу при вычитании на статистике
+
+#### Производительность {: #0.5.1-proizvoditel-nost }
+
+- :zap: если бакет локальный, то не ходить по рпц
+
+#### Документация {: #0.5.1-dokumentatsiia }
+
+- :memo: исправим разметку в readme
+
+#### Тестирование {: #0.5.1-testirovanie }
+
+- :construction\_worker: исправим \`make test\_ci\`, чтобы совпадало с реальностью
+- :white\_check\_mark: переведём бенч на кластерный клиент
+
+#### Прочее {: #0.5.1-prochee }
+
+- :construction\_worker: отсылаем нотификацию о релизе в спецчат в телеге
+
+### 0.5.0 - 2025-03-06 {: #0.5.0 }
+
+#### Новая функциональность {: #0.5.0-novaia-funktsional-nost }
+
+- :sparkles: реализуем новую команду \`dbsize\` для проверки состояния кластера
+- :building\_construction: используем CRC16/XMODEM для сегментирования
+- :construction\_worker: теперь паники будут в файловых логах
+- Allow multitier mode
+- Eval
+
+#### Исправления {: #0.5.0-ispravleniia }
+
+- Deadlock on single mode for blocking ops
+- :bug: cluster getkeysinslot исправлена
+- :bug: используем UUID ноды и репликасета в ответе на myid, myshardid
+- :card\_file\_box: fix migrations
+- Tests data cleanup
+- Eval ptr propagation
+- Eval ptr propagation
+- Parse timeout arguments to f64 not i64
+
+#### Документация {: #0.5.0-dokumentatsiia }
+
+- :memo: обновим документацию для пользователя
+- :memo: ADR для мультитирного (многорядного?) радикса
+
+#### Внутренние улучшения {: #0.5.0-vnutrennie-uluchsheniia }
+
+- :recycle: зафиксируем, что работаем только с 16384 бакетами
+- :recycle: вынесем \`RedisBucketId\` и \`PicodataBucketId\` в отдельные файлы
+- :recycle: режим выполнения команды не отделим от бакета выполнения команды
+- :recycle: типизируем айдишники бакетов
+- :recycle: переименовываем ID в Name, потому что мы использовали имена
+- :recycle: адаптировал запуск к запуску в нескольких тирах
+
+#### Структура кода {: #0.5.0-struktura-koda }
+
+- :rotating\_light: отформатировал код
+- :recycle: поправил комменты и ошибку к методу insert\_patsubscriber
+
+#### Тестирование {: #0.5.0-testirovanie }
+
+- :white\_check\_mark: исправил тест на cluster nodes
+
+#### Прочее {: #0.5.0-prochee }
+
+- :construction\_worker: переедем на образ с явно выставленным стабильным растом
+- :green\_heart: укажем полный путь до cargo2junit, пока его нет в базовом образе
+- Add warn log for attempting sub from 0 value to stat macro
+- :construction\_worker: поправим пути к карго
+- :construction\_worker: попробуем новый базовый образ для пикодаты
+- Fix lints for rust 1.85
+- Rename radix nodes migration in manifest
+- Add deploy to EE repo (pdg)
+- :construction\_worker: временно разрешим тестам падать
+- :white\_check\_mark: запускаем тесты в ci теперь
+- :technologist: делаем удобный запуск кластера пикодаты
+- Rename replace\_patsubscriber to insert\_patsubscriber
+
+#### Bench {: #0.5.0-bench }
+
+- List
+
+#### Build {: #0.5.0-build }
+
+- \`make pico\_radix\_release\` для запуска релизного радикса
+- :arrow\_up: обновимся до пикодаты 25.1
+- На \`pico\_stop\` убиваем пикодату из \`PICODATA\_BINARY\_PATH\`, а не просто \`picodata\`
+- :construction\_worker: можно запускать тесты как на CI, но локально
+
+### 0.4.4 - 2025-01-13 {: #0.4.4 }
+
+#### Исправления {: #0.4.4-ispravleniia }
+
+- Lpop and rpop are used to panic
+
+#### Прочее {: #0.4.4-prochee }
+
+- Bump version
+- Fix lints for rust 1.84
+- Reduce unsafe usage
+- More benches
+- Stress test
+
+#### Bench {: #0.4.4-bench }
+
+- Add benches for hash commands
+
+### 0.4.3 - 2024-12-24 {: #0.4.3 }
+
+#### Новая функциональность {: #0.4.3-novaia-funktsional-nost }
+
+- Implement incrs
+
+### 0.4.1 - 2024-12-18 {: #0.4.1 }
+
+#### Новая функциональность {: #0.4.1-novaia-funktsional-nost }
+
+- Implement writeln\_crlf
+- Support expire for hash and list
+
+#### Исправления {: #0.4.1-ispravleniia }
+
+- :bug: исправим всё-таки #62, надо возвращать в протоколе правильно ошибку
+- Declare dummy RUSAGE\_THREAD for macos
+
+#### Структура кода {: #0.4.1-struktura-koda }
+
+- Melformed -> malformed
+
+#### Build {: #0.4.1-build }
+
+- Добавим возможность запустить вторую копию
+
+### 0.4.0 - 2024-12-10 {: #0.4.0 }
+
+#### Новая функциональность {: #0.4.0-novaia-funktsional-nost }
+
+- :loud\_sound: фильтрация логов для бедных
+- Добавил версию пикодаты в вывод \`info server\`
+- Implements cluster ids commands
+- Implement getkeysinslot
+- Implement cluster keyslot
+- Reduce size of persistence section
+- Use migrations for redis db creation
+- Implement keyspace info section
+- Implement replication info section
+- Change Astralinux from Orel to 1.7, 1.8 version added
+- Collect memory stat
+- Add cmdstat to info
+- Add client configuration. support input/output buffer shrinks, preallocate and reuse client output buffer
+- Add redis insight support
+- Use subkey in bucket calculation
+- Implement info stub
+- Implement missing list commands
+- Implement (b)lmpop
+- Implement (b)lmove
+- Implement rpush
+- Implement lpop and rpop
+- Implement basic list commands
+- Use borrowed string in a stored type
+
+#### Исправления {: #0.4.0-ispravleniia }
+
+- RESP is using CRLF as line ending
+- Delete type on del call
+
+#### Производительность {: #0.4.0-proizvoditel-nost }
+
+- Мелкая оптимизация при создании хешсета
+- Fetch replicasets only for broadcasted commands
+- Increase performance for hset command
+
+#### Документация {: #0.4.0-dokumentatsiia }
+
+- :memo: актуализируем документацию
+
+#### Внутренние улучшения {: #0.4.0-vnutrennie-uluchsheniia }
+
+- :recycle: сделали более явным клонирование
+- :art: разбил либу инфо на более мелкие и локализованные файлы
+- :art: перенёс отдельные части \`info\` на уровень модуля этой команды
+- :rotating\_light: удовлетворил требования нового стабильного раста
+
+#### Прочее {: #0.4.0-prochee }
+
+- :bookmark: нарежем 0.3.0 релиз
+- Change type error message
+- Log improvements
+- :construction\_worker: используем шаблонный CI
+- Add perf results in commands docs
+
+#### Build {: #0.4.0-build }
+
+- :construction\_worker: поправил докерфайлы для установки всегда новой пикодаты
+- :heavy\_plus\_sign: переводим плагин на picodata-plugin сдк
+
+### 0.2.0 - 2024-10-04 {: #0.2.0 }
+
+#### Новая функциональность {: #0.2.0-novaia-funktsional-nost }
+
+- Nonblocking gather executor
+- Write to pubsub locally if possible
+- Implement pubsub commands
+- Reuse user connection buffer in command decode
+
+#### Исправления {: #0.2.0-ispravleniia }
+
+- :adhesive\_bandage: добавил скрипт по умолчанию для пикодаты
+
+#### Производительность {: #0.2.0-proizvoditel-nost }
+
+- :alembic: add scripts for running performance tests
+
+#### Документация {: #0.2.0-dokumentatsiia }
+
+- :speech\_balloon: save supported commands into docs
+- :hammer: good enough Readme
+
+#### Структура кода {: #0.2.0-struktura-koda }
+
+- :art: добавил символ конца строки в конец моих файлов
+- :art: add checks module to make code readable
+
+#### Прочее {: #0.2.0-prochee }
+
+- :sparkles: Заливаем артефакты в нексус.
+- Init python tests
+- Rename redisproto to radix
+- Change name of package
+- :hammer: set up docker compose for every artifact
+
+### 0.1.1 - 2024-09-13 {: #0.1.1 }
+
+#### Новая функциональность {: #0.1.1-novaia-funktsional-nost }
+
+- Support single node mode
+
+#### Исправления {: #0.1.1-ispravleniia }
+
+- Execute set on master
+- Replicaset decode
+- Connection fibers leak
+
+#### Документация {: #0.1.1-dokumentatsiia }
+
+- :hammer: good enough Readme
+
+#### Прочее {: #0.1.1-prochee }
+
+- Add pack for all supported by picodata OS
+
+### 0.1.0 - 2024-09-09 {: #0.1.0 }
+
+#### Новая функциональность {: #0.1.0-novaia-funktsional-nost }
+
+- Support eval command without enabling it
+- Use bytes crate to use views in original clients buffer
+- Implement scan and hscan command
+- Redisproto
+
+#### Исправления {: #0.1.0-ispravleniia }
+
+- Decode tests
+
+#### Внутренние улучшения {: #0.1.0-vnutrennie-uluchsheniia }
+
+- Fix rust toolchain to stable
+- Clippy warnings
+
+#### Прочее {: #0.1.0-prochee }
+
+- Proper layout again, let's hope, it's final version.
+- Fix folder layout of artifacts.
+- Fix artifacts collection
+- Skip everything on main branch, because we use fast-forward only.
+- Main should build artifacts always
+- Init
+- Lints
+- Remove useless clusters dir
+- Basic Makefile
