@@ -661,6 +661,7 @@ class Instance:
 
     registry: Optional[Registry] = None
     symlink_created = False
+    cluster: "Cluster | None" = None
 
     @property
     def instance_dir(self):
@@ -1574,7 +1575,8 @@ class Instance:
                     deadline = time.monotonic() + timeout
 
                 # Check state
-                assert state["variant"] == "Online"
+                actual_state: str = state["variant"]  # type: ignore
+                assert actual_state == "Online", self._wait_online_failure_message(actual_state)
                 if expected_incarnation is not None:
                     assert state["incarnation"] == expected_incarnation
 
@@ -1599,6 +1601,51 @@ class Instance:
                             raise e from e
 
         log.info(f"{self} is online")
+
+    def _wait_online_failure_message(self, actual_state: str) -> str:
+        last_error = None
+        governor_status = None
+        leader = None
+
+        try:
+            if self.cluster:
+                leader = self.cluster.leader()
+                leader_runtime_info = leader.call(".proc_runtime_info")
+                last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
+                governor_status = leader_runtime_info["internal"].get("governor_loop_status")
+                del leader_runtime_info
+        except Exception as e:
+            log.warning(f"Failed getting governor info: {e}")
+
+        message = f"""
+Timed out waiting for instance '{self.name_or_port()}' state 'Online'.
+Expected state 'Online', actual: '{actual_state}'
+"""
+
+        if self._instance_dir:
+            log_path = self._instance_dir / "picodata.log"
+            if os.path.exists(log_path):
+                message += f"Instance log file: {log_path}\n"
+
+        if governor_status:
+            assert leader
+            message += f"""
+Meanwhile governor is '{leader.name_or_port()}'
+Governor loop status is: '{governor_status}'
+"""
+
+        if leader and leader != self and leader._instance_dir:
+            log_path = leader._instance_dir / "picodata.log"
+            if os.path.exists(log_path):
+                message += f"Governor log file: {log_path}"
+
+        if last_error:
+            message += f"""
+Last governor error is:
+---
+{yaml_lib.dump(last_error)}...
+"""
+        return message
 
     def wait_has_states(
         self,
@@ -2324,6 +2371,7 @@ class Cluster:
             config_path=self.config_path,
             audit=audit,
             registry=self.registry,
+            cluster=self,
         )
 
         instance.setup_logging(log_to_console, log_to_file, os.getenv("INSTANCE_LOG"))
