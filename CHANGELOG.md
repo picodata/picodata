@@ -17,6 +17,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics
   for queries executed through pgproto
+- Fixed joining a replica after expel with the same instance name as the
+  expelled one (see also https://git.picodata.io/core/picodata/-/issues/2173).
 
 ## [25.3.2] - 2025-08-04
 
