@@ -202,8 +202,12 @@ authorization_mode:
 
 #### enforce_one_slot_transactions
 
-Проводить все SQL-транзакции принудительно в рамках одного слота Redis.
-Данное поведение включено по умолчанию.
+Проводить все SQL-транзакции принудительно в рамках одного слота (бакета).
+Данное поведение выключено по умолчанию, т.е. транзакции проводятся в рамках
+одного инстанса.
+
+С выключенным флагом вы можете эмулировать Redis Standalone, развернув Radix
+в составе одного репликасета.
 
 ### cluster_mode
 
@@ -2014,7 +2018,7 @@ MEMORY USAGE key [SAMPLES count]
 - Introduce sentinel
 - Introduce ordered sets
 - Implement flush && flushall
-- Split RADIX\_ADDR into listen/advertise
+- Split RADIX_ADDR into listen/advertise
 - Add hmget/hmset, readonly, reset, unlink cmds
 
 #### Исправления {: #0.10.0-ispravleniia }
@@ -2030,7 +2034,7 @@ MEMORY USAGE key [SAMPLES count]
 - Remove locks if command went into a timeout (only blpop rn)
 - Do not reverse values and scores for zscan, add tests for new behaviour
 - Zscan
-- Fail on decode bucket in \`get\_buckets\`
+- Fail on decode bucket in \`get_buckets\`
 - Final fixes in auth method
 - Create type on zdiffstore
 - Use instance name for replica
@@ -2068,15 +2072,15 @@ MEMORY USAGE key [SAMPLES count]
 - Удалим docker-compose.yml из анализа гамаюна
 - License update
 - Remove unneeded dirs for gamayun
-- :page\_facing\_up: опечатку исправим
+- :page_facing_up: опечатку исправим
 - Add license-check job
-- :page\_facing\_up: добавил лицензию на плагин
+- :page_facing_up: добавил лицензию на плагин
 - Do not build in ci pipeline, block tests, until linting is done
 
 #### Build {: #0.10.0-build }
 
-- Remove PIKE\_DATA\_DIR
-- Remove TARGET\_ROOT, remove unused parameters in the cluster config
+- Remove PIKE_DATA_DIR
+- Remove TARGET_ROOT, remove unused parameters in the cluster config
 - Pack old migrations, use new migrations locally
 - Update dependencies
 - Update the makefile to use new pike features
@@ -2090,12 +2094,12 @@ MEMORY USAGE key [SAMPLES count]
 #### Новая функциональность {: #0.9.0-novaia-funktsional-nost }
 
 - Watch empty keys too
-- Add picodata's cluster\_name and cluster\_uuid to server info
+- Add picodata's cluster_name and cluster_uuid to server info
 - Add a config option to enforce same-slot transactions
 
 #### Исправления {: #0.9.0-ispravleniia }
 
-- Handle all commands in transactions, even if they have no bucket\_id
+- Handle all commands in transactions, even if they have no bucket_id
 - TYPE должна возвращать "none" на ключах, которых нет
 - Don't panic on empty del cmd call
 - Conn dead lock while receive on drop
@@ -2106,15 +2110,15 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Внутренние улучшения {: #0.9.0-vnutrennie-uluchsheniia }
 
-- :arrow\_up: запускаю cargo update для обновления токио
-- :arrow\_up: обновляю picodata-plugin до 25.2.2
-- :rotating\_light: будем в бенчмарке использовать crypto/rand вместо math/rand
+- :arrow_up: запускаю cargo update для обновления токио
+- :arrow_up: обновляю picodata-plugin до 25.2.2
+- :rotating_light: будем в бенчмарке использовать crypto/rand вместо math/rand
 
 #### Тестирование {: #0.9.0-testirovanie }
 
-- :adhesive\_bandage: грязный трюк с прогоном теста на тире с 1 репликасетом
+- :adhesive_bandage: грязный трюк с прогоном теста на тире с 1 репликасетом
 - Увеличиваем таймаут в тесте пабсаба
-- :adhesive\_bandage: добавить небольшой таймаут после старта кластера, чтобы он закончил с ребалансом
+- :adhesive_bandage: добавить небольшой таймаут после старта кластера, чтобы он закончил с ребалансом
 
 #### Прочее {: #0.9.0-prochee }
 
@@ -2122,12 +2126,12 @@ MEMORY USAGE key [SAMPLES count]
 - Останавливаю кластер перед тем, как забрать артефакты
 - Пробуем запустить тесты ещё и на альте
 - Передадим прошлую версию в Гамаюн
-- :heavy\_minus\_sign: удаляю неиспользуемые dev-dependencies
+- :heavy_minus_sign: удаляю неиспользуемые dev-dependencies
 - Wait for quality gate
 - Подставим версию 3 в Cargo.lock, ничего не сломается.
 - Удалим пароль для админского юзера из топологии
 - :coffin: удалим старые неиспользуемые луашки
-- :construction\_worker: добавляю Гамаюна
+- :construction_worker: добавляю Гамаюна
 
 ### 0.8.0 - 2025-06-04 {: #0.8.0 }
 
@@ -2141,7 +2145,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Документация {: #0.8.0-dokumentatsiia }
 
-- Add redis\_compatibility user documentation
+- Add redis_compatibility user documentation
 
 ### 0.7.0 - 2025-05-28 {: #0.7.0 }
 
@@ -2168,14 +2172,14 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Прочее {: #0.7.0-prochee }
 
-- :arrow\_up: обновим пикодатный плагин до 25.2.1
+- :arrow_up: обновим пикодатный плагин до 25.2.1
 - 🔨 обновим редис до 8.0 в кластере для тестов
-- :construction\_worker: при релизе создаём тикет в пикодату на обновление документации
+- :construction_worker: при релизе создаём тикет в пикодату на обновление документации
 - :bug: исправим пути файлов в релизе и приложим файл от бендера всегда
 
 #### Build {: #0.7.0-build }
 
-- :arrow\_up: picodata 25.1.2
+- :arrow_up: picodata 25.1.2
 
 ### 0.6.1 - 2025-04-28 {: #0.6.1 }
 
@@ -2185,7 +2189,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Прочее {: #0.6.1-prochee }
 
-- :construction\_worker: вернём redos
+- :construction_worker: вернём redos
 
 ### 0.6.0 - 2025-04-18 {: #0.6.0 }
 
@@ -2206,7 +2210,7 @@ MEMORY USAGE key [SAMPLES count]
 - :technologist: исправим сообщение
 - Mem stat
 - 🚑 fix the plugin file layout for pike
-- :ambulance: provide replication\_factor setting in picodata.yaml
+- :ambulance: provide replication_factor setting in picodata.yaml
 
 #### Производительность {: #0.6.0-proizvoditel-nost }
 
@@ -2218,25 +2222,25 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Внутренние улучшения {: #0.6.0-vnutrennie-uluchsheniia }
 
-- :loud\_sound: поправим сообщение для лога, в случае ошибки
+- :loud_sound: поправим сообщение для лога, в случае ошибки
 
 #### Прочее {: #0.6.0-prochee }
 
 - :fire: удалить лишние файлы
 - Fix path to cargo2junit
 - Fix clippy format warnings
-- :rotating\_light: rust 1.86.0
-- :construction\_worker: используем новые образа для упаковки
-- :construction\_worker: поправим бендера в мейне
-- :construction\_worker: добавим новые ОС в процесс сборки
+- :rotating_light: rust 1.86.0
+- :construction_worker: используем новые образа для упаковки
+- :construction_worker: поправим бендера в мейне
+- :construction_worker: добавим новые ОС в процесс сборки
 - :hammer: положим редис-кластер в репу с командой для запуска
 - 🩹 match the topology with the main branch's, move env variables to topology.toml
 
 #### Build {: #0.6.0-build }
 
 - Используем пайк 2.1.0 для билда
-- :adhesive\_bandage: сделал по два репликасета на каждый тир как и в оригинальном кластере
-- :arrow\_up: introduce pike 2.0.0
+- :adhesive_bandage: сделал по два репликасета на каждый тир как и в оригинальном кластере
+- :arrow_up: introduce pike 2.0.0
 
 ### 0.5.2 - 2025-03-19 {: #0.5.2 }
 
@@ -2248,7 +2252,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Исправления {: #0.5.1-ispravleniia }
 
-- :adhesive\_bandage: проверяем на андерфлоу при вычитании на статистике
+- :adhesive_bandage: проверяем на андерфлоу при вычитании на статистике
 
 #### Производительность {: #0.5.1-proizvoditel-nost }
 
@@ -2260,20 +2264,20 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Тестирование {: #0.5.1-testirovanie }
 
-- :construction\_worker: исправим \`make test\_ci\`, чтобы совпадало с реальностью
-- :white\_check\_mark: переведём бенч на кластерный клиент
+- :construction_worker: исправим \`make test_ci\`, чтобы совпадало с реальностью
+- :white_check_mark: переведём бенч на кластерный клиент
 
 #### Прочее {: #0.5.1-prochee }
 
-- :construction\_worker: отсылаем нотификацию о релизе в спецчат в телеге
+- :construction_worker: отсылаем нотификацию о релизе в спецчат в телеге
 
 ### 0.5.0 - 2025-03-06 {: #0.5.0 }
 
 #### Новая функциональность {: #0.5.0-novaia-funktsional-nost }
 
 - :sparkles: реализуем новую команду \`dbsize\` для проверки состояния кластера
-- :building\_construction: используем CRC16/XMODEM для сегментирования
-- :construction\_worker: теперь паники будут в файловых логах
+- :building_construction: используем CRC16/XMODEM для сегментирования
+- :construction_worker: теперь паники будут в файловых логах
 - Allow multitier mode
 - Eval
 
@@ -2282,7 +2286,7 @@ MEMORY USAGE key [SAMPLES count]
 - Deadlock on single mode for blocking ops
 - :bug: cluster getkeysinslot исправлена
 - :bug: используем UUID ноды и репликасета в ответе на myid, myshardid
-- :card\_file\_box: fix migrations
+- :card_file_box: fix migrations
 - Tests data cleanup
 - Eval ptr propagation
 - Eval ptr propagation
@@ -2304,27 +2308,27 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Структура кода {: #0.5.0-struktura-koda }
 
-- :rotating\_light: отформатировал код
-- :recycle: поправил комменты и ошибку к методу insert\_patsubscriber
+- :rotating_light: отформатировал код
+- :recycle: поправил комменты и ошибку к методу insert_patsubscriber
 
 #### Тестирование {: #0.5.0-testirovanie }
 
-- :white\_check\_mark: исправил тест на cluster nodes
+- :white_check_mark: исправил тест на cluster nodes
 
 #### Прочее {: #0.5.0-prochee }
 
-- :construction\_worker: переедем на образ с явно выставленным стабильным растом
-- :green\_heart: укажем полный путь до cargo2junit, пока его нет в базовом образе
+- :construction_worker: переедем на образ с явно выставленным стабильным растом
+- :green_heart: укажем полный путь до cargo2junit, пока его нет в базовом образе
 - Add warn log for attempting sub from 0 value to stat macro
-- :construction\_worker: поправим пути к карго
-- :construction\_worker: попробуем новый базовый образ для пикодаты
+- :construction_worker: поправим пути к карго
+- :construction_worker: попробуем новый базовый образ для пикодаты
 - Fix lints for rust 1.85
 - Rename radix nodes migration in manifest
 - Add deploy to EE repo (pdg)
-- :construction\_worker: временно разрешим тестам падать
-- :white\_check\_mark: запускаем тесты в ci теперь
+- :construction_worker: временно разрешим тестам падать
+- :white_check_mark: запускаем тесты в ci теперь
 - :technologist: делаем удобный запуск кластера пикодаты
-- Rename replace\_patsubscriber to insert\_patsubscriber
+- Rename replace_patsubscriber to insert_patsubscriber
 
 #### Bench {: #0.5.0-bench }
 
@@ -2332,10 +2336,10 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Build {: #0.5.0-build }
 
-- \`make pico\_radix\_release\` для запуска релизного радикса
-- :arrow\_up: обновимся до пикодаты 25.1
-- На \`pico\_stop\` убиваем пикодату из \`PICODATA\_BINARY\_PATH\`, а не просто \`picodata\`
-- :construction\_worker: можно запускать тесты как на CI, но локально
+- \`make pico_radix_release\` для запуска релизного радикса
+- :arrow_up: обновимся до пикодаты 25.1
+- На \`pico_stop\` убиваем пикодату из \`PICODATA_BINARY_PATH\`, а не просто \`picodata\`
+- :construction_worker: можно запускать тесты как на CI, но локально
 
 ### 0.4.4 - 2025-01-13 {: #0.4.4 }
 
@@ -2365,13 +2369,13 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Новая функциональность {: #0.4.1-novaia-funktsional-nost }
 
-- Implement writeln\_crlf
+- Implement writeln_crlf
 - Support expire for hash and list
 
 #### Исправления {: #0.4.1-ispravleniia }
 
 - :bug: исправим всё-таки #62, надо возвращать в протоколе правильно ошибку
-- Declare dummy RUSAGE\_THREAD for macos
+- Declare dummy RUSAGE_THREAD for macos
 
 #### Структура кода {: #0.4.1-struktura-koda }
 
@@ -2385,7 +2389,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Новая функциональность {: #0.4.0-novaia-funktsional-nost }
 
-- :loud\_sound: фильтрация логов для бедных
+- :loud_sound: фильтрация логов для бедных
 - Добавил версию пикодаты в вывод \`info server\`
 - Implements cluster ids commands
 - Implement getkeysinslot
@@ -2429,20 +2433,20 @@ MEMORY USAGE key [SAMPLES count]
 - :recycle: сделали более явным клонирование
 - :art: разбил либу инфо на более мелкие и локализованные файлы
 - :art: перенёс отдельные части \`info\` на уровень модуля этой команды
-- :rotating\_light: удовлетворил требования нового стабильного раста
+- :rotating_light: удовлетворил требования нового стабильного раста
 
 #### Прочее {: #0.4.0-prochee }
 
 - :bookmark: нарежем 0.3.0 релиз
 - Change type error message
 - Log improvements
-- :construction\_worker: используем шаблонный CI
+- :construction_worker: используем шаблонный CI
 - Add perf results in commands docs
 
 #### Build {: #0.4.0-build }
 
-- :construction\_worker: поправил докерфайлы для установки всегда новой пикодаты
-- :heavy\_plus\_sign: переводим плагин на picodata-plugin сдк
+- :construction_worker: поправил докерфайлы для установки всегда новой пикодаты
+- :heavy_plus_sign: переводим плагин на picodata-plugin сдк
 
 ### 0.2.0 - 2024-10-04 {: #0.2.0 }
 
@@ -2455,7 +2459,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Исправления {: #0.2.0-ispravleniia }
 
-- :adhesive\_bandage: добавил скрипт по умолчанию для пикодаты
+- :adhesive_bandage: добавил скрипт по умолчанию для пикодаты
 
 #### Производительность {: #0.2.0-proizvoditel-nost }
 
@@ -2463,7 +2467,7 @@ MEMORY USAGE key [SAMPLES count]
 
 #### Документация {: #0.2.0-dokumentatsiia }
 
-- :speech\_balloon: save supported commands into docs
+- :speech_balloon: save supported commands into docs
 - :hammer: good enough Readme
 
 #### Структура кода {: #0.2.0-struktura-koda }
