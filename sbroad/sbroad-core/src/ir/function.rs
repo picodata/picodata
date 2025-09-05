@@ -121,7 +121,6 @@ impl Plan {
     /// Add aggregate function to plan
     pub fn add_aggregate_function(
         &mut self,
-        function: &str,
         kind: AggregateKind,
         children: Vec<NodeId>,
         is_distinct: bool,
@@ -151,7 +150,7 @@ impl Plan {
                         Entity::Query,
                         Some(format_smolstr!(
                             "Expected one argument for aggregate: {}.",
-                            to_user(function)
+                            to_user(kind.to_string())
                         )),
                     ));
                 }
@@ -163,7 +162,7 @@ impl Plan {
             None
         };
         let func_expr = ScalarFunction {
-            name: function.to_lowercase().to_smolstr(),
+            name: kind.to_smolstr(),
             func_type: kind.get_type(self, &children)?,
             children,
             feature,
@@ -182,34 +181,37 @@ impl Plan {
         children: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let kind = AggregateKind::from_name(&func_name);
-        let func_type = match kind {
-            Some(kind) => kind.get_type(self, &children)?,
-            None => match func_name.as_str() {
-                "row_number" => DerivedType::new(UnrestrictedType::Integer),
-                "last_value" => {
-                    if children.len() != 1 {
+        let (func_name, func_type) = match kind {
+            Some(kind) => (kind.to_smolstr(), kind.get_type(self, &children)?),
+            None => {
+                let derived_type = match func_name.as_str() {
+                    "row_number" => DerivedType::new(UnrestrictedType::Integer),
+                    "last_value" => {
+                        if children.len() != 1 {
+                            return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "window function {} expects 1 argument, got {}",
+                                    func_name,
+                                    children.len()
+                                )),
+                            ));
+                        }
+                        let param = self.get_expression_node(children[0])?;
+                        param.calculate_type(self)?
+                    }
+                    _ => {
                         return Err(SbroadError::Invalid(
                             Entity::Query,
                             Some(format_smolstr!(
-                                "window function {} expects 1 argument, got {}",
-                                func_name,
-                                children.len()
+                                "window function {} does not exist",
+                                func_name
                             )),
-                        ));
+                        ))
                     }
-                    let param = self.get_expression_node(children[0])?;
-                    param.calculate_type(self)?
-                }
-                _ => {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "window function {} does not exist",
-                            func_name
-                        )),
-                    ))
-                }
-            },
+                };
+                (func_name, derived_type)
+            }
         };
 
         let builtin_func = ScalarFunction {

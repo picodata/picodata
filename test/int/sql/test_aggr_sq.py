@@ -22,3 +22,8 @@ class TestSqliteDistinct2(ClusterSingleInstance):
 @sql_test_file("distinctagg.sql")
 class TestSqliteDistinctAgg(ClusterSingleInstance):
     pass
+
+
+@sql_test_file("agg_without_scan.sql")
+class TestSqliteAggWithoutScan(ClusterSingleInstance):
+    pass

@@ -2907,7 +2907,7 @@ impl ParseExpression {
                     plan_arg_ids.push(arg_plan_id);
                 }
                 if let Some(kind) = AggregateKind::from_name(name) {
-                    plan.add_aggregate_function(name, kind, plan_arg_ids, is_distinct)?
+                    plan.add_aggregate_function(kind, plan_arg_ids, is_distinct)?
                 } else if is_distinct {
                     return Err(SbroadError::Invalid(
                         Entity::Query,
