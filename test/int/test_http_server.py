@@ -36,8 +36,6 @@ def test_webui_basic(instance: Instance):
     instance_version = instance.eval("return pico.PICODATA_VERSION")
     instance_slab = instance.call("box.slab.info")
     capacity_usage = round(instance_slab["quota_used"] * 100 / instance_slab["quota_size"], 1)
-    instance_system_slab = instance.call("box.slab.system_info")
-    system_capacity_usage = round(instance_system_slab["quota_used"] * 100 / instance_system_slab["quota_size"], 1)
 
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
@@ -65,14 +63,9 @@ def test_webui_basic(instance: Instance):
                         ],
                         "instanceCount": 1,
                         "capacityUsage": capacity_usage,
-                        "systemCapacityUsage": system_capacity_usage,
                         "memory": {
                             "usable": instance_slab["quota_size"],
                             "used": instance_slab["quota_used"],
-                        },
-                        "systemMemory": {
-                            "usable": instance_system_slab["quota_size"],
-                            "used": instance_system_slab["quota_used"],
                         },
                         "uuid": instance.replicaset_uuid(),
                         "name": "default_1",
@@ -92,7 +85,6 @@ def test_webui_basic(instance: Instance):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": capacity_usage,
-            "systemCapacityUsage": system_capacity_usage,
             "clusterName": instance.cluster_name,
             "replicasetsCount": 1,
             "instancesCurrentStateOffline": 0,
@@ -100,10 +92,6 @@ def test_webui_basic(instance: Instance):
             "memory": {
                 "usable": instance_slab["quota_size"],
                 "used": instance_slab["quota_used"],
-            },
-            "systemMemory": {
-                "usable": instance_system_slab["quota_size"],
-                "used": instance_system_slab["quota_used"],
             },
             "instancesCurrentStateOnline": 1,
             "plugins": [],
@@ -199,14 +187,9 @@ def test_webui_with_plugin(cluster: Cluster):
         "version": instance_version,
         "instanceCount": 1,
         "capacityUsage": 0.0,
-        "systemCapacityUsage": 12.5,
         "memory": {
             "usable": 67108864,
             "used": 0,
-        },
-        "systemMemory": {
-            "usable": 268435456,
-            "used": 33554432,
         },
         "uuid": i1.replicaset_uuid(),
         "name": "r1",
@@ -264,14 +247,12 @@ def test_webui_with_plugin(cluster: Cluster):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0.0,
-            "systemCapacityUsage": 12.5,
             "clusterName": cluster.id,
             "replicasetsCount": 3,
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 0,
             "currentInstaceVersion": instance_version,
             "memory": {"usable": 201326592, "used": 0},
-            "systemMemory": {"usable": 805306368, "used": 100663296},
             "plugins": [
                 plugin_1 + " " + version_1,
                 plugin_2 + " " + version_1,
@@ -360,11 +341,6 @@ def test_webui_replicaset_state(cluster: Cluster):
         "version": instance_version,
         "instanceCount": 2,
         "capacityUsage": 0,
-        "systemCapacityUsage": 12.5,
-        "systemMemory": {
-            "usable": 268435456,
-            "used": 33554432,
-        },
     }
     r1 = {
         **replicaset_template,
@@ -418,11 +394,6 @@ def test_webui_replicaset_state(cluster: Cluster):
             "currentInstaceVersion": instance_version,
             "memory": {"usable": 134217728, "used": 0},
             "plugins": [],
-            "systemCapacityUsage": 12.5,
-            "systemMemory": {
-                "usable": 536870912,
-                "used": 67108864,
-            },
         }, "/api/v1/cluster"
 
 
@@ -476,14 +447,9 @@ def test_webui_can_vote_flag(cluster: Cluster):
         "version": instance_version,
         "instanceCount": 1,
         "capacityUsage": 0.0,
-        "systemCapacityUsage": 12.5,
         "memory": {
             "usable": 67108864,
             "used": 0,
-        },
-        "systemMemory": {
-            "usable": 268435456,
-            "used": 33554432,
         },
         "uuid": i1.replicaset_uuid(),
         "name": "r1",

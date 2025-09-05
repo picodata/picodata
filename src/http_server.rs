@@ -22,16 +22,12 @@ const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 /// - `version`: picodata version or empty string
 /// - `mem_usable`: quota_size from box.slab.info
 /// - `mem_used`: quota_used from box.slab.info
-/// - `system_mem_usable`: quota_size from box.slab.system_info
-/// - `system_mem_used`: quota_used from box.slab.system_info
 #[derive(Deserialize)]
 struct InstanceDataResponse {
     httpd_address: String,
     version: String,
     mem_usable: u64,
     mem_used: u64,
-    system_mem_usable: u64,
-    system_mem_used: u64,
 }
 
 /// Memory info struct for server responces
@@ -93,9 +89,7 @@ struct ReplicasetInfo {
     uuid: String,
     instances: Vec<InstanceInfo>,
     capacity_usage: f64,
-    system_capacity_usage: f64,
     memory: MemoryInfo,
-    system_memory: MemoryInfo,
     name: ReplicasetName,
     #[serde(skip)]
     tier: String,
@@ -135,12 +129,7 @@ pub(crate) struct TierInfo {
 // -- --------------------------------------------------
 // -- export interface ClusterInfoType {
 // --     capacityUsage: string;
-// --     systemCapacityUsage: string;
 // --     memory: {
-// --      used: string;
-// --      usable: string;
-// --     };
-// --     systemMemory: {
 // --      used: string;
 // --      usable: string;
 // --     };
@@ -155,14 +144,12 @@ pub(crate) struct TierInfo {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClusterInfo {
     capacity_usage: f64,
-    system_capacity_usage: f64,
     cluster_name: String,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: String,
     replicasets_count: usize,
     instances_current_state_offline: usize,
     memory: MemoryInfo,
-    system_memory: MemoryInfo,
     instances_current_state_online: usize,
     // list of serialized plugin identifiers - "<plugin_name> <plugin_version>"
     plugins: Vec<String>,
@@ -216,7 +203,7 @@ fn get_peer_addresses(
     ))
 }
 
-// Get data from instances: memory, system_memory, PICO_VERSION, httpd address if exists
+// Get data from instances: memory, PICO_VERSION, httpd address if exists
 //
 async fn get_instances_data(
     pool: &ConnectionPool,
@@ -251,8 +238,6 @@ async fn get_instances_data(
                     version: String::new(),
                     mem_usable: 0u64,
                     mem_used: 0u64,
-                    system_mem_usable: 0u64,
-                    system_mem_used: 0u64,
                 };
                 match future.await {
                     Ok(info) => {
@@ -263,8 +248,6 @@ async fn get_instances_data(
                         data.version = info.version_info.picodata_version.to_string();
                         data.mem_usable = info.slab_info.quota_size;
                         data.mem_used = info.slab_info.quota_used;
-                        data.system_mem_usable = info.slab_system_info.quota_size;
-                        data.system_mem_used = info.slab_system_info.quota_used;
                     }
                     Err(e) => {
                         tlog!(
@@ -317,15 +300,11 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
         let mut version = String::new();
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
-        let mut system_mem_usable: u64 = 0u64;
-        let mut system_mem_used: u64 = 0u64;
         if let Some(data) = instances_props.get(&instance.raft_id) {
             http_address.clone_from(&data.httpd_address);
             version.clone_from(&data.version);
             mem_usable = data.mem_usable;
             mem_used = data.mem_used;
-            system_mem_usable = data.system_mem_usable;
-            system_mem_used = data.system_mem_used;
         }
 
         let instance_info = InstanceInfo {
@@ -348,10 +327,8 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
                 instance_count: 0,
                 uuid: replicaset_uuid,
                 capacity_usage: 0_f64,
-                system_capacity_usage: 0_f64,
                 instances: Vec::new(),
                 memory: MemoryInfo { usable: 0, used: 0 },
-                system_memory: MemoryInfo { usable: 0, used: 0 },
                 name: replicaset_name.clone(),
                 tier,
             });
@@ -364,15 +341,6 @@ fn get_replicasets_info(storage: &Catalog, only_leaders: bool) -> Result<Vec<Rep
             };
             replicaset_info.memory.usable = mem_usable;
             replicaset_info.memory.used = mem_used;
-
-            replicaset_info.system_capacity_usage = if system_mem_used == 0 {
-                0_f64
-            } else {
-                ((system_mem_used as f64) / (system_mem_usable as f64) * 10000_f64).round()
-                    / 100_f64
-            };
-            replicaset_info.system_memory.usable = system_mem_usable;
-            replicaset_info.system_memory.used = system_mem_used;
 
             replicaset_info.state = instance_info.current_state;
 
@@ -403,15 +371,12 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
     let mut instances_online = 0;
     let mut replicasets_count = 0;
     let mut mem_info = MemoryInfo { usable: 0, used: 0 };
-    let mut system_mem_info = MemoryInfo { usable: 0, used: 0 };
 
     for replicaset in replicasets {
         replicasets_count += 1;
         instances += replicaset.instance_count;
         mem_info.usable += replicaset.memory.usable;
         mem_info.used += replicaset.memory.used;
-        system_mem_info.usable += replicaset.system_memory.usable;
-        system_mem_info.used += replicaset.system_memory.used;
         replicaset.instances.iter().for_each(|i| {
             instances_online += if i.current_state == StateVariant::Online {
                 1
@@ -429,18 +394,11 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo> {
         } else {
             ((mem_info.used as f64) / (mem_info.usable as f64) * 10000_f64).round() / 100_f64
         },
-        system_capacity_usage: if system_mem_info.used == 0 {
-            0_f64
-        } else {
-            ((system_mem_info.used as f64) / (system_mem_info.usable as f64) * 10000_f64).round()
-                / 100_f64
-        },
         cluster_name,
         current_instance_version: version,
         replicasets_count,
         instances_current_state_offline: (instances - instances_online),
         memory: mem_info,
-        system_memory: system_mem_info,
         instances_current_state_online: instances_online,
         plugins,
     };
