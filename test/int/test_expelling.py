@@ -370,12 +370,24 @@ cluster:
     assert storage_1_2.replicaset_name == "storage_1"
     assert storage_1_3.replicaset_name == "storage_1"
 
+    response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
+    replicaset_uuids = set(uuid for [uuid] in response["rows"])
+    assert replicaset_uuids == set((storage_1_1.uuid(), storage_1_2.uuid(), storage_1_3.uuid()))
+
     # Expel two of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
     cluster.expel(storage_1_2, force=True)
     cluster.expel(storage_1_1, force=True)
     leader.wait_governor_status("idle", old_step_counter=counter)
 
+    response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
+    replicaset_uuids = set(uuid for [uuid] in response["rows"])
+    assert replicaset_uuids == set([storage_1_3.uuid()])
+
     # Add another instance, it should be assigned to the no longer filled replicaset
     storage_4 = cluster.add_instance(name="storage_4", wait_online=True, tier="storage")
     assert storage_4.replicaset_name == "storage_1"
+
+    response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
+    replicaset_uuids = set(uuid for [uuid] in response["rows"])
+    assert replicaset_uuids == set((storage_1_3.uuid(), storage_4.uuid()))

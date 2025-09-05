@@ -514,7 +514,14 @@ pub(super) fn action_plan<'i>(
             &global_cluster_version,
         )?;
 
-        let (ops, ranges) = cas_parameters.expect("already check current state is different");
+        let (mut ops, ranges) = cas_parameters.expect("already check current state is different");
+
+        // After instance was expelled we must call proc_replication on all the
+        // replicas again so that they all remove the expelled instance from
+        // `_cluster` system space.
+        let replicaset_config_version_bump = get_replicaset_config_version_bump_op(replicaset);
+        ops.push(replicaset_config_version_bump);
+
         let predicate = cas::Predicate::new(applied, ranges);
         let op = Op::single_dml_or_batch(ops);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;

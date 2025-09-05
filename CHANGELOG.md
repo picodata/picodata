@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Fixed restart the whole cluster at once taking too long.
 - Fixed an issue where `cluster.shredding` option does not get applied on instance restart.
 - `EXPLAIN` queries now support `OPTION` (e.g. `EXPLAIN SELECT 1 OPTION (SQL_VDBE_OPCODE_MAX = 6)`)
+- Fixed joining a replica after expel with the same instance name as the
+  expelled one (see also https://git.picodata.io/core/picodata/-/issues/2173).
 
 ### CLI
 
