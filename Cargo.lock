@@ -4174,6 +4174,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-protocol"
+version = "25.4.0"
+dependencies = [
+ "rmp",
+]
+
+[[package]]
 name = "sqlparser"
 version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

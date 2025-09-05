@@ -1,0 +1,9 @@
+[package]
+name = "sql_protocol"
+version = "25.4.0"
+rust-version = "1.85"
+edition = "2021"
+license-file = "../LICENSE"
+
+[dependencies]
+rmp = { version = "0.8", features = ["std"] }

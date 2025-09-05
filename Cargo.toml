@@ -111,6 +111,7 @@ members = [
     "build-rs-helpers",
     "gostech/gostech-audit-log",
     "pico_proc_macro",
+    "sql-protocol",
     "tarantool-build",
     "test/testplug",
 ]
