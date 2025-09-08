@@ -43,8 +43,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### CLI
 
-- Authentication method flags are now silently ignored in favor of automatic method
-  recognition, delivering less error-prone and simpler user experience.
+- Authentication method flags now use automatic recognition system, instead
+  of relying on default values, delivering less error-prone and complex user
+  experience.
+  See <https://git.picodata.io/core/picodata/-/issues/1973>.
 
 - `picodata status` and `picodata plugin configure` now support execution with
   custom user, determining authentication method automatically on it's own.
