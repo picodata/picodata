@@ -1,5 +1,5 @@
 use std::io::{Cursor, Write};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::ptr::NonNull;
 
 use rmp::decode::{read_array_len, read_map_len, read_marker, read_str_len, read_u64, RmpRead};
@@ -287,7 +287,7 @@ unsafe fn push_metadata_to_lua(l: *mut lua_State, metadata_mp: &[u8]) -> Result<
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn router_dump_dql(port: *mut Port, out: *mut Obuf) {
+pub unsafe extern "C" fn router_dump_dql(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
 
@@ -303,20 +303,23 @@ pub unsafe extern "C" fn router_dump_dql(port: *mut Port, out: *mut Obuf) {
     let rows_cnt = (size - 1) as usize;
     let mut iter = port_c.iter();
     serialize_dql_iter(&mut iter, rows_cnt, &mut w).expect("router_dump_dql failed");
+
+    size
 }
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn router_dump_explain(port: *mut Port, out: *mut Obuf) {
+pub unsafe extern "C" fn router_dump_explain(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
     let mut iter = port_c.iter();
     serialize_explain_iter(&mut iter, &mut w).expect("router_dump_explain failed");
+    port_c.size()
 }
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn dump_dml(port: *mut Port, out: *mut Obuf) {
+pub unsafe extern "C" fn dump_dml(port: *mut Port, out: *mut Obuf) -> c_int {
     let port_c: &PortC = NonNull::new_unchecked(port as *mut PortC).as_ref();
     let mut w = ObufWriter(out);
 
@@ -335,6 +338,8 @@ pub unsafe extern "C" fn dump_dml(port: *mut Port, out: *mut Obuf) {
     };
 
     write_row_count(row_count, &mut w).expect("dump_dml failed");
+
+    port_c.size()
 }
 
 /// # Safety

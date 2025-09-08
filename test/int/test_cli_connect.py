@@ -428,7 +428,7 @@ def test_connect_with_empty_password_path(binary_path_fixt: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("""ERROR: bad password file at \'""\': No such file or directory (os error 2)""")
+    cli.expect_exact("ERROR: bad password file at '\"\"': No such file or directory (os error 2)")
     cli.expect_exact(pexpect.EOF)
 
 
