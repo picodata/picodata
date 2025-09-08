@@ -83,12 +83,10 @@ use std::rc::Rc;
 use std::time::Duration;
 use tarantool::{msgpack, session, set_error};
 
-pub mod cluster_proto;
-pub mod dump;
+pub mod lua;
+pub mod port;
 pub mod router;
-pub mod router_port;
 pub mod storage;
-pub mod storage_port;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use sbroad::BoundStatement;

@@ -5,7 +5,7 @@ use smol_str::{format_smolstr, SmolStr};
 use std::any::Any;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
-use std::io::Write;
+use std::io::{Error as IoError, Result as IoResult, Write};
 use std::rc::Rc;
 use std::vec;
 
@@ -666,6 +666,19 @@ impl VirtualTable {
                 },
             )?))
         }
+    }
+}
+
+impl Write for VirtualTable {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        // Decode a single tuple encoded as msgpack array and append to the virtual table
+        let tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(IoError::other)?;
+        self.add_tuple(tuple);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        Ok(())
     }
 }
 

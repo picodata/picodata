@@ -51,6 +51,7 @@ smallvec = { version = "1.13", features = ["write"] }
 smol_str = "0.2"
 socket2 = "0.5"
 sqlparser = { version = "0.40", features = ["visitor"] }
+sql_protocol = { version = "25.4", path = "sql-protocol" }
 tempfile = "3.8"
 thiserror = "1.0"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
