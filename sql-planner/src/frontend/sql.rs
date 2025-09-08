@@ -116,6 +116,7 @@ fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
 
 /// Holds naming metadata for SQL function.
 /// Used mostly for correct mapping between identifiers across different subsystems.
+#[derive(Default)]
 pub struct FunctionNameMapping {
     /// Function name in SQL as exposed to the users (e.g., in queries).
     pub sql: &'static str,
@@ -131,15 +132,16 @@ pub struct FunctionNameMapping {
     /// Using `.proc_name` makes Tarantool look for `proc_name` in the current executable,
     /// while `proc_name` would make it search for `libproc_name.so` containing `proc_name`.
     pub tarantool_symbol: &'static str,
+    /// Initially, we made these functions volatile, but they lack in usability.
+    /// These parameters might serve as modifiers to change the volatility to
+    /// stable, allowing to a wider usage.
+    /// See <https://git.picodata.io/core/picodata/-/issues/2064> for more information.
+    /// **NOTE**: uses Tarantool type names.
+    pub parameter_list: &'static [&'static str],
 }
 
 /// Stores all identifiers mappings for the functions.
 pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
-    FunctionNameMapping {
-        sql: "version",
-        rust_procedure: "proc_picodata_version",
-        tarantool_symbol: ".proc_picodata_version",
-    },
     // TODO:
     // Deprecated, remove in the future version.
     // Consider using `pico_instance_uuid` instead.
@@ -147,21 +149,61 @@ pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
         sql: "instance_uuid",
         rust_procedure: "proc_instance_uuid",
         tarantool_symbol: ".proc_instance_uuid",
+        parameter_list: &[],
+    },
+    FunctionNameMapping {
+        sql: "pico_config_file_path",
+        rust_procedure: "proc_config_file",
+        tarantool_symbol: ".proc_config_file",
+        parameter_list: &["string"],
+    },
+    FunctionNameMapping {
+        sql: "pico_instance_dir",
+        rust_procedure: "proc_instance_dir",
+        tarantool_symbol: ".proc_instance_dir",
+        parameter_list: &["string"],
+    },
+    FunctionNameMapping {
+        sql: "pico_instance_name",
+        rust_procedure: "proc_instance_name",
+        tarantool_symbol: ".proc_instance_name",
+        parameter_list: &["string"],
     },
     FunctionNameMapping {
         sql: "pico_instance_uuid",
         rust_procedure: "proc_instance_uuid",
         tarantool_symbol: ".proc_instance_uuid",
-    },
-    FunctionNameMapping {
-        sql: "pico_raft_leader_uuid",
-        rust_procedure: "proc_raft_leader_uuid",
-        tarantool_symbol: ".proc_raft_leader_uuid",
+        parameter_list: &[],
     },
     FunctionNameMapping {
         sql: "pico_raft_leader_id",
         rust_procedure: "proc_raft_leader_id",
         tarantool_symbol: ".proc_raft_leader_id",
+        parameter_list: &[],
+    },
+    FunctionNameMapping {
+        sql: "pico_raft_leader_uuid",
+        rust_procedure: "proc_raft_leader_uuid",
+        tarantool_symbol: ".proc_raft_leader_uuid",
+        parameter_list: &[],
+    },
+    FunctionNameMapping {
+        sql: "pico_replicaset_name",
+        rust_procedure: "proc_replicaset_name",
+        tarantool_symbol: ".proc_replicaset_name",
+        parameter_list: &["string"],
+    },
+    FunctionNameMapping {
+        sql: "pico_tier_name",
+        rust_procedure: "proc_tier_name",
+        tarantool_symbol: ".proc_tier_name",
+        parameter_list: &["string"],
+    },
+    FunctionNameMapping {
+        sql: "version",
+        rust_procedure: "proc_picodata_version",
+        tarantool_symbol: ".proc_picodata_version",
+        parameter_list: &[],
     },
 ];
 

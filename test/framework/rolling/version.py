@@ -43,6 +43,14 @@ class Version(enum.Enum):
     def is_current(self) -> bool:
         return self == Version.CURRENT
 
+    @property
+    def is_major(self) -> bool:
+        return self in [Version.PREVIOUS_MAJOR, Version.BEFORELAST_MAJOR]
+
+    @property
+    def is_minor(self) -> bool:
+        return self in [Version.PREVIOUS_MINOR, Version.BEFORELAST_MINOR]
+
     def is_mismatch(self, another: Version) -> bool:
         straight = self.is_current and another.is_beforelast
         reversed = another.is_current and self.is_beforelast

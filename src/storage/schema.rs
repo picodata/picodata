@@ -11,6 +11,7 @@ use crate::traft::error::Error;
 use crate::traft::op::Ddl;
 use crate::{column_name, tlog, traft};
 use serde::Serialize;
+use sql::frontend::sql::FUNCTION_NAME_MAPPINGS;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs;
@@ -831,48 +832,42 @@ pub fn ddl_change_format_on_master(
     Ok(())
 }
 
-pub fn ddl_create_tt_proc_on_master(proc_name: &str) -> traft::Result<()> {
+pub fn ddl_create_tt_proc_on_master(new_proc_name: &str) -> traft::Result<()> {
     let lua = ::tarantool::lua_state();
-    let proc = ::tarantool::proc::all_procs()
-        .iter()
-        .find(|p| p.name() == proc_name)
-        .ok_or_else(|| {
-            Error::other(format!(
-                "cannot find procedure {proc_name} in `proc::all_procs` for schema creation"
-            ))
-        })?;
 
-    // This branching is needed because we have basically two "types" of exportable functions
-    // either we want maximum exposure (available from SQL through the wrapper), or we need
-    // them just internally, though exposed as C FFI functions only.
-    if sql::frontend::sql::FUNCTION_NAME_MAPPINGS
+    let Some(proc) = ::tarantool::proc::all_procs()
         .iter()
-        .any(|mapping| mapping.rust_procedure == proc_name)
-    {
-        lua.exec_with(
-            "local name, is_public = ...
-            local proc_name = '.' .. name
-            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, exports = {'LUA', 'SQL'}, returns = 'any'})
-            if is_public then
-                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
-            end
-            ",
-            (proc_name, proc.is_public()),
-        )
-        .map_err(LuaError::from)?;
-    } else {
-        lua.exec_with(
-            "local name, is_public = ...
-            local proc_name = '.' .. name
-            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
-            if is_public then
-                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
-            end
-            ",
-            (proc_name, proc.is_public()),
-        )
-        .map_err(LuaError::from)?;
+        .find(|proc| proc.name() == new_proc_name)
+    else {
+        return Err(Error::other(format!(
+            "cannot find procedure {new_proc_name} in `proc::all_procs` for schema creation"
+        )));
+    };
+
+    let proc_mapping = FUNCTION_NAME_MAPPINGS
+        .iter()
+        .find(|mapping| mapping.rust_procedure == proc.name());
+
+    let proc_params = proc_mapping
+        .map(|mapping| mapping.parameter_list)
+        .unwrap_or_default();
+
+    let mut proc_exports = vec!["LUA"];
+    if proc_mapping.is_some() {
+        proc_exports.push("SQL");
     }
+
+    lua.exec_with(
+        "local name, is_public, param_list, exports = ...
+        local proc_name = '.' .. name
+        box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, param_list = param_list, exports = exports, returns = 'any'})
+        if is_public then
+            box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+        end
+        ",
+        (proc.name(), proc.is_public(), proc_params, proc_exports),
+    )
+    .map_err(LuaError::from)?;
 
     Ok(())
 }

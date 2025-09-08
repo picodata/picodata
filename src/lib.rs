@@ -533,34 +533,28 @@ fn init_stored_procedures() {
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         let proc_name = proc.name();
-        if FUNCTION_NAME_MAPPINGS
+        let proc_opt = FUNCTION_NAME_MAPPINGS
             .iter()
-            .any(|name| name.rust_procedure == proc_name)
-        {
-            lua.exec_with(
-                "local name, is_public = ...
-                local proc_name = '.' .. name
-                box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, exports = {'LUA', 'SQL'}, returns = 'any'})
-                if is_public then
-                    box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
-                end
-                ",
-                (proc_name, proc.is_public()),
-            )
-        .expect("this shouldn't fail");
-        } else {
-            lua.exec_with(
-                "local name, is_public = ...
-                local proc_name = '.' .. name
-                box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
-                if is_public then
-                    box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
-                end
-                ",
-                (proc_name, proc.is_public()),
-            )
-        .expect("this shouldn't fail");
+            .find(|mapping| mapping.rust_procedure == proc_name)
+            .map(|mapping| mapping.parameter_list);
+        let proc_params = proc_opt.unwrap_or_default();
+
+        let mut proc_exports = vec!["LUA"];
+        if proc_opt.is_some() {
+            proc_exports.push("SQL");
         }
+
+        lua.exec_with(
+                "local name, is_public, param_list, exports = ...
+                local proc_name = '.' .. name
+                box.schema.func.create(proc_name, {language = 'C', if_not_exists = true, param_list = param_list, exports = exports, returns = 'any'})
+                if is_public then
+                    box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+                end
+                ",
+                (proc_name, proc.is_public(), proc_params, proc_exports),
+            )
+            .expect("this shouldn't fail");
     }
 
     lua.exec(

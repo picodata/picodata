@@ -454,11 +454,6 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("||", [Text, Text], Text),
         // Functions.
         Function::new_scalar(
-            get_real_function_name("version").expect("shouldn't fail"),
-            [],
-            Text,
-        ),
-        Function::new_scalar(
             // TODO:
             // Deprecated, remove in the future version.
             // Consider using `pico_instance_uuid` instead.
@@ -467,9 +462,29 @@ fn default_type_system() -> TypeSystem {
             Text,
         ),
         Function::new_scalar(
+            get_real_function_name("pico_config_file_path").expect("shouldn't fail"),
+            [Text],
+            Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_instance_dir").expect("shouldn't fail"),
+            [Text],
+            Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_instance_name").expect("shouldn't fail"),
+            [Text],
+            Text,
+        ),
+        Function::new_scalar(
             get_real_function_name("pico_instance_uuid").expect("shouldn't fail"),
             [],
             Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_raft_leader_id").expect("shouldn't fail"),
+            [],
+            Integer,
         ),
         Function::new_scalar(
             get_real_function_name("pico_raft_leader_uuid").expect("shouldn't fail"),
@@ -477,9 +492,19 @@ fn default_type_system() -> TypeSystem {
             Uuid,
         ),
         Function::new_scalar(
-            get_real_function_name("pico_raft_leader_id").expect("shouldn't fail"),
+            get_real_function_name("pico_replicaset_name").expect("shouldn't fail"),
+            [Text],
+            Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("pico_tier_name").expect("shouldn't fail"),
+            [Text],
+            Text,
+        ),
+        Function::new_scalar(
+            get_real_function_name("version").expect("shouldn't fail"),
             [],
-            Integer,
+            Text,
         ),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),

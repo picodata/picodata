@@ -44,6 +44,15 @@ with the `YY.MINOR.MICRO` scheme.
 - Support indexing arrays, i.e. `a[1][2]` expressions.
 - Support indexing maps with string keys, i.e. `m['key']` expressions.
 - Add IF NOT EXISTS support for ALTER TABLE ADD COLUMN.
+- Support for a new set of volatile scalar functions, providing service information:
+  - `pico_instance_name()`: returns a name of the current instance.
+  - `pico_replicaset_name()`: returns a name of the replicaset in which current instance is.
+  - `pico_tier_name()`: returns a name of the tier in which current replicaset of current instance is.
+  - `pico_instance_dir()`: returns an absolute path to the current instance working directory
+    (do not confuse with share directory, which is used for plugins).
+  - `pico_config_file_path()`: return an absolute path to the current instance configuration file. It
+    does not check whether the config exist, it will still return the initial path. If the instance was
+    started without specifying an instance config, it will return `null`.
 
 ### Pgproto
 - Add support for configuring pgproto TLS certificates via:

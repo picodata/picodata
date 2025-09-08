@@ -1849,7 +1849,7 @@ class Instance:
             return False
 
         res = self.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-        if res != [["25.4.1"]]:
+        if res[0][0] not in ["25.3.7", "25.4.1", "25.5.1"]:
             return False
 
         self.sql("AUDIT POLICY dml_default BY pico_service")
@@ -1866,6 +1866,7 @@ class Instance:
 
     def is_ceased(self) -> bool:
         try:
+            print(f"{self.name}: called is_ceased")
             return not self.is_healthy()
         except ProcessDead:
             return True

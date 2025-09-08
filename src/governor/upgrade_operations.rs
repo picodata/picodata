@@ -42,6 +42,16 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("sql", "UPDATE _pico_tier SET is_default = CASE WHEN name = 'default' THEN true ELSE false END"),
         ],
     ),
+    (
+        "25.5.1",
+        &[
+            ("proc_name", "proc_config_file"),
+            ("proc_name", "proc_instance_dir"),
+            ("proc_name", "proc_instance_name"),
+            ("proc_name", "proc_replicaset_name"),
+            ("proc_name", "proc_tier_name"),
+        ],
+    ),
 ];
 
 tarantool::define_str_enum! {

@@ -28,6 +28,11 @@ proc_enable_service
 proc_expel
 proc_expel_redirect
 proc_instance_uuid
+proc_instance_name
+proc_replicaset_name
+proc_tier_name
+proc_instance_dir
+proc_config_file
 proc_get_config
 proc_get_index
 proc_get_vclock

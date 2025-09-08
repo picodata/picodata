@@ -1,3 +1,6 @@
+from typing import Any, Callable
+from uuid import uuid4
+
 import pathlib
 import os
 
@@ -58,90 +61,54 @@ def create_test_data(instance: Instance):
     assert result["row_count"] == 5
 
 
-@pytest.mark.flaky(reruns=3)
-def test_scalar_function_instance_uuid(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
+def assert_common_volatile_function_behavior(
+    i1: Instance,
+    i2: Instance,
+    func_name: str,
+    expected_i1: str,
+    expected_i2: str,
+    *,
+    hacky_selection_sql: str | None = None,
+    allowed_for_non_admin: bool = True,
+    distributed_values_equal: bool = False,
+    requires_volatility_modifier: bool,
+):
+    volatility_modifier = "pico_instance_uuid()" if requires_volatility_modifier else ""
 
-    i1_uuid = i1.uuid()
-    i2_uuid = i2.uuid()
+    # 1) access (non-admin and admin)
+    if allowed_for_non_admin:
+        query = i1.sql(f"SELECT {func_name}({volatility_modifier})", TEST_USER_NAME, TEST_USER_PASS)
+        assert query == [[expected_i1]]
 
-    cluster.wait_until_buckets_balanced()
+    query = i1.sql(f"SELECT {func_name}({volatility_modifier})")
+    assert query == [[expected_i1]]
 
-    create_test_data(i1)
-    i1.create_user(
-        with_name=TEST_USER_NAME,
-        with_password=TEST_USER_PASS,
-        with_auth=TEST_USER_AUTH,
-    )
-
-    # instance_uuid avaliable to all users
-    query = i1.sql(
-        """
-        SELECT pico_instance_uuid()
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[i1_uuid]]
-
-    # checking admin
-    query = i1.sql(
-        """
-        SELECT pico_instance_uuid()
-        """,
-    )
-    assert query == [[i1_uuid]]
-
-    # function name format
-
+    # 2) name format
     # uppercased
-    query = i1.sql(
-        """
-        SELECT PICO_INSTANCE_UUID()
-        """,
-    )
-    assert query == [[i1_uuid]]
-
+    upper = func_name.upper()
+    assert i1.sql(f"SELECT {upper}({volatility_modifier})") == [[expected_i1]]
     # with quotes, lowercased
-    query = i1.sql(
-        """
-        SELECT "pico_instance_uuid"()
-        """,
-    )
-    assert query == [[i1_uuid]]
+    assert i1.sql(f'SELECT "{func_name}"({volatility_modifier})') == [[expected_i1]]
+    # with quotes, uppercased — should fail
+    with pytest.raises(TarantoolError, match=f"SQL function {upper} not found"):
+        i1.sql(f'SELECT "{upper}"({volatility_modifier})')
 
-    # with quotes, uppercased
-    with pytest.raises(TarantoolError, match="SQL function PICO_INSTANCE_UUID not found"):
-        i1.sql(
-            """
-            SELECT "PICO_INSTANCE_UUID"()
-            """
-        )
-
-    # volatile scalar function call isn't allowed in filters - according to query.pest there is
-    # `case filter`, `delete filter`, `window function filter`, `update filter`, `selection filter`,
-    # `join filter`
-    # and in order by, group by
-
-    # selection filter
+    # 3) VOLATILE restrictions
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        i1.sql("SELECT * FROM warehouse WHERE item = pico_instance_uuid()")
+        i1.sql(f"SELECT * FROM warehouse WHERE item = {func_name}({volatility_modifier})")
 
-    # hacky selection filter
-    query = i1.sql(
-        """
-        SELECT uuid FROM _pico_instance WHERE uuid IN (SELECT pico_instance_uuid())
-        """
-    )
-    assert query == [[i1_uuid]]
+    # optional selection using a subquery — helps assert usage under a SELECT
+    if hacky_selection_sql is not None:
+        query = i1.sql(hacky_selection_sql.format(function=func_name, modifier=volatility_modifier))
+        assert query == [[expected_i1]]
 
     # case filter
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
         i1.sql(
-            """
+            f"""
             SELECT
               CASE type
-                WHEN pico_instance_uuid()
+                WHEN {func_name}({volatility_modifier})
                 THEN '1'
               END
             FROM warehouse;
@@ -150,111 +117,87 @@ def test_scalar_function_instance_uuid(cluster: Cluster):
 
     # update filter
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
-            UPDATE warehouse SET item = 'chunks', TYPE = 'light' WHERE id = pico_instance_uuid();
+            f"""
+            UPDATE warehouse SET item = 'chunks', TYPE = 'light' WHERE id = {func_name}({volatility_modifier});
             """
         )
 
     # delete filter
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
-            DELETE FROM warehouse WHERE id = pico_instance_uuid();
+            f"""
+            DELETE FROM warehouse WHERE id = {func_name}({volatility_modifier});
             """
         )
 
     # window filter
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
+            f"""
            SELECT
                id,
                item,
                type,
-               COUNT(*) FILTER (WHERE item = pico_instance_uuid()) OVER (PARTITION BY type) AS box_count_per_type
+                COUNT(*) FILTER (WHERE item = {func_name}({volatility_modifier})) OVER (PARTITION BY type) AS box_count_per_type
            FROM warehouse
            """
         )
 
     # join filter
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
+            f"""
            SELECT *
 
            FROM warehouse
            JOIN items
-                ON warehouse.item = pico_instance_uuid()
+                ON warehouse.item = {func_name}({volatility_modifier})
            """
         )
 
     # order by
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
+            f"""
             SELECT * FROM items
-            ORDER BY pico_instance_uuid()
+            ORDER BY {func_name}({volatility_modifier})
             """
         )
 
     # group by
     with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_instance_uuid() types doesn't match
         i1.sql(
-            """
+            f"""
             SELECT type, COUNT(*) FROM warehouse
             WHERE id < 5
-            GROUP BY pico_instance_uuid();
+            GROUP BY {func_name}({volatility_modifier});
             """
         )
 
-    # misc
+    if not requires_volatility_modifier:
+        # misc: DISTINCT inside args is forbidden
+        with pytest.raises(TarantoolError, match='"distinct" is not allowed inside VOLATILE function call'):
+            i1.sql(f"SELECT {func_name}(distinct );")
 
-    # attempt to use distinct in argument list
-    with pytest.raises(TarantoolError, match='"distinct" is not allowed inside VOLATILE function call'):
-        i1.sql(
-            """
-            SELECT instance_uuid(distinct );
-            """
+    # 4) distributed plan behavior
+    if distributed_values_equal:
+        query = i1.sql(
+            "SELECT DISTINCT " + func_name + f"({volatility_modifier}) FROM warehouse", TEST_USER_NAME, TEST_USER_PASS
         )
+        assert query == [[expected_i1]]
+    else:
+        query = i1.sql(
+            "SELECT DISTINCT " + func_name + f"({volatility_modifier}) FROM warehouse", TEST_USER_NAME, TEST_USER_PASS
+        )
+        assert sorted(query) == sorted([[expected_i1], [expected_i2]])
 
-    # in case of distributed plan, function call return different
-    # result on different instances
-    query = i1.sql(
-        """
-        SELECT DISTINCT pico_instance_uuid() FROM warehouse
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert sorted(query) == sorted([[i1_uuid], [i2_uuid]])
+    # 5) local execution
+    q = "SELECT " + func_name + f"({volatility_modifier}) FROM (VALUES(1, 2))"
+    assert i1.sql(q, TEST_USER_NAME, TEST_USER_PASS) == [[expected_i1]]
+    assert i2.sql(q, TEST_USER_NAME, TEST_USER_PASS) == [[expected_i2]]
 
-    # local execution
-    query = i1.sql(
-        """
-        SELECT pico_instance_uuid() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[i1_uuid]]
-
-    query = i2.sql(
-        """
-        SELECT pico_instance_uuid() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[i2_uuid]]
-
-    # same with global tables
+    # 6) global tables behavior
     i1.sql(
         """
         CREATE TABLE "global" ("id" unsigned not null, primary key("id"))
@@ -266,53 +209,140 @@ def test_scalar_function_instance_uuid(cluster: Cluster):
 
     # empty tables
     query = i1.sql(
-        """
-        SELECT pico_instance_uuid() FROM global
-        """,
+        f"SELECT {func_name}({volatility_modifier}) FROM global",
         TEST_USER_NAME,
         TEST_USER_PASS,
     )
     assert query == []
 
     query = i2.sql(
-        """
-        SELECT pico_instance_uuid() FROM global
-        """,
+        f"SELECT {func_name}({volatility_modifier}) FROM global",
         TEST_USER_NAME,
         TEST_USER_PASS,
     )
     assert query == []
 
-    query = i1.sql(
-        """
-        INSERT INTO global VALUES(1)
-        """
-    )
+    i1.sql("INSERT INTO global VALUES(1)")
 
     # same with global tables
     query = i1.retriable_sql(
-        """
-        SELECT pico_instance_uuid() FROM global
-        """,
+        f"SELECT {func_name}({volatility_modifier}) FROM global",
         TEST_USER_NAME,
         TEST_USER_PASS,
     )
-    assert query == [[i1_uuid]]
+    assert query == [[expected_i1]]
 
     query = i2.retriable_sql(
-        """
-        SELECT pico_instance_uuid() FROM global
-        """,
+        f"SELECT {func_name}({volatility_modifier}) FROM global",
         TEST_USER_NAME,
         TEST_USER_PASS,
     )
-    assert query == [[i2_uuid]]
+    assert query == [[expected_i2]]
+
+    if requires_volatility_modifier:
+        first = i1.sql(f"SELECT {func_name}({volatility_modifier})")
+        second = i2.sql(f"SELECT {func_name}({volatility_modifier})")
+
+        not_equal = first != second
+        both_none = first == [[None]] and second == [[None]]
+        both_default = first == [["default"]] and second == [["default"]]
+        assert not_equal or both_none or both_default
+
+    if requires_volatility_modifier:
+        existing_instance_uuid = i1.sql("SELECT instance_uuid()")[0][0]
+        random_instance_uuid = uuid4()
+        assert existing_instance_uuid != random_instance_uuid, (
+            "exceptional chance occurred: a UUID identical to an existing one was generated"
+        )
+
+        request = i1.sql(f"SELECT {func_name}('{random_instance_uuid}')")
+        assert request == [[None]], "selecting from non-existing instance uuid should return NULL"
 
 
-def test_scalar_function_raft_leader_uuid(cluster: Cluster):
+@pytest.mark.parametrize(
+    "func_name, expected_getter, hacky_selection_sql, allowed_for_non_admin, distributed_values_equal, requires_volatility_modifier",
+    [
+        pytest.param(
+            "pico_instance_uuid",
+            lambda i1, i2: (i1.uuid(), i2.uuid()),
+            "SELECT uuid FROM _pico_instance WHERE uuid IN (SELECT {function}({modifier}))",
+            True,
+            False,
+            False,
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+        pytest.param(
+            "pico_raft_leader_uuid",
+            lambda i1, i2: (i1.raft_leader_uuid(), i2.raft_leader_uuid()),
+            "SELECT uuid FROM _pico_instance WHERE uuid IN (SELECT {function}({modifier}))",
+            False,
+            True,
+            False,
+        ),
+        pytest.param(
+            "pico_raft_leader_id",
+            lambda i1, i2: (i1.raft_leader_id(), i2.raft_leader_id()),
+            "SELECT raft_id FROM _pico_instance WHERE raft_id = (SELECT {function}({modifier}))",
+            False,
+            True,
+            False,
+        ),
+        pytest.param(
+            "pico_instance_name",
+            lambda i1, i2: (i1.name, i2.name),
+            "SELECT name FROM _pico_instance WHERE name IN (SELECT {function}({modifier}))",
+            True,
+            False,
+            True,
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+        pytest.param(
+            "pico_replicaset_name",
+            lambda i1, i2: (i1.replicaset_name, i2.replicaset_name),
+            "SELECT name FROM _pico_replicaset WHERE name IN (SELECT {function}({modifier}))",
+            True,
+            None,
+            True,
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+        pytest.param(
+            "pico_tier_name",
+            lambda i1, i2: (i1.get_tier(), i2.get_tier()),
+            "SELECT name FROM _pico_tier WHERE name IN (SELECT {function}({modifier}))",
+            True,
+            None,
+            True,
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+        pytest.param(
+            "pico_instance_dir",
+            lambda i1, i2: (str(i1.instance_dir), str(i2.instance_dir)),
+            None,
+            True,
+            None,
+            True,
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+        pytest.param(
+            "pico_config_file_path",
+            lambda i1, i2: (i1.config_path or None, i2.config_path or None),
+            None,
+            True,
+            None,
+            True,
+        ),
+    ],
+)
+def test_scalar_function_common(
+    cluster: Cluster,
+    func_name: str,
+    expected_getter: Callable[[Instance, Instance], tuple[Any, Any]],
+    hacky_selection_sql: str | None,
+    allowed_for_non_admin: bool,
+    distributed_values_equal: bool | None,
+    requires_volatility_modifier: bool,
+):
     i1, i2 = cluster.deploy(instance_count=2)
-
-    raft_leader_uuid = i1.raft_leader_uuid()
 
     cluster.wait_until_buckets_balanced()
 
@@ -323,488 +353,20 @@ def test_scalar_function_raft_leader_uuid(cluster: Cluster):
         with_auth=TEST_USER_AUTH,
     )
 
-    # pico_raft_leader_uuid avaliable only to admins
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_uuid()
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
+    expected_i1, expected_i2 = expected_getter(i1, i2)
+    dist_equal = (expected_i1 == expected_i2) if distributed_values_equal is None else distributed_values_equal
+
+    assert_common_volatile_function_behavior(
+        i1,
+        i2,
+        func_name,
+        expected_i1,
+        expected_i2,
+        hacky_selection_sql=hacky_selection_sql,
+        allowed_for_non_admin=allowed_for_non_admin,
+        distributed_values_equal=dist_equal,
+        requires_volatility_modifier=requires_volatility_modifier,
     )
-    assert query == [[raft_leader_uuid]]
-
-    # checking admin
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_uuid()
-        """,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # function name format
-
-    # uppercased
-    query = i1.sql(
-        """
-        SELECT PICO_RAFT_LEADER_UUID()
-        """,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # with quotes, lowercased
-    query = i1.sql(
-        """
-        SELECT "pico_raft_leader_uuid"()
-        """,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # with quotes, uppercased
-    with pytest.raises(TarantoolError, match="SQL function PICO_RAFT_LEADER_UUID not found"):
-        i1.sql(
-            """
-            SELECT "PICO_RAFT_LEADER_UUID"()
-            """
-        )
-
-    # volatile scalar function call isn't allowed in filters - according to query.pest there is
-    # `case filter`, `delete filter`, `window function filter`, `update filter`, `selection filter`,
-    # `join filter`
-    # and in order by, group by
-
-    # selection filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        i1.sql("SELECT * FROM warehouse WHERE item = pico_raft_leader_uuid()")
-
-    # hacky selection filter
-    query = i1.sql(
-        """
-        SELECT uuid FROM _pico_instance WHERE uuid IN (SELECT pico_raft_leader_uuid())
-        """
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # case filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        i1.sql(
-            """
-            SELECT
-              CASE type
-                WHEN pico_raft_leader_uuid()
-                THEN '1'
-              END
-            FROM warehouse;
-            """
-        )
-
-    # update filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-            UPDATE warehouse SET item = 'chunks', TYPE = 'light' WHERE id = pico_raft_leader_uuid();
-            """
-        )
-
-    # delete filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-            DELETE FROM warehouse WHERE id = pico_raft_leader_uuid();
-            """
-        )
-
-    # window filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-           SELECT
-               id,
-               item,
-               type,
-               COUNT(*) FILTER (WHERE item = pico_raft_leader_uuid()) OVER (PARTITION BY type) AS box_count_per_type
-           FROM warehouse
-           """
-        )
-
-    # join filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-           SELECT *
-
-           FROM warehouse
-           JOIN items
-                ON warehouse.item = pico_raft_leader_uuid()
-           """
-        )
-
-    # order by
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-            SELECT * FROM items
-            ORDER BY pico_raft_leader_uuid()
-            """
-        )
-
-    # group by
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_uuid() types doesn't match
-        i1.sql(
-            """
-            SELECT type, COUNT(*) FROM warehouse
-            WHERE id < 5
-            GROUP BY pico_raft_leader_uuid();
-            """
-        )
-
-    # misc
-
-    # attempt to use distinct in argument list
-    with pytest.raises(TarantoolError, match='"distinct" is not allowed inside VOLATILE function call'):
-        i1.sql(
-            """
-            SELECT pico_raft_leader_uuid(distinct );
-            """
-        )
-
-    # in case of distributed plan, function call return different
-    # result on different instances
-    query = i1.sql(
-        """
-        SELECT DISTINCT pico_raft_leader_uuid() FROM warehouse
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # local execution
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    query = i2.sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    # same with global tables
-    i1.sql(
-        """
-        CREATE TABLE "global" ("id" unsigned not null, primary key("id"))
-        USING MEMTX
-        DISTRIBUTED GLOBALLY
-        WAIT APPLIED GLOBALLY
-        """
-    )
-
-    # empty tables
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == []
-
-    query = i2.sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == []
-
-    query = i1.sql(
-        """
-        INSERT INTO global VALUES(1)
-        """
-    )
-
-    # same with global tables
-    query = i1.retriable_sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_uuid]]
-
-    query = i2.retriable_sql(
-        """
-        SELECT pico_raft_leader_uuid() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_uuid]]
-
-
-def test_scalar_function_raft_leader_id(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-
-    raft_leader_id = i1.raft_leader_id()
-
-    cluster.wait_until_buckets_balanced()
-
-    create_test_data(i1)
-    i1.create_user(
-        with_name=TEST_USER_NAME,
-        with_password=TEST_USER_PASS,
-        with_auth=TEST_USER_AUTH,
-    )
-
-    # pico_raft_leader_id avaliable only to admins
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_id()
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
-
-    # checking admin
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_id()
-        """,
-    )
-    assert query == [[raft_leader_id]]
-
-    # function name format
-
-    # uppercased
-    query = i1.sql(
-        """
-        SELECT PICO_RAFT_LEADER_ID()
-        """,
-    )
-    assert query == [[raft_leader_id]]
-
-    # with quotes, lowercased
-    query = i1.sql(
-        """
-        SELECT "pico_raft_leader_id"()
-        """,
-    )
-    assert query == [[raft_leader_id]]
-
-    # with quotes, uppercased
-    with pytest.raises(TarantoolError, match="SQL function PICO_RAFT_LEADER_ID not found"):
-        i1.sql(
-            """
-            SELECT "PICO_RAFT_LEADER_ID"()
-            """
-        )
-
-    # volatile scalar function call isn't allowed in filters - according to query.pest there is
-    # `case filter`, `delete filter`, `window function filter`, `update filter`, `selection filter`,
-    # `join filter`
-    # and in order by, group by
-
-    # selection filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        i1.sql("SELECT * FROM warehouse WHERE item = pico_raft_leader_id()")
-
-    # hacky selection filter
-    query = i1.sql(
-        """
-        SELECT raft_id FROM _pico_instance WHERE raft_id = (SELECT pico_raft_leader_id())
-        """
-    )
-    assert query == [[raft_leader_id]]
-
-    # case filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        i1.sql(
-            """
-            SELECT
-              CASE type
-                WHEN pico_raft_leader_id()
-                THEN '1'
-              END
-            FROM warehouse;
-            """
-        )
-
-    # update filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-            UPDATE warehouse SET item = 'chunks', TYPE = 'light' WHERE id = pico_raft_leader_id();
-            """
-        )
-
-    # delete filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-            DELETE FROM warehouse WHERE id = pico_raft_leader_id();
-            """
-        )
-
-    # window filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-           SELECT
-               id,
-               item,
-               type,
-               COUNT(*) FILTER (WHERE item = pico_raft_leader_id()) OVER (PARTITION BY type) AS box_count_per_type
-           FROM warehouse
-           """
-        )
-
-    # join filter
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-           SELECT *
-
-           FROM warehouse
-           JOIN items
-                ON warehouse.item = pico_raft_leader_id()
-           """
-        )
-
-    # order by
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-            SELECT * FROM items
-            ORDER BY pico_raft_leader_id()
-            """
-        )
-
-    # group by
-    with pytest.raises(TarantoolError, match="volatile function is not allowed in filter clause not implemented"):
-        # no matter that id and pico_raft_leader_id() types doesn't match
-        i1.sql(
-            """
-            SELECT type, COUNT(*) FROM warehouse
-            WHERE id < 5
-            GROUP BY pico_raft_leader_id();
-            """
-        )
-
-    # misc
-
-    # attempt to use distinct in argument list
-    with pytest.raises(TarantoolError, match='"distinct" is not allowed inside VOLATILE function call'):
-        i1.sql(
-            """
-            SELECT pico_raft_leader_id(distinct );
-            """
-        )
-
-    # in case of distributed plan, function call return different
-    # result on different instances
-    query = i1.sql(
-        """
-        SELECT DISTINCT pico_raft_leader_id() FROM warehouse
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
-
-    # local execution
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_id() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
-
-    query = i2.sql(
-        """
-        SELECT pico_raft_leader_id() FROM (VALUES(1, 2))
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
-
-    # same with global tables
-    i1.sql(
-        """
-        CREATE TABLE "global" ("id" unsigned not null, primary key("id"))
-        USING MEMTX
-        DISTRIBUTED GLOBALLY
-        WAIT APPLIED GLOBALLY
-        """
-    )
-
-    # empty tables
-    query = i1.sql(
-        """
-        SELECT pico_raft_leader_id() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == []
-
-    query = i2.sql(
-        """
-        SELECT pico_raft_leader_id() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == []
-
-    query = i1.sql(
-        """
-        INSERT INTO global VALUES(1)
-        """
-    )
-
-    # same with global tables
-    query = i1.retriable_sql(
-        """
-        SELECT pico_raft_leader_id() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
-
-    query = i2.retriable_sql(
-        """
-        SELECT pico_raft_leader_id() FROM global
-        """,
-        TEST_USER_NAME,
-        TEST_USER_PASS,
-    )
-    assert query == [[raft_leader_id]]
 
 
 def test_scalar_function_version(cluster: Cluster):

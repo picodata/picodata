@@ -138,6 +138,11 @@ article.md-typeset.md-typeset ul {
 <b>P</b>
 
 * [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
+* [PICO_INSTANCE_NAME](reference/sql/pico_instance_name.md)
+* [PICO_REPLICASET_NAME](reference/sql/pico_replicaset_name.md)
+* [PICO_TIER_NAME](reference/sql/pico_tier_name.md)
+* [PICO_INSTANCE_DIR](reference/sql/pico_instance_dir.md)
+* [PICO_CONFIG_FILE_PATH](reference/sql/pico_config_file_path.md)
 * [PICO_RAFT_LEADER_ID](reference/sql/pico_raft_leader_id.md)
 * [PICO_RAFT_LEADER_UUID](reference/sql/pico_raft_leader_uuid.md)
 * [plugin](architecture/plugins.md)

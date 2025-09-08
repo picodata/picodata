@@ -138,14 +138,28 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 false,
             ),
             Function::new_volatile(
-                get_real_function_name("pico_instance_uuid")
+                get_real_function_name("pico_config_file_path")
                     .expect("shouldn't fail")
                     .into(),
-                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
+                DerivedType::new(UnrestrictedType::String),
                 false,
             ),
             Function::new_volatile(
-                get_real_function_name("pico_raft_leader_uuid")
+                get_real_function_name("pico_instance_dir")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_uuid")
                     .expect("shouldn't fail")
                     .into(),
                 DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
@@ -156,6 +170,27 @@ pub fn get_builtin_functions() -> &'static [Function] {
                     .expect("shouldn't fail")
                     .into(),
                 DerivedType::new(UnrestrictedType::Integer),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_raft_leader_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_replicaset_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_tier_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
                 false,
             ),
         ]

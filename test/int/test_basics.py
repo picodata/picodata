@@ -378,7 +378,7 @@ Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","d
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
-Insert(_pico_property, ["system_catalog_version","25.4.1"]),
+Insert(_pico_property, ["system_catalog_version","25.5.1"]),
 Insert(_pico_property, ["cluster_version","{picodata_version}"]),
 Replace(_pico_db_config, ["auth_password_length_min","",8]),
 Replace(_pico_db_config, ["auth_password_enforce_uppercase","",true]),

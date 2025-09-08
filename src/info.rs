@@ -292,6 +292,163 @@ pub fn proc_instance_uuid() -> Result<String, Error> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// .proc_instance_name
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+fn proc_instance_name(uuid: String) -> Result<Option<String>, Error> {
+    let node = node::global()?;
+    let cache = node.topology_cache.get();
+    match cache.instance_by_uuid(&uuid) {
+        Ok(instance) => Ok(Some(instance.name.clone().into())),
+        Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_replicaset_name
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+fn proc_replicaset_name(uuid: String) -> Result<Option<String>, Error> {
+    let node = node::global()?;
+    let cache = node.topology_cache.get();
+    match cache.instance_by_uuid(&uuid) {
+        Ok(instance) => Ok(Some(instance.replicaset_name.clone().into())),
+        Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_tier_name
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+fn proc_tier_name(uuid: String) -> Result<Option<String>, Error> {
+    let node = node::global()?;
+    let cache = node.topology_cache.get();
+    match cache.instance_by_uuid(&uuid) {
+        Ok(instance) => Ok(Some(instance.tier.clone())),
+        Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_instance_dir
+////////////////////////////////////////////////////////////////////////////////
+
+fn impl_proc_instance_dir() -> Result<Option<String>, Error> {
+    let picodata_config = crate::config::PicodataConfig::get();
+    let instance_config = &picodata_config.instance;
+
+    if let Some(working_path) = &instance_config.instance_dir {
+        if working_path.is_absolute() {
+            Ok(Some(working_path.display().to_string()))
+        } else {
+            // NOTE(kbezuglyi): `std::path::absolute` does not resolve symlinks,
+            // and may succeed even if the path does not exist. Symlink
+            // resolution is avoided by occasion, meanwhile path existence
+            // confirmation is done intentionally, because if the cluster
+            // started without explicit specification of a config file path, we
+            // should return `null`, that's why we can't return `null` (the path
+            // does not exist anymore), to avoid confusing the end user.
+            let absolute_path = std::path::absolute(working_path)?;
+            Ok(Some(absolute_path.display().to_string()))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+#[proc]
+fn proc_instance_dir(uuid: String) -> Result<Option<String>, Error> {
+    let node = node::global()?;
+    let requested_uuid = uuid.to_string();
+    let my_uuid = node.topology_cache.my_instance_uuid();
+
+    let is_local = requested_uuid == my_uuid;
+    if is_local {
+        return impl_proc_instance_dir();
+    }
+
+    let topology_ref = node.topology_cache.get();
+    if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
+        let future = async {
+            node.pool
+                .call_raw(
+                    &instance.name,
+                    crate::proc_name!(proc_instance_dir),
+                    &(uuid,),
+                    None,
+                )?
+                .await
+        };
+        Ok(fiber::block_on(future)?)
+    } else {
+        Ok(None)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_config_file
+////////////////////////////////////////////////////////////////////////////////
+
+fn impl_proc_config_file() -> Result<Option<String>, Error> {
+    let picodata_config = crate::config::PicodataConfig::get();
+    let instance_config = &picodata_config.instance;
+
+    if let Some(config_path) = &instance_config.config_file {
+        if config_path.is_absolute() {
+            return Ok(Some(config_path.display().to_string()));
+        } else {
+            // NOTE(kbezuglyi): `std::path::absolute` does not resolve symlinks,
+            // and may succeed even if the path does not exist. Symlink
+            // resolution is avoided by occasion, meanwhile path existence
+            // confirmation is done intentionally, because if the cluster
+            // started without explicit specification of a config file path, we
+            // should return `null`, that's why we can't return `null` (the path
+            // does not exist anymore), to avoid confusing the end user.
+            let absolute_path = std::path::absolute(config_path)?;
+            return Ok(Some(absolute_path.display().to_string()));
+        }
+    } else {
+        return Ok(None);
+    }
+}
+
+#[proc]
+fn proc_config_file(uuid: String) -> Result<Option<String>, Error> {
+    let node = node::global()?;
+    let requested_uuid = uuid.to_string();
+    let my_uuid = node.topology_cache.my_instance_uuid();
+
+    let is_local = requested_uuid == my_uuid;
+    if is_local {
+        return impl_proc_config_file();
+    }
+
+    let topology_ref = node.topology_cache.get();
+    if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
+        let future = async {
+            node.pool
+                .call_raw(
+                    &instance.name,
+                    crate::proc_name!(proc_config_file),
+                    &(uuid,),
+                    None,
+                )?
+                .await
+        };
+        Ok(fiber::block_on(future)?)
+    } else {
+        Ok(None)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // InternalInfo
 ////////////////////////////////////////////////////////////////////////////////
 
