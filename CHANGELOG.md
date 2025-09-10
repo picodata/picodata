@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.3.4] - Unreleased
+
+### Fixes
+
+- Upgraded luajit to fix several issues.
+  See https://git.picodata.io/core/tarantool/-/merge_requests/282 for details.
+
 ## [25.3.3] - 2025-09-10
 
 ### CLI
