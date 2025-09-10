@@ -54,6 +54,48 @@ with the `YY.MINOR.MICRO` scheme.
 - `picodata plugin configure` now prints a message on success for better UX.
   See <https://git.picodata.io/core/picodata/-/issues/1904>.
 
+## [25.3.3] - 2025-09-10
+
+### CLI
+
+- Authentication method flags now use automatic recognition system, instead
+  of relying on default values, delivering less error-prone and complex user
+  experience.
+  See <https://git.picodata.io/core/picodata/-/issues/1973>.
+
+- `picodata status` and `picodata plugin configure` now support execution with
+  custom user, determining authentication method automatically on it's own.
+  WARNING: If you do not specify an authentication method, it will be found
+  out by brute force, which may lead to the user being blocked if the number of
+  authorization attempts exceeds the limits.
+  See <https://git.picodata.io/core/picodata/issues/1734>.
+
+- `picodata plugin configure` now prints a message on success for better UX.
+  See <https://git.picodata.io/core/picodata/-/issues/1904>.
+
+### Features
+
+- Pgproto now reports more verbose TLS error messages
+
+### Fixes
+
+- Record `pico_sql_query_errors_total`, `pico_sql_query_duration` and `pico_sql_query_errors_total` metrics
+  for queries executed through pgproto
+- Fixed joining a replica after expel with the same instance name as the
+  expelled one (see also https://git.picodata.io/core/picodata/-/issues/2173).
+
+## [25.3.2] - 2025-08-04
+
+### Fixes
+
+- Fixed "instance is already joined" error if picodata crashes during reboostrap
+  (see also https://git.picodata.io/core/picodata/-/issues/2077).
+- Remove unnecessary timeout on local Unix domain sockets in `picodata admin` command.
+  Unlike network sockets, local sockets don't silently hang - a server crash
+  immediately breaks the connection, making timeouts redundant. This fixes an issue
+  where long-running plugin commands could be incorrectly aborted due to the
+  artificial timeout.
+
 ## [25.3.1] - 2025-07-25
 
 ### Features
