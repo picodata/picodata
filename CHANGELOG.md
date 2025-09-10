@@ -38,6 +38,8 @@ with the `YY.MINOR.MICRO` scheme.
   expelled one (see also https://git.picodata.io/core/picodata/-/issues/2173).
 - Fixed an out-of-memory crash when using Response::encode_rmp with large
   collections in plugin API (see also https://git.picodata.io/core/picodata/-/issues/2028).
+- Upgraded luajit to fix several issues.
+  See https://git.picodata.io/core/tarantool/-/merge_requests/282 for details.
 
 ### CLI
 
