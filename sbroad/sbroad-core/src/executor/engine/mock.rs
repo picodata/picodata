@@ -8,20 +8,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use std::rc::Rc;
-use tarantool::decimal;
-use tarantool::decimal::Decimal;
 
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use crate::cbo::histogram::normalization::DEFAULT_HISTOGRAM_BUCKETS_NUMBER;
-use crate::cbo::histogram::HistogramBuckets;
-use crate::cbo::histogram::{Histogram, Mcv, McvSet, Scalar};
-use crate::cbo::tests::construct_i64_buckets;
-use crate::cbo::{ColumnStats, TableColumnPair, TableStats};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::{
     helpers::{sharding_key_from_map, sharding_key_from_tuple, vshard::get_random_bucket},
-    Router, Statistics, Vshard,
+    Router, Vshard,
 };
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
@@ -1433,8 +1426,6 @@ pub struct RouterRuntimeMock {
     metadata: RefCell<RouterConfigurationMock>,
     virtual_tables: RefCell<HashMap<NodeId, VirtualTable>>,
     ir_cache: Rc<RefCell<LRUCache<SmolStr, Rc<Plan>>>>,
-    table_statistics_cache: RefCell<HashMap<SmolStr, Rc<TableStats>>>,
-    initial_column_statistics_cache: RefCell<HashMap<TableColumnPair, Rc<Box<dyn Any>>>>,
     pub vshard_mock: VshardMock,
 }
 
@@ -1443,8 +1434,6 @@ impl std::fmt::Debug for RouterRuntimeMock {
         f.debug_tuple("")
             .field(&self.metadata)
             .field(&self.virtual_tables)
-            .field(&self.table_statistics_cache)
-            .field(&self.initial_column_statistics_cache)
             .finish()
     }
 }
@@ -1597,308 +1586,13 @@ impl RouterRuntimeMock {
     #[must_use]
     pub fn new() -> Self {
         let cache: LRUCache<SmolStr, Rc<Plan>> = LRUCache::new(DEFAULT_CAPACITY, None).unwrap();
-
-        let mut table_statistics_cache = HashMap::new();
-        let hash_testing_hist_rows_number = 1000.0;
-        table_statistics_cache.insert(
-            "hash_testing_hist".to_smolstr(),
-            Rc::new(TableStats::new(hash_testing_hist_rows_number as u64)),
-        );
-        let hash_testing_rows_number = 10000.0;
-        table_statistics_cache.insert(
-            "hash_testing".to_smolstr(),
-            Rc::new(TableStats::new(hash_testing_rows_number as u64)),
-        );
-        let test_space_rows_number = 25000.0;
-        table_statistics_cache.insert(
-            "test_space".to_smolstr(),
-            Rc::new(TableStats::new(test_space_rows_number as u64)),
-        );
-
-        let mut column_statistics_cache: HashMap<TableColumnPair, Rc<Box<dyn Any>>> =
-            HashMap::new();
-        // Column statistics with empty histogram.
-        //
-        // * rows_number: 1000
-        // * min_value: 1
-        // * max_value: 50
-        // * avg_size: 4
-        // * histogram:
-        //   - null_fraction: 0.0
-        //   - most_common: []
-        //   - ndv (absolute value): 0
-        //   - buckets_count: 0
-        //   - buckets_frequency: 0
-        //   - buckets_boundaries: []
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            1i64,
-            50i64,
-            4,
-            Some(Histogram::new(
-                McvSet::default(),
-                HistogramBuckets::default(),
-                decimal!(0.0),
-                decimal!(0.0),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("hash_testing_hist".to_smolstr(), 0),
-            Rc::new(boxed_column_stats),
-        );
-
-        // Casual column statistics.
-        //
-        // Values `min_value` and `max_value` of `ColumnStats` structure are in fact
-        // displaying MIN and MAX values of `Histogram` structure (that is seen from its
-        // `most_common` and `buckets_boundaries` fields).
-        // An example of statistics, where general column statistics and histogram statistics conform.
-        //
-        // * rows_number: 10000
-        // * min_value: 0
-        // * max_value: 1005
-        // * avg_size: 8
-        // * histogram:
-        //   - null_fraction: 0.1 (1000)
-        //   - most_common:
-        //     [0 -> 1000,
-        //      1 -> 1000,
-        //      2 -> 500,
-        //      3 -> 500,
-        //      4 -> 1000]
-        //   - ndv (absolute value): 15 (only 10 in buckets)
-        //   - buckets_count: 100
-        //   - buckets_frequency: 50 (as only 5000 elements are stored in buckets)
-        //   - buckets_boundaries: equally splitted [5; 1005] range
-        let mcv_vec = vec![
-            Mcv::new(
-                0i64,
-                Decimal::try_from(1000.0 / hash_testing_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                1i64,
-                Decimal::try_from(1000.0 / hash_testing_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                2i64,
-                Decimal::try_from(500.0 / hash_testing_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                3i64,
-                Decimal::try_from(500.0 / hash_testing_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                4i64,
-                Decimal::try_from(1000.0 / hash_testing_rows_number).unwrap(),
-            ),
-        ];
-        let buckets = construct_i64_buckets(DEFAULT_HISTOGRAM_BUCKETS_NUMBER, 5, 1005).unwrap();
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            0i64,
-            1005i64,
-            8,
-            Some(Histogram::new(
-                McvSet::from_vec(&mcv_vec),
-                buckets,
-                decimal!(0.1),
-                // 15 / (10000 * (1 -  0.1))
-                decimal!(0.001666),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("hash_testing".to_smolstr(), 0),
-            Rc::new(boxed_column_stats),
-        );
-
-        // Column statistics with unique values.
-        // Note that it's also a column statistics with no `most_common` values.
-        //
-        // * rows_number: 10000
-        // * min_value: 1
-        // * max_value: 90
-        // * avg_size: 4
-        // * histogram:
-        //   - null_fraction: 0.1 (1000)
-        //   - most_common: []
-        //   - ndv (absolute value): 900
-        //   - buckets_count: 3
-        //   - buckets_frequency: 3000 (as all 9000 left elements are stored in buckets)
-        //   - buckets_boundaries: [1, 40, 65, 90]
-        let mut boundaries = vec![1i64, 40i64, 65i64, 90i64];
-        let buckets = HistogramBuckets::try_from(&mut boundaries).unwrap();
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            1i64,
-            900i64,
-            4,
-            Some(Histogram::new(
-                McvSet::new(),
-                buckets,
-                decimal!(0.1),
-                // 900 / (10000 * (1 -  0.1))
-                decimal!(0.1),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("hash_testing".to_smolstr(), 3),
-            Rc::new(boxed_column_stats),
-        );
-
-        // Casual column statistics, but for different column in different table.
-        //
-        // Values `min_value` and `max_value` of `ColumnStats` structure differ
-        // from MIN and MAX values that we can get from `Histogram` structure (that is seen from its
-        // `most_common` and `buckets_boundaries` fields).
-        // An example of statistics, where general column statistics and histogram statistics
-        // do NOT conform. That means histogram was gathered before updates to the corresponding table were made.
-        //
-        // * rows_number: 25000
-        // * min_value: 1
-        // * max_value: 2000
-        // * avg_size: 8
-        // * histogram:
-        //   - null_fraction: 0.2 (5000)
-        //   - most_common:
-        //     [3 -> 2500,
-        //      4 -> 500,
-        //      5 -> 500,
-        //      6 -> 1500]
-        //   - ndv: 104 (only 100 in buckets)
-        //   - buckets_count: 4
-        //   - buckets_frequency: 3750 (as only 15000 elements are stored in buckets)
-        //   - buckets_boundaries: [0, 78, 200, 780, 1800]
-        let mcv_vec = vec![
-            Mcv::new(
-                3u64,
-                Decimal::try_from(2500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                4u64,
-                Decimal::try_from(500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                5u64,
-                Decimal::try_from(500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                6u64,
-                Decimal::try_from(1500.0 / test_space_rows_number).unwrap(),
-            ),
-        ];
-        let mut boundaries = vec![0u64, 78u64, 200u64, 780u64, 1800u64];
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            1u64,
-            2000u64,
-            8,
-            Some(Histogram::new(
-                McvSet::from_vec(&mcv_vec),
-                HistogramBuckets::try_from(&mut boundaries).unwrap(),
-                decimal!(0.2),
-                // 104 / (25000 * (1 -  0.2))
-                decimal!(0.0052),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("test_space".to_smolstr(), 0),
-            Rc::new(boxed_column_stats),
-        );
-
-        // Casual column statistics (one more column with adequate histogram buckets):
-        //
-        // * rows_number: 25000
-        // * min_value: 100
-        // * max_value: 400
-        // * avg_size: 8
-        // * histogram:
-        //   - null_fraction: 0.2 (5000)
-        //   - most_common: []
-        //   - ndv (absolute value): 10 (10 in buckets)
-        //   - buckets_count: 100
-        //   - buckets_frequency: 200 (as only 20000 elements are stored in buckets)
-        //   - buckets_boundaries: equally splitted [100; 400] range
-        let buckets = construct_i64_buckets(DEFAULT_HISTOGRAM_BUCKETS_NUMBER, 100, 400).unwrap();
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            100i64,
-            400i64,
-            8,
-            Some(Histogram::new(
-                McvSet::new(),
-                buckets,
-                decimal!(0.2),
-                // 10 / (25000 * (1 -  0.2))
-                decimal!(0.0005),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("test_space".to_smolstr(), 1),
-            Rc::new(boxed_column_stats),
-        );
-
-        // String column statistics.
-        //
-        // * rows_number: 25000
-        // * min_value: "a"
-        // * max_value: "z"
-        // * avg_size: 1
-        // * histogram:
-        //   - null_fraction: 0.2 (5000)
-        //   - most_common:
-        //     ["a" -> 2500,
-        //      "b" -> 500,
-        //      "c" -> 500,
-        //      "d" -> 1500]
-        //   - ndv: 104 (only 100 in buckets)
-        //   - buckets_count: 4
-        //   - buckets_frequency: 3750 (as only 15000 elements are stored in buckets)
-        //   - buckets_boundaries: ["e", "j", "q", "s", "z"]
-        let mcv_vec = vec![
-            Mcv::new(
-                String::from("a"),
-                Decimal::try_from(2500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                String::from("b"),
-                Decimal::try_from(500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                String::from("c"),
-                Decimal::try_from(500.0 / test_space_rows_number).unwrap(),
-            ),
-            Mcv::new(
-                String::from("d"),
-                Decimal::try_from(1500.0 / test_space_rows_number).unwrap(),
-            ),
-        ];
-        let mut boundaries = vec![
-            String::from("e"),
-            String::from("j"),
-            String::from("q"),
-            String::from("s"),
-            String::from("z"),
-        ];
-        let boxed_column_stats = Box::new(ColumnStats::new(
-            String::from("a"),
-            String::from("z"),
-            1,
-            Some(Histogram::new(
-                McvSet::from_vec(&mcv_vec),
-                HistogramBuckets::try_from(&mut boundaries).unwrap(),
-                decimal!(0.2),
-                // 104 / (25000 * (1 -  0.2))
-                decimal!(0.0052),
-            )),
-        ));
-        column_statistics_cache.insert(
-            TableColumnPair::new("test_space".to_smolstr(), 2),
-            Rc::new(boxed_column_stats),
-        );
-
         let meta = RouterConfigurationMock::new();
         let bucket_cnt = meta.bucket_count;
+
         RouterRuntimeMock {
             metadata: RefCell::new(meta),
             virtual_tables: RefCell::new(HashMap::new()),
             ir_cache: Rc::new(RefCell::new(cache)),
-            table_statistics_cache: RefCell::new(table_statistics_cache),
-            initial_column_statistics_cache: RefCell::new(column_statistics_cache),
             vshard_mock: VshardMock::new(2, bucket_cnt),
         }
     }
@@ -2023,60 +1717,6 @@ impl Router for RouterRuntimeMock {
         _tier_name: Option<&SmolStr>,
     ) -> Result<Self::VshardImplementor, SbroadError> {
         Ok(self.clone())
-    }
-}
-
-impl Statistics for RouterRuntimeMock {
-    fn get_table_stats(&self, table_name: &str) -> Result<Option<Rc<TableStats>>, SbroadError> {
-        let stats = self.table_statistics_cache.borrow_mut();
-        if let Some(value) = stats.get(table_name) {
-            Ok(Some(value.clone()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn get_column_stats(
-        &self,
-        table_column_pair: &TableColumnPair,
-    ) -> Result<Option<Rc<Box<dyn Any>>>, SbroadError> {
-        let stats = self.initial_column_statistics_cache.borrow_mut();
-        if let Some(value) = stats.get(table_column_pair) {
-            Ok(Some(value.clone()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn update_table_stats(
-        &mut self,
-        table_name: SmolStr,
-        table_stats: TableStats,
-    ) -> Result<(), SbroadError> {
-        let mut stats = self.table_statistics_cache.borrow_mut();
-        let value = stats.get_mut(table_name.as_str());
-        if let Some(value) = value {
-            *value = Rc::new(table_stats);
-        } else {
-            stats.insert(table_name, Rc::new(table_stats));
-        }
-        Ok(())
-    }
-
-    fn update_column_stats<T: Scalar>(
-        &self,
-        table_column_pair: TableColumnPair,
-        column_stats: ColumnStats<T>,
-    ) -> Result<(), SbroadError> {
-        let mut stats = self.initial_column_statistics_cache.borrow_mut();
-        let boxed = Box::new(column_stats);
-        let value = stats.get_mut(&table_column_pair);
-        if let Some(value) = value {
-            *value = Rc::new(boxed);
-        } else {
-            stats.insert(table_column_pair, Rc::new(boxed));
-        }
-        Ok(())
     }
 }
 

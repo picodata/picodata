@@ -1,6 +1,5 @@
 //! Tarantool cartridge engine module.
 
-use sbroad::cbo::{ColumnStats, TableColumnPair, TableStats};
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
 use sbroad::executor::engine::{DispatchReturnFormat, Metadata, QueryCache, Vshard};
 use sbroad::ir::node::NodeId;
@@ -21,7 +20,6 @@ use crate::cartridge::config::RouterConfiguration;
 
 use super::ConfigurationProvider;
 use sbroad::backend::sql::space::ADMIN_ID;
-use sbroad::cbo::histogram::Scalar;
 use sbroad::error;
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
@@ -30,7 +28,7 @@ use sbroad::executor::engine::{
         dispatch_impl, explain_format, materialize_motion, materialize_values,
         sharding_key_from_map, sharding_key_from_tuple,
     },
-    Router, Statistics,
+    Router,
 };
 use sbroad::executor::hash::bucket_id_by_tuple;
 use sbroad::executor::ir::ExecutionPlan;
@@ -304,43 +302,6 @@ impl Router for RouterRuntime {
         _tier_name: Option<&SmolStr>,
     ) -> Result<Self::VshardImplementor, SbroadError> {
         SingleTier::new(self.metadata.lock().waiting_timeout())
-    }
-}
-
-impl Statistics for RouterRuntime {
-    #[allow(unused_variables)]
-    fn get_table_stats(&self, table_name: &str) -> Result<Option<Rc<TableStats>>, SbroadError> {
-        // Will be added later.
-        todo!()
-    }
-
-    #[allow(unused_variables)]
-    fn get_column_stats(
-        &self,
-        table_column_pair: &TableColumnPair,
-    ) -> Result<Option<Rc<Box<dyn Any>>>, SbroadError> {
-        // Will be added later.
-        todo!()
-    }
-
-    #[allow(unused_variables)]
-    fn update_table_stats(
-        &mut self,
-        table_name: SmolStr,
-        table_stats: TableStats,
-    ) -> Result<(), SbroadError> {
-        // Will be added later.
-        todo!()
-    }
-
-    #[allow(unused_variables)]
-    fn update_column_stats<T: Scalar>(
-        &self,
-        table_column_pair: TableColumnPair,
-        column_stats: ColumnStats<T>,
-    ) -> Result<(), SbroadError> {
-        // Will be added later.
-        todo!()
     }
 }
 

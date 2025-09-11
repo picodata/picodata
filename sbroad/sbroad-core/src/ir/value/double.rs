@@ -1,5 +1,6 @@
 //! Double type module.
 
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
@@ -9,6 +10,7 @@ use std::str::FromStr;
 use crate::errors::{Entity, SbroadError};
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
+use tarantool::decimal::Decimal;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 use tarantool::tlua;
 
@@ -16,6 +18,57 @@ use tarantool::tlua;
 #[serde(transparent)]
 pub struct Double {
     pub value: f64,
+}
+
+impl Eq for Double {}
+
+impl PartialOrd for Double {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Double {
+    /// `PostgreSQL`: <https://github.com/postgres/postgres/blob/ae0e1be9f2a20f6b64072dcee5b8dd7b9027a8fa/src/backend/utils/adt/numeric.c#L2522>
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_value = self.value;
+        let other_value = other.value;
+        let is_special = |f: f64| f.is_nan() || f.is_infinite();
+        let self_is_special = is_special(self_value);
+        let other_is_special = is_special(other_value);
+
+        if self_is_special {
+            if self_value.is_nan() {
+                if other_value.is_nan() {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            } else if self_value == f64::INFINITY {
+                if other_value.is_nan() {
+                    Ordering::Less
+                } else if other_value == f64::INFINITY {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            } else if other_value == f64::NEG_INFINITY {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        } else if other_is_special {
+            if other_value == f64::NEG_INFINITY {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        } else {
+            let self_decimal = Decimal::try_from(self_value).unwrap();
+            let other_decimal = Decimal::try_from(other_value).unwrap();
+            self_decimal.cmp(&other_decimal)
+        }
+    }
 }
 
 impl<'de> Decode<'de> for Double {

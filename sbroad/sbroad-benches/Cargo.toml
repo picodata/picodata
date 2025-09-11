@@ -35,6 +35,3 @@ features = ["picodata", "standalone_decimal"]
 name = "parse"
 harness = false
 
-[[bench]]
-name = "cbo"
-harness = false

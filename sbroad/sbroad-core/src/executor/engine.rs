@@ -6,8 +6,6 @@ use base64ct::{Base64, Encoding};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::tuple::Tuple;
 
-use crate::cbo::histogram::Scalar;
-use crate::cbo::{ColumnStats, TableColumnPair, TableStats};
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::NodeId;
 use crate::ir::types::DerivedType;
@@ -15,7 +13,6 @@ use crate::utils::MutexLike;
 use std::any::Any;
 
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::errors::{Action, Entity, SbroadError};
@@ -430,65 +427,6 @@ pub trait Router: QueryCache {
         exec_plan: &mut ExecutionPlan,
         values_id: NodeId,
     ) -> Result<VirtualTable, SbroadError>;
-}
-
-/// Struct representing table stats that we get directly from replicaset system table.
-/// **Note**: `*_counter` fields are specific for each of the replicasets and should not be merged.
-/// Node that will make statistics calculations need only the `rows_number` field.
-///
-/// **Note**: All the statistics structures with a __Storage__ prefix represent structures that we construct
-/// on storages and then send to the router node (C structure may look differently).
-#[allow(dead_code)]
-pub struct StorageTableStats {
-    /// Number of rows in the table.
-    rows_number: u64,
-    /// Counter of executed INSERT operations.
-    ///
-    /// We need to store counter in order to understand when to
-    /// actualize table statistics.
-    insert_counter: u64,
-    /// Counter of executed UPDATE operations.
-    update_counter: u64,
-    /// Counter of executed REMOVE operations.
-    remove_counter: u64,
-}
-
-/// A `CostBased` statistics trait.
-pub trait Statistics {
-    /// Get `TableStats` for table by its name from storages.
-    ///
-    /// # Errors
-    /// - Low-level statistics retriever error.
-    fn get_table_stats(&self, table_name: &str) -> Result<Option<Rc<TableStats>>, SbroadError>;
-
-    /// Get upcasted `ColumnStats` for column by its table name and column name from storages.
-    ///
-    /// # Errors
-    /// - Low-level statistics retriever error.
-    fn get_column_stats(
-        &self,
-        table_column_pair: &TableColumnPair,
-    ) -> Result<Option<Rc<Box<dyn Any>>>, SbroadError>;
-
-    /// Update `TableStats` cache with given table statistics.
-    ///
-    /// # Errors
-    /// - Table statistics couldn't be mutually borrowed.
-    fn update_table_stats(
-        &mut self,
-        table_name: SmolStr,
-        table_stats: TableStats,
-    ) -> Result<(), SbroadError>;
-
-    /// Update `ColumnStats` cache with given initial column statistics.
-    ///
-    /// # Errors
-    /// - Initial column statistics couldn't be mutually borrowed.
-    fn update_column_stats<T: Scalar>(
-        &self,
-        table_column_pair: TableColumnPair,
-        column_stats: ColumnStats<T>,
-    ) -> Result<(), SbroadError>;
 }
 
 pub trait Vshard {
