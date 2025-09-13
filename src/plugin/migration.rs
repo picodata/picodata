@@ -6,6 +6,7 @@ use crate::plugin::PluginIdentifier;
 use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
 use crate::schema::ADMIN_ID;
+use crate::sql::port::PicoPortOwned;
 use crate::storage::{self, Catalog, SystemTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
@@ -496,7 +497,9 @@ impl SqlApplier for SBroadApplier {
             return Err(traft::error::Error::timeout());
         }
 
-        sql::parse_and_dispatch(sql, vec![], Some(deadline), None).map(|_| ())
+        let mut port = PicoPortOwned::new();
+        sql::parse_and_dispatch(sql, vec![], Some(deadline), None, &mut port)?;
+        Ok(())
     }
 }
 

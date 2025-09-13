@@ -218,7 +218,7 @@ ON r."i" = q."b"
 -- TEST: test_with_union-1
 -- SQL:
 SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2"
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2, 1, 1
 
 -- TEST: test_with_union-2
@@ -343,7 +343,7 @@ SELECT * FROM (
         SELECT "a" FROM "arithmetic_space"
     )
 )
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3
 
 -- TEST: test_complex_2

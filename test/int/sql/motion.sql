@@ -137,5 +137,5 @@ JOIN (
     SELECT "sysOp" FROM "space_simple_shard_key"
 ) as "t2"
 ON "t1"."id" = "t2"."sysOp"
--- EXPECTED:
-3, 1, 2
+-- UNORDERED:
+1, 2, 3

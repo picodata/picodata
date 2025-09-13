@@ -6,6 +6,8 @@ edition = "2021"
 license-file = "../LICENSE"
 
 [dependencies]
+comfy-table = "7.2"
 rmp = { version = "0.8", features = ["std"] }
 smol_str = "0.2"
 thiserror = "1.0"
+

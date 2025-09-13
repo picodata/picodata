@@ -7,3 +7,4 @@ pub mod iterators;
 pub mod message_type;
 pub mod msgpack;
 pub mod protocol_encoder;
+pub mod query_plan;

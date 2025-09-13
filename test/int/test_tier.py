@@ -325,7 +325,7 @@ cluster:
 
     assert ddl["row_count"] == 1
 
-    index_nullable_router_error = "no router found for tier \\\\'storage\\\\'"
+    index_nullable_router_error = "no router found for tier 'storage'"
 
     # insert and select from table sharded in `uninitialized` tier is failed
     # because it uses vshard

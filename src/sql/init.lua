@@ -1,7 +1,4 @@
-require('sbroad.core-router')
-local helper = require('sbroad.helper')
-local utils = require('internal.utils')
-local check_param_table = utils.check_param_table
+require('sbroad.dispatch')
 
 local function sql(...)
     local n_args = select("#", ...)
@@ -35,7 +32,7 @@ local function sql(...)
         return nil, res
     end
 
-    return helper.format_result(res[1])
+    return res
 end
 
 return {

@@ -1,22 +1,18 @@
-use crate::ir::transformation::helpers::sql_to_optimized_ir;
-use engine::mock::TEMPLATE;
-use itertools::Itertools;
-use pretty_assertions::assert_eq;
-use smol_str::SmolStr;
-use std::rc::Rc;
-
+use super::*;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use crate::collection;
-use crate::executor::engine::mock::{ReplicasetDispatchInfo, RouterRuntimeMock};
-use crate::ir::node::{ArenaType, Node, Node136, Over, Projection, ReferenceTarget, Window};
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::ir::node::{ArenaType, Node, Over, Projection, ReferenceTarget, Window};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
+use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::{CastType, DerivedType, UnrestrictedType as Type};
 use crate::ir::Slice;
-
-use super::*;
+use engine::mock::TEMPLATE;
+use pretty_assertions::assert_eq;
+use smol_str::SmolStr;
+use std::rc::Rc;
 
 fn reshard_vtable(
     query: &ExecutingQuery<RouterRuntimeMock>,
@@ -748,30 +744,28 @@ fn global_union_all() {
     coordinator.set_vshard_mock(2);
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let exec_plan = query.get_mut_exec_plan();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch with custom plan");
+    };
+    assert_eq!(2, filtered.len());
 
-    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let buckets = query.bucket_discovery(top_id).unwrap();
-    assert_eq!(Buckets::All, buckets);
-    let exec_plan = query.get_mut_exec_plan();
-    let sub_plan = exec_plan.take_subtree(top_id).unwrap();
-    let actual_dispatch = coordinator.detailed_dispatch(sub_plan, &buckets);
-    let expected = vec![
-        ReplicasetDispatchInfo {
-            rs_id: 0,
-            pattern: r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-        ReplicasetDispatchInfo {
-            rs_id: 1,
-            pattern: r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-    ];
+    let (sql, _, rs, _) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
+    );
+    assert_eq!(rs, "replicaset_0");
 
-    assert_eq!(expected, actual_dispatch);
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
+    );
+    assert_eq!(rs, "replicaset_1");
 }
 
 #[test]
@@ -787,68 +781,44 @@ fn global_union_all2() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
 
     let motion_id = query.get_motion_id(0, 0);
-    let motion_child = query.exec_plan.get_motion_subtree_root(motion_id).unwrap();
-    // imitate plan execution
-    query.exec_plan.take_subtree(motion_child).unwrap();
-
     let mut virtual_table = VirtualTable::new();
     virtual_table.add_column(vcolumn_integer_user_non_null());
     virtual_table.add_tuple(vec![Value::Integer(1)]);
     let exec_plan = query.get_mut_exec_plan();
     exec_plan
-        .set_motion_vtable(&motion_id, virtual_table.clone(), &coordinator)
+        .set_motion_vtable(&motion_id, virtual_table, &coordinator)
         .unwrap();
 
-    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let buckets = query.bucket_discovery(top_id).unwrap();
-    assert_eq!(Buckets::All, buckets);
-    let exec_plan = query.get_mut_exec_plan();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let sub_plan = exec_plan.take_subtree(top_id).unwrap();
-    // after take subtree motion id has changed
-    let (motion_id, _) = sub_plan
-        .get_ir_plan()
-        .nodes
-        .iter136()
-        .find_position(|n| {
-            matches!(
-                n,
-                Node136::Motion(Motion {
-                    policy: MotionPolicy::Full,
-                    ..
-                })
-            )
-        })
-        .unwrap();
-
-    let actual_dispatch = coordinator.detailed_dispatch(sub_plan, &buckets);
-    let motion_id = NodeId {
-        offset: motion_id as u32,
-        arena_type: ArenaType::Arena136,
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch with custom plan");
     };
+    assert_eq!(3, filtered.len());
 
-    let expected = vec![
-        ReplicasetDispatchInfo {
-            rs_id: 0,
-            pattern: r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-        ReplicasetDispatchInfo {
-            rs_id: 1,
-            pattern: r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-        ReplicasetDispatchInfo {
-            rs_id: 2,
-            pattern: r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#.to_string(),
-            params: vec![],
-            vtables_map: collection!(motion_id => Rc::new(virtual_table)),
-        },
-    ];
+    let (sql, _, rs, _) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_0");
 
-    assert_eq!(expected, actual_dispatch);
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int),cast(null as int) where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_1");
+
+    let (sql, _, rs, _) = filtered.get(2).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_test_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_2");
 }
 
 #[test]
@@ -923,29 +893,32 @@ fn global_union_all4() {
     coordinator.set_vshard_mock(2);
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let top_id = query.exec_plan.get_ir_plan().get_top().unwrap();
-    let buckets = query.bucket_discovery(top_id).unwrap();
-    let sub_plan = query.exec_plan.take_subtree(top_id).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.first().unwrap() else {
+        panic!(
+            "{}",
+            format!("Expected a single dispatch with custom plan, port: {info:?}")
+        );
+    };
+    assert_eq!(2, filtered.len());
 
-    let actual_dispatch = coordinator.detailed_dispatch(sub_plan, &buckets);
+    let (sql, _, rs, _) = filtered.first().unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int) where false UNION ALL SELECT * FROM (select cast(null as int) where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
+    );
+    assert_eq!(rs, "replicaset_0");
 
-    let expected = vec![
-        ReplicasetDispatchInfo {
-            rs_id: 0,
-            pattern: r#" select cast(null as int) where false UNION ALL SELECT * FROM (select cast(null as int) where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-        ReplicasetDispatchInfo {
-            rs_id: 1,
-            pattern: r#"SELECT "global_t"."b" FROM "global_t" UNION ALL SELECT * FROM (SELECT "global_t"."a" FROM "global_t" UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#.to_string(),
-            params: vec![],
-            vtables_map: HashMap::new(),
-        },
-    ];
-
-    assert_eq!(expected, actual_dispatch);
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."b" FROM "global_t" UNION ALL SELECT * FROM (SELECT "global_t"."a" FROM "global_t" UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
+    );
+    assert_eq!(rs, "replicaset_1");
 }
 
 #[test]
@@ -990,21 +963,18 @@ fn global_except() {
     }
 
     // check reduce stage
-    let res = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-    let mut expected = ProducerResult::new();
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query locally".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_test_0136""#
-                .into(),
-            vec![],
-        ))),
-    ]]);
-    assert_eq!(expected, res)
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch to any node");
+    };
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_test_0136""#,
+    );
+    assert_eq!(params, &vec![]);
 }
 
 #[test]

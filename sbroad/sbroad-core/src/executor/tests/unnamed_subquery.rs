@@ -1,6 +1,4 @@
-use crate::backend::sql::ir::PatternWithParams;
-use crate::executor::engine::mock::RouterRuntimeMock;
-use crate::executor::result::ProducerResult;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::relation::{Column, ColumnRole, Table};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -111,27 +109,23 @@ fn unnamed_subquery_name_conflict3_test() {
     coordinator.add_table(table);
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, input, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.push(vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {}",
-                "SELECT * FROM",
-                r#"(SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "unnamed_subquery_1""#,
-                r#"INNER JOIN "unnamed_subquery" ON CAST($1 AS bool)"#,
-            ),
-            vec![Value::Boolean(true)],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on all replicasets");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {}",
+            "SELECT * FROM",
+            r#"(SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "unnamed_subquery_1""#,
+            r#"INNER JOIN "unnamed_subquery" ON CAST($1 AS bool)"#,
+        ),
+    );
+    assert_eq!(params, &vec![Value::Boolean(true)]);
 }
 
 #[test]

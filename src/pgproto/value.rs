@@ -299,11 +299,11 @@ impl TryFrom<PgValue> for SbroadValue {
 impl PgValue {
     pub fn try_from_rmpv(value: rmpv::Value, ty: &Type) -> PgResult<Self> {
         use rmpv::Value;
-        match (&value, ty.clone()) {
+        match (value, ty.clone()) {
             (Value::Nil, _) => Ok(PgValue::Null),
-            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(Bool(*v))),
-            (Value::F32(v), Type::FLOAT8) => Ok(PgValue::Float(*v as _)),
-            (Value::F64(v), Type::FLOAT8) => Ok(PgValue::Float(*v)),
+            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(Bool(v))),
+            (Value::F32(v), Type::FLOAT8) => Ok(PgValue::Float(v as _)),
+            (Value::F64(v), Type::FLOAT8) => Ok(PgValue::Float(v)),
             (Value::Integer(v), Type::INT8) => {
                 // Note: PgValue::Integer is sent as INT8, so only INT8 is allowed here. Otherwise,
                 // we can send 8 bytes integer while the client is expecting 2 or 4 bytes.
@@ -327,18 +327,27 @@ impl PgValue {
                 })?;
                 Ok(PgValue::Float(v))
             }
-            (Value::Map(_) | Value::Array(_), Type::JSON | Type::JSONB) => {
+            (Value::Array(v), Type::JSON | Type::JSONB) => {
+                // Any array-like structure will be encoded as json.
+                Ok(PgValue::Json(Json(Value::Array(v))))
+            }
+            (Value::Map(v), Type::JSON | Type::JSONB) => {
                 // Any map-like structure will be encoded as json.
-                Ok(PgValue::Json(Json(value)))
+                Ok(PgValue::Json(Json(Value::Map(v))))
             }
             (Value::String(v), Type::TEXT | Type::VARCHAR) => {
-                let Some(s) = v.as_str() else {
-                    Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
-                };
-                Ok(PgValue::Text(s.to_owned()))
+                if !v.is_str() {
+                    return Err(EncodingError::new(format!("couldn't encode string: {v:?}")).into());
+                }
+                let s = v
+                    .into_str()
+                    .expect("Value is checked as string above")
+                    .to_string();
+                Ok(PgValue::Text(s))
             }
-            (Value::Ext(1, _data), Type::NUMERIC) => {
-                let decimal = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
+            (Value::Ext(1, v), Type::NUMERIC) => {
+                let decimal =
+                    rmpv::ext::from_value(Value::Ext(1, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(decimal))
             }
             (Value::Integer(v), Type::NUMERIC) => {
@@ -348,22 +357,26 @@ impl PgValue {
                 })?;
                 Ok(PgValue::Numeric(Decimal(v.into())))
             }
-            (Value::F32(_) | Value::F64(_), Type::NUMERIC) => {
-                // Decimal values can be represented as floats in msgpack.
-                let v = value.as_f64().expect("arm matches float values");
+            (Value::F32(v), Type::NUMERIC) => {
                 let decimal =
                     tarantool::decimal::Decimal::try_from(v).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(Decimal(decimal)))
             }
-            (Value::Ext(2, _data), Type::UUID) => {
-                let uuid = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
+            (Value::F64(v), Type::NUMERIC) => {
+                let decimal =
+                    tarantool::decimal::Decimal::try_from(v).map_err(EncodingError::new)?;
+                Ok(PgValue::Numeric(Decimal(decimal)))
+            }
+            (Value::Ext(2, v), Type::UUID) => {
+                let uuid = rmpv::ext::from_value(Value::Ext(2, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Uuid(uuid))
             }
-            (Value::Ext(4, _), Type::TIMESTAMPTZ) => {
-                let datetime = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
+            (Value::Ext(4, v), Type::TIMESTAMPTZ) => {
+                let datetime =
+                    rmpv::ext::from_value(Value::Ext(4, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
-            (_any, Type::JSON | Type::JSONB) => Ok(PgValue::Json(Json(value))),
+            (any, Type::JSON | Type::JSONB) => Ok(PgValue::Json(Json(any))),
 
             (value, ty) => Err(PgError::FeatureNotSupported(format_smolstr!(
                 "{value:?} cannot be represented as a value of type {ty:?}"

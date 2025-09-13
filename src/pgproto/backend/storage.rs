@@ -5,6 +5,7 @@ use super::{
 };
 use crate::audit;
 use crate::config::observer::AtomicObserver;
+use crate::sql::port::PicoPortOwned;
 use crate::sql::router::RouterRuntime;
 use crate::{
     pgproto::{
@@ -17,14 +18,15 @@ use crate::{
 };
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
-use rmpv::Value;
+use sbroad::executor::Port;
 use sbroad::ir::types::{DerivedType, UnrestrictedType as SbroadType};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::format_smolstr;
+use sql_protocol::query_plan::PlanBlockIter;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap},
-    iter::zip,
+    io::Cursor,
     ops::Bound,
     os::raw::c_int,
     rc::{Rc, Weak},
@@ -33,7 +35,7 @@ use std::{
 };
 use tarantool::{
     proc::{Return, ReturnMsgpack},
-    tuple::{FunctionCtx, Tuple},
+    tuple::FunctionCtx,
 };
 
 /// Used to store portals in [`PG_PORTALS`] and statements in [`PG_STATEMENTS`].
@@ -176,6 +178,10 @@ impl<S> PgStorage<S> {
     pub fn len(&self) -> usize {
         self.map.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 }
 
 type StatementStorage = PgStorage<StatementHolder>;
@@ -184,6 +190,12 @@ impl StatementStorage {
     fn new() -> Self {
         let context = StorageContext::statements();
         PgStorage::with_context(context)
+    }
+}
+
+impl Default for PortalStorage {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -404,47 +416,64 @@ pub fn collect_param_oids(inferred_types: &[SbroadType], client_types: &[Oid]) -
         .collect()
 }
 
-/// Get rows from DQL or EXPLAIN query execution result tuple.
-/// **Panics** if the tuple does not match the expected format.
-fn get_rows_from_tuple(tuple: &Tuple) -> Vec<Vec<Value>> {
-    #[derive(Deserialize)]
-    struct DqlResult {
-        rows: Vec<Vec<Value>>,
-    }
+pub fn port_read_tuples<'bytes>(
+    port: impl Iterator<Item = &'bytes [u8]>,
+    tuples: usize,
+    metadata: &[MetadataColumn],
+) -> PgResult<Vec<Vec<PgValue>>> {
+    let mut rows = Vec::with_capacity(tuples);
+    for mp in port {
+        let mut cur = Cursor::new(mp);
 
-    // Try parsing a regular DQL result.
-    if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
-        return res.rows;
-    }
+        // First check that we have an array value.
+        let len = rmp::decode::read_array_len(&mut cur).map_err(PgError::other)? as usize;
+        if len != metadata.len() {
+            return Err(PgError::other(format!(
+                "Expected {} columns, got {}",
+                metadata.len(),
+                len
+            )));
+        }
 
-    // Try parsing an EXPLAIN result.
-    if let Ok(Some(res)) = tuple.field::<Vec<Value>>(0) {
-        let rows = res.into_iter().map(|row| vec![row]).collect();
-        return rows;
+        // Decode each column and convert it to postgres value.
+        let mut tuple = Vec::with_capacity(len);
+        for col in metadata.iter().take(len) {
+            let v = rmpv::decode::read_value(&mut cur).map_err(PgError::other)?;
+            let pg_value = PgValue::try_from_rmpv(v, &col.ty)?;
+            tuple.push(pg_value);
+        }
+        rows.push(tuple);
     }
-
-    panic!("query result: invalid representation of rows");
+    Ok(rows)
 }
 
-/// Get row count from query execution result tuple.
-/// **Panics** if the tuple does not match the expected format.
-fn get_row_count_from_tuple(tuple: &Tuple) -> usize {
-    #[derive(Deserialize)]
-    struct RowCount {
-        row_count: usize,
+fn port_read_explain<'bytes>(
+    port: impl Iterator<Item = &'bytes [u8]>,
+    tuples: usize,
+    metadata: &[MetadataColumn],
+) -> PgResult<Vec<Vec<PgValue>>> {
+    if metadata.len() != 1 {
+        return Err(PgError::other(format!(
+            "Expected 1 column in EXPLAIN metadata, got {}",
+            metadata.len()
+        )));
     }
-
-    if let Ok(Some(res)) = tuple.field::<RowCount>(0) {
-        return res.row_count;
+    let mut rows = Vec::with_capacity(tuples);
+    for mp in port {
+        let mut cur = Cursor::new(mp);
+        let val = rmpv::decode::read_value(&mut cur).map_err(PgError::other)?;
+        let pg_value = PgValue::try_from_rmpv(val, &metadata[0].ty)?;
+        rows.push(vec![pg_value]);
     }
-
-    panic!("query result: no row count found");
+    Ok(rows)
 }
 
-fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<Vec<PgValue>> {
-    zip(mp, metadata)
-        .map(|(v, col)| PgValue::try_from_rmpv(v, &col.ty))
-        .collect()
+/// Get the number of changed rows from the port with DML result.
+fn port_read_changed<'bytes>(mut port: impl Iterator<Item = &'bytes [u8]>) -> PgResult<usize> {
+    let first_mp = port.next().unwrap_or(b"\xcc\x00");
+    let mut cur = Cursor::new(first_mp);
+    let changed: usize = rmp::decode::read_int(&mut cur).map_err(PgError::other)?;
+    Ok(changed)
 }
 
 #[derive(Debug)]
@@ -526,7 +555,8 @@ impl PortalInner {
             }
         }
 
-        let tuple = crate::sql::dispatch_bound_statement(router, statement, None, None)?;
+        let mut port = PicoPortOwned::new();
+        crate::sql::dispatch_bound_statement(router, statement, None, None, &mut port)?;
 
         let state = match self.describe.query_type() {
             QueryType::Acl | QueryType::Ddl => {
@@ -538,19 +568,33 @@ impl PortalInner {
                 PortalState::ResultReady(ExecuteResult::Tcl { tag })
             }
             QueryType::Dml => {
-                let row_count = get_row_count_from_tuple(&tuple);
+                let row_count = port_read_changed(port.iter())?;
                 let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
             }
-            QueryType::Dql | QueryType::Explain => {
-                let mp_rows = get_rows_from_tuple(&tuple);
-                let metadata = self.describe.metadata();
-                let pg_rows = mp_rows
-                    .into_iter()
-                    .map(|row| mp_row_into_pg_row(row, metadata))
-                    .collect::<PgResult<Vec<Vec<_>>>>()?;
-
-                PortalState::StreamingRows(pg_rows.into_iter())
+            QueryType::Dql => {
+                let rows = port_read_tuples(
+                    port.iter().skip(1),
+                    port.size() as usize,
+                    self.describe.metadata(),
+                )?;
+                PortalState::StreamingRows(rows.into_iter())
+            }
+            QueryType::Explain => {
+                let ir_plan = self.statement.prepared_statement().as_plan();
+                let rows = if ir_plan.is_plain_explain() {
+                    port_read_explain(port.iter(), port.size() as usize, self.describe.metadata())?
+                } else {
+                    let mut rows: Vec<Vec<PgValue>> = Vec::new();
+                    let plan_steps = PlanBlockIter::new(port.iter());
+                    for block in plan_steps.into_iter().map(|b| b.to_string()) {
+                        for line in block.split('\n') {
+                            rows.push(vec![PgValue::Text(line.to_string())]);
+                        }
+                    }
+                    rows
+                };
+                PortalState::StreamingRows(rows.into_iter())
             }
             QueryType::Deallocate => {
                 let ir_plan = self.statement.prepared_statement().as_plan();
@@ -752,7 +796,7 @@ mod test {
 
     #[test]
     fn test_pg_type_to_sbroad() {
-        for (pg, expected_sbroad) in vec![
+        for (pg, expected_sbroad) in [
             (PgType::BOOL, SbroadType::Boolean),
             (PgType::NUMERIC, SbroadType::Decimal),
             (PgType::FLOAT8, SbroadType::Double),

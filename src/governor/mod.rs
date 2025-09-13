@@ -1,3 +1,4 @@
+use bytes::Buf;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -40,6 +41,7 @@ use crate::rpc::sharding::proc_sharding;
 use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
 use crate::sql;
+use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::storage;
 use crate::storage::get_backup_dir_name;
 use crate::storage::Catalog;
@@ -1281,30 +1283,33 @@ impl Loop {
                         "query" => %query,
                     ]
                     async {
-                        match sql::parse_and_dispatch(query, vec![], None, Some(operation_id)) {
-                            Ok(tuple) => {
-                                // check if we have no-op (row_count = 0)
-                                // mark governor operation as successful in such case
-                                #[derive(serde::Deserialize)]
-                                struct RowCount {
-                                    row_count: usize,
-                                }
-                                if let Ok(Some(res)) = tuple.field::<RowCount>(0) {
-                                    if res.row_count == 0 {
-                                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                                        cas::compare_and_swap_local(&cas_on_success, deadline)?.no_retries()?;
-                                    }
-                                }
-                                // we will change governor operation status for DDL with row_count > 0
-                                // in raft main loop on DdlCommit handling
-                            }
-                            Err(e) => {
-                                let cas = queue::make_change_status_cas(operation_id, applied, true, Some(e.to_string()))?;
-                                let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                                cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
-                                return Err(e);
-                            }
+                        let mut port = PicoPortOwned::new();
+                        if let Err(e) = sql::parse_and_dispatch(query, vec![], None, Some(operation_id), &mut port) {
+                            let cas = queue::make_change_status_cas(operation_id, applied, true, Some(e.to_string()))?;
+                            let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                            cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                            return Err(e);
                         }
+                        let mut row_count = || -> std::io::Result<u64> {
+                            use std::io::{Cursor, Error as IoError};
+
+                            let mut mp = [0_u8; 20];
+                            let mut writer = Cursor::new(&mut mp[..]);
+                            dispatch_dump_mp(&mut writer, port.port_c_mut())?;
+                            let mut cur = Cursor::new(&mp);
+                            let _ = rmp::decode::read_array_len(&mut cur).map_err(IoError::other)?;
+                            let _ = rmp::decode::read_map_len(&mut cur).map_err(IoError::other)?;
+                            let len = rmp::decode::read_str_len(&mut cur).map_err(IoError::other)? as usize;
+                            cur.advance(len);
+                            let row_count: u64 = rmp::decode::read_int(&mut cur).map_err(IoError::other)?;
+                            Ok(row_count)
+                        };
+                        if row_count()? == 0 {
+                            let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                            cas::compare_and_swap_local(&cas_on_success, deadline)?.no_retries()?;
+                        }
+                        // we will change governor operation status for DDL with row_count > 0
+                        // in raft main loop on DdlCommit handling
                     }
                 }
             }

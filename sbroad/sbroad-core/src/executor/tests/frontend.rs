@@ -71,8 +71,8 @@ fn front_explain_select_sql1() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
 
-    if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        insta::assert_snapshot!(*actual_explain, @r#"
+    let actual_explain = query.as_explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r#"
         projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
             scan "hash_testing" -> "t"
         execution options:
@@ -80,9 +80,6 @@ fn front_explain_select_sql1() {
             sql_motion_row_max = 5000
         buckets = [1-10000]
         "#);
-    } else {
-        panic!("Explain must be string")
-    }
 }
 
 #[test]
@@ -94,8 +91,8 @@ fn front_explain_select_sql2() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
 
-    if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        insta::assert_snapshot!(*actual_explain, @r#"
+    let actual_explain = query.as_explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r#"
         union all
             projection ("t"."identification_number"::int -> "c1", "t"."product_code"::string -> "product_code")
                 scan "hash_testing" -> "t"
@@ -106,9 +103,6 @@ fn front_explain_select_sql2() {
             sql_motion_row_max = 5000
         buckets = [1-10000]
         "#);
-    } else {
-        panic!("Explain must be string")
-    }
 }
 
 #[test]
@@ -120,8 +114,8 @@ fn front_explain_select_sql3() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
 
-    if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        insta::assert_snapshot!(*actual_explain, @r#"
+    let actual_explain = query.as_explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r#"
         projection ("q1"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a2"::string
                 scan "t3" -> "q1"
@@ -133,9 +127,6 @@ fn front_explain_select_sql3() {
             sql_motion_row_max = 5000
         buckets = [1-10000]
         "#);
-    } else {
-        panic!("explain must be string")
-    }
 }
 
 #[test]
@@ -147,8 +138,8 @@ fn front_explain_select_sql4() {
     let metadata = &RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
 
-    if let Ok(actual_explain) = query.dispatch().unwrap().downcast::<SmolStr>() {
-        insta::assert_snapshot!(*actual_explain, @r#"
+    let actual_explain = query.as_explain().unwrap();
+    insta::assert_snapshot!(actual_explain, @r#"
         projection ("q2"."a"::string -> "a")
             join on "q1"."a"::string = "q2"."a"::string
                 scan "t3" -> "q1"
@@ -158,7 +149,4 @@ fn front_explain_select_sql4() {
             sql_motion_row_max = 5000
         buckets = [1-10000]
         "#);
-    } else {
-        panic!("explain must be string")
-    }
 }

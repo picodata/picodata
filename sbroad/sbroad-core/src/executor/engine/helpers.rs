@@ -1,8 +1,6 @@
-use ahash::AHashMap;
-
 use crate::{
     error,
-    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name},
+    executor::{protocol::VTablesMeta, vtable::vtable_indexed_column_name, Port},
     ir::{
         node::{
             expression::Expression, relational::Relational, Alias, Constant, Limit, Motion, NodeId,
@@ -12,11 +10,14 @@ use crate::{
     },
     utils::MutexLike,
 };
+use ahash::AHashMap;
+use rmp::encode::{write_array_len, write_map_len, write_str};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::{
     any::Any,
     cmp::Ordering,
     collections::HashMap,
+    io::Write,
     rc::Rc,
     str::{from_utf8, FromStr},
     sync::OnceLock,
@@ -103,32 +104,35 @@ pub fn to_user<T: std::fmt::Display>(from: T) -> SmolStr {
     format_smolstr!("\"{from}\"")
 }
 
+fn xx_hash(s: &str) -> SmolStr {
+    #[cfg(feature = "mock")]
+    {
+        SmolStr::from(s)
+    }
+    #[cfg(not(feature = "mock"))]
+    {
+        use std::hash::Hasher;
+        use twox_hash::XxHash3_64;
+
+        let mut hasher = XxHash3_64::default();
+        hasher.write(s.as_bytes());
+        let id = hasher.finish();
+        format_smolstr!("{id}")
+    }
+}
+
 /// Generate a temporary table name for the specified motion node.
 #[must_use]
 pub fn table_name(plan_id: &str, node_id: NodeId) -> SmolStr {
-    let base = {
-        #[cfg(feature = "mock")]
-        {
-            format_smolstr!("TMP_{plan_id}")
-        }
-        #[cfg(not(feature = "mock"))]
-        {
-            use std::hash::Hasher;
-            use twox_hash::XxHash3_64;
-
-            let mut hasher = XxHash3_64::default();
-            hasher.write(plan_id.as_bytes());
-            let id = hasher.finish();
-            format_smolstr!("TMP_{id}")
-        }
-    };
-    format_smolstr!("{base}_{node_id}")
+    let base = xx_hash(plan_id);
+    format_smolstr!("TMP_{base}_{node_id}")
 }
 
 /// Generate a primary key name for the specified motion node.
 #[must_use]
 pub fn pk_name(plan_id: &str, node_id: NodeId) -> SmolStr {
-    format_smolstr!("PK_{plan_id}_{node_id}")
+    let base = xx_hash(plan_id);
+    format_smolstr!("PK_{base}_{node_id}")
 }
 
 pub fn build_required_binary(exec_plan: &mut ExecutionPlan) -> Result<Binary, SbroadError> {
@@ -836,36 +840,20 @@ fn has_zero_limit_clause(plan: &ExecutionPlan) -> Result<bool, SbroadError> {
     Ok(false)
 }
 
-fn empty_query_response() -> Result<Box<dyn Any>, SbroadError> {
-    let res = ConsumerResult { row_count: 0 };
-    match Tuple::new(&[res]) {
-        Ok(t) => Ok(Box::new(t)),
-        Err(e) => Err(SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::Tuple),
-            format_smolstr!("{e}"),
-        )),
-    }
-}
-
 /// A helper function to dispatch the execution plan from the router to the storages.
 ///
 /// # Errors
 /// - Internal errors during the execution.
-pub fn dispatch_impl(
+pub fn dispatch_impl<'p>(
     coordinator: &impl Router,
     plan: &mut ExecutionPlan,
     top_id: NodeId,
     buckets: &Buckets,
-    return_format: DispatchReturnFormat,
-) -> Result<Box<dyn Any>, SbroadError> {
-    debug!(
-        Option::from("dispatch"),
-        &format!("dispatching plan: {plan:?}")
-    );
-
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
     if plan.get_ir_plan().is_empty() {
-        return empty_query_response();
+        empty_plan_write(port, plan)?;
+        return Ok(());
     }
 
     let sub_plan = plan.take_subtree(top_id)?;
@@ -884,14 +872,16 @@ pub fn dispatch_impl(
                 Some("EXPLAIN QUERY PLAN is not supported for DML queries".into()),
             ));
         }
-        return tier_runtime.exec_ir_on_any_node(sub_plan, buckets, return_format);
+        tier_runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+        return Ok(());
     }
 
-    debug!(Option::from("dispatch"), &format!("sub plan: {sub_plan:?}"));
     if has_zero_limit_clause(&sub_plan)? {
-        return empty_query_result(&sub_plan, return_format.clone());
+        empty_plan_write(port, &sub_plan)?;
+        return Ok(());
     }
-    dispatch_by_buckets(sub_plan, buckets, &tier_runtime, return_format)
+    dispatch_by_buckets(sub_plan, buckets, &tier_runtime, port)?;
+    Ok(())
 }
 
 /// Helper function that chooses one of the methods for execution
@@ -899,12 +889,12 @@ pub fn dispatch_impl(
 ///
 /// # Errors
 /// - Failed to dispatch
-pub fn dispatch_by_buckets(
+pub fn dispatch_by_buckets<'p>(
     sub_plan: ExecutionPlan,
     buckets: &Buckets,
     runtime: &impl Vshard,
-    return_format: DispatchReturnFormat,
-) -> Result<Box<dyn Any>, SbroadError> {
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
     match buckets {
         Buckets::Any => {
             if sub_plan.has_customization_opcodes() {
@@ -926,10 +916,12 @@ pub fn dispatch_by_buckets(
                         ));
                 }
             }
-            runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
+            runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+            Ok(())
         }
         Buckets::All | Buckets::Filtered(_) => {
-            runtime.exec_ir_on_buckets(sub_plan, buckets, return_format)
+            runtime.exec_ir_on_buckets(sub_plan, buckets, port)?;
+            Ok(())
         }
     }
 }
@@ -1049,16 +1041,21 @@ pub fn materialize_values(
     } else {
         // We need to execute VALUES as a local SQL.
         let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
-        runtime
-            .dispatch(
-                exec_plan,
-                values_id,
-                &Buckets::Any,
-                DispatchReturnFormat::Inner,
-            )?
-            .downcast::<ProducerResult>()
-            .expect("must've failed earlier")
-            .as_virtual_table(columns)?
+
+        let mut port = runtime.new_port();
+        runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
+
+        let mut vtable = VirtualTable::with_columns(columns);
+        for mp in port.iter().skip(1) {
+            vtable.write_all(mp).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::VirtualTable),
+                    format_smolstr!("{e}"),
+                )
+            })?;
+        }
+        vtable
     };
 
     let vtable_types = vtable.get_types();
@@ -1103,29 +1100,38 @@ pub fn materialize_motion(
 
     let columns = vtable_columns(plan.get_ir_plan(), top_id)?;
 
+    let mut port = runtime.new_port();
     // Dispatch the motion subtree (it will be replaced with invalid values).
-    let result = runtime.dispatch(plan, top_id, buckets, DispatchReturnFormat::Inner)?;
+    runtime.dispatch(plan, top_id, buckets, &mut port)?;
 
-    let mut vtable = if plan.get_ir_plan().is_raw_explain() {
-        let explain = *result.downcast::<String>().expect("must've failed earlier");
+    // Unlink motion node's child sub tree (it is already replaced with invalid values).
+    plan.unlink_motion_subtree(motion_node_id)?;
 
-        // Unlink motion node's child sub tree (it is already replaced with invalid values).
-        plan.unlink_motion_subtree(motion_node_id)?;
-
-        let mut vtab = VirtualTable::with_columns(columns);
-        vtab.add_tuple(vec![Value::from(explain)]);
-        vtab
-    } else {
-        let mut res = *result
-            .downcast::<ProducerResult>()
-            .expect("must've failed earlier");
-        res.as_virtual_table(columns)?
-    };
-
+    let mut vtable = VirtualTable::with_columns(columns);
     if let Some(name) = alias {
         vtable.set_alias(name.as_str());
     }
-
+    if plan.get_ir_plan().is_raw_explain() {
+        for mp in port.iter() {
+            vtable.add_mp_unchecked(mp).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::VirtualTable),
+                    format_smolstr!("{e}"),
+                )
+            })?;
+        }
+    } else {
+        for mp in port.iter().skip(1) {
+            vtable.write_all(mp).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::VirtualTable),
+                    format_smolstr!("{e}"),
+                )
+            })?;
+        }
+    }
     Ok(vtable)
 }
 
@@ -1226,12 +1232,15 @@ pub fn sharding_key_from_tuple<'tuple>(
 pub fn populate_table(
     motion_id: &NodeId,
     plan_id: &SmolStr,
-    vtables: &mut EncodedVTables,
+    vtables: &EncodedVTables,
 ) -> Result<(), SbroadError> {
-    let data = vtables.remove(motion_id).ok_or_else(|| {
+    let data = vtables.get(motion_id).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
-            format_smolstr!("encoded table with id {motion_id}"),
+            format_smolstr!(
+                "with id {motion_id} among encoded virtual tables {:?}",
+                vtables.keys()
+            ),
         )
     })?;
     with_su(ADMIN_ID, || -> Result<(), SbroadError> {
@@ -1246,7 +1255,7 @@ pub fn populate_table(
                 )),
             )
         })?;
-        for tuple in data.into_iter() {
+        for tuple in data.iter() {
             match space.insert(&tuple) {
                 Ok(_) => {}
                 Err(e) => {
@@ -1273,10 +1282,10 @@ pub fn drop_tables(tables: Vec<(SmolStr, bool)>) -> Result<(), SbroadError> {
 
         let cleanup = |space: Space| match with_su(ADMIN_ID, || space.drop()) {
             Ok(_) => {}
-            Err(_err) => {
+            Err(e) => {
                 error!(
                     Option::from("Temporary space"),
-                    &format!("Failed to drop {name}: {}", _err)
+                    &format!("Failed to drop {name}: {e}")
                 );
             }
         };
@@ -1319,6 +1328,8 @@ pub trait FullPlanInfo: RequiredPlanInfo {
     ///
     /// # Errors
     /// - Failed to extract query and table guard.
+    ///
+    /// TODO: remove this method and use `take_query_meta` instead.
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError>;
@@ -1327,9 +1338,7 @@ pub trait FullPlanInfo: RequiredPlanInfo {
     ///
     /// # Errors
     /// - Failed to extract query and vtables meta.
-    fn get_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        Ok((String::new(), Vec::new(), HashMap::new()))
-    }
+    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError>;
 }
 
 pub struct QueryInfo<'data> {
@@ -1375,15 +1384,29 @@ impl FullPlanInfo for QueryInfo<'_> {
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
         compile_optional(self.optional, &self.required.plan_id)
     }
+
+    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        let nodes = self.optional.ordered.to_syntax_data()?;
+        let (local_sql, motion_ids) = self.optional.exec_plan.generate_sql(
+            &nodes,
+            self.required.plan_id(),
+            Some(&self.optional.vtables_meta),
+            |name: &str, id| table_name(name, id),
+        )?;
+
+        let meta = std::mem::take(&mut self.optional.vtables_meta);
+
+        Ok((local_sql, motion_ids, meta))
+    }
 }
 
 pub struct EncodedQueryInfo<'data> {
-    optional_bytes: OptionalBytes,
+    optional_bytes: Option<&'data [u8]>,
     required: &'data mut RequiredData,
 }
 
 impl<'data> EncodedQueryInfo<'data> {
-    pub fn new(raw_optional: OptionalBytes, required: &'data mut RequiredData) -> Self {
+    pub fn new(raw_optional: Option<&'data [u8]>, required: &'data mut RequiredData) -> Self {
         Self {
             optional_bytes: raw_optional,
             required,
@@ -1421,14 +1444,24 @@ impl FullPlanInfo for EncodedQueryInfo<'_> {
     fn extract_query_and_table_guard(
         &mut self,
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
-        let data = std::mem::take(self.optional_bytes.get_mut()?);
-        let mut optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
+        let Some(opt_bytes) = self.optional_bytes else {
+            return Err(SbroadError::Invalid(
+                Entity::OptionalData,
+                Some("optional data is missing".into()),
+            ));
+        };
+        let mut optional = OptionalData::try_from(opt_bytes)?;
         compile_optional(&mut optional, &self.required.plan_id)
     }
 
-    fn get_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
-        let data = std::mem::take(self.optional_bytes.get_mut()?);
-        let optional = OptionalData::try_from(EncodedOptionalData::from(data))?;
+    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        let Some(opt_bytes) = self.optional_bytes else {
+            return Err(SbroadError::Invalid(
+                Entity::OptionalData,
+                Some("optional data is missing".into()),
+            ));
+        };
+        let optional = OptionalData::try_from(opt_bytes)?;
         let nodes = optional.ordered.to_syntax_data()?;
         let (local_sql, motion_ids) = optional.exec_plan.generate_sql(
             &nodes,
@@ -2564,4 +2597,54 @@ pub fn replace_metadata_in_dql_result(
 ) -> Result<Tuple, SbroadError> {
     let rows = parse_rows(tuple)?;
     encode_result_tuple(metadata, rows)
+}
+
+#[inline(always)]
+fn to_mp_err(msg: SmolStr) -> SbroadError {
+    SbroadError::FailedTo(Action::Encode, Some(Entity::MsgPack), msg)
+}
+
+fn metadata_write<'p>(port: &mut impl Port<'p>, plan: &Plan) -> Result<(), SbroadError> {
+    let top_id = plan.get_top()?;
+    let top_output_id = plan.get_relation_node(top_id)?.output();
+    let columns = plan.get_row_list(top_output_id)?;
+    let mut mp: Vec<u8> = Vec::new();
+    let len = u32::try_from(columns.len()).map_err(|e| {
+        SbroadError::Invalid(
+            Entity::Plan,
+            Some(format_smolstr!("Too many columns to dump metadata: {e}")),
+        )
+    })?;
+    write_array_len(&mut mp, len).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+    for col_id in columns {
+        let column = plan.get_expression_node(*col_id)?;
+        let col_type = column.calculate_type(plan)?.to_string();
+        let Expression::Alias(Alias { name, .. }) = column else {
+            return Err(to_mp_err("Expected column to be an alias".into()));
+        };
+
+        write_map_len(&mut mp, 2).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+        write_str(&mut mp, "name").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+        write_str(&mut mp, name).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+        write_str(&mut mp, "type").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+        write_str(&mut mp, &col_type).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+    }
+    port.add_mp(&mp);
+    Ok(())
+}
+
+pub fn empty_plan_write<'p>(
+    port: &mut impl Port<'p>,
+    plan: &ExecutionPlan,
+) -> Result<(), SbroadError> {
+    let query_type = plan.query_type()?;
+    match query_type {
+        QueryType::DML => {
+            port.add_mp(b"\xcc\x00".as_ref());
+        }
+        QueryType::DQL => {
+            metadata_write(port, plan.get_ir_plan())?;
+        }
+    }
+    Ok(())
 }

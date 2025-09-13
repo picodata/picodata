@@ -5,5 +5,5 @@ from framework.sqltester import (
 
 
 @sql_test_file("groupby.sql")
-class TestOrderBy(ClusterSingleInstance):
+class TestGroupBy(ClusterSingleInstance):
     pass

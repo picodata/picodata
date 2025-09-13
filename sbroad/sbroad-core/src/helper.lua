@@ -31,7 +31,7 @@ local function vtable_limit_exceeded(limit, current_val)
     return string.format("Exceeded maximum number of rows (%d) in virtual table: %d", limit, current_val)
 end
 
-local function dql_error(err, rs_uuid)
+local function sql_error(err, rs_uuid)
     if type(err) ~= 'table' and type(err) ~= 'string' then
         io.stderr:write(string.format("expected string or table, got: %s", type(err)))
         error(err)
@@ -84,7 +84,7 @@ return {
     proc_call_fn_name = proc_call_fn_name,
     proc_fn_name = proc_fn_name,
     vtable_limit_exceeded = vtable_limit_exceeded,
-    dql_error = dql_error,
+    dql_error = sql_error,
     format_result = format_result,
     unwrap_execute_result = unwrap_execute_result,
     table_size = table_size

@@ -1,4 +1,5 @@
 use ahash::AHashSet;
+use rmp::encode::{write_array_len, write_map_len, write_str};
 use rmp_serde::Serializer;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
@@ -8,11 +9,6 @@ use std::fmt::{Display, Formatter};
 use std::io::{Error as IoError, Result as IoResult, Write};
 use std::rc::Rc;
 use std::vec;
-
-#[cfg(not(feature = "mock"))]
-use tarantool::msgpack;
-
-use tarantool::tuple::TupleBuilder;
 
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
@@ -28,9 +24,12 @@ use crate::utils::{write_u32_array_len, ByteCounter};
 
 use super::ir::ExecutionPlan;
 use super::result::{ExecutorTuple, MetadataColumn, ProducerResult};
+use super::Port;
 
+use tarantool::msgpack;
 #[cfg(not(feature = "mock"))]
 use tarantool::tuple::Tuple;
+use tarantool::tuple::TupleBuilder;
 
 type ShardingKey = Vec<Value>;
 pub type VTableTuple = Vec<Value>;
@@ -306,14 +305,24 @@ impl VirtualTable {
         let mut result = Self::new();
         result.columns.clone_from(&self.columns);
         result.name.clone_from(&self.name);
-
         result.primary_key.clone_from(&self.primary_key);
+
+        // Pre-calculate total tuples needed
+        let total_tuples: usize = bucket_ids
+            .iter()
+            .filter_map(|id| self.get_bucket_index().get(id))
+            .map(|pointers| pointers.len())
+            .sum();
+
+        result.tuples.reserve(total_tuples);
+
         for bucket_id in bucket_ids {
-            // If bucket_id is met among those that are present in self.
             if let Some(pointers) = self.get_bucket_index().get(bucket_id) {
+                let start_idx = result.tuples.len();
                 let mut new_pointers: Vec<usize> = Vec::with_capacity(pointers.len());
-                for pointer in pointers {
-                    let tuple = self.tuples.get(*pointer).ok_or_else(|| {
+
+                for (i, &pointer) in pointers.iter().enumerate() {
+                    let tuple = self.tuples.get(pointer).ok_or_else(|| {
                         SbroadError::Invalid(
                             Entity::VirtualTable,
                             Some(format_smolstr!(
@@ -322,8 +331,9 @@ impl VirtualTable {
                         )
                     })?;
                     result.tuples.push(tuple.clone());
-                    new_pointers.push(result.tuples.len() - 1);
+                    new_pointers.push(start_idx + i);
                 }
+
                 result
                     .get_mut_bucket_index()
                     .insert(*bucket_id, new_pointers);
@@ -348,13 +358,13 @@ impl VirtualTable {
                 match target {
                     Target::Reference(col_idx) => {
                         let part = tuple.get(*col_idx).ok_or_else(|| {
-                            SbroadError::NotFound(
-                                Entity::DistributionKey,
-                                format_smolstr!(
+                        SbroadError::NotFound(
+                            Entity::DistributionKey,
+                            format_smolstr!(
                                 "failed to find a distribution key column {pos} in the tuple {tuple:?}."
                             ),
-                            )
-                        })?;
+                        )
+                    })?;
                         shard_key_tuple.push(part);
                     }
                     Target::Value(ref value) => {
@@ -667,12 +677,66 @@ impl VirtualTable {
             )?))
         }
     }
+
+    pub fn dump_mp<'alias, 'port>(
+        &self,
+        aliases: impl Iterator<Item = &'alias str>,
+        port: &mut impl Port<'port>,
+    ) -> IoResult<()> {
+        {
+            let mut meta_mp: Vec<u8> = Vec::new();
+            let Ok(len) = u32::try_from(self.columns.len()) else {
+                return Err(IoError::other("too many columns in vtable"));
+            };
+            write_array_len(&mut meta_mp, len)?;
+            for (col, alias) in self.columns.iter().zip(aliases) {
+                write_map_len(&mut meta_mp, 2)?;
+                write_str(&mut meta_mp, "name")?;
+                write_str(&mut meta_mp, alias)?;
+                write_str(&mut meta_mp, "type")?;
+                write_str(&mut meta_mp, &col.r#type.to_string())?;
+            }
+            port.add_mp(meta_mp.as_slice());
+        }
+
+        for tuple in &self.tuples {
+            let mp = msgpack::encode(tuple);
+            port.add_mp(mp.as_slice());
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn add_mp_unchecked(&mut self, mp: &[u8]) -> IoResult<()> {
+        let tuple: Vec<Value> = tarantool::msgpack::decode(mp).map_err(IoError::other)?;
+        self.add_tuple(tuple);
+        Ok(())
+    }
 }
 
 impl Write for VirtualTable {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         // Decode a single tuple encoded as msgpack array and append to the virtual table
-        let tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(IoError::other)?;
+        let mut tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(IoError::other)?;
+        // When msgpack has been formed from Lua dump callback in the executor's
+        // port, its last NULLs are omitted. We need to add them back.
+        if tuple.len() < self.columns.len() {
+            // Resize also checks sizes, but we don't want to truncate the tuple.
+            // It will be harder to debug.
+            tuple.resize(self.columns.len(), Value::Null);
+        }
+
+        for (i, value) in tuple.iter_mut().enumerate() {
+            let Some(col) = self.columns.get(i) else {
+                unreachable!("column sizes should be equal")
+            };
+
+            if value.get_type() != col.r#type {
+                if let Some(ty) = col.r#type.get() {
+                    *value = std::mem::take(value).cast(*ty).map_err(IoError::other)?;
+                };
+            }
+        }
         self.add_tuple(tuple);
         Ok(buf.len())
     }

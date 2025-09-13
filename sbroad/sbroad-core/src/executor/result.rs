@@ -33,8 +33,8 @@ pub type ExecutorTuple = Vec<Value>;
 #[derive(LuaRead, Debug, PartialEq, Eq, Clone, msgpack::Encode, msgpack::Decode)]
 #[encode(as_map)]
 pub struct MetadataColumn {
-    name: String,
-    r#type: String,
+    pub name: String,
+    pub r#type: String,
 }
 
 impl std::fmt::Display for MetadataColumn {

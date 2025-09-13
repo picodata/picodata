@@ -66,6 +66,7 @@ va_list = ">=0.1.4"
 jsonwebtoken = "9.3"
 replace_with = "0.1.8"
 zeroize = "1.8"
+sqlformat = "0.4"
 
 # Bundled modules
 pico_proc_macro = { path = "pico_proc_macro" }
@@ -125,6 +126,7 @@ harness = false
 resolver = "2"
 members = [
     ".",
+    "benchmark/perf",
     "build-rs-helpers",
     "gostech/gostech-audit-log",
     "pico_proc_macro",

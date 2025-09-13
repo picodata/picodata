@@ -22,7 +22,7 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::errors::{Entity, SbroadError};
+use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::bucket::Buckets;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
@@ -32,10 +32,15 @@ use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
 use crate::ir::{Plan, Slices};
 use crate::BoundStatement;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::any::Any;
+use rmp::encode::write_str;
+use serde::Serialize;
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
+use std::io::Write;
 use std::rc::Rc;
+use tarantool::error::Error as TntError;
+use tarantool::msgpack;
+use tarantool::sql::Statement;
 
 pub mod bucket;
 pub mod engine;
@@ -65,6 +70,43 @@ impl Plan {
             .add_motions()?
             .update_substring()
     }
+}
+
+pub enum PortType {
+    DispatchDql,
+    DispatchDml,
+    DispatchExplain,
+    DispatchQueryPlan,
+    ExecuteDql,
+    ExecuteDml,
+    ExecuteMiss,
+}
+
+pub trait Port<'p>: Write {
+    fn add_mp(&mut self, data: &[u8]);
+
+    fn process_sql<IN>(&mut self, sql: &str, params: &IN, max_vdbe: u64) -> Result<(), TntError>
+    where
+        IN: Serialize,
+        Self: Sized;
+
+    fn process_stmt<IN>(
+        &mut self,
+        stmt: &Statement,
+        params: &IN,
+        max_vdbe: u64,
+    ) -> Result<(), TntError>
+    where
+        IN: Serialize,
+        Self: Sized;
+
+    fn iter(&self) -> impl Iterator<Item = &[u8]>
+    where
+        Self: Sized;
+
+    fn set_type(&mut self, port_type: PortType);
+
+    fn size(&self) -> u32;
 }
 
 /// Query to execute.
@@ -133,15 +175,14 @@ where
         self.coordinator
     }
 
-    pub fn materialize_subtree(
+    pub fn materialize_subtree<'p>(
         &mut self,
         slices: Slices,
-        explain_data: Option<&mut Vec<String>>,
+        mut port: Option<&mut impl Port<'p>>,
     ) -> Result<(), SbroadError> {
         let tier = self.exec_plan.get_ir_plan().tier.as_ref();
         // all tables from one tier, so we can use corresponding vshard object
         let vshard = self.coordinator.get_vshard_object_by_tier(tier)?;
-        let mut explain_vec = Vec::new();
 
         for slice in slices.slices() {
             // TODO: make it work in parallel
@@ -200,25 +241,20 @@ where
                 )?;
 
                 if self.exec_plan.get_ir_plan().is_raw_explain() {
-                    // Take the first tuple from the virtual table and decode it into
-                    // explain string.
+                    // Take the tuples from the virtual table and encode them into
+                    // explain msgpack.
                     let tuples = std::mem::take(virtual_table.get_mut_tuples());
-                    let Some(first_tuple) = tuples.into_iter().next() else {
-                        unreachable!("Expect a single tuple from explain in a virtual table.");
-                    };
-                    let Some(Value::String(explain)) = first_tuple.into_iter().next() else {
-                        unreachable!("Expect a single string value in an explain tuple.");
-                    };
-                    explain_vec.push(explain);
+                    for tuple in tuples.into_iter() {
+                        let mp = msgpack::encode(&tuple);
+                        if let Some(p) = port.as_mut() {
+                            p.add_mp(mp.as_slice())
+                        }
+                    }
                 }
 
                 self.exec_plan
                     .set_motion_vtable(motion_id, virtual_table, &vshard)?;
             }
-        }
-
-        if let Some(explain_data) = explain_data {
-            *explain_data = explain_vec;
         }
 
         Ok(())
@@ -228,8 +264,20 @@ where
     ///
     /// # Errors
     /// - Failed to build explain
-    pub fn produce_explain(&mut self) -> Result<Box<dyn Any>, SbroadError> {
-        self.coordinator.explain_format(self.to_explain()?)
+    pub fn produce_explain<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
+        let mut mp: Vec<u8> = Vec::new();
+        for line in self.as_explain()?.lines() {
+            write_str(&mut mp, line).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Deserialize,
+                    Some(Entity::MsgPack),
+                    format_smolstr!("{e}"),
+                )
+            })?;
+            port.add_mp(&mp);
+            mp.clear();
+        }
+        Ok(())
     }
 
     /// Dispatch a distributed query from coordinator to the segments.
@@ -239,55 +287,38 @@ where
     /// - Failed to discover buckets.
     /// - Failed to materialize motion result and build a virtual table.
     /// - Failed to get plan top.
-    pub fn dispatch(&mut self) -> Result<Box<dyn Any>, SbroadError> {
+    pub fn dispatch<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
         if self.is_explain() {
-            return self.produce_explain();
+            self.produce_explain(port)?;
+            return Ok(());
         }
 
-        let mut explain_vec = Vec::new();
         let slices = self.exec_plan.get_ir_plan().clone_slices();
-        self.materialize_subtree(slices, Some(&mut explain_vec))?;
+        self.materialize_subtree(slices, Some(port))?;
         let ir_plan = self.exec_plan.get_ir_plan();
         let top_id = ir_plan.get_top()?;
         if ir_plan.get_relation_node(top_id)?.is_motion() {
             let err =
                 |s: &str| -> SbroadError { SbroadError::Invalid(Entity::Plan, Some(s.into())) };
-            let motion_aliases = ir_plan.get_relational_aliases(top_id)?;
-            let Some(mut vtable) = self.exec_plan.get_mut_vtables().remove(&top_id) else {
-                return Err(err(&format!("no motion on top_id: {top_id:?}")));
+            let aliases = ir_plan.get_relational_aliases(top_id)?;
+            let Some(mut ref_table) = self.exec_plan.get_mut_vtables().remove(&top_id) else {
+                return Err(err(&format!("no virtual table for motion id {top_id:?}")));
             };
-            let Some(v) = Rc::get_mut(&mut vtable) else {
-                return Err(err("there are other refs to vtable"));
+            let Some(table) = Rc::get_mut(&mut ref_table) else {
+                return Err(err("there are other references for the virtual table"));
             };
-            return v.to_output(&motion_aliases);
+            table
+                .dump_mp(aliases.iter().map(|s| s.as_str()), port)
+                .map_err(|e| {
+                    SbroadError::Invalid(Entity::VirtualTable, Some(format_smolstr!("{e}")))
+                })?;
+            return Ok(());
         }
         let buckets = self.bucket_discovery(top_id)?;
-        let res = self.coordinator.dispatch(
-            &mut self.exec_plan,
-            top_id,
-            &buckets,
-            engine::DispatchReturnFormat::Tuple,
-        )?;
-        if self.exec_plan.get_ir_plan().is_raw_explain() {
-            let explain_res = res.downcast::<String>().map_err(|e| {
-                SbroadError::Invalid(
-                    Entity::MsgPack,
-                    Some(format_smolstr!("expected Tuple as result: {e:?}")),
-                )
-            })?;
+        self.coordinator
+            .dispatch(&mut self.exec_plan, top_id, &buckets, port)?;
 
-            let explain_res = vec![*explain_res];
-
-            explain_vec.extend_from_slice(&explain_res);
-            let mut explain_str = String::new();
-            for (idx, explain_res) in explain_vec.iter().enumerate() {
-                explain_str.push_str(&format!("{}. {}\n", idx + 1, explain_res));
-            }
-
-            return self.coordinator.explain_format(explain_str.to_smolstr());
-        }
-
-        Ok(res)
+        Ok(())
     }
 
     /// Query explain
@@ -358,6 +389,10 @@ where
     /// - Plan is invalid
     pub fn is_plugin(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_plugin()
+    }
+
+    pub fn is_backup(&self) -> Result<bool, SbroadError> {
+        self.exec_plan.get_ir_plan().is_backup()
     }
 
     /// Checks that query is Deallocate.

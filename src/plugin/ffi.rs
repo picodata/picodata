@@ -1,8 +1,7 @@
-#[allow(unused_imports)]
-use crate::auth::Error as AuthError;
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
+use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
@@ -31,7 +30,7 @@ use tarantool::error::IntoBoxError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::ffi::tarantool::BoxTuple;
 use tarantool::fiber;
-use tarantool::tuple::TupleBuffer;
+use tarantool::tuple::{TupleBuffer, TupleBuilder};
 use tarantool::uuid::Uuid;
 
 #[no_mangle]
@@ -308,8 +307,15 @@ extern "C" fn pico_ffi_sql_query(
     let query = unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(query, query_len)) };
     let params = params.into_iter().map(|v| SBroadValue::from(v).0).collect();
 
-    let dispatch_result = sql::parse_and_dispatch(query, params, None, None);
-    match dispatch_result {
+    let mut port = PicoPortOwned::new();
+    if let Err(e) = sql::parse_and_dispatch(query, params, None, None, &mut port) {
+        return error_into_tt_error(e);
+    }
+    let mut builder = TupleBuilder::rust_allocated();
+    if let Err(e) = dispatch_dump_mp(&mut builder, port.port_c_mut()) {
+        return error_into_tt_error(tarantool::error::Error::IO(e));
+    }
+    match builder.into_tuple() {
         Ok(t) => {
             let ptr = t.as_ptr();
             mem::forget(t);

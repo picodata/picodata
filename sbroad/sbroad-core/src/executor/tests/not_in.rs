@@ -1,8 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::backend::sql::ir::PatternWithParams;
-use crate::executor::engine::mock::RouterRuntimeMock;
-use crate::executor::result::ProducerResult;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::tests::get_motion_id;
@@ -40,24 +38,22 @@ fn not_in1_test() {
         .add_virtual_table(motion_id, virtual_table);
 
     // Execute the query.
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
     // Validate the result.
-    let mut expected = ProducerResult::new();
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}",
-                r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
-                r#"WHERE not ("t"."identification_number" in (SELECT "COL_1" FROM "TMP_test_0136"))"#,
-            ),
-            vec![],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on all replicasets");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}",
+            r#"SELECT "t"."identification_number" FROM "hash_testing" as "t""#,
+            r#"WHERE not ("t"."identification_number" in (SELECT "COL_1" FROM "TMP_test_0136"))"#,
+        ),
+    );
+    assert_eq!(params, &vec![]);
 }

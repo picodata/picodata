@@ -14,7 +14,7 @@ impl TryFrom<u8> for MessageType {
         match value {
             0 => Ok(MessageType::DQL),
             1 => Ok(MessageType::DML),
-            n => Err(format!("Unknown message type: {}", n)),
+            n => Err(format!("Unknown message type: {n}")),
         }
     }
 }

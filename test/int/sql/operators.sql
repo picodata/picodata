@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS testing_space;
 DROP TABLE IF EXISTS testing_space_hist;
 DROP TABLE IF EXISTS space_simple_shard_key;
 DROP TABLE IF EXISTS space_simple_shard_key_hist;
+DROP TABLE IF EXISTS t;
 CREATE TABLE testing_space ("id" int primary key, "name" string, "product_units" int);
 CREATE TABLE testing_space_hist ("id" int primary key, "name" string, "product_units" int);
 CREATE TABLE space_simple_shard_key ("id" int primary key, "name" string, "sysOp" int);

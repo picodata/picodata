@@ -8,7 +8,7 @@ use crate::catalog::governor_queue;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
-use crate::metrics::{STORAGE_CACHE_1ST_REQUESTS_TOTAL, STORAGE_CACHE_2ND_REQUESTS_TOTAL};
+use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -17,34 +17,54 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
+use crate::storage::Catalog;
 use crate::storage::{get_backup_dir_name, space_by_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op, RenameMappingBuilder};
 use crate::traft::{self, node};
-use crate::util::{duration_from_secs_f64_clamped, effective_user_id, AnyWithTypeName};
+use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::version::Version;
 use crate::{cas, has_states, plugin, tlog};
 
+use ::tarantool::access_control::{
+    box_access_check_ddl, box_access_check_space, PrivType, SchemaObjectType as TntSchemaObjectType,
+};
+use ::tarantool::auth::{AuthData, AuthDef};
+use ::tarantool::decimal::Decimal;
+use ::tarantool::error::IntoBoxError;
+use ::tarantool::error::{BoxError, TarantoolErrorCode};
+use ::tarantool::schema::function::func_next_reserved_id;
+use ::tarantool::session::{with_su, UserId};
+use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
+use ::tarantool::time::Instant;
+use ::tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, ToTupleBuffer, Tuple};
+use ::tarantool::{msgpack, session, set_error};
 use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
-use sbroad::errors::{Action, Entity, SbroadError};
+use rmp::decode::{read_array_len, read_bin_len, read_str_len};
+use rmp::encode::{write_bin, write_str, write_uint};
+use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
-    build_delete_args, build_insert_args, build_update_args, decode_msgpack,
-    init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
-    replace_metadata_in_dql_result, try_get_metadata_from_plan,
+    build_delete_args, build_insert_args, build_update_args, init_delete_tuple_builder,
+    init_insert_tuple_builder, init_local_update_tuple_builder,
 };
 use sbroad::executor::engine::Router;
-use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
-use sbroad::executor::result::{ConsumerResult, MetadataColumn, ProducerResult};
+use sbroad::executor::protocol::RequiredData;
+use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::ExecutingQuery;
+use sbroad::executor::{Port, PortType};
 use sbroad::ir::acl::{AlterOption, AuditPolicyOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::{AlterSystemType, ParamDef};
 use sbroad::ir::node::acl::AclOwned;
 use sbroad::ir::node::block::Block;
 use sbroad::ir::node::ddl::{Ddl, DdlOwned};
 use sbroad::ir::node::expression::ExprOwned;
+use sbroad::ir::node::plugin::{
+    AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
+    MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
+};
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::node::{
     AlterColumn, AlterSystem, AlterTableOp, AlterUser, AuditPolicy, Constant, CreateIndex,
@@ -53,49 +73,32 @@ use sbroad::ir::node::{
     RenameRoutine, RevokePrivilege, ScanRelation, SetParam, Update,
 };
 use sbroad::ir::node::{NodeId, TruncateTable};
-use std::cmp::max;
-use std::collections::BTreeMap;
-use tarantool::decimal::Decimal;
-
-use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
-use sbroad::ir::node::plugin::{
-    AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
-    MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
-};
-use sbroad::ir::node::Node;
 use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::types::UnrestrictedType;
 use sbroad::ir::value::Value;
 use sbroad::ir::Plan as IrPlan;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
-use tarantool::schema::function::func_next_reserved_id;
-use tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, ToTupleBuffer};
-
-use crate::storage::Catalog;
-use ::tarantool::access_control::{box_access_check_space, PrivType};
-use ::tarantool::auth::{AuthData, AuthDef};
-use ::tarantool::error::BoxError;
-use ::tarantool::error::TarantoolErrorCode;
-use ::tarantool::session::{with_su, UserId};
-use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
-use ::tarantool::time::Instant;
-use ::tarantool::tuple::Tuple;
+use sql_protocol::decode::execute_args_split;
+use sql_protocol::encode::write_metadata;
+use std::cmp::max;
+use std::collections::BTreeMap;
+use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
 use std::rc::Rc;
+use std::str::from_utf8_unchecked;
 use std::time::Duration;
-use tarantool::{msgpack, session, set_error};
 
+pub mod dispatch;
 pub mod execute;
 pub mod lua;
 pub mod port;
 pub mod router;
 pub mod storage;
 
+use self::lua::{escape_bytes, reference_del, reference_use};
+use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
-use sbroad::executor::engine::helpers::vshard::CacheInfo;
-use sbroad::executor::ir::QueryType;
 use sbroad::BoundStatement;
 use serde::Serialize;
 
@@ -217,33 +220,44 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     Ok(())
 }
 
-fn empty_query_response() -> traft::Result<Tuple> {
-    #[derive(Serialize)]
-    struct EmptyQueryResponse {
-        row_count: usize,
-    }
-
-    let mut buf = vec![];
-    let resp = vec![EmptyQueryResponse { row_count: 0 }];
-    rmp_serde::encode::write_named(&mut buf, &resp).map_err(|e| Error::Other(e.into()))?;
-    Tuple::try_from_slice(&buf).map_err(Into::into)
+fn port_write_dml_response<'p>(port: &mut impl Port<'p>, changed: u64) {
+    let mut mp = [0_u8; 9];
+    let pos = {
+        let mut wr = Cursor::new(&mut mp[..]);
+        let _ = write_uint(&mut wr, changed).expect("Failed to write DML response");
+        wr.position() as usize
+    };
+    port.add_mp(&mp[..pos]);
 }
 
 /// Same as [`dispatch_bound_statement`], but does not collect any metrics
-fn dispatch_bound_statement_impl(
+fn dispatch_bound_statement_impl<'p>(
     runtime: &RouterRuntime,
     statement: BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
-) -> traft::Result<Tuple> {
+    port: &mut impl Port<'p>,
+) -> traft::Result<()> {
     let mut query = ExecutingQuery::from_bound_statement(runtime, statement);
-
     if query.is_empty() {
-        return empty_query_response();
+        port.set_type(PortType::DispatchDml);
+        port_write_dml_response(port, 0);
+        return Ok(());
+    }
+
+    if query.get_exec_plan().get_ir_plan().is_raw_explain() {
+        port.set_type(PortType::DispatchQueryPlan);
+    } else if query.is_explain() {
+        port.set_type(PortType::DispatchExplain);
+    } else if query.get_exec_plan().get_ir_plan().is_dql()? || query.is_backup()? {
+        port.set_type(PortType::DispatchDql);
+    } else {
+        port.set_type(PortType::DispatchDml);
     }
 
     if query.is_deallocate()? {
-        return empty_query_response();
+        port_write_dml_response(port, 0);
+        return Ok(());
     }
 
     if query.is_tcl()? {
@@ -255,28 +269,63 @@ fn dispatch_bound_statement_impl(
             "Transactions are currently unsupported. Empty query response provided for {}.",
             tcl.as_str()
         );
-        return empty_query_response();
+        port_write_dml_response(port, 0);
+        return Ok(());
     }
 
-    if query.is_ddl()? || query.is_acl()? {
+    if query.is_backup()? {
+        let ir_plan = query.get_exec_plan().get_ir_plan();
+        let top_id = ir_plan.get_top()?;
+        let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
+
+        let ir_node = ir_plan_mut.replace_with_stub(top_id);
+        let node = node::global()?;
+        let tuple =
+            reenterable_schema_change_request(node, ir_node, override_deadline, governor_op_id)?;
+        let mp = tuple.data();
+        let mut cur = Cursor::new(mp);
+        let len = read_array_len(&mut cur).map_err(Error::other)?;
+        if len != 2 {
+            return Err(Error::other("Backup returned invalid msgpack response."));
+        }
+
+        // Extract metadata msgpack from the binary.
+        let meta_len = read_bin_len(&mut cur).map_err(Error::other)? as usize;
+        let pos = cur.position() as usize;
+        let meta_mp = &mp[pos..pos + meta_len];
+        port.write_all(meta_mp).map_err(Error::other)?;
+        cur.set_position((pos + meta_len) as u64);
+
+        // Repack directory string into a single element array msgpack.
+        let dir_len = read_str_len(&mut cur).map_err(Error::other)? as usize;
+        let mut row_mp: Vec<u8> = b"\x91".to_vec();
+        let pos = cur.position() as usize;
+        let dir_bytes = &mp[pos..pos + dir_len];
+        let s = unsafe { from_utf8_unchecked(dir_bytes) };
+        write_str(&mut row_mp, s).map_err(Error::other)?;
+        port.write_all(row_mp.as_slice()).map_err(Error::other)?;
+        Ok(())
+    } else if query.is_ddl()? || query.is_acl()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
 
-        if let Node::Ddl(_) = ir_plan.get_node(top_id)? {
+        if let IrNode::Ddl(_) = ir_plan.get_node(top_id)? {
             let ddl_node = ir_plan.get_ddl_node(top_id)?;
             if let Ddl::CreateSchema = ddl_node {
                 tlog!(
                     Warning,
                     "DDL for schemas is currently unsupported. Empty query response provided for CREATE SCHEMA."
                 );
-                return empty_query_response();
+                port_write_dml_response(port, 0);
+                return Ok(());
             }
             if let Ddl::DropSchema = ddl_node {
                 tlog!(
                     Warning,
                     "DDL for schemas is currently unsupported. Empty query response provided for DROP SCHEMA."
                 );
-                return empty_query_response();
+                port_write_dml_response(port, 0);
+                return Ok(());
             }
         }
 
@@ -286,7 +335,9 @@ fn dispatch_bound_statement_impl(
         let node = node::global()?;
         let tuple =
             reenterable_schema_change_request(node, ir_node, override_deadline, governor_op_id)?;
-        Ok(tuple)
+        let row_count = rows_changed(tuple).map_err(Error::other)?;
+        port_write_dml_response(port, row_count);
+        Ok(())
     } else if query.is_plugin()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
@@ -422,7 +473,8 @@ fn dispatch_bound_statement_impl(
             }
         };
 
-        Ok(Tuple::new(&(ConsumerResult { row_count: 1 },))?)
+        port_write_dml_response(port, 1);
+        Ok(())
     } else if query.is_block()? {
         check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
         let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
@@ -489,20 +541,28 @@ fn dispatch_bound_statement_impl(
                     audit::policy::log_dml_for_user(&pattern, bound_statement.params_for_audit());
                 }
 
-                dispatch_bound_statement_impl(runtime, bound_statement, override_deadline, None)
+                dispatch_bound_statement_impl(
+                    runtime,
+                    bound_statement,
+                    override_deadline,
+                    None,
+                    port,
+                )
             }
         }
     } else {
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
-        let metadata = try_get_metadata_from_plan(query.get_exec_plan())?;
-
         if query.is_explain() {
-            return Ok(*query
-                .produce_explain()?
-                .downcast::<Tuple>()
-                .expect("explain must always return a tuple"));
+            port.set_type(PortType::DispatchExplain);
+            let mut mp: Vec<u8> = Vec::new();
+            for line in query.as_explain()?.lines() {
+                write_str(&mut mp, line).map_err(Error::other)?;
+                port.add_mp(&mp);
+                mp.clear();
+            }
+            return Ok(());
         }
 
         // check if table is operable
@@ -526,34 +586,14 @@ fn dispatch_bound_statement_impl(
         })??;
 
         if plan.is_dml_on_global_table()? {
-            let res = do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
-            return Ok(Tuple::new(&(res,))?);
+            let ConsumerResult { row_count } =
+                do_dml_on_global_tbl(query, override_deadline, governor_op_id)?;
+            port_write_dml_response(port, row_count);
+            return Ok(());
         }
 
-        // TODO: Query::dispatch should support passing an explicit timeout
-        // <https://git.picodata.io/core/picodata/-/issues/1743>
-        let tuple = match query.dispatch() {
-            Ok(mut any_tuple) => {
-                if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                    tlog!(Trace, "dispatch: Dispatch result: {tuple:?}");
-                    let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                    Ok(tuple)
-                } else {
-                    Err(Error::from(SbroadError::FailedTo(
-                        Action::Decode,
-                        None,
-                        format_smolstr!("tuple {any_tuple:?}"),
-                    )))
-                }
-            }
-            Err(e) => Err(Error::from(e)),
-        }?;
-
-        // replace tarantool's metadata with the metadata from the plan
-        if let Some(metadata) = metadata {
-            return Ok(replace_metadata_in_dql_result(&tuple, &metadata)?);
-        }
-        Ok(tuple)
+        query.dispatch(port).map_err(Error::Sbroad)?;
+        Ok(())
     }
 }
 
@@ -566,16 +606,17 @@ fn dispatch_bound_statement_impl(
 /// This is needed for example for `ALTER PLUGIN MIGRATE` queries, so that the
 /// whole query doesn't take longer (give or take) than the timeout specified by
 /// the user.
-pub fn dispatch_bound_statement(
+pub fn dispatch_bound_statement<'p>(
     runtime: &RouterRuntime,
     statement: BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
-) -> traft::Result<Tuple> {
+    port: &mut impl Port<'p>,
+) -> traft::Result<()> {
     let start = Instant::now_fiber();
 
     let result =
-        dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id);
+        dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id, port);
 
     let tier = &runtime
         .get_current_tier_name()
@@ -642,25 +683,32 @@ impl<'de> Decode<'de> for BindArgs {
 /// Part of public RPC API.
 #[no_mangle]
 pub unsafe extern "C" fn proc_sql_dispatch(
-    ctx: FunctionCtx,
+    mut ctx: FunctionCtx,
     args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
     let bind_args = match args.decode::<BindArgs>() {
         Ok(v) => v,
         Err(e) => return report("", Error::from(e)),
     };
-    let result = parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None)
-        .map_err(err_for_tnt_console);
-
-    tarantool::proc::Return::ret(result, ctx)
+    let mut port = PicoPortC::from(ctx.mut_port_c());
+    let result = parse_and_dispatch(&bind_args.pattern, bind_args.params, None, None, &mut port);
+    match result {
+        Ok(_) => return 0,
+        Err(e) => {
+            let fmt_err = err_for_tnt_console(e);
+            fmt_err.set_last_error();
+            return -1;
+        }
+    }
 }
 
-pub fn parse_and_dispatch(
+pub fn parse_and_dispatch<'p>(
     query_text: &str,
     params: Vec<Value>,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
-) -> traft::Result<Tuple> {
+    port: &mut impl Port<'p>,
+) -> traft::Result<()> {
     let router = RouterRuntime::new();
 
     let bound_statement = BoundStatement::parse_and_bind(
@@ -673,7 +721,14 @@ pub fn parse_and_dispatch(
         audit::policy::log_dml_for_user(query_text, bound_statement.params_for_audit());
     }
 
-    dispatch_bound_statement(&router, bound_statement, override_deadline, governor_op_id)
+    dispatch_bound_statement(
+        &router,
+        bound_statement,
+        override_deadline,
+        governor_op_id,
+        port,
+    )?;
+    Ok(())
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {
@@ -2381,23 +2436,23 @@ pub(crate) fn reenterable_schema_change_request(
                 ddl: OpDdl::Backup { timestamp },
                 ..
             } => {
-                let backup_dir_name = get_backup_dir_name(timestamp);
-                let metadata = vec![MetadataColumn::new(
-                    String::from("backup_dir_name"),
-                    String::from("string"),
-                )];
-                let rows = vec![vec![Value::String(backup_dir_name)]];
-                // For BACKUP we want to return the name of generated backup_dir_name.
-                // In order to match the existing output format (which can be parsed and written
-                // into user console) we return BACKUP result in a view of a DQL.
-                let res = ProducerResult { metadata, rows };
+                // Append metadata and a row as a binary and string msgpack
+                // entries to reduce decoding when repack to the port:
+                // [binary metadata, string backup_dir_name]
+                let mut mp: Vec<u8> = b"\x92".to_vec();
 
-                // See the logic of calling `ProducerResult::convert`
-                // under `build_final_dql_result` needed for correct
-                // Tuple construction.
-                let wrapped = vec![res];
-                let data = msgpack::encode(&wrapped);
-                Tuple::try_from_slice(&data)?
+                // Pack metadata as binary.
+                let mut meta: Vec<u8> = Vec::new();
+                write_metadata(&mut meta, [("backup_dir_name", "string")].into_iter(), 1)
+                    .map_err(Error::other)?;
+                write_bin(&mut mp, meta.as_slice()).map_err(Error::other)?;
+                meta.clear();
+
+                // Pack backup_dir_name as string.
+                let backup_dir_name = get_backup_dir_name(timestamp);
+                write_str(&mut mp, &backup_dir_name).map_err(Error::other)?;
+
+                Tuple::try_from_slice(mp.as_slice())?
             }
             _ => {
                 let res = ConsumerResult { row_count: 1 };
@@ -2406,6 +2461,15 @@ pub(crate) fn reenterable_schema_change_request(
         };
         return Ok(tuple);
     }
+}
+
+fn rows_changed(tuple: Tuple) -> IoResult<u64> {
+    let [ConsumerResult { row_count }] = tuple.decode().map_err(|e| {
+        IoError::other(format!(
+            "Failed to decode consumer result from reentrable schema change request: {e}"
+        ))
+    })?;
+    Ok(row_count)
 }
 
 #[inline(always)]
@@ -2425,53 +2489,44 @@ pub unsafe extern "C" fn proc_sql_execute(
         Ok(len) => len,
         Err(e) => {
             return report(
-                "failed to cast the message size: ",
+                "Invalid length of the 'proc_sql_execute' arguments: ",
                 Error::Other(Box::new(e)),
             )
         }
     };
 
     let raw_args = std::slice::from_raw_parts(args.start, args_len);
-    let (raw_required, optional_bytes, cache_info) = match decode_msgpack(raw_args) {
-        Ok(decoded_res) => decoded_res,
-        Err(e) => return report("failed to decode the message: ", Error::from(e)),
-    };
-
-    let mut required = match RequiredData::try_from(EncodedRequiredData::from(raw_required)) {
-        Ok(required) => required,
+    let (rid, sid, raw_req, raw_opt) = match execute_args_split(raw_args) {
+        Ok((rid, sid, req, opt)) => (rid, sid, req, opt),
         Err(e) => {
             return report(
-                "failed to decode required data in the message: ",
+                &format!(
+                    "Failed to decode '.proc_sql_execute' arguments, msgpack {}: ",
+                    escape_bytes(raw_args)
+                ),
                 Error::from(e),
             )
         }
     };
 
-    // Report cache metrics only for DQL queries as other types of queries are not cached.
-    if required.query_type == QueryType::DQL {
-        match cache_info {
-            CacheInfo::CacheableFirstRequest => STORAGE_CACHE_1ST_REQUESTS_TOTAL.inc(),
-            CacheInfo::CacheableSecondRequest => STORAGE_CACHE_2ND_REQUESTS_TOTAL.inc(),
-        }
-    }
+    let mut pcall = || -> Result<(), Error> {
+        let mut required = RequiredData::try_from(raw_req)?;
+        let runtime = StorageRuntime::new();
+        let mut port = PicoPortC::from(ctx.mut_port_c());
+        runtime.execute_plan(&mut required, raw_opt, &mut port)?;
+        Ok(())
+    };
 
-    let runtime = StorageRuntime::new();
-    match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
-        Ok(mut any_tuple) => {
-            if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                let tuple: Tuple =
-                    std::mem::replace(tuple, Tuple::new(&()).expect("unable to create tuple"));
-                ctx.mut_port_c().add_tuple(&tuple);
-                0
-            } else {
-                let e = Error::DowncastError {
-                    expected: "Tuple",
-                    actual: any_tuple.type_name(),
-                };
-                report("", e)
-            }
-        }
-        Err(e) => report("", Error::from(e)),
+    if let Err(e) = reference_use(rid, sid) {
+        return report("Failed to add a storage reference: ", e.into());
+    };
+    let rc = pcall();
+    // We should always unref the storage reference before exit.
+    reference_del(rid, sid).expect("Failed to remove reference from the storage");
+
+    match rc {
+        Ok(()) => 0,
+        Err(e) => return report("Failed to execute '.proc_sql_execute': ", e),
     }
 }
 
@@ -2518,7 +2573,8 @@ fn do_dml_on_global_tbl(
 
         let motion_id = ir.get_relational_child(top, 0)?;
         let slices = ir.calculate_slices(motion_id)?;
-        query.materialize_subtree(slices.into(), None)?;
+        let port: Option<&mut PicoPortC> = None;
+        query.materialize_subtree(slices.into(), port)?;
 
         let exec_plan = query.get_mut_exec_plan();
         let vtable = exec_plan

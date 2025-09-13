@@ -6,7 +6,7 @@ from framework.sqltester import (
 
 
 @sql_test_file("alter_table_logic.sql")
-class TestGroupBy(ClusterTwoInstances):
+class TestAlterTable(ClusterTwoInstances):
     pass
 
 

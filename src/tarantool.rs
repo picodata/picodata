@@ -5,17 +5,20 @@ use crate::introspection::Introspection;
 use crate::pico_service::pico_service_password;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::tlog;
 use crate::traft::{self, error::Error};
-
+use ::tarantool::error::{Error as TntError, IntoBoxError};
+use ::tarantool::ffi::uuid::tt_uuid;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::msgpack;
+use ::tarantool::network::protocol::{codec, iproto_key};
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
-use ::tarantool::tuple::Tuple;
 use file_shred::*;
 use rmpv::Value as RmpvValue;
+use sbroad::executor::Port as SqlPort;
 use serde::Deserialize;
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -27,9 +30,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tarantool::error::IntoBoxError;
-use tarantool::ffi::uuid::tt_uuid;
-use tarantool::network::protocol::{codec, iproto_key};
 use tlua::CallError;
 
 #[macro_export]
@@ -850,7 +850,10 @@ fn write_uint(src: u64, dest: &mut SmallVec<[u8; RESERVED_SIZE]>) {
 #[allow(unused)]
 /// Handles prepared statement from IPROTO_EXECUTE request body.
 #[inline]
-fn iproto_execute_handle_prepared_statement(mut body: &[u8]) -> traft::Result<Tuple> {
+fn iproto_execute_handle_prepared_statement<'p>(
+    mut _body: &[u8],
+    _port: &mut impl SqlPort<'p>,
+) -> traft::Result<()> {
     let error_message = String::from("IPROTO_EXECUTE on prepared statements");
     let error_help = String::from("temporarily disabled");
 
@@ -865,7 +868,10 @@ fn iproto_execute_handle_prepared_statement(mut body: &[u8]) -> traft::Result<Tu
 /// See <https://www.tarantool.io/en/doc/2.11/dev_guide/internals/iproto/sql/#internals-iproto-sql>
 /// on "SQL string" (p.s. prepared statements are handled with [`iproto_execute_handle_prepared_statement`]).
 #[inline]
-fn iproto_execute_handle_sql_query(body: &[u8]) -> traft::Result<Tuple> {
+fn iproto_execute_handle_sql_query<'p>(
+    body: &[u8],
+    port: &mut impl SqlPort<'p>,
+) -> traft::Result<()> {
     // this algorithm looks over the data with cursor and
     // decodes directly on a slice from data: that means
     // we use the cursor position to specify start of a
@@ -918,7 +924,8 @@ fn iproto_execute_handle_sql_query(body: &[u8]) -> traft::Result<Tuple> {
     };
 
     let bind = bind.unwrap_or_default();
-    crate::sql::parse_and_dispatch(pattern, bind, None, None)
+    crate::sql::parse_and_dispatch(pattern, bind, None, None, port)?;
+    Ok(())
 }
 
 /// Returns swapped `MP_FIXSTR` representation of keys in [`tarantool::tuple::Tuple`]
@@ -1001,7 +1008,7 @@ const RESERVED_SIZE: usize = 21;
 /// Handles valid response from `IPROTO_EXECUTE` request as SQL query or prepared statement.
 fn iproto_execute_handle_valid_internal_response(
     header: &mut codec::Header,
-    response_tuple: &Tuple,
+    response_mp: &[u8],
 ) -> IprotoHandlerStatus {
     // { IPROTO_REQUEST_TYPE(u8): MP_POSFIXINT(u8),
     //   IPROTO_SYNC(u8): MP_UINT(u64),
@@ -1023,7 +1030,7 @@ fn iproto_execute_handle_valid_internal_response(
 
     // we skip first byte (MP_FIXARRAY) because `Tuple` by default
     // puts value into an array, that we can ignore, because it doesn't matter
-    let response_data = &response_tuple.data()[1..];
+    let response_data = &response_mp[1..];
     let mut response_body: SmallVec<[u8; RESERVED_SIZE]> = SmallVec::new();
     // either `SELECT` or `VALUES` (sub-)expression
     unwrap_or_report_and_propagate_err!(iproto_execute_rewrite_response_keys(
@@ -1119,16 +1126,21 @@ pub extern "C" fn iproto_override_cb_redirect_execute(
     let difference_byte =
         unwrap_or_report_and_propagate_err!(iproto_execute_distinguish_type(body));
 
-    let response_tuple = unwrap_or_report_and_propagate_err!(match difference_byte {
-        iproto_key::STMT_ID => iproto_execute_handle_prepared_statement(body),
-        iproto_key::SQL_TEXT => iproto_execute_handle_sql_query(body),
+    let mut pico_port = PicoPortOwned::new();
+    unwrap_or_report_and_propagate_err!(match difference_byte {
+        iproto_key::STMT_ID => iproto_execute_handle_prepared_statement(body, &mut pico_port),
+        iproto_key::SQL_TEXT => iproto_execute_handle_sql_query(body, &mut pico_port),
         _ => unreachable!("Can't reach that hand because it should error at no difference byte"),
     });
+    let mut response_mp = Vec::new();
+    unwrap_or_report_and_propagate_err!(
+        dispatch_dump_mp(&mut response_mp, pico_port.port_c_mut()).map_err(TntError::IO)
+    );
 
     let mut header =
         unwrap_or_report_and_propagate_err!(codec::Header::decode(&mut Cursor::new(header)));
 
-    iproto_execute_handle_valid_internal_response(&mut header, &response_tuple)
+    iproto_execute_handle_valid_internal_response(&mut header, &response_mp)
 }
 
 extern "C" {

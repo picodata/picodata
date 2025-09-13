@@ -1,17 +1,11 @@
-use pretty_assertions::assert_eq;
-
+use super::*;
 use crate::backend::sql::ir::PatternWithParams;
-
-use crate::executor::engine::mock::RouterRuntimeMock;
-use crate::executor::result::ProducerResult;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::MotionPolicy;
-use smol_str::SmolStr;
-
 use crate::ir::value::Value;
-
-use super::*;
+use pretty_assertions::assert_eq;
 
 // Helper function to format back sql.
 // The local sql we produce doesn't contain line breaks,
@@ -28,29 +22,29 @@ fn shard_query() {
     let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" = 1"#;
     let coordinator = RouterRuntimeMock::new();
 
+    let mut port = PortMocked::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    query.dispatch(&mut port).unwrap();
 
-    let mut expected = ProducerResult::new();
-
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}",
+            r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
+            r#"WHERE "test_space"."id" = CAST($1 AS int)"#
+        ),
+    );
     let param1 = Value::from(1);
     let bucket = coordinator.determine_bucket_id(&[&param1]).unwrap();
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}",
-                r#"SELECT "test_space"."FIRST_NAME" FROM "test_space""#,
-                r#"WHERE "test_space"."id" = CAST($1 AS int)"#
-            ),
-            vec![param1],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    assert_eq!(params, &vec![param1]);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 #[test]
@@ -69,33 +63,36 @@ fn shard_union_query() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let mut expected = ProducerResult::new();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}{} {} {}{} {}",
+            r#"SELECT *"#,
+            r#"FROM ("#,
+            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" = CAST($1 AS int)"#,
+            r#"UNION ALL"#,
+            r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" > CAST($2 AS int)"#,
+            r#") as "t3""#,
+            r#"WHERE "t3"."id" = CAST($3 AS int)"#,
+        ),
+    );
+    assert_eq!(
+        params,
+        &vec![Value::from(1), Value::from(1), Value::from(1)]
+    );
     let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}{} {} {}{} {}",
-                r#"SELECT *"#,
-                r#"FROM ("#,
-                r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" = CAST($1 AS int)"#,
-                r#"UNION ALL"#,
-                r#"SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" > CAST($2 AS int)"#,
-                r#") as "t3""#,
-                r#"WHERE "t3"."id" = CAST($3 AS int)"#,
-            ),
-            vec![Value::from(1), Value::from(1), Value::from(1)],
-        ))),
-    ]);
-
-    assert_eq!(expected, result);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 #[test]
@@ -104,39 +101,33 @@ fn map_reduce_query() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let mut expected = ProducerResult::new();
-
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {}",
+            r#"SELECT "hash_testing"."product_code""#,
+            r#"FROM "hash_testing""#,
+            r#"WHERE ("hash_testing"."identification_number" = CAST($1 AS int)) and ("hash_testing"."product_code" = CAST($2 AS string))"#,
+        ),
+    );
     let param1 = Value::from(1);
     let param457 = Value::from("457");
-
     let bucket = query
         .coordinator
         .determine_bucket_id(&[&param1, &param457])
         .unwrap();
-
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(
-            String::from(
-                PatternWithParams::new(
-                    format!(
-                        "{} {} {}",
-                        r#"SELECT "hash_testing"."product_code""#,
-                        r#"FROM "hash_testing""#,
-                        r#"WHERE ("hash_testing"."identification_number" = CAST($1 AS int)) and ("hash_testing"."product_code" = CAST($2 AS string))"#,
-                    ), vec![param1, param457],
-                )
-            )
-        )
-    ]);
-
-    assert_eq!(expected, result);
+    assert_eq!(params, &vec![param1, param457]);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 #[test]
@@ -156,48 +147,34 @@ fn linker_test() {
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let mut info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(ref mut filtered) = info.get_mut(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
 
-    let mut expected = ProducerResult::new();
-
-    let param2 = Value::from(2);
-    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-
+    let (sql, params, _, ref mut buckets) = filtered.get_mut(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {}",
+            r#"SELECT "test_space"."FIRST_NAME""#,
+            r#"FROM "test_space""#,
+            r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+        ),
+    );
+    assert!(params.is_empty());
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
-
-    expected.rows.extend(vec![
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket3}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {}",
-                    r#"SELECT "test_space"."FIRST_NAME""#,
-                    r#"FROM "test_space""#,
-                    r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
-                ),
-                vec![],
-            ))),
-        ],
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket2}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {}",
-                    r#"SELECT "test_space"."FIRST_NAME""#,
-                    r#"FROM "test_space""#,
-                    r#"WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
-                ),
-                vec![],
-            ))),
-        ],
-    ]);
-
-    assert_eq!(expected, result);
+    let param2 = Value::from(2);
+    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
+    let mut expected = vec![bucket2, bucket3];
+    buckets.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(buckets, &expected);
 }
 
 #[test]
@@ -227,64 +204,42 @@ fn union_linker_test() {
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let mut info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(ref mut filtered) = info.get_mut(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
 
-    let mut expected = ProducerResult::new();
-
-    let param2 = Value::from(2);
-    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-
+    let (sql, params, _, ref mut buckets) = filtered.get_mut(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}{} {} {} {} {} {} {}{} {}",
+            r#"SELECT *"#,
+            r#"FROM ("#,
+            r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
+            r#"FROM "test_space""#,
+            r#"WHERE "test_space"."sys_op" < CAST($1 AS int)"#,
+            r#"UNION ALL"#,
+            r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
+            r#"FROM "test_space_hist""#,
+            r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS int)"#,
+            r#") as "t1""#,
+            r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
+        ),
+    );
+    assert_eq!(params, &vec![Value::from(0), Value::from(0)]);
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
-
-    expected.rows.extend(vec![
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket3}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {}{} {} {} {} {} {} {}{} {}",
-                    r#"SELECT *"#,
-                    r#"FROM ("#,
-                    r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
-                    r#"FROM "test_space""#,
-                    r#"WHERE "test_space"."sys_op" < CAST($1 AS int)"#,
-                    r#"UNION ALL"#,
-                    r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
-                    r#"FROM "test_space_hist""#,
-                    r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS int)"#,
-                    r#") as "t1""#,
-                    r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
-                ),
-                vec![Value::from(0), Value::from(0)],
-            ))),
-        ],
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket2}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {}{} {} {} {} {} {} {}{} {}",
-                    r#"SELECT *"#,
-                    r#"FROM ("#,
-                    r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
-                    r#"FROM "test_space""#,
-                    r#"WHERE "test_space"."sys_op" < CAST($1 AS int)"#,
-                    r#"UNION ALL"#,
-                    r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
-                    r#"FROM "test_space_hist""#,
-                    r#"WHERE "test_space_hist"."sys_op" > CAST($2 AS int)"#,
-                    r#") as "t1""#,
-                    r#"WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_test_0136")"#,
-                ),
-                vec![Value::from(0), Value::from(0)],
-            ))),
-        ],
-    ]);
-
-    assert_eq!(expected, result);
+    let param2 = Value::from(2);
+    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
+    buckets.sort_unstable();
+    let mut expected = vec![bucket2, bucket3];
+    expected.sort_unstable();
+    assert_eq!(buckets, &expected);
 }
 
 #[test]
@@ -323,48 +278,49 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}{} {} {} {} {} {} {}{} {} {}{} {} {}",
+            r#"SELECT *"#,
+            r#"FROM ("#,
+            r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
+            r#"FROM "test_space""#,
+            r#"WHERE ("test_space"."sys_op" < CAST($1 AS int)) and ("test_space"."sysFrom" >= CAST($2 AS int))"#,
+            r#"UNION ALL"#,
+            r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
+            r#"FROM "test_space_hist""#,
+            r#"WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)"#,
+            r#") as "t3""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1" FROM "TMP_test_0136""#,
+            r#") as "t8""#,
+            r#"ON "t3"."id" = "t8"."COL_1""#,
+            r#"WHERE ("t3"."id" = CAST($4 AS int)) and ("t8"."COL_1" = CAST($5 AS int))"#
+        ),
+    );
+    assert_eq!(
+        params,
+        &vec![
+            Value::from(0),
+            Value::from(0),
+            Value::from(0),
+            Value::from(2),
+            Value::from(2),
+        ]
+    );
     let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-
-    expected.rows.extend(vec![vec![
-        Value::String(format!("Execute query on a bucket [{bucket2}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}{} {} {} {} {} {} {}{} {} {}{} {} {}",
-                r#"SELECT *"#,
-                r#"FROM ("#,
-                r#"SELECT "test_space"."id", "test_space"."FIRST_NAME""#,
-                r#"FROM "test_space""#,
-                r#"WHERE ("test_space"."sys_op" < CAST($1 AS int)) and ("test_space"."sysFrom" >= CAST($2 AS int))"#,
-                r#"UNION ALL"#,
-                r#"SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME""#,
-                r#"FROM "test_space_hist""#,
-                r#"WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)"#,
-                r#") as "t3""#,
-                r#"INNER JOIN"#,
-                r#"(SELECT "COL_1" FROM "TMP_test_0136""#,
-                r#") as "t8""#,
-                r#"ON "t3"."id" = "t8"."COL_1""#,
-                r#"WHERE ("t3"."id" = CAST($4 AS int)) and ("t8"."COL_1" = CAST($5 AS int))"#
-            ),
-            vec![
-                Value::from(0),
-                Value::from(0),
-                Value::from(0),
-                Value::from(2),
-                Value::from(2),
-            ],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    assert_eq!(buckets, &vec![bucket2]);
 }
 
 #[test]
@@ -394,31 +350,29 @@ fn join_linker2_test() {
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {}",
+            r#"SELECT "t1"."id" FROM "test_space" as "t1""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
+            r#"as "t2" ON "t1"."id" = CAST($1 AS int)"#
+        ),
+    );
     let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-
-    expected.rows.extend(vec![vec![
-        Value::String(format!("Execute query on a bucket [{bucket1}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {} {}",
-                r#"SELECT "t1"."id" FROM "test_space" as "t1""#,
-                r#"INNER JOIN"#,
-                r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
-                r#"as "t2" ON "t1"."id" = CAST($1 AS int)"#
-            ),
-            vec![Value::from(1)],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    assert_eq!(params, &vec![param1]);
+    assert_eq!(buckets, &vec![bucket1]);
 }
 
 #[test]
@@ -445,29 +399,25 @@ fn join_linker3_test() {
         .coordinator
         .add_virtual_table(motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {} {} {}",
-                r#"SELECT "t2"."COL_1" as "id1" FROM"#,
-                r#"(SELECT "test_space"."id" FROM "test_space") as "t1""#,
-                r#"INNER JOIN"#,
-                r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
-                r#"ON "t2"."COL_1" = CAST($1 AS int)"#,
-            ),
-            vec![Value::from(1)],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on all replicasets");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {} {}",
+            r#"SELECT "t2"."COL_1" as "id1" FROM"#,
+            r#"(SELECT "test_space"."id" FROM "test_space") as "t1""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
+            r#"ON "t2"."COL_1" = CAST($1 AS int)"#,
+        ),
+    );
+    assert_eq!(params, &vec![Value::from(1)]);
 }
 
 #[test]
@@ -511,51 +461,36 @@ fn join_linker4_test() {
         .coordinator
         .add_virtual_table(motion_sq_id, virtual_sq);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let mut info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(ref mut filtered) = info.first_mut().unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    assert_eq!(1, filtered.len());
 
-    let mut expected = ProducerResult::new();
-
-    let param1 = Value::from(1);
-    let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-
+    let (sql, params, _, ref mut buckets) = filtered.first_mut().unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {} {}",
+            r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
+            r#"ON ("T1"."id" = "T2"."COL_1")"#,
+            r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
+        ),
+    );
+    assert!(params.is_empty());
     let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-
-    expected.rows.extend(vec![
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket2}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {} {} {}",
-                    r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
-                    r#"INNER JOIN"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
-                    r#"ON ("T1"."id" = "T2"."COL_1")"#,
-                    r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
-                ),
-                vec![],
-            ))),
-        ],
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket1}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {} {} {}",
-                    r#"SELECT "T1"."id" FROM "test_space" as "T1""#,
-                    r#"INNER JOIN"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_0136") as "T2""#,
-                    r#"ON ("T1"."id" = "T2"."COL_1")"#,
-                    r#"and ("T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_test_1136"))"#,
-                ),
-                vec![],
-            ))),
-        ],
-    ]);
-    assert_eq!(expected, result);
+    let param1 = Value::from(1);
+    let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
+    let mut expected = vec![bucket1, bucket2];
+    buckets.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(buckets, &expected);
 }
 
 #[test]
@@ -596,28 +531,24 @@ on q."f" = "t1"."b""#;
         .coordinator
         .add_virtual_table(motion_sq_id, virtual_sq);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {} {}",
-                r#"SELECT "t1"."a", "t1"."b", "q".* FROM"#,
-                r#""t1""#,
-                r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
-                r#"as "q" ON "q"."COL_1" = "t1"."b""#,
-            ),
-            vec![],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on all replicasets");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {}",
+            r#"SELECT "t1"."a", "t1"."b", "q".* FROM"#,
+            r#""t1""#,
+            r#"INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_test_0136")"#,
+            r#"as "q" ON "q"."COL_1" = "t1"."b""#,
+        ),
+    );
+    assert!(params.is_empty());
 }
 
 #[test]
@@ -635,23 +566,18 @@ fn dispatch_order_by() {
         .coordinator
         .add_virtual_table(order_by_motion_id, virtual_table);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query locally".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "COL_1""#
-                .to_string(),
-            vec![],
-        ))),
-    ]]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single local dispatch");
+    };
+    assert_eq!(
+        sql,
+        r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_test_0136") ORDER BY "COL_1""#
+    );
+    assert!(params.is_empty());
 }
 
 #[test]
@@ -682,51 +608,36 @@ fn anonymous_col_index_test() {
         .coordinator
         .add_virtual_table(motion2_id, virtual_table_23(None));
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-    let param2 = Value::from(2);
-    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
-
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let mut info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(ref mut filtered) = info.first_mut().unwrap() else {
+        panic!("Expected filtered dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, ref mut buckets) = filtered.first_mut().unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {} {} {}",
+            r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
+            r#"FROM "test_space""#,
+            r#"WHERE ("test_space"."id" in"#,
+            r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
+            r#"or ("test_space"."id" in"#,
+            r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
+        ),
+    );
+    assert!(params.is_empty());
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
-    expected.rows.extend(vec![
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket3}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {} {} {} {}",
-                    r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
-                    r#"FROM "test_space""#,
-                    r#"WHERE ("test_space"."id" in"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
-                    r#"or ("test_space"."id" in"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
-                ),
-                vec![],
-            ))),
-        ],
-        vec![
-            Value::String(format!("Execute query on a bucket [{bucket2}]")),
-            Value::String(String::from(PatternWithParams::new(
-                format!(
-                    "{} {} {} {} {} {}",
-                    "SELECT",
-                    r#""test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space""#,
-                    r#"WHERE ("test_space"."id" in"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_0136"))"#,
-                    r#"or ("test_space"."id" in"#,
-                    r#"(SELECT "COL_1" FROM "TMP_test_1136"))"#,
-                ),
-                vec![],
-            ))),
-        ],
-    ]);
-    assert_eq!(expected, result);
+    let param2 = Value::from(2);
+    let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
+    let mut expected = vec![bucket2, bucket3];
+    buckets.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(buckets, &expected);
 }
 
 #[test]
@@ -735,28 +646,27 @@ fn sharding_column1_test() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected filtered dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}",
+            r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
+            r#"FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
+        ),
+    );
     let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}",
-                r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op""#,
-                r#"FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
-            ),
-            vec![Value::from(1)],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    assert_eq!(params, &vec![param1]);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 #[test]
@@ -765,28 +675,27 @@ fn sharding_column2_test() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected filtered dispatch");
+    };
+    assert_eq!(1, filtered.len());
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}",
+            r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op","#,
+            r#""test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
+        ),
+    );
     let param1 = Value::from(1);
     let bucket = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}",
-                r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op","#,
-                r#""test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#,
-            ),
-            vec![Value::from(1)],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    assert_eq!(params, &vec![param1]);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 /// Helper function to create a test virtual table.
@@ -820,22 +729,15 @@ pub(crate) fn broadcast_check(sql: &str, pattern: &str, params: Vec<Value>) {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.push(vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            pattern.to_string(),
-            params,
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, extracted_params) = info.get(0).unwrap() else {
+        panic!("Expected local dispatch");
+    };
+    assert_eq!(sql, pattern);
+    assert_eq!(extracted_params, &params);
 }
 
 #[test]
@@ -870,28 +772,23 @@ fn groupby_linker_test() {
 
     query.coordinator.add_virtual_table(motion_id, virtual_t1);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-    expected.rows.extend(vec![vec![
-        Value::String(format!("Execute query locally")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {}",
-                r#"SELECT "COL_1" as "ii" FROM"#,
-                r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
-                r#"GROUP BY "COL_1""#,
-            ),
-            vec![],
-        ))),
-    ]]);
-
-    expected.rows.sort_by_key(|k| k[0].to_string());
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected local dispatch");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {}",
+            r#"SELECT "COL_1" as "ii" FROM"#,
+            r#"(SELECT "COL_1" FROM "TMP_test_0136")"#,
+            r#"GROUP BY "COL_1""#,
+        ),
+    );
+    assert!(params.is_empty());
 }
 
 mod between;

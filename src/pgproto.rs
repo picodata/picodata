@@ -17,7 +17,7 @@ use std::{
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
 
-mod backend;
+pub mod backend;
 mod client;
 mod error;
 mod messages;

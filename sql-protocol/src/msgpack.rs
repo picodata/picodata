@@ -138,6 +138,19 @@ pub fn skip_value(rd: &mut Cursor<&[u8]>) -> Result<()> {
     Ok(())
 }
 
+#[inline]
+pub(crate) fn shift_pos(rd: &mut Cursor<&[u8]>, len: u64) -> Result<()> {
+    let pos = rd.position();
+    let slice_len = rd.get_ref().len() as u64;
+    if len + pos > slice_len {
+        return Err(Error::other("out of bound attempt to shift position"));
+    }
+
+    rd.set_position(pos + len);
+
+    Ok(())
+}
+
 fn shift_map_data(rd: &mut Cursor<&[u8]>, mut len: u64) -> Result<()> {
     while len > 0 {
         skip_value(rd)?;
@@ -153,19 +166,6 @@ fn shift_array_data(rd: &mut Cursor<&[u8]>, mut len: u64) -> Result<()> {
         skip_value(rd)?;
         len -= 1;
     }
-
-    Ok(())
-}
-
-#[inline]
-fn shift_pos(rd: &mut Cursor<&[u8]>, len: u64) -> Result<()> {
-    let pos = rd.position();
-    let slice_len = rd.get_ref().len() as u64;
-    if len + pos > slice_len {
-        return Err(Error::other("out of bound attempt to shift position"));
-    }
-
-    rd.set_position(pos + len);
 
     Ok(())
 }

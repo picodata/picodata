@@ -114,3 +114,9 @@ Exceeded maximum number of rows \(5\) in virtual table: 6
 select "id" from "testing_space" group by "id" option(sql_motion_row_max = 7)
 -- EXPECTED:
 1, 2, 3, 4, 5, 6
+
+-- TEST: test_sql_motion_row_max_on_router-3
+-- SQL:
+select "id" from "testing_space" group by "id" option(sql_motion_row_max = 6)
+-- EXPECTED:
+1, 2, 3, 4, 5, 6

@@ -193,7 +193,7 @@ impl ExecutionPlan {
             sql.push_str(identifier);
             sql.push('\"');
         };
-        let mut motions = Vec::with_capacity(self.get_vtables().len());
+        let mut motions = AHashSet::with_capacity(self.get_vtables().len());
         let mut params_idx: AHashSet<usize> = AHashSet::new();
 
         let mut sql = String::new();
@@ -585,11 +585,12 @@ impl ExecutionPlan {
                         )
                     })?;
                     // BETWEEN can refer to the same virtual table multiple times.
-                    motions.push(*motion_id);
+                    motions.insert(*motion_id);
                 }
             }
         }
         assert_eq!(ir_plan.constants.len(), params_idx.len());
+        let motions: Vec<NodeId> = motions.into_iter().collect();
 
         Ok((sql, motions))
     }

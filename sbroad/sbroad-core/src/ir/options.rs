@@ -259,7 +259,7 @@ impl Plan {
         if let (Some(values_count), Some(limit)) =
             (values_count, lowered.sql_motion_row_max.try_get_value())
         {
-            if limit < values_count as i64 {
+            if limit > 0 && limit < values_count as i64 {
                 return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                     "Exceeded maximum number of rows ({}) in virtual table: {}",
                     limit,

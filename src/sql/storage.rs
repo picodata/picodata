@@ -2,45 +2,45 @@
 //! Implements the `sbroad` crate infrastructure
 //! for execution of the dispatched query plan subtrees.
 
-use sbroad::backend::sql::ir::PatternWithParams;
-use sbroad::backend::sql::space::TableGuard;
-use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::{unprepare, StorageReturnFormat};
-use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
-use sbroad::executor::engine::helpers::{
-    self, drop_tables, execute_first_cacheable_request, execute_second_cacheable_request,
-    prepare_and_read, read_or_prepare, EncodedQueryInfo, FullPlanInfo, OptionalBytes,
-    RequiredPlanInfo,
-};
-use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
-use sbroad::executor::ir::{ExecutionPlan, QueryType};
-use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
-use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo};
-use sbroad::executor::result::{ExplainProducerResult, ProducerResult};
-use sbroad::ir::value::Value;
-use sbroad::ir::ExplainType;
-use sbroad::utils::{remove_quotes_except_capitals, MutexLike};
-use tarantool::fiber::Mutex;
-use tarantool::sql::Statement;
-use tarantool::tuple::{Tuple, TupleBuffer};
-
-use crate::metrics::{
-    STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
+use crate::sql::dispatch::port_write_metadata;
+use crate::sql::execute::{
+    dml_execute, dql_execute_first_round, dql_execute_second_round, explain_execute,
 };
 use crate::sql::router::{
     calculate_bucket_id, get_table_version, get_table_version_by_id, VersionMap,
 };
 use crate::traft::node;
 use once_cell::sync::Lazy;
+use sbroad::backend::sql::ir::PatternWithParams;
+use sbroad::backend::sql::space::TableGuard;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
+use sbroad::errors::{Action, Entity, SbroadError};
+use sbroad::executor::bucket::Buckets;
+use sbroad::executor::engine::helpers::storage::unprepare;
+use sbroad::executor::engine::helpers::vshard::get_random_bucket;
+use sbroad::executor::engine::helpers::{
+    table_name, EncodedQueryInfo, FullPlanInfo, RequiredPlanInfo,
+};
+use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
+use sbroad::executor::ir::{ExecutionPlan, QueryType};
+use sbroad::executor::lru::{Cache, EvictFn, LRUCache};
+use sbroad::executor::protocol::{EncodedVTables, RequiredData, SchemaInfo, VTablesMeta};
+use sbroad::executor::{Port, PortType};
+use sbroad::ir::ExplainType;
+
+use crate::metrics::{
+    STORAGE_CACHE_STATEMENTS_ADDED_TOTAL, STORAGE_CACHE_STATEMENTS_EVICTED_TOTAL,
+};
 use sbroad::ir::node::NodeId;
 use sbroad::ir::tree::Snapshot;
+use sbroad::ir::value::Value;
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
-use std::{any::Any, rc::Rc};
-use tarantool::msgpack;
+use std::rc::Rc;
+use tarantool::fiber::Mutex;
 use tarantool::space::SpaceId;
+
+use tarantool::sql::Statement;
 
 thread_local!(
     // We need Lazy, because cache can be initialized only after raft node.
@@ -225,63 +225,23 @@ impl FullPlanInfo for LocalExecutionQueryInfo<'_> {
     ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
         self.exec_plan.to_sql(&self.nodes, &self.plan_id, None)
     }
-}
 
-fn exec_explain_query_plan<R: QueryCache, M: MutexLike<R::Cache>>(
-    locked_cache: &mut M::Guard<'_>,
-    info: &mut impl FullPlanInfo,
-    buckets: &Buckets,
-    explain_type: ExplainType,
-) -> Result<Box<dyn Any>, SbroadError>
-where
-    R::Cache: StorageCache,
-{
-    let (pattern_with_params, guards) = info.extract_query_and_table_guard()?;
-    let mut sql = pattern_with_params.pattern;
-    let params = pattern_with_params
-        .params
-        .iter()
-        .map(|param| param.to_string())
-        .collect::<Vec<String>>();
+    fn take_query_meta(&mut self) -> Result<(String, Vec<NodeId>, VTablesMeta), SbroadError> {
+        let vtables = self.exec_plan.get_vtables();
+        let mut meta = VTablesMeta::with_capacity(vtables.len());
+        for (id, table) in vtables.iter() {
+            meta.insert(*id, table.metadata());
+        }
 
-    let boxed_bytes: Box<dyn Any> =
-        prepare_and_read::<R, M>(locked_cache, info, &StorageReturnFormat::DqlRaw)?;
+        let (local_sql, motion_ids) = self.exec_plan.generate_sql(
+            &self.nodes,
+            self.plan_id.as_str(),
+            Some(&meta),
+            |name: &str, id| table_name(name, id),
+        )?;
 
-    let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
-        SbroadError::Invalid(
-            Entity::MsgPack,
-            Some(format_smolstr!("expected Tuple as result: {e:?}")),
-        )
-    })?;
-    let producer_result: Vec<ProducerResult> = msgpack::decode(bytes.as_slice()).map_err(|e| {
-        SbroadError::Other(format_smolstr!("decode bytes into inner format: {e:?}"))
-    })?;
-
-    let producer_result = producer_result
-        .first()
-        .expect("storage returned empty result")
-        .clone();
-    sql.replace_range(.."EXPLAIN QUERY PLAN ".len(), "");
-
-    let sql = remove_quotes_except_capitals(&sql);
-
-    let location = buckets.determine_exec_location();
-    let explain_producer_res = ExplainProducerResult::from(
-        explain_type == ExplainType::ExplainQueryPlanFmt,
-        sql,
-        params,
-        location.to_string(),
-        producer_result,
-    );
-    let explain_str = format!("{}\n\n", explain_producer_res);
-
-    let tables: Vec<(SmolStr, bool)> = guards
-        .into_iter()
-        .map(|guard| (guard.name.clone(), guard.already_created))
-        .collect();
-    drop_tables(tables)?;
-
-    Ok(Box::new(explain_str))
+        Ok((local_sql, motion_ids, meta))
+    }
 }
 
 impl Vshard for StorageRuntime {
@@ -297,26 +257,28 @@ impl Vshard for StorageRuntime {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_any_node(
+    fn exec_ir_on_any_node<'p>(
         &self,
-        sub_plan: ExecutionPlan,
+        ex_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let plan = sub_plan.get_ir_plan();
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        if !ex_plan.get_ir_plan().is_raw_explain() {
+            port_write_metadata(port, &ex_plan)?;
+        }
+        let plan = ex_plan.get_ir_plan();
+        let query_type = ex_plan.query_type()?;
         let top_id = plan.get_top()?;
         let explain_type = plan.get_explain_type();
         let plan_id = plan.pattern_id(top_id)?;
-        let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
+        let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
-        let params = sub_plan.to_params().to_vec();
-        let version_map = sub_plan.get_ir_plan().version_map.clone();
+        let params = ex_plan.to_params().to_vec();
+        let version_map = ex_plan.get_ir_plan().version_map.clone();
         let schema_info = SchemaInfo::new(version_map);
-        let mut locked_cache = self.cache().lock();
-
         let mut info = LocalExecutionQueryInfo {
-            exec_plan: sub_plan,
+            exec_plan: ex_plan,
             plan_id,
             nodes,
             params,
@@ -325,60 +287,33 @@ impl Vshard for StorageRuntime {
 
         match explain_type {
             None => {
-                let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
-                    &mut locked_cache,
-                    &mut info,
-                    &StorageReturnFormat::DqlRaw,
-                )?;
-                let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
-                    SbroadError::Invalid(
-                        Entity::MsgPack,
-                        Some(format_smolstr!("expected Tuple as result: {e:?}")),
-                    )
-                })?;
-                // TODO: introduce a wrapper type, do not use raw Vec<u8> and
-                // implement convert trait
-                let res: Box<dyn Any> = match return_format {
-                    DispatchReturnFormat::Tuple => {
-                        let tup_buf = TupleBuffer::try_from_vec(*bytes)
-                            .expect("failed to convert raw dql result to tuple buffer");
-                        Box::new(Tuple::from(&tup_buf))
-                    }
-                    DispatchReturnFormat::Inner => {
-                        let mut data: Vec<ProducerResult> = msgpack::decode(bytes.as_slice())
-                            .map_err(|e| {
-                                SbroadError::Other(format_smolstr!(
-                                    "decode bytes into inner format: {e:?}"
-                                ))
-                            })?;
-                        let inner = data.get_mut(0).ok_or_else(|| {
-                            SbroadError::NotFound(Entity::ProducerResult, "from the tuple".into())
-                        })?;
-                        let inner_owned = std::mem::take(inner);
-                        Box::new(inner_owned)
-                    }
-                };
-
-                Ok(res)
+                if let QueryType::DML = query_type {
+                    // DML queries are not supported on arbitrary nodes
+                    return Err(SbroadError::Other(
+                        "DML queries are not supported on arbitrary nodes".into(),
+                    ));
+                }
+                dql_execute_second_round(self, &mut info, port)?;
             }
             Some(ExplainType::Explain) => unreachable!("Explain should already be handled."),
-            Some(ExplainType::ExplainQueryPlan | ExplainType::ExplainQueryPlanFmt) => {
-                exec_explain_query_plan::<Self, <Self as QueryCache>::Mutex>(
-                    &mut locked_cache,
-                    &mut info,
-                    buckets,
-                    explain_type.unwrap(),
-                )
+            Some(ExplainType::ExplainQueryPlan) => {
+                let location = buckets.determine_exec_location();
+                explain_execute(self, &mut info, false, location, port)?;
+            }
+            Some(ExplainType::ExplainQueryPlanFmt) => {
+                let location = buckets.determine_exec_location();
+                explain_execute(self, &mut info, true, location, port)?;
             }
         }
+        Ok(())
     }
 
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_buckets<'p>(
         &self,
         _sub_plan: ExecutionPlan,
         _buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
+        _port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
         return Err(SbroadError::Other(
             "storage runtime can't execute vshard queries".into(),
         ));
@@ -406,13 +341,13 @@ impl StorageRuntime {
     /// # Errors
     /// - Something went wrong while executing the plan.
     #[allow(unused_variables)]
-    pub fn execute_plan(
+    pub fn execute_plan<'p>(
         &self,
         required: &mut RequiredData,
-        mut raw_optional: OptionalBytes,
-        cache_info: CacheInfo,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        // Check router schema version hasn't changed.
+        raw_optional: Option<&[u8]>,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        // Compare router's schema versions with storage's ones.
         for (table, version) in &required.schema_info.router_version_map {
             // TODO: if storage version is smaller than router's version
             // wait until state catches up.
@@ -421,18 +356,25 @@ impl StorageRuntime {
             }
         }
         match required.query_type {
-            QueryType::DML => helpers::execute_dml(self, required, raw_optional.get_mut()?),
+            QueryType::DML => {
+                let Some(bytes) = raw_optional else {
+                    return Err(SbroadError::Other(
+                        "DML query must have a non-empty optional part".into(),
+                    ));
+                };
+                dml_execute(self, required, bytes, port)?;
+            }
             QueryType::DQL => {
+                let is_first_round = raw_optional.is_none();
                 let mut info: EncodedQueryInfo<'_> = EncodedQueryInfo::new(raw_optional, required);
-                match cache_info {
-                    CacheInfo::CacheableFirstRequest => {
-                        execute_first_cacheable_request(self, &mut info)
-                    }
-                    CacheInfo::CacheableSecondRequest => {
-                        execute_second_cacheable_request(self, &mut info)
-                    }
+                if is_first_round {
+                    dql_execute_first_round(self, &mut info, port)?;
+                } else {
+                    port.set_type(PortType::ExecuteDql);
+                    dql_execute_second_round(self, &mut info, port)?;
                 }
             }
         }
+        Ok(())
     }
 }

@@ -90,7 +90,7 @@ mod luamod;
 pub mod mailbox;
 pub mod metrics;
 pub mod on_shutdown;
-mod pgproto;
+pub mod pgproto;
 mod pico_service;
 pub mod plugin;
 pub mod reachability;
@@ -161,6 +161,7 @@ fn preload_vshard() {
     preload!("vshard.error", "vshard/error.lua");
     preload!("vshard.hash", "vshard/hash.lua");
     preload!("vshard.heap", "vshard/heap.lua");
+    preload!("vshard.lref", "vshard/storage/ref.lua");
     preload!("vshard.registry", "vshard/registry.lua");
     preload!("vshard.replicaset", "vshard/replicaset.lua");
     preload!("vshard.service_info", "vshard/service_info.lua");
@@ -193,10 +194,7 @@ fn init_sbroad() {
     preload!("sbroad", "src/sql/init.lua");
     preload!("sbroad.helper", "sbroad/sbroad-core/src/helper.lua");
     preload!("sbroad.builtins", "sbroad/sbroad-core/src/builtins.lua");
-    preload!(
-        "sbroad.core-router",
-        "sbroad/sbroad-core/src/core-router.lua"
-    );
+    preload!("sbroad.dispatch", "src/sql/dispatch.lua");
 
     for (module, func) in &[
         ("sbroad", "sql"),
@@ -223,12 +221,8 @@ fn init_sbroad() {
         lua.exec(&program).unwrap();
     }
 
-    lua.exec(
-        r#"
-        require('sbroad.builtins').init()
-    "#,
-    )
-    .unwrap();
+    lua.exec(r#" require('sbroad.builtins').init() "#).unwrap();
+    lua.exec(r#" require('sbroad.dispatch').init() "#).unwrap();
 
     //add SUBSTRING func to lua
     let _ = lua.exec_with(

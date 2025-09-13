@@ -1294,6 +1294,11 @@ impl Plan {
         Ok(matches!(self.get_node(top_id)?, Node::Plugin(_)))
     }
 
+    pub fn is_backup(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        Ok(matches!(self.get_node(top_id)?, Node::Ddl(Ddl::Backup(_))))
+    }
+
     /// Checks that plan is a deallocate query.
     ///
     /// # Errors

@@ -16,7 +16,7 @@ impl TryFrom<u8> for DMLType {
             0 => Ok(DMLType::Insert),
             1 => Ok(DMLType::Update),
             2 => Ok(DMLType::Delete),
-            _ => Err(format!("Unknown DML type: {}", value)),
+            _ => Err(format!("Unknown DML type: {value}")),
         }
     }
 }

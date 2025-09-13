@@ -1,7 +1,70 @@
-use crate::msgpack::skip_value;
+use crate::msgpack::{shift_pos, skip_value};
 use rmp::decode::{read_array_len, read_int, read_map_len, read_str_len, RmpRead};
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
+
+/// (reference id, required data, optional data)
+pub type ExecuteArgs<'a> = (i64, i64, &'a [u8], Option<&'a [u8]>);
+
+pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
+    let mut stream = Cursor::new(mp);
+    let elems = read_array_len(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
+        as usize;
+    if elems != 3 && elems != 4 {
+        return Err(IoError::other(format!(
+            "Expected an array of 2 or 3 elements, got: {elems}"
+        )));
+    }
+    // Decode vshard storage reference ID.
+    let rid: i64 = read_int(&mut stream).map_err(|e| {
+        IoError::other(format!("Failed to decode vshard storage reference ID: {e}"))
+    })?;
+
+    // Decode vshard storage session ID.
+    let sid: i64 = read_int(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode vshard storage session ID: {e}")))?;
+
+    // Decode required data.
+    let array_len = read_array_len(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to unpack required from array: {e}")))?;
+    if array_len != 1 {
+        return Err(IoError::other(format!(
+            "Expected an array of 1 element in required, got: {array_len}"
+        )));
+    }
+    // TODO: use binary instead of string.
+    let req_len = read_str_len(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to unpack required bytes: {e}")))?
+        as usize;
+    let req_start = stream.position() as usize;
+
+    // Decode optional data if present.
+    if elems == 4 {
+        shift_pos(&mut stream, req_len as u64)?;
+        let array_len = read_array_len(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to unpack optional from array: {e}")))?;
+        if array_len != 1 {
+            return Err(IoError::other(format!(
+                "Expected an array of 1 element in optional, got: {array_len}"
+            )));
+        }
+        // TODO: use binary instead of string.
+        let opt_len = read_str_len(&mut stream)
+            .map_err(|e| IoError::other(format!("Failed to unpack optional bytes: {e}")))?
+            as usize;
+        let opt_start = stream.position() as usize;
+
+        return Ok((
+            rid,
+            sid,
+            &mp[req_start..req_start + req_len],
+            Some(&mp[opt_start..opt_start + opt_len]),
+        ));
+    }
+
+    Ok((rid, sid, &mp[req_start..req_start + req_len], None))
+}
 
 /// Decode a proc_sql_execute response.
 pub fn execute_read_response(stream: &[u8]) -> IoResult<SqlExecute<'_>> {
@@ -22,13 +85,13 @@ pub fn execute_read_response(stream: &[u8]) -> IoResult<SqlExecute<'_>> {
     match response_type {
         "dql" => {
             let _ = read_array_len(&mut stream)
-                .map_err(|e| IoError::other(format!("Failed to decode DQL response: {e}")))?;
+                .map_err(|e| IoError::other(format!("Failed to decode tuples: {e}")))?;
             Ok(SqlExecute::Dql(TupleIter { msgpack: stream }))
         }
         "miss" => Ok(SqlExecute::Miss),
         "dml" => {
             let row_cnt = read_int(&mut stream)
-                .map_err(|e| IoError::other(format!("Failed to decode DML response: {e}")))?;
+                .map_err(|e| IoError::other(format!("Failed to decode changed rows: {e}")))?;
             Ok(SqlExecute::Dml(row_cnt))
         }
         _ => Err(IoError::other(
@@ -105,7 +168,7 @@ mod tests {
     #[test]
     fn test_execute_read_response_miss() {
         // { "miss": nil }
-        let buf = b"\x81\xa4miss\xc0";
+        let buf = b"\x81\xa4miss\x00";
         let response = execute_read_response(buf).unwrap();
         let SqlExecute::Miss = response else {
             panic!("Expected Miss response");

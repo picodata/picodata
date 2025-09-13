@@ -17,8 +17,8 @@ use crate::executor::engine::{
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
-use crate::executor::result::ProducerResult;
 use crate::executor::vtable::VirtualTable;
+use crate::executor::{Port, PortType};
 use crate::frontend::sql::ast::AbstractSyntaxTree;
 use crate::ir::function::Function;
 use crate::ir::node::NodeId;
@@ -29,14 +29,91 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
 use rand::random;
+use serde::{Deserialize, Serialize};
+use std::io::{Result as IoResult, Write};
 use std::rc::Rc;
+use tarantool::error::Error as TntError;
 use tarantool::space::SpaceId;
+use tarantool::sql::Statement;
 
-use super::helpers::vshard::{prepare_rs_to_ir_map, GroupedBuckets};
-use super::helpers::{dispatch_by_buckets, normalize_name_from_sql};
-use super::{get_builtin_functions, DispatchReturnFormat, Metadata, QueryCache};
+use super::helpers::vshard::prepare_rs_to_ir_map;
+use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
+use super::{get_builtin_functions, Metadata, QueryCache};
 
 pub const TEMPLATE: &str = "test";
+
+pub struct PortMocked {
+    tuples: Vec<Vec<u8>>,
+    port_type: PortType,
+}
+
+impl PortMocked {
+    pub fn new() -> Self {
+        Self {
+            tuples: Vec::new(),
+            port_type: PortType::DispatchExplain,
+        }
+    }
+
+    pub fn decode(&self) -> Vec<DispatchInfo> {
+        let mut result = Vec::with_capacity(self.size() as usize);
+        for mp in self.iter() {
+            let info: DispatchInfo = rmp_serde::from_slice(mp).unwrap();
+            result.push(info);
+        }
+        result
+    }
+}
+
+impl<'p> Port<'p> for PortMocked {
+    fn add_mp(&mut self, data: &[u8]) {
+        self.tuples.push(data.to_vec());
+    }
+
+    fn process_sql<IN>(&mut self, _sql: &str, _params: &IN, _max_vdbe: u64) -> Result<(), TntError>
+    where
+        IN: Serialize,
+        Self: Sized,
+    {
+        unreachable!();
+    }
+
+    fn process_stmt<IN>(
+        &mut self,
+        _stmt: &Statement,
+        _params: &IN,
+        _max_vdbe: u64,
+    ) -> Result<(), TntError>
+    where
+        IN: Serialize,
+        Self: Sized,
+    {
+        unreachable!();
+    }
+
+    fn iter<'i>(&'i self) -> impl Iterator<Item = &'i [u8]> {
+        self.tuples.iter().map(|t| t.as_slice())
+    }
+
+    fn set_type(&mut self, port_type: PortType) {
+        self.port_type = port_type;
+    }
+
+    fn size(&self) -> u32 {
+        self.tuples.len() as u32
+    }
+}
+
+impl Write for PortMocked {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        self.add_mp(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        Ok(())
+    }
+}
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone)]
@@ -1414,8 +1491,8 @@ impl VshardMock {
 
     #[must_use]
     #[allow(clippy::missing_panics_doc)]
-    pub fn group(&self, buckets: &Buckets) -> GroupedBuckets {
-        let mut res: GroupedBuckets = HashMap::new();
+    pub fn group(&self, buckets: &Buckets) -> HashMap<String, Vec<u64>> {
+        let mut res: HashMap<String, Vec<u64>> = HashMap::new();
         match buckets {
             Buckets::All => {
                 for (idx, (start, end)) in self.blocks.iter().enumerate() {
@@ -1461,17 +1538,8 @@ impl VshardMock {
         res
     }
 
-    #[must_use]
-    pub fn generate_rs_name(idx: usize) -> String {
+    fn generate_rs_name(idx: usize) -> String {
         format!("replicaset_{idx}")
-    }
-
-    #[must_use]
-    #[allow(clippy::missing_panics_doc)]
-    pub fn get_id(name: &str) -> usize {
-        name[name.find('_').unwrap() + 1..]
-            .parse::<usize>()
-            .unwrap()
     }
 }
 
@@ -1492,29 +1560,6 @@ impl std::fmt::Debug for RouterRuntimeMock {
             .field(&self.metadata)
             .field(&self.virtual_tables)
             .finish()
-    }
-}
-
-impl ProducerResult {
-    /// Merge two record sets. If current result is empty function sets metadata and appends result rows.
-    /// If the current result is not empty compare its metadata with the one from the new result.
-    /// If they differ return error.
-    ///
-    ///  # Errors
-    ///  - metadata isn't equal.
-    fn extend(&mut self, result: ProducerResult) -> Result<(), SbroadError> {
-        if self.metadata.is_empty() {
-            self.metadata = result.clone().metadata;
-        }
-
-        if self.metadata != result.metadata {
-            return Err(SbroadError::Invalid(
-                Entity::Metadata,
-                Some("Metadata mismatch. Producer results can't be extended".into()),
-            ));
-        }
-        self.rows.extend(result.rows);
-        Ok(())
     }
 }
 
@@ -1540,16 +1585,14 @@ impl QueryCache for RouterRuntimeMock {
 }
 
 impl Vshard for RouterRuntimeMock {
-    fn exec_ir_on_any_node(
+    fn exec_ir_on_any_node<'p>(
         &self,
-        _sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_ir_locally is not supported for the mock runtime".to_smolstr()),
-        ))
+        sub_plan: ExecutionPlan,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        mock_dispatch(self, sub_plan, buckets, port)?;
+        Ok(())
     }
 
     fn bucket_count(&self) -> u64 {
@@ -1564,13 +1607,14 @@ impl Vshard for RouterRuntimeMock {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_buckets<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        mock_exec_ir_on_buckets(&self.vshard_mock, buckets, sub_plan)
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        mock_dispatch(self, sub_plan, buckets, port)?;
+        Ok(())
     }
 }
 
@@ -1587,45 +1631,107 @@ impl Vshard for &RouterRuntimeMock {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
-    fn exec_ir_on_any_node(
-        &self,
-        _sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_ir_locally is not supported for the mock runtime".to_smolstr()),
-        ))
-    }
-
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_any_node<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        mock_exec_ir_on_buckets(&self.vshard_mock, buckets, sub_plan)
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        mock_dispatch(self, sub_plan, buckets, port)?;
+        Ok(())
+    }
+
+    fn exec_ir_on_buckets<'p>(
+        &self,
+        sub_plan: ExecutionPlan,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        mock_dispatch(self, sub_plan, buckets, port)?;
+        Ok(())
     }
 }
 
-fn mock_exec_ir_on_buckets(
-    vshard_mock: &VshardMock,
+#[derive(Debug, Deserialize, Serialize)]
+pub enum DispatchInfo {
+    /// (sql, parameters)
+    All(String, Vec<Value>),
+    /// (sql, parameters, replicaset)
+    Any(String, Vec<Value>),
+    /// [(sql, parameters, replicaset, buckets)]
+    Filtered(Vec<(String, Vec<Value>, String, Vec<u64>)>),
+}
+
+fn mock_dispatch<'p>(
+    runtime: &RouterRuntimeMock,
+    plan: ExecutionPlan,
     buckets: &Buckets,
-    sub_plan: ExecutionPlan,
-) -> Result<Box<dyn Any>, SbroadError> {
-    let mut rs_bucket_vec: Vec<(String, Vec<u64>)> = vshard_mock.group(buckets).drain().collect();
-    // sort to get deterministic test results
-    rs_bucket_vec.sort_by_key(|(rs_name, _)| rs_name.clone());
-    let rs_ir = prepare_rs_to_ir_map(&rs_bucket_vec, sub_plan)?;
-    let mut dispatch_vec: Vec<ReplicasetDispatchInfo> = Vec::new();
-    for (rs_name, exec_plan) in rs_ir {
-        let id = VshardMock::get_id(&rs_name);
-        let dispatch = ReplicasetDispatchInfo::new(id, &exec_plan);
-        dispatch_vec.push(dispatch);
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
+    let is_single = !plan.has_segmented_tables() && !plan.has_customization_opcodes();
+
+    match buckets {
+        Buckets::All if is_single => {
+            let (pattern, params) = to_sql(&plan);
+            let mp = rmp_serde::to_vec(&DispatchInfo::All(pattern, params)).unwrap();
+            port.add_mp(mp.as_slice());
+        }
+        Buckets::Any if is_single => {
+            let (pattern, params) = to_sql(&plan);
+            let mp = rmp_serde::to_vec(&DispatchInfo::Any(pattern, params)).unwrap();
+            port.add_mp(mp.as_slice());
+        }
+        _ => {
+            let info = custom_plan_dispatch(runtime, plan, buckets);
+            let mp = rmp_serde::to_vec(&DispatchInfo::Filtered(info)).unwrap();
+            port.add_mp(mp.as_slice());
+        }
     }
-    dispatch_vec.sort_by_key(|d| d.rs_id);
-    Ok(Box::new(dispatch_vec))
+
+    Ok(())
+}
+
+fn to_sql(plan: &ExecutionPlan) -> (String, Vec<Value>) {
+    let top_id = plan.get_ir_plan().get_top().unwrap();
+    let sp = SyntaxPlan::new(&plan, top_id, Snapshot::Oldest).unwrap();
+    let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
+    let nodes = ordered.to_syntax_data().unwrap();
+    let (sql, _) = plan
+        .generate_sql(&nodes, TEMPLATE, None, |name: &str, id| {
+            table_name(name, id)
+        })
+        .unwrap();
+    let params = plan.get_ir_plan().constants.clone();
+    (sql, params)
+}
+
+fn custom_plan_dispatch(
+    runtime: &RouterRuntimeMock,
+    plan: ExecutionPlan,
+    buckets: &Buckets,
+) -> Vec<(String, Vec<Value>, String, Vec<u64>)> {
+    let mut info = Vec::new();
+    let mut rs_bucket_vec: Vec<(String, Vec<u64>)> =
+        runtime.vshard_mock.group(buckets).drain().collect();
+    rs_bucket_vec.sort_by_key(|(rs, _)| rs.clone());
+    let rs_ir = prepare_rs_to_ir_map(&rs_bucket_vec, plan).unwrap();
+    for (rs, ex_plan) in rs_ir {
+        let (pattern, params) = to_sql(&ex_plan);
+        let buckets = rs_bucket_vec
+            .iter()
+            .find_map(|(name, buckets)| {
+                if *name == rs {
+                    Some(buckets.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        info.push((pattern, params, rs, buckets));
+    }
+    // Sort to get deterministic test results.
+    info.sort_by_key(|(_, _, rs, _)| rs.clone());
+    info
 }
 
 impl Default for RouterRuntimeMock {
@@ -1662,6 +1768,10 @@ impl RouterRuntimeMock {
             .tables
             .insert(table.name.clone(), table);
     }
+
+    pub fn set_vshard_mock(&mut self, rs_count: usize) {
+        self.vshard_mock = VshardMock::new(rs_count, self.bucket_count());
+    }
 }
 
 impl Router for RouterRuntimeMock {
@@ -1675,6 +1785,10 @@ impl Router for RouterRuntimeMock {
 
     fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
         Ok(f())
+    }
+
+    fn new_port<'p>(&self) -> impl Port<'p> {
+        PortMocked::new()
     }
 
     fn materialize_motion(
@@ -1705,41 +1819,15 @@ impl Router for RouterRuntimeMock {
             .clone())
     }
 
-    fn dispatch(
+    fn dispatch<'p>(
         &self,
         plan: &mut ExecutionPlan,
         top_id: NodeId,
         buckets: &Buckets,
-        _return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let mut result = ProducerResult::new();
-        let new_plan = plan.take_subtree(top_id)?;
-        let top_id = new_plan.get_ir_plan().get_top().unwrap();
-        let sp = SyntaxPlan::new(&new_plan, top_id, Snapshot::Oldest)?;
-        let ordered = OrderedSyntaxNodes::try_from(sp)?;
-        let nodes = ordered.to_syntax_data()?;
-
-        match buckets {
-            Buckets::All => {
-                let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
-                result.extend(exec_on_all(String::from(sql).as_str()))?;
-            }
-            Buckets::Any => {
-                let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
-                result.extend(exec_locally(String::from(sql).as_str()))?;
-            }
-            Buckets::Filtered(list) => {
-                for bucket in list {
-                    let (sql, _) = new_plan.to_sql(&nodes, TEMPLATE, None)?;
-                    let temp_result = exec_on_some(*bucket, String::from(sql).as_str());
-                    result.extend(temp_result)?;
-                }
-            }
-        }
-
-        // Sort results to make tests reproducible.
-        result.rows.sort_by_key(|k| k[0].to_smolstr());
-        Ok(Box::new(result))
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        dispatch_impl(self, plan, top_id, buckets, port)?;
+        Ok(())
     }
 
     fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn Any>, SbroadError> {
@@ -1775,90 +1863,5 @@ impl Router for RouterRuntimeMock {
 
     fn is_audit_enabled(&self, _plan: &Plan) -> Result<bool, SbroadError> {
         Ok(false)
-    }
-}
-
-fn exec_on_some(bucket: u64, query: &str) -> ProducerResult {
-    let mut result = ProducerResult::new();
-
-    result.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(query)),
-    ]);
-
-    result
-}
-
-fn exec_locally(query: &str) -> ProducerResult {
-    let mut result = ProducerResult::new();
-
-    result.rows.push(vec![
-        Value::String("Execute query locally".into()),
-        Value::String(String::from(query)),
-    ]);
-
-    result
-}
-
-fn exec_on_all(query: &str) -> ProducerResult {
-    let mut result = ProducerResult::new();
-
-    result.rows.push(vec![
-        Value::String(String::from("Execute query on all buckets")),
-        Value::String(String::from(query)),
-    ]);
-
-    result
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ReplicasetDispatchInfo {
-    pub rs_id: usize,
-    pub pattern: String,
-    pub params: Vec<Value>,
-    pub vtables_map: HashMap<NodeId, Rc<VirtualTable>>,
-}
-
-impl ReplicasetDispatchInfo {
-    #[must_use]
-    #[allow(clippy::missing_panics_doc)]
-    pub fn new(rs_id: usize, exec_plan: &ExecutionPlan) -> Self {
-        let top = exec_plan.get_ir_plan().get_top().unwrap();
-        let sp = SyntaxPlan::new(exec_plan, top, Snapshot::Oldest).unwrap();
-        let ordered_sn = OrderedSyntaxNodes::try_from(sp).unwrap();
-        let syntax_data_nodes = ordered_sn.to_syntax_data().unwrap();
-        let (pattern_with_params, _) = exec_plan
-            .to_sql(&syntax_data_nodes, TEMPLATE, None)
-            .unwrap();
-        let vtables = exec_plan.get_vtables().clone();
-        Self {
-            rs_id,
-            pattern: pattern_with_params.pattern,
-            params: pattern_with_params.params,
-            vtables_map: vtables,
-        }
-    }
-}
-
-impl RouterRuntimeMock {
-    pub fn set_vshard_mock(&mut self, rs_count: usize) {
-        self.vshard_mock = VshardMock::new(rs_count, self.bucket_count());
-    }
-
-    /// Imitates the real pipeline of dispatching plan subtree
-    /// on the given buckets. But does not encode plan into
-    /// message for sending, instead it evalutes what sql
-    /// query will be executed on each replicaset, and what vtables
-    /// will be send to that replicaset.
-    #[allow(clippy::missing_panics_doc)]
-    pub fn detailed_dispatch(
-        &self,
-        plan: ExecutionPlan,
-        buckets: &Buckets,
-    ) -> Vec<ReplicasetDispatchInfo> {
-        *dispatch_by_buckets(plan, buckets, self, DispatchReturnFormat::Tuple)
-            .unwrap()
-            .downcast::<Vec<ReplicasetDispatchInfo>>()
-            .unwrap()
     }
 }

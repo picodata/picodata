@@ -1,12 +1,8 @@
-use pretty_assertions::assert_eq;
-
-use crate::backend::sql::ir::PatternWithParams;
-use crate::executor::engine::mock::RouterRuntimeMock;
-use crate::executor::result::ProducerResult;
+use super::*;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
 use crate::ir::value::Value;
-
-use super::*;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn bucket1_test() {
@@ -14,22 +10,19 @@ fn bucket1_test() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let mut expected = ProducerResult::new();
-
-    expected.rows.push(vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            r#"SELECT "t1"."a", "t1"."b", "t1"."bucket_id" FROM "t1""#.to_string(),
-            vec![],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected dispatch on all buckets");
+    };
+    assert_eq!(
+        sql,
+        r#"SELECT "t1"."a", "t1"."b", "t1"."bucket_id" FROM "t1""#,
+    );
+    assert!(params.is_empty());
 }
 
 #[test]
@@ -39,13 +32,17 @@ fn bucket2_test() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
 
-    let mut expected = ProducerResult::new();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on a bucket");
+    };
+    assert_eq!(filtered.len(), 1);
+    let (sql, params, _, buckets) = filtered.get(0).unwrap();
+
     let param1 = Value::from("1");
     let param2 = Value::from(2);
     let bucket = query
@@ -53,18 +50,16 @@ fn bucket2_test() {
         .determine_bucket_id(&[&param1, &param2])
         .unwrap();
 
-    expected.rows.push(vec![
-        Value::String(format!("Execute query on a bucket [{bucket}]")),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {}",
-                r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1""#,
-                r#"WHERE ("t1"."a" = CAST($1 AS string)) and ("t1"."b" = CAST($2 AS int))"#,
-            ),
-            vec![param1, param2],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {}",
+            r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1""#,
+            r#"WHERE ("t1"."a" = CAST($1 AS string)) and ("t1"."b" = CAST($2 AS int))"#,
+        ),
+    );
+    assert_eq!(params, &vec![param1, param2]);
+    assert_eq!(buckets, &vec![bucket]);
 }
 
 #[test]
@@ -73,23 +68,18 @@ fn bucket3_test() {
     let coordinator = RouterRuntimeMock::new();
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-
-    expected.rows.push(vec![
-        Value::String("Execute query on all buckets".to_string()),
-        Value::String(String::from(PatternWithParams::new(
-            r#"SELECT "t1"."a", "t1"."b", TRIM (CAST($1 AS string)) as "col_1" FROM "t1""#
-                .to_string(),
-            vec![Value::from("111".to_string())],
-        ))),
-    ]);
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected dispatch on all buckets");
+    };
+    assert_eq!(
+        sql,
+        r#"SELECT "t1"."a", "t1"."b", TRIM (CAST($1 AS string)) as "col_1" FROM "t1""#
+    );
+    assert_eq!(params, &vec![Value::from("111")]);
 }
 
 #[test]

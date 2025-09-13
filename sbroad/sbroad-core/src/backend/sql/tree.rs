@@ -1297,6 +1297,13 @@ impl<'p> SyntaxPlan<'p> {
                 let inline = SyntaxNode::new_inline(&empty_select);
                 let inline_sn_id = self.nodes.push_sn_non_plan(inline);
                 let sn = SyntaxNode::new_pointer(id, None, vec![inline_sn_id]);
+
+                // Remove motion's child from the stack (if any).
+                if let Some(child_id) = first_child {
+                    let _ = self.pop_from_stack(child_id, id);
+                }
+
+                // Append an empty table select instead of motion.
                 self.nodes.push_sn_plan(sn);
             }
             return;

@@ -1,44 +1,45 @@
-use crate::sql::port::{EXECUTE_DML_VTAB, EXECUTE_DQL_VTAB, EXECUTE_MISS_VTAB};
+use crate::metrics::{STORAGE_CACHE_1ST_REQUESTS_TOTAL, STORAGE_CACHE_2ND_REQUESTS_TOTAL};
+use crate::sql::PicoPortC;
 use crate::tlog;
+use rmp::encode::{write_array_len, write_str, write_str_len, write_uint};
 use sbroad::backend::sql::space::ADMIN_ID;
 use sbroad::errors::{Action, Entity, SbroadError};
+use sbroad::executor::engine::helpers::storage::prepare;
 use sbroad::executor::engine::helpers::{
     build_insert_args, init_delete_tuple_builder, init_insert_tuple_builder,
-    init_local_update_tuple_builder, init_sharded_update_tuple_builder, vtable_columns, QueryInfo,
+    init_local_update_tuple_builder, init_sharded_update_tuple_builder, pk_name, populate_table,
+    table_name, truncate_tables, vtable_columns, FullPlanInfo, QueryInfo, RequiredPlanInfo,
     TupleBuilderCommand, TupleBuilderPattern,
-};
-use sbroad::executor::engine::helpers::{
-    pk_name, populate_table, storage::prepare, table_name, truncate_tables, FullPlanInfo,
-    RequiredPlanInfo,
 };
 use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::QueryType;
-use sbroad::executor::protocol::{EncodedOptionalData, OptionalData, RequiredData};
+use sbroad::executor::protocol::{OptionalData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::vtable::{VTableTuple, VirtualTable, VirtualTableMeta};
+use sbroad::executor::{Port, PortType};
 use sbroad::ir::node::relational::Relational;
 use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::value::{EncodedValue, MsgPackValue, Value};
 use sbroad::ir::{node::NodeId, relation::SpaceEngine};
 use sbroad::utils::MutexLike;
 use smol_str::{format_smolstr, ToSmolStr};
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 use tarantool::error::{Error, TarantoolErrorCode};
-use tarantool::ffi::sql::{Port, PortC, PortVTable};
+use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::{FieldType, IndexOptions, IndexType, Part};
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceType};
-use tarantool::sql::sql_execute_into_port;
 use tarantool::transaction::transaction;
-use tarantool::tuple::Tuple;
 use tarantool::{session::with_su, sql::Statement};
 
+const LINE_WIDTH: usize = 80;
+
 /// Execute a DML query on the storage.
-pub fn dml_execute<R: Vshard + QueryCache>(
+pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     required: &mut RequiredData,
-    raw_optional: Vec<u8>,
-    port: &mut PortC,
+    raw_optional: &[u8],
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -49,7 +50,7 @@ where
             Some("Expected a DML plan.".to_smolstr()),
         ));
     }
-    let mut optional = OptionalData::try_from(EncodedOptionalData::from(raw_optional))?;
+    let mut optional = OptionalData::try_from(raw_optional)?;
     let plan = optional.exec_plan.get_ir_plan();
     let top_id = plan.get_top()?;
     let top = plan.get_relation_node(top_id)?;
@@ -64,16 +65,16 @@ where
             )),
         )),
     }?;
-    port.vtab = &EXECUTE_DML_VTAB as *const PortVTable;
+    port.set_type(PortType::ExecuteDml);
     Ok(())
 }
 
 /// Execute the first round request for DQL query on storage
 /// with an attempt to hit the cache.
-pub fn dql_execute_first_round<R: Vshard + QueryCache>(
+pub(crate) fn dql_execute_first_round<'p, R: Vshard + QueryCache>(
     runtime: &R,
     info: &mut impl RequiredPlanInfo,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -84,20 +85,21 @@ where
         // avoid transactions for DQL queries. We can achieve atomicity by truncating
         // temporary tables. Isolation is guaranteed by keeping a lock on the cache.
         stmt_execute(stmt, info, motion_ids, port)?;
-        port.vtab = &EXECUTE_DQL_VTAB as *const PortVTable;
+        port.set_type(PortType::ExecuteDql);
     } else {
         // Response with a cache miss. The router will retry the query
         // on the second round.
-        port.vtab = &EXECUTE_MISS_VTAB as *const PortVTable;
+        port.set_type(PortType::ExecuteMiss);
     }
 
+    STORAGE_CACHE_1ST_REQUESTS_TOTAL.inc();
     Ok(())
 }
 
-pub fn dql_execute_second_round<R: QueryCache>(
+pub(crate) fn dql_execute_second_round<'p, R: QueryCache>(
     runtime: &R,
     info: &mut impl FullPlanInfo,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -112,13 +114,104 @@ where
         sql_execute::<R>(&mut cache_guarded, info, port)?;
     }
 
-    port.vtab = &EXECUTE_DQL_VTAB as *const PortVTable;
+    STORAGE_CACHE_2ND_REQUESTS_TOTAL.inc();
+    // We don't set port type here, because this code can be called
+    // for dispatching (on any node) as well as for local execution.
+    Ok(())
+}
+
+pub fn explain_execute<'p, R: QueryCache>(
+    runtime: &R,
+    info: &mut impl FullPlanInfo,
+    formatted: bool,
+    location: &str,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError>
+where
+    R::Cache: StorageCache,
+{
+    let _lock: <<R as QueryCache>::Mutex as MutexLike<<R as QueryCache>::Cache>>::Guard<'_> =
+        runtime.cache().lock();
+    let (explain, motion_ids, vtables_meta) = info.take_query_meta()?;
+
+    // EXPLAIN QUERY PLAN output formatting for each tuple in the port:
+    // - [int, int, int , string] (selectid, order, from, detail).
+    // We also wish to add to the port additional headers:
+    // - query location
+    // - sql text
+    // As we operate with SQL tables, we should repack the headers to the
+    // same format as the tuples in the port, i.e.:
+    // - [-1, -1, -1, query location]
+    // - [-2, -2, -2, sql]
+    // It is the responsibility of the port virtual table to repack the
+    // results in a user-friendly way.
+
+    let mp_header = {
+        let mut mp = Vec::with_capacity(4 + 5 + location.len());
+        mp.extend_from_slice(b"\x94\xff\xff\xff");
+        write_str_len(&mut mp, location.len() as u32).map_err(|e| {
+            SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!(
+                    "Failed to write the length of explain header: {e}"
+                )),
+            )
+        })?;
+        mp.extend_from_slice(location.as_bytes());
+        mp
+    };
+    port.add_mp(mp_header.as_slice());
+
+    let mp_sql = {
+        let sql = &explain["EXPLAIN QUERY PLAN ".len()..];
+        let mut fmt_options = sqlformat::FormatOptions::default();
+        if !formatted || sql.len() < LINE_WIDTH {
+            fmt_options.joins_as_top_level = true;
+            fmt_options.inline = true;
+        }
+        let params = info
+            .params()
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>();
+        let sql_fmt =
+            sqlformat::format(sql, &sqlformat::QueryParams::Indexed(params), &fmt_options);
+        let mut mp = Vec::with_capacity(4 + 5 + sql_fmt.len());
+        mp.extend_from_slice(b"\x94\xfe\xfe\xfe");
+        write_str(&mut mp, &sql_fmt).map_err(|e| {
+            SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!("Failed to write explain SQL: {e}")),
+            )
+        })?;
+        mp
+    };
+    port.add_mp(mp_sql.as_slice());
+
+    for motion_id in &motion_ids {
+        let table_name = table_name(info.id(), *motion_id);
+        let pk_name = pk_name(info.id(), *motion_id);
+        let meta = vtables_meta.get(motion_id).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(format_smolstr!("missing metadata for motion {motion_id}")),
+            )
+        })?;
+        table_create(&table_name, &pk_name, meta)?;
+    }
+
+    let encoded_params = encoded_params(info.params());
+    with_su(ADMIN_ID, || {
+        port.process_sql(&explain, &encoded_params, info.sql_vdbe_opcode_max())
+    })?
+    .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
+
     Ok(())
 }
 
 /// Create a temporary table. It wraps all Space API with `with_su`
 /// since user may have no permissions to read/write tables.
-pub fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<(), SbroadError> {
+fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Result<(), SbroadError> {
     let cleanup = |space: Space, name: &str| {
         if let Err(e) = with_su(ADMIN_ID, || space.drop()) {
             tlog!(Error, "Failed to drop temporary table {name}: {e}")
@@ -180,20 +273,21 @@ pub fn table_create(name: &str, pk_name: &str, meta: &VirtualTableMeta) -> Resul
 }
 
 // Requires the cache to be locked.
-fn stmt_execute(
+fn stmt_execute<'p>(
     stmt: &Statement,
     info: &mut impl RequiredPlanInfo,
     motion_ids: &[NodeId],
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let mut vtables = info.extract_data();
+    let has_metadata = port.size() == 1;
+    let vtables = info.extract_data();
     let mut pcall = || -> Result<(), SbroadError> {
         for motion_id in motion_ids {
-            populate_table(motion_id, info.id(), &mut vtables)?;
+            populate_table(motion_id, info.id(), &vtables)?;
         }
         let encoded_params = encoded_params(info.params());
         with_su(ADMIN_ID, || {
-            stmt.execute_into_port(&encoded_params, info.sql_vdbe_opcode_max(), port)
+            port.process_stmt(stmt, &encoded_params, info.sql_vdbe_opcode_max())
         })?
         .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
         Ok(())
@@ -202,20 +296,33 @@ fn stmt_execute(
     let res = pcall();
     truncate_tables(motion_ids, info.id());
     res?;
+
+    // We should check if we exceed the maximum number of rows.
+    if port.size() > 0 {
+        let max_rows = info.sql_motion_row_max();
+        let current_rows = port.size() - if has_metadata { 1 } else { 0 }; // exclude metadata tuple
+        if max_rows > 0 && current_rows as u64 > max_rows {
+            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                "Exceeded maximum number of rows ({}) in virtual table: {}",
+                max_rows,
+                current_rows
+            )));
+        }
+    }
+
     Ok(())
 }
 
 // Requires the cache to be locked.
-fn sql_execute<R: QueryCache>(
+fn sql_execute<'p, R: QueryCache>(
     cache_guarded: &mut <<R as QueryCache>::Mutex as MutexLike<R::Cache>>::Guard<'_>,
     info: &mut impl FullPlanInfo,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
 {
-    let (local_sql, motion_ids, vtables_meta) = info.get_query_meta()?;
-    let mut vtables = info.extract_data();
+    let (local_sql, motion_ids, vtables_meta) = info.take_query_meta()?;
     for motion_id in &motion_ids {
         let table_name = table_name(info.id(), *motion_id);
         let pk_name = pk_name(info.id(), *motion_id);
@@ -239,8 +346,12 @@ where
 
             let (stmt, motion_ids) = cache_guarded.get(info.id())?.unwrap();
             stmt_execute(stmt, info, motion_ids, port)?;
+            return Ok(());
         }
-        Err(e) => tlog!(Warning, "failed to compile stmt: {e:?}"),
+        Err(e) => tlog!(
+            Warning,
+            "Failed to compile statement for the query '{local_sql}': {e}"
+        ),
     }
     // Possibly the statement is correct, but doesn't fit into Tarantool's prepared
     // statements cache (`sql_cache_size`). So we try to execute it bypassing the cache.
@@ -251,19 +362,15 @@ where
     // has enough space to store this statement. And it can cause races in the temporary
     // tables.
 
+    let vtables = info.extract_data();
     let mut pcall = || -> Result<(), SbroadError> {
         let motion_ids = vtables.keys().copied().collect::<Vec<NodeId>>();
         for motion_id in motion_ids.iter() {
-            populate_table(motion_id, info.id(), &mut vtables)?;
+            populate_table(motion_id, info.id(), &vtables)?;
         }
         let encoded_params = encoded_params(info.params());
         with_su(ADMIN_ID, || {
-            sql_execute_into_port(
-                &local_sql,
-                &encoded_params,
-                info.sql_vdbe_opcode_max(),
-                port,
-            )
+            port.process_sql(&local_sql, &encoded_params, info.sql_vdbe_opcode_max())
         })?
         .map_err(|err| SbroadError::Invalid(Entity::MsgPack, Some(format_smolstr!("{err}"))))?;
         Ok(())
@@ -291,14 +398,14 @@ where
 {
     let mut info = QueryInfo::new(optional, required);
     let mut locked_cache = runtime.cache().lock();
-    let mut port = Port::new_port_c();
-    let port_c = unsafe { port.as_mut_port_c() };
-    sql_execute::<R>(&mut locked_cache, &mut info, port_c)?;
+    let mut port = TarantoolPort::new_port_c();
+    let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+    sql_execute::<R>(&mut locked_cache, &mut info, &mut pico_port)?;
     let ir_plan = optional.exec_plan.get_ir_plan();
     let columns = vtable_columns(ir_plan, child_id)?;
 
     let mut vtable = VirtualTable::with_columns(columns);
-    for tuple in port_c.iter() {
+    for tuple in pico_port.iter() {
         vtable.write_all(tuple).map_err(|e| {
             SbroadError::Invalid(
                 Entity::VirtualTable,
@@ -315,11 +422,11 @@ where
     Ok(())
 }
 
-fn update_execute<R: Vshard + QueryCache>(
+fn update_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -362,11 +469,7 @@ where
         }
         Ok(())
     })?;
-
-    let tuple = Tuple::new(&[result.row_count])
-        .map_err(|e| SbroadError::Invalid(Entity::Tuple, Some(format_smolstr!("{e:?}"))))?;
-
-    port.add_tuple(&tuple);
+    port_write_execute_dml(port, result.row_count);
 
     Ok(())
 }
@@ -602,11 +705,11 @@ fn delete_args<'t>(
     Ok(delete_tuple)
 }
 
-fn delete_execute<R: Vshard + QueryCache>(
+fn delete_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -655,20 +758,16 @@ where
         }
         Ok(())
     })?;
-
-    let tuple = Tuple::new(&[result.row_count])
-        .map_err(|e| SbroadError::Invalid(Entity::Tuple, Some(format_smolstr!("{e:?}"))))?;
-
-    port.add_tuple(&tuple);
+    port_write_execute_dml(port, result.row_count);
 
     Ok(())
 }
 
-fn insert_execute<R: Vshard + QueryCache>(
+fn insert_execute<'p, R: Vshard + QueryCache>(
     runtime: &R,
     optional: &mut OptionalData,
     required: &mut RequiredData,
-    port: &mut PortC,
+    port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError>
 where
     R::Cache: StorageCache,
@@ -774,11 +873,19 @@ where
         }
         Ok(())
     })?;
-
-    let tuple = Tuple::new(&[result.row_count])
-        .map_err(|e| SbroadError::Invalid(Entity::Tuple, Some(format_smolstr!("{e:?}"))))?;
-
-    port.add_tuple(&tuple);
+    port_write_execute_dml(port, result.row_count);
 
     Ok(())
+}
+
+fn port_write_execute_dml<'p>(port: &mut impl Port<'p>, changed: u64) {
+    let mut mp = [0_u8; 5 + 9];
+    let pos = {
+        let mut wr = Cursor::new(&mut mp[..]);
+        let _ = write_array_len(&mut wr, 1)
+            .expect("Failed to write a single element array in DML response");
+        let _ = write_uint(&mut wr, changed).expect("Failed to write changed rows in DML response");
+        wr.position() as usize
+    };
+    port.add_mp(&mp[..pos]);
 }

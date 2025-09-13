@@ -28,6 +28,7 @@ use crate::ir::value::Value;
 use tarantool::msgpack;
 
 use super::result::ProducerResult;
+use super::Port;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tarantool::space::SpaceId;
@@ -361,13 +362,15 @@ pub trait Router: QueryCache {
     ///
     /// # Errors
     /// - internal executor errors
-    fn dispatch(
+    fn dispatch<'p>(
         &self,
         plan: &mut ExecutionPlan,
         top_id: NodeId,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError>;
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    fn new_port<'p>(&self) -> impl Port<'p>;
 
     /// Materialize result motion node to virtual table
     ///
@@ -431,12 +434,12 @@ pub trait Vshard {
     ///
     /// # Errors
     /// - Execution errors
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_buckets<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError>;
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
 
     /// Execute query on any node.
     /// All the data needed to execute query
@@ -444,12 +447,12 @@ pub trait Vshard {
     ///
     /// # Errors
     /// - Execution errors
-    fn exec_ir_on_any_node(
+    fn exec_ir_on_any_node<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError>;
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
 
     /// Get the amount of buckets in the cluster.
     fn bucket_count(&self) -> u64;

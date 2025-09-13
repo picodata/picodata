@@ -251,7 +251,8 @@ impl Iterator for EncodedRowsIter<'_> {
         // We don't need reserve here, because append will do it for us.
         let pos = self.stream.position() as usize;
         let new_pos = pos + *row_len;
-        builder.append(&self.stream.get_ref()[pos..new_pos]);
+        let mp = &self.stream.get_ref()[pos..new_pos];
+        builder.append(mp);
         self.stream.set_position(new_pos as u64);
         let tuple = builder
             .into_tuple()

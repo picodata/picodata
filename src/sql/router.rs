@@ -4,14 +4,12 @@
 
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
+use sbroad::executor::engine::helpers::vshard::get_random_bucket;
 use sbroad::executor::engine::helpers::{
-    dispatch_impl, explain_format, materialize_motion, materialize_values,
+    dispatch_impl, empty_plan_write, explain_format, materialize_motion, materialize_values,
 };
 use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sbroad::executor::engine::{
-    get_builtin_functions, DispatchReturnFormat, QueryCache, Router, Vshard,
-};
+use sbroad::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
 use sbroad::executor::ir::ExecutionPlan;
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sbroad::executor::vtable::VirtualTable;
@@ -24,8 +22,6 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
 
-use std::any::Any;
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -35,6 +31,7 @@ use crate::storage::{self, Catalog};
 
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::Metadata;
+use sbroad::executor::Port;
 use sbroad::ir::function::Function;
 use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
 use sbroad::ir::types::{DerivedType, UnrestrictedType};
@@ -48,6 +45,9 @@ use crate::metrics::{
 };
 use ::tarantool::tuple::{KeyDef, Tuple};
 use tarantool::space::SpaceId;
+
+use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
+use super::port::PicoPortOwned;
 
 pub type VersionMap = HashMap<SmolStr, u64>;
 
@@ -329,6 +329,10 @@ impl Router for RouterRuntime {
         with_su(ADMIN_ID, f).map_err(|e| e.into())
     }
 
+    fn new_port<'p>(&self) -> impl Port<'p> {
+        PicoPortOwned::new()
+    }
+
     fn materialize_motion(
         &self,
         plan: &mut sbroad::executor::ir::ExecutionPlan,
@@ -338,14 +342,14 @@ impl Router for RouterRuntime {
         materialize_motion(self, plan, *motion_node_id, buckets)
     }
 
-    fn dispatch(
+    fn dispatch<'p>(
         &self,
         plan: &mut sbroad::executor::ir::ExecutionPlan,
         top_id: NodeId,
         buckets: &sbroad::executor::bucket::Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn std::any::Any>, SbroadError> {
-        dispatch_impl(self, plan, top_id, buckets, return_format)
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        dispatch_impl(self, plan, top_id, buckets, port)
     }
 
     fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn std::any::Any>, SbroadError> {
@@ -428,21 +432,21 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
 }
 
 impl Vshard for Tier {
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_buckets<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let tier_name = self.name();
-        impl_exec_ir_on_buckets(
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        let tier = self.name();
+        bucket_dispatch(
+            port,
             self,
             sub_plan,
             buckets,
-            return_format,
-            DEFAULT_QUERY_TIMEOUT,
-            tier_name.as_ref(),
-        )
+            tier.as_ref().map(|s| s.as_str()),
+        )?;
+        Ok(())
     }
 
     fn bucket_count(&self) -> u64 {
@@ -457,14 +461,15 @@ impl Vshard for Tier {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_any_node(
+    fn exec_ir_on_any_node<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
+        runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+        Ok(())
     }
 }
 
@@ -481,31 +486,32 @@ impl Vshard for &Tier {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_buckets(
+    fn exec_ir_on_buckets<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        let tier_name = self.name();
-        impl_exec_ir_on_buckets(
-            *self,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        let tier = self.name();
+        bucket_dispatch(
+            port,
+            self,
             sub_plan,
             buckets,
-            return_format,
-            DEFAULT_QUERY_TIMEOUT,
-            tier_name.as_ref(),
-        )
+            tier.as_ref().map(|s| s.as_str()),
+        )?;
+        Ok(())
     }
 
-    fn exec_ir_on_any_node(
+    fn exec_ir_on_any_node<'p>(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
-        return_format: DispatchReturnFormat,
-    ) -> Result<Box<dyn Any>, SbroadError> {
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
         let runtime = StorageRuntime::new();
-        runtime.exec_ir_on_any_node(sub_plan, buckets, return_format)
+        runtime.exec_ir_on_any_node(sub_plan, buckets, port)?;
+        Ok(())
     }
 }
 
@@ -665,4 +671,26 @@ impl Metadata for RouterMetadata {
         let table = self.table(space)?;
         Ok(table.get_sk()?.to_vec())
     }
+}
+
+fn bucket_dispatch<'p>(
+    port: &mut impl Port<'p>,
+    runtime: &impl Vshard,
+    ex_plan: ExecutionPlan,
+    buckets: &Buckets,
+    tier: Option<&str>,
+) -> Result<(), SbroadError> {
+    if let Buckets::Filtered(bucket_set) = buckets {
+        if bucket_set.is_empty() {
+            empty_plan_write(port, &ex_plan)?;
+            return Ok(());
+        }
+    }
+    let timeout = DEFAULT_QUERY_TIMEOUT;
+    if !ex_plan.has_segmented_tables() && !ex_plan.has_customization_opcodes() {
+        single_plan_dispatch(port, ex_plan, buckets, timeout, tier)?;
+    } else {
+        custom_plan_dispatch(port, runtime, ex_plan, buckets, timeout, tier)?;
+    }
+    Ok(())
 }

@@ -354,7 +354,7 @@ def test_pg_params(cluster: Cluster):
         )
 
     data = i1.sql("""select * from (select $1 union select ($1 * 2))""", 1, strip_metadata=False)
-    assert data["metadata"] == [{"name": "col_1", "type": "int"}]
+    assert data["metadata"] == [{"name": "COL_0", "type": "int"}]
     assert data["rows"] == [[1], [2]]
 
     data = i1.sql("""select (select $1::int) + 1""", 1, strip_metadata=False)
@@ -1028,7 +1028,7 @@ def test_datetime(cluster: Cluster):
 
     # check we can't insert out of limits date
     # FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/639
-    with pytest.raises(TarantoolError, match="decode bytes into inner format"):
+    with pytest.raises(TarantoolError, match="Error decoding msgpack bytes"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
@@ -1037,7 +1037,7 @@ def test_datetime(cluster: Cluster):
             """
         )
 
-    with pytest.raises(TarantoolError, match="decode bytes into inner format"):
+    with pytest.raises(TarantoolError, match="Error decoding msgpack bytes"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values

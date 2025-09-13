@@ -481,7 +481,7 @@ _G.dispatch_dql = function(uuid_to_args, waiting_timeout, row_count, sql_motion_
         }
         result, err, err_uuid = multi_storage_dql(uuid_to_args, exec_fn, result_handler, opts, tier_name)
         if err ~= nil then
-            helper.dql_error(err, err_uuid)
+            helper.sql_error(err, err_uuid)
         end
     end
 

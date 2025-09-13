@@ -1,8 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::backend::sql::ir::PatternWithParams;
-use crate::executor::engine::mock::RouterRuntimeMock;
-use crate::executor::result::ProducerResult;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::executor::vtable::VirtualTable;
 use crate::ir::tests::vcolumn_integer_user_non_null;
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -38,38 +36,34 @@ fn empty_motion1_test() {
     }
     query.coordinator.add_virtual_table(motion2_id, virtual_t2);
 
-    let result = *query
-        .dispatch()
-        .unwrap()
-        .downcast::<ProducerResult>()
-        .unwrap();
-
-    let mut expected = ProducerResult::new();
-    expected.rows.extend(vec![vec![
-        Value::String("Execute query on all buckets".into()),
-        Value::String(String::from(PatternWithParams::new(
-            format!(
-                "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
-                r#"SELECT * FROM"#,
-                r#"(SELECT "t"."a", "t"."b" FROM"#,
-                r#""t""#,
-                r#"INNER JOIN"#,
-                r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
-                r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
-                r#"WHERE "t"."a" = CAST($1 AS int)"#,
-                r#"EXCEPT"#,
-                r#"SELECT "t"."a", "t"."b" FROM"#,
-                r#""t""#,
-                r#"INNER JOIN"#,
-                r#"(SELECT "COL_1","COL_2" FROM "TMP_test_1136") as "t2""#,
-                r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
-                r#"WHERE "t"."a" = CAST($2 AS int)) as "Q""#,
-            ),
-            vec![Value::from(0), Value::from(1)],
-        ))),
-    ]]);
-
-    assert_eq!(expected, result);
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch on all replicasets");
+    };
+    assert_eq!(
+        sql,
+        &format!(
+            "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+            r#"SELECT * FROM"#,
+            r#"(SELECT "t"."a", "t"."b" FROM"#,
+            r#""t""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_0136") as "t2""#,
+            r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
+            r#"WHERE "t"."a" = CAST($1 AS int)"#,
+            r#"EXCEPT"#,
+            r#"SELECT "t"."a", "t"."b" FROM"#,
+            r#""t""#,
+            r#"INNER JOIN"#,
+            r#"(SELECT "COL_1","COL_2" FROM "TMP_test_1136") as "t2""#,
+            r#"ON ("t"."a" = "t2"."g") and ("t"."b" = "t2"."h")"#,
+            r#"WHERE "t"."a" = CAST($2 AS int)) as "Q""#,
+        ),
+    );
+    assert_eq!(params, &vec![Value::from(0), Value::from(1)]);
 }
 
 fn t2_empty() -> VirtualTable {

@@ -301,7 +301,7 @@ impl Serialize for MetadataColumn {
 }
 
 impl MetadataColumn {
-    fn new(name: String, ty: Type) -> Self {
+    pub fn new(name: String, ty: Type) -> Self {
         Self { name, ty }
     }
 }

@@ -1,4 +1,5 @@
 use crate::msgpack::ByteCounter;
+use crate::query_plan::PlanBlockIter;
 use rmp::decode::read_int;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use std::io::{Cursor, Error as IoError, Result as IoResult, Write};
@@ -28,28 +29,49 @@ pub fn dispatch_write_dml_response<'bytes>(
 }
 
 /// Write sql_dispatch result of an EXPLAIN query as a msgpack.
+/// The port must contain at least one msgpack with an explained plan.
+/// If there are multiple msgpacks, it means that explain has been
+/// split into multiple lines.
 pub fn dispatch_write_explain_response<'bytes>(
     writer: &mut impl Write,
-    mut port: impl Iterator<Item = &'bytes [u8]>,
+    tuples: u32,
+    port: impl Iterator<Item = &'bytes [u8]>,
 ) -> IoResult<()> {
-    // Take the first msgpack that contains explained plan.
-    let explain_mp = match port.next() {
-        Some(mp) => mp,
-        None => {
-            return Err(IoError::other(
-                "Expected at least one msgpack with explained plan in the port",
-            ));
-        }
-    };
-    if port.next().is_some() {
-        return Err(IoError::other(
-            "Expected exactly one msgpack with explained plan in the port",
-        ));
-    }
-
-    // Write the explained plan msgpack inside a single element array.
+    // Write the explained plan msgpack inside a single element array
+    // (for iproto compatibility).
     write_array_len(writer, 1)?;
-    writer.write_all(explain_mp)?;
+
+    // Write all the explain lines as an array of strings.
+    write_array_len(writer, tuples)?;
+    let len = copy_tuples(writer, port)?;
+    if len != tuples as usize {
+        return Err(IoError::other(format!(
+            "Expected {tuples} explain lines, but got {len}",
+        )));
+    }
+    Ok(())
+}
+
+pub fn dispatch_write_query_plan_response<'bytes>(
+    writer: &mut impl Write,
+    port: impl Iterator<Item = &'bytes [u8]>,
+) -> IoResult<()> {
+    // Write the explained plan msgpack inside a single element array
+    // (for iproto compatibility).
+    write_array_len(writer, 1)?;
+
+    // As we split each plan block into lines, we have to materialize
+    // all blocks first to calculate the amount of entries in msgpack
+    // array.
+    let blocks: Vec<String> = PlanBlockIter::new(port)
+        .map(|b| b.to_string())
+        .collect::<Vec<String>>();
+    let amount =
+        u32::try_from(blocks.iter().flat_map(|s| s.split('\n')).count()).map_err(IoError::other)?;
+    write_array_len(writer, amount)?;
+    for line in blocks.iter().flat_map(|s| s.split('\n')) {
+        write_str(writer, line)?;
+    }
     Ok(())
 }
 
@@ -161,7 +183,7 @@ pub fn execute_write_dml_response(writer: &mut impl Write, changed: u64) -> Resu
 pub fn execute_write_miss_response(writer: &mut impl Write) -> Result<(), IoError> {
     writer.write_all(b"\x81")?;
     write_str(writer, "miss")?;
-    writer.write_all(b"\xC0")?;
+    writer.write_all(b"\x00")?;
     Ok(())
 }
 
@@ -233,18 +255,10 @@ mod tests {
 
     #[test]
     fn test_dispatch_write_explain_response() {
-        let explain_mp = b"\xa4plan";
+        let port = vec![b"\xa7explain".as_ref(), b"\xa4plan".as_ref()];
         let mut buf = Vec::new();
-        dispatch_write_explain_response(&mut buf, &mut vec![explain_mp.as_ref()].into_iter())
-            .unwrap();
-        assert_eq!(buf.as_slice(), b"\x91\xa4plan");
-    }
-
-    #[test]
-    fn test_dispatch_write_explain_response_multiple_mp() {
-        let mut iter = vec![b"\xa4plan".as_ref(), b"\x90".as_ref()].into_iter();
-        let res = dispatch_write_explain_response(&mut Vec::new(), &mut iter);
-        assert!(res.is_err());
+        dispatch_write_explain_response(&mut buf, 2, port.into_iter()).unwrap();
+        assert_eq!(buf.as_slice(), b"\x91\x92\xa7explain\xa4plan");
     }
 
     #[test]
@@ -362,6 +376,6 @@ mod tests {
     fn test_execute_write_miss_response() {
         let mut obuf: Vec<u8> = Vec::new();
         execute_write_miss_response(&mut obuf).unwrap();
-        assert_eq!(obuf, b"\x81\xa4miss\xc0");
+        assert_eq!(obuf, b"\x81\xa4miss\x00");
     }
 }

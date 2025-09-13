@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 ### Features
 
 - Reduce the frequency of heartbeats sent to raft learners, reducing the cluster traffic.
+- Refactor SQL executor to reduce memory allocations.
 
 ### Fixes
 - Fix compilation error on ARM architecture.

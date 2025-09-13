@@ -41,7 +41,7 @@ impl TryFrom<u8> for ColumnType {
             8 => ColumnType::Any,
             9 => ColumnType::Array,
             10 => ColumnType::Scalar,
-            _ => return Err(format!("Unknown column type: {}", value)),
+            _ => return Err(format!("Unknown column type: {value}")),
         };
 
         Ok(t)
