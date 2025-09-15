@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.3.5] - Unreleased
+
+### Fixes
+
+- Fixed bizarre row order produced by ORDER BY <uuid>.
+
 ## [25.3.4] - 2025-09-10
 
 ### Fixes
