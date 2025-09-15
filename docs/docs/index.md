@@ -30,7 +30,7 @@ Picodata — это распределенная система промышле
 
 * [Установка Picodata](tutorial/install.md)
 
-#### Запуск и развертывание {: #run_deploy }
+#### Запуск и развёртывание {: #run_deploy }
 
 * [Запуск Picodata](tutorial/run.md)
 * [Создание кластера](tutorial/deploy.md)
