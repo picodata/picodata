@@ -37,7 +37,7 @@ nav:
     - overview/versioning.md
   - Инструкции и руководства:
     - tutorial/install.md
-    - Запуск и развертывание:
+    - Запуск и развёртывание:
       - tutorial/run.md
       - tutorial/deploy.md
       - tutorial/node_add.md

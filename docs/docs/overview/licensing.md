@@ -22,7 +22,7 @@ Picodata — российское программное обеспечение 
 - [Tarantool] — форк СУБД Tarantool от команды Picodata
 - [Tarantool Rust SDK] — библиотека для работы с Tarantool из Rust-приложений
 - [драйверы/коннекторы] для работы с Picodata (Go, Rust, JDBC)
-- [роль Picodata для Ansible], системы автоматического развертывания
+- [роль Picodata для Ansible], системы автоматического развёртывания
 - [Picodata-chart] — Helm-чарт для установки Picodata в Kubernetes или
   Minikube с помощью пакетного менеджера Helm
 
