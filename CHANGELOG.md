@@ -40,6 +40,7 @@ with the `YY.MINOR.MICRO` scheme.
   collections in plugin API (see also https://git.picodata.io/core/picodata/-/issues/2028).
 - Upgraded luajit to fix several issues.
   See https://git.picodata.io/core/tarantool/-/merge_requests/282 for details.
+- Fixed bizarre row order produced by ORDER BY <uuid>.
 
 ### CLI
 
