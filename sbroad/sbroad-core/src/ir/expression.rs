@@ -585,10 +585,14 @@ impl<'plan> Comparator<'plan> {
                         }
                     }
                     Expression::Reference(Reference {
-                        position: p_left, ..
+                        position: p_left,
+                        col_type: c_left,
+                        ..
                     }) => {
                         if let Expression::Reference(Reference {
-                            position: p_right, ..
+                            position: p_right,
+                            col_type: c_right,
+                            ..
                         }) = right
                         {
                             // TODO: It's assumed that comparison is taking place for relational
@@ -597,13 +601,16 @@ impl<'plan> Comparator<'plan> {
                             //       the output of two subqueries reading from different
                             //       tables (but it will return true).
 
-                            // Note: Logic below won't work for query like
-                            //       `select distinct 1 (select 2), a + (select 1) from t group by a + (select 1)`
-                            //       because of the following reasons:
-                            //       1. For Projection and GroupBy scalar subquery `(select 1)` will have different targets
-                            //       2. They are referencing different relations.
-
-                            return Ok(p_left == p_right);
+                            // Logical equality is assumed here - the `target` value may differ,
+                            // meaning the reference can point to different `NodeId`s, but the
+                            // `position` should be the same.
+                            // Additional type checking won't break anything, and will actually make
+                            // the logic stricter. While there's a concern that logic might be changed
+                            // in another place in a future patch (e.g. scenarios and logic for
+                            // `clone_subtree`) and `are_subtrees_equal` could be called in a scenario
+                            // where `target` would logically be different, the stricter type checking
+                            // will help catch such issues early rather than burying potential bugs.
+                            return Ok(p_left == p_right && c_left == c_right);
                         }
                     }
                     Expression::SubQueryReference(SubQueryReference {
@@ -617,6 +624,7 @@ impl<'plan> Comparator<'plan> {
                             ..
                         }) = right
                         {
+                            // We can be sure that the subtree is equal only if the target rel_id is the same
                             return Ok(l_position == r_position && l_rel_id == r_rel_id);
                         }
                     }
@@ -627,6 +635,9 @@ impl<'plan> Comparator<'plan> {
                             list: list_right, ..
                         }) = right
                         {
+                            if list_left.len() != list_right.len() {
+                                return Ok(false);
+                            }
                             return Ok(list_left
                                 .iter()
                                 .zip(list_right.iter())
