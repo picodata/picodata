@@ -73,7 +73,7 @@ JDBC-драйвер для Picodata и источник данных
 корневым сертификатом (CA).
 
 ```bash title="Шаг 1. Создание директории для сертификатов для пользователя picouser"
-mkdir -p /home/picouser/certs && cd /home/picouser/certs && \
+mkdir -p /home/picouser/certs && cd /home/picouser/certs
 ```
 
 ```bash title="Шаг 2. Создание корневого сертификата (CA)"
