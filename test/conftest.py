@@ -2092,7 +2092,7 @@ class Cluster:
             name=name,
             replicaset_name=replicaset_name,
             _instance_dir=instance_dir,
-            _backup_dir=backup_dir or Path(os.path.join(instance_dir, "backup")),
+            _backup_dir=backup_dir,
             share_dir=self.share_dir,
             host=self.base_host,
             port=port,
