@@ -9,8 +9,8 @@
 # edit_uri — https://www.mkdocs.org/user-guide/configuration/#edit_uri
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
-repo_url: https://git.picodata.io/core/docs
-edit_uri: -/blob/main/docs/
+repo_url: https://git.picodata.io/core/picodata
+edit_uri: -/blob/master/docs/docs
 # site_url: see hooks/set_site_url.py
 
 # Исключения из навигации
