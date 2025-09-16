@@ -1060,19 +1060,19 @@ def test_picodata_status_basic(cluster: Cluster):
  CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: router/MSK
 
- name         state    uuid                                   uri            
-{i1.name}    Online   {i1_uuid}   {i1_address} 
+ name         state    uuid                                   uri
+{i1.name}    Online   {i1_uuid}   {i1_address}
 
  TIER/DOMAIN: router/SPB
 
- name         state    uuid                                   uri            
-{i2.name}    Online   {i2_uuid}   {i2_address} 
-{i3.name}    Online   {i3_uuid}   {i3_address} 
+ name         state    uuid                                   uri
+{i2.name}    Online   {i2_uuid}   {i2_address}
+{i3.name}    Online   {i3_uuid}   {i3_address}
 
  TIER/DOMAIN: storage/SPB
 
- name         state    uuid                                   uri            
-{i4.name}   Online   {i4_uuid}   {i4_address} 
+ name         state    uuid                                   uri
+{i4.name}   Online   {i4_uuid}   {i4_address}
 
 """
 
@@ -1097,19 +1097,19 @@ def test_picodata_status_basic(cluster: Cluster):
  CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: router/MSK
 
- name         state     uuid                                   uri            
-{i1.name}    Online    {i1_uuid}   {i1_address} 
+ name         state     uuid                                   uri
+{i1.name}    Online    {i1_uuid}   {i1_address}
 
  TIER/DOMAIN: router/SPB
 
- name         state     uuid                                   uri            
-{i3.name}    Online    {i3_uuid}   {i3_address} 
-{i2.name}    Offline   {i2_uuid}   {i2_address} 
+ name         state     uuid                                   uri
+{i3.name}    Online    {i3_uuid}   {i3_address}
+{i2.name}    Offline   {i2_uuid}   {i2_address}
 
  TIER/DOMAIN: storage/SPB
 
- name         state     uuid                                   uri            
-{i4.name}   Online    {i4_uuid}   {i4_address} 
+ name         state     uuid                                   uri
+{i4.name}   Online    {i4_uuid}   {i4_address}
 
 """
 
@@ -1159,8 +1159,8 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
  CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: default
 
- name         state    uuid                                   uri            
-{inst_name}   Online   {inst_uuid}   {base_addr} 
+ name         state    uuid                                   uri
+{inst_name}   Online   {inst_uuid}   {base_addr}
 """
         assert strip(data.decode()) == strip(output)
 
@@ -1231,8 +1231,8 @@ def test_picodata_status_short_instance_name(cluster: Cluster):
  CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: default
 
- name   state    uuid                                   uri            
-{instance.name}       Online   {i1_uuid}   {i1_address} 
+ name   state    uuid                                   uri
+{instance.name}       Online   {i1_uuid}   {i1_address}
 
 """
 
@@ -1287,3 +1287,114 @@ def test_picodata_status_exit_code(cluster: Cluster):
     )
 
     assert process.returncode == 0
+
+
+def test_picodata_status_doesnt_show_expelled_instances(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+    cluster:
+        name: test
+        tier:
+            storage:
+            router:
+    """
+    )
+
+    service_password = "T3stP4ssword"
+    cluster.set_service_password(service_password)
+
+    _ = cluster.add_instance(failure_domain=dict(DC="MSK"), tier="router")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="storage")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="router")
+    _ = cluster.add_instance(failure_domain=dict(DC="SPB"), tier="router")
+
+    cluster.wait_online()
+    i1, i2, i3, i4 = sorted(cluster.instances, key=lambda i: i.name or "")
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
+    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
+
+    info = i1.instance_info()
+    cluster_uuid = info["cluster_uuid"]
+    cluster_name = info["cluster_name"]
+
+    i1_address = f"{i1.host}:{i1.port}"
+    i2_address = f"{i2.host}:{i2.port}"
+    i3_address = f"{i3.host}:{i3.port}"
+    i4_address = f"{i4.host}:{i4.port}"
+
+    i1_uuid = i1.uuid()
+    i2_uuid = i2.uuid()
+    i3_uuid = i3.uuid()
+    i4_uuid = i4.uuid()
+
+    assert i1.service_password_file
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            i1.service_password_file,
+        ],
+    )
+
+    output = f"""\
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
+ TIER/DOMAIN: router/MSK
+
+ name         state    uuid                                   uri
+{i1.name}    Online   {i1_uuid}   {i1_address}
+
+ TIER/DOMAIN: router/SPB
+
+ name         state    uuid                                   uri
+{i2.name}    Online   {i2_uuid}   {i2_address}
+{i3.name}    Online   {i3_uuid}   {i3_address}
+
+ TIER/DOMAIN: storage/SPB
+
+ name         state    uuid                                   uri
+{i4.name}   Online   {i4_uuid}   {i4_address}
+
+"""
+
+    assert strip(data.decode()) == strip(output)
+
+    cluster.expel(i3, timeout=20, force=True)
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            i1_address,
+            "--service-password-file",
+            i1.service_password_file,
+        ],
+    )
+
+    output = f"""\
+ CLUSTER NAME: {cluster_name}
+ CLUSTER UUID: {cluster_uuid}
+ TIER/DOMAIN: router/MSK
+
+ name         state    uuid                                   uri
+{i1.name}    Online   {i1_uuid}   {i1_address}
+
+ TIER/DOMAIN: router/SPB
+
+ name         state    uuid                                   uri
+{i2.name}    Online   {i2_uuid}   {i2_address}
+
+ TIER/DOMAIN: storage/SPB
+
+ name         state    uuid                                   uri
+{i4.name}   Online   {i4_uuid}   {i4_address}
+
+"""
+
+    assert strip(data.decode()) == strip(output)

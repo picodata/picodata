@@ -2,6 +2,7 @@ use crate::cli;
 use crate::cli::args;
 use crate::cli::util::{Credentials, RowSet};
 use crate::info::{proc_instance_info, InstanceInfo};
+use crate::instance::StateVariant;
 use crate::sql::proc_sql_dispatch;
 use crate::traft;
 
@@ -174,6 +175,15 @@ fn main_impl(args: args::Status) -> cli::Result<()> {
             row.remove(target_state_index);
         }
     }
+
+    // Remove 'expelled' instances.
+    response.rows.retain(|row| {
+        let current_state_value = row[current_state_index]
+            .as_str()
+            .expect("should be converted to string");
+
+        current_state_value != StateVariant::Expelled.as_str()
+    });
 
     // Sort by state.
     {
