@@ -1,6 +1,9 @@
 # SQL Execution Protocol
 
-## Context
+status:
+decision-makers: @ai, @darthunix, @funbringer, @kostja
+
+## Context and Problem
 
 Мы исполняем запросы DQL в распределенной системе, используя двухфазный протокол:
 
@@ -12,20 +15,32 @@
 
 Для DML запросов мы используем однофазное исполнение, всегда посылаем полные данные.
 
-## Considered Options
-
-### Version 0 (Current)
-
 **RequiredData (1st phase):**
 
 ```rust
+use std::collections::HashMap;
+
 pub struct RequiredData {
     pub plan_id: SmolStr,
+    // values for placeholders
     pub parameters: Vec<Value>,
+    // DML/DQL
     pub query_type: QueryType,
+    // [sql_motion_row_max, sql_vdbe_opcode_max]
     pub options: Options,
-    pub schema_info: SchemaInfo,
-    pub vtables: EncodedVTables,
+    // table name -> version
+    pub schema_info: HashMap<SmolStr, u64>,
+    // vtable name -> encoded tuples
+    pub vtables: HashMap<SmolStr, EncodedRows>,
+}
+```
+
+```rust
+pub struct EncodedRows {
+    /// Lengths of encoded rows.
+    pub marking: Vec<usize>,
+    /// Encoded rows as msgpack array.
+    pub encoded: Binary,
 }
 ```
 
@@ -33,8 +48,11 @@ pub struct RequiredData {
 
 ```rust
 pub struct OptionalData {
+    // ExecutionPlan have all nodes, relation, vtables, undo transformation 
     pub exec_plan: ExecutionPlan,
+    // Lightweight tree that indicates order of nodes
     pub ordered: OrderedSyntaxNodes,
+    // Meta of vtables. The meta is used to create vtables 
     pub vtables_meta: VTablesMeta,
 }
 ```
@@ -44,31 +62,9 @@ pub struct OptionalData {
 - Первая фаза: `(RequiredData, 'cacheable-1')`
 - Вторая фаза: `(RequiredData, OptionalData, 'cacheable-2')`
 
-**Подготовка запроса во второй фазе:**
-
-1. Из параметров `OptionalData` создаем локальный SQL
-2. `exec_plan` и `vtables_meta` используются для создания виртуальных таблиц
-3. Данные для таблиц находятся в `RequiredData.vtables`
-4. За SQL отвечает `OptionalData.ordered`
-5. Подготавливаем запрос (добавляем в кэш), заполняем таблицы и выполняем
-
-**Структура RequiredData:**
-
-*Информационные поля:*
-
-- `queryType` - DML, DQL
-- `options` - опции исполнения (например, максимальное количество строк для перемещения)
-- `schema_info` - версия таблиц для проверки совместимости
-
-*Поля для исполнения:*
-
-- `plan_id` - id запроса в кэше
-- `parameters` - параметры для вставки ($1)
-- `vtables` - наполнение виртуальных таблиц
-
 **Представление в msgpack:**
 
-## Фаза 1
+### Фаза 1
 
 | Поле           | Тип          | Описание                      |
 |----------------|--------------|-------------------------------|
@@ -79,7 +75,7 @@ pub struct OptionalData {
 | Payload        | `bytes`      | Обязательные данные (bincode) |
 | Cache Info     | `0`          | 1ая фаза                      |
 
-## Фаза 2
+### Фаза 2
 
 | Поле             | Тип          | Описание                          |
 |------------------|--------------|-----------------------------------|
@@ -106,77 +102,112 @@ pub struct OptionalData {
 - Используется bincode, который затем оборачивается в msgpack
 - bincode сериализует больше байт чем msgpack
 
-### Version 1 (Proposed)
+### Motivation
+
+1) Снизить размер передаваемых данных
+2) Убрать двойственность в данных
+3) Убрать смесь протоколов, чтобы можно было использовать внутри тарантула данные, которые пришли по сети
+
+## Considered Option
 
 **Основные изменения:**
 
 - Переход с bincode на msgpack для консистентности и zero-copy десериализации
-- Устранение дублирования данных между `exec_plan` и `ordered`
+- Переход на передачу sql, как более компактной формы плана
+- Уменьшение работы кластера за счет формирования финального представления на роутере
 - Разделение логики для DQL и DML запросов
+- Дозапрос данных при cache miss, для этого добавление связи с router
 
 **Структура протокола:**
 
-| Field   | MsgPack Type | Example Value     |
-|---------|--------------|-------------------|
-| type    | fixint       | 0 (DQL 1st phase) |
-| payload | raw bytes    | [1..100]          |
+| Field      | MsgPack Type | Example Value     |
+|------------|--------------|-------------------|
+| request_id | string       | 10 [0..10] (uuid) |
+| type       | fixint       | 0 (DQL 1st phase) |
+| payload    | raw bytes    | [1..100]          |
 
-Первый байт определяет тип запроса
+Сначала мы имеем идентификатор запуска запроса. Он будет один на всех storage и будет сгенерирован на роутере.
+Идентификатор предназначен для лучшего логирования и трассировки запросов.
+Затем идет тип запроса, типы переведены в таблице.
 
-| Type          | Value |
-|---------------|-------|
-| DQL 1st phase | 0     |
-| DQL 2nd phase | 1     |
-| DML clear     | 2     |
-| DML + DQL     | 3     |
+| Type      | Value |
+|-----------|-------|
+| DQL       | 0     |
+| DML clear | 1     |
+| DML + DQL | 2     |
 
-#### DQL 1st phase (cache hit)
+Затем идет payload, который является msgpack.
 
-| Field        | MsgPack Type            | Example Value                     |
-|--------------|-------------------------|-----------------------------------|
-| shema_info   | map (u64, u64)          | 10, [1..20]                       |
-| plan_id      | i64                     | 0                                 |
-| spaces' data | map(str, EncodedTuples) | 10, ["TMP_13", EncodedTuples] ... |
-| options      | [u64, u64]              | [100, 200]                        |
-| params       | array of values         | 3, true, 1.0, 10                  |
+### DQL
+
+DQL payload выглядит так:
+
+| Field         | MsgPack Type            | Example Value                     |
+|---------------|-------------------------|-----------------------------------|
+| shema_info    | map (u64, u64)          | 10, [1..20]                       |
+| plan_id       | u64                     | 0                                 |
+| sender_id     | binary                  | 10, [0..10] (router address)      |
+| vtables' data | map(str, EncodedTuples) | 10, ["TMP_13", EncodedTuples] ... |
+| options       | [u64, u64]              | [100, 200]                        |
+| params        | array of values         | 3, true, 1.0, 10                  |
 
 EncodedTuples
 
-| Field  | MsgPack Type | Example Value          |
-|--------|--------------|------------------------|
-| Tuples | array[32bin] | 10, [10, [1..10], ...] |
+| Field  | MsgPack Type          | Example Value           |
+|--------|-----------------------|-------------------------|
+| Tuples | array of EncodedTuple | 10, [EncodedTuple, ...] |
 
-#### DQL 2nd phase (cache miss)
-
-| Field        | MsgPack Type              | Example Value                     |
-|--------------|---------------------------|-----------------------------------|
-| shema_info   | map (u64, u64)            | 10, [1..20]                       |
-| spaces' meta | array of VirtualTableMeta | [VirtualTableMeta, ...]           |
-| spaces' data | map(str, EncodedTuples)   | 10, ["TMP_13", EncodedTuples] ... |
-| plan_id      | i64                       | 0                                 |
-| sql          | string                    | 10, [1..10]                       |
-| options      | [u64, u64]                | [100, 200]                        |
-| params       | array of values           | 3, true, 1.0, 10                  |
-
-VirtualTableMeta
-
-| Field   | MsgPack Type    | Example Value |
-|---------|-----------------|---------------|
-| columns | array of Column | 10, [1..20]   |
-| name    | string          | "TMP_10321"   |
-
-Column
-
-| Field | MsgPack Type | Example Value  |
-|-------|--------------|----------------|
-| name  | string       | "something"    |
-| type  | fixint       | 0 (i.e String) |
-
-#### DML
+EncodedTuple
 
 | Field | MsgPack Type | Example Value |
 |-------|--------------|---------------|
-| type  | fixint       | 1             |
+| Tuple | 32bin        | 10, [1..10]   |
+
+#### Cache Miss
+
+Если происходит cache miss, тогда производиться дополнительный запрос данных к router'у. Мы обращаемся с помощью
+sender_id и
+передаем в качестве идентификатора запроса request_id с plan_id.
+
+Пакет с дополнительными данными выглядит так:
+
+| Field         | MsgPack Type                   | Example Value                            |
+|---------------|--------------------------------|------------------------------------------|
+| shema_info    | map (u64, u64)                 | 10, [1..20]                              |
+| vtables' meta | map (string, array of Columns) | 10, ["TMP_10321", 10, [Column, ...]] ... |
+| sql           | string                         | 10, "SELECT * FROM t"                    |
+
+Column
+
+| Field | MsgPack Type   | Example Value |
+|-------|----------------|---------------|
+| name  | string         | "something"   |
+| type  | fixint (Types) | 0 (i.e. Map)  |
+
+Types
+
+| Column Type | Value |
+|-------------|-------|
+| Map         | 0     |
+| Boolean     | 1     |
+| Datetime    | 2     |
+| Decimal     | 3     |
+| Double      | 4     |
+| Integer     | 5     |
+| String      | 6     |
+| Uuid        | 7     |
+| Any         | 8     |
+| Array       | 9     |
+| Scalar      | 10    |
+
+### DML
+
+Все DML имеют следующий header
+
+| Field   | MsgPack Type | Example Value |
+|---------|--------------|---------------|
+| type    | fixint       | 1             |
+| payload | raw msgpack  | 5, [...]      |
 
 | DML Type | Value |
 |----------|-------|
@@ -184,25 +215,51 @@ Column
 | Update   | 1     |
 | Delete   | 2     |
 
-#### DML without DQL
+### DML without DQL
 
--- Delete
+Данный тип запросов обычно представляет собой уже материализованную таблицу. Нужно выполнить преобразование на сторадже
+с готовыми данными.
 
-| Field                | MsgPack Type          | Example Value           |
-|----------------------|-----------------------|-------------------------|
-| target table         | u64                   | 1                       |
-| target table version | u64                   | 1                       |
-| tuples               | Option<EncodedTuples> | 1, [EncodedTuples, ...] |
+**Delete**
 
--- Insert
+Этот пакет обслуживает следующие запросы
 
-| Field                | MsgPack Type | Example Value |
-|----------------------|--------------|---------------|
-| target table         | u64          | 1             |
-| target table version | u64          | 1             |
-| columns              | array(u64)   | [1, 0, 2]     |
-| conflict_policy      | fixint       | 0 (DoNothing) |
-| space's data         | EncodedSpace | EncodedSpace  |
+Без where
+
+```sql
+DELETE
+FROM target_table;
+```
+
+Без локальной материализации
+
+```sql
+DELETE
+FROM target_table
+WHERE id in (select t_id from t2 where s_id = 2);
+```
+
+| Field                | MsgPack Type  | Example Value |
+|----------------------|---------------|---------------|
+| target table         | u64           | 1             |
+| target table version | u64           | 1             |
+| tuples               | EncodedTuples | EncodedTuples |
+
+**Insert**
+
+Запросы без локальной материализации
+
+```sql
+INSERT INTO target_table
+VALUES (select a, b, c from t2 where s_id = 2);
+```
+
+| Field                | MsgPack Type  | Example Value |
+|----------------------|---------------|---------------|
+| target table         | u64           | 1             |
+| target table version | u64           | 1             |
+| conflict_policy      | fixint        | 0 (DoNothing) |
+| tuples               | EncodedTuples | EncodedTuples |
 
 | Policy    | Value |
 |-----------|-------|
@@ -210,99 +267,186 @@ Column
 | DoNothing | 1     |
 | DoReplace | 2     |
 
-Encoded Space
+**Update**
 
-| Field        | MsgPack Type          | Example Value         |
-|--------------|-----------------------|-----------------------|
-| column types | array of column types | 10, [String, ...]     |
-| buckets data | array of BucketData   | 10, [BucketData, ...] |
+Запросы которые обновляют sharding ключи (Shared Update)
 
-BucketData
+```sql
+UPDATE target_table
+SET key_sharded_by = 1
+where id in (select t_id from t2 where s_id = 2);
+```
 
-| Field     | MsgPack Type  | Example Value |
-|-----------|---------------|---------------|
-| bucket id | u64           | 100           |
-| tuples    | EncodedTuples | EncodedTuples |
+Запросы обновляющие второстепенные поля без локальной материализации (Local Update)
 
--- Update
+```sql
+UPDATE target_table
+SET a = 1
+where id in (select t_id from t2 where s_id = 2);
+```
 
-| Field                | MsgPack Type            | Example Value      |
-|----------------------|-------------------------|--------------------|
-| target table         | u64                     | 1                  |
-| target table version | u64                     | 1                  |
-| shared update        | Option<SharedUpdate>    | 1, SharedUpdate    |
-| local update         | Option<LocalUpdateFull> | 1, LocalUpdateFull |
+Здесь мы можем иметь разные имплементации. На текущий момент приходящие tuple относятся к определенному bucket_id и по
+Update Node собираются в новые tuple.
+У этого подхода есть приемущетсва:
 
-Shared Update
+* переиспользование значение из tuple, если колонки требуют одинаковых значений
+* не тратим время на роутере
 
-| Field            | MsgPack Type  | Example Value     |
-|------------------|---------------|-------------------|
-| delete_tuple_len | usize         | 32                |
-| update_columns   | map(u64, u64) | 10, [(0, 0), ...] |
-| space's data     | Encoded Space | Encoded Space     |
+Минусы:
 
-Local Update Meta
+* Пересборка tuple на месте для вставки
+* Из пересборки следует и дополнительные данные для пересылки
 
-| Field          | MsgPack Type          | Example Value     |
-|----------------|-----------------------|-------------------|
-| update_columns | map(u64, u64)         | 10, [(0, 0), ...] |
-| pk_positions   | array of u64          | 10, [0, ...]      |
-| column types   | array of column types | 10, [String, ...] |
+| Field                | MsgPack Type                  | Example Value                 |
+|----------------------|-------------------------------|-------------------------------|
+| target table         | u64                           | 1                             |
+| target table version | u64                           | 1                             |
+| update type          | fixint                        | Update Type                   |
+| update data          | Local Update or Shared Update | Local Update or Shared Update |
 
-Local Update Full
+Update Type
 
-| Field  | MsgPack Type    | Example Value   |
-|--------|-----------------|-----------------|
-| meta   | LocalUpdateMeta | LocalUpdateMeta |
-| tuples | EncodedTuples   | EncodedTuples   |
+| Type   | Value |
+|--------|-------|
+| Shared | 0     |
+| Local  | 1     |
 
-#### DML with DQL
+Shared Update (Обновляются шардирующие ключи)
 
--- Delete
+Мы отправляем готовые данные для space.delete и space.replace. delete_pk это набор ключей для удаления из таблицы.
+tuples используется для обновления данных.
 
-| Field                | MsgPack Type              | Example Value           |
-|----------------------|---------------------------|-------------------------|
-| target table         | u64                       | 1                       |
-| target table version | u64                       | 1                       |
-| shema_info           | map (u64, u64)            | 10, [1..20]             |
-| space's meta         | array of VirtualTableMeta | [VirtualTableMeta, ...] |
-| space's data         | EncodedTuples             | EncodedTuples           |
-| plan_id              | i64                       | 0                       |
-| sql                  | string                    | 10, [1..10]             |
-| options              | [u64, u64]                | [100, 200]              |
-| params               | array of values           | 3, true, 1.0, 10        |
+| Field | MsgPack Type              | Example Value               |
+|-------|---------------------------|-----------------------------|
+| data  | array of SharedUpdateData | 10, [SharedUpdateData, ...] |
 
--- Insert
+Shared Update Data
 
-| Field                | MsgPack Type              | Example Value           |
-|----------------------|---------------------------|-------------------------|
-| target table         | u64                       | 1                       |
-| target table version | u64                       | 1                       |
-| shema_info           | map (u64, u64)            | 10, [1..20]             |
-| columns              | array(u64)                | [1, 0, 2]               |
-| conflict_policy      | fixint                    | 0 (DoNothing)           |
-| space's meta         | array of VirtualTableMeta | [VirtualTableMeta, ...] |
-| space's data         | EncodedTuples             | EncodedTuples           |
-| plan_id              | i64                       | 0                       |
-| sql                  | string                    | 10, [1..10]             |
-| options              | [u64, u64]                | [100, 200]              |
-| params               | array of values           | 3, true, 1.0, 10        |
+| Field     | MsgPack Type    | Example Value        |
+|-----------|-----------------|----------------------|
+| delete_pk | array of values | 2, [1, "some", 12.1] |
+| tuple     | EncodedTuple    | EncodedTuple         |
 
--- Update
+Local Update (Не обновляются шардируюшие ключи)
 
-[//]: # (case where we need vtable locally)
+Мы отправляем готовые данные для исполенения space.update. pk - это ключ по которому будет производится
+обновление.
+values - это пара значений (что установить и на какую позицию). Для values также нужно передавать OpCode равенства, либо
+добавлять его на storage прямо перед вызовом space.update.
 
-| Field                | MsgPack Type              | Example Value           |
-|----------------------|---------------------------|-------------------------|
-| target table         | u64                       | 1                       |
-| target table version | u64                       | 1                       |
-| shema_info           | map (u64, u64)            | 10, [1..20]             |
-| space's meta         | array of VirtualTableMeta | [VirtualTableMeta, ...] |
-| local update         | LocalUpdateMeta           | LocalUpdateMeta         |
-| plan_id              | i64                       | 0                       |
-| sql                  | string                    | 10, [1..10]             |
-| options              | [u64, u64]                | [100, 200]              |
-| params               | array of values           | 3, true, 1.0, 10        |
+| Field | MsgPack Type             | Example Value              |
+|-------|--------------------------|----------------------------|
+| data  | array of LocalUpdateData | 10, [LocalUpdateData, ...] |
+
+Local Update Data
+
+| Field  | MsgPack Type               | Example Value                        |
+|--------|----------------------------|--------------------------------------|
+| pk     | array of values            | 2, [1, "some", 12.1]                 |
+| values | array of [value, position] | 10 [2 [True, 1], 2 ["some", 2], ...] |
+
+### DML with DQL
+
+Такое случается, когда материализация на роутере не имеет смысла (Motion с локальной политикой).
+Так как мы будем исполнять DQL локально, тут тоже может возникнуть [cache miss запрос](#cache-miss).
+
+Также стоит учитывать, что если в случае готовой vtable - мы можем послать итоговые tuple.
+Но при материализации локально - нам нужно передать больше данных для формирования итоговых tuple.
+
+**Delete**
+
+С локальной материализацией
+
+```sql
+DELETE
+FROM target_table
+WHERE id in (select id from target_table where second_field > 2)
+```
+
+| Field                | MsgPack Type    | Example Value                |
+|----------------------|-----------------|------------------------------|
+| target table         | u64             | 1                            |
+| target table version | u64             | 1                            |
+| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| plan_id              | u64             | 0                            |
+| sender_id            | binary          | 10, [0..10] (router address) |
+| vtable's data        | EncodedTuples   | EncodedTuples                |
+| options              | [u64, u64]      | [100, 200]                   |
+| params               | array of values | 3, true, 1.0, 10             |
+
+**Insert**
+
+C локальной материализацией
+
+```sql
+INSERT INTO target_table
+VALUES (select * from target_table)
+```
+
+columns в каком порядке выстраивать значения
+motion key - это значение из LocalSegment, используется для reshard.
+
+| Field                | MsgPack Type    | Example Value                |
+|----------------------|-----------------|------------------------------|
+| target table         | u64             | 1                            |
+| target table version | u64             | 1                            |
+| columns              | array of u8     | 3, [1, 2, 3]                 |
+| conflict_policy      | fixint          | 0 (DoNothing)                |
+| motion key           | array of Target | 10, [Target, ...]            |
+| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| plan_id              | u64             | 0                            |
+| sender_id            | binary          | 10, [0..10] (router address) |
+| vtable's data        | EncodedTuples   | EncodedTuples                |
+| options              | [u64, u64]      | [100, 200]                   |
+| params               | array of values | 3, true, 1.0, 10             |
+
+Target
+
+| Field | MsgPack Type | Example Value                         |
+|-------|--------------|---------------------------------------|
+| type  | fixint       | Reference (0) or Value (1)            |
+| value | msgpack      | Int for reference and Value for value |
+
+```rust
+pub enum Target {
+    /// A position of the existing column in the tuple.
+    Reference(usize),
+    /// A value that should be used as a part of the
+    /// redistribution key. We need it in a case of
+    /// `insert into t1 (b) ...` when
+    /// table t1 consists of two columns `a` and `b`.
+    /// Column `a` is absent in insertion and should be generated
+    /// from the default value.
+    Value(Value),
+}
+```
+
+**Update**
+
+C локальной материализацией
+
+```sql
+UPDATE target_table
+SET a = 1
+WHERE id = (select id from target_table where second_field = 2);
+```
+
+mapping columns pos указывает в каком порядке в tuple брать значения
+
+| Field                | MsgPack Type    | Example Value                |
+|----------------------|-----------------|------------------------------|
+| target table         | u64             | 1                            |
+| target table version | u64             | 1                            |
+| mapping columns pos  | map (u64, u64)  | 3, [[1, 2], [2, 3], [3,4]]   |
+| primary keys pos     | aray of u64     | 3 [1, 3, 2]                  |
+| shema_info           | map (u64, u64)  | 10, [1..20]                  |
+| plan_id              | u64             | 0                            |
+| sender_id            | binary          | 10, [0..10] (router address) |
+| vtable's data        | EncodedTuples   | EncodedTuples                |
+| options              | [u64, u64]      | [100, 200]                   |
+| params               | array of values | 3, true, 1.0, 10             |
+
+### Итог
 
 **Плюсы:**
 
@@ -310,6 +454,7 @@ Local Update Full
 - Отсутствует передача лишних данных:
     - DQL получает SQL только один раз
     - DML не получает план, если не нужно материализовать vtable
+    - Идет дополнительный запрос отсутствующих данных, вместо дополнительной передачи
 - Четкое разграничение DQL и DML с учетом их разных потребностей в данных
 
 **Минусы:**
@@ -317,6 +462,7 @@ Local Update Full
 - Более сложный парсинг - на каждом этапе обработки парсим нужные данные (парсинг в разных методах)
 - Мы можем исполнить не тот DQL при коллизии plan_id. Можно получить не тот sql, однако по подсчетам,
   такого не должно случиться (https://git.picodata.io/core/tarantool/-/issues/59)
+- Появляется state на стороне router для cache miss
 
 ## Decision
 
@@ -330,4 +476,4 @@ Local Update Full
 
 **Миграционный план:**
 Готовим новую версию, покрываем тестами. По готовности протокола, ломаем совместимость и переходим на новый протокол.
-Включает в себя также переход plan_id на i64, вместо SmolStr.
+Включает в себя также переход plan_id на u64, вместо SmolStr.
