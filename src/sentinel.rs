@@ -303,6 +303,11 @@ impl Loop {
             .send(SentinelStatus::Activated)
             .expect("we shouldn't be holding references to the value")
     }
+
+    #[inline(always)]
+    pub fn status(&self) -> SentinelStatus {
+        self.status.get()
+    }
 }
 
 pub struct Loop {
@@ -317,7 +322,7 @@ pub struct Loop {
 ///
 /// TODO: maybe this should be merged with [`node::Status`].
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-enum SentinelStatus {
+pub enum SentinelStatus {
     /// Instance has started, but didn't yet receive confirmation from the
     /// leader that it was activated.
     #[default]

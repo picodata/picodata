@@ -43,6 +43,10 @@ def test_restart_follower(cluster2: Cluster):
     # Then it's able to start and remain a follower
 
     i1, i2 = cluster2.instances
+
+    # Make sure i1 is the leader
+    i1.promote_or_fail()
+
     assert i1.current_state() == dict(variant="Online", incarnation=1)
     assert i2.current_state() == dict(variant="Online", incarnation=1)
     i2.restart()

@@ -288,6 +288,9 @@ impl Loop {
             .cluster_uuid()
             .expect("storage should never fail");
         let node = global().expect("must be initialized");
+
+        let sentinel_status = node.sentinel_loop.status();
+
         let pending_schema_change = storage
             .properties
             .pending_schema_change()
@@ -349,6 +352,7 @@ impl Loop {
             applied,
             cluster_name,
             cluster_uuid,
+            sentinel_status,
             &instances,
             &existing_fds,
             &peer_addresses,

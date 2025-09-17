@@ -16,6 +16,7 @@ use crate::schema::{
     PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, TableDef,
     ADMIN_ID,
 };
+use crate::sentinel::SentinelStatus;
 use crate::storage;
 use crate::storage::{PropertyName, SystemTable};
 use crate::sync::GetVclockRpc;
@@ -38,6 +39,7 @@ pub(super) fn action_plan<'i>(
     applied: RaftIndex,
     cluster_name: String,
     cluster_uuid: String,
+    sentinel_status: SentinelStatus,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, String>,
@@ -72,10 +74,22 @@ pub(super) fn action_plan<'i>(
     else {
         return Err(Error::NoSuchInstance(IdOfInstance::RaftId(my_raft_id)));
     };
-    if has_states!(this_instance, * -> Offline) || has_states!(this_instance, * -> Expelled) {
+
+    let activation_finished = sentinel_status != SentinelStatus::Initial;
+
+    let not_online = |instance: &Instance| {
+        has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled)
+    };
+
+    if !activation_finished && not_online(this_instance) {
+        tlog!(
+            Debug,
+            "activation not finished yet, not transferring raft leadership!"
+        );
+    } else if not_online(this_instance) {
         let mut new_leader = None;
         for instance in instances {
-            if has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled) {
+            if not_online(instance) {
                 continue;
             }
 

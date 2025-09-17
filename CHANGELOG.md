@@ -41,6 +41,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Upgraded luajit to fix several issues.
   See https://git.picodata.io/core/tarantool/-/merge_requests/282 for details.
 - Fixed bizarre row order produced by ORDER BY <uuid>.
+- Fixed restarting the cluster without some of the voters
+  (see also https://git.picodata.io/core/picodata/-/issues/2202).
 
 ### CLI
 

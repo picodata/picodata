@@ -1675,7 +1675,7 @@ fn postjoin(
 
     // When the whole cluster is restarting we use a smaller election timeout so
     // that we don't wait too long.
-    const BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(1);
+    const BOOTSTRAP_ELECTION_TIMEOUT: Duration = Duration::from_secs(3);
     // Use a random factor so that hopefully everybody doesn't start the
     // election at the same time.
     let random_factor = 1.0 + rand::random::<f64>();

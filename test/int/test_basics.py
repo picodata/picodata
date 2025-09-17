@@ -953,3 +953,30 @@ def test_conflicting_pg_listen(cluster: Cluster):
     with pytest.raises(ProcessDead, match="process exited unexpectedly"):
         cluster.wait_online()
     lc.wait_matched()
+
+
+def test_cold_restart_2_out_of_3(cluster: Cluster):
+    [i1, i2, i3] = cluster.deploy(instance_count=3)
+
+    # Decrease the auto offline timeout, reason explained later
+    i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 2")
+
+    i1.terminate()
+    i2.terminate()
+    # i3 is turned off last and as a result it's state is still Online, because
+    # there was no quorum for the global table update operation
+    i3.terminate()
+
+    # The cluster can be restarted without `i3`
+    i1.start()
+    i2.start()
+    # During the restart i3's state will be changed from Online to Offline by
+    # sentinel_loop after governor_auto_offline_timeout. Without this the
+    # governor will be trying to configure sharding on i3 before changing i1's
+    # and i2's state to Online
+    i1.wait_online()
+    i2.wait_online()
+
+    # And i3 successfully restarts itself
+    i3.start()
+    i3.wait_online()
