@@ -563,3 +563,55 @@ cluster:
     # but via SQL api
     data = router_instance.sql("""SELECT * from "sharded_table" """)
     assert sorted(data) == sorted([[1], [2], [5], [10]])
+
+
+def test_tier_with_custom_buckets_and_local_motion(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        router:
+            replication_factor: 1
+            can_vote: true
+        custom:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 500
+"""
+    )
+
+    router_instance = cluster.add_instance(tier="router")
+    _ = cluster.add_instance(tier="custom")
+
+    ddl = router_instance.sql(
+        """
+        CREATE TABLE "t1" ( "a" INTEGER NOT NULL, PRIMARY KEY ("a") )
+        DISTRIBUTED BY ("a")
+        IN TIER "custom"
+        """
+    )
+
+    assert ddl["row_count"] == 1
+
+    ddl = router_instance.sql(
+        """
+        CREATE TABLE "t2" ( "a" INTEGER NOT NULL, PRIMARY KEY ("a") )
+        DISTRIBUTED BY ("a")
+        IN TIER "custom"
+        """
+    )
+
+    assert ddl["row_count"] == 1
+
+    dml = router_instance.sql("""INSERT INTO "t1" VALUES (1)""")
+
+    assert dml["row_count"] == 1
+
+    dml = router_instance.sql("""INSERT INTO t2 SELECT a FROM t1""")
+
+    assert dml["row_count"] == 1
+
+    data = router_instance.sql("""SELECT t1.a FROM t1 JOIN t2 ON t1.a = t2.a AND t1.bucket_id = t2.bucket_id""")
+
+    assert data == [[1]]
