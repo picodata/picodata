@@ -4,8 +4,8 @@ use crate::catalog::governor_queue::{
 };
 use crate::column_name;
 use crate::governor::{
-    CreateGovernorQueue, FinishCatalogUpgrade, InsertUpgradeOperation, Plan,
-    RunProcNameOperationStep, RunSqlOperationStep,
+    upgrade_operations::CATALOG_UPGRADE_LIST, CreateGovernorQueue, FinishCatalogUpgrade,
+    InsertUpgradeOperation, Plan, RunProcNameOperationStep, RunSqlOperationStep,
 };
 use crate::instance::Instance;
 use crate::replicaset::{Replicaset, ReplicasetName};
@@ -22,45 +22,9 @@ use tarantool::space::{SpaceEngineType, SpaceId, UpdateOps};
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
-
-static UPGRADE_OPERATIONS_MAP: LazyLock<HashMap<&'static str, Vec<(&'static str, &'static str)>>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            (
-                "25.3.1",
-                vec![
-                    // NOTE: see https://git.picodata.io/core/picodata/-/merge_requests/1867#note_158803
-                    // a DDL on _pico_tier is risky, avoid it for now.
-                    // (
-                    //     "sql",
-                    //     "ALTER TABLE _pico_tier ADD COLUMN is_default boolean",
-                    // ),
-                    //
-                    // NOTE: some of our SQL scalar functions use exported
-                    // procedures, so don't forget to check if all needed procedures
-                    // are passed for the appropriate version.
-                    ("proc_name", "proc_before_online"),
-                    ("proc_name", "proc_cas_v2"),
-                    ("proc_name", "proc_instance_uuid"),
-                    ("proc_name", "proc_raft_leader_uuid"),
-                    ("proc_name", "proc_raft_leader_id"),
-                    ("proc_name", "proc_picodata_version"),
-                ],
-            ),
-            ("25.3.3", vec![("proc_name", "proc_runtime_info_v2")]),
-            (
-                "25.4.1",
-                vec![
-                    ("proc_name", "proc_backup_abort_clear"),
-                    ("proc_name", "proc_apply_backup"),
-                ],
-            ),
-        ])
-    });
 
 /// Handles operations from `_pico_governor_queue` table.
 pub(super) fn handle_governor_queue<'i>(
@@ -292,7 +256,10 @@ fn insert_catalog_upgrade_operations<'i>(
         "insert governor operations for system catalog upgrade to version {}",
         pending_catalog_version
     );
-    let Some(ops) = UPGRADE_OPERATIONS_MAP.get(pending_catalog_version) else {
+    let Some((_, ops)) = CATALOG_UPGRADE_LIST
+        .iter()
+        .find(|u| u.0 == pending_catalog_version)
+    else {
         tlog!(
             Warning,
             "no governor operations to insert for the system catalog upgrade to version {}",

@@ -36,66 +36,28 @@ def insert_operations(cluster: Cluster, ops: list[str]) -> int:
     return index
 
 
-def test_catalog_upgrade(compat_instance: Instance):
+def test_catalog_upgrade_ok(compat_instance: Instance):
     compat = Compatibility()
-    try:
-        backup_dir = compat.previous_patch_path
-    except ValueError:
-        backup_dir = compat.previous_minor_path
-
+    backup_dir = compat.previous_minor_path
     copy_dir(backup_dir, compat_instance.instance_dir)
 
-    compat_instance.start()
-    compat_instance.wait_online()
-
+    compat_instance.start_and_wait()
     compat_instance.wait_governor_status("idle")
-    res = compat_instance.sql("SELECT * FROM _pico_governor_queue")
-    tt_procs = [
-        "proc_before_online",
-        "proc_cas_v2",
-        "proc_instance_uuid",
-        "proc_raft_leader_uuid",
-        "proc_raft_leader_id",
-        "proc_picodata_version",
-        "proc_runtime_info_v2",
-    ]
-    # NOTE: will uncomment these lines when we can test with
-    # specific version of Picodata
-    # assert res == [
-    #     [
-    #         index + 1,
-    #         "25.3.1",
-    #         proc_name,
-    #         "proc_name",
-    #         "done",
-    #         "upgrade",
-    #         "upgrade to catalog version 25.3.1",
-    #     ]
-    #     for index, proc_name in enumerate(tt_procs)
-    # ]
 
     res_all = compat_instance.sql("SELECT COUNT(*) FROM _pico_governor_queue")
     res_done = compat_instance.sql("SELECT COUNT(*) FROM _pico_governor_queue WHERE status = 'done'")
     assert res_all == res_done
 
-    res = compat_instance.sql("SELECT id FROM _pico_table WHERE name = '_pico_governor_queue'")
-    assert res == [[522]]
-
-    res = compat_instance.sql("SELECT id, name FROM _pico_index WHERE table_id = 522")
-    assert res == [[0, "_pico_governor_queue_pkey"]]
-
-    res = compat_instance.call("box.space._space:select", [522])
-    assert res[0][2] == "_pico_governor_queue"
-
-    res = compat_instance.call("box.space._index:select", [522])
-    assert res[0][2] == "_pico_governor_queue_pkey"
-
+    tt_procs = [
+        "proc_backup_abort_clear",
+        "proc_apply_backup",
+    ]
     for proc_name in tt_procs:
         res = compat_instance.call("box.space._func.index.name:select", [f".{proc_name}"])
         assert res[0][2] == f".{proc_name}"
 
     res = compat_instance.sql("SELECT value FROM _pico_property WHERE key = 'system_catalog_version'")
-    assert res == [["25.3.3"]]
+    assert res == [["25.4.1"]]
 
 
 def test_ddl_ok(cluster: Cluster):

@@ -17,6 +17,7 @@ use tarantool::tuple::{RawBytes, Tuple};
 use crate::catalog::governor_queue::GovernorQueue;
 use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
+use crate::governor::upgrade_operations;
 use crate::info::PICODATA_VERSION;
 use crate::instance::{self, Instance};
 use crate::plugin::PluginIdentifier;
@@ -148,7 +149,10 @@ pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_
 /// If this version of the executable bootstraps a new picodata cluster this
 /// will be the value of 'system_catalog_version' field in `_pico_property`.
 /// Otherwise this will be the version the cluster is going to be upgrading to.
-pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = "25.3.3";
+pub const LATEST_SYSTEM_CATALOG_VERSION: &'static str = upgrade_operations::CATALOG_UPGRADE_LIST
+    .last()
+    .expect("catalog upgrade operations should exist")
+    .0;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Catalog

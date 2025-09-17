@@ -68,6 +68,7 @@ mod conf_change;
 pub(crate) mod plan;
 mod queue;
 mod sharding;
+pub mod upgrade_operations;
 
 /// Helper enum for ApplySchemaChange handling.
 #[derive(Debug)]
