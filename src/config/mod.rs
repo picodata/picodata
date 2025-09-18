@@ -1719,13 +1719,13 @@ pub struct AlterSystemParameters {
     /// PG statement storage size.
     /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 1024)]
+    #[introspection(config_default = 100000)]
     pub pg_statement_max: u64,
 
     /// PG portal storage size.
     /// Value of `0` indicates that this limit is disabled.
     #[introspection(sbroad_type = SbroadType::Unsigned)]
-    #[introspection(config_default = 1024)]
+    #[introspection(config_default = 100000)]
     pub pg_portal_max: u64,
 
     /// Raft snapshot will be sent out in chunks not bigger than this threshold.

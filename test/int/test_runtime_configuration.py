@@ -539,7 +539,7 @@ def test_alter_system_pg_params(cluster: Cluster):
                 WHERE key IN ('{pg_portal_max}', '{pg_statement_max}')
                 ORDER BY key
                 """)
-    assert db_config == [["pg_portal_max", 1024], ["pg_statement_max", 1024]]
+    assert db_config == [["pg_portal_max", 100000], ["pg_statement_max", 100000]]
 
     # set 0 to disable limits
     instance.sql(f"ALTER SYSTEM SET {pg_portal_max} TO 0")
