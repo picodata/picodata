@@ -78,3 +78,30 @@ fn split_columns5() {
         @r#"SELECT "t"."a" FROM "t" WHERE (("t"."a" < CAST($1 AS int)) and (CAST($2 AS int) < "t"."b")) and ("t"."a" > CAST($3 AS int))"#
     );
 }
+
+#[test]
+fn split_columns6() {
+    let input = r#"SELECT "a" FROM "t" WHERE (SELECT a, b FROM t) = (1, 2)"#;
+
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(1), Value::from(2)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE (SELECT "t"."a", "t"."b" FROM "t") = (CAST($1 AS int), CAST($2 AS int))"#
+    );
+
+    let input = r#"SELECT "a" FROM "t" WHERE (1, 2) = (SELECT a, b FROM t)"#;
+
+    let actual_pattern_params = check_transformation(input, vec![], &split_columns);
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(1), Value::from(2)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE (CAST($1 AS int), CAST($2 AS int)) = (SELECT "t"."a", "t"."b" FROM "t")"#
+    );
+}

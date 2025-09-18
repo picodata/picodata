@@ -14,7 +14,7 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{BoolExpr, NodeId, Row};
+use crate::ir::node::{BoolExpr, Node, NodeId, Row};
 use crate::ir::operator::Bool;
 use crate::ir::Plan;
 use smol_str::format_smolstr;
@@ -83,6 +83,18 @@ impl Plan {
                     "left and right rows have different number of columns: {left_expr:?}, {right_expr:?}"
                 )));
             }
+            // If boolean expression contains a SubQueryReference it should not be splitted
+            let left_sq = self.get_sq_ref_ids_from_row_node(left_id)?;
+            let right_sq = self.get_sq_ref_ids_from_row_node(right_id)?;
+            for ref_id in [left_sq, right_sq].iter().flatten() {
+                if matches!(
+                    self.get_node(*ref_id)?,
+                    Node::Expression(Expression::SubQueryReference(..))
+                ) {
+                    return Ok(top_id);
+                }
+            }
+
             let pairs = left_list
                 .iter()
                 .zip(right_list.iter())

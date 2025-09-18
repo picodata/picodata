@@ -1,9 +1,13 @@
 -- TEST: sq_as_expr
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
+DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS null_t;
 CREATE TABLE testing_space ("id" int primary key, "name" string, "product_units" int);
+CREATE TABLE t1 (a int primary key, b int, c int);
 CREATE TABLE null_t ("na" int primary key, "nb" int, "nc" int);
+INSERT INTO t1 ("a", "b", "c") VALUES
+            (1, 1, 1);
 INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
             (1, '123', 1),
             (2, '1', 1),
@@ -307,5 +311,11 @@ SELECT SUM((SELECT * FROM (VALUES(1)))) FROM testing_space
 -- TEST: test-distinct-aggr-and-group-by-with-subquery
 -- SQL:
 SELECT SUM(DISTINCT (SELECT MIN(id) FROM testing_space)) FROM testing_space GROUP BY (select 1)
+-- EXPECTED:
+1
+
+-- TEST: test-subquery-equality-distribution-issue-2006
+-- SQL:
+SELECT t1.a FROM t1 d JOIN t1 ON t1.b = d.a WHERE t1.b = d.c AND (SELECT e.a FROM t1 d JOIN t1 ON d.a = t1.a JOIN t1 e ON c = b) = (SELECT a FROM t1)
 -- EXPECTED:
 1

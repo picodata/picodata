@@ -650,26 +650,32 @@ impl Plan {
             _ => std::array::from_ref(&node_id),
         };
 
-        let mut reference_target = None;
+        let mut reference_met = false;
         for id in children_list {
             let child_id = self.get_child_under_alias(*id)?;
             let child_id = self.get_child_under_cast(child_id)?;
-            if let Expression::Reference(Reference { target, .. }) =
-                self.get_expression_node(child_id)?
-            {
-                reference_target = Some(target);
-                break;
+            match self.get_expression_node(child_id)? {
+                Expression::Reference(Reference { target, .. }) => {
+                    if matches!(target, ReferenceTarget::Leaf) {
+                        unreachable!(
+                            "distribution with leaf targets should be handled in parent function"
+                        );
+                    }
+                    reference_met = true;
+                    break;
+                }
+                Expression::SubQueryReference(_) => {
+                    reference_met = true;
+                    break;
+                }
+                _ => continue,
             }
         }
 
-        let Some(reference_target) = reference_target else {
+        if !reference_met {
             // We haven't met any Reference in the output.
             return Ok(Distribution::Any);
         };
-
-        if matches!(reference_target, ReferenceTarget::Leaf) {
-            unreachable!("distribution with leaf targets should be handled in parent function");
-        }
 
         // Working with all other nodes.
         let ref_info = ReferenceInfo::new(node_id, self)?;
