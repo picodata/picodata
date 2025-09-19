@@ -286,6 +286,28 @@ impl Plan {
         self.add_relational(groupby.into())
     }
 
+    /// Get first child from relational node
+    ///
+    /// Errors:
+    /// - expected relation node `rel_id` to have children!
+    ///
+    /// Panics:
+    /// - node is not relational
+    ///
+    /// Returns:
+    /// - id of the first child
+    pub fn get_first_child(&self, rel_id: NodeId) -> Result<NodeId, SbroadError> {
+        let c = *self
+            .get_relational_children(rel_id)?
+            .get(0)
+            .ok_or_else(|| {
+                SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                    "expected relation node ({rel_id:?}) to have children!"
+                ))
+            })?;
+        Ok(c)
+    }
+
     /// Get ids of nodes in Reduce stage (finals) and id of the top node in Map stage.
     ///
     /// Finals are nodes in Reduce stage without final `GroupBy`.
@@ -299,30 +321,19 @@ impl Plan {
     ///             GroupBy (3)
     ///                 Scan (4)
     /// ```
-    /// Then this function will return `([1, 2, 3], 4)`
+    /// Then this function will return `([1, 2], 3)`
     pub(crate) fn split_group_by(
         &self,
         final_proj_id: NodeId,
     ) -> Result<(Vec<NodeId>, NodeId), SbroadError> {
         let mut finals: Vec<NodeId> = Vec::with_capacity(3);
-        let get_first_child = |rel_id: NodeId| -> Result<NodeId, SbroadError> {
-            let c = *self
-                .get_relational_children(rel_id)?
-                .get(0)
-                .ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "expected relation node ({rel_id:?}) to have children!"
-                    ))
-                })?;
-            Ok(c)
-        };
         let mut next = final_proj_id;
         let max_reduce_nodes = 3;
         for _ in 0..=max_reduce_nodes {
             match self.get_relation_node(next)? {
                 Relational::Projection(_) | Relational::Having(_) => {
                     finals.push(next);
-                    next = get_first_child(next)?;
+                    next = self.get_first_child(next)?;
                 }
                 _ => return Ok((finals, next)),
             }
@@ -903,14 +914,7 @@ impl Plan {
         };
         for (rel_id, group) in map {
             // E.g. GroupBy under final Projection.
-            let child_id = *self
-                .get_relational_children(rel_id)?
-                .get(0)
-                .ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "expected relation node ({rel_id:?}) to have children!"
-                    ))
-                })?;
+            let child_id = self.get_first_child(rel_id)?;
             let alias_to_pos_map = ColumnPositionMap::new(self, child_id)?;
             let mut nodes = Vec::with_capacity(group.len());
             for (gr_expr_id, expr_id, parent_expr_id) in group {

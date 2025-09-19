@@ -127,17 +127,11 @@ invalid query: column "product_units" is not found in grouping expressions!
 
 -- TEST: invalid-6
 -- SQL:
-SELECT "name" AS "q" FROM "testing_space" GROUP BY "q"
--- ERROR:
-column with name "q" not found
-
--- TEST: invalid-7
--- SQL:
 SELECT "name", "product_units" FROM "testing_space" GROUP BY "name" "product_units"
 -- ERROR:
 rule parsing error
 
--- TEST: invalid-8
+-- TEST: invalid-7
 -- SQL:
 SELECT "product_units" FROM "testing_space" GROUP BY "name"
 -- ERROR:
@@ -932,3 +926,114 @@ select sum(distinct "c") from "arithmetic_space"
 having count(distinct "c") = 1
 -- EXPECTED:
 1, 2
+
+-- TEST: test_alias_inside_groupby-1.0
+-- SQL:
+drop table if exists t;
+create table t(a int primary key, b int);
+insert into t values (1, 2), (2, 3), (3, 4);
+
+-- TEST: test_alias_inside_groupby-1.1
+-- SQL:
+select a as a_1, sum(t.b) from t group by a_1, a;
+-- EXPECTED:
+1, 2,
+2, 3,
+3, 4
+
+-- TEST: test_alias_inside_groupby-1.2
+-- SQL:
+select (t.a + 5) as a_1, sum(t.b) from t group by a_1, a;
+-- EXPECTED:
+6, 2,
+7, 3,
+8, 4
+
+-- TEST: test_alias_inside_groupby-1.3
+-- SQL:
+select (t.a + 5) as a_1, sum(t.b) from t group by a_1 * 2, a;
+-- EXPECTED:
+6, 2,
+7, 3,
+8, 4
+
+-- TEST: test_alias_inside_groupby-1.4
+-- SQL:
+SELECT
+	CASE WHEN b < 50 THEN 'Low' WHEN b BETWEEN 50 AND 100 THEN 'Medium' ELSE 'High' END AS b_category,
+	COUNT(*) AS row_count,
+	MIN(a) AS min_a,
+	MAX(a) AS max_a
+FROM t
+GROUP BY (CASE WHEN b < 50 THEN 'Low' WHEN b BETWEEN 50 AND 100 THEN 'Medium' ELSE 'High' END)
+ORDER BY row_count DESC;
+-- EXPECTED:
+'Low', 3, 1, 3
+
+-- TEST: test_alias_inside_groupby-1.5
+-- SQL:
+SELECT
+	(a % 10) AS a_last_digit,
+	(b % 5) AS b_remainder,
+	COUNT(*) AS count_rows,
+	SUM(a + b) AS total_sum
+FROM t
+GROUP BY a_last_digit, b_remainder
+ORDER BY a_last_digit, b_remainder;
+-- EXPECTED:
+1, 2, 1, 3,
+2, 3, 1, 5,
+3, 4, 1, 7
+
+-- TEST: test_alias_inside_groupby-1.6
+-- SQL:
+SELECT
+	(a % 4) AS a_mod_group,
+	COUNT(*) AS total_rows,
+	SUM(CASE WHEN b > 50 THEN 1 ELSE 0 END) AS b_above_50_count,
+	AVG(b) AS avg_positive_b,
+	MAX(a) AS max_a_value
+FROM t 
+GROUP BY a_mod_group
+ORDER BY a_mod_group;
+-- EXPECTED:
+1, 1, 0, 2, 1,
+2, 1, 0, 3, 2,
+3, 1, 0, 4, 3
+
+-- TEST: test_alias_inside_groupby-1.7
+-- SQL:
+SELECT * FROM
+	(SELECT a AS a_1 FROM t GROUP BY a_1) as t1
+	JOIN (SELECT a AS a_2 FROM t GROUP BY a_2) as t2
+	ON t1.a_1 = t2.a_2;
+-- EXPECTED:
+1, 1,
+2, 2,
+3, 3
+
+-- TEST: test_alias_inside_groupby-1.8
+-- SQL:
+SELECT a_1 AS a FROM
+	(SELECT a AS a_1 FROM t GROUP BY a_1
+	UNION ALL
+	SELECT (a + 1) AS a_1 FROM t GROUP BY a_1)
+GROUP BY a
+ORDER BY a;
+-- EXPECTED:
+1, 2, 3, 4
+
+-- TEST: test_alias_inside_groupby-1.9
+-- SQL:
+SELECT a_1 AS a_2 FROM
+	(SELECT a AS a_1 FROM t GROUP BY a_1)
+GROUP BY a_2
+ORDER BY a_2;
+-- EXPECTED:
+1, 2, 3
+
+-- TEST: test_alias_inside_groupby-1.10
+-- SQL:
+select (select 1) as a from t group by a;
+-- EXPECTED:
+1, 1, 1

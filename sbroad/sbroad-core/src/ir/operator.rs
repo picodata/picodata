@@ -5,6 +5,7 @@
 use crate::executor::engine::helpers::to_user;
 use crate::executor::vtable::calculate_unified_types;
 use crate::frontend::sql::get_unnamed_column_alias;
+use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
@@ -12,6 +13,7 @@ use crate::ir::node::{
     OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
     Selection, Union, UnionAll, Update, Values, ValuesRow,
 };
+use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::Plan;
 use ahash::RandomState;
 
@@ -979,6 +981,205 @@ impl Plan {
 
         let sel_id = self.add_relational(sel.into())?;
         Ok(sel_id)
+    }
+
+    /// Fix aliases in GroupBy nodes
+    ///
+    /// Query example:
+    /// ```sql
+    /// select t.a as a_1, count(b) from t group by a_1;
+    /// ```
+    pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
+        let top = self.get_top()?;
+        let filter = |id: NodeId| -> bool {
+            matches!(
+                self.get_node(id),
+                Ok(Node::Relational(Relational::Projection(_)))
+            )
+        };
+        let mut dft = PostOrderWithFilter::with_capacity(
+            |x| self.subtree_iter(x, false),
+            REL_CAPACITY,
+            Box::new(filter),
+        );
+
+        dft.populate_nodes(top);
+        let proj_nodes = dft.take_nodes();
+        drop(dft);
+
+        for LevelNode(_, proj_id) in proj_nodes {
+            let (_, groupby_id) = self.split_group_by(proj_id)?;
+
+            let (gr_exprs, groupby_target_rel) = {
+                // Try to retrieve GroupBy node and its first child (target)
+                let grouby_node = self.get_relation_node(groupby_id)?;
+                let Relational::GroupBy(GroupBy {
+                    gr_exprs, children, ..
+                }) = grouby_node
+                else {
+                    continue;
+                };
+                (
+                    gr_exprs,
+                    *children
+                        .first()
+                        .expect("at least one child expected in group by"),
+                )
+            };
+
+            let (proj_target_id, proj_output_id) = {
+                let rel = self.get_relation_node(proj_id)?;
+                let Relational::Projection(Projection {
+                    output, children, ..
+                }) = rel
+                else {
+                    unreachable!("expected Projection node");
+                };
+                (
+                    *children
+                        .first()
+                        .expect("expected at least one child in projection"),
+                    *output,
+                )
+            };
+
+            let mut col_aliases = HashMap::new();
+            for col in self.get_row_list(proj_output_id)? {
+                let col_expr = self.get_expression_node(*col)?;
+                if let Expression::Alias(Alias { name, child }) = col_expr {
+                    col_aliases.insert(name.clone(), *child);
+                }
+            }
+
+            // Case when the gr_expr[i] = Alias { .. }, i. e. simple group by "col_name"
+            // E.g. `select a as a_1 from t group by a_1`
+            // Warning: cases like this one `select a as a_1 from t group by a_1 * 1` is not handled there
+            {
+                let mut gr_aliases = HashMap::new();
+                for (idx, gr_expr_id) in gr_exprs.iter().enumerate() {
+                    let gr_expr = self.get_expression_node(*gr_expr_id)?;
+                    if let Expression::Alias(Alias { name, .. }) = gr_expr {
+                        gr_aliases.insert(name.clone(), idx);
+                    }
+                }
+
+                let mut idx_to_new_child = HashMap::new();
+                for (name, idx) in gr_aliases {
+                    if let Some(alias_child) = col_aliases.get(&name) {
+                        let new_top_id = SubtreeCloner::clone_subtree(self, *alias_child)?;
+
+                        self.replace_target_in_subtree(
+                            new_top_id,
+                            proj_target_id,
+                            groupby_target_rel,
+                        )?;
+
+                        idx_to_new_child.insert(idx, new_top_id);
+                    } else {
+                        return Err(SbroadError::NotFound(
+                            Entity::Column,
+                            format_smolstr!("with name {name} in group by"),
+                        ));
+                    }
+                }
+
+                let grouby_node = self.get_mut_relation_node(groupby_id)?;
+                let MutRelational::GroupBy(GroupBy { gr_exprs, .. }) = grouby_node else {
+                    unreachable!("expected GroupBy node");
+                };
+                for (idx, new_child) in idx_to_new_child {
+                    gr_exprs[idx] = new_child;
+                }
+            }
+
+            // Below we handle the following cases:
+            // `select a as a_1 from t group by a_1 * 1`
+            // I.e. when the alias is not a gr_expr[i] subtree root
+            {
+                let grouby_node = self.get_relation_node(groupby_id)?;
+                let Relational::GroupBy(GroupBy { gr_exprs, .. }) = grouby_node else {
+                    unreachable!("expected GroupBy node");
+                };
+
+                // Mapping from alias_name to its parent_id and alias_id
+                let mut gr_alias_mappings = HashMap::<SmolStr, (NodeId, NodeId)>::new();
+
+                // Any Expression::Alias in gr_expr[i] subtree is the alias from projection
+                // We retrieve it to replace with corresponding original subtree body
+                // The parent is needed for `replace_expression`
+                let filter = |id: NodeId| -> bool {
+                    if matches!(self.get_node(id), Ok(Node::Expression(_))) {
+                        for child in self.nodes.expr_iter(id, false) {
+                            if matches!(
+                                self.get_node(child),
+                                Ok(Node::Expression(Expression::Alias(_)))
+                            ) {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                };
+
+                // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
+                for gr_expr_id in gr_exprs {
+                    let mut dft = PostOrderWithFilter::with_capacity(
+                        |x| self.nodes.expr_iter(x, false),
+                        EXPR_CAPACITY,
+                        Box::new(filter),
+                    );
+
+                    dft.populate_nodes(*gr_expr_id);
+                    let alias_parents = dft.take_nodes();
+
+                    for LevelNode(_, alias_parent_id) in alias_parents {
+                        // Add all Expression::Alias nodes among expression children
+                        for child in self.nodes.expr_iter(alias_parent_id, false) {
+                            if let Ok(Node::Expression(Expression::Alias(Alias { name, .. }))) =
+                                self.get_node(child)
+                            {
+                                gr_alias_mappings.insert(name.clone(), (alias_parent_id, child));
+                            }
+                        }
+                    }
+                }
+
+                for (name, (parent_id, alias_id)) in gr_alias_mappings {
+                    debug_assert!(self.get_expression_node(parent_id).is_ok());
+                    debug_assert!(matches!(
+                        self.get_expression_node(alias_id)?,
+                        Expression::Alias(_)
+                    ));
+
+                    if let Some(target_id) = col_aliases.get(&name) {
+                        let new_top_id = SubtreeCloner::clone_subtree(self, *target_id)?;
+                        self.replace_target_in_subtree(
+                            new_top_id,
+                            proj_target_id,
+                            groupby_target_rel,
+                        )?;
+                        self.replace_expression(parent_id, alias_id, new_top_id)?;
+                    } else {
+                        return Err(SbroadError::NotFound(
+                            Entity::Column,
+                            format_smolstr!("with name {name} in group by"),
+                        ));
+                    }
+
+                    let Expression::Alias(Alias { child, .. }) =
+                        self.get_expression_node(alias_id)?
+                    else {
+                        unreachable!("expected alias node");
+                    };
+
+                    // This is an optional operation.
+                    // We do this for consistency of the IR presentation logic.
+                    _ = self.replace_with_stub(*child);
+                    _ = self.replace_with_stub(alias_id);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Adds `Select` node.

@@ -2279,6 +2279,8 @@ where
     named_windows_sqs: HashMap<NodeId, NodeId>,
     /// Subqueries inside current Window node.
     curr_window_sqs: Vec<NodeId>,
+    /// Are we inside a GroupBy grouping expression.
+    inside_grouping_expression: bool,
 }
 
 impl<'worker, M> ExpressionsWorker<'worker, M>
@@ -2306,6 +2308,7 @@ where
             curr_named_windows: HashMap::new(),
             named_windows_sqs: HashMap::new(),
             curr_window_sqs: Vec::new(),
+            inside_grouping_expression: false,
         }
     }
 
@@ -3734,7 +3737,10 @@ where
                     let mut scan_name = None;
                     let mut col_name = normalize_name_from_sql(first_identifier);
 
-                    if inner_pairs.len() != 0 {
+					// simple id, without reference continuation or function invocation continuation
+					let is_simple_id = inner_pairs.len() == 0;
+
+                    if !is_simple_id {
                         let continuation = inner_pairs.next().expect("Continuation expected after Identifier");
                         match continuation.as_rule() {
                             Rule::ReferenceContinuation => {
@@ -3851,7 +3857,7 @@ where
                     let left_child_col_position = worker.columns_map_get_positions(*plan_left_id, &col_name, scan_name.as_deref());
 
                     let plan_right_id = referred_relation_ids.get(1);
-                    let ref_id = if let Some(plan_right_id) = plan_right_id {
+                    if let Some(plan_right_id) = plan_right_id {
                         // Referencing Join node.
                         worker.build_columns_map(plan, *plan_right_id)?;
                         let right_child_col_position = worker.columns_map_get_positions(*plan_right_id, &col_name, scan_name.as_deref());
@@ -3886,27 +3892,42 @@ where
                                 format_smolstr!("'{col_name}' in the join children",),
                             ));
                         };
-                        ref_id
+                        worker.reference_to_name_map.insert(ref_id, col_name);
+						ParseExpression::PlanId { plan_id: ref_id }
                     } else {
                         // Referencing single node.
-                        let col_position = match left_child_col_position {
-                            Ok(col_position) => col_position,
-                            Err(e) => return Err(e)
-                        };
-                        let child = plan.get_relation_node(*plan_left_id)?;
-                        let child_alias_ids = plan.get_row_list(
-                            child.output()
-                        )?;
-                        let child_alias_id = child_alias_ids
-                            .get(col_position)
-                            .expect("column position is invalid");
-                        let col_type = plan
-                            .get_expression_node(*child_alias_id)?
-                            .calculate_type(plan)?;
-                        plan.nodes.add_ref(ReferenceTarget::Single(*plan_left_id), col_position, col_type, None, false)
-                    };
-                    worker.reference_to_name_map.insert(ref_id, col_name);
-                    ParseExpression::PlanId { plan_id: ref_id }
+                        match left_child_col_position {
+                            Ok(col_position) => {
+								let child = plan.get_relation_node(*plan_left_id)?;
+								let child_alias_ids = plan.get_row_list(
+									child.output()
+								)?;
+								let child_alias_id = child_alias_ids
+									.get(col_position)
+									.expect("column position is invalid");
+								let col_type = plan
+									.get_expression_node(*child_alias_id)?
+									.calculate_type(plan)?;
+								let ref_id = plan.nodes.add_ref(
+									ReferenceTarget::Single(*plan_left_id),
+									col_position,
+									col_type,
+									None,
+									false);
+								worker.reference_to_name_map.insert(ref_id, col_name);
+								ParseExpression::PlanId { plan_id: ref_id }
+							}
+                            Err(e) => {
+								if is_simple_id && worker.inside_grouping_expression {
+									let ref_id = plan.nodes.add_ref(ReferenceTarget::Leaf, 0, DerivedType::unknown(), None, false);
+									let alias_id = plan.nodes.add_alias(&col_name, ref_id)?;
+									ParseExpression::PlanId { plan_id: alias_id }
+								} else {
+									return Err(e);
+								}
+							}
+                        }
+                    }
                 }
                 Rule::SubQuery => {
                     let sq_ast_id: &usize = worker
@@ -5683,6 +5704,7 @@ impl AbstractSyntaxTree {
                         node.children.first().expect("GroupBy has no children");
                     let first_relational_child_plan_id = map.get(*first_relational_child_ast_id)?;
                     children.push(first_relational_child_plan_id);
+                    worker.inside_grouping_expression = true;
                     for ast_column_id in node.children.iter().skip(1) {
                         let expr_pair = pairs_map.remove_pair(*ast_column_id);
                         let expr_id = parse_scalar_expr(
@@ -5697,6 +5719,7 @@ impl AbstractSyntaxTree {
 
                         children.push(expr_id);
                     }
+                    worker.inside_grouping_expression = false;
                     let groupby_id = plan.add_groupby_from_ast(&children)?;
                     plan.fix_subquery_rows(&mut worker, groupby_id)?;
                     map.add(id, groupby_id);
@@ -6606,6 +6629,8 @@ impl AbstractSyntaxTree {
                 SbroadError::Invalid(Entity::AST, Some("no top in AST".into()))
             })?)?;
         plan.set_top(plan_top_id)?;
+
+        plan.fix_groupby_aliases()?;
 
         let mut tiers = plan
             .relations
